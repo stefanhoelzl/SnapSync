@@ -27,7 +27,9 @@ function fakeStorage(): { fetch: FetchLike; keys: string[] } {
   const keys: string[] = [];
   const fetch: FetchLike = (url, init) => {
     assertEquals(init.method, "GET");
-    const key = url.match(/\/snap-sync-dev\/(site\/.*)$/)?.[1] ?? "";
+    // Addressed against the RESOLVED zone, not a pinned literal: this asserts the proxy targets the
+    // zone it was configured with, which stays true for any deployment.
+    const key = url.match(new RegExp(`/${CONFIG.zone}/(site/.*)$`))?.[1] ?? "";
     keys.push(key);
     if (key === "site/index.html") {
       return Promise.resolve(new Response(INDEX_HTML, { status: 200 }));

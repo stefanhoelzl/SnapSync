@@ -1,0 +1,6 @@
+{
+  "eventCapacity": 10,
+  "eventWindowMaxSeconds": 2592000,
+  "eventLifetimeSeconds": 2592000,
+  "attestTokenTtlSeconds": 2592000
+}

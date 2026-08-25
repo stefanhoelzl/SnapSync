@@ -249,6 +249,29 @@ Deno.test("gate: the event marker and union reads are served WITHOUT a token", a
   assertEquals((await a.request(`/api/v1/events/${E}/files`)).status, 404); // NOT 401
 });
 
+Deno.test("gate: /health is served WITHOUT a token, and only at the root", async () => {
+  // The ungated set is a CLOSED LIST, so its members are pinned in BOTH directions. `/health` is the
+  // deploy probe's target (capability `backend-deployment`): a probe cannot hold a device token, and
+  // requiring one would make the probe prove attestation rather than boot.
+  const { app: a } = app();
+  const res = await a.request("/health");
+  assertEquals(res.status, 200); // NOT 401
+  assertEquals((await a.request("/health", { method: "HEAD" })).status, 200);
+
+  // Served at the ROOT only. The gate normalises a leading `/api/vN` before its checks, so this path is
+  // ADMITTED by the gate and then simply has no route — a 404, never a 200 and never a 401. That is the
+  // same accepted shape `/`, `/join` and the AASA already have.
+  assertEquals((await a.request("/api/v1/health")).status, 404);
+});
+
+Deno.test("gate: /health opens no mutating method", async () => {
+  const { app: a } = app();
+  for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+    const res = await a.request("/health", { method, body: "{}" });
+    assert(res.status !== 200, `${method} /health was served`);
+  }
+});
+
 Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… stays gated", async () => {
   const { app: a } = app();
   assertEquals((await a.request("/api/v1/events", { method: "POST", body: "{}" })).status, 401);

@@ -5,18 +5,18 @@ import {
   markdownSummary,
   runSweep,
   type SweepSummary,
-} from "../src/sweep.ts";
-import type { Config } from "../src/config.ts";
-import type { FetchLike } from "../src/storage.ts";
+} from "../../src/scripts/sweep.ts";
+import type { Config } from "../../src/config.ts";
+import type { FetchLike } from "../../src/storage.ts";
 
 // The sweep (capability `scheduled-cleanup`) drives the SAME storage/lifecycle modules the Edge Script
 // uses, over an in-memory storage fake. NOW is pinned; the config carries the 30-day event lifetime.
 // The sweep holds ONLY the storage AccessKey — it makes no request to the Edge Script.
 const NOW = Date.parse("2026-07-14T12:00:00Z");
-const ZONE = "snap-sync-dev";
+const ZONE = "test-zone"; // a FIXTURE, deliberately not the real zone
 const CONFIG = {
   zone: ZONE,
-  host: "storage.bunnycdn.com",
+  host: "storage.invalid",
   accessKey: "k",
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
 } as unknown as Config;

@@ -17,8 +17,10 @@
 # Version / APNs / host are INJECTED on the xcodebuild line (never read from a committed bump):
 #   * marketing-version  — empty = the Config.xcconfig floor (0.1); ios.yml passes the computed
 #     max(floor, latest tag + minor 1) for a Release build.
-#   * aps-environment / apns-env — Release archives pass `production`; Debug/dev-IPA leaves the
-#     Config.xcconfig development/sandbox default.
+#   * There is deliberately NO aps-environment / apns-env / sentry-dsn input any more: those are
+#     DERIVED into the generated Deployment.xcconfig from one `channel` value (capability
+#     `deployment-configuration`), so the three environments cannot disagree and the DSN cannot be
+#     armed on an undistributed build. An override here would beat the fragment and reopen both.
 #   * There is deliberately NO upload-host input: every CI archive bakes the Config.xcconfig host,
 #     the single source of the host literal (capability ios-ci). Pointing a DEV build at another
 #     backend is done on the ssh-mac loop's own xcodebuild line, where the IPA is actually delivered
@@ -32,18 +34,6 @@ inputs:
     default: Release
   marketing-version:
     description: Override MARKETING_VERSION (CFBundleShortVersionString). Empty = Config.xcconfig floor.
-    default: ""
-  aps-environment:
-    description: Override APS_ENVIRONMENT (aps-environment entitlement). Empty = Config.xcconfig default (development).
-    default: ""
-  apns-env:
-    description: Override APNS_ENV (Info.plist). Empty = Config.xcconfig default (sandbox).
-    default: ""
-  sentry-dsn:
-    description: >-
-      Crash-reporting DSN baked into both targets' Info.plists (capability crash-reporting). Empty =
-      the Config.xcconfig empty default, which keeps the SDK off — the dev-IPA path passes nothing.
-      Non-empty also bakes SENTRY_ENVIRONMENT=production (the two travel together by design).
     default: ""
   current-project-version:
     description: CFBundleVersion (build number) — the caller's github.run_number.
@@ -178,17 +168,9 @@ runs:
       shell: bash
       env:
         IN_MARKETING_VERSION: ${{ inputs.marketing-version }}
-        IN_APS_ENVIRONMENT: ${{ inputs.aps-environment }}
-        IN_APNS_ENV: ${{ inputs.apns-env }}
-        IN_SENTRY_DSN: ${{ inputs.sentry-dsn }}
       run: |
         args=""
         [ -n "$IN_MARKETING_VERSION" ] && args="$args MARKETING_VERSION=$IN_MARKETING_VERSION"
-        [ -n "$IN_APS_ENVIRONMENT" ]   && args="$args APS_ENVIRONMENT=$IN_APS_ENVIRONMENT"
-        [ -n "$IN_APNS_ENV" ]          && args="$args APNS_ENV=$IN_APNS_ENV"
-        # DSN and environment travel together: a DSN-carrying archive is a production reporter
-        # (capability crash-reporting; the secret value is masked in logs by Actions).
-        [ -n "$IN_SENTRY_DSN" ]        && args="$args SENTRY_DSN=$IN_SENTRY_DSN SENTRY_ENVIRONMENT=production"
         echo "XCB_OVERRIDES=$args" >> "$GITHUB_ENV"
 
     # The signed archive both compiles iosArm64 (so it doubles as the build gate) and is the delivery

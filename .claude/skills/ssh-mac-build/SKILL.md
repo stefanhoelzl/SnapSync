@@ -196,7 +196,14 @@ installs and launches on the SE2.
 ## Pointing a build at a local backend
 
 The upload host is **compile-time** (PhotoKit forces it), so this needs a rebuild. One xcconfig setting
-feeds **both** targets' `Info.plist`, so one override covers the app and the extension:
+feeds **both** targets' `Info.plist`, so one override covers the app and the extension.
+
+⚠️ This is the **one** place a bare host string is still correct. Every other build derives
+`BACKGROUND_UPLOAD_URL_BASE` from the resolved deployment (capability `deployment-configuration`), and
+retargeting normally means selecting a different deployment. It cannot work here: a quick tunnel's
+hostname is minted by cloudflared **inside the running rig**, after the resolver has already run, and is
+random per session — no declared file can hold a value that does not exist yet. So the override stays,
+scoped to this loop, which is also the only path that produces an installable dev IPA.
 
 ```bash
 H=$(cat api/.localdev/host)

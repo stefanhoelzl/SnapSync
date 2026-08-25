@@ -1,0 +1,11 @@
+{
+  "storage": {
+    "kind": "bunny",
+    "zone": "snap-sync-dev",
+    "host": "storage.bunnycdn.com",
+    "s3Region": "de",
+    "accessKey": {
+      "env": "BUNNY_STORAGE_ACCESS_KEY"
+    }
+  }
+}

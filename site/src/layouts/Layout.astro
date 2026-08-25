@@ -1,4 +1,5 @@
 ---
+import deployment from "../deployment.json";
 // Shared page shell for the whole site (capability web-site): the sticky header (brand + nav), the
 // <main> slot, and the footer. Both the landing page and the /join download page compose from this one
 // layout so they can never drift in brand, theme, or chrome. Nav links point at the landing's sections
@@ -18,10 +19,17 @@ interface Props {
   description?: string;
   ogUrl?: string;
 }
+// The canonical origin comes from the RESOLVED DEPLOYMENT (capability `deployment-configuration`), the
+// same value the backend serves its AASA for and the app bakes as its upload host — so the site cannot
+// advertise a host the rest of the system has moved off. It used to be a literal here, and in join.astro,
+// and neither was checked by anything. The rendering is generated, never committed: run
+// `python3 scripts/resolve-deployment.py <deployment>` before building.
+const ORIGIN = `https://${deployment.domain}`;
+
 const {
   title,
   description = "Share the photos from an event — every photo the group takes lands in everyone's library.",
-  ogUrl = "https://snapsync.stho.net/",
+  ogUrl = `${ORIGIN}/`,
 } = Astro.props;
 
 // The real app icon, emitted same-origin (astro:assets → _astro/…, so the web-site self-containment

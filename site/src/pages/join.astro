@@ -10,11 +10,12 @@
 // off-origin fetches are the presigned photo URLs — data, not code. `fflate` is BUNDLED (not CDN-loaded),
 // which is what keeps it same-origin; it STORE-zips (level 0) since photos are already compressed, and
 // handles CRC + ZIP64 so a >4 GB event does not corrupt the archive.
+import deployment from "../deployment.json";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
 ---
 
-<Layout title="SnapSync — event photos" ogUrl="https://snapsync.stho.net/join">
+<Layout title="SnapSync — event photos" ogUrl={`https://${deployment.domain}/join`}>
   <div class="join">
     <div id="app" class="hidden">
       <h1 id="title">Event photos</h1>

@@ -1,0 +1,6 @@
+{
+  "storage": {
+    "kind": "filesystem",
+    "root": ".localstore"
+  }
+}

@@ -186,18 +186,25 @@ class RuntimeIdentityTest {
 
     /**
      * The access group is the one pinned literal assembled from THREE surfaces that are edited
-     * independently — Kotlin, `Config.xcconfig`, and the two entitlements files. Pinning the Kotlin
+     * independently — Kotlin, the generated `Deployment.xcconfig`, and the two entitlements files. Pinning the Kotlin
      * value alone would not catch a team-id change or an entitlements rename, and the resulting
      * mismatch is invisible at runtime: the item is written to a real group that simply is not the
      * one the other process reads.
      */
     @Test
     fun `the shared Keychain access group agrees across Kotlin, TEAM_ID and both entitlements`() {
-        val xcconfig = File(repoRoot, "iosApp/Configuration/Config.xcconfig")
-        assertTrue(xcconfig.isFile, "Config.xcconfig is missing — fix this pin's path")
+        // TEAM_ID moved into the GENERATED Deployment.xcconfig (capability
+        // `deployment-configuration`): it is Apple identity, resolved from the deployment alongside the
+        // bundle id, so the backend's copy and this one can no longer disagree.
+        val xcconfig = File(repoRoot, "iosApp/Configuration/Deployment.xcconfig")
+        assertTrue(
+            xcconfig.isFile,
+            "Deployment.xcconfig is missing — run `python3 scripts/resolve-deployment.py <deployment>`; " +
+                "the renderings are generated, never committed",
+        )
         val teamId = Regex("""^\s*TEAM_ID\s*=\s*(\S+)\s*$""", RegexOption.MULTILINE)
             .find(xcconfig.readText())?.groupValues?.get(1)
-        assertTrue(teamId != null, "TEAM_ID not found in Config.xcconfig — the signing surface moved")
+        assertTrue(teamId != null, "TEAM_ID not found in Deployment.xcconfig — run the resolver, or the signing surface moved")
 
         val declared = entitlementsFiles.map { path ->
             val file = File(repoRoot, path)

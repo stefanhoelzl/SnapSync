@@ -15,7 +15,7 @@
 //     (min startsAt; ∅ → +∞). A device in NO surviving event additionally loses its config + attestation
 //     record. No wall-clock age fudge: a live upload is always ≥ its event's start ≥ the floor.
 
-import { readSweepConfig } from "./config.ts";
+import { readSweepConfig } from "../config.ts";
 import {
   type BunnyEntry,
   decodeObjectName,
@@ -31,9 +31,9 @@ import {
   markerKey,
   readManifestObject,
   readMarker,
-} from "./storage.ts";
-import { eventIsStale, resolveMembership } from "./lifecycle.ts";
-import type { Config } from "./config.ts";
+} from "../storage.ts";
+import { eventIsStale, resolveMembership } from "../lifecycle.ts";
+import type { Config } from "../config.ts";
 
 /** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
 export type Tally = { count: number; bytes: number };
