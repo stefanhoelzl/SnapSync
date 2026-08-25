@@ -34,21 +34,37 @@ State these before writing a scenario against this host, or you will write one t
   Apple, so a synthetic token through the `onPushToken` trigger is the way in.
 - **No OS-driven PhotoKit upload tier.** The OS does not invoke the upload extension here at all, so
   uploads do not happen on this host yet — the extension-shaped second process is where they arrive.
-- **No downloads.** The background `URLSession` *runs* here — tasks are created and the delegate fires —
-  but **every transfer fails instantly with `NSURLErrorDomain/-1`** (`NSURLErrorUnknown`), measured
-  2026-08-25 against both a loopback and a LAN host. The app's ordinary default-session HTTP reaches the
-  same server fine in the same process, and `curl` fetches the identical presigned URL with `200`. So a
-  download that never lands is **the host**, not your setup — do not go hunting for it.
+- **No downloads, and no background `URLSession` at all.** The *remote* session is never created here, so
+  no byte ever moves: **every transfer fails instantly with `NSURLErrorDomain/-1`** (`NSURLErrorUnknown`),
+  measured 2026-08-25 against loopback and a LAN host. Your app-side pipeline still runs — tasks are
+  created locally and the delegate fires — which is why this reads as "it ran and failed" rather than "it
+  never started". The ordinary default session reaches the same server fine in the same process, and a
+  *foreground* download of the identical URL returns `200` with the right byte count. So a download that
+  never lands is **the host**, not your setup — do not go hunting for it.
 
-  The `-1` is a symptom. The cause is in the Simulator's own log: `NSCocoaErrorDomain 4097` on the XPC
-  connection to `com.apple.nsurlsessiond`, then *"failed to create a background NSURLSessionDownloadTask,
-  as remote session is unavailable"*. Read it with
-  `xcrun simctl spawn <dev> log show --start "<UTC>" --style compact | grep -i backgroundsession`.
-  Note the daemon itself is fine — it completes background tasks for `mobileassetd` in the same window.
+  **The cause, measured from the daemon's own log.** `nsurlsessiond` resolves each client's bundle
+  identifier as it evaluates the XPC connection. Apple's processes resolve to a real one (`com.apple.trustd`,
+  `com.apple.bird`) and their background sessions work. Everything we can build resolves to **`(null)`**,
+  and `(null)` is dropped *after* being accepted — which is why the code is `NSCocoaErrorDomain 4097`
+  (`NSXPCConnectionInterrupted`, **not** `Invalid`, which is 4099), followed by *"failed to create a
+  background NSURLSessionDownloadTask, as remote session is unavailable"*. Read both sides with:
 
-  **Do not spend time on these — all four were tested and none fix it:** ad-hoc signing, signing with a
-  real Apple Development identity, adding `application-identifier`/`team-identifier`/`get-task-allow`
-  (each one individually makes the app un-launchable), and a different runtime (26.5 behaves as 26.2).
+  ```bash
+  xcrun simctl spawn <dev> log stream --style compact --level debug \
+    --predicate 'process == "nsurlsessiond" OR process == "SnapSync"'
+  ```
+
+  **Do not spend time on these — all six were tested and none fix it:** ad-hoc signing · a real Apple
+  Development identity · **stripping the signature entirely** (identical `(null)`/4097, so the 2019
+  `xamarin-macios#7101` "just sign it" fix does not reproduce) · adding
+  `application-identifier`/`team-identifier`/`get-task-allow` (each one individually makes the app
+  un-launchable) · a different runtime (26.5 behaves as 26.2) · **any entitlement** — the daemon's own
+  binary lists the client entitlements it checks and every one is a privileged *modifier*, never an access
+  gate, and a client whose sessions succeed (`mobileassetd`) carries an empty entitlements dictionary.
+
+  A **real installed app bundle declaring a valid `CFBundleIdentifier` still resolves to `(null)`**, so
+  this is not something a bundle, a plist or a signature can fix. Nothing in the published literature
+  covers an installed third-party app — every attested case is `xctest`, XCUITest or an App Clip.
 - **No OS relaunch measurement.** Waking a terminated app for `handleEventsForBackgroundURLSession` needs
   a transfer that outlives the process, and by the line above none can exist here. Device-only.
 - **It does not exercise the shipped identity path.** The device id resolves through a *different*
