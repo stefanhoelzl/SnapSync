@@ -1,3 +1,4 @@
+import { emptyStore } from "./support/db.ts";
 import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { readConfig } from "../src/config.ts";
@@ -15,6 +16,8 @@ const CONFIG = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
+  BUNNY_DATABASE_URL: "libsql://example.invalid",
+  BUNNY_DATABASE_AUTH_TOKEN: "dbt",
   ADMIN_NOTIFY_KEY: "a",
 });
 
@@ -42,7 +45,8 @@ function fakeStorage(): { fetch: FetchLike; keys: string[] } {
   return { fetch, keys };
 }
 
-const app = (f: FetchLike) => createApp({ config: CONFIG, fetch: f });
+const DB = await emptyStore();
+const app = (f: FetchLike) => createApp({ config: CONFIG, db: DB, fetch: f });
 
 Deno.test("landing: GET / proxies site/index.html as no-cache HTML", async () => {
   const s = fakeStorage();

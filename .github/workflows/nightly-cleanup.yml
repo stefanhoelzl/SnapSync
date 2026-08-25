@@ -1,8 +1,12 @@
 name: nightly-cleanup
 
-# The nightly storage sweep (capability `scheduled-cleanup`). It reclaims, in two ordered phases, every
-# STALE event (past endsAt + grace, or a legacy/corrupt marker) and every STALE asset (a byte or device
-# record no surviving event still needs) from the bunny Storage zone.
+# The nightly sweep (capability `scheduled-cleanup`). It reclaims, in two ordered phases, every STALE
+# event (past its derived delete-by, or emptied) and every STALE asset (a byte or device record no
+# surviving event still needs).
+#
+# It MARKS FROM THE DATABASE and DELETES FROM STORAGE (capability `database`): only the photo bytes and
+# the attestation records still live in the zone, so everything the sweep reasons about — which events
+# exist, who is a member, which keys are referenced, each device's floor — is a query.
 #
 # WHY IT RUNS HERE AND NOT IN THE EDGE. Bunny Edge Scripting has no scheduler, and it caps a request at
 # 50 subrequests / 30 s CPU (docs.bunny.net/scripting/limits) — a whole-storage sweep issues thousands of
@@ -14,12 +18,13 @@ name: nightly-cleanup
 # It is DEV/OPS INFRASTRUCTURE, non-gating: it posts no required status check and blocks no merge (like
 # ssh-mac.yml). A failed run is red and visible but stops nothing.
 #
-# SECRETS. Unlike the code-only deploy workflow, this one holds ONE bunny-zone-scoped secret — the
-# storage `AccessKey`, to read and delete objects. That is its ONLY credential: the sweep makes no request
-# to the Edge Script, so it needs none authorizing one (it no longer announces a deletion — the notify
-# channel could not say what a deletion means, and arrived after the deletes it described). It does NOT
-# hold the bunny ACCOUNT key (which owns config + DNS) — that prohibition (backend-deployment) is
-# unchanged. The edge-only secrets (APNs, token signing) are never given to this job either.
+# SECRETS. This job holds exactly the credentials the two halves of its work need: the storage
+# `AccessKey` (read and delete objects) and the relational store's URL + token (read the state it marks
+# from, and delete the rows it collects). It makes no request to the Edge Script, so it holds no
+# credential authorizing one — it no longer announces a deletion, because the notify channel could not
+# say what a deletion means and arrived after the deletes it described. It does NOT hold the bunny
+# ACCOUNT key (which owns config + DNS) — that prohibition (backend-deployment) is unchanged, and the
+# edge-only secrets (APNs, token signing) are never given to this job either.
 #
 # The scheduled run is a REAL delete. Validate first with the manual dry-run:
 #   gh workflow run nightly-cleanup.yml -f dry_run=true
@@ -54,8 +59,8 @@ jobs:
         with:
           deno-version: v2.x
 
-      # `--allow-net` (bunny storage + the edge notify route), `--allow-env` (readSweepConfig reads the
-      # two secrets), and `--allow-write` scoped to `$GITHUB_STEP_SUMMARY` ONLY (the sweep appends its
+      # `--allow-net` (bunny storage + the relational store), `--allow-env` (readSweepConfig reads the
+      # secrets), and `--allow-write` scoped to `$GITHUB_STEP_SUMMARY` ONLY (the sweep appends its
       # summary table to the job's Summary panel — no other file access). A systemic failure (auth, or an
       # unreachable storage LIST) exits non-zero and fails the job; per-object errors are logged and
       # counted in the summary.
@@ -68,6 +73,8 @@ jobs:
         working-directory: api
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
+          BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
+          BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
         run: |
           deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" src/scripts/sweep.ts \
             ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}

@@ -5,9 +5,16 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.deviceManifestFromJson
 import kotlinx.serialization.Serializable
 
-/** One entry of the per-device file listing (`GET /files/devices/<id>`) — `{filename, size, url}`. */
+/**
+ * One entry of the per-device file listing (`GET /files/devices/<id>`) — `{filename, url}`.
+ *
+ * `size` used to ride here and is gone with the relational store (capability `api-endpoints`): it had no
+ * reader on either read route, and it was the ONE field sourced from a storage listing rather than from
+ * the backend's own record — so carrying it would have made the byte route's best-effort record
+ * load-bearing, and one lost write would silently drop an asset from the union.
+ */
 @Serializable
-class FileEntryDto(val filename: String, val size: Long, val url: String)
+class FileEntryDto(val filename: String, val url: String)
 
 /** One resource of a union asset (`GET /events/<id>/files`). */
 @Serializable
@@ -16,7 +23,6 @@ class UnionResourceDto(
     val contentType: String,
     val key: String,
     val filename: String,
-    val size: Long,
     val url: String,
 )
 
@@ -45,14 +51,27 @@ class CreatedEventDto(
     val deletesAt: String,
 )
 
+/** A device's participation in one event — a STATE, not the relative age of two sibling objects. */
+enum class MemberState { ACTIVE, DEPARTED }
+
+/**
+ * One membership: the device's state in the event, and the assets it shares there.
+ *
+ * The assets are retained across a leave, which is what lets a departed member keep contributing to the
+ * union, and are REPLACED wholesale by each publish (full-state, capability `device-manifest`).
+ */
+data class Membership(val state: MemberState, val manifest: DeviceManifest)
+
 /**
  * The in-memory model of the edge's byte store + registry (capability `harness-world-model`) — the
  * single source of world truth. Three maps:
  *
  * - [byteStore]: `deviceId -> stored object names` (the `files/devices/<deviceId>/<filename>` byte partitions).
- * - [manifests]: `(eventId, deviceId) -> DeviceManifest` (the per-event device manifests, PUT via the
- *   mini-edge; also injected directly for foreign devices).
- * - [events]: the registered-event marker set (a `POST /events` registers; the union gate reads it).
+ * - [memberships]: `(eventId, deviceId) -> Membership` — ONE record per pair, carrying the device's
+ *   `state` and the assets it shares there. Membership is a STATE, never two sibling objects resolved by
+ *   last-write-wins: that resolution and its consumers went with the object layout (capability
+ *   `database`), and modelling it here would keep a retired rule alive in test equipment.
+ * - [events]: the registered-event set (a `POST /events` registers; the union gate reads it).
  *
  * From these it computes the edge's read-models **faithfully in behavior** — [deviceListing], [union],
  * and (the same as the per-device listing) the reconcile-seed listing. Byte-level fidelity to the real
@@ -64,7 +83,7 @@ class CreatedEventDto(
 class BackendStore {
 
     private val byteStore = mutableMapOf<String, MutableSet<String>>()
-    private val manifests = mutableMapOf<Pair<String, String>, DeviceManifest>()
+    private val memberships = mutableMapOf<Pair<String, String>, Membership>()
     private val events = mutableSetOf<String>()
     // Per-event human name (from `POST /events` or a direct injection), served by `GET /events/<id>`.
     private val eventNames = mutableMapOf<String, String>()
@@ -76,10 +95,7 @@ class BackendStore {
     // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
     private val deviceConfigs = mutableMapOf<String, String>()
-    // (eventId, deviceId) pairs that have LEFT (the real edge's `.left.json` departed state). A departed
-    // device's manifest STAYS in [manifests] (its photos remain in the union) but it no longer counts as
-    // an active member for the last-device reap — the behavioral model of last-write-wins membership.
-    private val departed = mutableSetOf<Pair<String, String>>()
+
 
     /** Failure lever: when true, the per-device listing and event-union routes fail (mini-edge `502`). */
     var offline: Boolean = false
@@ -148,16 +164,18 @@ class BackendStore {
         eventEnds.remove(eventId)
     }
 
-    /** Deposit a device manifest from its JSON body (the `PUT /events/<id>/devices/<id>` effect). */
+    /**
+     * Record a manifest publish from its JSON body (the `PUT /events/<id>/devices/<id>` effect).
+     * Full-state: the membership's asset set becomes exactly what the body lists, and the membership
+     * becomes `active` — a publish is how a rejoin re-enters an event it had left.
+     */
     fun putManifestJson(eventId: String, deviceId: String, json: String) {
-        manifests[eventId to deviceId] = deviceManifestFromJson(json)
-        departed.remove(eventId to deviceId) // a fresh active manifest supersedes a prior leave (LWW)
+        putManifest(eventId, deviceId, deviceManifestFromJson(json))
     }
 
-    /** Inject a device manifest directly (used to set up foreign devices). */
+    /** Inject a device's shared asset set directly (used to set up foreign devices). */
     fun putManifest(eventId: String, deviceId: String, manifest: DeviceManifest) {
-        manifests[eventId to deviceId] = manifest
-        departed.remove(eventId to deviceId) // a fresh active manifest supersedes a prior leave (LWW)
+        memberships[eventId to deviceId] = Membership(state = MemberState.ACTIVE, manifest = manifest)
     }
 
     /** Store a device's config doc (the `PUT /devices/<id>` effect — push-token registration). */
@@ -166,15 +184,16 @@ class BackendStore {
     }
 
     /**
-     * Leave an event (the `DELETE /events/<id>/devices/<id>` endpoint, capability `event-leave-endpoint`).
-     * RENAME-ONLY: marks the device departed (its manifest STAYS, so the union keeps serving its photos)
-     * and does nothing else — no last-member reap, no byte/config GC. The event survives (rejoinable)
-     * until it expires and the nightly sweep (capability `scheduled-cleanup`) reclaims it. Idempotent; a
-     * leave for an unregistered event is a no-op.
+     * Leave an event (the `DELETE /events/<id>/devices/<id>` endpoint, capability `api-endpoints`).
+     * ONE COLUMN: the membership's state becomes `departed`. Its assets STAY, so the union keeps serving
+     * its photos, and nothing else happens — no last-member reap, no byte/config GC. The event survives
+     * (rejoinable) until the nightly sweep reclaims it (capability `scheduled-cleanup`). Idempotent, and
+     * a leave for an unregistered event or a device that never joined is a no-op.
      */
     fun leave(eventId: String, deviceId: String) {
         if (eventId !in events) return
-        departed.add(eventId to deviceId)
+        val existing = memberships[eventId to deviceId] ?: return
+        memberships[eventId to deviceId] = existing.copy(state = MemberState.DEPARTED)
     }
 
     // ---- inspection (for tests) -----------------------------------------------------------------
@@ -182,10 +201,12 @@ class BackendStore {
     /** The raw object names stored for a device — inspectable world outcome. */
     fun objectsOf(deviceId: String): Set<String> = byteStore[deviceId].orEmpty().toSet()
 
-    fun manifestOf(eventId: String, deviceId: String): DeviceManifest? = manifests[eventId to deviceId]
+    fun manifestOf(eventId: String, deviceId: String): DeviceManifest? =
+        memberships[eventId to deviceId]?.manifest
 
-    /** Whether a device has LEFT this event (its manifest persists in the union) — inspectable outcome. */
-    fun isDeparted(eventId: String, deviceId: String): Boolean = (eventId to deviceId) in departed
+    /** Whether a device has LEFT this event (its assets persist in the union) — inspectable outcome. */
+    fun isDeparted(eventId: String, deviceId: String): Boolean =
+        memberships[eventId to deviceId]?.state == MemberState.DEPARTED
 
     /** The stored config doc for a device (the registered push token), or null — inspectable outcome. */
     fun deviceConfigOf(deviceId: String): String? = deviceConfigs[deviceId]
@@ -199,7 +220,7 @@ class BackendStore {
      */
     fun deviceListing(deviceId: String): List<FileEntryDto> =
         byteStore[deviceId].orEmpty().map { filename ->
-            FileEntryDto(filename = filename, size = 1L, url = syntheticUrl(deviceId, filename))
+            FileEntryDto(filename = filename, url = syntheticUrl(deviceId, filename))
         }
 
     /**
@@ -211,9 +232,12 @@ class BackendStore {
     fun union(eventId: String): List<UnionAssetDto>? {
         if (eventId !in events) return null
         val out = mutableListOf<UnionAssetDto>()
-        for ((keyPair, manifest) in manifests) {
+        // BOTH states contribute: a member who has left keeps the photos it already shared in the union
+        // until the event itself is deleted.
+        for ((keyPair, membership) in memberships) {
             val (mEventId, deviceId) = keyPair
             if (mEventId != eventId) continue
+            val manifest = membership.manifest
             val present = byteStore[deviceId].orEmpty()
             for (asset in manifest.assets) {
                 if (asset.resources.isEmpty()) continue
@@ -229,7 +253,6 @@ class BackendStore {
                                 contentType = r.contentType,
                                 key = r.key,
                                 filename = r.filename,
-                                size = 1L,
                                 url = syntheticUrl(deviceId, r.key),
                             )
                         },

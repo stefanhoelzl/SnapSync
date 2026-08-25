@@ -12,6 +12,12 @@
   "attestTokenKey": {
     "env": "ATTEST_TOKEN_KEY"
   },
+  "databaseUrl": {
+    "env": "BUNNY_DATABASE_URL"
+  },
+  "databaseToken": {
+    "env": "BUNNY_DATABASE_AUTH_TOKEN"
+  },
   "sentryDsn": {
     "env": "SENTRY_DSN",
     "scope": "build"

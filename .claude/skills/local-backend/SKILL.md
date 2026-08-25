@@ -76,6 +76,11 @@ means the reset did not run. ⚠️ **Order matters and nothing enforces it any 
 its own request now, so reset **before** leaving: after a reset the device is unjoined, so a leave is
 a no-op rather than a `DELETE` aimed at the backend you are leaving behind.
 
+⚠️ **The rig's relational state lives in `api/.localstore/api.db`** — a real SQLite file beside the
+objects (capability `database`), which is where events, memberships, assets and the `uploaded` record now
+live. `rm -rf api/.localstore` clears both halves; clearing one and not the other leaves a rig whose
+events exist but whose photos do not, which looks like "downloads are inert" with no error anywhere.
+
 ⚠️ **`api/.localstore` survives across sessions.** If it still holds objects from an earlier run, the
 re-join reconcile (`event-rejoin-reconciliation`) seeds them as `COMPLETED` from the device's
 stored-file listing and they never re-upload. `rm -rf api/.localstore` when you want a clean slate —

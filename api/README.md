@@ -269,24 +269,37 @@ deno task dev:tunnel    # + a cloudflared quick tunnel, so a physical device can
 real zone: a network call fails as a permission error rather than becoming a live request.
 
 **The local rig** (`src/dev/`, dev infrastructure — non-gating, no spec) composes the **same**
-`createApp({ config, fetch })` this file documents, with a filesystem `fetch` in place of bunny and
-a `Config` built from the same source constants — so event limits, the attest TTL, and every route
-behave exactly as deployed. Keys map 1:1 onto `api/.localstore/objects/<key>`, so `find` is the
-verification oracle; reset is `rm -rf api/.localstore`. The attestation gate stays fully on (a bad
-token still `401`s), but a request arriving with **no** `authorization` header gets a dev token
-attached, so bare `curl` works. Presigned download URLs are minted with the real production shape,
-pointed at the rig. Full runbook — including pointing a device build at it, and the mandatory
-device reset (`POST /device/reset` over the control channel) when crossing backends — is in the root
-`CLAUDE.md`.
+`createApp({ config, db, fetch })` this file documents, with a filesystem `fetch` in place of bunny
+and a `Config` built from the same source constants — so event limits, the attest TTL, and every
+route behave exactly as deployed. Keys map 1:1 onto `api/.localstore/objects/<key>`, so `find` is
+the verification oracle for the BYTES.
+
+**Everything relational lives in a real SQLite file** at `api/.localstore/api.db` (capability
+`database`), opened through Deno's built-in `node:sqlite` — no credential, no network, and the same
+statements the deployed store runs, so cascades, the conditional capacity insert and the atomic
+publish behave here as they do in production. Inspect it with any `sqlite3`. It lives INSIDE the
+store directory on purpose, so `rm -rf api/.localstore` clears both halves at once: clearing the
+objects and keeping the rows leaves a rig whose events exist but whose photos do not, which reads as
+"downloads are broken" with no error anywhere. Reset is still `rm -rf api/.localstore`.
+
+⚠️ **A `filesystem` deployment declares no database credentials at all.** That is not an oversight —
+it is what makes it structurally impossible for a dev run to address the PRODUCTION store, which
+holds real events and, unlike the storage zone, offers no per-object blast radius to fall back on.
+The attestation gate stays fully on (a bad token still `401`s), but a request arriving with **no**
+`authorization` header gets a dev token attached, so bare `curl` works. Presigned download URLs are
+minted with the real production shape, pointed at the rig. Full runbook — including pointing a
+device build at it, and the mandatory device reset (`POST /device/reset` over the control channel)
+when crossing backends — is in the root `CLAUDE.md`.
 
 `src/dev/` **cannot ship**: `deno bundle src/main.ts` roots the deployed bundle at `main.ts`, which
 imports nothing under it.
 
-Running `src/main.ts` directly still targets the **real** `snap-sync-dev` zone and needs the two
-secrets; prefer the rig unless you specifically mean to hit production storage:
+Running `src/main.ts` directly still targets the **real** `snap-sync-dev` zone **and the real
+database**, and needs every secret; prefer the rig unless you specifically mean to hit production:
 
 ```bash
 BUNNY_STORAGE_ACCESS_KEY=k APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
+  ATTEST_TOKEN_KEY=t BUNNY_DATABASE_URL=… BUNNY_DATABASE_AUTH_TOKEN=… \
   deno run --allow-net --allow-env src/main.ts
 ```
 

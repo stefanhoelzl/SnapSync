@@ -142,39 +142,39 @@ import {
   verifyAttestation,
   verifyToken,
 } from "./attest.ts";
-// Storage primitives + on-wire shapes, shared with the nightly sweep (capability `scheduled-cleanup`).
+// Storage primitives — now only the BYTE store and the attestation record; every relational fact moved
+// to the database (capability `database`).
 import {
   type AttestRecord,
   byteKey,
-  decodeObjectName,
-  deleteObject,
   deviceAttestKey,
-  deviceConfigKey,
-  deviceDir,
-  deviceLeftManifestKey,
-  deviceManifestDir,
-  deviceManifestKey,
-  type EventMarker,
   type FetchLike,
-  listDir,
-  type ManifestResource,
-  markerKey,
   putObject,
-  readManifestObject,
-  readMarker,
   readObjectText,
 } from "./storage.ts";
-// Event lifecycle + membership, shared with the nightly sweep.
+// The relational store (capability `database`) — the authority for events, memberships, assets,
+// resources and device records, shared with the nightly sweep.
 import {
-  classifyEvent,
-  deleteByMs,
-  type LiveEventMarker,
-  type MemberState,
-  resolveMembership,
-} from "./lifecycle.ts";
+  type Db,
+  departMembership,
+  deviceFiles,
+  enroll,
+  type EventRow,
+  insertEvent,
+  type ManifestAssetEntry,
+  markUploaded,
+  membersOf,
+  publishStatements,
+  putDeviceRecord,
+  readDeviceRecord,
+  readEvent,
+  renameEvent,
+  unionRows,
+} from "./db.ts";
+// Event lifecycle, shared with the nightly sweep.
+import { deleteByMs } from "./lifecycle.ts";
 
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
-export { classifyEvent } from "./lifecycle.ts";
 export type { FetchLike } from "./storage.ts";
 
 // The browser-facing pages (capabilities `marketing-site` at `/` and `web-event-download` at `/join`) are
@@ -190,6 +190,12 @@ export type Deps = {
   fetch: FetchLike;
   /** Validated storage config (built at startup via readConfig). */
   config: Config;
+  /**
+   * The relational store (capability `database`). Injected like {@link fetch}: production passes the
+   * libSQL driver built in `main.ts`, tests pass an in-process `node:sqlite` one. The port is narrow
+   * enough that both are the same few methods, and neither can be mistaken for the other at a call site.
+   */
+  db: Db;
   /**
    * Wall clock, in epoch ms. Injected so tests can pin it — the device token and the challenge are both
    * time-bounded, and a test for "an expired token is refused" cannot wait 30 days. Defaults to `Date.now`.
@@ -207,25 +213,76 @@ export type Deps = {
   buildSha?: string;
 };
 
-// One file in the per-device listing response — exactly `filename`, `size`, and `url` (a closed shape).
-// `filename` is the uploaded name decoded from the stored key; `size` is the object's byte length;
-// `url` is a presigned S3 GET URL (per `bunny-list-endpoint`, built by `presignDownloadUrl`).
+// One file in the per-device listing response — exactly `filename` and `url` (a closed shape).
+//
+// `size` USED TO BE HERE and is gone. It had no reader: the iOS `UnionResource` model omits it,
+// `HttpDeviceFilesSource` documents it as an ignored unknown key, and the web zip page reads only
+// `role`/`url`/`filename`/`key`. Dropping it is what makes the byte route's database write safe to LOSE
+// (capability `api-endpoints`): `size` was the one field sourced from storage rather than the manifest,
+// so carrying it would have forced a column only that best-effort write could fill — and one lost write
+// would then leave a NULL, make this closed shape unemittable, and silently drop the asset.
 type FileEntry = {
   filename: string;
-  size: number;
   url: string;
 };
 
 // One asset in the event-wide union: the owning `deviceId` (own-vs-foreign skip is the client's
-// concern), the device-local `assetId`, the capture `creationDate`, and the complete set of resources
-// — each a manifest resource plus its `size` (from the device's file listing) and presigned S3 `url`.
-type UnionResource = ManifestResource & { size: number; url: string };
+// concern), the device-local `assetId`, the capture `creationDate`, and the complete set of resources.
+type UnionResource = {
+  role: string;
+  contentType: string;
+  key: string;
+  filename: string;
+  url: string;
+};
 type UnionAsset = {
   deviceId: string;
   assetId: string;
   creationDate: string;
   resources: UnionResource[];
 };
+
+/**
+ * Validate a device manifest body into the entries the publish records (wire format: capability
+ * `device-manifest`). Returns `null` when the body is not a manifest — a `400`, never a partial publish.
+ *
+ * Unknown fields are IGNORED rather than rejected: the manifest is written by a shipped app, and a
+ * backend that refused a field a future client adds would break every device the moment that client
+ * shipped. What is checked is what this backend records.
+ *
+ * `uploaded` is read here so it can be carried through `publishStatements`, where ABSENT means `true`.
+ * A client that omits it — every client today does — publishes only COMPLETED resources, so `true` is
+ * right by construction; a future client that publishes a pending set can say `false` and be believed.
+ */
+function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEntry[] | null {
+  if (!Array.isArray(body.assets)) return null;
+  const out: ManifestAssetEntry[] = [];
+  for (const raw of body.assets) {
+    if (typeof raw !== "object" || raw === null) return null;
+    const a = raw as Record<string, unknown>;
+    if (typeof a.assetId !== "string" || a.assetId === "") return null;
+    if (typeof a.creationDate !== "string") return null;
+    if (!Array.isArray(a.resources) || a.resources.length === 0) return null;
+    const resources = [];
+    for (const rawResource of a.resources) {
+      if (typeof rawResource !== "object" || rawResource === null) return null;
+      const r = rawResource as Record<string, unknown>;
+      if (
+        typeof r.role !== "string" || typeof r.contentType !== "string" ||
+        typeof r.key !== "string" || r.key === "" || typeof r.filename !== "string"
+      ) return null;
+      resources.push({
+        role: r.role,
+        contentType: r.contentType,
+        key: r.key,
+        filename: r.filename,
+        uploaded: typeof r.uploaded === "boolean" ? r.uploaded : undefined,
+      });
+    }
+    out.push({ assetId: a.assetId, creationDate: a.creationDate, resources });
+  }
+  return out;
+}
 
 // 7 days — the S3 presign maximum. The device re-presigns (re-reads the union) on every foreground well
 // within this window, so a queued background download that outlives one URL self-heals with a fresh one.
@@ -334,33 +391,20 @@ async function presignDownloadUrl(
 }
 
 /**
- * Read a device's config object (`devices/<deviceId>.json`) and return its `pushToken`, or
- * `null` when the config is absent (`404`), unreadable, unparseable, or carries no usable token. Used
- * by the notify fan-out, which is **best-effort** — a member without a registered token is simply
- * skipped, so this NEVER throws (unlike the manifest read that fails the union). The body is always
- * drained so the connection is released.
+ * Read a device's stored config document and return its `pushToken`, or `null` when the device has no
+ * record, its document is unparseable, or it carries no usable token. Used by the notify fan-out, which
+ * is **best-effort** — a member without a registered token is simply skipped, so this NEVER throws.
  */
-async function readPushToken(
-  fetchImpl: FetchLike,
-  config: Config,
-  deviceId: string,
-): Promise<PushToken | null> {
-  const url = `https://${config.host}/${config.zone}/${deviceConfigKey(deviceId)}`;
-  let res: Response;
+async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null> {
+  let raw: string | null;
   try {
-    res = await fetchImpl(url, {
-      method: "GET",
-      headers: { AccessKey: config.accessKey, Accept: "application/json" },
-    });
+    raw = await readDeviceRecord(db, deviceId);
   } catch {
-    return null; // transport error → skip this member (best-effort)
+    return null; // store unreachable → skip this member (best-effort)
   }
-  if (!res.ok) {
-    await res.body?.cancel();
-    return null; // 404 (never registered) or any read error → skip
-  }
+  if (raw === null) return null; // never registered → skip
   try {
-    const doc = await res.json() as { pushToken?: Partial<PushToken> };
+    const doc = JSON.parse(raw) as { pushToken?: Partial<PushToken> };
     const pt = doc.pushToken;
     if (
       pt && typeof pt.kind === "string" && typeof pt.token === "string" &&
@@ -379,7 +423,7 @@ async function readPushToken(
 // rather than left as dead code inviting a second bearer-secret path.)
 
 export function createApp(
-  { fetch: fetchImpl, config, now = Date.now, buildSha = BUILD_SHA }: Deps,
+  { fetch: fetchImpl, config, db, now = Date.now, buildSha = BUILD_SHA }: Deps,
 ): Hono {
   // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
@@ -406,19 +450,20 @@ export function createApp(
   // (capability `scheduled-cleanup`), including for an event already past its derived delete-by.
 
   /**
-   * Resolve an event for a route: marker read + completeness check (capability `event-limits`).
-   * `absent` covers "never created" AND a `gone` marker (legacy/corrupt — missing `startsAt`, `endsAt`,
-   * or `capacity`), which the nightly sweep deletes. THROWS on marker-read transport failure, so the
-   * route surfaces 502 and never mistakes a transient failure for absence.
+   * Resolve an event for a route: ONE row read (capability `database`). An event exists exactly when its
+   * row does, so `absent` now means precisely "never created, or the sweep deleted it" — the INCOMPLETE
+   * case the marker era had to carry is unstateable, because `startsAt`, `endsAt`, `capacity` and
+   * `lifetimeSeconds` are `NOT NULL` columns.
+   *
+   * THROWS on a store failure, so the route surfaces 502 and never mistakes a transient fault for
+   * absence. That distinction is load-bearing beyond this file: a `404` here is a SEALED deletion, and
+   * `leave-event`'s two-witness teardown acts on it.
    */
   async function gateEvent(
     eventId: string,
-  ): Promise<{ kind: "ok"; marker: LiveEventMarker } | { kind: "absent" }> {
-    const stored = await readMarker(fetchImpl, config, eventId);
-    if (stored === null) return { kind: "absent" };
-    const cls = classifyEvent(stored);
-    if (cls.phase === "gone") return { kind: "absent" }; // legacy/corrupt marker — the sweep deletes it
-    return { kind: "ok", marker: cls.marker };
+  ): Promise<{ kind: "ok"; event: EventRow } | { kind: "absent" }> {
+    const event = await readEvent(db, eventId);
+    return event === null ? { kind: "absent" } : { kind: "ok", event };
   }
 
   /**
@@ -431,9 +476,9 @@ export function createApp(
    * A duplicated constant would let a join gate confidently promise a date the backend will not honour,
    * and the drift would be silent.
    */
-  function publicEvent(marker: LiveEventMarker) {
-    const { lifetimeSeconds: _stamped, ...wire } = marker;
-    return { ...wire, deletesAt: canonicalFromMs(deleteByMs(marker, config.eventLifetimeSeconds)) };
+  function publicEvent(event: EventRow) {
+    const { lifetimeSeconds: _stamped, ...wire } = event;
+    return { ...wire, deletesAt: canonicalFromMs(deleteByMs(event)) };
   }
 
   // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
@@ -477,7 +522,25 @@ export function createApp(
       console.error(`upload: bunny returned ${upstream.status} for ${byteKey(deviceId, filename)}`);
       return c.text("upstream rejected", 502);
     }
-    // Bunny confirmed the stored object — and only now do we report success.
+    // Bunny confirmed the stored object. Record the upload (capability `database`) — BEST-EFFORT: this
+    // route's success is "the bytes landed", and failing it because a bookkeeping row did not land would
+    // turn a successful upload into a retried one.
+    //
+    // The collapse is safe because the record is REPAIRED, not lost. The device manifest publish is a
+    // full-state document listing only uploaded resources, it upserts each resource's `uploaded` as true
+    // when the entry does not say otherwise, and it fires in the SAME cycle that produced these bytes.
+    // That repair in turn rests on `device-manifest`'s rule that an unchanged manifest may be skipped
+    // only when the LAST WRITE SUCCEEDED — without that word a doubly-failed write would strand
+    // `uploaded` at 0 while the device believed it had published, and the photo would be invisible to
+    // every other member with no error anywhere. Do not edit one of those two rules alone.
+    try {
+      // Keyed by the URL's final segment — the bare object name the manifest publish upserts on. A full
+      // path here would create a SECOND row the manifest never touches, so the repair path would silently
+      // stop repairing.
+      await markUploaded(db, deviceId, filename);
+    } catch (e) {
+      console.error(`upload: could not record ${byteKey(deviceId, filename)}: ${e}`);
+    }
     return c.body(null, 201);
   });
 
@@ -652,11 +715,30 @@ export function createApp(
   // answer a probe from the PREVIOUS deploy's copy — which is exactly the false green this exists to
   // prevent. Root-mounted, never under `/api/v1`: no device calls it, so a future `/api/vN` should neither
   // duplicate nor strand it.
-  const health = JSON.stringify({ sha: buildSha });
-  app.on(["GET", "HEAD"], "/health", (c) => {
+  // It also reports the RELATIONAL STORE's state (capability `database`), because two things this
+  // deployment depends on are invisible from a bundle identifier alone: whether the store is reachable at
+  // all, and whether FOREIGN KEYS are enforced. Enforcement measured as on by default — but a provisioning
+  // change that turned it off would disable every constraint SILENTLY: no error, no rejected write, and
+  // two staleness classes the schema is designed to make unstateable quietly reachable again. A
+  // measurement is not a guarantee, so the probe asserts the value rather than trusting it.
+  //
+  // STILL TOTAL BY CONSTRUCTION: the store's state is REPORTED, never thrown. The route answers `200`
+  // with `database` naming which of three things is true, and the PROBE decides what each means —
+  // `foreign-keys-off` is terminal (no amount of waiting turns them on), `unreachable` is retryable.
+  // Collapsing them into one failure status would make a misprovisioned store indistinguishable from a
+  // store that is merely still starting.
+  app.on(["GET", "HEAD"], "/health", async (c) => {
     c.header("Cache-Control", NO_CACHE);
     c.header("Content-Type", "application/json");
-    return c.req.method === "HEAD" ? c.body(null) : c.body(health);
+    let database: "ok" | "foreign-keys-off" | "unreachable";
+    try {
+      database = await db.foreignKeysEnabled() ? "ok" : "foreign-keys-off";
+    } catch (e) {
+      console.error(`health: store unreachable: ${e}`);
+      database = "unreachable";
+    }
+    const body = JSON.stringify({ sha: buildSha, database });
+    return c.req.method === "HEAD" ? c.body(null) : c.body(body);
   });
 
   // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
@@ -807,34 +889,24 @@ export function createApp(
       }
       endsAt = validated;
     }
-    const marker: EventMarker = {
+    const event: EventRow = {
       eventId: crypto.randomUUID(),
       name,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(now()).toISOString(),
       startsAt,
       endsAt,
       capacity: config.eventCapacity,
       lifetimeSeconds: config.eventLifetimeSeconds,
     };
 
-    const target = `https://${config.host}/${config.zone}/${markerKey(marker.eventId)}`;
-    let upstream: Response;
     try {
-      upstream = await fetchImpl(target, {
-        method: "PUT",
-        headers: { AccessKey: config.accessKey, "Content-Type": "application/json" },
-        body: JSON.stringify(marker),
-      });
+      await insertEvent(db, event);
     } catch (e) {
-      console.error(`create: marker PUT errored for ${marker.eventId}: ${e}`);
+      console.error(`create: event insert failed for ${event.eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (!upstream.ok) {
-      console.error(`create: bunny returned ${upstream.status} for marker ${marker.eventId}`);
-      return c.text("upstream rejected", 502);
-    }
-    // Bunny confirmed the marker — only now is the event created.
-    return c.json(publicEvent(marker), 201);
+    // The row exists — only now is the event created.
+    return c.json(publicEvent(event), 201);
   });
 
   // Event metadata / existence (capability `event-creation`). Returns the event — always carrying
@@ -855,9 +927,9 @@ export function createApp(
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
-      return c.json(publicEvent(gate.marker));
+      return c.json(publicEvent(gate.event));
     } catch (e) {
-      console.error(`metadata: marker read failed for ${eventId}: ${e}`);
+      console.error(`metadata: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });
@@ -900,36 +972,28 @@ export function createApp(
     // The same existence gate the metadata route serves from: absent or incomplete → 404 (never a
     // partial rewrite of a marker the sweep is about to delete); a transport failure → 502, so a
     // transient fault is never mistaken for absence.
-    let current: LiveEventMarker;
+    let current: EventRow;
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
-      current = gate.marker;
+      current = gate.event;
     } catch (e) {
-      console.error(`rename: marker read failed for ${eventId}: ${e}`);
+      console.error(`rename: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
 
-    // Spread-then-override: everything the stored marker carried survives, `name` alone is replaced.
-    const renamed: LiveEventMarker = { ...current, name };
-    const target = `https://${config.host}/${config.zone}/${markerKey(eventId)}`;
-    let upstream: Response;
+    // ONE column. `renameEvent` is a `SET name = ?` and nothing else — see `db.ts`, where the statement
+    // is spelled out in one place precisely because widening it is now a one-word edit.
     try {
-      upstream = await fetchImpl(target, {
-        method: "PUT",
-        headers: { AccessKey: config.accessKey, "Content-Type": "application/json" },
-        body: JSON.stringify(renamed),
-      });
+      const written = await renameEvent(db, eventId, name);
+      // Zero rows means the event was deleted between the gate and the write. Report the absence rather
+      // than a success that renamed nothing.
+      if (written.rowsAffected === 0) return c.text("event not found", 404);
     } catch (e) {
-      console.error(`rename: marker PUT errored for ${eventId}: ${e}`);
+      console.error(`rename: update failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (!upstream.ok) {
-      console.error(`rename: bunny returned ${upstream.status} for marker ${eventId}`);
-      return c.text("upstream rejected", 502);
-    }
-    // Bunny confirmed the rewrite — only now is the rename real.
-    return c.json(publicEvent(renamed));
+    return c.json(publicEvent({ ...current, name }));
   });
 
   // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).
@@ -956,43 +1020,39 @@ export function createApp(
       return c.text("invalid key", 400);
     }
 
-    let capacity: number;
-    let members: { deviceId: string; state: MemberState }[];
+    // The manifest is a WIRE FORMAT now, not an object: parse it here rather than streaming it to
+    // storage. It is bounded by the device's own library, and the whole point of reading it is that the
+    // backend records what it says.
+    let body: { assets?: unknown };
     try {
-      const gate = await gateEvent(eventId);
-      if (gate.kind === "absent") return c.text("event not found", 404);
-      capacity = gate.marker.capacity;
-      members = resolveMembership(await listDir(fetchImpl, config, deviceManifestDir(eventId)));
+      body = await c.req.json();
+    } catch {
+      return c.text("invalid body", 400);
+    }
+    const assets = parseManifestAssets(body);
+    if (assets === null) return c.text("invalid manifest", 400);
+
+    // Enrollment IS the capacity gate, evaluated and applied in ONE conditional statement so concurrent
+    // first enrollments cannot overshoot (capability `event-limits`). Its zero-row outcome is resolved to
+    // `full` or `no-such-event` inside `enroll`, never collapsed into one status.
+    let outcome;
+    try {
+      outcome = await enroll(db, eventId, deviceId, new Date(now()).toISOString());
     } catch (e) {
-      console.error(`device-manifest: gate failed for ${eventId}: ${e}`);
+      console.error(`device-manifest: enrollment failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    const known = members.some((m) => m.deviceId === deviceId);
-    if (!known && members.length >= capacity) return c.text("event full", 409);
+    if (outcome === "no-such-event") return c.text("event not found", 404);
+    if (outcome === "full") return c.text("event full", 409);
 
-    const target = `https://${config.host}/${config.zone}/${deviceManifestKey(eventId, deviceId)}`;
-    const init: StreamInit = {
-      method: "PUT",
-      headers: {
-        AccessKey: config.accessKey,
-        "Content-Type": c.req.header("content-type") ?? "application/json",
-      },
-      body: c.req.raw.body, // ReadableStream — the full-state manifest, streamed never buffered
-      duplex: "half",
-    };
-
-    let upstream: Response;
+    // ONE atomic unit: the membership becomes active, the event's asset set for this device is REPLACED
+    // wholesale, and every listed resource is upserted. A partial replace must never be observable by
+    // the union — which is exactly what a half-applied full-state write would produce.
     try {
-      upstream = await fetchImpl(target, init);
+      await db.batch(publishStatements(eventId, deviceId, assets));
     } catch (e) {
-      console.error(`device-manifest: upstream PUT errored for ${eventId}/${deviceId}: ${e}`);
+      console.error(`device-manifest: publish failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
-    }
-    if (!upstream.ok) {
-      console.error(
-        `device-manifest: bunny returned ${upstream.status} for ${eventId}/${deviceId}`,
-      );
-      return c.text("upstream rejected", 502);
     }
     return c.body(null, 201);
   });
@@ -1020,29 +1080,20 @@ export function createApp(
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
-      console.error(`leave: marker read failed for ${eventId}: ${e}`);
+      console.error(`leave: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
 
     try {
-      // Departed rename. Write the `.left.json` sibling FIRST (fresh timestamp = the commit), then
-      // delete the active. A missing active manifest (already departed / never a member) → no-op.
-      const activeKey = deviceManifestKey(eventId, deviceId);
-      const activeBody = await readObjectText(fetchImpl, config, activeKey);
-      if (activeBody !== null) {
-        await putObject(
-          fetchImpl,
-          config,
-          deviceLeftManifestKey(eventId, deviceId),
-          activeBody,
-          "application/json",
-        );
-        await deleteObject(fetchImpl, config, activeKey);
-      }
-      // Always succeed: the event persists (rejoinable) regardless of how many active members remain.
+      // ONE column. The departed-sibling object and its last-write-wins tie-break are gone: membership
+      // is a `state`, so leaving cannot leave a half-renamed pair behind and cannot be double-counted.
+      // The membership's assets are RETAINED, so the union still serves what this device shared.
+      await departMembership(db, eventId, deviceId);
+      // Always succeed: the event persists (rejoinable) regardless of how many active members remain,
+      // and a leave naming a membership that never existed changes nothing rather than failing.
       return c.body(null, 200);
     } catch (e) {
-      console.error(`leave: rename failed for ${eventId}/${deviceId}: ${e}`);
+      console.error(`leave: depart failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });
@@ -1063,135 +1114,113 @@ export function createApp(
       return c.text("invalid event", 400);
     }
 
-    // Gate on the marker (existence + lifecycle, capability `event-limits`): absent or expired-and-
-    // reaped → 404; a non-404 read failure → 502. An event in grace still serves its union — members
-    // keep full sync until expiry.
+    // Gate on the event row (capability `database`): absent → 404; a store failure → 502. An event past
+    // its window still serves its union — the window closes nothing.
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
-      console.error(`union: marker read failed for ${eventId}: ${e}`);
+      console.error(`union: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
 
     try {
-      // Enumerate contributing devices with a single LIST of the device-manifest dir. A 404/empty dir
-      // means no contributors → an empty union. BOTH active (`<id>.json`) and departed (`<id>.left.json`)
-      // devices contribute — a departed device's already-shared photos stay downloadable until the event
-      // is reaped — but a device is counted once via last-write-wins (see `resolveMembership`).
-      const manifestEntries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-      const members = resolveMembership(manifestEntries);
+      // ONE query, spanning the event's memberships in BOTH states: a member who has left keeps
+      // contributing the photos it already shared, until the event itself is deleted. What this replaces
+      // is a fan-out — one directory listing to discover members, then a manifest read AND a byte listing
+      // per member — whose cost grew with the event and which no index could help.
+      const rows = await unionRows(db, eventId);
 
-      // Per-device fan-out (parallel): read the LWW-winning manifest AND list the device's byte
-      // partition, then keep only complete assets. Any rejection here is caught below → 502 (never a
-      // partial union).
-      const perDevice = await Promise.all(
-        members.map(async ({ deviceId, state }): Promise<UnionAsset[]> => {
-          const manifestKey = state === "departed"
-            ? deviceLeftManifestKey(eventId, deviceId)
-            : deviceManifestKey(eventId, deviceId);
-          const [manifest, fileEntries] = await Promise.all([
-            readManifestObject(fetchImpl, config, manifestKey),
-            listDir(fetchImpl, config, deviceDir(deviceId)), // empty/absent dir → [] → no bytes
-          ]);
+      // Group by (device, asset), keeping each asset's resources together and dropping any asset that
+      // names a resource the backend has not recorded as uploaded. That check is DEFENSE-IN-DEPTH, not
+      // the completeness mechanism: the manifest lists only uploaded resources, so a listed resource is
+      // uploaded by construction, and the sweep protects a referenced byte from collection.
+      const byAsset = new Map<string, { row: typeof rows[number]; resources: typeof rows }>();
+      for (const r of rows) {
+        const id = `${r.deviceId}/${r.assetId}`;
+        const slot = byAsset.get(id) ?? { row: r, resources: [] };
+        slot.resources.push(r);
+        byAsset.set(id, slot);
+      }
 
-          // The device's present object names → byte length (the completeness oracle + size source).
-          const present = new Map<string, number>();
-          for (const e of fileEntries.filter((e) => !e.IsDirectory)) {
-            present.set(decodeObjectName(e.ObjectName), e.Length);
-          }
+      const assets: UnionAsset[] = [];
+      for (const { row, resources } of byAsset.values()) {
+        if (resources.length === 0 || resources.some((r) => !r.uploaded)) continue;
+        assets.push({
+          deviceId: row.deviceId,
+          assetId: row.assetId,
+          creationDate: row.creationDate,
+          resources: await Promise.all(resources.map(async (r) => ({
+            role: r.role,
+            contentType: r.contentType,
+            key: r.key,
+            filename: r.filename,
+            // From `key`, never `filename`: the object is stored under its key, and a capture name that
+            // differs would presign a URL that 404s at download while everything else looked right.
+            url: await presignDownloadUrl(aws, config, r.deviceId, r.key),
+          }))),
+        });
+      }
 
-          const complete = (manifest.assets ?? [])
-            .filter((a) => a.resources.length > 0 && a.resources.every((r) => present.has(r.key)));
-          return await Promise.all(complete.map(async (a): Promise<UnionAsset> => ({
-            deviceId,
-            assetId: a.assetId,
-            creationDate: a.creationDate,
-            resources: await Promise.all(a.resources.map(async (r) => ({
-              role: r.role,
-              contentType: r.contentType,
-              key: r.key,
-              filename: r.filename,
-              size: present.get(r.key)!,
-              url: await presignDownloadUrl(aws, config, deviceId, r.key),
-            }))),
-          })));
-        }),
-      );
-
-      c.header("Cache-Control", NO_CACHE); // live read over mutable manifests + listings
-      return c.json(perDevice.flat());
+      c.header("Cache-Control", NO_CACHE); // every `url` is a time-limited presigned S3 URL
+      return c.json(assets);
     } catch (e) {
       console.error(`union: assembly failed for event ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });
 
-  // List a device's RAW stored objects (capability `bunny-list-endpoint`). A single LIST of the device
-  // dir; each direct-child object becomes one `{ filename, size, url }`. No manifest read, no
-  // completeness, no event gate — the app computes completeness from the gallery enumeration seam ×
-  // this list. A non-UUID id → 400; any other method / unmatched path → Hono's 404.
+  // List a device's stored resources (capability `api-endpoints`). Served from the backend's own record
+  // of what it accepted — one query — rather than by enumerating storage. Each entry is
+  // `{ filename, url }` where `url` is a presigned S3 GET the device fetches directly.
+  //
+  // Reading the RECORD rather than the byte store is the correct direction for this route's main
+  // consumer: the rejoin reconcile seeds `COMPLETED` rows from it (capability
+  // `event-rejoin-reconciliation`), and seeding from bytes the backend cannot vouch for would suppress
+  // an upload that never happened.
   deviceApi.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
     }
     try {
-      // Single LIST of the device dir → its objects. An empty or absent dir lists as `[]`, which maps
-      // to an empty array below. Any other LIST failure throws → 502, so a partial list is never
-      // returned.
-      const entries = await listDir(fetchImpl, config, deviceDir(deviceId));
+      const stored = await deviceFiles(db, deviceId);
       c.header("Cache-Control", NO_CACHE); // each `url` is a time-limited presigned S3 URL
-
-      const files: FileEntry[] = await Promise.all(
-        entries
-          .filter((e) => !e.IsDirectory)
-          .map(async (e) => {
-            const filename = decodeObjectName(e.ObjectName);
-            return {
-              filename,
-              size: e.Length,
-              url: await presignDownloadUrl(aws, config, deviceId, filename),
-            };
-          }),
-      );
+      const files: FileEntry[] = await Promise.all(stored.map(async (e) => ({
+        // `filename` on this route is the STORED OBJECT NAME, not the capture name — that is what the
+        // rejoin reconciler matches its ledger keys against.
+        filename: e.key,
+        url: await presignDownloadUrl(aws, config, deviceId, e.key),
+      })));
       return c.json(files);
     } catch (e) {
-      console.error(`list: bunny LIST failed for device ${deviceId}: ${e}`);
+      console.error(`list: device listing failed for ${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });
 
-  // Write a device's config object (capability `device-config-endpoint`). Gated by DEVICE-ID
-  // possession alone (no marker, no event) — the same capability model as the byte upload. Streams the
-  // JSON body into one bunny native PUT at `devices/<deviceId>.json`. Faithful: 201 only on a
-  // confirmed store; last-write-wins (a rotated token overwrites). The config is a flat sibling OUTSIDE
-  // the `files/devices/<deviceId>/` byte partition, so it never appears in the per-device list or the union.
+  // Write a device's config document (capability `api-endpoints`). Gated by DEVICE-ID possession alone
+  // (no event) — the same capability model as the byte upload. The document is recorded against the
+  // device (capability `database`); last-write-wins, and it is not a resource, so it never appears in the
+  // per-device listing or the union.
   deviceApi.put("/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
     }
-    const target = `https://${config.host}/${config.zone}/${deviceConfigKey(deviceId)}`;
-    const init: StreamInit = {
-      method: "PUT",
-      headers: {
-        AccessKey: config.accessKey,
-        "Content-Type": c.req.header("content-type") ?? "application/json",
-      },
-      body: c.req.raw.body, // ReadableStream — the config doc, streamed never buffered
-      duplex: "half",
-    };
-    let upstream: Response;
+    let document: string;
     try {
-      upstream = await fetchImpl(target, init);
-    } catch (e) {
-      console.error(`config: upstream PUT errored for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
+      // Stored verbatim: `push-registration` decides the document's shape, and re-encoding it here would
+      // put a second opinion about that shape in a module that has none.
+      document = JSON.stringify(await c.req.json());
+    } catch {
+      return c.text("invalid body", 400);
     }
-    if (!upstream.ok) {
-      console.error(`config: bunny returned ${upstream.status} for ${deviceId}`);
-      return c.text("upstream rejected", 502);
+    try {
+      await putDeviceRecord(db, deviceId, document, new Date(now()).toISOString());
+    } catch (e) {
+      console.error(`config: device record write failed for ${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
     }
     return c.body(null, 201);
   });
@@ -1215,25 +1244,21 @@ export function createApp(
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
-      console.error(`notify: marker read failed for ${eventId}: ${e}`);
+      console.error(`notify: event read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
 
-    // Enumerate ACTIVE members only: a departed device (`<id>.left.json` winning by last-write-wins)
-    // has left the event and is not notified.
+    // Enumerate ACTIVE members only — one `state` read. A departed device has left and is not notified.
     let memberIds: string[];
     try {
-      const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-      memberIds = resolveMembership(entries)
-        .filter((m) => m.state === "active")
-        .map((m) => m.deviceId);
+      memberIds = await membersOf(db, eventId, ["active"]);
     } catch (e) {
-      console.error(`notify: member LIST failed for ${eventId}: ${e}`);
+      console.error(`notify: member read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
 
     // Best-effort per-member token read (skips members without a registered token), then fan out.
-    const tokens = (await Promise.all(memberIds.map((d) => readPushToken(fetchImpl, config, d))))
+    const tokens = (await Promise.all(memberIds.map((d) => readPushToken(db, d))))
       .filter((t): t is PushToken => t !== null);
     const outcomes = await apns.sendSilent(tokens, eventId);
     const sent = outcomes.filter((o) => o.status === "sent").length;

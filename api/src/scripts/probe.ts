@@ -35,6 +35,8 @@ export type Cause =
   | "not-found" // 404: an older bundle without the route is still live — retryable
   | "stale-sha" // 200 with a different, well-formed sha: propagating — retryable
   | "unstamped" // 200 with the placeholder sha: CI supplied none — TERMINAL, our bug
+  | "store-unreachable" // this bundle, but it cannot reach its relational store — retryable
+  | "foreign-keys-off" // this bundle, store reachable, constraints DISABLED — TERMINAL
   | "unparseable"; // 200 that is not our health response: something else is answering — TERMINAL
 
 /** Causes time can fix. Everything else fails at once: retrying a terminal cause only hides it. */
@@ -43,6 +45,10 @@ const RETRYABLE: ReadonlySet<Cause> = new Set<Cause>([
   "server-error",
   "not-found",
   "stale-sha",
+  // A store that is unreachable at this instant may simply be waking; enforcement being OFF is not, so it
+  // is deliberately NOT here. Retrying a terminal cause until the deadline turns a specific,
+  // one-line-to-fix misprovisioning into an unexplained timeout.
+  "store-unreachable",
 ]);
 
 /** The sha a build carries when CI supplied none — see the resolver's inventory. */
@@ -74,9 +80,26 @@ export function classify(status: number, body: string, expectedSha: string): Cau
     return "unparseable";
   }
   if (typeof sha !== "string" || sha.length === 0) return "unparseable";
-  if (sha === expectedSha) return "match";
   if (sha === UNSTAMPED) return "unstamped";
-  return "stale-sha";
+  if (sha !== expectedSha) return "stale-sha";
+
+  // This IS the bundle we deployed. Now the second question the probe exists to answer (capability
+  // `backend-deployment`): can it reach its relational store, and are FOREIGN KEYS enforced there? A
+  // deployment serving with constraints silently disabled is a green deploy over a broken invariant,
+  // which is the exact failure shape this probe was added to catch for the bundle identity.
+  let database: unknown;
+  try {
+    database = (JSON.parse(body) as { database?: unknown }).database;
+  } catch {
+    return "unparseable";
+  }
+  // An older bundle that predates this field answers without it. Treat that as the sha check already
+  // did — it is not this deployment's health response.
+  if (typeof database !== "string") return "unparseable";
+  if (database === "unreachable") return "store-unreachable";
+  if (database === "foreign-keys-off") return "foreign-keys-off";
+  if (database !== "ok") return "unparseable";
+  return "match";
 }
 
 export type ProbeOptions = {
@@ -159,6 +182,13 @@ export function explain(cause: Cause): string {
     case "server-error":
       return "the script is not serving — it most likely failed to boot (a missing or blank secret " +
         "makes readConfig throw at module top level, before any handler runs)";
+    case "store-unreachable":
+      return "this bundle is serving but cannot reach its relational store — check BUNNY_DATABASE_URL " +
+        "and BUNNY_DATABASE_AUTH_TOKEN on the Edge Script, and that the database still exists";
+    case "foreign-keys-off":
+      return "this bundle is serving and its store answers, but PRAGMA foreign_keys is OFF — every " +
+        "constraint is silently disabled, so a deleted event would leave its memberships and assets " +
+        "behind. Fix the store's provisioning; no amount of waiting turns enforcement on";
     case "not-found":
       return "an older bundle without the health route is still live — the publish did not take";
     case "stale-sha":

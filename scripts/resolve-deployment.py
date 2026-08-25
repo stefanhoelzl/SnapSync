@@ -194,6 +194,18 @@ INVENTORY = [
         down until it is set by hand. That is not hypothetical — it is how this backend stayed dead for
         two weeks.
     """),
+    Key("databaseUrl", [JSON], required="kind==bunny", env_ref=True, doc="""
+        libSQL/HTTP URL of this deployment's relational store (capability `database`). An environment
+        reference, like every credential: it addresses a live store holding real events. EACH DEPLOYMENT
+        ADDRESSES ITS OWN — a dev run that wrote or deleted rows in the production store would corrupt
+        live events, and unlike the storage zone there is no per-object blast radius to fall back on.
+        MUST be set on the Edge Script BEFORE the code reading it is merged, for the same reason
+        `attestTokenKey` must.
+    """),
+    Key("databaseToken", [JSON], required="kind==bunny", env_ref=True, doc="""
+        Access token for {@link databaseUrl}. A genuine credential: the deployment names the variable,
+        never the value.
+    """),
     Key("sha", [JSON], scope="build", default="dev", doc="""
         The commit this artifact was built from, served by the health route so a post-deploy probe can
         tell THIS bundle from the previous one still being served. `deno bundle` offers no build-time

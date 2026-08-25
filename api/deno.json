@@ -29,6 +29,7 @@
   },
   "imports": {
     "@bunny.net/edgescript-sdk": "npm:@bunny.net/edgescript-sdk@^0.12.1",
+    "@libsql/client/web": "npm:@libsql/client@^0.15/web",
     "hono": "npm:hono@^4.12",
     "aws4fetch": "npm:aws4fetch@^1",
     "jose": "npm:jose@^5",

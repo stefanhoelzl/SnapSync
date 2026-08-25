@@ -15,7 +15,7 @@ class BackendStoreTest {
         store.deposit("D", "b-primary.jpg")
         val listing = store.deviceListing("D")
         assertEquals(setOf("a-primary.jpg", "b-primary.jpg"), listing.map { it.filename }.toSet())
-        assertTrue(listing.all { it.url == "https://world.store/D/${it.filename}" && it.size == 1L })
+        assertTrue(listing.all { it.url == "https://world.store/D/${it.filename}" })
     }
 
     @Test

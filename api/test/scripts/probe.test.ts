@@ -9,7 +9,9 @@ const SHA = "98f49ef8a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
 const OTHER = "6c560f7511223344556677889900aabbccddeeff";
 
 const ok = (body: string, status = 200) => new Response(body, { status });
-const health = (sha: string) => ok(JSON.stringify({ sha }));
+// A healthy answer now carries the STORE's state beside the bundle id: a deployment can be the right
+// bundle and still be unusable, and the probe exists to catch exactly that class of green-but-broken.
+const health = (sha: string, database = "ok") => ok(JSON.stringify({ sha, database }));
 
 /** A fetch that returns each scripted answer in turn, repeating the last one forever. */
 function scripted(...answers: Array<() => Response | Promise<never>>): {
@@ -38,7 +40,7 @@ const noSleep = () => Promise.resolve();
 // ── The table, cell by cell ────────────────────────────────────────────────────────────────────────
 
 Deno.test("classify: our sha → match", () => {
-  assertEquals(classify(200, JSON.stringify({ sha: SHA }), SHA), "match");
+  assertEquals(classify(200, JSON.stringify({ sha: SHA, database: "ok" }), SHA), "match");
 });
 
 Deno.test("classify: 404 → not-found (an older bundle without the route is still live)", () => {

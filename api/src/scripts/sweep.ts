@@ -1,38 +1,67 @@
 // The nightly cleanup sweep (capability `scheduled-cleanup`). Runs OUT of the Edge Script — Bunny has no
 // scheduler and caps a request at 50 subrequests / 30 s CPU, so a whole-storage sweep cannot run there.
-// This is a Deno program a scheduled GitHub Actions job runs on an Ubuntu runner: it talks to Bunny
-// storage DIRECTLY (thousands of calls, no cap) and imports the Edge Script's OWN storage/lifecycle
-// modules so the layout and lifecycle rules cannot drift between the two.
+// This is a Deno program a scheduled GitHub Actions job runs on an Ubuntu runner: it talks to the
+// relational store and to Bunny storage DIRECTLY (thousands of calls, no cap) and imports the Edge
+// Script's OWN db/lifecycle modules so the rules cannot drift between the two.
 //
-// Two ordered phases:
-//   EVENT phase — delete every STALE event and its manifests. Stale means past its derived delete-by
+// IT MARKS FROM THE DATABASE AND DELETES FROM STORAGE. Only the bytes live in storage now; everything
+// the sweep reasons about — which events exist, who is a member, which keys are referenced, each
+// device's floor — is a query (capability `database`). The per-event, per-device manifest fan-out the
+// root set used to require is gone.
+//
+// Two ordered phases, and the order still matters for its original reason: the asset phase evaluates
+// bytes against the events that SURVIVE the event phase. Relationally that is automatic — after the
+// event phase deletes, what remains in the store IS the surviving set — which is why no phase threads
+// an id list to the other.
+//
+//   EVENT phase — delete every STALE event row. Stale means past its derived delete-by
 //     (`max(createdAt, startsAt) + lifetimeSeconds` — the GUARANTEE), or EMPTY (ever joined, nobody
-//     active left — OPPORTUNISTIC: a leave whose backend DELETE never landed keeps a manifest active, so
-//     an abandoned event may never empty), or an incomplete/corrupt marker. No notification is sent —
-//     see the delete site for why. Deletion by the sweep IS expiry (the on-touch reap is gone).
-//   ASSET phase (against the events that SURVIVE) — collect a device's byte iff it is unreferenced by any
-//     surviving manifest AND was uploaded before the earliest surviving event the device is ACTIVE in
-//     (min startsAt; ∅ → +∞). A device in NO surviving event additionally loses its config + attestation
-//     record. No wall-clock age fudge: a live upload is always ≥ its event's start ≥ the floor.
+//     active left — OPPORTUNISTIC: a leave whose backend DELETE never landed keeps a membership active,
+//     so an abandoned event may never empty). One `DELETE`; the cascade takes memberships and assets.
+//     No notification is sent — see the delete site for why.
+//
+//     ⚠️ THE DECISION RUNS INSIDE AN INTERACTIVE TRANSACTION, which executes against the PRIMARY. The
+//     emptiness rule is the exposed one: a stale replica that had not yet observed a REJOIN would see a
+//     fully-departed event and delete a live one. The deadline rule reads immutable columns and is
+//     stale-safe by contrast. Read-your-writes held in every trial measured, but from a workstation
+//     against a test database — NOT from the edge (`PROBE-FINDINGS.md` §4.2) — and `config.ts` already
+//     records the matching hazard for storage: "a stale replica read is the one failure mode that would
+//     delete live data".
+//
+//   ASSET phase — collect a device's byte iff it is unreferenced by any surviving event AND was uploaded
+//     before the earliest surviving event the device is ACTIVE in (min startsAt; ∅ → +∞). Its resource
+//     ROW is deleted BEFORE the byte: a crash then leaves an orphan byte the next run collects, rather
+//     than a row claiming bytes that are gone. A device in NO surviving event additionally loses its
+//     device record and its attestation object. No wall-clock age fudge: a live upload is always ≥ its
+//     event's start ≥ the floor.
+//
+// WHAT THIS SWEEP NO LONGER DOES, deliberately: it does not touch the legacy `events/` markers and
+// manifests, or the legacy `devices/<id>.json` configs, that the object-store era wrote. Those objects
+// are the ROLLBACK PATH for this change (design.md D13) — nothing reads them, nothing adds to them, and
+// reclaiming them is a later change's job, not a silent side effect of this one.
 
 import { readSweepConfig } from "../config.ts";
+import { libsqlDb } from "../db-libsql.ts";
 import {
-  type BunnyEntry,
   decodeObjectName,
   deleteObject,
+  deviceAttestKey,
   deviceDir,
-  deviceLeftManifestKey,
-  deviceManifestDir,
-  deviceManifestKey,
-  eventDir,
   type FetchLike,
   listDir,
-  MARKER_PREFIX,
-  markerKey,
-  readManifestObject,
-  readMarker,
 } from "../storage.ts";
-import { eventIsStale, resolveMembership } from "../lifecycle.ts";
+import {
+  activeFloors,
+  type Db,
+  deleteDeviceRecord,
+  deleteEvent,
+  deleteResource,
+  devicesInEvents,
+  eventsWithCounts,
+  knownDevices,
+  referencedKeys,
+} from "../db.ts";
+import { eventIsStale } from "../lifecycle.ts";
 import type { Config } from "../config.ts";
 
 /** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
@@ -56,8 +85,10 @@ export type SweepSummary = {
 export type SweepDeps = {
   /** Upstream fetch to Bunny storage (global fetch in production; a fake in tests). */
   fetch: FetchLike;
-  /** Validated config (storage host/zone/accessKey + grace period + admin key). */
+  /** Validated config (storage host/zone/accessKey). */
   config: Config;
+  /** The relational store this sweep marks from (capability `database`). */
+  db: Db;
   /** Wall clock, epoch ms. Injected so tests pin it. */
   now: () => number;
   /** When true, log every candidate and delete NOTHING. */
@@ -77,7 +108,7 @@ function ms(s: string | undefined): number {
  * caught, counted in `summary.errors`, and never abort the run (deletes are idempotent).
  */
 export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
-  const { fetch: f, config, now, dryRun } = deps;
+  const { fetch: f, config, db, now, dryRun } = deps;
   const log = deps.log ?? console.log;
   const summary: SweepSummary = {
     events: { deleted: 0, kept: 0 },
@@ -88,125 +119,63 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   };
 
   // ── EVENT PHASE ─────────────────────────────────────────────────────────────────────────────────
-  // Enumerate every event directory (systemic LIST — a failure here throws and fails the run).
-  const eventEntries = await listDir(f, config, `${MARKER_PREFIX}/`);
-  const eventIds = eventEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
-  // The events that SURVIVE this phase — the asset phase evaluates bytes against these.
-  const surviving: { eventId: string; startsAtMs: number; entries: BunnyEntry[] }[] = [];
-
-  for (const eventId of eventIds) {
-    try {
-      const marker = await readMarker(f, config, eventId);
-      // The manifest listing is read FIRST because staleness now depends on it: an event whose every
-      // enrolled device has departed is reclaimed early (capability `scheduled-cleanup`).
-      const entries = await listDir(f, config, deviceManifestDir(eventId));
-      const manifestObjects = entries.filter((e) => !e.IsDirectory);
-
-      // TOMBSTONE — no marker AND nothing left under `devices/`: the husk of an event a PREVIOUS run
-      // already deleted. Bunny keeps a directory after its last object goes, so every deletion leaves one,
-      // and without this branch each husk falls through to `marker === null` → stale and is "deleted" and
-      // COUNTED again every night, forever (measured: 40 ids re-reported across five consecutive nights,
-      // 46 of 50 event directories husks, three of those nights reclaiming zero bytes).
-      //
-      // Reclaimed with ONE recursive delete of the event directory, which takes the nested empty
-      // `devices/` with it. Race-free, and only because the marker is absent: the manifest-write and leave
-      // routes both gate on event existence, so nothing can appear inside a marker-404 directory between
-      // this listing and the delete. That is why the recursion is confined HERE and never applied to an
-      // event that still holds objects — and never to a device byte partition, whose upload is ungated.
-      //
-      // Counted in NEITHER tier: the events tier counts events, and a tombstone is not one. Its own
-      // disappearance from the deleted count is the signal that this works.
-      if (marker === null && manifestObjects.length === 0) {
-        if (dryRun) {
-          log(`[dry-run] would prune empty directory ${eventDir(eventId)}`);
-          continue;
-        }
-        await deleteObject(f, config, eventDir(eventId));
-        continue;
-      }
-
-      const stale = marker === null ||
-        eventIsStale(marker, entries, now(), config.eventLifetimeSeconds);
-      if (!stale) {
-        surviving.push({ eventId, startsAtMs: ms(marker!.startsAt), entries });
+  // One read gives every event and its membership counts — the whole input to the staleness decision.
+  // The decision AND the deletes run inside an interactive transaction, which executes against the
+  // primary: see the header for why a possibly-stale replica read must not decide a deletion.
+  const stale: string[] = [];
+  await db.transaction(async (tx) => {
+    for (const { event, total, active } of await eventsWithCounts(tx)) {
+      if (!eventIsStale(event, { total, active }, now())) {
         summary.events.kept++;
         continue;
       }
-      // STALE → delete marker + manifests. No notification is sent: the notify channel carries a
-      // semantic-free "something changed, go sync" payload, which is the OPPOSITE of what a deletion
-      // means, and it would have to be dispatched milliseconds before the deletes it announces — so the
-      // device wakes to an already-deleted event and burns a scarce wake syncing against a corpse.
-      // Members discover the deletion on their own next foreground details fetch (capability
-      // `leave-event`), which is the only context where acting on it is safe.
+      stale.push(event.eventId);
       if (dryRun) {
-        log(
-          `[dry-run] would delete event ${eventId} (${manifestObjects.length} manifest object(s))`,
-        );
+        log(`[dry-run] would delete event ${event.eventId} (${total} membership(s))`);
         summary.events.deleted++;
         continue;
       }
-      for (const e of manifestObjects) {
-        await deleteObject(f, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
-      }
-      await deleteObject(f, config, markerKey(eventId)); // marker LAST — retryable if interrupted
+      // No notification is sent: the notify channel carries a semantic-free "something changed, go sync"
+      // payload, which is the OPPOSITE of what a deletion means, and it would have to be dispatched
+      // milliseconds before the deletes it announces — so the device wakes to an already-deleted event
+      // and burns a scarce wake syncing against a corpse. Members discover the deletion on their own next
+      // foreground details fetch (capability `leave-event`), the only context where acting on it is safe.
+      await deleteEvent(tx, event.eventId);
       summary.events.deleted++;
-      log(`deleted stale event ${eventId}`);
-    } catch (e) {
-      summary.errors++;
-      log(`event ${eventId}: delete failed (continuing): ${e}`);
+      log(`deleted stale event ${event.eventId}`);
     }
-  }
+  });
 
   // ── ASSET PHASE ─────────────────────────────────────────────────────────────────────────────────
-  // Build, from the SURVIVING events: the referenced byte keys, each device's active-event floor, and
-  // the set of devices that appear (active or departed) in any surviving event.
-  const referenced = new Set<string>(); // `${deviceId}/${decodedResourceKey}`
-  const activeFloorMs = new Map<string, number>(); // deviceId → min startsAt over ACTIVE memberships
-  const inSurviving = new Set<string>(); // deviceIds appearing (active OR departed) in a surviving event
-
-  for (const { eventId, startsAtMs, entries } of surviving) {
-    for (const m of resolveMembership(entries)) {
-      inSurviving.add(m.deviceId);
-      if (m.state === "active") {
-        const prev = activeFloorMs.get(m.deviceId);
-        if (prev === undefined || startsAtMs < prev) activeFloorMs.set(m.deviceId, startsAtMs);
-      }
-      try {
-        const key = m.state === "departed"
-          ? deviceLeftManifestKey(eventId, m.deviceId)
-          : deviceManifestKey(eventId, m.deviceId);
-        const manifest = await readManifestObject(f, config, key);
-        for (const a of manifest.assets ?? []) {
-          for (const r of a.resources ?? []) referenced.add(`${m.deviceId}/${r.key}`);
-        }
-      } catch (e) {
-        // A manifest we cannot read: fail SAFE — treat every one of this event's bytes as referenced by
-        // marking nothing collectable this run (we simply skip building its referenced set, and the
-        // per-byte floor still protects live uploads). Count it and move on.
-        summary.errors++;
-        log(`manifest read failed for ${m.deviceId} in ${eventId} (bytes kept this run): ${e}`);
-      }
-    }
-  }
+  // Against the events that SURVIVE — which, after the phase above, is simply what the store still holds.
+  // The stale ids are excluded explicitly rather than relied on to be gone: in a DRY RUN nothing was
+  // deleted, so the reads would otherwise still see them and report a collection a real run would not
+  // make. Passing the set makes both modes evaluate the identical surviving world.
+  const staleIds = new Set(stale);
+  const referenced = await referencedKeys(db, staleIds);
+  const floors = await activeFloors(db, staleIds);
+  const inSurviving = await devicesInEvents(db, staleIds);
 
   // Walk every device's byte partition and collect the unreferenced, below-floor bytes.
   const deviceDirEntries = await listDir(f, config, `files/devices/`);
   const deviceIds = deviceDirEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
   for (const deviceId of deviceIds) {
-    const floor = activeFloorMs.get(deviceId) ?? Infinity; // ∅ (no active surviving membership) → +∞
+    // A device with no active surviving membership has floor `+∞`: nothing of its is above the floor.
+    const floorMs = floors.has(deviceId) ? ms(floors.get(deviceId)) : Infinity;
     try {
       const files = await listDir(f, config, deviceDir(deviceId));
       for (const e of files.filter((e) => !e.IsDirectory)) {
-        // The manifest names the DECODED object name (same as the union's completeness check), so decode
-        // the stored `ObjectName` before comparing — a percent-encoded filename must still match.
-        if (referenced.has(`${deviceId}/${decodeObjectName(e.ObjectName)}`)) {
+        // Resource rows carry the BARE object name, so decode the stored `ObjectName` before comparing —
+        // a percent-encoded filename must still match.
+        const key = decodeObjectName(e.ObjectName);
+        if (referenced.has(`${deviceId}/${key}`)) {
           summary.files.kept.count++;
           summary.files.kept.bytes += e.Length;
           continue;
         }
         const uploadedMs = ms(e.LastChanged);
         // Retain when the upload time is unparseable (fail safe) or at/after the floor (a live upload).
-        if (Number.isNaN(uploadedMs) || uploadedMs >= floor) {
+        if (Number.isNaN(uploadedMs) || uploadedMs >= floorMs) {
           summary.files.kept.count++;
           summary.files.kept.bytes += e.Length;
           continue;
@@ -217,6 +186,10 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
           summary.files.deleted.bytes += e.Length;
           continue;
         }
+        // ROW FIRST, THEN BYTE (design.md D8). A crash between them leaves an orphan byte that is still
+        // unreferenced and still below the floor, so the next run collects it. The reverse order would
+        // leave a row asserting `uploaded = 1` for bytes that are gone.
+        await deleteResource(db, deviceId, key);
         await deleteObject(f, config, `${deviceDir(deviceId)}${e.ObjectName}`);
         summary.files.deleted.count++;
         summary.files.deleted.bytes += e.Length;
@@ -227,36 +200,23 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     }
   }
 
-  // Device-global records: config + attestation. A device owns up to two objects (`<id>.json` and
-  // `<id>.attest.json`), so group the `devices/` entries by deviceId and count DEVICES, not records —
-  // a device is KEPT iff it appears in a surviving event, else its every record is collected.
-  const configEntries = await listDir(f, config, `devices/`);
-  const recordsByDevice = new Map<string, string[]>(); // deviceId → its record object name(s)
-  for (const e of configEntries.filter((e) => !e.IsDirectory)) {
-    const name = e.ObjectName;
-    // `<id>.attest.json` first (it also ends with `.json`), then `<id>.json`.
-    const deviceId = name.endsWith(".attest.json")
-      ? name.slice(0, -".attest.json".length)
-      : name.endsWith(".json")
-      ? name.slice(0, -".json".length)
-      : null;
-    if (deviceId === null) continue;
-    const records = recordsByDevice.get(deviceId);
-    if (records) records.push(name);
-    else recordsByDevice.set(deviceId, [name]);
-  }
-  for (const [deviceId, names] of recordsByDevice) {
+  // Device-global records: the device's row and its attestation object. A device is KEPT iff it appears
+  // in a surviving event; otherwise it is FULLY ORPHANED and both go. Neither carries an event date, so
+  // this is the only case in which they can be reclaimed at all — and a returning device re-registers its
+  // push token on its next launch or join, and re-attests on demand.
+  for (const deviceId of await knownDevices(db)) {
     if (inSurviving.has(deviceId)) {
       summary.devices.kept++;
       continue;
     }
     try {
       if (dryRun) {
-        for (const name of names) log(`[dry-run] would collect device record devices/${name}`);
+        log(`[dry-run] would collect device record + attestation for ${deviceId}`);
         summary.devices.deleted++;
         continue;
       }
-      for (const name of names) await deleteObject(f, config, `devices/${name}`);
+      await deleteDeviceRecord(db, deviceId);
+      await deleteObject(f, config, deviceAttestKey(deviceId));
       summary.devices.deleted++;
     } catch (err) {
       summary.errors++;
@@ -326,6 +286,7 @@ if (import.meta.main) {
     const summary = await runSweep({
       fetch: (url, init) => fetch(url, init),
       config,
+      db: libsqlDb(config.databaseUrl, config.databaseToken),
       now: Date.now,
       dryRun,
       log: console.log,

@@ -89,6 +89,13 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     apnsPrivateKey: "",
     apnsTopic: d.bundleId,
     attestTokenKey: DEV_ATTEST_TOKEN_KEY,
+    // Blank, and unreachable by construction: the rig builds its `Db` from `node:sqlite` against a local
+    // file (`src/dev/serve.ts`), never from these. A filesystem deployment declares no database
+    // credentials at all — which is what makes it impossible for a dev run to address the production
+    // store, the one mistake that would corrupt live events with no per-object blast radius to fall
+    // back on.
+    databaseUrl: "",
+    databaseToken: "",
     appAttestRootCa: d.appAttestRootCa,
     attestTokenTtlSeconds: d.attestTokenTtlSeconds,
     attestAppId: `${d.teamId}.${d.bundleId}`,
