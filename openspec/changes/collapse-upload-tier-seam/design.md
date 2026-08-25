@@ -126,6 +126,40 @@ in the controller and in the shell — uses those constants. The deadline was ne
 The objection "a future tier may need longer" dissolves twice: the budget is the OS's and cannot be
 granted, and the receipt already "bounds the hold, never the work."
 
+### D11b — The enable is refused too, so "registration succeeds and lies" is false
+
+Measured on device (SE2, iOS 26.6, 2026-08-25) with the OS-driven mechanism **pinned** under a `LIMITED`
+grant — an attempt the arm never makes on its own, and which only the development override makes
+reachable:
+
+```
+00:46:38.206 [Error] extension disable FAILED: PHPhotosErrorDomain:3311
+00:46:38.209 [Error] extension enable  FAILED: PHPhotosErrorDomain:3311
+```
+
+**Both directions are refused** with `PHPhotosErrorAccessUserDenied`. Under a partial grant the app cannot
+change its upload-job registration at all.
+
+`ios-photokit-upload` asserts that under `.limited` *"registration succeeds and lies — no error, no
+callback"*. That is false as stated: registration does not succeed, it is refused, with an error. The
+claim survived because `start()` logs its success line **unconditionally** and the write's `Boolean` and
+`NSError` were discarded until the classifier landed — so "succeeds" described a return value nobody read
+and "no error" meant none was looked for.
+
+The requirement's **conclusion** is untouched and better founded: never rely on that tier under a partial
+grant — not because the OS declines to invoke a registered extension, but because the app cannot register
+one. Correcting the mechanism belongs to `limited-grant-registration-noise`, which owns that spec sweep;
+this change contributes the measurement, as it did for D11.
+
+*Stated so it is not over-read:* n=1, one device, one point release, reached through a pin rather than a
+path a user can take. It establishes that the enable **can** be refused under `.limited`. It does not by
+itself prove the 2026-07-20 probe hit this rather than something else — that probe is not re-runnable.
+
+**It also confirms the carve-out belongs on the disable only.** A 3311 on an enable is unreachable in
+production, since the arm never resolves the OS-driven mechanism under a partial grant; only a development
+pin gets there, and pins do not exist in shipped builds. So leaving the enable at `Error` costs production
+nothing and preserves the signal for the case that is genuinely invisible and terminal.
+
 ### D5c — The carve-out, measured
 
 D5 says the blanket repair must not fire when the disable hands over to a mechanism that reconciles
