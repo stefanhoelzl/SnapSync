@@ -103,10 +103,9 @@ import kotlinx.coroutines.withContext
  * supplies them here; [snapSyncApp] composes the feature graph.
  *
  * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
- * [onEventMinted]) bridge into the shell's entry surfaces; [uploadProducer] is the
- * resolved tier's *mechanism* thunk — since step 8 C3 the shell selects it via the pure sealed
- * `resolveComposition` switch (spec `module-architecture`, "One shared composition"), so only the
- * selected tier's mechanism is ever constructed; [albumExcludedAssetIds]
+ * [onEventMinted]) bridge into the shell's entry surfaces; [appDrivenUpload] and [osDrivenUpload] are
+ * the mechanisms this OS can carry — which one RUNS is resolution's answer and not this bag's
+ * (`upload-lifecycle`, "The upload mechanism is resolved, never selected"); [albumExcludedAssetIds]
  * carries the app process's admit-on-doubt wrapper, shared verbatim with the own-device status
  * total so the two consumers of the policy can never diverge.
  */
@@ -136,10 +135,9 @@ class AppPorts(
      * be on, which is the class of defect this law exists to end.
      */
     val uiLane: CoroutineContext,
+    /** The permission-aware gallery read seam. ONE instance serves both the status total and the
+     *  join-time shareable-count preview (capability `join-share-count`), so the two cannot disagree. */
     val candidateSource: CandidateSource,
-    /** The **facts-only** cutoff-bounded gallery read for the join-time shareable-count preview
-     *  (capability `join-share-count`): a `RawAssetSource.factsSince` — cheap `PHAsset` facts, NO per-asset
-     *  resource round-trip. Default `{ emptyList() }` keeps the count at zero wherever it is not wired. */
     /** Read-only in this graph: the app-side ledger handle (aggregates read; the arm never writes records). */
     val ledger: LedgerStore,
     val downloadStore: DownloadStore,

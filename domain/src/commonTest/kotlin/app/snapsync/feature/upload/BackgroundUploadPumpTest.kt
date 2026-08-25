@@ -62,7 +62,6 @@ class BackgroundUploadPumpTest {
         assertEquals(1, scheduler.scheduled)
     }
 
-    /** Foreground entry still must NOT schedule — completions drive re-invocation while the app is open. */
     /**
      * Foreground entry now **arms** the heartbeat. This reverses the previous policy ("foreground drains; it
      * does not schedule background wakes"), which was true but incomplete: it reasoned only about the app
@@ -89,8 +88,9 @@ class BackgroundUploadPumpTest {
         assertEquals(1, scheduler.scheduled, "reopening the app re-arms the heartbeat")
     }
 
-    /** A trigger arriving mid-cycle coalesces into exactly one trailing re-run — never a parallel cycle. */
     /**
+     * A trigger arriving mid-cycle coalesces into exactly one trailing re-run — never a parallel cycle.
+     *
      * The trigger arrives from **another coroutine**, as every real one does — an OS callback, a
      * delegate queue, a push. It used to be invoked from inside `runCycle`, which no production path
      * does and which a coalesced caller that awaits the drain would deadlock on: it would be waiting

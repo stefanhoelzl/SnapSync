@@ -41,18 +41,18 @@ import kotlin.test.assertTrue
 private const val EVENT_E = "11111111-1111-4111-8111-111111111111"
 private const val EVENT_F = "22222222-2222-4222-8222-222222222222"
 
-/**
- * Seam ↔ UI-state integration for the join gate (capability `join-event`) over the real
- * `engine → status → presentation` stack driven against the world's mini-edge: the deeplink decode,
- * `GET /event/:id` details gate, register-only enrollment PUT, and the switch composition — asserting
- * both `UiState` and world outcomes (config provisioned, manifest membership landed).
- */
 /** A membership always carries a cutoff (capability `photo-selection-policy`). */
 private val CUTOFF = captureCutoff("2026-01-01T00:00:00Z")
 
 /** The event window ceiling the mini-edge stamps (startsAt + 30d). */
 private val ENDS = captureCeiling("2026-01-31T00:00:00Z")
 
+/**
+ * Seam ↔ UI-state integration for the join gate (capability `join-event`) over the real
+ * `engine → status → presentation` stack driven against the world's mini-edge: the deeplink decode,
+ * `GET /event/:id` details gate, register-only enrollment PUT, and the switch composition — asserting
+ * both `UiState` and world outcomes (config provisioned, manifest membership landed).
+ */
 class JoinGateIntegrationTest {
 
     @Test

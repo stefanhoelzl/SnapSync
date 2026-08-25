@@ -41,8 +41,7 @@ fun appVisibilityFrom(rawApplicationState: Long): AppVisibility = when (rawAppli
 
 /**
  * Whether the shell composes a Compose scene (capability `ios-app-shell`): a **sealed** type so the shell
- * switches once on it and the compiler fails closed if a third mode is ever added — the same shape, and the
- * same reason, as [CompositionMode].
+ * switches once on it and the compiler fails closed if a third mode is ever added.
  *
  * - [Deferred] — compose nothing. The shell returns a bare placeholder view controller: no
  *   `ComposeUIViewController`, no Compose runtime, no renderer.

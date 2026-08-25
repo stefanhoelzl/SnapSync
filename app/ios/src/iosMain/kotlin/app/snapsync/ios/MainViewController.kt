@@ -19,10 +19,9 @@ import platform.UIKit.UIViewController
  * (presentation-owned choreography — the set-then-clear decision left this untested shell at the
  * migration finale, step-12 D6). `StatusScreen` wraps itself in `AppTheme`.
  *
- * The host is [SnapSyncRoot.renderHost] — the live stack in production, or a forged-source host when
- * the dev/test `SNAPSYNC_FORGE_STATE` launch-env variable is set (capability `ios-app-shell`). Either
- * way the screen renders `container.stateFlow` live; the forge substitutes the container's inputs, not
- * a static `UiState`.
+ * The host is [SnapSyncRoot.renderHost] — **always** the live stack (capability `ios-app-shell`).
+ * Forged frames for a marketing screenshot are rendered by a separate binary that does not link this
+ * module at all, so there is no forge path here to take.
  *
  * **A scene is composed only while the app is active** (capability `ios-app-shell`). iOS connects UI
  * scenes in `UISceneActivationState.background`, so a process woken by a silent push or a `BGTask` would
@@ -47,9 +46,8 @@ fun MainViewController(): UIViewController {
 // The ONE switch on the resolved scene mode, and the only decision in this file. It is a decision by
 // construction — the sealed type exists so the compiler fails closed if a third mode is ever added — but
 // the DECIDING is not here: `resolveScene` is pure and `commonTest`-covered on JVM and the simulator, and
-// this reads its answer. The same shape, and the same reason, as `SnapSyncRoot`'s one `when (mode)` on
-// `CompositionMode`. It sits in its own function so the suppression names only this, rather than riding
-// along with `MainViewController`'s unrelated `FunctionName`/`unused` opt-outs.
+// this reads its answer. It sits in its own function so the suppression names only this, rather than
+// riding along with `MainViewController`'s unrelated `FunctionName`/`unused` opt-outs.
 // Expiry: dies with the deferral, when CMP-5978 is fixed upstream and the mitigation can be deleted.
 @Suppress("CyclomaticComplexMethod")
 private fun sceneFor(mode: SceneMode): UIViewController = when (mode) {

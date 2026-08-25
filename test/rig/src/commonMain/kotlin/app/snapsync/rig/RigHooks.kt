@@ -20,7 +20,9 @@ class RigHooks(
     /** Wall-clock instant the eager initializer ran, or `null` if the hook never reached it. */
     private val bootedAt: String?,
     /**
-     * The resolved `UploadTier`. Decides which triggers are even meaningful on this build.
+     * The mechanism this OS resolves to under a full grant — the OS's tier, a boot-time fact, which is
+     * what decides which triggers are even meaningful on this build. Which mechanism is *running* moves
+     * with permission and is deliberately not reported here.
      *
      * There used to be a `compositionMode` beside this, rendering the sealed mode the shell resolved. With
      * forge moved to its own binary that mode has one case, so the two were the same fact twice.

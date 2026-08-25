@@ -77,8 +77,9 @@ interface AttestClient {
  */
 interface AttestStore {
 
-    /** The current token, or null if none was ever stored. MAY be expired — the reader decides. */
     /**
+     * The current token, or null if none was ever stored. MAY be expired — the reader decides.
+     *
      * Absence: null means the token is **absent** and nothing else. An unreadable store is NOT
      * collapsed here — [readExisting] throws [SecureStoreUnavailable] instead, and [SecureStoreRead]
      * keeps `Absent` and `Unavailable` apart on purpose ("never mistaken for absence"). That
@@ -88,8 +89,9 @@ interface AttestStore {
 
     fun setToken(token: String)
 
-    /** The attested `keyId`, or null if this install has never attested. */
     /**
+     * The attested `keyId`, or null if this install has never attested.
+     *
      * Absence: as [token] — absent only; unreadable throws. The distinction matters more here than
      * anywhere: minting on a forged "absent" would burn a fresh Secure-Enclave attestation.
      */

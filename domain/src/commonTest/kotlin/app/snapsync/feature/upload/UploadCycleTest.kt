@@ -1068,7 +1068,6 @@ class UploadCycleTest {
         data = Unit,
     )
 
-    /** A cycle with an album-exclusion port, and a manifest hook recording what the manifest actually saw. */
     /**
      * Pre-record every discovered resource as COMPLETED, so the ledger-projected manifest has rows to
      * list and the only thing left deciding its contents is the admission.
@@ -1078,6 +1077,7 @@ class UploadCycleTest {
         platform.discovered.forEach { writer.recordCompleted(it, attempt = 0, eventId = TEST_EVENT) }
     }
 
+    /** A cycle with an album-exclusion port, and a manifest hook recording what the manifest actually saw. */
     private fun originCycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
