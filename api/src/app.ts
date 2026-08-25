@@ -311,7 +311,9 @@ async function serveSiteObject(
 
 /**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
- * `bunny-list-endpoint`): `https://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…`, path-style, each
+ * `bunny-list-endpoint`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
+ * every deployed configuration; only the local dev rig moves it, so it can serve loopback HTTP that a
+ * device can actually fetch. Path-style, each
  * key segment percent-encoded (deviceId is a UUID → identity), `X-Amz-Expires` 7 days. The zone name is
  * the S3 Access Key ID and `accessKey` the secret. The device fetches this URL DIRECTLY from bunny's S3
  * endpoint with no credential — the query signature is the sole authorization. A fresh URL is minted on
@@ -324,7 +326,7 @@ async function presignDownloadUrl(
   deviceId: string,
   filename: string,
 ): Promise<string> {
-  const url = `https://${config.s3Host}/${config.zone}/${byteKey(deviceId, filename)}` +
+  const url = `${config.s3Scheme}://${config.s3Host}/${config.zone}/${byteKey(deviceId, filename)}` +
     `?X-Amz-Expires=${PRESIGN_EXPIRY_SECONDS}`;
   const signed = await aws.sign(url, { method: "GET", aws: { signQuery: true } });
   return signed.url;

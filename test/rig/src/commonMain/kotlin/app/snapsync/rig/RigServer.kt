@@ -16,6 +16,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -95,12 +96,24 @@ class RigServer(
     fun start() {
         scope.launch {
             try {
-                log.i { "listening on $LOOPBACK:$port" }
-                embeddedServer(CIO, port = port, host = LOOPBACK) { routes() }.start(wait = true)
+                val server = embeddedServer(CIO, port = port, host = LOOPBACK) { routes() }
+                // `wait = false` and then `resolvedConnectors()`, rather than a blocking `wait = true`:
+                // the suspend point is what makes "did it actually bind" answerable. A blocking start
+                // never returns to say so, and publishing the port before the bind would defeat the file
+                // entirely — its ABSENCE is the signal a colliding instance leaves behind.
+                server.start(wait = false)
+                val bound = server.engine.resolvedConnectors().first().port
+                log.i { "listening on $LOOPBACK:$bound" }
+                hooks.publishBoundPort(bound)
+                // Suspends rather than blocks, so this lane stays free for the engine's own coroutines.
+                awaitCancellation()
             } catch (t: Throwable) {
                 log.e(t) {
-                    "bind $LOOPBACK:$port FAILED — the rig is NOT listening. A previous instance of the " +
-                        "app is probably still alive holding the port; SIGKILL it " +
+                    "bind $LOOPBACK:$port FAILED — the rig is NOT listening, and NO port file was " +
+                        "published. On a SIMULATOR the usual cause is a second instance left on the " +
+                        "default port: all simulators share the host's loopback, so another instance " +
+                        "holds it and would answer a curl aimed here. On a device a previous instance " +
+                        "of the app is probably still alive holding the port; SIGKILL it " +
                         "(`dvt process-id-for-bundle-id app.snapsync`, then `dvt signal <pid> 9`). " +
                         "The app itself is unaffected."
                 }

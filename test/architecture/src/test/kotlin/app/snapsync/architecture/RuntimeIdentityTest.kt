@@ -139,10 +139,26 @@ class RuntimeIdentityTest {
 
     private val baseNames = listOf("SnapSyncKit", "SnapSyncUploadKit")
 
-    private val entitlementsFiles = listOf(
+    /**
+     * The entitlements files that SIGN a shipped binary. The Keychain access group is cross-checked
+     * against these two and only these two: they are the pair that must agree, because the app and the
+     * extension address the same item through them.
+     */
+    private val signingEntitlementsFiles = listOf(
         "iosApp/iosApp/iosApp.entitlements",
         "iosApp/BackgroundUploadExtension/BackgroundUploadExtension.entitlements",
     )
+
+    /**
+     * Every entitlements file declaring the App Group — the two signing ones plus the ad-hoc
+     * SIMULATOR plist, which signs no shipped binary but gives a simulator build its container.
+     *
+     * The third is the surface most likely to be forgotten in a rename, precisely because no shipped
+     * build fails when it is wrong: the simulator simply loses its container, which reads as the app
+     * being broken rather than as a rename being incomplete.
+     */
+    private val appGroupEntitlementsFiles =
+        signingEntitlementsFiles + "iosApp/Configuration/simulator.entitlements"
 
     private fun occurrences(files: List<File>, needle: String): List<String> = files.flatMap { file ->
         file.readText().lineSequence().withIndex()
@@ -206,7 +222,7 @@ class RuntimeIdentityTest {
             .find(xcconfig.readText())?.groupValues?.get(1)
         assertTrue(teamId != null, "TEAM_ID not found in Deployment.xcconfig — run the resolver, or the signing surface moved")
 
-        val declared = entitlementsFiles.map { path ->
+        val declared = signingEntitlementsFiles.map { path ->
             val file = File(repoRoot, path)
             assertTrue(file.isFile, "$path is missing — the entitlements surface moved; fix this pin's path")
             val group = Regex("""<string>\$\(AppIdentifierPrefix\)(.+?)</string>""")
@@ -277,13 +293,46 @@ class RuntimeIdentityTest {
     }
 
     @Test
-    fun `the App-Group id is pinned in both entitlements files`() {
-        for (path in entitlementsFiles) {
+    fun `the App-Group id is pinned in every entitlements file`() {
+        for (path in appGroupEntitlementsFiles) {
             val file = File(repoRoot, path)
             assertTrue(file.isFile, "$path is missing — the entitlements surface moved; fix this pin's path")
             val found = occurrences(listOf(file), "<string>group.app.snapsync</string>")
             assertExactlyOnce("App-Group id in $path", found)
         }
+    }
+
+    /**
+     * The simulator plist's **absence** of a keychain group is load-bearing, so it is asserted rather
+     * than left to a comment.
+     *
+     * Adding `keychain-access-groups` makes an ad-hoc-signed simulator build UN-LAUNCHABLE — measured
+     * 2026-08-09 in the unprefixed form, in the correctly prefixed form, on an ad-hoc signature, and
+     * when signed with the real "Apple Development" identity with the full repo entitlements expanded.
+     * The symptom is `SBMainWorkspace` refusing the launch, which says nothing about entitlements, so
+     * the obvious repair for a reader who notices the "missing" key is exactly the edit that causes it.
+     *
+     * This is why `device-identity` resolves through a per-target `SecureStore` binding rather than the
+     * shared Keychain group on `iosSimulatorArm64`.
+     */
+    @Test
+    fun `the simulator entitlements declare no keychain group`() {
+        val path = "iosApp/Configuration/simulator.entitlements"
+        val file = File(repoRoot, path)
+        assertTrue(file.isFile, "$path is missing — the simulator signing surface moved; fix this pin's path")
+        // Match the DECLARATION, with XML comments stripped — not any mention of the name. That file's
+        // own header explains at length why the key is absent, and a bare substring check fires on the
+        // explanation, which is the failure mode `KeychainContainmentTest` avoids by excluding itself
+        // and the archive gate avoids by scoping its match to a section.
+        val declarations = file.readText().replace(Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL), "")
+        assertTrue(
+            "<key>keychain-access-groups</key>" !in declarations,
+            "$path declares keychain-access-groups. Its ABSENCE is the decision, not an omission: " +
+                "that entitlement makes an ad-hoc-signed simulator build un-launchable " +
+                "(SBMainWorkspace refuses it, saying nothing about entitlements). The device id " +
+                "resolves through the iosSimulatorArm64 SecureStore binding instead — see " +
+                "capability device-identity.",
+        )
     }
 
     @Test

@@ -73,6 +73,12 @@ discovery. All simulators on a host **share the host's loopback**, so a simulato
 `SIMCTL_CHILD_SNAPSYNC_RIG_PORT=<port>`, because `simctl launch <dev> <bundle> KEY=VAL` passes
 **argv, not environment**. The bind address is `127.0.0.1` and nothing else, gated.
 
+📄 **On a simulator, read the port instead of assuming it.** The rig publishes the port it actually
+bound to `Documents/rig.port` in its own container, reachable with
+`xcrun simctl get_app_container <dev> app.snapsync data`. **No file means the bind failed** — which is
+the one case a fixed default hides, since a colliding instance would answer your `curl` with the very
+port you asked for. Full simulator runbook: load **`ios-simulator`**.
+
 ## The endpoints
 
 Namespaced by **who is on the other side of the call**. That is not decoration: `/os` and `/user` have

@@ -28,9 +28,12 @@
 // Retargeting a development build at a different backend is therefore selecting a different DEPLOYMENT
 // (`python3 scripts/resolve-deployment.py <name>`), not overriding a host string on the xcodebuild line:
 // the one fragment feeds BOTH targets' Info.plists, so a single selection covers the app and the
-// background-upload extension together. The resulting host must be HTTPS — default ATS (HTTPS-only)
-// applies and no NSAllowsLocalNetworking exception ships, so a baked `http://` host fails silently on
-// device. (The `/api/v1` prefix is folded into the rendered upload base: every device client
+// background-upload extension together. Any host reached over the NETWORK must be HTTPS — default ATS
+// applies and no NSAllowsLocalNetworking exception ships, so a baked `http://` network host fails
+// silently on device. LOOPBACK is the exception, and it is not one we granted: ATS exempts 127.0.0.1
+// itself, so plain HTTP works there with no Info.plist key at all. Measured 2026-08-09 from a real app
+// bundle on an iOS 26.5 simulator — a Debug build baked with `http://127.0.0.1:8080/api/v1` reached a
+// local backend and got a 201, which is how a simulator talks to the `deno task dev:local` rig. (The `/api/v1` prefix is folded into the rendered upload base: every device client
 // interpolates `$base/…` from that one value, so uploads, event creation, listings, enrollment, leave,
 // directory, device config, notify, push and attest all target the versioned prefix at once. The event
 // link's separate LINK_ORIGIN carries no prefix.)

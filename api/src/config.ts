@@ -48,6 +48,13 @@ export type Config = {
   s3Region: string;
   /** bunny S3-compatible endpoint host — the presigned-URL origin. DERIVED from {@link s3Region}. */
   s3Host: string;
+  /**
+   * URL scheme for presigned download URLs. `https` in every deployed configuration, and the only
+   * value production ever carries — it exists because the local dev rig (`src/dev/`) serves plain
+   * HTTP on loopback, and a device handed an `https://127.0.0.1:8080/...` URL fails on TLS rather
+   * than downloading. Overridden there exactly as {@link s3Host} already is, and by nothing else.
+   */
+  s3Scheme: string;
   /** APNs Auth Key id — the JWT `kid`. */
   apnsKeyId: string;
   /** Apple team id — the JWT `iss`. */
@@ -138,6 +145,9 @@ function publicFields(
     // DERIVED, never restated: `s3Region` and an `s3Host` constant previously stated one fact twice and
     // could disagree — a wrong S3 host mints presigned URLs that 403 at download while all else looks fine.
     s3Host: `${storage.s3Region}-s3.storage.bunnycdn.com`,
+    // Not a deployment fact: every bunny deployment presigns over TLS. Only the filesystem dev rig
+    // overrides it, and it does so by building its own Config (`src/dev/config.ts`).
+    s3Scheme: "https",
     apnsKeyId: d.apnsKeyId,
     apnsTeamId: d.teamId,
     // The push topic IS the bundle id, and the attest app id is `<team>.<bundle>` — derive both so they

@@ -73,6 +73,19 @@ class RigHooks(
      * path.
      */
     val osExtensionEnabled: () -> Boolean?,
+     * Publish the port this instance actually bound, so a caller can discover it instead of assuming it.
+     *
+     * Called **only after the bind succeeds**, which is the whole point: on a simulator the file's
+     * ABSENCE is how a collision stops being silent. All simulators share the host's loopback, so two
+     * instances left on [DEFAULT_RIG_PORT] do not merely collide — the second's bind fails while a
+     * `curl` reaches the FIRST and answers plausibly, reporting the very port that was asked for. With
+     * the file, the second instance simply never publishes one and the reader times out instead of
+     * believing the wrong process.
+     *
+     * A verb rather than a path because `:test:rig` names no platform API (design D5): the host hook
+     * supplies the writing.
+     */
+    val publishBoundPort: (Int) -> Unit,
 ) {
 
     /**
@@ -212,3 +225,33 @@ class CommandResult(val status: Int, val body: String) {
  * request rather than as a failure to start.
  */
 fun rigPort(raw: Any?): Int = (raw as? String)?.toIntOrNull() ?: DEFAULT_RIG_PORT
+
+/**
+ * The resolved upload tier's name, or `forge` when no live stack was composed.
+ *
+ * Lives here rather than in the hook for the usual reason: the `when` is a decision, and the hook file is
+ * scanned by the shell gate. Reads the mode the shell already resolved — never a second resolution, which
+ * could disagree with the one the app is actually running.
+ */
+fun tierName(mode: CompositionMode): String = when (mode) {
+    is CompositionMode.Live -> mode.tier.name
+    is CompositionMode.Forge -> "forge"
+}
+
+/**
+ * Where the bound port is published, given this process's documents directory — `null` when the OS
+ * reported none, in which case nothing is written and the caller says so.
+ *
+ * The decision lives here rather than in the hook for the reason every other decision does: the hook
+ * file is compiled into `:app:ios` and scanned by the shell gate, which permits none.
+ */
+fun rigPortFilePath(documentsDirectory: String?): String? =
+    documentsDirectory?.let { "$it/$RIG_PORT_FILE_NAME" }
+
+/**
+ * The published-port file's name.
+ *
+ * Not a runtime-identity pin: no installed base holds it, and a build that renamed it would simply make
+ * its own port undiscoverable on the next run — loudly, since the reader finds nothing.
+ */
+const val RIG_PORT_FILE_NAME: String = "rig.port"

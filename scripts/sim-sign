@@ -1,0 +1,78 @@
+#!/bin/sh
+# Ad-hoc-sign a SIMULATOR .app so it has an App-Group container.
+#
+# Dev infrastructure: non-gating, no spec. Runs on the macOS side of the ssh-mac loop (the repo is
+# rsync'd there), never in the Linux sandbox — `codesign` is a macOS tool. Load the `ios-simulator`
+# skill for the surrounding runbook.
+#
+#   scripts/sim-sign <path/to/SnapSync.app>
+#
+# WHY THIS EXISTS. An UNSIGNED simulator build has no App Group: `appGroupContainerPath` throws
+# "App Group container 'group.app.snapsync' unavailable — the application-groups entitlement is
+# missing or unprovisioned", so no ledger, no config, no live stack. That is why screenshots.yml
+# builds CODE_SIGNING_ALLOWED=NO and forge boots no live stack — it needs no container. A rig build
+# does. An ad-hoc signature carrying iosApp/Configuration/simulator.entitlements fixes it
+# (measured 2026-08-09, macOS 26.5.2 / Xcode 26.6 / iOS 26.5 simulator).
+#
+# INNER TO OUTER, and NO `--deep`. Nested code is signed first, then the outer bundle. `--deep` is
+# Apple-documented as "for emergency repairs only", and whether it carries `--entitlements` inward to
+# an embedded appex was never measured here — only the app's own container was. Signing the appex
+# explicitly costs two lines and removes the assumption, which the extension-shaped second process
+# (change #5) would otherwise inherit as a surprise.
+#
+# ONE PLIST FOR BOTH BUNDLES. Strip what a simulator refuses and the app's and the extension's
+# entitlements are identical: the App Group and nothing else. See that file's header for why
+# keychain-access-groups is deliberately absent (it makes the app un-launchable), and
+# RuntimeIdentityTest, which asserts the absence so it cannot be "fixed".
+set -eu
+
+APP="${1:-}"
+if [ -z "$APP" ]; then
+    echo "usage: scripts/sim-sign <path/to/App.app>" >&2
+    exit 2
+fi
+if [ ! -d "$APP" ]; then
+    echo "sim-sign: '$APP' is not a bundle directory" >&2
+    exit 1
+fi
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+PLIST="$ROOT/iosApp/Configuration/simulator.entitlements"
+if [ ! -f "$PLIST" ]; then
+    echo "sim-sign: missing $PLIST" >&2
+    exit 1
+fi
+
+# `-` is the ad-hoc identity. No keychain, no certificate, no provisioning profile: a simulator
+# verifies the entitlements but not the signer.
+sign() {
+    echo "sim-sign: signing $1"
+    codesign --force --sign - --entitlements "$PLIST" --timestamp=none "$1"
+}
+
+# Nested code first, and BOTH container names: iOS 26 embeds app extensions in `Extensions/`, while
+# older tooling used `PlugIns/`. Checking only one is how the appex silently goes unsigned — measured
+# 2026-08-25, when this script looked in PlugIns/ alone and signed nothing but the app.
+#
+# The globs are deliberately not hard-coded to `BackgroundUploadExtension.appex`, so a second extension
+# is signed too rather than skipped. Counting is what makes "signed nothing" loud: an app with no
+# extension is legitimate, but this project has one, so zero is a bug rather than a state.
+SIGNED_NESTED=0
+for DIR in "$APP/Extensions" "$APP/PlugIns"; do
+    [ -d "$DIR" ] || continue
+    for EXT in "$DIR"/*.appex; do
+        [ -d "$EXT" ] || continue
+        sign "$EXT"
+        SIGNED_NESTED=$((SIGNED_NESTED + 1))
+    done
+done
+echo "sim-sign: signed $SIGNED_NESTED nested extension(s)"
+
+sign "$APP"
+
+# Report what the bundle actually claims, rather than asserting success from codesign's exit code:
+# a signature that verifies can still carry the wrong entitlements, and that failure surfaces much
+# later as a container the app cannot open.
+echo "sim-sign: entitlements now on $(basename "$APP") —"
+codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -convert xml1 -o - - | sed 's/^/  /'
+echo "sim-sign: done. Reinstall the bundle for the new signature to take effect."

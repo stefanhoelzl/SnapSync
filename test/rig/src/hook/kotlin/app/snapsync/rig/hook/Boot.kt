@@ -1,10 +1,11 @@
-@file:OptIn(ExperimentalStdlibApi::class)
+@file:OptIn(ExperimentalStdlibApi::class, ExperimentalForeignApi::class)
 
 package app.snapsync.rig.hook
 
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.ios.SnapSyncRoot
 import app.snapsync.logging.IosDeviceLogSource
+import app.snapsync.logging.documentsDirectory
 import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.rig.RigCommand
 import app.snapsync.rig.RigHooks
@@ -20,11 +21,17 @@ import app.snapsync.rig.osExtensionEnabled
 import app.snapsync.rig.rigPort
 import app.snapsync.rig.userCommands
 import app.snapsync.rig.excludedUserCommands
+import app.snapsync.rig.rigPortFilePath
+import app.snapsync.rig.tierName
 import kotlin.native.EagerInitialization
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSDate
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSURL
+import platform.Foundation.writeToFile
 import platform.Foundation.NSUserActivity
 import platform.Foundation.NSUserActivityTypeBrowsingWeb
 
@@ -117,7 +124,22 @@ private fun iosHooks() = RigHooks(
     ),
     readGallery = galleryReader(core = { SnapSyncRoot.app }),
     osExtensionEnabled = osExtensionEnabled(osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload),
+    // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,
+    // which has no branch to make. `Documents/` rather than the App Group deliberately: a simulator host
+    // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling
+    // already pulls from the same place — neither needs an entitlement to get at it.
+    publishBoundPort = { bound -> writeTextFile(rigPortFilePath(documentsDirectory()), bound.toString()) },
 )
+
+/**
+ * Write [text] to [path], or nowhere when there is no path.
+ *
+ * Errors are dropped deliberately: the rig must never be able to break the app under test, and a caller
+ * that finds no port file is already in exactly the state this file exists to make visible.
+ */
+private fun writeTextFile(path: String?, text: String) {
+    (text as NSString).writeToFile(path.orEmpty(), atomically = true, encoding = NSUTF8StringEncoding, error = null)
+}
 
 /**
  * WIRED entry points. Deadlines come from [ReceiptDeadlines] rather than literals, so the number the rig
