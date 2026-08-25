@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Tests for the deployment resolver (capability `deployment-configuration`).
+
+Stdlib `unittest` only, for the same reason the resolver is stdlib-only: it must run on every runner and
+every dev machine with no install step. Run: `python3 scripts/resolve_deployment_test.py`.
+
+Every case builds its own throwaway tree in a temp directory, so no test reads the real deployments —
+a test asserting the production zone name would be testing configuration rather than behaviour.
+"""
+
+import importlib.util
+import json
+import pathlib
+import tempfile
+import unittest
+
+_spec = importlib.util.spec_from_file_location(
+    "resolve_deployment", pathlib.Path(__file__).with_name("resolve-deployment.py")
+)
+rd = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(rd)
+
+BUNNY = {
+    "kind": "bunny",
+    "zone": "test-zone",
+    "host": "storage.example",
+    "s3Region": "xx",
+    "accessKey": {"env": "TEST_ACCESS_KEY"},
+}
+SECRETS = {
+    "apnsPrivateKey": {"env": "TEST_APNS_KEY"},
+    "attestTokenKey": {"env": "TEST_TOKEN_KEY"},
+}
+POLICY = {
+    "eventCapacity": 3,
+    "eventWindowMaxSeconds": 60,
+    "eventLifetimeSeconds": 60,
+    "attestTokenTtlSeconds": 60,
+}
+APPLE = {
+    "appName": "Test",
+    "bundleId": "test.bundle",
+    "teamId": "TEAMID",
+    "apnsKeyId": "KEYID",
+    "appStoreUrl": "https://example.invalid/app",
+    "appAttestRootCa": "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----",
+}
+
+
+_KEEP = []  # hold each TemporaryDirectory until exit, so cleanup is not GC-timed (ResourceWarning)
+
+
+class Tree:
+    """A throwaway repo root holding only what the resolver reads."""
+
+    def __init__(self):
+        self.dir = tempfile.TemporaryDirectory()
+        _KEEP.append(self.dir)
+        self.root = pathlib.Path(self.dir.name)
+        (self.root / "deployments" / "components").mkdir(parents=True)
+
+    def component(self, name, obj):
+        (self.root / "deployments" / "components" / f"{name}.json").write_text(json.dumps(obj))
+
+    def deployment(self, name, obj):
+        (self.root / "deployments" / f"{name}.json").write_text(json.dumps(obj))
+
+    def standard(self, storage=None, **overrides):
+        self.component("build", {
+            "sha": {"env": "GITHUB_SHA", "scope": "build"},
+            "channel": {"env": "SNAPSYNC_CHANNEL", "scope": "build"},
+        })
+        self.component("policy", POLICY)
+        self.component("apple", APPLE)
+        self.component("storage", {"storage": storage if storage is not None else dict(BUNNY)})
+        body = {
+            "extends": ["components/build.json", "components/policy.json", "components/apple.json",
+                        "components/storage.json"],
+            "domain": "example.invalid",
+            **SECRETS,
+            **overrides,
+        }
+        self.deployment("t", body)
+        return self
+
+    def resolve(self, name="t", env=None):
+        return rd.resolve(self.root, name, env or {})
+
+
+class MergeTest(unittest.TestCase):
+    def test_later_component_wins_and_own_keys_win_last(self):
+        t = Tree()
+        t.component("a", {"domain": "a.invalid", "appName": "A"})
+        t.component("b", {"domain": "b.invalid"})
+        t.component("policy", POLICY)
+        t.component("apple", APPLE)
+        t.component("storage", {"storage": dict(BUNNY)})
+        t.deployment("t", {
+            "extends": ["components/a.json", "components/b.json", "components/policy.json",
+                        "components/apple.json", "components/storage.json"],
+            "domain": "own.invalid",
+            **SECRETS,
+        })
+        flat = t.resolve()
+        self.assertEqual(flat["domain"], "own.invalid")
+        self.assertEqual(flat["appName"], "Test")  # apple.json came after a.json
+
+    def test_a_component_may_not_extend(self):
+        t = Tree().standard()
+        t.component("nested", {"extends": ["components/apple.json"]})
+        t.deployment("t", {"extends": ["components/nested.json"], "domain": "x.invalid"})
+        with self.assertRaisesRegex(rd.ResolveError, "may not itself declare"):
+            t.resolve()
+
+    def test_missing_component_names_the_file(self):
+        t = Tree().standard()
+        t.deployment("t", {"extends": ["components/absent.json"], "domain": "x.invalid"})
+        with self.assertRaisesRegex(rd.ResolveError, "absent.json"):
+            t.resolve()
+
+    def test_unknown_deployment_fails_closed(self):
+        with self.assertRaisesRegex(rd.ResolveError, "unknown deployment 'nope'"):
+            Tree().standard().resolve("nope")
+
+
+class ValidationTest(unittest.TestCase):
+    def test_unknown_key_is_rejected_not_ignored(self):
+        # A typo must be an error rather than a silent absence of the key that was meant.
+        t = Tree().standard(doamin="typo.invalid")
+        with self.assertRaisesRegex(rd.ResolveError, "unknown key 'doamin'"):
+            t.resolve()
+
+    def test_missing_required_key_names_it(self):
+        t = Tree()
+        t.component("apple", APPLE)
+        t.component("storage", {"storage": dict(BUNNY)})
+        t.deployment("t", {
+            "extends": ["components/apple.json", "components/storage.json"],
+            "domain": "x.invalid", **SECRETS,
+        })
+        with self.assertRaisesRegex(rd.ResolveError, "eventCapacity"):
+            t.resolve()
+
+    def test_unknown_storage_kind_names_the_sealed_set(self):
+        t = Tree().standard(storage={"kind": "s3", "zone": "z"})
+        with self.assertRaisesRegex(rd.ResolveError, "outside the sealed set"):
+            t.resolve()
+
+    def test_credential_may_not_be_a_literal(self):
+        storage = dict(BUNNY, accessKey="hunter2")
+        t = Tree().standard(storage=storage)
+        with self.assertRaisesRegex(rd.ResolveError, "must be an environment reference"):
+            t.resolve()
+
+    def test_scope_must_match_the_inventory(self):
+        t = Tree().standard(sha={"env": "GITHUB_SHA"})  # inventory says build
+        with self.assertRaisesRegex(rd.ResolveError, "declares scope 'runtime'"):
+            t.resolve()
+
+    def test_unknown_scope_is_rejected(self):
+        t = Tree().standard(sha={"env": "X", "scope": "deploy"})
+        with self.assertRaisesRegex(rd.ResolveError, "unknown scope"):
+            t.resolve()
+
+
+class KindTest(unittest.TestCase):
+    def test_filesystem_requires_no_credentials(self):
+        t = Tree()
+        t.component("policy", POLICY)
+        t.component("apple", APPLE)
+        t.component("storage", {"storage": {"kind": "filesystem", "root": ".store"}})
+        t.deployment("t", {
+            "extends": ["components/policy.json", "components/apple.json", "components/storage.json"],
+            "domain": "127.0.0.1:8080",
+        })
+        flat = t.resolve()
+        self.assertEqual(flat["storage.kind"], "filesystem")
+        self.assertNotIn("apnsPrivateKey", flat)
+        self.assertNotIn("storage.accessKey", flat)
+
+    def test_bunny_requires_the_zone(self):
+        storage = {k: v for k, v in BUNNY.items() if k != "zone"}
+        t = Tree().standard(storage=storage)
+        with self.assertRaisesRegex(rd.ResolveError, "storage.zone"):
+            t.resolve()
+
+
+class ScopeTest(unittest.TestCase):
+    def test_build_scope_is_read_from_the_environment(self):
+        flat = Tree().standard().resolve(env={"GITHUB_SHA": "abc123"})
+        self.assertEqual(flat["sha"], "abc123")
+
+    def test_absent_build_variable_takes_the_declared_default(self):
+        flat = Tree().standard().resolve(env={})
+        self.assertEqual(flat["sha"], "dev")
+
+    def test_runtime_reference_is_copied_through_as_a_name(self):
+        # The artifact must carry the NAME, never the value: resolving it here would bake a live
+        # credential into the deployed bundle and require CI to hold it.
+        flat = Tree().standard().resolve(env={"TEST_ACCESS_KEY": "leaked"})
+        self.assertEqual(flat["storage.accessKey"], {"env": "TEST_ACCESS_KEY"})
+
+
+class RenderingTest(unittest.TestCase):
+    def test_a_key_reaches_only_its_declared_renderings(self):
+        flat = Tree().standard().resolve()
+        site = json.loads(rd.render_site(flat))
+        self.assertEqual(list(site), ["domain"])  # the site sees the domain and nothing else
+        body = rd.nest(rd.project(flat, rd.JSON)); body.pop("sha", None)
+        self.assertNotIn("appName", body)  # xcconfig-only
+        self.assertNotIn("channel", body)  # xcconfig-only
+
+    def test_sha_sits_beside_config_never_inside_it(self):
+        flat = Tree().standard().resolve()
+        ts = rd.render_deployment_ts(flat, "abc")
+        self.assertIn('sha: "abc"', ts)
+        self.assertNotIn('"sha":', ts)  # never a member of the config object
+
+    def test_secrets_reach_the_bundle_as_names(self):
+        flat = Tree().standard().resolve(env={"TEST_APNS_KEY": "leaked"})
+        text = rd.render_deployment_ts(flat, "abc")
+        self.assertIn("TEST_APNS_KEY", text)
+        self.assertNotIn("leaked", text)
+
+    def test_the_three_apns_settings_cannot_disagree(self):
+        for channel, expected in (("release", ("production", "production", "production")),
+                                  ("dev", ("development", "sandbox", "development"))):
+            flat = Tree().standard().resolve(env={"SNAPSYNC_CHANNEL": channel})
+            out = rd.render_xcconfig(flat)
+            values = dict(
+                line.split(" = ", 1) for line in out.splitlines() if " = " in line and not line.startswith("//")
+            )
+            self.assertEqual(
+                (values["APS_ENVIRONMENT"], values["APNS_ENV"], values["SENTRY_ENVIRONMENT"]), expected
+            )
+
+    def test_the_dsn_is_absent_off_release(self):
+        # Absence is the off-switch, enforced by the renderer rather than by CI not exporting the secret.
+        flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+            env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "dev"}
+        )
+        self.assertIn("SENTRY_DSN = \n", rd.render_xcconfig(flat) + "\n")
+
+    def test_the_dsn_is_present_on_release(self):
+        flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+            env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "release"}
+        )
+        self.assertIn("SENTRY_DSN = https://k@example.invalid/1", rd.render_xcconfig(flat))
+
+    def test_the_upload_base_carries_the_version_prefix(self):
+        flat = Tree().standard().resolve()
+        self.assertIn("BACKGROUND_UPLOAD_URL_BASE = https:/$()/example.invalid/api/v1",
+                      rd.render_xcconfig(flat))
+
+    def test_types_declare_a_real_union(self):
+        types = rd.render_types(Tree().standard().resolve())
+        self.assertIn('readonly kind: "bunny";', types)
+        self.assertIn('readonly kind: "filesystem";', types)
+        self.assertIn("export type ResolvedStorage = BunnyStorage | FilesystemStorage;", types)
+        self.assertIn("readonly accessKey: { readonly env: string };", types)
+
+
+class AtomicityTest(unittest.TestCase):
+    def test_a_failed_resolution_writes_nothing(self):
+        t = Tree().standard(doamin="typo")
+        with self.assertRaises(rd.ResolveError):
+            flat = t.resolve()
+            rd.emit(t.root, flat)
+        self.assertFalse((t.root / "api/src/deployment.ts").exists())
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

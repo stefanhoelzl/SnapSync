@@ -1,49 +1,62 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { readConfig, readSweepConfig } from "../src/config.ts";
+import { DEPLOYMENT, readConfig, readSweepConfig } from "../src/config.ts";
+import { isBunnyDeployment } from "../src/deployment.ts";
 
-/** Apple's App Attest root — a source constant, asserted here only so the shape stays honest. */
-const APPLE_ROOT_CA_PEM = readConfig({
-  BUNNY_STORAGE_ACCESS_KEY: "k",
-  APNS_PRIVATE_KEY: "p",
-  ATTEST_TOKEN_KEY: "t",
-}).appAttestRootCa;
+/** The bunny branch of the resolved deployment — every non-secret assertion below is derived from it. */
+const D = isBunnyDeployment(DEPLOYMENT) ? DEPLOYMENT : (() => {
+  throw new Error("these tests describe a deployed backend; resolve a bunny deployment");
+})();
 
 const PEM = "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n";
 
-/** The only values the environment supplies. Everything else is a source constant. */
+/** The only values the environment supplies. Everything else comes from the resolved deployment. */
 const SECRETS = {
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: PEM,
   ATTEST_TOKEN_KEY: "t",
 };
 
-Deno.test("readConfig: the secrets → Config, with the non-secrets from source", () => {
+Deno.test("readConfig: the secrets → Config, with every non-secret from the resolved deployment", () => {
+  // Deliberately asserted against the RESOLVED DEPLOYMENT rather than against literals. Pinning
+  // `zone: "snap-sync-dev"` here would test CONFIGURATION, not behaviour — it would turn this suite red
+  // on any deployment change, and it would pass just as happily if readConfig ignored the deployment
+  // and returned constants of its own.
   assertEquals(readConfig(SECRETS), {
-    zone: "snap-sync-dev",
-    host: "storage.bunnycdn.com",
+    zone: D.storage.zone,
+    host: D.storage.host,
     accessKey: "k",
-    s3Region: "de",
-    s3Host: "de-s3.storage.bunnycdn.com",
-    apnsKeyId: "W34NF6UMVU",
-    apnsTeamId: "E9Z8BADH58",
+    s3Region: D.storage.s3Region,
+    // DERIVED from the region, never restated — the two used to be separate constants that could
+    // disagree, and a wrong S3 host mints presigned URLs that 403 at download while all else looks fine.
+    s3Host: `${D.storage.s3Region}-s3.storage.bunnycdn.com`,
+    apnsKeyId: D.apnsKeyId,
+    apnsTeamId: D.teamId,
     apnsPrivateKey: PEM,
-    apnsTopic: "app.snapsync",
+    // The push topic IS the bundle id, derived rather than restated.
+    apnsTopic: D.bundleId,
     attestTokenKey: "t",
-    appAttestRootCa: APPLE_ROOT_CA_PEM,
-    attestTokenTtlSeconds: 30 * 24 * 60 * 60,
-    // Derived from the team + bundle constants, never restated — so the gate's app id and the push topic
-    // cannot drift apart.
-    attestAppId: "E9Z8BADH58.app.snapsync",
-    // The event link's domain (capability `event-link`). MUST equal `snapsync.domain` in
-    // gradle.properties; a :test:architecture guard holds that seam, since Gradle cannot reach here.
-    linkDomain: "snapsync.stho.net",
-    appStoreUrl: "https://apps.apple.com/app/id6781692480",
+    appAttestRootCa: D.appAttestRootCa,
+    attestTokenTtlSeconds: D.attestTokenTtlSeconds,
+    // Derived from the team + bundle ids, so the gate's app id and the push topic cannot drift apart.
+    attestAppId: `${D.teamId}.${D.bundleId}`,
+    // The event link's domain (capability `event-link`). The app's entitlement and LINK_ORIGIN are
+    // GENERATED from this same value now, so agreement is constructed rather than asserted.
+    linkDomain: D.domain,
+    appStoreUrl: D.appStoreUrl,
     // The event limits (capability `event-limits`) — the MINT-TIME source only; enforcement reads the
     // fields POST /events stamps onto each marker, so these values never reach an existing event.
-    eventCapacity: 10,
-    eventWindowMaxSeconds: 30 * 24 * 60 * 60,
-    eventLifetimeSeconds: 30 * 24 * 60 * 60,
+    eventCapacity: D.eventCapacity,
+    eventWindowMaxSeconds: D.eventWindowMaxSeconds,
+    eventLifetimeSeconds: D.eventLifetimeSeconds,
   });
+});
+
+Deno.test("readConfig: the derived fields are composed, not restated", () => {
+  // The three derivations are the whole reason a wrong value cannot be introduced in one place only.
+  const c = readConfig(SECRETS);
+  assertEquals(c.apnsTopic, D.bundleId);
+  assertEquals(c.attestAppId, `${c.apnsTeamId}.${c.apnsTopic}`);
+  assertEquals(c.s3Host, `${c.s3Region}-s3.storage.bunnycdn.com`);
 });
 
 Deno.test("readConfig: missing token signing key → throws naming it (the gate can never be silently absent)", () => {
@@ -66,8 +79,8 @@ Deno.test("readSweepConfig: needs ONLY the storage AccessKey (edge-only secrets 
   assertEquals(c.accessKey, "k");
   assertEquals(c.apnsPrivateKey, ""); // never used by the sweep
   assertEquals(c.attestTokenKey, "");
-  assertEquals(c.zone, "snap-sync-dev"); // source constants still present
-  assertEquals(c.eventLifetimeSeconds, 30 * 24 * 60 * 60);
+  assertEquals(c.zone, D.storage.zone); // the resolved deployment is still present
+  assertEquals(c.eventLifetimeSeconds, D.eventLifetimeSeconds);
 });
 
 Deno.test("readSweepConfig: a missing storage AccessKey throws naming it", () => {
@@ -86,8 +99,8 @@ Deno.test("readConfig: nothing but the secrets is required to boot", () => {
   // An otherwise-empty environment is enough. This is the whole point: a new non-secret config value
   // ships with the code that reads it, so a deploy can never be missing one.
   const config = readConfig(SECRETS);
-  assertEquals(config.zone, "snap-sync-dev");
-  assertEquals(config.apnsTopic, "app.snapsync");
+  assertEquals(config.zone, D.storage.zone);
+  assertEquals(config.apnsTopic, D.bundleId);
 });
 
 Deno.test("readConfig: missing storage AccessKey → throws naming it (fail-closed)", () => {
@@ -125,11 +138,11 @@ Deno.test("readConfig: APNs private key is preserved verbatim (trailing newline 
   assertEquals(readConfig({ ...SECRETS, APNS_PRIVATE_KEY: PEM }).apnsPrivateKey, PEM);
 });
 
-// SOURCE WINS. The regression this pins is real: the dead Edge Script carried a stale
-// BUNNY_STORAGE_ZONE=`snap-sync` — a zone that does not exist — while production ran on
-// `snap-sync-dev`. Were env allowed to override a source constant, that leftover platform variable
-// would silently repoint the backend at a nonexistent bucket on the first boot.
-Deno.test("readConfig: a platform variable NEVER overrides a source constant", () => {
+// THE RESOLVED DEPLOYMENT WINS. The regression this pins is real: the dead Edge Script carried a stale
+// BUNNY_STORAGE_ZONE=`snap-sync` — a zone that does not exist — while production ran on the real one.
+// Were env allowed to override a resolved value, that leftover platform variable would silently repoint
+// the backend at a nonexistent bucket on the first boot.
+Deno.test("readConfig: a platform variable NEVER overrides a resolved value", () => {
   const config = readConfig({
     ...SECRETS,
     BUNNY_STORAGE_ZONE: "snap-sync", // the stale value that was actually set on the Edge Script
@@ -145,14 +158,14 @@ Deno.test("readConfig: a platform variable NEVER overrides a source constant", (
     EVENT_GRACE_SECONDS: "0",
   });
 
-  assertEquals(config.zone, "snap-sync-dev");
-  assertEquals(config.host, "storage.bunnycdn.com");
-  assertEquals(config.s3Region, "de");
-  assertEquals(config.s3Host, "de-s3.storage.bunnycdn.com");
-  assertEquals(config.apnsKeyId, "W34NF6UMVU");
-  assertEquals(config.apnsTeamId, "E9Z8BADH58");
-  assertEquals(config.apnsTopic, "app.snapsync");
-  assertEquals(config.eventCapacity, 10);
+  assertEquals(config.zone, D.storage.zone);
+  assertEquals(config.host, D.storage.host);
+  assertEquals(config.s3Region, D.storage.s3Region);
+  assertEquals(config.s3Host, `${D.storage.s3Region}-s3.storage.bunnycdn.com`);
+  assertEquals(config.apnsKeyId, D.apnsKeyId);
+  assertEquals(config.apnsTeamId, D.teamId);
+  assertEquals(config.apnsTopic, D.bundleId);
+  assertEquals(config.eventCapacity, D.eventCapacity);
   assertEquals(config.eventWindowMaxSeconds, 30 * 24 * 60 * 60);
   assertEquals(config.eventLifetimeSeconds, 30 * 24 * 60 * 60);
 });

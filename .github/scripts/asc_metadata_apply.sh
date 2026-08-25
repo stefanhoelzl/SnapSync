@@ -13,7 +13,16 @@ set -euo pipefail
 
 ASC="${ASC:-${RUNNER_TEMP:-/tmp}/asc}"
 APP="${ASC_APP_ID:?ASC_APP_ID is required}"
-DIR="metadata"
+# The RENDERED listing, not the committed one. The committed files are hand-written copy carrying a
+# `{{domain}}` placeholder for the three URL fields derived from the device-facing domain; the resolver
+# substitutes it (capability `deployment-configuration`) so the store listing cannot advertise a host the
+# rest of the system has moved off. Everything else in those files is copy and is never templated, so
+# editing App Store text still needs no generator. Renderings are generated, never committed.
+DIR="${METADATA_DIR:-build/metadata}"
+if [ ! -d "$DIR" ]; then
+  echo "error: $DIR does not exist — run scripts/resolve-deployment.py <deployment> first" >&2
+  exit 1
+fi
 
 # State gate: only PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED are editable. Resolve the version
 # string shape-agnostically (the first versionString anywhere in the filtered response — every version

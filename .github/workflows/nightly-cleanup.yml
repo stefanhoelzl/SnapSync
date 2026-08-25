@@ -6,7 +6,7 @@ name: nightly-cleanup
 #
 # WHY IT RUNS HERE AND NOT IN THE EDGE. Bunny Edge Scripting has no scheduler, and it caps a request at
 # 50 subrequests / 30 s CPU (docs.bunny.net/scripting/limits) — a whole-storage sweep issues thousands of
-# storage calls, so it cannot run in the edge at all. This job runs the SAME `api/src/sweep.ts`
+# storage calls, so it cannot run in the edge at all. This job runs the SAME `api/src/scripts/sweep.ts`
 # program on an Ubuntu runner with no such caps, talking to bunny storage directly. It imports the Edge
 # Script's own `storage`/`lifecycle` modules, so the layout and lifecycle rules cannot drift between the
 # two (backend-deployment).
@@ -59,10 +59,15 @@ jobs:
       # summary table to the job's Summary panel — no other file access). A systemic failure (auth, or an
       # unreachable storage LIST) exits non-zero and fails the job; per-object errors are logged and
       # counted in the summary.
+      # The sweep resolves the SAME deployment the Edge Script ships, so it can never enumerate a
+      # different zone than the api reads. Renderings are generated, never committed.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
       - name: Run the sweep
         working-directory: api
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
         run: |
-          deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" src/sweep.ts \
+          deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" src/scripts/sweep.ts \
             ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}

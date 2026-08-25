@@ -41,6 +41,12 @@ jobs:
         with:
           deno-version: v2.x
 
+      # The site reads the resolved deployment for its canonical URLs, and the mirror deploy builds its
+      # storage Config from the same rendering — so the zone it writes to can never differ from the one
+      # the api proxy reads. Renderings are generated, never committed, so this step is required.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
       - name: Install
         working-directory: site
         run: npm ci

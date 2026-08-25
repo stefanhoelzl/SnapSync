@@ -130,7 +130,7 @@ import {
   validateStartsAt,
   validateUUID,
 } from "./validators.ts";
-import type { Config } from "./config.ts";
+import { BUILD_SHA, type Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 import {
   b64ToBytes,
@@ -195,6 +195,16 @@ export type Deps = {
    * time-bounded, and a test for "an expired token is refused" cannot wait 30 days. Defaults to `Date.now`.
    */
   now?: () => number;
+  /**
+   * The commit this bundle was built from, served by `GET /health` so the post-deploy probe can tell THIS
+   * bundle from the previous one still being served (capability `backend-deployment`).
+   *
+   * A DEPENDENCY, not configuration — which is why it sits here beside {@link now} rather than on
+   * `Config`: it varies per build, not per deployment, and a test must be able to pin it. Reading it as a
+   * module-level import instead would make the health test assert against whatever the generated file
+   * happened to hold. Defaults to the value resolved into this bundle.
+   */
+  buildSha?: string;
 };
 
 // One file in the per-device listing response — exactly `filename`, `size`, and `url` (a closed shape).
@@ -365,7 +375,9 @@ async function readPushToken(
 // credential is retired — a device token is now the only one this backend accepts — so both are gone
 // rather than left as dead code inviting a second bearer-secret path.)
 
-export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): Hono {
+export function createApp(
+  { fetch: fetchImpl, config, now = Date.now, buildSha = BUILD_SHA }: Deps,
+): Hono {
   // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
   // listings stay on the native API and are not signed with this.
@@ -520,7 +532,13 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     // `web-site`), proxied by the api from the PUBLIC storage `site/` prefix. Unlike the other public GETs
     // they DO read storage — but only the public `site/` prefix, never the bill-/photo-protected user data
     // this gate guards, so serving them unauthenticated is safe. GET/HEAD only.
-    const publicGet = path === "/" || path === "/join" ||
+    // `/health` is the third reason a path is ungated, and a different one from the two above: it is
+    // OPERATIONAL. It exists so the deploy workflow can tell a booted script serving THIS bundle from a
+    // corpse or a previous deployment (capability `backend-deployment`), and it is the cheapest route in
+    // the backend — no storage read, no crypto, one constant string. Serving it unauthenticated
+    // discloses only the commit of a PUBLIC repository, and costs strictly less than `/join` or the two
+    // public event reads below, which are already ungated and uncacheable and do touch storage.
+    const publicGet = path === "/" || path === "/join" || path === "/health" ||
       path === "/.well-known/apple-app-site-association" ||
       path.startsWith("/_astro/");
     // The two event READS the no-app download page fetches (capability `web-event-download`): the event
@@ -616,6 +634,27 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     "/join",
     (c) => serveSiteObject(fetchImpl, config, "join/index.html", c.req.method, SITE_HTML_CACHE),
   );
+
+  // The BOOT PROBE's target (capability `backend-deployment`). Answers with the commit this bundle was
+  // built from, so `api-deploy.yml` can tell the deploy it just made from the one that was already live —
+  // `POST /code` + `POST /publish` succeed whether or not the bundle can boot, and a bare `200` cannot
+  // distinguish a new deployment from an old corpse still being served.
+  //
+  // TOTAL BY CONSTRUCTION: it returns 200 or it did not run. `readConfig` is called at module top level in
+  // `main.ts`, OUTSIDE this app, so a configuration failure means the script never serves at all rather
+  // than that this route answers with an error — a `503` branch here would be dead code. Distinguishing
+  // causes is the probe's job, from the combination of status and body.
+  //
+  // INERT: no storage read, no cryptography, no external call. `NO_CACHE` because the pull zone must never
+  // answer a probe from the PREVIOUS deploy's copy — which is exactly the false green this exists to
+  // prevent. Root-mounted, never under `/api/v1`: no device calls it, so a future `/api/vN` should neither
+  // duplicate nor strand it.
+  const health = JSON.stringify({ sha: buildSha });
+  app.on(["GET", "HEAD"], "/health", (c) => {
+    c.header("Cache-Control", NO_CACHE);
+    c.header("Content-Type", "application/json");
+    return c.req.method === "HEAD" ? c.body(null) : c.body(health);
+  });
 
   // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
   //

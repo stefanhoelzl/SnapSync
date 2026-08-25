@@ -84,6 +84,15 @@ jobs:
     # Changing it without updating the ruleset would freeze merges (the required check would
     # never be posted).
     name: ios-build
+    # Build-scope values, read by EVERY resolver invocation in this job — this workflow's explicit step
+    # and the one `:domain` performs at Gradle configuration time. Setting them at job level is what makes
+    # re-resolving idempotent. `channel` is the single discriminator the xcconfig renderer derives
+    # APS_ENVIRONMENT / APNS_ENV / SENTRY_ENVIRONMENT from, and it also gates the DSN: the renderer emits
+    # none unless the channel names a distributed build, so a stray secret cannot arm crash reporting on a
+    # branch-gate archive (capability `ios-testflight-delivery`).
+    env:
+      SNAPSYNC_CHANNEL: ${{ github.ref == 'refs/heads/main' && 'release' || 'dev' }}
+      SENTRY_DSN: ${{ github.ref == 'refs/heads/main' && secrets.SENTRY_DSN || '' }}
     runs-on: macos-26
     steps:
       # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
@@ -107,17 +116,24 @@ jobs:
       # The upload host is NEVER overridden here: every ref bakes the Config.xcconfig default, the
       # single source of the host literal (capability ios-ci, "Compile-time edge host default"). A dev
       # build aimed at another backend is built on the ssh-mac loop instead.
-      - name: Select build configuration and APNs environment
+      - name: Select build configuration
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
-            echo "APS_ENV_OUT=production" >> "$GITHUB_ENV"
-            echo "APNS_ENV_OUT=production" >> "$GITHUB_ENV"
           else
             echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
-            echo "APS_ENV_OUT=" >> "$GITHUB_ENV"
-            echo "APNS_ENV_OUT=" >> "$GITHUB_ENV"
           fi
+
+      # Render the deployment BEFORE anything reads it: `Config.xcconfig` hard-`#include`s the generated
+      # fragment, so a build without this step fails rather than falling through to stale values.
+      #
+      # APS_ENVIRONMENT, APNS_ENV, SENTRY_ENVIRONMENT and SENTRY_DSN are all DERIVED here from the one
+      # `channel` value (capability `deployment-configuration`) instead of being passed as four separate
+      # xcodebuild overrides that had to agree with each other. SNAPSYNC_CHANNEL and SENTRY_DSN are
+      # JOB-level env (below), so the resolve Gradle performs at configuration time renders the identical
+      # fragment — otherwise it would silently re-render this one with the `dev` defaults.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
 
       # Compute the marketing version this build carries (capability ios-testflight-delivery):
       #   MARKETING_VERSION = max(floor, latest vX.Y tag with its minor incremented by 1)
@@ -178,11 +194,9 @@ jobs:
         with:
           build-config: ${{ env.BUILD_CONFIG }}
           marketing-version: ${{ env.MARKETING_VERSION_OUT }}
-          aps-environment: ${{ env.APS_ENV_OUT }}
-          apns-env: ${{ env.APNS_ENV_OUT }}
-          # Release archives only (capability crash-reporting): a Debug gate archive bakes no DSN, so the
-          # SDK never starts in a sideload build — absence is the off-switch, no separate flag.
-          sentry-dsn: ${{ env.BUILD_CONFIG == 'Release' && secrets.SENTRY_DSN || '' }}
+          # APNs environment and the crash-reporting DSN are NOT passed here any more: they are derived
+          # into Deployment.xcconfig from `channel` (job env below). An xcodebuild override would beat the
+          # fragment, reintroducing the possibility that they disagree with each other.
           current-project-version: ${{ github.run_number }}
           archive-path: ${{ runner.temp }}/SnapSync.xcarchive
           asc-key-id: ${{ secrets.ASC_KEY_ID }}

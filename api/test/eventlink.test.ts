@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
-import { readConfig } from "../src/config.ts";
+import { DEPLOYMENT, readConfig } from "../src/config.ts";
 
 // The event link's two public routes (capability `event-link`): the AASA that makes the link a Universal
 // Link, and the `/join` no-app download page for someone who opened an invite without the app (capability
@@ -56,10 +56,14 @@ Deno.test("event-link: the AASA declares the app and the /join path only", async
   assertEquals(details[0].components, [{ "/": "/join" }]);
 });
 
-Deno.test("event-link: the AASA's domain matches the configured link domain", () => {
-  // The guard that the app's entitlement/LINK_ORIGIN agree with this lives in :test:architecture —
-  // Gradle cannot reach api/. Here we only pin that the backend has one source for it.
-  assertEquals(CONFIG.linkDomain, "snapsync.stho.net");
+Deno.test("event-link: the backend has exactly one source for the link domain", () => {
+  // Deliberately NOT `assertEquals(CONFIG.linkDomain, "<the real host>")`: that would test
+  // CONFIGURATION rather than behaviour, and turn this suite red on any deployment change. What
+  // matters here is that the domain comes from the resolved deployment and is a usable host. That the
+  // app's entitlement and LINK_ORIGIN agree with it is now CONSTRUCTED (both are generated from the
+  // same deployment) and staleness-checked in :test:architecture.
+  assertEquals(CONFIG.linkDomain, DEPLOYMENT.domain);
+  assert(CONFIG.linkDomain.length > 0 && !CONFIG.linkDomain.includes("/"));
 });
 
 Deno.test("event-link: GET /join serves the no-app download page", async () => {

@@ -36,11 +36,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.0
+      # Validate what will actually be APPLIED, not the committed templates. The listing's
+      # domain-derived URLs carry a `{{domain}}` placeholder that the resolver substitutes (capability
+      # `deployment-configuration`); validating the template would both fail URL checks and prove
+      # nothing about the values that reach App Store Connect.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
       - name: Fetch pinned asc
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
       - name: Validate metadata offline
         run: |
-          "$RUNNER_TEMP/asc" metadata validate --dir metadata
+          "$RUNNER_TEMP/asc" metadata validate --dir build/metadata
 
   appstore-metadata-apply:
     name: appstore-metadata-apply
@@ -58,6 +64,12 @@ jobs:
       ASC_APP_ID: "6781692480"
     steps:
       - uses: actions/checkout@v7.0.0
+      # The listing's domain-derived URLs (marketing, support, privacy policy) are RENDERED from the
+      # resolved deployment, so the store can never advertise a host the app and backend have moved off
+      # (capability `deployment-configuration`). The committed files stay hand-written copy carrying a
+      # `{{domain}}` placeholder; renderings are generated, never committed.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
       - name: Fetch pinned asc
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
       - name: Resolve editable version and apply the listing

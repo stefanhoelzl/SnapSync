@@ -1,7 +1,7 @@
 {
   "description": "The easy way to share photos from any trip or get-together.\n\nStart the event as the trip begins, and everyone's photos land in everyone's library as you go — no waiting until you're home. Scan the QR code to join: your photos flow to the group, and the group's flow to you, right in your Photos app. No group chats, no \"can you send me those.\"\n\nNo account. No sign-up. If you can scan a code, you're in — nobody gets left out.\n\nAnd every photo arrives at full quality, exactly as it was taken — not the shrunk-down version a messaging app sends.\n\nGreat for trips and weekends away, weddings, birthdays, and parties — any time a group takes photos and everyone wants them all.",
   "keywords": "sharing,group,shared,album,event,trip,travel,wedding,party,vacation,reunion,festival,QR,memories",
-  "marketingUrl": "https://snapsync.stho.net",
+  "marketingUrl": "https://{{domain}}",
   "promotionalText": "Start an event, share the QR, and everyone's photos land in your library as the trip happens — full quality, no account, no group chats.",
   "supportUrl": "https://github.com/stefanhoelzl/SnapSync/issues"
 }

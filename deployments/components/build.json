@@ -1,0 +1,10 @@
+{
+  "sha": {
+    "env": "GITHUB_SHA",
+    "scope": "build"
+  },
+  "channel": {
+    "env": "SNAPSYNC_CHANNEL",
+    "scope": "build"
+  }
+}

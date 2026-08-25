@@ -1826,3 +1826,52 @@ Deno.test("past DELETE-BY → still fully served until the sweep deletes it (no 
   assert(store.has(`files/devices/${D}/A-primary.heic`));
   assert(store.has(`devices/${D}.json`));
 });
+
+// ── The boot probe's target (capability `backend-deployment`) ──────────────────────────────────────
+
+/** An upstream that answers nothing: the health route must never reach it. */
+const noUpstream: FetchLike =
+  (() => Promise.resolve(new Response("", { status: 500 }))) as unknown as FetchLike;
+
+Deno.test("health: reports the bundle's commit, uncacheable, with no upstream call", async () => {
+  let upstream = 0;
+  const a = createApp({
+    config: CONFIG,
+    fetch: (() => {
+      upstream++;
+      return Promise.resolve(new Response("", { status: 500 }));
+    }) as unknown as FetchLike,
+    buildSha: "abc123",
+  });
+  const res = await a.request("/health");
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Content-Type"), "application/json");
+  // The pull zone must never answer a probe from the PREVIOUS deploy's copy — bunny documents
+  // `no-cache`, not `no-store`, as the origin directive that suppresses its cache.
+  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+  assertEquals(await res.json(), { sha: "abc123" });
+  assertEquals(upstream, 0, "the health route must touch no external system");
+});
+
+Deno.test("health: HEAD returns the headers with no body", async () => {
+  const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "abc123" });
+  const res = await a.request("/health", { method: "HEAD" });
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+  assertEquals(await res.text(), "");
+});
+
+Deno.test("health: a mutating method is not served by the route", async () => {
+  const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "abc123" });
+  for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+    const res = await a.request("/health", { method, body: method === "GET" ? undefined : "{}" });
+    assert(res.status !== 200, `${method} /health was served`);
+  }
+});
+
+Deno.test("health: the sha is injected, never read from the bundle's own module", async () => {
+  // If the route read BUILD_SHA directly, this test could not pin it — and the probe's contract would
+  // be untestable. `buildSha` is a Dep beside `now` for exactly that reason.
+  const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "deadbeef" });
+  assertEquals(await (await a.request("/health")).json(), { sha: "deadbeef" });
+});

@@ -1,0 +1,19 @@
+{
+  "extends": [
+    "components/build.json",
+    "components/policy.json",
+    "components/apple.json",
+    "components/storage-snap-sync-dev.json"
+  ],
+  "domain": "snapsync.stho.net",
+  "apnsPrivateKey": {
+    "env": "APNS_PRIVATE_KEY"
+  },
+  "attestTokenKey": {
+    "env": "ATTEST_TOKEN_KEY"
+  },
+  "sentryDsn": {
+    "env": "SENTRY_DSN",
+    "scope": "build"
+  }
+}

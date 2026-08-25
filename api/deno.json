@@ -3,17 +3,27 @@
   "version": "0.1.0",
   "exports": "./src/main.ts",
   "tasks": {
+    // Every task RESOLVES A DEPLOYMENT first, naming it explicitly — there is no default, and an unknown
+    // name fails closed. The renderings are generated, never committed, so a task that skipped this would
+    // hit a missing module rather than a stale value. The resolver is a SEPARATE process, so chaining it
+    // cannot widen the permissions the suite below runs under.
+    "config": "python3 ../scripts/resolve-deployment.py prod --quiet",
+    "config:local": "python3 ../scripts/resolve-deployment.py local --quiet",
     // --allow-read/--allow-write are for the dev filesystem shim's contract test, which writes into a
     // temp dir. --allow-net stays ABSENT on purpose: that is the flag whose absence guarantees no test
     // can reach the real bunny zone (a network call fails as a permission error, not a live request).
-    "test": "deno test --allow-read --allow-write",
-    "check": "deno check src/*.ts src/dev/*.ts",
+    "test": "deno task config && deno test --allow-read --allow-write",
+    // src/scripts/ holds the out-of-bundle programs other workflows invoke (the sweep, the deploy probe).
+    // They are type-checked here for the same reason src/dev/ is: a broken one must fail CI rather than
+    // surface the next time someone runs it.
+    "check": "deno task config && deno check src/*.ts src/dev/*.ts src/scripts/*.ts",
     // The local backend rig (dev infrastructure — non-gating, no spec). `dev:local` is the curl loop;
     // `dev:tunnel` adds a cloudflared quick tunnel so a physical device can reach it under default ATS.
-    // Neither is reachable from the deployed bundle, which `deno bundle` roots at src/main.ts.
-    "dev:local": "deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts",
-    "dev:tunnel": "deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts --tunnel",
-    "bundle": "deno bundle src/main.ts -o dist/main.js",
+    // Both resolve the `local` deployment, whose filesystem storage kind the rig requires — running them
+    // against a bunny deployment throws rather than writing into a real zone.
+    "dev:local": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts",
+    "dev:tunnel": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts --tunnel",
+    "bundle": "deno task config && deno bundle src/main.ts -o dist/main.js",
     "lint": "deno lint",
     "fmt": "deno fmt"
   },

@@ -3,18 +3,33 @@ name: api-deploy
 # Deploys the api upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
 # is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to the pull zone fronting
 # the Edge Script. Path-scoped to the api sources, isolated from the Gradle/iOS workflows, and gated
-# on green Deno fmt/lint/check/test. Capability: backend-deployment.
+# on green Deno fmt/lint/check/test. Capabilities: backend-deployment, deployment-configuration.
 #
-# This workflow ships CODE ONLY — it configures nothing. bunny issues no scoped API key (writing an Edge
-# Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage zone and our DNS
-# zone), so CI holds only the script-scoped deploy key. That is precisely why every non-secret config
-# value is a SOURCE CONSTANT (api/src/config.ts): config ships in the bundle with the code that reads
-# it, and cannot drift. Only two SECRETS live in the Edge Script env, set once by hand.
+# This workflow ships CODE ONLY — it configures nothing on the platform. bunny issues no scoped API key
+# (writing an Edge Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage
+# zone and our DNS zone), so CI holds only the script-scoped deploy key. Every non-secret value is
+# therefore RESOLVED FROM A DEPLOYMENT (`deployments/`, `scripts/resolve-deployment.py`) and ships inside
+# the bundle with the code that reads it — the same anti-drift property source constants used to give,
+# without pinning the values into the source of one toolchain. Only genuine SECRETS live in the Edge
+# Script env, set once by hand, and the bundle carries their variable NAMES, never their values.
 #
-# There is deliberately no post-deploy boot probe: `POST /code` + `POST /publish` succeed whether or not
-# the script can boot, so a green run here does NOT prove the script serves. That was how the previous
-# Deno-Deploy-era config drift went unnoticed for two weeks. Prevention (config in source) replaces it —
-# so do NOT reintroduce platform-side required config without also reintroducing a probe.
+# THERE IS A POST-PUBLISH BOOT PROBE, and it is required. `POST /code` + `POST /publish` succeed whether
+# or not the script can boot, so the deploy step alone does NOT prove the script serves — that is how the
+# previous runtime stayed fail-closed for two weeks with CI green throughout. `migrate-runtime-to-bunny`
+# declined a probe CONDITIONALLY ("prevention replaces detection... anything that reintroduces
+# platform-side required config reintroduces the silent-corpse failure with nothing watching"); the
+# condition has fired, so detection is back.
+#
+# BE PRECISE ABOUT WHICH HALF IT RESTORES. The probe witnesses that the script BOOTED and that THIS bundle
+# is serving. It does NOT witness that any configured value is CORRECT: a value that is present but wrong
+# boots and probes green — which is the other half of the 2026-07 outage, where BUNNY_STORAGE_ZONE named
+# a zone that does not exist. Probe coverage is exactly the set of faults startup turns into a throw, so
+# a new platform-side value is only covered if it is declared in a deployment (readable, diffable) or
+# made to fail closed at boot.
+#
+# THE PROBE CANNOT ROLL BACK. Measured on run 32748912239: the script-scoped deploy key returns 401 on
+# both `GET /compute/script/<id>/releases` and `GET /compute/script/<id>`. Release re-publish needs the
+# ACCOUNT key. A red run means a broken script is live and a human fixes it forward.
 
 on:
   push:
@@ -24,6 +39,18 @@ on:
       # `site/` module and shipped by `site-deploy.yml`. A `screenshots/**` refresh triggers that
       # workflow, not this one. Capability `web-site`.
       - ".github/workflows/api-deploy.yml"
+      # The resolver and the authored deployments decide what ships inside the bundle, so a change to
+      # either must redeploy (capability `deployment-configuration`).
+      - "deployments/**"
+      - "scripts/resolve-deployment.py"
+
+# Serialize deploys. Without this, two merges to `main` in quick succession race and the FIRST run's
+# probe observes the SECOND run's bundle — a false red, and a probe that cries wolf is worse than none.
+# `cancel-in-progress: false` because a deploy that has already published must still be probed.
+# (`nightly-cleanup.yml` uses the same pattern for the same reason.)
+concurrency:
+  group: api-deploy
+  cancel-in-progress: false
 
 jobs:
   test-and-deploy:
@@ -34,6 +61,15 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      # Resolve the deployment BEFORE anything reads it. Every rendering is generated and none is
+      # committed, so the checks below would hit a missing module without this. `prod` is named
+      # explicitly — there is no default deployment, and an unknown name fails closed. `GITHUB_SHA` is
+      # the one build-scope value here; it becomes the stamp the probe matches against.
+      # (`deno task check` / `test` / `bundle` each chain the resolver too, so this step is what makes
+      # the SHA available to them rather than the `dev` default.)
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
 
       # --- Test gate: deploy runs only if these pass ---
       - name: Format check
@@ -64,7 +100,19 @@ jobs:
       # within the Edge Scripting 10 MB script limit.
       - name: Bundle
         working-directory: api
-        run: deno bundle src/main.ts -o dist/main.js
+        run: deno task bundle
+
+      # The stamp must be IN the artifact before anything is deployed. This turns "CI never supplied a
+      # commit to the resolver" from a post-publish probe failure — after a bad script is already live,
+      # with no rollback available — into a build failure, before anything ships. The probe keeps its
+      # `unstamped` cell as the backstop.
+      - name: Verify the bundle carries this commit
+        working-directory: api
+        run: |
+          grep -q "${{ github.sha }}" dist/main.js || {
+            echo "::error::dist/main.js does not carry ${{ github.sha }} — the resolver did not stamp it"
+            exit 1
+          }
 
       # --- Deploy: main only. Feature-branch pushes run the checks (incl. bundle) but do not ship
       #     to the single live script. Idempotent: re-deploys overwrite the same script_id. ---
@@ -75,3 +123,19 @@ jobs:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
           file: api/dist/main.js
+
+      # The deploy step above succeeds whether or not the bundle can boot. This is the step that proves
+      # it serves. It polls the DEVICE-FACING origin — not the script's bunny hostname, which would go
+      # green while DNS, the certificate or the pull zone were broken (and which CI cannot discover
+      # anyway: 401). It retries only causes time can fix and fails at once on the rest.
+      - name: Probe the deployed script
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # The origin comes from the RESOLVED deployment, never restated here — a literal in this file
+          # would be a copy no guard inspects, and if DNS moved the probe would go green against a host
+          # nobody serves. There is deliberately NO fallback: an unset domain makes probe.ts refuse to
+          # run (both arguments are required) rather than guess.
+          DOMAIN=$(sed -n 's/^domain=//p' build/deployment.properties)
+          cd api
+          deno run --allow-net src/scripts/probe.ts \
+            --origin="https://$DOMAIN" --sha="${{ github.sha }}"

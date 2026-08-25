@@ -1,6 +1,41 @@
 // Shared build configuration consumed by iosApp.xcodeproj.
-APP_NAME = SnapSync
-BUNDLE_ID = app.snapsync
+//
+// EVERY VALUE THAT VARIES now lives in the GENERATED fragment included below, rendered from the resolved
+// deployment by `scripts/resolve-deployment.py` (capability `deployment-configuration`):
+//
+//   APP_NAME  BUNDLE_ID  TEAM_ID          — Apple identity
+//   ASSOCIATED_DOMAIN  BACKGROUND_UPLOAD_URL_BASE
+//                                          — the device-facing domain, one value shared with the app's
+//                                            LINK_ORIGIN, the AASA the backend serves, and the site
+//   APS_ENVIRONMENT  APNS_ENV  SENTRY_ENVIRONMENT  SENTRY_DSN
+//                                          — all DERIVED from one `channel` discriminator, so the three
+//                                            environments can no longer disagree (they previously had to
+//                                            agree with nothing but a comment saying so), and the DSN is
+//                                            emitted only for a distributed build
+//
+// WHY GENERATED RATHER THAN GUARDED. This file used to hold `ASSOCIATED_DOMAIN` and
+// `BACKGROUND_UPLOAD_URL_BASE` as literals, and the :test:architecture guard checked only the first —
+// the DEVICE-FACING UPLOAD HOST was pinned by nothing at all. `BUNDLE_ID` and `TEAM_ID` likewise
+// duplicated the backend's copies unchecked, while composing the App Attest app id and the AASA
+// `appIDs`, where drift fails every attestation and stops every universal link matching, silently.
+// Guards are opt-in and cover what someone remembered; generation is total.
+//
+// The include is NOT optional (`#include?`), deliberately: a missing fragment must be a BUILD ERROR, not
+// a silent fall-through to stale values. Run the resolver before building —
+// `python3 scripts/resolve-deployment.py prod` — which `ios.yml` does before it archives, and which
+// `./gradlew` does at configuration time for the framework build.
+//
+// Retargeting a development build at a different backend is therefore selecting a different DEPLOYMENT
+// (`python3 scripts/resolve-deployment.py <name>`), not overriding a host string on the xcodebuild line:
+// the one fragment feeds BOTH targets' Info.plists, so a single selection covers the app and the
+// background-upload extension together. The resulting host must be HTTPS — default ATS (HTTPS-only)
+// applies and no NSAllowsLocalNetworking exception ships, so a baked `http://` host fails silently on
+// device. (The `/api/v1` prefix is folded into the rendered upload base: every device client
+// interpolates `$base/…` from that one value, so uploads, event creation, listings, enrollment, leave,
+// directory, device config, notify, push and attest all target the versioned prefix at once. The event
+// link's separate LINK_ORIGIN carries no prefix.)
+#include "Deployment.xcconfig"
+
 // Public version (CFBundleShortVersionString), inherited by BOTH the app and the background-upload
 // extension targets (this is the project-level base config; neither target pins a target-level
 // MARKETING_VERSION any more). This value is the version FLOOR, two-part `X.Y`, seeded at 0.1. It is
@@ -13,61 +48,18 @@ BUNDLE_ID = app.snapsync
 // reach only the internal TestFlight group (no Beta App Review at any version), and the App Store release
 // channel (ios-appstore-release / .github/workflows/ios-appstore-promote.yml) PROMOTES an existing build
 // and derives the store version FROM it — it never overrides MARKETING_VERSION and never builds.
+//
+// DELIBERATELY NOT in the generated fragment: the floor is RELEASE POLICY, not a deployment fact and not
+// a build-channel fact. Every deployment ships the same floor, and moving it into the resolver would put
+// release policy behind a generator for no gain.
 // ⚠️ Do NOT set the Version field in Xcode's target → General tab: Xcode would write a target-level
 // MARKETING_VERSION back into project.pbxproj, shadowing this value again.
 MARKETING_VERSION = 0.1
-// Apple Team ID — drives DEVELOPMENT_TEAM for signed device/TestFlight builds.
-// Not a secret (visible in any shipped IPA); the simulator gate ignores it (CODE_SIGNING_ALLOWED=NO).
-TEAM_ID = E9Z8BADH58
+
 // Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (event-link), the App
 // Group group.app.snapsync (the background-upload extension's shared ledger container), and the
-// associated domain for the event link (below). Keychain groups need no portal registration; the App
-// Group and Associated Domains DO — each must be registered in the Developer portal and enabled on the
-// app.snapsync App ID, or signed device/TestFlight builds fail to provision (see the
-// ios-background-upload change, task 2.x). The simulator gate ignores signing.
+// associated domain for the event link (from the fragment above). Keychain groups need no portal
+// registration; the App Group and Associated Domains DO — each must be registered in the Developer
+// portal and enabled on the app.snapsync App ID, or signed device/TestFlight builds fail to provision
+// (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
-// The event link's associated domain (capability `event-link`), consumed by the app's
-// com.apple.developer.associated-domains entitlement. The host MUST match `snapsync.domain` in
-// gradle.properties (which generates the app's LINK_ORIGIN) and the AASA the backend serves from its
-// own constant — nothing in the build can reach `api/`, so a :test:architecture guard asserts all
-// of them agree. Drift is SILENT: iOS simply declines to match the link and every invite opens Safari,
-// which looks exactly like a recipient who never installed the app.
-// Plain `applinks:` deliberately — no `?mode=developer` dev/prod split (unlike APS_ENVIRONMENT below):
-// Apple's cached copy is directly readable at
-// https://app-site-association.cdn-apple.com/a/v1/<domain>, so CDN staleness is one curl away from
-// being diagnosed rather than an invisible multi-hour wait.
-ASSOCIATED_DOMAIN = applinks:snapsync.stho.net
-// The compile-time upload host (PhotoKit forces BackgroundUploadURLBase to be baked, not runtime).
-// This is the SINGLE SOURCE of the deployed device-facing host: `snapsync.stho.net`, a custom domain
-// WE control via Bunny DNS, CNAME'd to the bunny pull zone fronting the Edge Script. Because we own the
-// name, swapping the backend runtime is a DNS repoint — NOT a new build — so this literal MUST stay
-// a domain we control, never a runtime-provider vanity host. (That property is what made retiring Deno
-// Deploy a DNS flip instead of a forced TestFlight round; see openspec/specs/backend-deployment.)
-// A plain *local* Xcode build and every
-// plain push/TestFlight build target it (CI does NOT restate the literal — it overrides only when a
-// workflow_dispatch `upload_host` is supplied, which must be HTTPS). Must be HTTPS: default ATS
-// (HTTPS-only) applies — no NSAllowsLocalNetworking exception ships. The `$()` splits the `//` so
-// xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
-// The trailing `/api/v1` is the VERSIONED API PREFIX (capability `backend-deployment`): every device
-// client interpolates `$base/…` from this one value, so folding the prefix in here targets `/api/v1` for
-// uploads, event creation, listings, enrollment, leave, directory, device config, notify, push, and
-// attest at once. The backend also serves the BARE paths as a deprecated grace alias, so an installed app
-// baked WITHOUT the prefix keeps working. (The event link's separate LINK_ORIGIN carries no prefix. A
-// workflow_dispatch `upload_host` override that points at a custom rig should include `/api/v1` too, or it
-// exercises only the bare alias.)
-BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stho.net/api/v1
-// APNs environment (capability `push-registration`). APS_ENVIRONMENT drives the aps-environment
-// entitlement; APNS_ENV is baked into Info.plist and read by the app so its device config reports which
-// APNs host the token belongs to. They MUST agree: `development`+`sandbox` for a plain local/dev build
-// (the sideload loop uses the APNs sandbox), `production`+`production` for TestFlight/App Store. CI
-// overrides both for a distribution build (as it can override the upload host); a plain build stays dev.
-APS_ENVIRONMENT = development
-APNS_ENV = sandbox
-// Crash reporting (capability `crash-reporting`). Both values are baked into BOTH targets'
-// Info.plists and read by the CrashReporting adapter. The DSN default is EMPTY on purpose —
-// absence is the off-switch (no SDK starts, no connection opens); only a CI Release archive
-// injects the real value from the SENTRY_DSN secret (capability `ios-testflight-delivery`),
-// alongside SENTRY_ENVIRONMENT=production. A dev build that deliberately injects a DSN (the
-// on-device verification loop) keeps `development` here and reports honestly.
-SENTRY_DSN =
-SENTRY_ENVIRONMENT = development

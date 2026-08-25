@@ -1,5 +1,5 @@
 {
   "name": "SnapSync Photos",
   "subtitle": "Group photos, shared instantly",
-  "privacyPolicyUrl": "https://snapsync.stho.net/#privacy"
+  "privacyPolicyUrl": "https://{{domain}}/#privacy"
 }
