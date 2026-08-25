@@ -392,8 +392,13 @@ because every one fails instantly. The attempt was made anyway — downloads kic
 seconds later, 90 s of polling — and the app never relaunched and `handleBackgroundUrlSession` never
 fired. That negative is **doubly weak** and must not be read as "the OS does not relaunch a terminated
 app": under this repo's own reading rule a negative is suggestive at best, and here the *precondition*
-was never established — there were no pending background events to relaunch for. The property stays open
-and is device-only until something can hold a transfer open on a simulator.
+was never established — there were no pending background events to relaunch for.
+
+**And the vendor says the same, which is what actually settles it.** Quinn's pinned *Testing Background
+Session Code* states **"Simulator may not accurately simulate app suspend and resume"** (r. 16532261) and
+recommends **"Test on a real device, not in Simulator"**. Suspend/resume is precisely the mechanism this
+measurement depends on, so the property is **device-only by vendor guidance**, not merely unmeasured by
+us. It stays open, and #5–#7 must not build a scenario on it.
 
 **Noted, not owned:** the two background sessions are configured asymmetrically. `IosDownloadTransport`
 sets `discretionary = false` and `sessionSendsLaunchEvents = true` explicitly; `IosUrlSessionUploadPlatform`
@@ -490,6 +495,26 @@ target that cannot run on one. Rollback is reverting the commit.
   Getting from "unknown error" to `NSURLErrorDomain/-1` needed a rebuild, because the transport logged
   only `localizedDescription` — which iOS renders as the literal string "unknown error". The log line now
   carries the domain and code, so the next person does not pay that cost.
+
+  **Why it fails (researched 2026-08-25; consistent-with, not proven).** Background transfers are not
+  performed in the app's process: `URLSession` hands them to **`nsurlsessiond`**, a system daemon, over
+  XPC. That relationship is where the Simulator is unreliable, and the reports are numerous and
+  simulator-specific — `NSCocoaErrorDomain 4099` *"The connection to service on pid 0 named
+  com.apple.nsurlsessiond was invalidated"* (aws-sdk-ios #3083, on Simulator, working on device), and
+  `-997` *"Lost connection to background transfer service"* on Simulator. Our `-1` is a third, unhelpful
+  face of the same class: the task is created and completes, but nothing transfers.
+
+  This is **consistent with** those reports rather than proven to be them — no source found names
+  `NSURLErrorUnknown` for this case, and the daemon's own error was never observed. What would settle it
+  is the Simulator's **system log** during an attempt (`xcrun simctl spawn <dev> log stream --predicate
+  'process == "nsurlsessiond"'`), which was not captured before the session closed. Named here rather
+  than guessed at.
+
+  Apple's own guidance already points the same way and is the part that actually binds: Quinn's pinned
+  *Testing Background Session Code* says **"Test on a real device, not in Simulator"** and that
+  **"Simulator may not accurately simulate app suspend and resume"** (r. 16532261). Notably it does
+  **not** say background sessions are unsupported there — which matches what we measured: the session
+  runs, and the transfers do not.
 - ~~**Does a signed simulator build route universal links?**~~ **SETTLED, 2026-08-25 — no, and it cannot.**
   The suspicion in the last sentence of this question was the right one: an unprovisioned
   `associated-domains` makes the app un-launchable exactly as `keychain-access-groups` does
