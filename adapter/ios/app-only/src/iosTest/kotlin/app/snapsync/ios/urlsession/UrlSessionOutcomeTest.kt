@@ -79,43 +79,47 @@ class UrlSessionOutcomeTest {
         )
     }
 
-    // ---- strandedKeys ----------------------------------------------------------------------------
+    // ---- strandedKeys ------------------------------------------------------------------------------
 
     /**
-     * The recovery rule for a transfer lost to process death: `REQUESTED` in the ledger, no live task,
-     * no completion this round. Without it the row stays `REQUESTED` forever, the engine treats it as
-     * in-flight and never re-issues it, and the photo is abandoned with no error anywhere.
+     * The recovery rule for a transfer the OS dropped: `REQUESTED` in the ledger, with no live task.
+     * Without it the row stays `REQUESTED` forever, the engine treats it as in-flight and never re-issues
+     * it, and the photo is abandoned with no error anywhere.
      */
     @Test
-    fun `a requested key with no live task and no completion is stranded`() {
+    fun `a requested key with no live task is stranded`() {
         assertEquals(
             listOf("lost.heic"),
-            strandedKeys(
-                pending = setOf("lost.heic", "running.heic", "just-done.heic"),
-                live = setOf("running.heic"),
-                drained = setOf("just-done.heic"),
-            ),
+            strandedKeys(pending = setOf("lost.heic", "running.heic"), live = setOf("running.heic")),
         )
     }
 
     @Test
-    fun `nothing is stranded when every pending key is accounted for`() {
+    fun `nothing is stranded when every requested key still has a task`() {
         assertEquals(
             emptyList<String>(),
-            strandedKeys(
-                pending = setOf("a.heic", "b.heic"),
-                live = setOf("a.heic"),
-                drained = setOf("b.heic"),
-            ),
+            strandedKeys(pending = setOf("a.heic", "b.heic"), live = setOf("a.heic", "b.heic")),
         )
-        assertEquals(emptyList<String>(), strandedKeys(pending = emptySet(), live = setOf("a.heic"), drained = emptySet()))
+        assertEquals(emptyList<String>(), strandedKeys(pending = emptySet(), live = setOf("a.heic")))
     }
 
     @Test
-    fun `a live or drained key that is not pending is never surfaced`() {
+    fun `a live key that is not requested is never surfaced`() {
+        assertEquals(emptyList<String>(), strandedKeys(pending = emptySet(), live = setOf("x.heic")))
+    }
+
+    /**
+     * The candidate set is what keeps a settled row out, and that is the caller's contract to honour: this
+     * function subtracts live tasks and nothing else, so handing it a `FAILED` or `UPLOADED` key would
+     * surface it as lost. The narrowing is pinned where the read happens — `LedgerStoreContract`'s
+     * "requestedKeys is REQUESTED only" — because that is where it can actually be got wrong.
+     */
+    @Test
+    fun `whatever is handed in as pending is taken at face value`() {
         assertEquals(
-            emptyList<String>(),
-            strandedKeys(pending = emptySet(), live = setOf("x.heic"), drained = setOf("y.heic")),
+            listOf("settled.heic"),
+            strandedKeys(pending = setOf("settled.heic"), live = emptySet()),
+            "no state filtering happens here — the caller must hand in REQUESTED keys only",
         )
     }
 }

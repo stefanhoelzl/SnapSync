@@ -33,9 +33,8 @@ class SelectionScopedTransferTest {
     private class RecordingDelegate : BackgroundTransfer {
         var discoverCalls = 0
         override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList()
-        override suspend fun fetchAckJobs(): List<PlatformUploadJob> = emptyList()
+        override suspend fun drainTerminals(): List<PlatformUploadJob> = emptyList()
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) = Unit
-        override suspend fun acknowledge(job: PlatformUploadJob) = Unit
         override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
             discoverCalls++
             return Discovery(emptyList(), byteArrayOf(7))

@@ -351,7 +351,9 @@ gated in `./gradlew build`; a violation is a red build, not a review note.
 - **State and authority** — no global mutable state in `:domain`, ever; instance state only as
   derived caches or coordination primitives; authority behind ports (kill-test: after
   kill+relaunch, every fact recoverable via ports, keyed by identifiers the external system
-  persisted). Which thread a port call runs on is NOT the impl's concern — see the lane law below.
+  persisted — and that binds **port implementations too**, which otherwise satisfy it vacuously). An
+  entry point receiving a delivery the platform makes **once** persists it **before returning**, and
+  cites the proof that it is once-only. Which thread a port call runs on is NOT the impl's concern — see the lane law below.
 - **Dispatcher lanes are fixed by the composition** — three lanes, each with a purpose: **main** is
   reserved for platform UI and carries nothing else; **`Dispatchers.Default`** carries presentation-state
   reduction; the **composition lane** — a dispatcher of the composition's own, one dedicated thread —

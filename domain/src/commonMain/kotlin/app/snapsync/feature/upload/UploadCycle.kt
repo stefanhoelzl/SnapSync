@@ -4,11 +4,11 @@ import app.snapsync.ports.CreateResult
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.DiscoveryStore
-import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 
 import app.snapsync.model.LedgerState
+import app.snapsync.model.isDone
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.Resource
 import app.snapsync.model.SyncDecision
@@ -213,9 +213,13 @@ class UploadCycle(
         // the notify is already conditioned on >= 1 real completion, and an empty manifest is already what
         // a contributing membership with nothing in range publishes.
         if (!policy.contributes) {
-            settleTerminalJobs(engine)
-            // After the settle, so any drained terminal outcome is durable before the projection reads the
-            // ledger. Suppressed if the reconcile deferred — see [writeDeviceManifest].
+            // Drains and settles with the platform, and NOTHING else. No promotion: that places in the
+            // album and gates the notify, which a non-contributor owes nobody. Rows the platform recorded
+            // UPLOADED stay that way — invisible to every `absent`-and-state-scoped read, and reconciled
+            // from the device's stored-file listing on a re-join.
+            recreateRetrySpent(engine)
+            // After the settle, so any terminal outcome the platform recorded is durable before the
+            // projection reads the ledger. Suppressed if the reconcile deferred — see [writeDeviceManifest].
             writeDeviceManifest(eventId, policy, ledgerSettled = mayUpload)
             log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
             return CycleResult.SKIPPED
@@ -248,19 +252,12 @@ class UploadCycle(
         // Phase 2 — terminal jobs, in its usual position for a contributing membership: AFTER the
         // reconcile has settled, so the rows it writes are labelled with a membership the marker agrees
         // with (see the backfill note above). A declined cycle runs the same pass at the gate instead.
-        val settled = settleTerminalJobs(engine)
-        val capHit = settled.capHit
-        val completedThisCycle = settled.completedThisCycle
-        val completedAssetIds = settled.completedAssetIds
+        val capHit = recreateRetrySpent(engine)
 
-        // Event album (capability `event-album`): add this cycle's genuinely-new completions to the
-        // event album, best-effort, before any early return. Runs in whichever process ran the cycle.
-        // The opt-in arrived with the gate, so it is checked once here rather than inside each root's
-        // lambda — one of the four copies of that check.
-        if (membership.saveToAlbum && completedAssetIds.isNotEmpty()) {
-            runCatching { placeInAlbum(eventId, completedAssetIds) }
-                .onFailure { log.w(it) { "event-album placement failed this cycle" } }
-        }
+        // Phase 2b — place and promote what the platform recorded UPLOADED (capability `event-album`,
+        // `upload-completion-notify`). Before any early return, and before the manifest write below, so a
+        // promoted row is in the projection the notify wakes recipients to read.
+        val completedThisCycle = promoteUploaded(eventId, membership.saveToAlbum)
 
         if (capHit) return CycleResult.PROCESSING // cursor NOT advanced
 
@@ -420,12 +417,6 @@ class UploadCycle(
         return UploadJob(UploadRequest(url = "", headers = emptyMap(), resource = resource), entry?.attempt ?: 0)
     }
 
-    /** What a terminal-job pass produced, for the caller that needs it. */
-    private class Settlement(
-        val capHit: Boolean,
-        val completedThisCycle: Int,
-        val completedAssetIds: Set<String>,
-    )
 
     /**
      * Publish the device manifest for [eventId] under [policy] — or **suppress the write** when
@@ -471,55 +462,70 @@ class UploadCycle(
      * obligation is owed to the OS for jobs it already presented, and it does not depend on whether this
      * membership still contributes.
      *
-     * Creates no upload job for work not already in flight, writes no manifest, enumerates nothing, and
-     * touches no discovery cursor — which is what lets a declined cycle run it without taking anything
-     * the direction gate withholds. The only jobs it CAN create are replacements for retry-spent
-     * failures the OS handed back, which are continuations of work already begun.
+     * Terminal facts no longer arrive here. The platform records them itself, where the platform tells
+     * it, into a row that survives the process ([BackgroundTransfer.drainTerminals]); what comes back is
+     * only work the cycle must still do — a failure whose resource is still live, so it can be re-created
+     * now instead of waiting for a discovery pass to re-derive it.
+     *
+     * The engine is still the thing that decides: `UploadFailed` records `FAILED` at the incremented
+     * attempt and answers a freshly-minted request. That the row is already `FAILED` from the adapter's
+     * guarded write is harmless — the record is an idempotent upsert, and the attempt bump is exactly what
+     * a re-created job wants.
+     *
+     * Creates no job for work not already begun, writes no manifest, enumerates nothing, and touches no
+     * discovery cursor — which is what lets a direction-declined cycle run it. The only jobs it can create
+     * are replacements for failures the platform already tried.
      */
-    private suspend fun settleTerminalJobs(engine: SyncEngine): Settlement {
+    private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {
         var capHit = false
-        // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
-        // already-COMPLETED key do NOT count — they are not new work. Gates the notify fan-out.
-        var completedThisCycle = 0
-        // The `assetId`s (normalized) that genuinely completed this cycle — added to the event album
-        // (capability `event-album`) once the terminal-job pass finishes.
-        val completedAssetIds = mutableSetOf<String>()
-        for (job in platform.fetchAckJobs()) {
-            when {
-                job.state == PlatformJobState.SUCCEEDED -> {
-                    // Record COMPLETED only for a recoverable key: a blank/unrecoverable key would
-                    // reconstruct a phantom `assetId=""` row. Acknowledge regardless — never leave a
-                    // presented job un-acknowledged (the system errors 50008).
-                    if (job.key.isNotBlank()) {
-                        // Count only a GENUINELY-new completion: at-least-once delivery means the OS can
-                        // re-hand a job whose key is already COMPLETED — that duplicate must not fire a
-                        // spurious notify. Read the prior state before the (idempotent) engine write.
-                        val wasCompleted = ledger.entry(job.key)?.state == LedgerState.COMPLETED
-                        engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
-                        if (!wasCompleted) {
-                            completedThisCycle++
-                            completedAssetIds.add(assetIdFromUploadKey(job.key))
-                        }
-                    }
-                    platform.acknowledge(job)
-                }
-                ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
-                else -> {
-                    // Retry-spent failure: record FAILED, then re-create a fresh job — but only if the
-                    // resource is still available (nil for released jobs) and the cap is not yet hit.
-                    val retry = adjudicateFailure(engine, job)
-                    if (retry != null && job.data != null && !capHit) {
-                        when (platform.createJob(retry.job.request, retry.job.request.resource)) {
-                            CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.job))
-                            CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
-                            CreateResult.FAILED -> Unit // not created → no UploadStarted; job acked below
-                        }
-                    }
-                    platform.acknowledge(job) // always — never leave a presented job un-acknowledged
-                }
+        for (job in platform.drainTerminals()) {
+            // At-least-once: the platform can hand back a failure for a key that has since settled (its
+            // own guarded write already declined to touch it). Adjudicating anyway would drive the engine
+            // to record FAILED over a COMPLETED row and re-upload bytes that are stored — the failure
+            // this whole change exists to stop, arriving by a different door.
+            if (ledger.entry(job.key)?.state?.isDone == true) continue
+            val retry = adjudicateFailure(engine, job) ?: continue
+            if (job.data == null || capHit) continue
+            when (platform.createJob(retry.job.request, retry.job.request.resource)) {
+                CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.job))
+                CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
+                CreateResult.FAILED -> Unit // not created → no UploadStarted
             }
         }
-        return Settlement(capHit, completedThisCycle, completedAssetIds)
+        return capHit
+    }
+
+    /**
+     * Phase 2b — the promotion pass, shared by both tiers.
+     *
+     * `UPLOADED` rows are the completions this cycle learns about: their bytes are stored, and what they
+     * still owe is the event-album placement and the completion notify. Place, then promote; the notify
+     * fires later, after the device-manifest write, because the manifest projects `COMPLETED` rows and a
+     * recipient woken before it lands would find a union that does not list these assets yet. That is why
+     * the promotion happens **here** rather than after the manifest: promoting first is what puts them in
+     * it.
+     *
+     * Promotion does not wait on the placement succeeding. Both effects are best-effort, as they were
+     * before, and gating the row on them would invent a permanently-stuck state — `UPLOADED` counts as
+     * pending everywhere, so a device whose album or notify kept failing would read "uploading" forever
+     * over photos that are already stored.
+     *
+     * A repeat placement after a crash between the two is free: `addAssets` on an asset already in the
+     * collection is a no-op (measured, simulator, iOS 26.5 — `changes/fix-lost-upload-acks`).
+     *
+     * Returns how many rows were promoted, which is what gates the notify.
+     */
+    private suspend fun promoteUploaded(eventId: String, saveToAlbum: Boolean): Int {
+        val rows = ledger.uploadedRows()
+        if (rows.isEmpty()) return 0
+        if (saveToAlbum) {
+            val assetIds = rows.mapTo(mutableSetOf()) { assetIdFromUploadKey(it.key) }
+            runCatching { placeInAlbum(eventId, assetIds) }
+                .onFailure { log.w(it) { "event-album placement failed this cycle" } }
+        }
+        rows.forEach { ledger.promote(it.key) }
+        log.i { "promoted ${rows.size} uploaded row(s) to COMPLETED" }
+        return rows.size
     }
 
 }

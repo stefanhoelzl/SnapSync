@@ -131,8 +131,11 @@ class UrlSessionUploadController(
         discovery = discovery,
         appGroup = LEDGER_APP_GROUP,
         sessionIdentifier = SESSION_IDENTIFIER,
-        // Precise stranded-row reconciliation: the ledger's current REQUESTED keys.
-        pendingKeys = { ledgerStore.pendingResources().map { it.key }.toSet() },
+        // The adapter records terminal outcomes itself, the moment iOS delivers one, so it holds the
+        // store rather than a reader lambda. The stranded reconciliation reads REQUESTED rows through it
+        // too — and REQUESTED is exact, not shorthand for "the backlog": it used to read the whole
+        // non-settled set, so every FAILED row was re-reported as newly stranded on every cycle.
+        ledger = ledgerStore,
         // A slot just freed → top up (single-flight in the pump serialises it).
         onTerminal = { scope.launch { pump.onUploadCompleted() } },
         // The session delivered every event it had. Same lazy-capture shape as `onTerminal`: the

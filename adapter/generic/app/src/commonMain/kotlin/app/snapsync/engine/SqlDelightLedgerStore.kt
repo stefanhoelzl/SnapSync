@@ -4,6 +4,7 @@ import app.snapsync.model.LedgerAggregates
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.DONE_STATES
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
 
@@ -62,11 +63,13 @@ class SqlDelightLedgerStore(
     }
 
     override suspend fun completedManifestRows(): List<LedgerEntry> =
-        queries.selectCompletedManifestRows { key, assetId, creationDate, role, contentType, filename ->
+        // `state` is read from the row rather than asserted: the predicate now binds DONE_STATES, so
+        // hardcoding COMPLETED here would become a lie the moment a second settled state exists.
+        queries.selectCompletedManifestRows(DONE_STATES) { key, assetId, state, creationDate, role, contentType, filename ->
             LedgerEntry(
                 key = key,
                 assetId = assetId,
-                state = LedgerState.COMPLETED,
+                state = state,
                 attempt = 0,
                 eventId = "", // provenance is irrelevant to the projection; the window decides
                 creationDate = creationDate,
@@ -89,12 +92,54 @@ class SqlDelightLedgerStore(
     }
 
     override suspend fun aggregates(): LedgerAggregates =
-        queries.aggregates { pending, completed ->
+        queries.aggregates(DONE_STATES) { pending, completed ->
             LedgerAggregates(pending.toInt(), completed.toInt())
         }.executeAsOne()
 
     override suspend fun pendingResources(): List<PendingResource> =
-        queries.selectPending { assetId, key -> PendingResource(assetId, key) }.executeAsList()
+        queries.selectPending(DONE_STATES) { assetId, key -> PendingResource(assetId, key) }.executeAsList()
+
+    /**
+     * The guarded terminal write. One `UPDATE` and one `changes()` read in ONE transaction — asking the
+     * database what it just did, in the same transaction, is what makes "did this apply?" answerable
+     * against a writer that takes no lock. Copied deliberately from `SqlDelightDownloadStore.applied`,
+     * which solved the identical problem for PhotoKit's change and completion blocks.
+     *
+     * Non-suspending, and it dings only when it applied: a write that matched nothing changed no truth,
+     * so waking every watcher to re-read an unchanged store would be noise.
+     */
+    override fun markTerminal(key: String, state: LedgerState): Boolean {
+        val applied = queries.transactionWithResult {
+            queries.markTerminal(state, key)
+            queries.changedRows().executeAsOne() > 0L
+        }
+        if (applied) dings.tryEmit(Unit)
+        return applied
+    }
+
+    override suspend fun uploadedRows(): List<LedgerEntry> =
+        queries.selectUploaded { key, assetId, state, attempt, eventId, creationDate, role, contentType, filename, absent ->
+            LedgerEntry(
+                key, assetId, state, attempt.toInt(), eventId,
+                creationDate = creationDate,
+                role = roleOrNull(role),
+                contentType = contentType,
+                originalFilename = filename,
+                absent = absent != 0L, // stored as INTEGER, exactly like `get`'s mapper above
+            )
+        }.executeAsList()
+
+    override suspend fun promoteUploaded(key: String): Boolean {
+        val applied = queries.transactionWithResult {
+            queries.promoteUploaded(key)
+            queries.changedRows().executeAsOne() > 0L
+        }
+        if (applied) dings.tryEmit(Unit)
+        return applied
+    }
+
+    override suspend fun requestedKeys(): Set<String> =
+        queries.selectRequestedKeys().executeAsList().toSet()
 
     override suspend fun clear() {
         queries.deleteAll()

@@ -2,7 +2,6 @@ package app.snapsync.ios.upload
 
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CreateResult
-import app.snapsync.ports.PlatformJobState
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
@@ -52,11 +51,11 @@ class PhotoKitJobMappingTest {
 
     @Test
     fun `every declared job state maps to its platform state`() {
-        assertEquals(PlatformJobState.REGISTERED, photoKitJobState(PHAssetResourceUploadJobStateRegistered))
-        assertEquals(PlatformJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
-        assertEquals(PlatformJobState.FAILED, photoKitJobState(PHAssetResourceUploadJobStateFailed))
-        assertEquals(PlatformJobState.SUCCEEDED, photoKitJobState(PHAssetResourceUploadJobStateSucceeded))
-        assertEquals(PlatformJobState.CANCELLED, photoKitJobState(PHAssetResourceUploadJobStateCancelled))
+        assertEquals(PhotoKitJobState.REGISTERED, photoKitJobState(PHAssetResourceUploadJobStateRegistered))
+        assertEquals(PhotoKitJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
+        assertEquals(PhotoKitJobState.FAILED, photoKitJobState(PHAssetResourceUploadJobStateFailed))
+        assertEquals(PhotoKitJobState.SUCCEEDED, photoKitJobState(PHAssetResourceUploadJobStateSucceeded))
+        assertEquals(PhotoKitJobState.CANCELLED, photoKitJobState(PHAssetResourceUploadJobStateCancelled))
     }
 
     /**
@@ -67,8 +66,8 @@ class PhotoKitJobMappingTest {
      */
     @Test
     fun `an undeclared state falls back to pending rather than being mistaken for a known state`() {
-        assertEquals(PlatformJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
-        assertEquals(PlatformJobState.PENDING, photoKitJobState(9_999L))
+        assertEquals(PhotoKitJobState.PENDING, photoKitJobState(PHAssetResourceUploadJobStatePending))
+        assertEquals(PhotoKitJobState.PENDING, photoKitJobState(9_999L))
     }
 
     // ---- classifyPhotoKitJob ---------------------------------------------------------------------
@@ -82,7 +81,7 @@ class PhotoKitJobMappingTest {
         )
         val emit = assertIs<FetchedJob.Emit>(classified)
         assertEquals("ABC-123-primary.heic", emit.key)
-        assertEquals(PlatformJobState.SUCCEEDED, emit.state)
+        assertEquals(PhotoKitJobState.SUCCEEDED, emit.state)
         assertEquals(null, emit.error)
     }
 
@@ -114,7 +113,7 @@ class PhotoKitJobMappingTest {
             error = nsError("PHPhotosErrorDomain", 3164L),
         )
         val emit = assertIs<FetchedJob.Emit>(classified)
-        assertEquals(PlatformJobState.FAILED, emit.state)
+        assertEquals(PhotoKitJobState.FAILED, emit.state)
         assertEquals(UploadError.Unknown("PHPhotosErrorDomain:3164"), emit.error)
     }
 

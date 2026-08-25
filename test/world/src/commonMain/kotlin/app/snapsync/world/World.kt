@@ -110,6 +110,14 @@ class World(
     val scope: CoroutineScope,
     val ownDeviceId: String = "00000000-0000-4000-9000-0000000000a1",
     val host: String = "https://world.edge",
+    /**
+     * The ledger this world composes over. Injectable for ONE reason: building a second world over the
+     * same backend is how a **process boundary** is expressed here. Everything else a world holds is
+     * in-memory and dies with it — which is exactly what a relaunch does to a device — so passing the
+     * ledger on is what makes "did this fact survive the process?" an assertable question rather than a
+     * device-only one (`changes/fix-lost-upload-acks`).
+     */
+    val ledgerBackend: InMemoryLedgerStore = InMemoryLedgerStore(),
 ) {
 
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
@@ -120,10 +128,12 @@ class World(
     val gallery: WorldGallery = WorldGallery()
     /** The one read seam, straight off the world-owned cell — no enumerator composition to stand up. */
     val enumerator: CandidateSource = gallery.source
-    val ledgerBackend: InMemoryLedgerStore = InMemoryLedgerStore()
     val discoveryStore: InMemoryDiscoveryStore = InMemoryDiscoveryStore()
     val downloadStore: RecordingDownloadStore = RecordingDownloadStore(InMemoryDownloadStore())
-    val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(store, ownDeviceId, enumerator)
+    // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
+    // as both device adapters do, so the world exercises the real two-phase completion.
+    val platform: FakeBackgroundTransfer =
+        FakeBackgroundTransfer(store, ownDeviceId, enumerator, ledgerBackend)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.

@@ -105,12 +105,52 @@ enum class LedgerState {
     /** Work was answered for this key — a hope; the engine cannot prove it was executed. */
     REQUESTED,
 
+    /**
+     * The bytes are durably stored, and the work a completion triggers has not run yet.
+     *
+     * Written by whichever party the platform tells that the upload terminated, **at the moment it is
+     * told** — the `URLSession` delegate on the app-driven tier, the adapter's drain on the PhotoKit one —
+     * and promoted to [COMPLETED] by the upload cycle once the event-album placement and the completion
+     * notify have run. It exists because iOS delivers a background-`URLSession` completion exactly once
+     * (`URLSessionTask.State.completed`: *"the task's delegate receives no further callbacks"*), so a fact
+     * held in memory for a later cycle to collect is unrecoverable after process death — and the row, still
+     * `REQUESTED` with no live task, then reads as lost and re-uploads bytes that already landed.
+     *
+     * It is **not** a done state ([isDone]): the bytes are safe but the photo has not been announced, so it
+     * counts toward the backlog everywhere and stays out of the device-manifest projection until promoted.
+     *
+     * Decision record: `changes/fix-lost-upload-acks` (D1, D3).
+     */
+    UPLOADED,
+
     /** The platform observed and reported a successful upload — a fact about the world. */
     COMPLETED,
 
     /** The platform reported a failed attempt; a retry was answered alongside. */
     FAILED,
 }
+
+/**
+ * Whether a row in this state is **settled** — nothing further is owed for its key.
+ *
+ * The single decision behind every state-scoped ledger read. The backlog read, the aggregate counts and
+ * the device-manifest projection all take [DONE_STATES] as a bound parameter rather than comparing `state`
+ * to a literal, so adding a fourth state cannot land silently on one side of a query: this `when` has no
+ * `else` and stops compiling until the new value is classified.
+ *
+ * That is not hypothetical caution. Three `.sq` predicates read `state != 'COMPLETED'` / `state =
+ * 'COMPLETED'`, and while the Kotlin readers fail loudly on a new enum value (`SyncEngine`'s `when` has no
+ * `else` either), those three would simply have filed [UPLOADED] as outstanding-and-unpromotable with no
+ * error anywhere.
+ */
+val LedgerState.isDone: Boolean
+    get() = when (this) {
+        LedgerState.COMPLETED -> true
+        LedgerState.UPLOADED, LedgerState.REQUESTED, LedgerState.FAILED -> false
+    }
+
+/** The settled states, bound into every state-scoped storage read. See [isDone]. */
+val DONE_STATES: List<LedgerState> = LedgerState.entries.filter { it.isDone }
 
 /**
  * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not

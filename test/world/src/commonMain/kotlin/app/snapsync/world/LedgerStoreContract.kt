@@ -16,6 +16,8 @@ import app.snapsync.model.PendingResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -460,6 +462,102 @@ abstract class LedgerStoreContract {
         backend.put(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 0, eventId = "E1"))
 
         assertEquals(listOf("done.heic"), backend.completedManifestRows().map { it.key })
+    }
+
+    // ── The guarded terminal write, the UPLOADED state, and the narrow reads ────────────────────
+
+    @Test
+    fun `markTerminal flips a REQUESTED row and says it applied`() = runTest {
+        val backend = createBackend()
+        LedgerWriter(backend).recordRequested(res("a.heic", "A"), attempt = 2, eventId = "E1")
+
+        assertTrue(backend.markTerminal("a.heic", LedgerState.UPLOADED), "it applied")
+        val row = backend.get("a.heic")!!
+        assertEquals(LedgerState.UPLOADED, row.state)
+        // Every other column is the statement's business to preserve, not the caller's: the party that
+        // records a terminal outcome is a platform callback holding nothing but the key.
+        assertEquals("A", row.assetId)
+        assertEquals(2, row.attempt)
+        assertEquals("E1", row.eventId)
+        assertEquals(CREATION_DATE, row.creationDate, "the manifest detail survives the transition")
+    }
+
+    @Test
+    fun `markTerminal refuses a row that is not REQUESTED`() = runTest {
+        val backend = createBackend()
+        LedgerWriter(backend).recordCompleted(res("a.heic", "A"), attempt = 0, eventId = "E1")
+
+        assertFalse(backend.markTerminal("a.heic", LedgerState.FAILED), "it did not apply")
+        assertEquals(LedgerState.COMPLETED, backend.get("a.heic")!!.state, "and clobbered nothing")
+    }
+
+    @Test
+    fun `markTerminal on an absent key writes nothing and says so`() = runTest {
+        val backend = createBackend()
+
+        assertFalse(backend.markTerminal("ghost.heic", LedgerState.UPLOADED))
+        assertNull(backend.get("ghost.heic"), "a guarded write never resurrects a pruned row")
+    }
+
+    @Test
+    fun `an applied markTerminal dings an active changes collector`() = runTest {
+        val backend = createBackend()
+        LedgerWriter(backend).recordRequested(res("a.heic", "A"), attempt = 0, eventId = "E1")
+        var dings = 0
+        val job = launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+        runCurrent()
+
+        backend.markTerminal("a.heic", LedgerState.UPLOADED)
+        runCurrent()
+
+        assertEquals(1, dings, "it changed the truth, so watchers must re-read it")
+        job.cancel()
+    }
+
+    @Test
+    fun `uploadedRows returns whole entries and only UPLOADED ones`() = runTest {
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordRequested(res("up.heic", "A"), attempt = 1, eventId = "E1")
+        backend.markTerminal("up.heic", LedgerState.UPLOADED)
+        writer.recordRequested(res("flight.heic", "B"), attempt = 0, eventId = "E1")
+        writer.recordCompleted(res("done.heic", "C"), attempt = 0, eventId = "E1")
+        writer.recordFailed(res("bad.heic", "D"), attempt = 0, eventId = "E1")
+
+        val rows = backend.uploadedRows()
+        assertEquals(listOf("up.heic"), rows.map { it.key })
+        // Whole entries: the promotion pass needs assetId for the album and the detail for its write.
+        assertEquals("A", rows.single().assetId)
+        assertEquals(CREATION_DATE, rows.single().creationDate)
+    }
+
+    @Test
+    fun `requestedKeys is REQUESTED only - never the whole backlog`() = runTest {
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordRequested(res("flight.heic", "A"), attempt = 0, eventId = "E1")
+        writer.recordFailed(res("bad.heic", "B"), attempt = 0, eventId = "E1")
+        writer.recordCompleted(res("done.heic", "C"), attempt = 0, eventId = "E1")
+        writer.recordRequested(res("up.heic", "D"), attempt = 0, eventId = "E1")
+        backend.markTerminal("up.heic", LedgerState.UPLOADED)
+
+        // A FAILED row is already adjudicated and an UPLOADED row has landed; handing either to the
+        // stranded pass re-reports a loss that did not happen — and for UPLOADED, writes the fact away.
+        assertEquals(setOf("flight.heic"), backend.requestedKeys())
+    }
+
+    @Test
+    fun `an UPLOADED row is outstanding everywhere the bytes are not the question`() = runTest {
+        val backend = createBackend()
+        LedgerWriter(backend).recordRequested(res("up.heic", "A"), attempt = 0, eventId = "E1")
+        backend.markTerminal("up.heic", LedgerState.UPLOADED)
+
+        assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
+        assertEquals(listOf(PendingResource("A", "up.heic")), backend.pendingResources())
+        assertEquals(
+            emptyList(), backend.completedManifestRows(),
+            "and stays out of the manifest until promoted — the union must not offer an unannounced photo",
+        )
     }
 
     @Test

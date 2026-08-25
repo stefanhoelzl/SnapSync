@@ -5,9 +5,10 @@ import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ios.discovery.IosDiscovery
+import app.snapsync.model.LedgerState
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.PlatformJobState
+import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.logging.invocation
@@ -19,7 +20,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHTTPURLResponse
-import platform.Foundation.NSLock
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
 import platform.Foundation.NSURLSessionConfiguration
@@ -67,10 +67,13 @@ class IosUrlSessionUploadPlatform(
     private val discovery: IosDiscovery,
     private val appGroup: String,
     sessionIdentifier: String,
+    // The ledger, held directly. This adapter RECORDS: the party iOS tells that an upload terminated is
+    // this delegate, iOS tells it exactly once, and a fact parked in memory for a later cycle to collect
+    // does not survive the process. `markTerminal` is the guarded, non-suspending write that lets a
+    // completion callback record before it returns (`sync-ledger`). Recording through the store rather
+    // than a `LedgerWriter` is deliberate and narrow — see that spec's reader/writer split.
+    private val ledger: LedgerStore,
     private val cap: Int = 4,
-    // The ledger's current REQUESTED keys — used to reconcile stranded rows (a task lost across process
-    // death) precisely, instead of a blanket clear. Supplied by the composition root (which reads it).
-    private val pendingKeys: suspend () -> Set<String>,
     // Fired after each task reaches a terminal state — the composition root wires this to the pump's
     // `onUploadCompleted` (a slot just freed → top up).
     private val onTerminal: () -> Unit,
@@ -94,24 +97,16 @@ class IosUrlSessionUploadPlatform(
     // tier had exactly that defect, where every object that failed once was stored as
     // `application/octet-stream`). That tier recovers the value from the OS's stored request; this one
     // never hands the request away, so it simply keeps it.
-    private class InFlight(
-        val task: NSURLSessionUploadTask,
-        val resource: PHAssetResource?,
-        val fileUrl: NSURL,
-        val contentType: String,
-    )
-
-    private class Terminal(
-        val key: String,
-        val success: Boolean,
-        val error: UploadError?,
-        val resource: PHAssetResource?,
-        val contentType: String,
-    )
-
-    private val lock = NSLock()
-    private val inFlight = HashMap<String, InFlight>()
-    private val terminal = ArrayList<Terminal>()
+    // No in-flight registry and no terminal list. Every fact this adapter needs is recoverable without
+    // one: the staged file's path is a pure function of the key, the request's content type is a ledger
+    // column, and the live tasks are the session's own (`getAllTasks`). The download transport reached the
+    // same conclusion first — "the destination must be derivable from the description alone" — and the
+    // kill-test in `module-architecture` asks for exactly this: after a relaunch every fact recoverable
+    // through a port, keyed only by identifiers the external system persisted.
+    //
+    // It also fixes a cap that did not bind. `createJob` used to compare against an in-process count,
+    // which is EMPTY after a relaunch while `nsurlsessiond` still holds live tasks — so a relaunch could
+    // run twice the cap in parallel transfers.
 
     private val delegate = SessionDelegate(
         onComplete = ::recordTerminal,
@@ -187,7 +182,9 @@ class IosUrlSessionUploadPlatform(
             log.w { "createJob: resource payload is not a PHAssetResource — not creating" }
             return@invocation CreateResult.FAILED
         }
-        if (locked { inFlight.size } >= cap) return@invocation CreateResult.LIMIT_EXCEEDED
+        // The cap is measured against the SESSION's live tasks, not an in-process count — the OS owns
+        // the transfers and they outlive us, so this is the only count that binds across a relaunch.
+        if (liveTaskKeys().size >= cap) return@invocation CreateResult.LIMIT_EXCEEDED
 
         val fileUrl = stageResource(phResource, resource.filename) ?: run {
             log.w { "createJob: staging failed for ${resource.filename} — not creating" }
@@ -201,9 +198,6 @@ class IosUrlSessionUploadPlatform(
         val urlRequest = discovery.buildRequest(url, request)
         val task = session.uploadTaskWithRequest(urlRequest, fromFile = fileUrl)
         task.taskDescription = resource.filename // the ledger key — the only field present across the lifecycle
-        locked {
-            inFlight[resource.filename] = InFlight(task, phResource, fileUrl, request.contentTypeHeader())
-        }
         task.resume()
         return@invocation CreateResult.CREATED
     }
@@ -217,44 +211,59 @@ class IosUrlSessionUploadPlatform(
             Unit
         }
 
-    override suspend fun fetchAckJobs(): List<PlatformUploadJob> =
-        log.invocation("platform.fetchAckJobs", result = { "${it.size} job(s)" }) {
-        val drained = locked { ArrayList(terminal).also { terminal.clear() } }
-        val terminalJobs = drained.map {
-            PlatformUploadJob(
-                key = it.key,
-                contentType = it.contentType,
-                state = if (it.success) PlatformJobState.SUCCEEDED else PlatformJobState.FAILED,
-                error = it.error,
-                data = it.resource, // present → UploadCycle can recreate a failed job in-cycle
-                handle = Unit,
-            )
-        }
-        // Precise reconciliation (replaces blanket clearRequested): a REQUESTED key with no live task and
-        // no completion this round was lost (e.g. process death / user force-quit) — surface it FAILED so
-        // the ledger flips REQUESTED→FAILED and a later full enumeration re-uploads it (idempotent PUT).
-        val live = liveTaskKeys()
-        val drainedKeys = drained.mapTo(HashSet()) { it.key }
-        val stranded = strandedKeys(pending = pendingKeys(), live = live, drained = drainedKeys)
-        val strandedJobs = stranded.map {
-            log.i { "reconcile: stranded REQUESTED $it (no live task) — surfacing FAILED to re-upload" }
-            // A stranded key has NO surviving request — the process that created it is gone, which is what
-            // made it stranded — so there is no recorded media type to report, and the generic default is
-            // the honest answer rather than a guess. It is also never used to build an upload: this job
-            // carries `data = null`, so `UploadCycle` records FAILED and creates nothing, and the key is
-            // re-uploaded later from a fresh discovery that carries the real MIME. Stated here because the
-            // same placeholder one line above WAS load-bearing and silently mistyped every retried object.
-            PlatformUploadJob(it, STRANDED_CONTENT_TYPE, PlatformJobState.FAILED, UploadError.Unknown("stranded"), data = null, handle = Unit)
-        }
-        terminalJobs + strandedJobs
-    }
+    /** The staged file for a key — a pure function of it, so no process has to remember the path. */
+    private fun stagedFileFor(key: String): NSURL? = stagingDir?.URLByAppendingPathComponent(key)
 
-    override suspend fun acknowledge(job: PlatformUploadJob) =
-        log.invocation("platform.acknowledge", params = "key=${job.key}") {
-            val removed = locked { inFlight.remove(job.key) }
-            removed?.let { deleteFile(it.fileUrl) }
-            Unit
+    /**
+     * Nothing crosses this seam on this tier.
+     *
+     * A completion is recorded into the ledger by the delegate the moment iOS delivers it, so there is no
+     * terminal fact left to hand up; and a failure carries no live resource here, so there is nothing the
+     * cycle could re-create in-cycle either — the engine re-uploads a `FAILED` key from a later discovery.
+     * What this pass still owes is the **stranded reconciliation** below, which is bookkeeping about rows
+     * rather than a job for the caller. `acknowledge` is gone with it: the staged file is deleted where
+     * the transfer ends, which is also where it stops being usable.
+     */
+    override suspend fun drainTerminals(): List<PlatformUploadJob> =
+        log.invocation("platform.drainTerminals", result = { "${it.size} job(s)" }) {
+            reconcileStranded()
+            emptyList<PlatformUploadJob>()
         }
+
+    /**
+     * A `REQUESTED` row whose task the session no longer holds was lost — the OS dropped the transfer, or
+     * a force-quit cancelled it — and in both cases iOS delivers no completion at all, so nothing else
+     * will ever move that row. Record it `FAILED` so a later enumeration re-uploads it.
+     *
+     * Two things this deliberately does NOT do.
+     *
+     * It does not consider anything but `REQUESTED` rows. It used to be handed the whole non-settled
+     * backlog, so every `FAILED` row was re-reported as newly stranded on every cycle until it completed:
+     * a field log shows one key "stranded" twelve times inside a single process, seven within sixteen
+     * seconds. And now that `UPLOADED` exists, that same wide read would hand a freshly-uploaded row to
+     * this pass, which would write it back to `FAILED` — destroying the fact the delegate just made
+     * durable.
+     *
+     * It does not ask storage whether the bytes landed. That check (`ios-url-session-upload` required it;
+     * this adapter never implemented it) existed to compensate for a terminal outcome that was not
+     * recorded durably. With the outcome recorded when iOS delivers it, what is left here genuinely did
+     * not land, so a full per-device listing would buy a "no" — and a re-PUT is idempotent and cheaper.
+     *
+     * The write is the same guarded verb the delegate uses, so a row that reached `UPLOADED` between the
+     * read below and the write is never clobbered: the candidates are read first, the two are not atomic,
+     * and the guard — not the read — is what makes that safe.
+     */
+    private suspend fun reconcileStranded() {
+        val stranded = strandedKeys(pending = ledger.requestedKeys(), live = liveTaskKeys())
+        for (key in stranded) {
+            if (ledger.markTerminal(key, LedgerState.FAILED)) {
+                log.i { "reconcile: stranded REQUESTED $key (no live task) — recorded FAILED to re-upload" }
+            } else {
+                // Not silent: the row moved on under us, which is a different fact from "recorded".
+                log.i { "reconcile: stranded $key settled underneath this pass — left as it stands" }
+            }
+        }
+    }
 
     /**
      * Force the (lazy) background session to be adopted for this process — on a
@@ -265,14 +274,24 @@ class IosUrlSessionUploadPlatform(
         session // touching the lazy val instantiates + adopts the background session
     }
 
-    /** Cancel all in-flight transfers + clear staged files (on leave / disable / event switch). */
-    fun cancelAll() {
-        val entries = locked { val v = inFlight.values.toList(); inFlight.clear(); terminal.clear(); v }
-        entries.forEach { it.task.cancel(); deleteFile(it.fileUrl) }
+    /**
+     * Cancel all in-flight transfers + clear staged files (on leave / disable / event switch).
+     *
+     * Asks the SESSION which tasks exist rather than a registry of our own, so it also cancels transfers
+     * this process never started — the ones a relaunch inherited, which are exactly the ones a leave must
+     * stop. Ledger rows are deliberately untouched: a cancelled task delivers no completion, so its
+     * `REQUESTED` row is picked up by the stranded pass on the next cycle.
+     */
+    suspend fun cancelAll() {
+        liveTasks().forEach { task ->
+            task.cancel()
+            task.taskDescription?.let { key -> stagedFileFor(key)?.let(::deleteFile) }
+        }
     }
 
-    private fun cancelKey(key: String) {
-        locked { inFlight.remove(key) }?.let { it.task.cancel(); deleteFile(it.fileUrl) }
+    private suspend fun cancelKey(key: String) {
+        liveTasks().filter { it.taskDescription == key }.forEach { it.cancel() }
+        stagedFileFor(key)?.let(::deleteFile)
     }
 
     /**
@@ -293,19 +312,51 @@ class IosUrlSessionUploadPlatform(
         }
     }
 
-    // Called from the delegate (background queue) with the task's key + outcome; enriches with the
-    // registry's PHAssetResource (so a failed job can be recreated in-cycle) and wakes the pump.
+    /**
+     * Called from the delegate queue with the task's key + outcome: **record it durably, right here,
+     * before returning.**
+     *
+     * This is the whole fix. iOS delivers a background-`URLSession` completion exactly once —
+     * `URLSessionTask.State.completed` is documented as *"the task has completed (without being canceled),
+     * and the task's delegate receives no further callbacks"*, and `handleEventsForBackgroundURLSession`
+     * hands over only events still *waiting* to be processed. This used to append the outcome to an
+     * in-memory list for a later `UploadCycle` to drain; the drain is gated on a single-flight cycle
+     * measured in the field at 27 minutes, 65 minutes and 4h49m, so a process death in between lost the
+     * fact for good. The row then still read `REQUESTED` with no live task, the next cycle called it
+     * stranded, and bytes that had already landed were uploaded again — twice, in one field dump, 27h30m
+     * before the ledger caught up. ⏰ Re-check the once-only premise at the next iOS major.
+     *
+     * Synchronous, not scheduled. Once this returns the process's continued runtime is not ours to
+     * assume — the app is reliably running *inside* the callback, and a held background-session receipt
+     * is released on its own deadline whether or not the work it was waiting for happened (SNAPSYNC-16
+     * shows one doing exactly that; `BackgroundEventsReceipts` emits the line, and this file deliberately
+     * does not reproduce it — that clause is pinned to its emitters).
+     * [LedgerStore.markTerminal] is non-suspending for this reason.
+     *
+     * The staged file goes at the same moment: the transfer is over, so it can never be uploaded from
+     * again, and the launch-time sweep covers whatever a killed process leaves behind.
+     */
     private fun recordTerminal(key: String, success: Boolean, error: UploadError?) {
-        val entry = locked {
-            val e = inFlight.remove(key)
-            // A completion with no in-flight record (a relaunch delivered it) has no recorded type either;
-            // same reasoning as the stranded case.
-            terminal += Terminal(key, success, error, e?.resource, e?.contentType ?: STRANDED_CONTENT_TYPE)
-            e
+        val state = if (success) LedgerState.UPLOADED else LedgerState.FAILED
+        val applied = ledger.markTerminal(key, state)
+        stagedFileFor(key)?.let(::deleteFile)
+        if (applied) {
+            log.i { "task terminal: $key -> $state" }
+        } else {
+            // Never silent (`module-architecture`, "Absence is never silent"): the guard matched no row,
+            // so this key was not REQUESTED — already settled, or pruned. That is a different fact from
+            // "recorded", and it is the only line that would show a completion arriving for a row we no
+            // longer hold.
+            log.w { "task terminal: $key -> $state applied to NO row (not REQUESTED — already settled, or pruned)" }
         }
-        entry?.let { deleteFile(it.fileUrl) }
-        log.i { "task terminal: $key success=$success" }
+        if (!success) log.i { "task terminal: $key failed with ${error ?: "«unspecified»"}" }
         onTerminal()
+    }
+
+    private suspend fun liveTasks(): List<NSURLSessionTask> = suspendCancellableCoroutine { cont ->
+        session.getAllTasksWithCompletionHandler { tasks ->
+            cont.resume(tasks?.mapNotNull { it as? NSURLSessionTask }.orEmpty())
+        }
     }
 
     private suspend fun liveTaskKeys(): Set<String> = suspendCancellableCoroutine { cont ->
@@ -334,14 +385,6 @@ class IosUrlSessionUploadPlatform(
         NSFileManager.defaultManager.removeItemAtURL(url, error = null)
     }
 
-    private inline fun <T> locked(block: () -> T): T {
-        lock.lock()
-        try {
-            return block()
-        } finally {
-            lock.unlock()
-        }
-    }
 }
 
 /**

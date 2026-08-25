@@ -7,7 +7,9 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
+import app.snapsync.model.LedgerState
 import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.LedgerStore
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -58,6 +60,11 @@ import platform.Photos.PHPhotoLibrary
 class IosPhotoKitUploadPlatform(
     private val log: Logger,
     private val discovery: IosDiscovery,
+    // This adapter RECORDS terminal outcomes, rather than handing them to the cycle to record. The OS
+    // job queue here IS durable — a succeeded job stays in the `.acknowledge` set until acknowledged —
+    // so this tier never had the app-driven tier's loss. What it gains is one state machine across both:
+    // the cycle's promotion pass is the single place album placement and the notify fire from.
+    private val ledger: LedgerStore,
 ) : BackgroundTransfer {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
@@ -67,9 +74,59 @@ class IosPhotoKitUploadPlatform(
             fetch(PHAssetResourceUploadJobActionRetry)
         }
 
-    override suspend fun fetchAckJobs(): List<PlatformUploadJob> =
-        log.invocation("platform.fetchAckJobs", result = { "${it.size} job(s)" }) {
-            fetch(PHAssetResourceUploadJobActionAcknowledge)
+    /**
+     * Record every terminal job into the ledger and acknowledge it **in place**; return only the
+     * retry-spent failures whose resource is still live, so the cycle can re-create them this cycle.
+     *
+     * A succeeded job becomes `UPLOADED`, not `COMPLETED`: the cycle's promotion pass owes it an
+     * event-album placement and a completion notify, and it finds that work by reading `UPLOADED` rows.
+     * Writing `COMPLETED` here would present the pass with an already-settled row and skip both.
+     *
+     * **Every** presented job is acknowledged, whatever its guarded write did — a write that applies to
+     * nothing (the row was pruned, or already settled) is still a job the system expects back, and
+     * leaving one un-acknowledged is what makes it report `appex failed to acknowledge jobs for
+     * processing state` (error 50008).
+     */
+    override suspend fun drainTerminals(): List<PlatformUploadJob> =
+        log.invocation("platform.drainTerminals", result = { "${it.size} job(s)" }) {
+            val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(
+                PHAssetResourceUploadJobActionAcknowledge,
+                options = null,
+            )
+            val out = ArrayList<PlatformUploadJob>()
+            var index = 0uL
+            while (index < jobs.count) {
+                val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
+                index++
+                // Both captured as nullable locals FIRST — cinterop declares them non-null and they are
+                // nil at runtime, and a null check against a non-null-typed value may be elided.
+                val destination: NSURLRequest? = job.destination
+                val resource: PHAssetResource? = job.resource
+                when (val classified = classifyPhotoKitJob(destination, job.state, job.error)) {
+                    FetchedJob.AcknowledgeToDrain -> {
+                        log.w { "upload job without destination URL — acknowledging to drain" }
+                    }
+                    is FetchedJob.Emit -> {
+                        val succeeded = classified.state == PhotoKitJobState.SUCCEEDED
+                        val state = if (succeeded) LedgerState.UPLOADED else LedgerState.FAILED
+                        if (!ledger.markTerminal(classified.key, state)) {
+                            // Not silent: the row was not REQUESTED — already settled, or pruned.
+                            log.i { "terminal ${classified.key} -> $state applied to no row" }
+                        }
+                        // Only a retry-spent failure that can still be re-created is the cycle's business.
+                        if (!succeeded && resource != null) {
+                            out += PlatformUploadJob(
+                                key = classified.key,
+                                contentType = photoKitContentType(destination, resource),
+                                error = classified.error,
+                                data = resource,
+                            )
+                        }
+                    }
+                }
+                acknowledgeJob(job)
+            }
+            out
         }
 
     private fun fetch(action: PHAssetResourceUploadJobAction): List<PlatformUploadJob> {
@@ -93,10 +150,8 @@ class IosPhotoKitUploadPlatform(
                 is FetchedJob.Emit -> out += PlatformUploadJob(
                     key = classified.key,
                     contentType = photoKitContentType(destination, resource),
-                    state = classified.state,
                     error = classified.error,
                     data = resource,
-                    handle = job,
                 )
             }
         }
@@ -113,7 +168,13 @@ class IosPhotoKitUploadPlatform(
 
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
         log.invocation("platform.retryJob", params = "key=${job.key}") {
-            val systemJob = job.handle as PHAssetResourceUploadJob
+            // The system job is looked up again rather than carried on [PlatformUploadJob]: the seam no
+            // longer passes an opaque handle, because the only other thing that needed one — the
+            // acknowledge — now happens inside the drain, next to the fetch that produced it.
+            val systemJob = jobWithKey(PHAssetResourceUploadJobActionRetry, job.key) ?: run {
+                log.w { "retryJob: no live .retry job for ${job.key} — it settled underneath us" }
+                return@invocation
+            }
             val url = NSURL.URLWithString(request.url) ?: return@invocation
             val urlRequest = discovery.buildRequest(url, request)
             library.performChangesAndWait(
@@ -124,10 +185,18 @@ class IosPhotoKitUploadPlatform(
             )
         }
 
-    override suspend fun acknowledge(job: PlatformUploadJob) =
-        log.invocation("platform.acknowledge", params = "key=${job.key}") {
-            acknowledgeJob(job.handle as PHAssetResourceUploadJob)
+    /** The system job currently offered for [action] whose destination names [key], if it is still there. */
+    private fun jobWithKey(action: PHAssetResourceUploadJobAction, key: String): PHAssetResourceUploadJob? {
+        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
+        var index = 0uL
+        while (index < jobs.count) {
+            val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
+            index++
+            val destination: NSURLRequest? = job.destination
+            if (destination?.URL?.lastPathComponent == key) return job
         }
+        return null
+    }
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
         log.invocation("platform.createJob", params = "key=${request.resource.filename}", result = { "$it" }) {
