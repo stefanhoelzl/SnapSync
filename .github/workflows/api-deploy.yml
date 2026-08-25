@@ -43,6 +43,7 @@ on:
       # either must redeploy (capability `deployment-configuration`).
       - "deployments/**"
       - "scripts/resolve-deployment.py"
+      - "scripts/resolve_deployment_test.py"
 
 # Serialize deploys. Without this, two merges to `main` in quick succession race and the FIRST run's
 # probe observes the SECOND run's bundle — a false red, and a probe that cries wolf is worse than none.

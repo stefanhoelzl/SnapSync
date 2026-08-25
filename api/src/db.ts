@@ -586,3 +586,28 @@ export async function deleteResource(db: Db, deviceId: string, key: string): Pro
 export async function deleteDeviceRecord(db: Db, deviceId: string): Promise<void> {
   await db.execute(`DELETE FROM device_records WHERE device_id = ?`, [deviceId]);
 }
+
+/**
+ * Is the store COMPLETELY empty — no events, no memberships, no assets, no resources, no device records?
+ *
+ * This exists for exactly one caller and one question. The nightly sweep marks from this store, so an
+ * empty one says "nothing is referenced" — and its asset phase then reads every byte in the zone as
+ * unreferenced, with every device's retention floor `+∞` because no membership supplies one. That is a
+ * correct reading of an empty store and a catastrophic reading of an un-backfilled one, and the two are
+ * indistinguishable from inside the store. The caller pairs this with "storage nonetheless holds bytes",
+ * which IS distinguishable, and refuses.
+ *
+ * A legitimately emptied world does not look like this: the sweep collects a fully-orphaned device's
+ * bytes as it empties, so zero rows and a non-empty zone cannot both be true of a store that was ever
+ * populated. They can only both be true before the first backfill.
+ */
+export async function storeIsEmpty(db: Db): Promise<boolean> {
+  const { rows } = await db.execute(
+    `SELECT (SELECT COUNT(*) FROM events)
+          + (SELECT COUNT(*) FROM memberships)
+          + (SELECT COUNT(*) FROM event_assets)
+          + (SELECT COUNT(*) FROM resources)
+          + (SELECT COUNT(*) FROM device_records) AS n`,
+  );
+  return Number(rows[0].n) === 0;
+}
