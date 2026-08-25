@@ -1005,7 +1005,7 @@ Deno.test("leave → absent event → 404; non-UUID → 400", async () => {
 
 // ── PUT /devices/:deviceId (the device config document) ────────────────────────────────────────────
 
-Deno.test("device config → the document is recorded verbatim, last-write-wins", async () => {
+Deno.test("device config → the token lands in its own columns, last-write-wins", async () => {
   const db = await store();
   const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
   const doc = (token: string) =>
@@ -1018,9 +1018,48 @@ Deno.test("device config → the document is recorded verbatim, last-write-wins"
     (await app.request(`/api/v1/devices/${D}`, { method: "PUT", body: doc("second") })).status,
     201,
   );
-  const stored = await rows(db, `SELECT push_token FROM device_records WHERE device_id=?`, [D]);
+  const stored = await rows(
+    db,
+    `SELECT push_kind, push_token, push_env FROM device_records WHERE device_id=?`,
+    [D],
+  );
   assertEquals(stored.length, 1);
-  assertEquals(JSON.parse(String(stored[0].push_token)).pushToken.token, "second");
+  assertEquals(stored[0], { push_kind: "apns", push_token: "second", push_env: "sandbox" });
+  db.close();
+});
+
+Deno.test("device config → a malformed pushToken is REFUSED at the write, not on the notify path", async () => {
+  // The whole point of columns over a document: a bad registration fails at the endpoint that made it,
+  // where the caller can be told, instead of being discovered days later by a fan-out that skips it.
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  for (
+    const body of [
+      JSON.stringify({ pushToken: { kind: "apns", token: 42, env: "sandbox" } }),
+      JSON.stringify({ pushToken: { kind: "apns", token: "t" } }),
+      JSON.stringify({ pushToken: "not-an-object" }),
+    ]
+  ) {
+    assertEquals(
+      (await app.request(`/api/v1/devices/${D}`, { method: "PUT", body })).status,
+      400,
+      body,
+    );
+  }
+  assertEquals((await rows(db, `SELECT * FROM device_records`)).length, 0);
+  db.close();
+});
+
+Deno.test("device config → an explicitly absent pushToken is recorded, not refused", async () => {
+  // A device saying "I have no registration" is an ordinary state, distinct from a malformed body.
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/devices/${D}`,
+    { method: "PUT", body: JSON.stringify({}) },
+  );
+  assertEquals(res.status, 201);
+  const stored = await rows(db, `SELECT push_token FROM device_records WHERE device_id=?`, [D]);
+  assertEquals(stored, [{ push_token: null }]);
   db.close();
 });
 
@@ -1083,8 +1122,9 @@ function apnsRecorder(status = 200) {
 
 async function registerToken(db: Db, deviceId: string, token: string) {
   await db.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, ?, '2026-07-14T00:00:00Z')`,
-    [deviceId, JSON.stringify({ pushToken: { kind: "apns", token, env: "sandbox" } })],
+    `INSERT INTO device_records (device_id, push_kind, push_token, push_env, updated_at)
+     VALUES (?, 'apns', ?, 'sandbox', '2026-07-14T00:00:00Z')`,
+    [deviceId, token],
   );
 }
 
