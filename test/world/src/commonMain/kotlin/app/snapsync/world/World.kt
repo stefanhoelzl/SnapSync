@@ -372,9 +372,11 @@ class World(
             photoAccess = permission,
             photoAccessRequester = requester,
             selectionChanges = InMemoryPhotoSelectionChangeSource(selectionChangesCell),
-            // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N;
-            // the operator then invokes the cycle by hand, exactly like every other world trigger.
-            pumpSelectionChanged = {},
+            // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N; the
+            // operator then invokes the cycle by hand, exactly like every other world trigger. That used
+            // to be an inert `pumpSelectionChanged = {}` port here; it is now the world mechanism's own
+            // stated answer to the trigger (`OperatorUploadProducer`), which is where a mechanism's
+            // response to a kick belongs.
             candidateSource = enumerator,
             // The shared discovery cursor a cutoff-lowering reconfigure invalidates (capability
             // `reconfigure-membership`) — the SAME store the world's upload cycle reads.
@@ -401,7 +403,7 @@ class World(
             deviceId = { ownDeviceId },
             clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
             // The operator IS the producer: nothing auto-runs; a cycle happens when invoked by hand.
-            uploadProducer = { OperatorUploadProducer() },
+            appDrivenUpload = { OperatorUploadProducer() },
             albumManager = albumManager,
             albumMapStore = albumMapStore,
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy

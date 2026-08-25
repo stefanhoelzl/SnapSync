@@ -4,7 +4,7 @@ import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
 import app.snapsync.feature.upload.clearRequestedOffMain
-import app.snapsync.feature.upload.UploadProducer
+import app.snapsync.feature.upload.UploadMechanismRuntime
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -33,7 +33,7 @@ import platform.Photos.PHPhotoLibrary
 class PhotoKitUploadProducer(
     private val ledgerStore: LedgerStore,
     private val log: Logger,
-) : UploadProducer {
+) : UploadMechanismRuntime {
 
     /**
      * Register the extension — a **disable→enable toggle**, not a bare enable.
@@ -80,6 +80,49 @@ class PhotoKitUploadProducer(
         NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
         clearRequestedOffMain({ ledgerStore.clearRequested() }, log = log) // Boolean; the seam returns Unit
         Unit
+    }
+
+    // ---- triggers: this mechanism is scheduled by the OS, so every app-side kick is declined ----------
+    //
+    // Stated here, one by one, rather than inherited from a default. `upload-lifecycle` forbids the
+    // permissive-default shape on exactly this kind of seam ("a permissive default on such a port is an
+    // unstated answer"), and the reason bites hardest for a mechanism whose right answer is "nothing":
+    // an inherited blank and a forgotten override are the same diff.
+
+    /** The OS owns scheduling here. An app-side pump would add nothing, and under anything less than a
+     *  full grant the OS never invokes this mechanism at all (`ios-photokit-upload`). */
+    override suspend fun onForeground() = Unit
+
+    /** Declined for the same reason, and additionally: a cycle here would be the extension's, in the
+     *  other process. The app cannot drive it and must not pretend to. */
+    override suspend fun onSilentPush(eventId: String) = Unit
+
+    /** This tier arms no `BGProcessingTask` heartbeat — the OS schedules `process()` itself — so a
+     *  heartbeat reaching this mechanism has nothing to top up. The entry point still releases its
+     *  handler, which is the half that matters. */
+    override suspend fun onBackgroundTask() = Unit
+
+    /** A selection change is a partial-grant signal, and this mechanism is never the resolved one under a
+     *  partial grant. Reachable only if it were pinned there deliberately, where declining is correct. */
+    override suspend fun onSelectionChanged() = Unit
+
+    /**
+     * Deregister the extension and **nothing else** — the narrow verb the tier switch takes.
+     *
+     * [stop] means "deregister **and** repair the jobs the disable vanished". That pairing is right when
+     * this tier runs again afterwards (its re-register, and the leave path), and wrong when the disable is
+     * a hand-off to the app-driven mechanism: `clearRequested()` is ledger-wide and the discovery cursor is
+     * shared, so the repair would delete in-flight rows belonging to the mechanism about to start, and force
+     * it into a full re-enumeration it does not need. That mechanism reconciles stranded rows precisely from
+     * `getAllTasks` and by contract "SHALL NOT depend on `clearRequested`" (`ios-url-session-upload`).
+     *
+     * So the repair is not dropped, it is *scoped*: it belongs to re-registering this tier, where no API can
+     * enumerate the vanished jobs, and it stays on [stop] for the leave path where nothing runs afterwards.
+     * This method exists because the two-verb lifecycle seam has no room for a third verb, and should not
+     * gain one — `DeregisterThenRun` binds this as a lambda at the composition site instead.
+     */
+    suspend fun deregister() = log.invocation("photokit.deregister") {
+        setEnabled(false)
     }
 
     /**

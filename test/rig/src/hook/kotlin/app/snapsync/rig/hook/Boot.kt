@@ -13,6 +13,8 @@ import app.snapsync.rig.RigTrigger
 import app.snapsync.rig.RigUserCommand
 import app.snapsync.rig.deviceCommands
 import app.snapsync.rig.galleryReader
+import app.snapsync.model.PermissionStatus
+import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.rig.osExtensionEnabled
 import app.snapsync.rig.rigPort
 import app.snapsync.rig.userCommands
@@ -73,7 +75,12 @@ private fun startRig() = RigServer(
  */
 private fun iosHooks() = RigHooks(
     bootedAt = NSDate().description,
-    uploadTier = SnapSyncRoot.tier.diagnosticName,
+    // The tier this OS is on, which is what this field has always reported. Which mechanism is RUNNING
+    // is now a runtime fact that changes with permission, so it is not a boot-time value.
+    uploadTier = resolveUploadMechanism(
+        backgroundUploadSupported = SnapSyncRoot.osSupportsOsDrivenUpload,
+        permission = PermissionStatus.GRANTED,
+    ).diagnosticName,
     uploadBase = bakedUploadBase(),
     // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
     // would not be the call the OS makes, which is the whole reason triggers are entry points.
@@ -91,7 +98,7 @@ private fun iosHooks() = RigHooks(
         photoAccess = SnapSyncRoot.permission,
     ),
     readGallery = galleryReader(core = { SnapSyncRoot.app }),
-    osExtensionEnabled = osExtensionEnabled(tier = SnapSyncRoot.tier),
+    osExtensionEnabled = osExtensionEnabled(osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload),
 )
 
 /**

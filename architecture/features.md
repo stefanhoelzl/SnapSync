@@ -48,8 +48,8 @@ on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `BackgroundUploadPump.kt`, `ClearRequested.kt`, `LedgerWriter.kt`, `Reconciler.kt`, `SelectionScopedTransfer.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadPushReceiver.kt`
-- top-level types: `BackgroundUploadPump (class)`, `ComposedProducers (class)`, `CycleGate (interface)`, `ExtensionReconciler (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `SelectionScopedTransfer (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`
+- files: `BackgroundUploadPump.kt`, `ClearRequested.kt`, `LedgerWriter.kt`, `Reconciler.kt`, `RelinquishThenRun.kt`, `SelectionScopedTransfer.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadPushReceiver.kt`
+- top-level types: `BackgroundUploadPump (class)`, `CycleGate (interface)`, `ExtensionReconciler (class)`, `IdleUploadMechanism (object)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `RelinquishThenRun (class)`, `SelectionScopedTransfer (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadMechanismRuntime (interface)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`, `UploadTriggers (interface)`
 
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 

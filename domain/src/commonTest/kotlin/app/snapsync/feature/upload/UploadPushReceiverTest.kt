@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.CycleResult
+import app.snapsync.model.PermissionStatus
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,7 +30,8 @@ class UploadPushReceiverTest {
             runCycle = { cycles++; result },
             scheduler = scheduler,
         )
-        fun receiver(active: String?) = UploadPushReceiver(activeEventId = { active }, pump = pump)
+        fun receiver(active: String?, permission: PermissionStatus = PermissionStatus.GRANTED) =
+            UploadPushReceiver(activeEventId = { active }, pump = pump, permission = { permission })
     }
 
     @Test
@@ -78,5 +80,53 @@ class UploadPushReceiverTest {
 
         assertEquals(1, f.cycles, "the guard passes — the push IS for our event")
         assertEquals(0, f.scheduler.scheduled, "but nothing is armed: this device will never upload here")
+    }
+
+    // ---- the read discipline, moved here from the silent-push fan-out ---------------------------------
+
+    /**
+     * `limited-photo-access` ("No autonomous library reads under a limited grant") names *"the upload half
+     * of the silent-push fan-out"* among exactly three triggers that must skip their `PHAsset` work under a
+     * partial grant, and fixes reads at two moments — a cold-foreground baseline and a selection-change
+     * emission — which a push is neither of.
+     *
+     * The guard used to sit in the fan-out that composed the receivers. That made it an invoker-gate, whose
+     * soundness depended on that fan-out enumerating everyone who might read; it lives here now, beside the
+     * active-event guard, where the component that would do the reading decides.
+     */
+    @Test
+    fun a_push_under_a_partial_grant_pumps_nothing() = runTest {
+        val f = Fixture()
+
+        f.receiver(active = "E", permission = PermissionStatus.LIMITED).onSilentPush("E")
+
+        assertEquals(0, f.cycles, "a partial grant is exactly what this guard refuses")
+        assertEquals(0, f.scheduler.scheduled)
+    }
+
+    @Test
+    fun a_push_without_usable_access_pumps_nothing() = runTest {
+        for (p in listOf(PermissionStatus.NOT_DETERMINED, PermissionStatus.DENIED)) {
+            val f = Fixture()
+
+            f.receiver(active = "E", permission = p).onSilentPush("E")
+
+            assertEquals(0, f.cycles, "permission=$p")
+            assertEquals(0, f.scheduler.scheduled, "permission=$p")
+        }
+    }
+
+    @Test
+    fun the_guard_is_granted_exactly_not_merely_usable_access() = runTest {
+        // `grantsPhotoAccess` is true for LIMITED, and using it here would silently re-admit the case the
+        // read discipline exists to refuse. Stated as its own test because the two readings differ by one
+        // enum member and a reviewer cannot see which one a call site meant.
+        val granted = Fixture()
+        granted.receiver(active = "E", permission = PermissionStatus.GRANTED).onSilentPush("E")
+        assertEquals(1, granted.cycles)
+
+        val limited = Fixture()
+        limited.receiver(active = "E", permission = PermissionStatus.LIMITED).onSilentPush("E")
+        assertEquals(0, limited.cycles)
     }
 }

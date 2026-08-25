@@ -105,11 +105,15 @@ class PlatformIdentifierTest {
      * Each states its reason; a pin without one decays into a list of whatever failed the gate last.
      */
     private val accepted: Map<String, Set<String>> = mapOf(
-        // The `UploadTier` members the pure `resolveComposition` selects. They name upload *tiers*
-        // this app defines — not platform APIs the core calls — and the resolver is a total function
-        // over its inputs (the parsed directives plus one `backgroundUploadSupported` boolean), so a
-        // second tier is a new member, not a new coupling. Accepted, not deferred.
-        "domain/src/commonMain/kotlin/app/snapsync/model/CompositionMode.kt" to setOf("PHOTOKIT", "URL_SESSION"),
+        // The upload **mechanism kind**'s members, which the pure `resolveUploadMechanism` yields. They
+        // name upload mechanisms this app defines — not platform APIs the core calls — and the resolver
+        // is a total function over its inputs (the `backgroundUploadSupported` fact, the current photo
+        // permission, and an optional development override), so a third mechanism is a new member, not a
+        // new coupling. Accepted, not deferred.
+        //
+        // These members were `CompositionMode.kt`'s `UploadTier` until mechanism resolution absorbed
+        // `resolveComposition`. The judgement is unchanged; only the type carrying it moved.
+        "domain/src/commonMain/kotlin/app/snapsync/model/UploadMechanism.kt" to setOf("PHOTOKIT", "URL_SESSION"),
     )
 
     /**

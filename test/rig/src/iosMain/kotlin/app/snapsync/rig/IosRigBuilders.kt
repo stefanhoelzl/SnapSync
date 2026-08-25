@@ -5,7 +5,6 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
-import app.snapsync.model.UploadTier
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReader
@@ -216,14 +215,17 @@ fun galleryReader(core: () -> AppCore): suspend (String?, Boolean) -> String = {
  * The OS's view of the extension registration — `null` anywhere it cannot be asked.
  *
  * `isUploadJobExtensionEnabled` is a **26.1 selector** and this app deploys to min iOS 18, so calling it
- * unconditionally traps as an unrecognized selector. The tier is the proxy for "does this OS have it":
- * `PHOTOKIT` is resolved from exactly the capability check that gates the selector's existence.
+ * unconditionally traps as an unrecognized selector. [osSupportsOsDrivenUpload] is the capability check
+ * that gates the selector's existence — asked directly now, rather than through the resolved tier, since
+ * which mechanism *runs* is a runtime fact and this question is about what the OS *has*.
+ *
+ * It is also grant-dependent in a way the name does not admit: measured on device (SE2, iOS 26.6), the
+ * read returns `false` for a live configuration record whenever the app does not hold photo access, so a
+ * `false` here means "no record **or** not allowed to look". Read it beside the reported permission.
  */
-fun osExtensionEnabled(tier: UploadTier): () -> Boolean? = {
-    when (tier) {
-        UploadTier.PHOTOKIT -> PHPhotoLibrary.sharedPhotoLibrary().isUploadJobExtensionEnabled()
-        UploadTier.URL_SESSION -> null
-    }
+fun osExtensionEnabled(osSupportsOsDrivenUpload: Boolean): () -> Boolean? = {
+    // A branch, not a `takeIf`: the selector must not be *evaluated* where it does not exist.
+    if (osSupportsOsDrivenUpload) PHPhotoLibrary.sharedPhotoLibrary().isUploadJobExtensionEnabled() else null
 }
 
 /**

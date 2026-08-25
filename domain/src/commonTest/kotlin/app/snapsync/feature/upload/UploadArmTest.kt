@@ -1,6 +1,8 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.UploadMechanism
+import app.snapsync.model.resolveUploadMechanism
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,38 +23,66 @@ import kotlin.test.assertTrue
 class UploadArmTest {
 
     /** Records the verb sequence. There is no destructive verb to record — that is the point. */
-    private class FakeProducer(private val name: String = "") : UploadProducer {
+    private class FakeProducer(private val name: String = "") : UploadMechanismRuntime {
         val verbs = mutableListOf<String>()
         var shared: MutableList<String>? = null
         override suspend fun start() { verbs += "start"; shared?.add("$name.start") }
         override suspend fun stop() { verbs += "stop"; shared?.add("$name.stop") }
+        override suspend fun onForeground() = Unit
+        override suspend fun onSilentPush(eventId: String) = Unit
+        override suspend fun onBackgroundTask() = Unit
+        override suspend fun onSelectionChanged() = Unit
     }
 
-    /** The single-producer shape (iOS 18–26.0, the world): only the app-driven mechanism exists. */
+    /** The single-mechanism shape (iOS 18–26.0, the world): the OS carries no OS-driven mechanism. */
     private fun arm(
         producer: FakeProducer,
         granted: Boolean,
         membershipIncludesUpload: Boolean? = true,
     ) = UploadArm(
-        ComposedProducers(osDriven = null, appDriven = producer),
-        permission = { if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED },
+        resolve = {
+            resolveUploadMechanism(
+                backgroundUploadSupported = false,
+                permission = if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED,
+            )
+        },
+        mechanismFor = { kind -> if (kind == UploadMechanism.IDLE) IdleUploadMechanism else producer },
         membershipIncludesUpload = { membershipIncludesUpload },
     )
 
-    /** The compose-both shape (iOS ≥26.1): both mechanisms exist; permission selects. */
+    /** The both-mechanisms shape (iOS ≥26.1): resolution picks, and the app-driven cell relinquishes. */
     private class BothProducers {
         val log = mutableListOf<String>()
         val osDriven = FakeProducer("os").also { it.shared = log }
         val appDriven = FakeProducer("app").also { it.shared = log }
     }
 
+    /**
+     * Mirrors the real factory (`compose/`): on an OS carrying both, the app-driven cell is wrapped so it
+     * gives the OS back a registration this process must not run behind. Wiring `appDriven` bare here
+     * would still pass the switch tests while testing nothing — the deregistration is a property of the
+     * *cell*, not of the arm stopping a sibling, and that relocation is the whole point of the change.
+     */
     private fun armBoth(
         both: BothProducers,
         permission: () -> PermissionStatus,
         membershipIncludesUpload: () -> Boolean? = { true },
+        override: UploadMechanism? = null,
     ) = UploadArm(
-        ComposedProducers(osDriven = both.osDriven, appDriven = both.appDriven),
-        permission = permission,
+        resolve = {
+            resolveUploadMechanism(
+                backgroundUploadSupported = true,
+                permission = permission(),
+                override = override,
+            )
+        },
+        mechanismFor = { kind ->
+            when (kind) {
+                UploadMechanism.PHOTOKIT -> RelinquishThenRun({ both.appDriven.stop() }, both.osDriven)
+                UploadMechanism.URL_SESSION -> RelinquishThenRun({ both.osDriven.stop() }, both.appDriven)
+                UploadMechanism.IDLE -> IdleUploadMechanism
+            }
+        },
         membershipIncludesUpload = membershipIncludesUpload,
     )
 
@@ -224,8 +254,8 @@ class UploadArmTest {
         val producer = FakeProducer()
         var membership: Boolean? = null // no event joined — the user is on the explainer
         val a = UploadArm(
-            ComposedProducers(osDriven = null, appDriven = producer),
-            permission = { PermissionStatus.GRANTED },
+            resolve = { resolveUploadMechanism(false, PermissionStatus.GRANTED) },
+            mechanismFor = { kind -> if (kind == UploadMechanism.IDLE) IdleUploadMechanism else producer },
             membershipIncludesUpload = { membership },
         )
 
@@ -245,8 +275,13 @@ class UploadArmTest {
         val producer = FakeProducer()
         var granted = false
         val a = UploadArm(
-            ComposedProducers(osDriven = null, appDriven = producer),
-            permission = { if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED },
+            resolve = {
+                resolveUploadMechanism(
+                    backgroundUploadSupported = false,
+                    permission = if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED,
+                )
+            },
+            mechanismFor = { kind -> if (kind == UploadMechanism.IDLE) IdleUploadMechanism else producer },
             membershipIncludesUpload = { true },
         )
 
