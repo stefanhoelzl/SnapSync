@@ -1,11 +1,9 @@
 package app.snapsync.config
 
-import platform.Foundation.NSBundle
-
 /**
- * The compile-time device-facing backend base this build targets — `BackgroundUploadURLBase` in the
- * process's own `Info.plist`, fed by the one `BACKGROUND_UPLOAD_URL_BASE` xcconfig setting that
- * reaches both targets.
+ * The compile-time device-facing backend base this build targets — `uploadBase` in the process's own
+ * generated `Deployment.plist` (see [deploymentValue]), the one resolved value that reaches both
+ * targets.
  *
  * PhotoKit validates every upload job's destination against the extension's baked value, so a
  * user-configurable host is impossible by design; this is the authoritative source of the edge URL's
@@ -20,5 +18,4 @@ import platform.Foundation.NSBundle
  * `buildUploadConfig` treats a blank host exactly as it treats an absent one — nothing to do — so a
  * misconfigured build uploads nowhere rather than somewhere unintended.
  */
-fun bakedUploadBase(): String =
-    NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
+fun bakedUploadBase(): String = deploymentValue("uploadBase") ?: ""

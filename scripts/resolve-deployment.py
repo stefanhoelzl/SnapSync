@@ -49,19 +49,40 @@ import sys
 # without anyone having to classify anything. The Sentry DSN forced this — it is a write-only ingestion
 # key, already extractable from any shipped IPA, and deliberately baked into Release archives, so
 # "build scope never carries a secret" was already false.
+#
+# The rendering set bounds where a value APPEARS. It does not assert the value SURVIVES the trip — see
+# RAW below, which is the rule that keeps those two apart.
 
 JSON = "json"  # api/src/deployment.ts — the Deno bundle
 PROPS = "properties"  # build/deployment.properties — Gradle
-XCCONFIG = "xcconfig"  # iosApp/Configuration/Deployment.xcconfig
+XCCONFIG = "xcconfig"  # iosApp/Configuration/Deployment.xcconfig — Xcode BUILD SETTINGS only
+PLIST = "plist"  # iosApp/Configuration/Deployment.plist — bundled into app + extension
 METADATA = "metadata"  # build/metadata/** — the App Store listing
 SITE = "site"  # site/src/deployment.json
 
-BAKED = {PROPS, XCCONFIG, METADATA, SITE}
+BAKED = {PROPS, XCCONFIG, PLIST, METADATA, SITE}
 """Renderings with no run time in which to resolve an environment reference.
 
-A `.properties` file, an `.xcconfig`, the App Store listing and a statically-built site are all consumed
+A `.properties` file, an `.xcconfig`, a bundled `.plist`, the App Store listing and a statically-built
+site are all consumed
 after the process that could have read an environment variable has gone. A runtime-scope key naming one
 of these could not be honoured, so the inventory rejects it rather than emitting a name nothing resolves.
+"""
+
+
+RAW = {XCCONFIG, PROPS, METADATA}
+"""Renderings whose values are INTERPOLATED, with no escaping layer between value and file.
+
+These may carry only values sourced from LITERALS in authored files, never from the environment. The
+distinction is REVIEWABILITY, not secrecy: a literal was read by a human in a pull request, who could
+have seen a character the grammar reinterprets. Nobody ever sees an environment value in the context of
+the file it lands in, so it must be rendered into a grammar that ESCAPES ([JSON], [SITE], [PLIST]).
+
+This is not hypothetical. `//` opens a comment ANYWHERE on an `.xcconfig` line, and `sentryDsn` — the one
+environment-sourced value ever written verbatim into that grammar — was truncated to `https:`, which is
+non-empty, so the SDK failed to start while the in-app bug-report dialog kept opening and losing every
+dump. Four TestFlight builds shipped mute. The fix was not a better escape; it was moving the value into
+a grammar that escapes, leaving this rendering carrying only reviewed literals.
 """
 
 
@@ -81,12 +102,23 @@ class Key:
 
 
 INVENTORY = [
-    Key("domain", [JSON, XCCONFIG, PROPS, METADATA, SITE], doc="""
+    Key("domain", [JSON, XCCONFIG, PLIST, PROPS, METADATA, SITE], doc="""
         The device-facing origin, and the host the AASA is served for. ONE value behind the app's
         LINK_ORIGIN, the `applinks:` entitlement, the compile-time upload host, the served AASA, the
         site's canonical URLs and the App Store listing URLs. It MUST be a domain we control: swapping
         the backend runtime is then a DNS repoint rather than a forced rebuild, which is what let the
         previous runtime be retired without a TestFlight round.
+
+        Reaches the xcconfig as `ASSOCIATED_DOMAIN` (an entitlement substitution, which can only read a
+        build setting) and the plist as `uploadBase`. The upload base carries a scheme, so it must be
+        rendered where `//` is data rather than a comment.
+
+        `uploadBase` is COMPILE-TIME and cannot be otherwise: the background-upload subsystem validates
+        every job's destination against the extension bundle's baked value, so a runtime-configurable
+        host is impossible with that API. Both bundles carry it — the app itself never uploads, the
+        extension does, and each reads its own bundle. It MUST be HTTPS: default ATS applies and no
+        `NSAllowsLocalNetworking` exception ships, so a baked `http://` network host fails silently on
+        device (loopback is exempt, which is how a simulator reaches `deno task dev:local`).
     """),
     Key("appName", [XCCONFIG], doc="Product name, Xcode only."),
     Key("bundleId", [JSON, XCCONFIG], doc="""
@@ -168,17 +200,36 @@ INVENTORY = [
         substitution (no --define; denoland/deno#35347), so a generated module is the only mechanism.
         Absent means "not a CI build": the probe treats `dev` as a terminal failure, never a retry.
     """),
-    Key("channel", [XCCONFIG], scope="build", default="dev", doc="""
-        Whether this build is DISTRIBUTED. One discriminator, from which the xcconfig renderer derives
-        APS_ENVIRONMENT, APNS_ENV and SENTRY_ENVIRONMENT — three settings that today must agree and are
-        held together only by a comment. Deriving them makes disagreement unrepresentable.
+    Key("channel", [XCCONFIG, PLIST], scope="build", default="dev", doc="""
+        Whether this build is DISTRIBUTED. One discriminator, from which the renderers derive
+        APS_ENVIRONMENT (the entitlement, xcconfig) and `apnsEnv` / `sentryEnvironment` (the plist) —
+        settings that must agree and were once held together only by a comment. Deriving them makes
+        disagreement unrepresentable. It also gates the DSN: absence is the off-switch.
+
+        `apnsEnv` is reported by the app in `devices/<id>/config.json`, so the backend picks the right
+        APNs host per token (capability `push-registration`); it is kept in lockstep with the
+        `aps-environment` entitlement by being derived from this same value rather than stated twice.
+
+        This key is environment-sourced and names a RAW rendering, which the rule above forbids for a
+        VALUE — and it is not one: `channel` never appears in the xcconfig, only the enums derived from
+        it do, and those are literals this file chooses. The rendering set records where a key
+        INFLUENCES an artifact as well as where it appears; the two coincide for every other key.
     """),
-    Key("sentryDsn", [JSON, XCCONFIG], scope="build", default="", doc="""
+    Key("sentryDsn", [JSON, PLIST], scope="build", default="", doc="""
         Crash-reporting ingestion key. NOT a secret in the disclosure sense — it authorises sending only,
         and ships inside every IPA — but not committed either, because a public repo would expose the
         instance to quota abuse. ABSENCE IS THE OFF-SWITCH: the renderer emits nothing unless `channel`
         names a distributed build, so a stray export cannot arm reporting on a dev build.
         (The api bundle carries it unread; backend crash reporting is a separate change.)
+
+        It renders to the PLIST and never to the xcconfig. A DSN contains `//`, which opens a comment in
+        that grammar — see RAW above. This is the value that proved the rule.
+
+        Read by the `CrashReporting` adapter in BOTH processes, each from its own bundle, alongside
+        `sentryEnvironment`. Absent in every dev/sideload build; only a CI Release archive resolves it
+        (capability `ios-testflight-delivery`). It cannot be injected on an `xcodebuild` line any more —
+        a build-setting override cannot substitute into a generated resource — so an on-device build
+        that reports is a `workflow_dispatch` of `ios.yml`, not a sideload.
     """),
 ]
 
@@ -382,30 +433,86 @@ def render_properties(flat: dict) -> str:
 
 
 def render_xcconfig(flat: dict) -> str:
+    """Xcode BUILD SETTINGS and entitlement substitutions ONLY — see [RAW].
+
+    Everything the device READS at runtime lives in [render_plist] instead. What is left here is what
+    has nowhere else to go: `PRODUCT_NAME`, `PRODUCT_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` are
+    build settings, and an entitlement's `$(…)` substitution can only read a build setting.
+
+    Every value below is therefore a LITERAL from an authored file, or an enum this function chooses.
+    That is what removes the comment hazard structurally: `//` still opens a comment here, and there is
+    still no escape for it, but no value that could contain one can reach this rendering any more. The
+    `$()` guard the upload base used to carry is deliberately GONE rather than generalised — a per-site
+    escape is what failed, since it covers what someone remembered.
+    """
     p = project(flat, XCCONFIG)
     distributed = p.get("channel") == "release"
-    # DERIVED from one discriminator: these three must agree, and stating them separately admits a
-    # combination in which they do not — today prevented only by a comment saying they must not.
     aps = "production" if distributed else "development"
-    apns_env = "production" if distributed else "sandbox"
-    sentry_env = "production" if distributed else "development"
-    # Absence is the off-switch, enforced here rather than by CI simply not exporting the secret.
-    dsn = p.get("sentryDsn", "") if distributed else ""
     return "\n".join([
         "// GENERATED by scripts/resolve-deployment.py — do not edit, do not commit.",
         "// Included by Config.xcconfig. Every value here derives from the resolved deployment.",
+        "// Build settings and entitlement inputs only — the values the app READS are in Deployment.plist.",
         f"APP_NAME = {p['appName']}",
         f"BUNDLE_ID = {p['bundleId']}",
         f"TEAM_ID = {p['teamId']}",
         f"ASSOCIATED_DOMAIN = applinks:{p['domain']}",
-        # `$()` splits the `//` so xcconfig does not treat the rest of the line as a comment.
-        f"BACKGROUND_UPLOAD_URL_BASE = https:/$()/{p['domain']}/api/v1",
         f"APS_ENVIRONMENT = {aps}",
-        f"APNS_ENV = {apns_env}",
-        f"SENTRY_ENVIRONMENT = {sentry_env}",
-        f"SENTRY_DSN = {dsn}",
         "",
     ])
+
+
+def render_plist(flat: dict) -> str:
+    """The values BOTH iOS processes read from their own bundle (capability `deployment-configuration`).
+
+    Keyed by the inventory's own names, so this artifact is a direct projection of the inventory as the
+    JSON and site renderings already are — the `SCREAMING_SNAKE` names it replaces were xcconfig build
+    settings, and carrying them here would preserve the shape of the thing being removed.
+
+    A property list ESCAPES, which is the whole reason these four values live here: `uploadBase` and
+    `sentryDsn` both carry `//`, which the xcconfig grammar reads as a comment (see [RAW]).
+
+    `apnsEnv` and `sentryEnvironment` are DERIVED from the same `channel` discriminant that gives the
+    entitlement its `APS_ENVIRONMENT`, so the three cannot disagree. `sentryDsn` is emitted only for a
+    distributed build — absence is the off-switch, enforced here rather than by CI declining to export
+    the secret.
+
+    The file is copied into the app bundle AND the extension bundle: each process reads its own
+    `NSBundle.mainBundle`, so a value present in one and absent from the other is a reachable state,
+    and it is the one `ios.yml` asserts against both bundles.
+    """
+    p = project(flat, PLIST)
+    distributed = p.get("channel") == "release"
+    values = {
+        "uploadBase": f"https://{p['domain']}/api/v1",
+        "apnsEnv": "production" if distributed else "sandbox",
+        "sentryEnvironment": "production" if distributed else "development",
+    }
+    if distributed and p.get("sentryDsn"):
+        values["sentryDsn"] = p["sentryDsn"]
+    rows = "\n".join(
+        f"\t<key>{k}</key>\n\t<string>{xml_escape(v)}</string>" for k, v in sorted(values.items())
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        "<dict>\n"
+        "\t<!-- GENERATED by scripts/resolve-deployment.py — do not edit, do not commit. -->\n"
+        f"{rows}\n"
+        "</dict>\n"
+        "</plist>\n"
+    )
+
+
+def xml_escape(value: str) -> str:
+    """The escaping that makes this grammar safe for a value nobody reviewed — the point of [RAW]."""
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 def render_types(flat: dict) -> str:
@@ -525,6 +632,7 @@ def emit(root: pathlib.Path, flat: dict) -> list[pathlib.Path]:
         root / "api/src/deployment.ts": render_deployment_ts(flat, sha),
         root / "build/deployment.properties": render_properties(flat),
         root / "iosApp/Configuration/Deployment.xcconfig": render_xcconfig(flat),
+        root / "iosApp/Configuration/Deployment.plist": render_plist(flat),
         root / "site/src/deployment.json": render_site(flat),
     }
     written = []

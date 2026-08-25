@@ -1,6 +1,7 @@
 package app.snapsync.logging
 
 import app.snapsync.config.bakedUploadBase
+import app.snapsync.config.deploymentValue
 import app.snapsync.model.DiagnosticEnvironment
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -31,7 +32,10 @@ fun deviceDiagnosticEnvironment(uploadTier: String): DiagnosticEnvironment {
         deviceModel = hardwareModel(),
         uploadTier = uploadTier,
         uploadBase = bakedUploadBase(),
-        reporterEnvironment = bundle.objectForInfoDictionaryKey("SENTRY_ENVIRONMENT") as? String ?: "?",
+        // `"?"` deliberately, NOT the reporter's `"development"` fallback: a dump says what it could
+        // read. "Couldn't tell" and "development" are different answers, and collapsing them here would
+        // make a dump from a build with no readable deployment claim an environment it never had.
+        reporterEnvironment = deploymentValue("sentryEnvironment") ?: "?",
     )
 }
 

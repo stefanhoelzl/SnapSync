@@ -56,7 +56,7 @@ import kotlinx.coroutines.runBlocking
  * finale ended the 11a Keychain write-through; the read keeps the legacy-Keychain migration
  * fallback until the post-ship Stage-2 change, so this extension can be the process that migrates
  * a pre-file device on the OS's first post-update invocation) combined with the compile-time upload host
- * ([bakedUploadBase], `BackgroundUploadURLBase`). When no event has been joined yet (the
+ * ([bakedUploadBase], the plist `uploadBase`). When no event has been joined yet (the
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
  * no crash.
  *
@@ -216,7 +216,7 @@ object UploadExtensionRoot {
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.
                 deviceId = { deviceId },
                 // Read per gate call, as this root always has: the compile-time
-                // `BackgroundUploadURLBase` baked into the extension bundle.
+                // `uploadBase` baked into the extension bundle.
                 host = { bakedUploadBase() },
                 ledger = ledgerStore,
                 transfer = platform,

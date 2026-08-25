@@ -24,20 +24,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<!-- Required by the background-upload subsystem for network-access validation; the system only
-	     uploads to destinations under this host. Compile-time (a runtime-configurable host is
-	     impossible with this API): driven by the BACKGROUND_UPLOAD_URL_BASE build setting, which
-	     defaults to the deployed HTTPS backend (Config.xcconfig) and is overridden only by a
-	     workflow_dispatch `upload_host` (HTTPS-only) for a dev IPA. Must be an HTTPS endpoint —
-	     default ATS (HTTPS-only) applies, no NSAllowsLocalNetworking exception. -->
-	<key>BackgroundUploadURLBase</key>
-	<string>$(BACKGROUND_UPLOAD_URL_BASE)</string>
-	<!-- Crash reporting (capability crash-reporting): the extension process reads its OWN bundle;
-	     same injection story as the app's Info.plist (empty = off; CI Release injects both). -->
-	<key>SENTRY_DSN</key>
-	<string>$(SENTRY_DSN)</string>
-	<key>SENTRY_ENVIRONMENT</key>
-	<string>$(SENTRY_ENVIRONMENT)</string>
+	<!-- NO deployment values here, deliberately (capability deployment-configuration) — see the
+	     app's Info.plist for why. This process reads its OWN bundle, so the generated
+	     Deployment.plist is copied into the .appex as well as the .app; a copy that reached only one
+	     of them is a reachable state, and the one ios.yml asserts against both. -->
 	<key>EXAppExtensionAttributes</key>
 	<dict>
 		<key>EXExtensionPointIdentifier</key>

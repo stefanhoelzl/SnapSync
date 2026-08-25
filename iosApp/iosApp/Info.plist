@@ -20,17 +20,13 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<!-- The compile-time upload host, shared with the extension via the BACKGROUND_UPLOAD_URL_BASE
-	     build setting. The app itself never uploads; the extension does. Must be an HTTPS endpoint —
-	     default ATS (HTTPS-only) applies, no NSAllowsLocalNetworking exception. -->
-	<key>BackgroundUploadURLBase</key>
-	<string>$(BACKGROUND_UPLOAD_URL_BASE)</string>
-	<!-- The compile-time APNs environment (capability push-registration): "sandbox" for dev/sideloaded
-	     builds, "production" for TestFlight/App Store (driven by APNS_ENV, kept in lockstep with the
-	     aps-environment entitlement). The app reports it in devices/<id>/config.json so the backend
-	     picks the right APNs host per token. -->
-	<key>APNS_ENV</key>
-	<string>$(APNS_ENV)</string>
+	<!-- NO deployment values here, deliberately (capability deployment-configuration). The upload
+	     host, the APNs environment and the crash-reporting pair live in the GENERATED
+	     Deployment.plist, bundled as a resource into this target and the extension's. They were
+	     moved because an xcconfig build setting is the wrong carrier for a value containing "//":
+	     that opens a comment in the xcconfig grammar, which silently truncated the crash-reporting
+	     DSN to "https:" and shipped four mute TestFlight builds. Their rationale now lives on the
+	     resolver's key inventory, where every toolchain that reads them can see it. -->
 	<!-- No CFBundleURLTypes, deliberately: the `snapsync` custom scheme is retired (capability
 	     `event-link`). An invite is now an HTTPS Universal Link, claimed via the associated-domains
 	     entitlement rather than a scheme — which is what lets a QR scanned by someone who does NOT
@@ -88,12 +84,5 @@
 		     the background URLSession queue + catches new captures while the app is closed. -->
 		<string>app.snapsync.upload.heartbeat</string>
 	</array>
-	<!-- Crash reporting (capability crash-reporting): read by the CrashReporting adapter. Empty in
-	     every dev/sideload build (absence is the off-switch); a CI Release archive injects the DSN
-	     secret + environment=production (capability ios-testflight-delivery). -->
-	<key>SENTRY_DSN</key>
-	<string>$(SENTRY_DSN)</string>
-	<key>SENTRY_ENVIRONMENT</key>
-	<string>$(SENTRY_ENVIRONMENT)</string>
 </dict>
 </plist>

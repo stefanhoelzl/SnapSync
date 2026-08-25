@@ -11,6 +11,7 @@ a test asserting the production zone name would be testing configuration rather 
 import importlib.util
 import json
 import pathlib
+import plistlib
 import tempfile
 import unittest
 
@@ -201,6 +202,22 @@ class ScopeTest(unittest.TestCase):
         self.assertEqual(flat["storage.accessKey"], {"env": "TEST_ACCESS_KEY"})
 
 
+def plist(flat):
+    """Parse the emitted property list with a REAL parser — the point of every case that uses it."""
+    return plistlib.loads(rd.render_plist(flat).encode())
+
+
+def xcconfig_values(text):
+    """Read an xcconfig the way xcodebuild does: `//` opens a comment anywhere on the line."""
+    out = {}
+    for line in text.splitlines():
+        line = line.split("//")[0].strip()
+        if " = " in line:
+            key, value = line.split(" = ", 1)
+            out[key.strip()] = value.strip()
+    return out
+
+
 class RenderingTest(unittest.TestCase):
     def test_a_key_reaches_only_its_declared_renderings(self):
         flat = Tree().standard().resolve()
@@ -222,35 +239,83 @@ class RenderingTest(unittest.TestCase):
         self.assertIn("TEST_APNS_KEY", text)
         self.assertNotIn("leaked", text)
 
-    def test_the_three_apns_settings_cannot_disagree(self):
-        for channel, expected in (("release", ("production", "production", "production")),
-                                  ("dev", ("development", "sandbox", "development"))):
-            flat = Tree().standard().resolve(env={"SNAPSYNC_CHANNEL": channel})
-            out = rd.render_xcconfig(flat)
-            values = dict(
-                line.split(" = ", 1) for line in out.splitlines() if " = " in line and not line.startswith("//")
-            )
-            self.assertEqual(
-                (values["APS_ENVIRONMENT"], values["APNS_ENV"], values["SENTRY_ENVIRONMENT"]), expected
-            )
-
     def test_the_dsn_is_absent_off_release(self):
         # Absence is the off-switch, enforced by the renderer rather than by CI not exporting the secret.
         flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
             env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "dev"}
         )
-        self.assertIn("SENTRY_DSN = \n", rd.render_xcconfig(flat) + "\n")
+        self.assertNotIn("sentryDsn", plist(flat))
 
-    def test_the_dsn_is_present_on_release(self):
+    def test_the_dsn_survives_the_grammar_it_is_rendered_into(self):
+        """The bug this rendering exists to make unrepresentable.
+
+        Asserted through a REAL plist parser, not against the emitted string: rendering the intended
+        bytes was never in doubt — the previous xcconfig test asserted exactly that and passed while
+        four TestFlight builds shipped with `SENTRY_DSN = https:`, truncated at the `//` that opens an
+        xcconfig comment. What has to hold is that the value READ BACK equals the value resolved.
+        """
+        dsn = "https://k@example.invalid/1"
+        flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+            env={"SENTRY_DSN": dsn, "SNAPSYNC_CHANNEL": "release"}
+        )
+        self.assertEqual(dsn, plist(flat)["sentryDsn"])
+
+    def test_the_upload_base_carries_the_version_prefix(self):
+        # Also a `//`-carrying value, and read back through the parser for the same reason.
+        flat = Tree().standard().resolve()
+        self.assertEqual("https://example.invalid/api/v1", plist(flat)["uploadBase"])
+
+    def test_the_plist_carries_exactly_the_device_facing_values(self):
+        release = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+            env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "release"}
+        )
+        self.assertEqual(
+            {"uploadBase", "apnsEnv", "sentryEnvironment", "sentryDsn"}, set(plist(release))
+        )
+        dev = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+            env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "dev"}
+        )
+        self.assertEqual({"uploadBase", "apnsEnv", "sentryEnvironment"}, set(plist(dev)))
+
+    def test_the_three_channel_derived_settings_cannot_disagree(self):
+        for channel, aps, apns, sentry in (("release", "production", "production", "production"),
+                                           ("dev", "development", "sandbox", "development")):
+            flat = Tree().standard().resolve(env={"SNAPSYNC_CHANNEL": channel})
+            values = plist(flat)
+            self.assertIn(f"APS_ENVIRONMENT = {aps}", rd.render_xcconfig(flat))
+            self.assertEqual(apns, values["apnsEnv"])
+            self.assertEqual(sentry, values["sentryEnvironment"])
+
+    def test_no_xcconfig_value_contains_a_comment_delimiter(self):
+        """`//` opens a comment anywhere on an xcconfig line, and the grammar offers no escape."""
         flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
             env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "release"}
         )
-        self.assertIn("SENTRY_DSN = https://k@example.invalid/1", rd.render_xcconfig(flat))
+        for line in rd.render_xcconfig(flat).splitlines():
+            # The RAW right-hand side, BEFORE comment stripping. Reading it through the parser would
+            # inspect the already-truncated value and pass on exactly the input this must reject.
+            if line.startswith("//") or " = " not in line:
+                continue
+            name, value = line.split(" = ", 1)
+            self.assertNotIn("//", value, f"{name} would be truncated by the xcconfig comment rule")
 
-    def test_the_upload_base_carries_the_version_prefix(self):
-        flat = Tree().standard().resolve()
-        self.assertIn("BACKGROUND_UPLOAD_URL_BASE = https:/$()/example.invalid/api/v1",
-                      rd.render_xcconfig(flat))
+    def test_no_environment_value_reaches_the_xcconfig(self):
+        """The RAW rule, asserted on the OUTPUT rather than the declaration.
+
+        A declaration-level check would fire on `channel`, which is environment-sourced and names the
+        xcconfig but appears there only through enums this renderer chooses. Poisoning every environment
+        name the inventory reads and looking for the poison in the rendered file asks the question that
+        actually matters: did an unreviewable value land in a grammar with no escaping?
+        """
+        poison = "//POISON//"
+        names = {v["env"] for v in (Tree().standard(
+            sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(env={})).values()
+            if isinstance(v, dict) and "env" in v}
+        names |= {"SNAPSYNC_CHANNEL", "SENTRY_DSN", "GITHUB_SHA"}
+        flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
+            env={n: poison for n in names}
+        )
+        self.assertNotIn(poison, rd.render_xcconfig(flat))
 
     def test_types_declare_a_real_union(self):
         types = rd.render_types(Tree().standard().resolve())

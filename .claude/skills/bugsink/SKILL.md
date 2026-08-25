@@ -328,8 +328,10 @@ wrong, say so and let the operator reopen it in the web UI.
   shape is the only assumption.
 - **dev builds send nothing** (no baked DSN) — so practically every event here is from a
   TestFlight/App Store build, carrying `data.environment = production`. The one exception is
-  deliberate: a dev build with a hand-injected DSN (the on-device verification path documented in
-  `Config.xcconfig`) reports honestly as `development`. Read `data.environment` rather than assuming.
+  deliberate: a build whose channel resolved to `dev` while still carrying a DSN reports honestly as
+  `development`. Read `data.environment` rather than assuming. (A DSN can no longer be hand-injected on
+  an `xcodebuild` line — it rides in the generated `Deployment.plist`, which an override cannot reach —
+  so on-device reporting work is a `gh workflow run ios.yml --ref <branch>` dispatch.)
 - **An event with no `data.release` is an OLD BUILD, not a regression.** Release and the `process`
   tag arrived in `add-release-and-process-to-crash-reports`; a crash captured on an earlier build and
   delivered later carries `release = null` or the SDK's own `app.snapsync@<v>+<build>` fallback (which

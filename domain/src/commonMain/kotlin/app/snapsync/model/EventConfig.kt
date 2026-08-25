@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * this high-entropy UUID is the upload capability — the edge endpoint authorizes by event id alone,
  * and the device holds no storage credential. The upload **host** and the event **name** are
  * deliberately NOT here: the host is fixed at compile time by the extension's
- * `BackgroundUploadURLBase`, and the name is fetched by id after joining (see [EventConfig]).
+ * the baked `uploadBase`, and the name is fetched by id after joining (see [EventConfig]).
  *
  * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
  * instead of waiting for a tap (capability `join-event`). [minPhotoDate] is likewise a **dev/test**
