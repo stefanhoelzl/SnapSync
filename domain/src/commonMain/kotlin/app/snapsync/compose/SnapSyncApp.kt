@@ -710,16 +710,45 @@ class AppCore internal constructor(
         )
 
     suspend fun refreshStatusSources() {
-        ports.configSource.config.value?.let { cfg ->
-            // The own-device walk enumerates the library — GRANTED exactly, per the read discipline
-            // (`limited-photo-access`): under LIMITED the total derives from the selection-driven
-            // discovery instead of an autonomous enumeration.
-            if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) {
-                gallery.refresh(selectionPolicyForMembership(cfg))
-            }
-        }
+        // CHEAP LOCAL READS FIRST, the ~6 s library walk last (capability `sync-status`). Both counts
+        // gate the screen out of its neutral first frame, and the walk is orders of magnitude slower
+        // than the two SQLite reads — so doing the walk first published a counted total beside counts
+        // nobody had read yet, and the screen briefly reported "0 of N".
         ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
+        ports.configSource.config.value?.let { cfg ->
+            // USABLE ACCESS, not GRANTED exactly. `candidates` is a `PermissionAwareCandidateSource`, so
+            // where candidates come from is already its decision: GRANTED walks the library, LIMITED
+            // filters the in-memory selection snapshot and issues NO library read at all. The read
+            // discipline (`limited-photo-access`) is therefore intact either way — and re-stating the
+            // grant here is exactly the consumer-side branch that source exists to remove.
+            //
+            // It also stopped being inert. While the total was seeded `0`, skipping the refresh under
+            // LIMITED merely left a zero that happened to be right whenever the selection was empty. Now
+            // that "not counted" is its own value, skipping leaves `N` UN-COUNTED for the whole session,
+            // and a partial-grant member's screen would sit at "Syncing…" forever with nothing to say
+            // why. Counting the selection — empty or not — is the honest answer and costs no round-trip.
+            //
+            // DENIED / NOT_DETERMINED still do not refresh: "nothing is readable" is not "nothing
+            // qualifies" (see `PermissionAwareCandidateSource`), and the health is `NeedsAccess` there
+            // regardless, which outranks every snapshot-derived value.
+            if (ports.photoAccess.permission.value.grantsPhotoAccess) {
+                // Bounded here, not thrown: this runs as one child of the Foreground flow's
+                // `coroutineScope`, so an escaping failure would cancel its SIBLINGS — the download
+                // reconcile, the staged-byte reclaim, the membership refresh — none of which have
+                // anything to do with enumerating a library.
+                //
+                // The consequence is named rather than hidden (law "Absence is never silent"): `N`
+                // stays `null`, *not counted*, so the joined screen holds its neutral "Syncing…" line
+                // instead of settling. That is the honest answer for a total we could not take — and it
+                // is deliberately NOT collapsed back into a `0`, which would read as "everything
+                // shared". The log line is the only channel that distinguishes "could not count" from
+                // "not counted yet", which is why it is Error-severity: it reaches Bugsink on
+                // production builds (capability `crash-reporting`).
+                runCatching { gallery.refresh(selectionPolicyForMembership(cfg)) }
+                    .onFailure { ports.log.e(it) { "gallery: enumeration failed — N stays unknown" } }
+            }
+        }
     }
 
     // ── The OS-callback trigger flows (spec `module-architecture`, "Rules in features, order in

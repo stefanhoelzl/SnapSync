@@ -160,12 +160,20 @@ class FullStackIntegrationTest {
             )
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
-            w.refreshStatus()
             host.onCreateEvent("Party", LocalDateTime(2026, 1, 1, 0, 0), LocalDateTime(2026, 1, 8, 0, 0)) // POST /events → provision → gate lifts
+            // The gate lifts first; the counts are read separately. `refreshStatus` runs AFTER the
+            // config exists, because the total is scoped by the membership and there is nothing to
+            // count before one — the world's default `onEventMinted` writes the config cell directly
+            // and, unlike the production `Provision` flow, does not refresh the status sources itself.
+            // (This used to be called before the create and still passed, because the total was SEEDED
+            // `0` and this membership's real total is also `0` — the un-counted state was
+            // indistinguishable from the counted one. It no longer is.)
+            host.await { it is UiState.Joined }
+            w.refreshStatus()
             // Await the SETTLED health, not merely "left the create layer": the snapshot's first read is
             // itself asynchronous (`LedgerBackedSyncStatusSource` seeds `Loading` and reaches `Ready`
-            // only once its collector runs), so `Joined(Loading)` — the neutral first frame — is a
-            // legitimate state between the gate lifting and the snapshot landing. A predicate that
+            // only once every input has been READ), so `Joined(Loading)` — the neutral first frame — is a
+            // legitimate state between the gate lifting and the counts landing. A predicate that
             // accepts it races the first read and asserts against a frame that is not settled yet.
             val after = host.await { it.health() is SyncHealth.InSync }
             assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled

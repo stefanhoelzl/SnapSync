@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
+import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 
 /** Every membership carries a cutoff (capability `photo-selection-policy`); there is no whole-library total. */
@@ -68,6 +70,60 @@ class OwnDeviceGalleryStatusSourceTest {
     // The cutoff and origin exclusions were honoured on both sides; the participation direction on neither.
     // Unlike the download arm's total (which flows THROUGH its gate and is zero for free), N is a parallel
     // computation no upload gate feeds — so the short-circuit has to be right here or not at all.
+
+    // ---- Not counted is not zero (capability `gallery-status`) --------------------------------------
+
+    @Test
+    fun `a source that has never been refreshed reports not counted`() = runTest {
+        val source = OwnDeviceGalleryStatusSource(
+            ResourceCandidates(listOf(resource("A-primary.jpg", "A"))),
+        )
+
+        // `null`, NOT `0`. The status projection settles to "In sync" once the synced count reaches the
+        // total, so a seeded zero here rendered a check mark reading "everything shared" on a device
+        // that had not looked (`SNAPSYNC-14`, `SNAPSYNC-16`).
+        assertNull(source.size.value, "an un-refreshed total is not a count of zero")
+    }
+
+    @Test
+    fun `a failed enumeration leaves the total un-counted rather than zero`() = runTest {
+        val source = OwnDeviceGalleryStatusSource(
+            object : CandidateSource {
+                override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+                    error("the library walk blew up")
+            },
+        )
+
+        assertFails { source.refresh(admitting()) }
+
+        // The distinction the law demands: "could not count" must not collapse into "counted nothing",
+        // because the second settles the screen and the first must not.
+        assertNull(source.size.value, "a failed walk publishes no count")
+    }
+
+    @Test
+    fun `a counted zero is distinguishable from never counted`() = runTest {
+        val source = OwnDeviceGalleryStatusSource(ResourceCandidates(emptyList()))
+        assertNull(source.size.value)
+
+        source.refresh(admitting())
+        assertEquals(0, source.size.value, "an empty library that WAS counted reports a real zero")
+    }
+
+    @Test
+    fun `a non-contributing membership counts a real zero rather than the un-counted seed`() = runTest {
+        val source = OwnDeviceGalleryStatusSource(
+            ResourceCandidates(listOf(resource("A-primary.jpg", "A"))),
+        )
+        assertNull(source.size.value)
+
+        // `DenyAll` admits nothing, so the count reaches 0 through the ordinary admission. It is a
+        // COUNTED zero and must settle the screen exactly as a completed count does — the fix must not
+        // turn a legitimate "nothing to share" into a permanent neutral line.
+        source.refresh(SelectionPolicy(listOf(SelectionRule.DenyAll)))
+
+        assertEquals(0, source.size.value)
+    }
 
     @Test
     fun `a non-contributing membership totals zero without walking the library`() = runTest {

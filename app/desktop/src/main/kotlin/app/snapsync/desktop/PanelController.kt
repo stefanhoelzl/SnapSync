@@ -65,7 +65,12 @@ class PanelController {
 
     // The joined-layer download line (capability `photo-download`): forge "downloaded X of Y" to
     // review the indicator without a device. 0/0 hides the line.
-    val downloadStatusSource = InMemoryDownloadStatusSource()
+    //
+    // Seeded a READ `(0, 0)` — the panel's own "hidden (0/0)" preset — rather than the fake's un-read
+    // default. The forge STATES a world, so its resting download state is an answer ("this shot has no
+    // download arm"), not "nothing has been read yet", which would hold every forged shot at the
+    // neutral `Loading` line and make the settled presets unreviewable (capability `sync-status`).
+    val downloadStatusSource = InMemoryDownloadStatusSource(DownloadProgress(0, 0))
     fun setDownload(downloaded: Int, total: Int, inFlight: Int = 0) =
         downloadStatusSource.set(DownloadProgress(downloaded, total, inFlight))
 

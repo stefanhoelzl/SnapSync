@@ -320,7 +320,16 @@ flow through download → import → suppression while the own device's uploads 
 The world SHALL expose controllable failure levers that drive the real stack's failure paths: a
 **backend-offline** switch flipping the per-device listing and event-union routes to `502` (driving the
 reconcile-seed failure path and the download union-failure path), the **job-limit** (`LIMIT_EXCEEDED`),
-a **per-job `UploadError`** on the upload retry chain, and an **import failure** (`ImportResult.Failed`).
+a **per-job `UploadError`** on the upload retry chain, an **import failure** (`ImportResult.Failed`),
+and a **gallery-enumeration failure** — the own-device walk that computes the status total `N` throwing
+as a platform walk can.
+
+The enumeration lever is **one-shot**, arming the next walk only, because the state it creates is a
+*transient* platform failure and a latched one could not show the recovery that follows. It exists
+because the total distinguishes *not counted* (`null`) from a counted `0` (capability `gallery-status`),
+and only a failing walk reaches the first: without it a test cannot assert that a walk which could not
+run leaves the total unknown — and leaves the screen neutral — rather than collapsing to a `0` that
+reads as "everything shared".
 
 It SHALL additionally expose an import that **suspends after writing its marker** and resumes with an
 outcome the test chooses, because that — not a report about it — is the state `SNAPSYNC-9` lives in
@@ -408,6 +417,13 @@ count.
 - **THEN** that asset carries a **different** created identifier, as the photo library mints one per
   request — so a test asserting on identifiers or on asset counts can observe a duplicate rather than
   mistaking it for the original
+
+#### Scenario: A failed enumeration leaves the total un-counted
+
+- **WHEN** the enumeration lever is armed and the status sources are refreshed
+- **THEN** the refresh does not throw, the own-device total remains **not counted** rather than `0`, the
+  cheap ledger and download reads still complete, and the next refresh — the lever being one-shot —
+  produces a real count
 
 ### Requirement: Real-stack composition helpers
 
@@ -689,4 +705,3 @@ and takes the same posture as every other one in this project: supplied explicit
 
 - **WHEN** the world's importer is constructed
 - **THEN** the marker write must be supplied, rather than defaulting to a no-op
-

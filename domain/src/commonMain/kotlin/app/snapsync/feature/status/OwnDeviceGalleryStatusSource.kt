@@ -35,9 +35,19 @@ import kotlinx.coroutines.flow.asStateFlow
  * [size] is a level-triggered count; [refresh] re-enumerates and recomputes it (invoked on foreground
  * entry / library change / (re)join by the composition root).
  *
+ * **Not counted is not zero.** [size] is `null` until a [refresh] has produced a count, and the two
+ * states must never be collapsed: the status projection settles to "In sync" once the synced count
+ * reaches the total, so a placeholder `0` standing in for an unread count renders a checkmark reading
+ * "everything shared" on a device that has counted nothing. This source used to seed `0`, and that is
+ * what members reported as a status going backwards across launches — a settled frame that was never
+ * true, followed by the first honest one (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `gallery-status`).
+ *
+ * A **counted** zero is a real answer and still settles the screen: a non-contributing membership
+ * carries `DenyAll`, admits nothing, and publishes `0` through the ordinary path below.
+ *
  * The policy is a [refresh] **parameter**, not an injected supplier: it belongs to a membership, and a
  * device with no membership has no scope to count — so the composition root simply does not refresh, and
- * `N` stays at its seeded `0`. There is deliberately no "no policy" value to pass.
+ * `N` stays `null`, *not counted*. There is deliberately no "no policy" value to pass.
  */
 class OwnDeviceGalleryStatusSource(
     private val source: CandidateSource,
@@ -50,10 +60,14 @@ class OwnDeviceGalleryStatusSource(
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : GalleryStatusSource {
 
-    private val _size = MutableStateFlow(0)
+    // `null` until a count has been taken. NOT `0`: a placeholder zero is indistinguishable from a
+    // membership that genuinely contributes nothing, and the status projection settles to "In sync" the
+    // moment the synced count reaches the total — so a seeded `0` renders a checkmark on a device that
+    // has counted nothing (capability `gallery-status`; reported as `SNAPSYNC-14` / `SNAPSYNC-16`).
+    private val _size = MutableStateFlow<Int?>(null)
 
-    /** The upload total `N`: the count of this device's OWN admitted assets. */
-    override val size: StateFlow<Int> = _size.asStateFlow()
+    /** The upload total `N`: the count of this device's OWN admitted assets, or `null` if not counted. */
+    override val size: StateFlow<Int?> = _size.asStateFlow()
 
     /**
      * Re-read within [configPolicy] (what the joined membership contributes) and recompute `N`.

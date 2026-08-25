@@ -2,6 +2,9 @@ package app.snapsync.feature.status
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class LedgerCountsSourceTest {
@@ -10,7 +13,7 @@ class LedgerCountsSourceTest {
     fun refresh_publishes_the_read_counts() = runTest {
         var next = LedgerCounts(completed = 4, pending = 3)
         val source = ReadingLedgerCountsSource { next }
-        assertEquals(LedgerCounts.ZERO, source.counts.value) // seeded before any refresh
+        assertEquals(LedgerCounts.UNREAD, source.counts.value) // seeded UN-READ before any refresh
         source.refresh()
         assertEquals(LedgerCounts(completed = 4, pending = 3), source.counts.value)
         next = LedgerCounts(completed = 6, pending = 0)
@@ -19,10 +22,22 @@ class LedgerCountsSourceTest {
     }
 
     @Test
-    fun a_failed_read_before_any_value_stays_zero() = runTest {
+    fun a_failed_read_before_any_value_stays_un_read() = runTest {
         val source = ReadingLedgerCountsSource { error("ledger unreadable") }
         source.refresh() // must not throw
-        assertEquals(LedgerCounts.ZERO, source.counts.value)
+        // UN-READ, not a read zero: a failure that promoted the seed to "we looked and found nothing"
+        // would let the status projection settle to "In sync" over counts nobody took.
+        assertEquals(LedgerCounts.UNREAD, source.counts.value)
+        assertFalse(source.counts.value.read)
+    }
+
+    @Test
+    fun a_read_empty_ledger_is_a_real_answer_not_the_seed() = runTest {
+        val source = ReadingLedgerCountsSource { LedgerCounts(completed = 0, pending = 0) }
+        source.refresh()
+        // Same numbers as UNREAD, different answer: this one was read, so it mints a snapshot.
+        assertTrue(source.counts.value.read)
+        assertNotEquals(LedgerCounts.UNREAD, source.counts.value)
     }
 
     @Test

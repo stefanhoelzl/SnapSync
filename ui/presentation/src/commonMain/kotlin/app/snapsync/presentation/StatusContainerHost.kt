@@ -119,7 +119,13 @@ class StatusContainerHost(
     // Exposed as a screen-level StateFlow (like `inviteUrl`), NOT folded into `UiState` — it's an
     // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
     // so non-iOS hosts/tests construct unchanged; iOS injects the store-backed source.
-    downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(),
+    //
+    // The default is a READ `(0, 0)`, spelled out rather than taken from the fake's own default, and the
+    // distinction is the point: "this host has no download arm" is an ANSWER, while the fake's default
+    // (`DownloadProgress.UNREAD`) means "nothing has been read", which holds the health at `Loading`
+    // forever. A host that never wires downloads means the first; the store-backed source on device
+    // means the second until its first refresh (capability `sync-status`).
+    downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(DownloadProgress(0, 0)),
     // Attestation health (capability `device-attestation`): the trust feature's own read-model, false
     // only when this device's token is UNUSABLE (absent, unreadable, or expired) and the refresh could
     // not obtain one. Never false for a token that is merely due for renewal — that one still authorizes
@@ -808,6 +814,14 @@ private fun reduceFrom(
         !attested -> SyncHealth.Unattested
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
         snapshot is SyncStatus.Loading -> SyncHealth.Loading
+        // The download arm has its OWN read-ness, and it must gate the health too. `syncHealth` below
+        // hides an arrow when its counts are complete, and shows "In sync" only when BOTH arrows are
+        // hidden — so an un-read DownloadProgress, whose `downloaded` and `total` are both a placeholder
+        // zero, hides the download arrow and can carry the whole screen to a settled check mark on its
+        // own. Gating the upload side alone would relocate that defect rather than remove it: the next
+        // member to join an event with foreign photos outstanding would meet it through this arm on
+        // their first launch (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
+        !download.read -> SyncHealth.Loading
         snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download)
         else -> SyncHealth.Loading
     }

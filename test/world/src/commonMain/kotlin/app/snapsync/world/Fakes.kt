@@ -1,8 +1,10 @@
 package app.snapsync.world
 
 import app.snapsync.fake.InMemoryCandidateSource
+import app.snapsync.ports.CandidateSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -38,7 +40,26 @@ class WorldGallery {
     private val state = MutableStateFlow<List<RawAsset>>(emptyList())
 
     /** The honest port impl over the world-owned cell — handed straight to the compositions. */
-    val source: InMemoryCandidateSource = InMemoryCandidateSource(state)
+    private val honest: InMemoryCandidateSource = InMemoryCandidateSource(state)
+
+    /**
+     * Operator lever: make the next enumeration THROW, as a platform walk can (capability
+     * `sync-status`). It exists so a test can assert what a failed count does — the total stays
+     * *not counted* rather than collapsing to a `0` that would read as "everything shared" — which is
+     * otherwise unreachable without a device.
+     */
+    var failNextEnumeration: Boolean = false
+
+    /** The seam the compositions consume: the honest fake, plus the operator's failure lever. */
+    val source: CandidateSource = object : CandidateSource {
+        override suspend fun candidates(policy: SelectionPolicy) =
+            if (failNextEnumeration) {
+                failNextEnumeration = false
+                error("the operator forced this enumeration to fail")
+            } else {
+                honest.candidates(policy)
+            }
+    }
 
     /** The current contents, unscoped — a rigging-only read (production has no unbounded walk). */
     fun current(): List<RawAsset> = state.value

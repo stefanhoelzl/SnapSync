@@ -21,7 +21,7 @@ class LedgerBackedSyncStatusSourceTest {
     private val ledgerCounts = MutableLedgerCountsSource()
     private val permission = FakePermissionSource(PermissionStatus.GRANTED)
     // The honest fake exposes only the port; the test owns the cell it reads (fake-honesty gate).
-    private val galleryCell = MutableStateFlow(0)
+    private val galleryCell = MutableStateFlow<Int?>(0)
     private val gallery = InMemoryGalleryStatusSource(galleryCell)
 
     private fun ready(
@@ -42,6 +42,79 @@ class LedgerBackedSyncStatusSourceTest {
         val source = source(backgroundScope)
 
         assertEquals(SyncStatus.Loading, source.status.value)
+    }
+
+    @Test
+    fun `seeded but unread inputs never mint a Ready`() = runTest {
+        // The defect this whole change exists for. Every input is a `StateFlow`, so all of them "have a
+        // value" the instant they are built and `combine` emits on its first dispatch. When those values
+        // were placeholder zeros, the projection minted `Ready(total = 0, completed = 0)` — and the
+        // health rule hides a direction arrow when `synced >= total`, so `0 >= 0` on both arms rendered
+        // a check mark reading "In sync" on a device that had read nothing (`SNAPSYNC-14`,
+        // `SNAPSYNC-16`). Read-ness now lives in the input types, so existing cannot satisfy it.
+        val unread = LedgerBackedSyncStatusSource(
+            MutableLedgerCountsSource(), // seeded UNREAD
+            permission,
+            InMemoryGalleryStatusSource(), // seeded null — never enumerated
+            backgroundScope,
+        )
+        runCurrent()
+
+        assertEquals(SyncStatus.Loading, unread.status.value)
+    }
+
+    @Test
+    fun `an unread gallery total alone holds the source at Loading`() = runTest {
+        ledgerCounts.set(completed = 1, pending = 0) // read
+        galleryCell.value = null // not counted
+
+        val source = source(backgroundScope)
+        runCurrent()
+
+        assertEquals(SyncStatus.Loading, source.status.value)
+    }
+
+    @Test
+    fun `unread ledger counts alone hold the source at Loading`() = runTest {
+        galleryCell.value = 3 // counted
+        val source = LedgerBackedSyncStatusSource(
+            MutableLedgerCountsSource(), // never set → UNREAD
+            permission,
+            gallery,
+            backgroundScope,
+        )
+        runCurrent()
+
+        assertEquals(SyncStatus.Loading, source.status.value)
+    }
+
+    @Test
+    fun `a read zero and a counted zero total do mint a Ready`() = runTest {
+        // The other half of the rule: a counted zero is an ANSWER. A non-contributing membership must
+        // still settle the screen, exactly as it did before (design D3).
+        ledgerCounts.set(completed = 0, pending = 0)
+        galleryCell.value = 0
+
+        val source = source(backgroundScope)
+        runCurrent()
+
+        assertEquals(ready(pending = 0, completed = 0, total = 0), source.status.value)
+    }
+
+    @Test
+    fun `once Ready the source never regresses to Loading`() = runTest {
+        ledgerCounts.set(completed = 1, pending = 0)
+        galleryCell.value = 2
+        val source = source(backgroundScope)
+        runCurrent()
+        assertIs<SyncStatus.Ready>(source.status.value)
+
+        // Nothing should be able to un-read an input, but the seam's contract is explicit that a source
+        // MUST NOT regress once Ready — so the projection must not publish Loading a second time.
+        galleryCell.value = null
+        runCurrent()
+
+        assertIs<SyncStatus.Ready>(source.status.value)
     }
 
     @Test

@@ -11,10 +11,18 @@ import kotlinx.coroutines.launch
 /**
  * The **foreground** OS-callback trigger flow (spec `module-architecture`, "Rules in features, order
  * in flows"; capability `sync-status` liveness). The scene returned to the foreground: re-read the
- * persisted membership (below), pump the app-driven upload tier (a no-op on the OS-driven tier),
- * start the foreground status poll, then — each on its own launch, so a slow one never blocks the
- * others — re-read the status sources, reconcile foreign downloads, reclaim the staged bytes of
- * already-imported downloads, refresh the event title, and renew a stale attestation token.
+ * persisted membership (below), renew a stale attestation token, start the foreground status poll,
+ * then — each on its own launch, so a slow one never blocks the others — pump the app-driven upload
+ * tier (a no-op on the OS-driven tier), re-read the status sources, reconcile foreign downloads,
+ * reclaim the staged bytes of already-imported downloads, and refresh the event title.
+ *
+ * **The pump is one of those launches, and that placement is load-bearing** (capability `sync-status`).
+ * It used to be awaited before them, which meant every step below it inherited the pump's latency —
+ * and the pump awaits a whole upload cycle whose discovery walk stays outstanding for as long as the
+ * app was suspended (774 s, measured; `SNAPSYNC-16`). A member whose visit was shorter than that
+ * unwinding read no counts at all, and the joined screen answered from its seeds: a check mark reading
+ * "In sync" over a device that had counted nothing. `run()` still awaits every child, so what the OS
+ * is told is unchanged; only what the pump can hold up is.
  *
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay in the shell (platform surfaces `flow/`
@@ -83,16 +91,29 @@ class Foreground(
         // could go out carrying the very token being replaced. `refresh()` short-circuits on a
         // fresh token, so the sequencing costs nothing in the common case.
         refreshAttestation()
-        // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle. No-op on ≥26.1.
-        pumpForeground()
         // Keep the ledger counts live while the screen is visible (the first tick waits one cadence;
-        // the refreshStatus launch below covers "now").
+        // the refreshStatus launch below covers "now" — which is true again now that the refresh is no
+        // longer queued behind the pump). Non-blocking: the poller owns its own scope.
         statusPoller.start()
-        // Still concurrent — but now AWAITED, so `run()` returns when they are done rather than when
-        // they are queued (law "A trigger flow never outlives its own run"). Each still labels its own
-        // log lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
+        // Concurrent AND awaited, so `run()` returns when they are done rather than when they are
+        // queued (law "A trigger flow never outlives its own run"). Each still labels its own log
+        // lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
         // former `scope.launch` bodies did.
         coroutineScope {
+            // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle. No-op on
+            // ≥26.1.
+            //
+            // A CHILD, not a step before the others. It used to be awaited above them, and that single
+            // line of ordering is why a member could see a settled screen over counts nobody took: this
+            // pump awaits a whole upload cycle, and a cycle's discovery walk stays outstanding for as
+            // long as the app was suspended — 774 seconds, measured on device (`SNAPSYNC-16`, build
+            // 0.3(605), iOS 18.7.9). A visit shorter than that unwinding reached NONE of the work below,
+            // so no count was ever read, and the status projection had only its seeds to answer from.
+            //
+            // Moving it here changes nothing about when `run()` returns — `coroutineScope` still awaits
+            // it — so the shell's completion report to the OS stays truthful. It changes only what the
+            // pump is allowed to hold up: itself (capability `sync-status`).
+            launch { pumpForeground() }
             launch { refreshStatus() }
             // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
             launch { activeEventId()?.let { downloadController.reconcile(it) } }
