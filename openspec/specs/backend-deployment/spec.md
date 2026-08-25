@@ -19,23 +19,38 @@ weeks — with CI green throughout, because `POST /code` + `/publish` succeed wh
 boots. Its `BUNNY_STORAGE_ZONE` even named a zone that does not exist, and every artifact in the repo
 agreed with it; only the running system knew otherwise.
 
-So the least-privilege rule and the source-owned config are **one argument, not two**: because CI may
-not hold the account key, config cannot be CI-managed, therefore every non-secret value is a **source
-constant** that ships in the same bundle as the code that reads it. Drift is not *detected* — it is
-*impossible*. A future change that admits the account key to CI to "fix config drift" is trading that
-blast radius away; a future change that moves a non-secret value back into the environment reopens the
-silent-corpse failure with **nothing watching** (there is deliberately no boot probe).
+So the least-privilege rule and the artifact-owned config are **one argument, not two**: because CI may
+not hold the account key, config cannot be CI-managed, therefore every non-secret value ships **in the
+same bundle as the code that reads it**, resolved from a declared deployment (capability
+`deployment-configuration`). Drift is not *detected* — it is *impossible*. A future change that admits
+the account key to CI to "fix config drift" is trading that blast radius away.
+
+**There IS a boot probe now, and this is what it does and does not restore.** That property was
+originally bought by source constants alone, and a boot probe was declined *conditionally*: with the
+failure class made impossible, prevention replaced detection, on the stated condition that anything
+reintroducing platform-side required config would reopen the silent-corpse failure with nothing
+watching. Deployment-resolved config keeps the ships-as-one-artifact property but makes the values
+portable, and platform-side database credentials arrived — so the condition fired and detection is back
+(see "Deploy is gated on a post-publish boot probe"). Be precise about which half it restores: the probe
+witnesses that the script **booted** and that **this bundle** is serving. It does **not** witness that any
+configured value is *correct* — a value that is present but wrong boots and probes green, which is the
+other half of the original outage, where `BUNNY_STORAGE_ZONE` named a zone that does not exist. Probe
+coverage is exactly the set of faults startup turns into a throw, so a new platform-side value is covered
+only if it is declared in a deployment (readable, diffable) or made to fail closed at boot.
 
 The **owned domain** is the other standing property: the device-facing host is baked into the app at
 compile time (the OS-driven upload extension permits exactly one upload host), so an app rebuild is the
 one thing a runtime outage must never require. Owning the name is what let the previous runtime be
 retired with a DNS repoint instead of a forced TestFlight round. Keep it that way.
 
-Decision record: `changes/archive/2026-06-22-add-bunny-upload-endpoint` (the pipeline),
+Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe` (deployment-resolved config
+and the boot probe),
+`changes/archive/2026-06-22-add-bunny-upload-endpoint` (the pipeline),
 `changes/archive/2026-06-30-add-custom-domain` (the owned origin),
 `changes/archive/2026-07-14-migrate-runtime-to-bunny` (bunny as the sole runtime; config into source;
 the fold of the former `backend-config` capability into this one).
 ## Requirements
+
 ### Requirement: Path-scoped, isolated workflow; deploy on main only
 
 The system SHALL provide a GitHub Actions workflow that runs the checks on **every push** touching the
@@ -139,21 +154,26 @@ exactly one upload host, fixed at compile time.
 
 ### Requirement: Deploy is gated on green checks
 
-The workflow SHALL run, before the deploy step, the full check set — `deno fmt --check`, `deno lint`,
-the type-check, and the `Deno.test` suite — and the deploy step SHALL execute **only** when all of them
-pass. Any failing check SHALL block deployment.
+The workflow SHALL resolve the deployment (capability `deployment-configuration`) before running any check,
+because the checks type-check and exercise code that reads the resolved configuration. It SHALL then run,
+before the deploy step, the full check set — `deno fmt --check`, `deno lint`, the type-check, and the
+`Deno.test` suite — and the deploy step SHALL execute **only** when all of them pass. Any failing check
+SHALL block deployment.
 
 The type-check and test steps SHALL be invoked **through their `deno.json` tasks** (`deno task check`,
 `deno task test`) rather than by restating the commands in the workflow, so the set of type-checked
 directories and the permissions the suite runs under are defined in exactly one place and cannot drift
 between CI and what a developer runs locally. The type-check SHALL cover **all** source — `src/` including
-`main.ts`/SDK wiring the test run does not reach, **and** the dev-only `src/dev/` tree (the local backend
-rig), so a broken rig fails CI rather than only surfacing when someone next tries to use it.
+`main.ts`/SDK wiring the test run does not reach, the dev-only `src/dev/` tree (the local backend rig), and
+the out-of-bundle `src/scripts/` tree (the programs other workflows invoke) — so a broken rig or a broken
+job fails CI rather than only surfacing when someone next tries to use it.
 
 The test task SHALL carry **only** the filesystem permissions its own suite needs (`--allow-read`,
 `--allow-write`, for the dev storage shim's contract test). It SHALL NOT grant `--allow-net`: that absence
 is what makes it impossible for a test to reach the real storage zone — a network call fails as a
 permission error rather than silently becoming a live request against the zone holding real users' photos.
+Resolving the deployment SHALL be a separate invocation, so it cannot widen the permissions the suite runs
+under.
 
 #### Scenario: A failing check blocks deploy
 
@@ -169,6 +189,12 @@ permission error rather than silently becoming a live request against the zone h
 
 - **WHEN** a change breaks compilation anywhere under `api/src/dev/`
 - **THEN** the type-check step fails and the deploy is blocked, even though nothing under `src/dev/`
+  reaches the deployed bundle
+
+#### Scenario: The type-check reaches the out-of-bundle programs
+
+- **WHEN** a change breaks compilation anywhere under `api/src/scripts/`
+- **THEN** the type-check step fails and the deploy is blocked, even though nothing under `src/scripts/`
   reaches the deployed bundle
 
 #### Scenario: No test can reach the real storage zone
@@ -257,30 +283,32 @@ through the pull zone**, not merely at the origin.
 - **WHEN** the deploy step runs on `main`
 - **THEN** the bundle is shipped to the bunny Edge Script and to no other runtime
 
-### Requirement: Non-secret configuration is source-owned, not environment-owned
+### Requirement: Non-secret configuration is deployment-resolved, not environment-owned
 
-Every **non-secret** runtime configuration value SHALL be a constant in the backend source — the
-storage zone name, the storage native host, the S3 region, the S3 endpoint host, and the APNs key id,
-team id, and topic. These are public facts, not credentials. **Source wins**: the backend SHALL NOT
-consult the environment for any of them, so a stale or wrong platform variable cannot override the
-committed value.
+Every **non-secret** runtime configuration value SHALL come from the resolved deployment (capability
+`deployment-configuration`) and SHALL be present in the deployed bundle — the storage zone name, the storage
+native host, the S3 region, the S3 endpoint host, and the APNs key id, team id, and topic. These are public
+facts, not credentials. **The resolved deployment wins**: the backend SHALL NOT consult the environment for
+any of them, so a stale or wrong platform variable cannot override the deployed value.
 
-This exists because bunny offers **no scoped API key** — writing an Edge Script's variables requires
-the full-access account key, which the deploy workflow is forbidden to hold (see "Deploy with
-secret-held, script-scoped credentials"). CI can therefore ship code but not config. Source-owned
-config closes that gap structurally: a newly-required non-secret value cannot ship without its value,
-because they ship as one artifact.
+This exists because bunny offers **no scoped API key** — writing an Edge Script's variables requires the
+full-access account key, which the deploy workflow is forbidden to hold (see "Deploy with secret-held,
+script-scoped credentials"). CI can therefore ship code but not platform config. Resolving the deployment at
+build time closes that gap structurally, exactly as source constants did: a newly-required non-secret value
+cannot ship without its value, because they ship as one artifact. What changes is only *where the value is
+authored* — a declared deployment rather than a constant in backend source — so the same deployment
+mechanism can serve a different account without editing code.
 
-#### Scenario: A non-secret value is read from source, not the environment
+#### Scenario: A non-secret value is read from the bundle, not the environment
 
 - **WHEN** the backend boots
-- **THEN** it takes the zone, native host, S3 region, S3 host, and APNs key id / team id / topic from
-  source constants, and reads no environment variable for any of them
+- **THEN** it takes the zone, native host, S3 region, S3 host, and APNs key id / team id / topic from the
+  resolved deployment shipped in the bundle, and reads no environment variable for any of them
 
-#### Scenario: A platform variable cannot override a source constant
+#### Scenario: A platform variable cannot override a resolved value
 
 - **WHEN** an Edge Script environment variable is set whose name matches a non-secret config value
-- **THEN** the backend ignores it and uses the source constant
+- **THEN** the backend ignores it and uses the resolved value
 
 #### Scenario: A new non-secret config value cannot drift
 
@@ -288,23 +316,33 @@ because they ship as one artifact.
 - **THEN** its value ships in the same bundle as the code that reads it, and no platform-side step is
   required for the deployment to boot
 
+#### Scenario: A different account needs no code change
+
+- **WHEN** the backend is deployed against a different storage account
+- **THEN** it is done by declaring and selecting a different deployment, with no change to backend source
+
 ### Requirement: Secrets-only environment, fail-closed
 
-The backend SHALL read exactly **three** values from the Edge Script environment, all of them genuine
-credentials: the storage-zone `AccessKey` (`BUNNY_STORAGE_ACCESS_KEY`, which doubles as the S3 secret),
-the APNs Auth Key PEM (`APNS_PRIVATE_KEY`), and the device-token signing key (`ATTEST_TOKEN_KEY`, which
-signs and verifies the bearer tokens of capability `device-attestation`). **No secret SHALL appear in
-source.** All SHALL be validated **once at startup**; a missing or blank value SHALL cause startup to fail
-(the parse throws), so a misconfigured deployment does not serve and never operates against an
-unauthenticated target. The validated config SHALL be injected into the request handlers, which therefore
-have no per-request configuration failure path.
+The backend SHALL read from the Edge Script environment **only** the values the resolved deployment declares
+as runtime environment references, all of them genuine credentials: the storage-zone `AccessKey`
+(`BUNNY_STORAGE_ACCESS_KEY`, which doubles as the S3 secret), the APNs Auth Key PEM (`APNS_PRIVATE_KEY`),
+and the device-token signing key (`ATTEST_TOKEN_KEY`, which signs and verifies the bearer tokens of
+capability `device-attestation`). **No secret SHALL appear in any authored file**; the deployment declares
+the variable's **name**, never its value, and the bundle carries the name alone.
+
+The set of required secrets SHALL be **derived from that declaration** rather than restated in code, so it
+cannot drift from what the deployment actually needs. All SHALL be validated **once at startup**; a missing
+or blank value SHALL cause startup to fail (the parse throws), so a misconfigured deployment does not serve
+and never operates against an unauthenticated target. The validated config SHALL be injected into the
+request handlers, which therefore have no per-request configuration failure path.
 
 Because CI holds only the script-scoped deploy key and **cannot write the script's environment**, a new
 secret SHALL be set in the Edge Script environment **before** the code that reads it is merged to `main`.
 Merging first makes the script fail to boot on the next deploy — a total outage until the secret is set
-by hand. (This ordering is not hypothetical: a change that added required env vars without setting them
-left this backend fail-closed at boot for two weeks, with CI green throughout.) **Removing** a secret is
-safe in either order, since a value that is no longer read cannot fail validation.
+by hand, now detected by the boot probe rather than silently. (This ordering is not hypothetical: a change
+that added required env vars without setting them left this backend fail-closed at boot for two weeks, with
+CI green throughout.) **Removing** a secret is safe in either order, since a value that is no longer read
+cannot fail validation.
 
 The scheduled cleanup (capability `scheduled-cleanup`) runs **outside** the Edge Script and holds
 `BUNNY_STORAGE_ACCESS_KEY` as **its own workflow's** GitHub Actions secret — and nothing else. It makes no
@@ -333,14 +371,24 @@ authorization path nobody exercises.
 - **THEN** config parsing throws, the backend does not start, and no request is ever served — the gate
   can never be silently absent
 
+#### Scenario: The required set follows the deployment's declaration
+
+- **WHEN** a deployment declares a runtime environment reference for a new secret
+- **THEN** startup validation requires it without any separate list being edited
+
+#### Scenario: The bundle carries names, never values
+
+- **WHEN** the deployed bundle is inspected
+- **THEN** it contains the environment variable names the deployment declared and none of their values
+
 #### Scenario: No other variable is required to boot
 
-- **WHEN** the three secrets are present and no other environment variable is set
+- **WHEN** the declared secrets are present and no other environment variable is set
 - **THEN** the backend boots and serves
 
 #### Scenario: A retired secret left set is simply unread
 
-- **WHEN** the Edge Script environment still carries the former notify admin key after this change
+- **WHEN** the Edge Script environment still carries a secret the deployment no longer declares
 - **THEN** the backend boots and serves, reading it for nothing and authorizing nothing with it
 
 #### Scenario: The sweep holds one credential
@@ -354,11 +402,12 @@ authorization path nobody exercises.
 - **WHEN** a request is handled
 - **THEN** it uses the config validated at startup and has no per-request configuration failure path
 
-### Requirement: Apple's App Attest root CA is a source constant
+### Requirement: Apple's App Attest root CA is deployment-declared, never environment-read
 
-Apple's App Attest **root certificate** SHALL be a **source constant**, committed in the backend source,
-and SHALL NOT be read from the environment. It is the trust anchor every attestation's certificate chain
-is verified against (capability `device-attestation`).
+Apple's App Attest **root certificate** SHALL be declared in the deployment (capability
+`deployment-configuration`), resolved into the deployed bundle, and SHALL NOT be read from the environment.
+It is the trust anchor every attestation's certificate chain is verified against (capability
+`device-attestation`).
 
 It meets the existing criterion exactly: it is a **public fact** (Apple publishes it), so committing it
 exposes nothing, and shipping it in the same bundle as the code that reads it means a verification change
@@ -373,7 +422,7 @@ cannot be deployed without its trust anchor.
 #### Scenario: A platform variable never overrides the trust anchor
 
 - **WHEN** an environment variable naming a root CA is set on the Edge Script
-- **THEN** it is ignored; the source constant is used
+- **THEN** it is ignored; the deployment-declared value is used
 
 ### Requirement: Device-API routes are served under a versioned prefix
 
@@ -382,9 +431,11 @@ current version is **`/api/v1`** (e.g. `POST /api/v1/events`, `PUT /api/v1/files
 `GET /api/v1/attest/challenge`). The routing SHALL be structured so that additional versions can be mounted
 alongside `/api/v1` without restructuring the existing version's routes.
 
-The **web/link paths** — `/`, `/join`, and `/.well-known/apple-app-site-association` — SHALL remain at the
-**root, un-prefixed**, and SHALL NOT be served under `/api/v1`. They are not device-API routes; Apple's CDN
-and browsers require fixed paths for the AASA and the `/join` universal link.
+The **web/link paths** — `/`, `/join`, and `/.well-known/apple-app-site-association` — and the **operational
+health route** SHALL remain at the **root, un-prefixed**, and SHALL NOT be served under `/api/v1`. The
+web/link paths are not device-API routes; Apple's CDN and browsers require fixed paths for the AASA and the
+`/join` universal link. The health route is not a device-API route either — no device calls it — and keeping
+it out of the versioned mount means a future `/api/vN` neither duplicates nor strands it.
 
 The **auth gate** SHALL apply to the `/api/v1` routes: authenticated routes SHALL require a valid bearer
 token, and the ungated attest bootstrap routes (`attest/*`) SHALL remain ungated under
@@ -408,6 +459,12 @@ separate web/link origin constant SHALL NOT carry the prefix.
   marketing page is requested at `/`
 - **THEN** each is served at its bare root path
 - **AND** the same web/link paths are NOT served under `/api/v1`
+
+#### Scenario: The health route stays at the root, never under the prefix
+
+- **WHEN** the health route is requested at its bare root path
+- **THEN** it is served
+- **AND** it is NOT served under `/api/v1`
 
 #### Scenario: Attest bootstrap stays ungated under the prefix
 
@@ -496,3 +553,101 @@ be changed into a whole-zone walk. Hygiene of the `site/` prefix is owned by the
 - **WHEN** the nightly sweep runs against the storage zone
 - **THEN** it lists and reclaims only `events/`, `files/devices/`, and `devices/`, and leaves every
   `site/` object untouched
+
+### Requirement: Deploy is gated on a post-publish boot probe
+
+After publishing on `main`, the workflow SHALL probe the device-facing origin until it observes the bundle
+it just deployed, and SHALL fail the run otherwise. This exists because `POST /code` + `POST /publish`
+succeed whether or not the deployed bundle can boot, so a green deploy step is **not** evidence that the
+script serves.
+
+The probe SHALL be satisfied only by a response that identifies **the bundle this run deployed**. A bare
+success is insufficient: it cannot distinguish the new deployment from the previous one still being served,
+which is the failure the probe exists to catch.
+
+The probe SHALL retry only causes that time can resolve — a connection failure, a server error, a
+not-found, or a response identifying a *different* bundle — up to a bounded deadline, and SHALL fail
+**immediately** on causes that waiting cannot fix, naming which. Retrying a terminal cause until a deadline
+turns a specific bug into a timeout.
+
+The probe SHALL target the **device-facing origin**, so a green probe also witnesses the DNS, certificate
+and pull-zone path a device traverses, per "bunny Edge Scripting is the device-facing runtime". It SHALL
+NOT target a runtime-provider hostname: that would report success while the device-facing path was broken,
+and would place a provider-owned name in CI.
+
+The probe SHALL NOT roll back. Bunny's release re-publish is authenticated by the **account** key, which
+this workflow is forbidden to hold; the script-scoped deploy key is refused (`401`) by the release
+endpoints. Detection is the deliverable and remediation is not attempted.
+
+**What a green probe does not prove.** It witnesses that the script booted and that this bundle is serving.
+It does **not** witness that any configured value is *correct*: a value that is present but wrong boots and
+probes green. Probe coverage is exactly the set of faults that startup turns into a failure to boot.
+
+Deploys SHALL be serialized, so a probe always observes its own deploy rather than a later one.
+
+#### Scenario: A bundle that cannot boot fails the run
+
+- **WHEN** the deployed bundle fails to start
+- **THEN** the probe never observes it, and the workflow fails after its deadline naming what it last saw
+
+#### Scenario: A stale bundle still serving fails the run
+
+- **WHEN** the origin answers successfully but identifies a different bundle than the one just deployed
+- **THEN** the probe retries until its deadline and then fails
+
+#### Scenario: Propagation delay is not a failure
+
+- **WHEN** the origin briefly refuses connections, errors, or serves the previous bundle immediately after
+  publish, and then serves the new one within the deadline
+- **THEN** the probe succeeds
+
+#### Scenario: A terminal cause fails immediately
+
+- **WHEN** the origin answers successfully but the response carries no usable bundle identity, or carries
+  the identity used when CI supplied none
+- **THEN** the probe fails at once, naming that cause, without waiting for the deadline
+
+#### Scenario: A green probe is not a claim about configuration correctness
+
+- **WHEN** the backend boots with a configured value that is present but wrong
+- **THEN** the probe succeeds, and the failure is not detected by it
+
+#### Scenario: Concurrent deploys do not produce a false failure
+
+- **WHEN** two pushes to `main` touching the backend are deployed in quick succession
+- **THEN** the deploys are serialized and each probe observes its own deploy
+
+### Requirement: A health route reports the deployed bundle's identity
+
+The backend SHALL serve an **unauthenticated** health route at the **root**, answering `GET` and `HEAD`
+only, returning success with the identity of the bundle serving it, and carrying the listings' no-cache
+directives so the pull zone cannot answer from a previous deployment's copy.
+
+The route SHALL be **inert**: it SHALL read no storage, perform no cryptography, and contact no external
+system. It SHALL have **no failure path** — configuration is validated once at startup, outside the request
+handlers, so a configuration failure means the script does not serve at all rather than that this route
+answers with an error. Distinguishing causes is the probe's responsibility, from the combination of
+response status and body.
+
+Serving it unauthenticated is accepted: it discloses only an identifier that is already public, and it does
+strictly less work than routes that are already ungated and uncacheable.
+
+#### Scenario: The health route is served without a token
+
+- **WHEN** the health route is requested with no bearer token
+- **THEN** it is answered successfully, carrying the identity of the bundle serving it
+
+#### Scenario: The health route is not cached by the pull zone
+
+- **WHEN** the health route is requested through the pull zone after a new bundle is published
+- **THEN** the response is not served from a previous deployment's cached copy
+
+#### Scenario: The health route touches nothing
+
+- **WHEN** the health route is handled
+- **THEN** no storage request, cryptographic operation, or external call is made
+
+#### Scenario: A mutating method is not served
+
+- **WHEN** the health route is requested with a method other than `GET` or `HEAD`
+- **THEN** it is not served by that route

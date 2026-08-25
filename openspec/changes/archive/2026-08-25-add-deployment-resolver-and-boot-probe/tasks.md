@@ -78,5 +78,5 @@
 
 - [x] 11.1 Run `./gradlew build` and `./gradlew architectureDiagrams`, committing any diagram churn
 - [x] 11.2 Run `deno fmt --check`, `deno lint`, `deno task check`, `deno task test` from a clean clone to confirm the resolver chain works with nothing committed
-- [ ] 11.3 Correct `crash-reporting`'s Purpose sentence ("the DSN exists only as a CI secret baked into Release archives") and `apns-push-sender`'s "source constants" sentence at sync time
+- [x] 11.3 Correct `crash-reporting`'s Purpose sentence ("the DSN exists only as a CI secret baked into Release archives") and `apns-push-sender`'s "source constants" sentence at sync time
 - [ ] 11.4 Tell the `record-uploads-in-database` workspace that the probe now lands inside this change, and that `BUNNY_DATABASE_URL` should be a deployment value rather than an unreadable bunny secret

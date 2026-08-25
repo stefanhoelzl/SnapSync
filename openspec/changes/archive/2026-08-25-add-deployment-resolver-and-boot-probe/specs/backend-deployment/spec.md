@@ -98,6 +98,24 @@ strictly less work than routes that are already ungated and uncacheable.
 - **WHEN** the health route is requested with a method other than `GET` or `HEAD`
 - **THEN** it is not served by that route
 
+## RENAMED Requirements
+
+<!-- Both titles asserted something this change makes false — that the values are "source-owned" and that
+     the trust anchor is "a source constant". They are now resolved from a declared deployment and still
+     ship in the same artifact as the code that reads them, so the ANTI-DRIFT property is unchanged while
+     the title's claim about WHERE the value is authored is not. Renaming is deliberate: leaving the old
+     titles would have left `backend-deployment` asserting one thing in a heading and its opposite two
+     lines below, which is precisely the self-contradicting-spec defect this tree was audited for. The
+     MODIFIED blocks below carry the new bodies under the new names. -->
+
+### Requirement: Non-secret configuration is deployment-resolved, not environment-owned
+FROM: `### Requirement: Non-secret configuration is source-owned, not environment-owned`
+TO: `### Requirement: Non-secret configuration is deployment-resolved, not environment-owned`
+
+### Requirement: Apple's App Attest root CA is deployment-declared, never environment-read
+FROM: `### Requirement: Apple's App Attest root CA is a source constant`
+TO: `### Requirement: Apple's App Attest root CA is deployment-declared, never environment-read`
+
 ## MODIFIED Requirements
 
 ### Requirement: Non-secret configuration is deployment-resolved, not environment-owned

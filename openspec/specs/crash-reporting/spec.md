@@ -10,7 +10,7 @@ Bugsink instance (Sentry-protocol, errors-only — no tracing, performance, repl
 channel is privacy-bounded by construction: every UUID-shaped token is scrubbed before transmission (an
 eventId IS the upload capability; the device id is the GDPR-request correlator), the SDK's random
 per-install `user.id` is the one deliberate exception (affected-device counts, linked to nothing), and
-the DSN exists only as a CI secret baked into Release archives — a build without it starts no SDK and
+the DSN is a build-scope value the deployment resolver bakes into Release archives from a CI secret (capability `deployment-configuration`), emitted only when the build channel names a distributed build — so absence is enforced by the renderer rather than by CI merely not exporting it — a build without it starts no SDK and
 opens no connection, which is the entire dev/production split. Capture rides the existing Kermit
 logging seam; lifecycle crosses the `DiagnosticsReporter` port both shared compositions start first —
 the same port that carries the operator-initiated diagnostic dump's send (capability

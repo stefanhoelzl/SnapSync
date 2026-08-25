@@ -7,11 +7,14 @@ This capability once made `main` the **public alpha channel** via a second `ios-
 
 Delivery is decoupled from merges **structurally** — a `main`-only job posting no required status check — rather than by `continue-on-error`, so a failure is visibly red yet blocks nothing. Signing combines **two imported persistent certificates** (Apple Distribution + Apple Development, from GitHub Secrets) with **cloud-managed provisioning profiles** (App Store Connect Admin API key, no fastlane/`match`). Per-branch installability before merge is served out of band by the ssh-mac build loop (dev infrastructure), not TestFlight. Also covers build numbering, export options, tag-ref exclusion, and the required signing credentials.
 
-Decision record: `changes/archive/2026-07-14-gate-testflight-on-tests` (splitting delivery out of the build gate),
+Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe` (the APNs environment and the
+crash-reporting DSN derived from one build channel),
+`changes/archive/2026-07-14-gate-testflight-on-tests` (splitting delivery out of the build gate),
 `changes/archive/2026-07-14-promote-main-builds-to-alpha` (the since-removed alpha promotion),
 `changes/archive/2026-07-19-remove-alpha-testflight-promotion` (removing the public alpha promotion; App-Store-only),
 `changes/archive/2026-07-21-restore-testflight-build-note` (the "What to Test" note + the codemagic publish upload).
 ## Requirements
+
 ### Requirement: Delivery gates on the test suite
 
 TestFlight delivery SHALL be performed by a dedicated `ios-deliver` job in `.github/workflows/ios.yml` that declares `needs: [ios-build, ios-test]`. The job SHALL run **only** when **both** merge gates conclude successfully on that commit; if either the device build or the simulator test suite fails, `ios-deliver` SHALL NOT run and **nothing SHALL be uploaded to TestFlight**.
@@ -136,37 +139,48 @@ The `ios-build` job (on every ref) and the `ios-deliver` job (on `main`) SHALL e
 
 ### Requirement: Distribution builds use the production APNs environment
 
-Every CI **Release/distribution** archive SHALL be built with `APS_ENVIRONMENT=production` and `APNS_ENV=production`, so the shipped build's `aps-environment` entitlement is `production` and it can receive production APNs pushes. This holds for the `main` TestFlight build produced by `ios-build`/`ios-deliver` — which is also the build the App Store release channel promotes (capability `ios-appstore-release`), so a promoted build is production-APNs by construction. Only builds that are **never distributed** SHALL keep the `Config.xcconfig` `development`/`sandbox` default: the **branch-gate Debug archives** (pushes to refs other than `main` — discarded gate artifacts, capability `ios-ci`) and the **ssh-mac** local build loop. The environment is therefore tied to the build configuration: a Release archive is production, a Debug/dev archive is sandbox.
+Every CI **Release/distribution** archive SHALL be built with `APS_ENVIRONMENT=production` and `APNS_ENV=production`, so the shipped build's `aps-environment` entitlement is `production` and it can receive production APNs pushes. This holds for the `main` TestFlight build produced by `ios-build`/`ios-deliver` — which is also the build the App Store release channel promotes (capability `ios-appstore-release`), so a promoted build is production-APNs by construction. Only builds that are **never distributed** SHALL carry the `development`/`sandbox` values: the **branch-gate Debug archives** (pushes to refs other than `main` — discarded gate artifacts, capability `ios-ci`) and the **ssh-mac** local build loop. The environment is therefore tied to the build configuration: a Release archive is production, a Debug/dev archive is sandbox.
+
+Both values SHALL be **derived from a single build-configuration discriminator** by the deployment renderer (capability `deployment-configuration`), not stated independently and required to agree. They are two faces of one question — is this build distributed? — and stating them separately admits a combination in which they disagree, which today is prevented only by a comment saying they must not. Deriving them makes that combination unrepresentable. The same discriminator SHALL drive the crash-reporting environment, for the same reason.
 
 The `ios.yml` `workflow_dispatch` dev-IPA path is **no longer among the undistributed builds**, because that trigger is removed (capability `ios-ci`): it archived a Debug build that `ios-build` then discarded, so it never produced an installable IPA. The ssh-mac loop is now the only dev-build path, and it is sandbox by the same configuration-tied rule.
 
-Previously neither value was overridden in CI, so every `main` TestFlight build shipped with the `Config.xcconfig` `development`/`sandbox` default and could not receive production pushes — contradicting the intent (all TestFlight/App Store builds are production; only dev-sideload is sandbox). Injecting the override in the shared archive path makes that intent true.
+Previously neither value was overridden in CI, so every `main` TestFlight build shipped with the `development`/`sandbox` default and could not receive production pushes — contradicting the intent (all TestFlight/App Store builds are production; only dev-sideload is sandbox). Tying both to the discriminator makes that intent true by construction.
 
 #### Scenario: A main TestFlight build is production-APNs
 - **WHEN** `ios-build` produces the signed Release archive on `main`
 - **THEN** it is built with `APS_ENVIRONMENT=production` and `APNS_ENV=production`, and the delivered build's `aps-environment` entitlement is `production`
+
+#### Scenario: The APNs settings cannot disagree
+- **WHEN** any archive is built
+- **THEN** `APS_ENVIRONMENT`, `APNS_ENV` and the crash-reporting environment are all derived from one build-configuration discriminator, and no combination exists in which they disagree
 
 #### Scenario: A promoted App Store build is production-APNs
 - **WHEN** the App Store release channel promotes a `main` `ios-deliver` build
 - **THEN** that build already carries the `production` `aps-environment` entitlement, because it was built as a Release archive on `main`
 
 #### Scenario: An ssh-mac dev build stays sandbox
-- **WHEN** the ssh-mac loop builds a Debug archive, with or without a `BACKGROUND_UPLOAD_URL_BASE` override
-- **THEN** it uses the `Config.xcconfig` `development`/`sandbox` default and is not overridden to production
+- **WHEN** the ssh-mac loop builds a Debug archive, with or without a device-facing host override
+- **THEN** the discriminator resolves to the undistributed value and the build is `development`/`sandbox`
 
 #### Scenario: A branch-gate archive stays sandbox
 - **WHEN** a push to a ref other than `main` produces the Debug gate archive (capability `ios-ci`)
-- **THEN** it uses the `Config.xcconfig` `development`/`sandbox` default — immaterial to the discarded archive, and consistent with the configuration-tied rule
+- **THEN** the discriminator resolves to the undistributed value — immaterial to the discarded archive, and consistent with the configuration-tied rule
 
 ### Requirement: Release archives bake the crash-reporting DSN; dev builds never receive it
 
 Every CI **Release/distribution** archive SHALL be built with the crash-reporting DSN injected from the
-`SENTRY_DSN` repository secret through the same shared archive seam that injects `APS_ENVIRONMENT`
-(capability `crash-reporting` consumes it from the bundle at runtime). The value SHALL reach **both**
-targets — the app and the background-upload extension. **Undistributed** builds — the **branch-gate
-Debug archives** (capability `ios-ci`) and the ssh-mac local build loop — SHALL NOT receive the DSN,
-leaving it absent so the SDK never starts there: like the APNs environment, the reporting channel is
-tied to the build configuration, with no separate enable flag that could disagree with it.
+`SENTRY_DSN` repository secret, resolved as a **build-scope value** by the deployment renderer (capability
+`deployment-configuration`) alongside the APNs environment (capability `crash-reporting` consumes it from
+the bundle at runtime). The value SHALL reach **both** targets — the app and the background-upload
+extension. **Undistributed** builds — the **branch-gate Debug archives** (capability `ios-ci`) and the
+ssh-mac local build loop — SHALL NOT receive the DSN, leaving it absent so the SDK never starts there.
+
+Absence SHALL be **enforced by the renderer**, which SHALL emit no DSN unless the build-configuration
+discriminator names a distributed build. Previously absence rested on CI simply not exporting the secret;
+deriving it means a stray export cannot arm crash reporting on an undistributed build. Like the APNs
+environment, the reporting channel is tied to the build configuration, with no separate enable flag that
+could disagree with it.
 
 The `ios.yml` `workflow_dispatch` dev-IPA path is no longer named here because that trigger is removed
 (capability `ios-ci`).
@@ -188,6 +202,12 @@ The `ios.yml` `workflow_dispatch` dev-IPA path is no longer named here because t
 - **WHEN** a push to a ref other than `main` produces the Debug gate archive
 - **THEN** no DSN is injected, so a discarded gate build can never report into the production
   crash-reporting project
+
+#### Scenario: A stray secret cannot arm an undistributed build
+
+- **WHEN** the `SENTRY_DSN` value is present in the environment of a build whose discriminator names an
+  undistributed build
+- **THEN** the renderer emits no DSN, and the built bundle's value is absent
 
 ### Requirement: main delivery retains the build's dSYMs keyed by build number
 
@@ -234,4 +254,3 @@ Every build `ios-deliver` uploads SHALL carry a TestFlight "What to Test" note i
 
 - **WHEN** the uploaded build does not become discoverable within the publish wait bound
 - **THEN** `ios-deliver` concludes as failure (red) and blocks nothing
-

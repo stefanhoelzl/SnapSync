@@ -30,6 +30,7 @@ property true of the whole app.
 Decision record: `changes/archive/2026-07-14-fix-locked-device-keychain-access`. Runtime-identity
 pins and the pending zone gates: `changes/archive/2026-07-17-pin-runtime-identity-and-zone-gates`.
 ## Requirements
+
 ### Requirement: Architecture guards are executable and gate the build
 
 The project SHALL enforce, mechanically, structural invariants that the compiler cannot express. The
@@ -102,39 +103,52 @@ while presenting as a security improvement.
 
 ### Requirement: The event-link domain agrees across the app and the backend
 
-A test-only JVM guard SHALL assert that the event link's domain agrees across every place it appears:
-the app's `applinks:` associated-domains entitlement, the app's `LINK_ORIGIN` constant, the Apple App
-Site Association document the backend serves, and the backend's own domain constant (capability
-`event-link`). No compiler and no module boundary can hold those four together.
+The event link's domain SHALL be **single-sourced from one resolved deployment** (capability
+`deployment-configuration`) in every place it appears: the app's `applinks:` associated-domains
+entitlement, the app's `LINK_ORIGIN` constant, the Apple App Site Association document the backend serves,
+the compile-time device-facing upload host, and the browser-facing site's canonical URLs.
 
-Two of the four SHALL be **single-sourced** rather than merely guarded: `LINK_ORIGIN` SHALL be generated
-from one Gradle property, and the entitlement's value SHALL be supplied from `Config.xcconfig`. The
-backend's copy **cannot** be: `api/` is a Deno tree deployed by a separate, path-scoped workflow that
-ships code only and never config (capability `backend-deployment`), so nothing in the Gradle build can
-reach it, and generating it would couple two deliberately independent pipelines. The guard therefore
-exists to hold exactly the seam that single-sourcing cannot close.
+This supersedes the previous position that the backend's copy **cannot** be single-sourced. That reasoning
+held only while `api/` was reachable by nothing but a code-only deploy pipeline: with the domain resolved
+from a deployment that every toolchain reads, generating each copy no longer couples two pipelines — it
+gives them one shared input. The guard's own purpose said as much, that single-sourcing is preferable and
+the guard existed only for the seam it could not close.
+
+Two consequences follow. Agreement is no longer *asserted* across hand-written literals but *constructed*,
+so a copy cannot drift. And the guarantee now reaches copies the previous guard never inspected — the
+compile-time upload host and the site's canonical URLs were both unpinned.
+
+A test-only JVM guard SHALL remain, reduced to a **staleness check**: it SHALL assert that each generated
+artifact matches the deployment it derives from, and SHALL fail loudly rather than vacuously — if a file it
+inspects has moved, been renamed, or no longer contains the marker it expects, it SHALL fail rather than
+silently scanning nothing.
 
 The guard exists because drift here is **silent**. A stale entitlement or a mismatched AASA does not
 raise, log, or fail a build: iOS simply declines to match the link, and every event link opens a browser
 instead of the app — indistinguishable, from the outside, from a user who has not installed SnapSync.
 
-The guard SHALL fail loudly rather than vacuously: if a file it inspects has moved or been renamed, it
-SHALL fail rather than silently scanning nothing.
+Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe` (the guard shrinks to a
+staleness check once every copy is generated).
 
-#### Scenario: A drifted domain fails the build
+#### Scenario: A stale generated artifact fails the build
 
-- **WHEN** any one of the entitlement's `applinks:` domain, the app's `LINK_ORIGIN`, the served AASA's
-  domain, or the backend's domain constant names a different host than the others
-- **THEN** the guard test fails, naming the disagreeing values
+- **WHEN** a generated artifact carrying the domain no longer matches the deployment it derives from
+- **THEN** the guard test fails, naming the artifact and the disagreeing values
+
+#### Scenario: Every copy is constructed, not restated
+
+- **WHEN** the entitlement's `applinks:` domain, the app's `LINK_ORIGIN`, the served AASA's domain, the
+  compile-time upload host, and the site's canonical URLs are inspected
+- **THEN** each is derived from the resolved deployment, and none is a hand-written host literal
 
 #### Scenario: The guard is not vacuous
 
 - **WHEN** a file the guard inspects is absent, renamed, or no longer contains the marker it expects
 - **THEN** the guard fails, rather than passing while inspecting nothing
 
-#### Scenario: Agreeing domains pass
+#### Scenario: Agreeing artifacts pass
 
-- **WHEN** all four locations name the same host
+- **WHEN** every generated artifact matches the resolved deployment
 - **THEN** the guard passes
 
 ### Requirement: The Swift shell keeps the event link's delivery seam

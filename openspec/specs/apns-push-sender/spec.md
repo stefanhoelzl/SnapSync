@@ -12,7 +12,7 @@ sender surfaces each outcome rather than collapsing them into one verdict. APNs 
 the platform-neutral wake-a-member need**; a future Android client would bind FCM behind the same
 per-token, best-effort sender seam, with the caller (`event-notify-endpoint`) unchanged.
 
-The APNs signing key (`APNS_PRIVATE_KEY`) is one of the backend's two environment **secrets**, fail-closed at startup; the key id, team id, and topic are source constants (`backend-deployment`). The caller that decides
+The APNs signing key (`APNS_PRIVATE_KEY`) is one of the backend's two environment **secrets**, fail-closed at startup; the key id and team id are resolved from the deployment and the topic is DERIVED from the bundle id (capabilities `deployment-configuration`, `backend-deployment`). The caller that decides
 *when* to send is `event-notify-endpoint`.
 
 Decision record: `changes/archive/2026-07-05-push-notification-infra`.
