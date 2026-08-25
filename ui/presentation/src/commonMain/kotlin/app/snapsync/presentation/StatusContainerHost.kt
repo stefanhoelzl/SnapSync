@@ -105,11 +105,15 @@ class StatusContainerHost(
     // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
     // so non-iOS hosts/tests construct unchanged; iOS injects the store-backed source.
     downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(),
-    // Attestation health (capability `device-attestation`): false only when this device has no valid
-    // token AND the attempt to obtain one failed. Defaults to always-true so non-iOS hosts and every
-    // existing test construct unchanged; iOS injects the flag the composition root sets from
-    // `DeviceAttestation.ensureFresh()`.
-    attestedSource: AttestedSource = AlwaysAttested,
+    // Attestation health (capability `device-attestation`): the trust feature's own read-model, false
+    // only when this device's token is UNUSABLE (absent, unreadable, or expired) and the refresh could
+    // not obtain one. Never false for a token that is merely due for renewal — that one still authorizes
+    // every upload, and saying otherwise told a member sharing was paused with six days of token left
+    // (`SNAPSYNC-20`). A bare StateFlow, like every other read-model here: the feature that owns the
+    // fact publishes it, and it also owns the rule that a verdict never outlives the refresh that
+    // produced it, so nothing downstream has to reason about how old this value is. Defaults to
+    // always-true so non-iOS hosts and every existing test construct unchanged.
+    attested: StateFlow<Boolean> = MutableStateFlow(true),
     // Event-driven overlay for an in-progress join/switch confirmation (capability `join-event`). Not
     // derived from the level-triggered sources — the gate sets it on a decoded interactive event link and
     // clears it on commit/cancel, folded into the reduction as a sixth flow. Injected (defaulting to a
@@ -171,7 +175,7 @@ class StatusContainerHost(
                 downloadSource.progress.value,
                 pending.state.value,
                 cutoffFormatter.nowCutoff(),
-                attestedSource.attested.value,
+                attested.value,
             ),
         ) {
             intent {
@@ -187,7 +191,7 @@ class StatusContainerHost(
                     downloadSource.progress,
                     pending.state,
                     nowTick,
-                    attestedSource.attested,
+                    attested,
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
                     reduceFrom(

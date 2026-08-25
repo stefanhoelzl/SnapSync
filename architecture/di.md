@@ -53,7 +53,6 @@ Roots found:
 | `KeychainAttestStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
 | `KtorPushHttpClient` | x | x | x |
-| `MutableAttestedSource` | x | | |
 | `OsReceipt` | x | | |
 | `PhotoKitAssetPresence` | x | | |
 | `PhotoKitCandidateSource` | x | x | x |

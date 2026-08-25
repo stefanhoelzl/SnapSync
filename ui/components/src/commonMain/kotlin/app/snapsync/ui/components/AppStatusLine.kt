@@ -266,17 +266,22 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
-                    // Headline plus a recovery hint: this is the one attention state with no tap action,
-                    // so the detail line names what actually clears it — opening the app is a re-verify
-                    // wake, and the failure is otherwise being offline. (Colour is inherited contentColor;
-                    // no scheme line is touched here.)
+                    // Headline plus a reassurance — NOT a remedy, because this is the one attention
+                    // state with no action to offer. The detail line used to read "Reopen the app or
+                    // check your connection", which failed twice over: reopening the app is what fired
+                    // the re-verify the member is already waiting on, and "your connection" is one of
+                    // two causes this single state absorbs — a member whose device the backend is
+                    // refusing was being told to check a connection that was fine. One state may
+                    // collapse several causes, but then it may only say what is true of every one of
+                    // them: the app keeps trying, and no photo is lost. (Colour is inherited
+                    // contentColor; no scheme line is touched here.)
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(
                             text = "Can't verify this device — sharing is paused",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "Reopen the app or check your connection.",
+                            text = "Still retrying — your photos aren't lost.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }

@@ -8,6 +8,9 @@ import app.snapsync.ports.AttestStore
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -39,7 +42,7 @@ fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.to
  * [AttestStore.token], sends whatever it finds, and lets a `401` be retried. Everything here — attest,
  * renew, the staleness check — happens in the app.
  *
- * [ensureFresh] is called at **every** point the app process is already awake: launch, foreground, a
+ * [refresh] is called at **every** point the app process is already awake: launch, foreground, a
  * silent-push wake, and each `BGTask` handler. Not on a schedule and not from a dedicated background task:
  * iOS budgets task identifiers per app, so a dedicated renewal task would compete with the two the app
  * already has and would still run only when the system felt like it. Checking at every wake yields
@@ -49,7 +52,7 @@ fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.to
  * reliably wakes the app is itself triggered by a *successful* upload, an expired token deadlocks its own
  * renewal: 401 → no completion → no notify → no push → no wake. The 30-day lifetime is what makes falling
  * into that rare; retry-forever means no photo is ever lost when it happens; and the visible error state is
- * the signal that it has. Decision record: `changes/archive/…-add-device-attestation`.
+ * the signal that it has. Decision record: `changes/archive/2026-07-14-add-device-attestation`.
  */
 class DeviceAttestation(
     private val key: AttestKey,
@@ -61,6 +64,8 @@ class DeviceAttestation(
 ) {
 
     private val _tokenChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    private val _attested = MutableStateFlow(true)
 
     /**
      * Emits whenever a NEW token is obtained (minted or renewed).
@@ -112,6 +117,31 @@ class DeviceAttestation(
     }
 
     /**
+     * Whether [token] cannot authorize a request **right now**: it is absent, unreadable, or past its
+     * expiry.
+     *
+     * **This is NOT [isStale], and the two must never be collapsed into one predicate.** [isStale]
+     * answers *should this wake spend a renewal?* and deliberately fires a full week early, because
+     * renewing eagerly is the only thing that keeps the token alive across iOS starving the app's
+     * background wakes. This one answers *is the device stuck?* — and a token inside that week-wide
+     * margin is not stuck at all: it authorizes every gated request until the instant it expires
+     * (the backend's check is this same expiry comparison plus one HMAC, nothing else). Answering the
+     * second question with the first is how the status screen came to tell a member that sharing was
+     * paused while their token had six days left and every upload was authorized (`SNAPSYNC-20`).
+     *
+     * An unreadable token counts as unusable. [tokenExpirySeconds] returns null for anything that is
+     * not `<deviceId>.<expiry>.<signature>`, and a token whose expiry we cannot read is one we cannot
+     * show to be valid — the backend will reject it, and calling it usable would put the member back
+     * behind a screen reading "Syncing" while every upload `401`s.
+     *
+     * The comparison matches the backend's `verifyToken` exactly: valid while `now <= expiry`.
+     */
+    fun isUnusable(token: String?): Boolean {
+        val expiry = token?.let(::tokenExpirySeconds) ?: return true
+        return clock.now().epochSeconds > expiry
+    }
+
+    /**
      * Refresh the token if it is stale. Safe to call at every wake: it is a no-op on a fresh token, and it
      * never throws — attestation failure is reduced to `false` and surfaced by the caller, never propagated
      * into a background wake it would crash.
@@ -121,18 +151,61 @@ class DeviceAttestation(
     suspend fun ensureFresh(): Boolean = refreshing.withLock { refreshLocked() }
 
     /**
-     * [ensureFresh], reduced to the one fact the status screen surfaces (`SyncHealth.Unattested`):
-     * `true` unless this device both lacks a fresh token and could not get one. A stale token that
-     * renews is a non-event; raising it would be noise — and because opening the app IS a wake,
-     * this normally clears before it can be seen. What survives is a device that is offline or
-     * being refused, which is a real problem that no amount of waiting fixes. Non-throwing, like
-     * [ensureFresh]: a background wake must not die because attestation failed. (Drained verbatim
-     * from the untested app shell at the migration finale — the rule is the trust feature's, not
-     * wiring.)
+     * Whether this device holds a usable attestation token — the one fact the status screen surfaces
+     * (`SyncHealth.Unattested`, capability `sync-status-screen`).
+     *
+     * A **derived cache of the last refresh**, never authority: authority is the token itself, in the
+     * `AttestStore` behind the port (law "State and authority"). Kill the process and this is rebuilt
+     * from the store by the first refresh; nothing durable depends on it.
+     *
+     * `false` means what it says: the token is **unusable** ([isUnusable] — absent, unreadable, or
+     * expired) **and** the refresh could not obtain one. It does NOT mean the token is stale; a stale
+     * token that renews is a non-event, and one that fails to renew while still valid is *also* a
+     * non-event, because it still authorizes every upload.
+     *
+     * **A value here never outlives the start of the next [refresh].** That is the second half of
+     * `SNAPSYNC-20` and the reason this lives in the feature rather than in a cell the shell owns: the
+     * app re-checks attestation only when its process wakes, and a process can carry an outcome across
+     * an arbitrary suspension. A background wake with no network wrote `false` on 2026-08-17 13:37 and
+     * the member saw it rendered as the first frame of a foreground entry 25 h 47 min later, under
+     * conditions that no longer held. [refresh] clearing this on entry is what makes that unrenderable.
      */
-    suspend fun refreshOutcome(): Boolean {
+    val attested: StateFlow<Boolean> = _attested.asStateFlow()
+
+    /**
+     * Refresh the token if it is stale, and publish what that says about [attested].
+     *
+     * Called at every wake — launch, foreground, silent push, each `BGTask` — through the trigger flows.
+     * Non-throwing, like [ensureFresh]: a background wake must not die because attestation failed.
+     *
+     * **The clear on entry is load-bearing, not tidiness.** It brackets the *attempt*: from here until
+     * this call returns, the last wake's verdict is gone and only this attempt's answer can be shown. It
+     * deliberately sits OUTSIDE [refreshing] — a caller queued behind a slow refresh must clear the stale
+     * verdict when it *arrives*, not when it finally acquires the lock, or the very frame this exists to
+     * fix would still render the old answer while waiting.
+     *
+     * The cost is stated plainly: for the duration of a refresh the app claims attested while it does not
+     * yet know. That was already the standing default (the flag initialises `true`), the state it briefly
+     * suppresses is non-actionable, and the alternative — a third "checking" value — produces an identical
+     * screen. Design record: `changes/archive/2026-08-25-correct-attestation-health-surfacing` D2/D4.
+     */
+    suspend fun refresh() {
+        _attested.value = true
+        _attested.value = refreshOutcome()
+    }
+
+    /**
+     * [ensureFresh], reduced to the one fact [attested] carries.
+     *
+     * The second clause is what keeps a *working* device quiet: a refresh that reports `false` still
+     * leaves the device fine if the stored token is usable — it was merely due for renewal, or a
+     * concurrent path already fixed it. (Drained verbatim from the untested app shell at the migration
+     * finale — the rule is the trust feature's, not wiring — and narrowed here from [isStale] to
+     * [isUnusable], which is the `SNAPSYNC-20` correction.)
+     */
+    private suspend fun refreshOutcome(): Boolean {
         val ok = runCatching { ensureFresh() }.getOrDefault(false)
-        return ok || !isStale(token())
+        return ok || !isUnusable(token())
     }
 
     private suspend fun refreshLocked(): Boolean {
@@ -159,16 +232,31 @@ class DeviceAttestation(
         if (existingKeyId != null) {
             val renewed = runCatching {
                 client.renewToken(deviceId(), key.assert(existingKeyId, challenge), challenge)
-            }.getOrNull()
+            }.getOrElse {
+                // The assertion itself failed, LOCALLY — no renewal request was ever sent. `AttestClient`
+                // maps every transport and refusal outcome to null by contract, so the only thing that can
+                // throw in here is the Secure-Enclave `assert`, and the platform's own error value is the
+                // one diagnostic that says why (a dead key reads differently from a transient fault).
+                //
+                // It used to be discarded with `getOrNull()` and reported as "renewal refused", which named
+                // the backend for something the backend was never asked about. That is what made
+                // `SNAPSYNC-20` unanswerable: the dump showed a refusal and no request, and the `DCError`
+                // that would have settled it had been thrown away. Warn, not Error — the app recovers by
+                // attesting afresh below, and this rides as a breadcrumb rather than a crash-triage event.
+                log.w(it) { "could not produce a renewal assertion — attesting afresh" }
+                null
+            }
             if (renewed != null) {
                 store.setToken(renewed)
                 _tokenChanged.tryEmit(Unit)
                 log.i { "token renewed" }
                 return true
             }
-            // The backend refused the assertion — typically because its record of this device is gone (the
-            // leave cascade GCs it). Fall through and attest afresh rather than stalling forever.
-            log.w { "renewal refused — attesting afresh" }
+            // Reached two ways, and the log above distinguishes them: the assertion could not be produced
+            // (a throwable, no request), or the backend declined the one we sent — typically because its
+            // record of this device is gone (the leave cascade GCs it). Either way, attest afresh rather
+            // than stalling forever.
+            log.w { "renewal did not yield a token — attesting afresh" }
         }
 
         return runCatching {

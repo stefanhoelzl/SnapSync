@@ -28,7 +28,6 @@ import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
@@ -489,15 +488,15 @@ object SnapSyncRoot {
         // Awaited, not launched (law "A trigger flow never outlives its own run"). The launch also made
         // every trigger race its own credential: `refreshAttestation()` was fired alongside the fetches
         // it exists to authorize, so a request could go out carrying the token being replaced.
-        // `refreshOutcome` short-circuits on a fresh token, so awaiting costs nothing in the common case.
+        // `refresh()` short-circuits on a fresh token, so awaiting costs nothing in the common case.
         //
-        // The whole surface-it-or-not rule (only when we both lack a usable token and could not
-        // get one) is the trust feature's `refreshOutcome` — this wiring just feeds the flag.
-        attested.set(app.attestation.refreshOutcome())
+        // Wiring, and nothing else. Both rules live in the trust feature: whether to surface at all
+        // (only when the token is UNUSABLE and could not be replaced) and how long a verdict may be
+        // shown (never past the start of the next refresh). The shell used to hold the cell those
+        // rules wrote into, which is how a background wake's verdict survived a 26-hour suspension
+        // onto a member's first frame (`SNAPSYNC-20`).
+        app.attestation.refresh()
     }
-
-    /** Drives `SyncHealth.Unattested` (capability `device-attestation`). See [refreshAttestation]. */
-    private val attested = MutableAttestedSource()
 
     // The app-side handle on the extension's shared App-Group ledger, used for two narrow things only:
     // a READ-ONLY aggregates read (`completed`/`pending`, via the composed counts source) and a
@@ -605,7 +604,7 @@ object SnapSyncRoot {
             cutoffFormatter = cutoffFormatter,
             log = { message -> log.i { message } },
             downloadSource = app.downloadStatusSource,
-            attestedSource = attested,
+            attested = app.attestation.attested,
         )
     }
 

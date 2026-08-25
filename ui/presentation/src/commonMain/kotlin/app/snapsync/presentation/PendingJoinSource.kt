@@ -13,9 +13,9 @@ data class PendingJoin(val eventId: String, val phase: JoinPhase)
 
 /**
  * The join/switch overlay cell (capability `join-event`) — an injectable seam over the container's
- * in-progress-join state, mirroring [AttestedSource].
+ * in-progress-join state, mirroring the container's other injected read-models.
  *
- * Unlike [AttestedSource], the container both **reads and writes** this: its gate methods
+ * Unlike those, the container both **reads and writes** this: its gate methods
  * (`onOpenUrl → startPending → loadInto`, `onConfirmJoin`, `onCancelJoin`, …) advance the [phase], and
  * the `combine`/first-frame reduction reads it. So the seam is a single concrete mutable holder rather
  * than an interface + impl pair: production and the full-stack harness accept the default instance

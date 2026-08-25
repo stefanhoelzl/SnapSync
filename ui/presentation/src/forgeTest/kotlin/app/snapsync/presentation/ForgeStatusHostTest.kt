@@ -50,7 +50,7 @@ class ForgeStatusHostTest {
     fun `in_sync forges the settled joined layer`() = runTest {
         val host = assertNotNull(forgeStatusHost("in_sync", backgroundScope, fixedFormatter()))
         // completed == total and the download arm empty → both arrows hidden → InSync, reached with the
-        // benign default AttestedSource (no token) and download source (no imports).
+        // benign default `attested` flow (always true) and download source (no imports).
         assertEquals(UiState.Joined(SyncHealth.InSync), host.container.stateFlow.value)
         assertEquals("Anna's Birthday", host.eventName.value)
         assertNotNull(host.inviteUrl.value)
