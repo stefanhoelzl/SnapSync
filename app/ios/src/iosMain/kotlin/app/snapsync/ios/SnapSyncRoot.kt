@@ -76,6 +76,7 @@ import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
@@ -735,22 +736,29 @@ object SnapSyncRoot {
     fun onLaunchActivity(activity: NSUserActivity) = deliverUserActivity("onLaunchActivity", activity)
 
     /**
-     * WARM, via the scene delegate's `scene(_:continue:)` — the app's ONLY warm path.
+     * A link opened while the app is **already running**, via the scene delegate's `scene(_:continue:)`
+     * — one of the two paths that can carry it. The other is [onSwiftUiOpenUrl], and neither is
+     * sufficient alone.
      *
-     * Measured working on iOS 26.5.2 twice: the 2026-07-16 session, and again on device
-     * 2026-08-04 (8 warm deliveries, 8 hits).
+     * Measured working on iOS 26.5.2 twice (the 2026-07-16 session, and 2026-08-04 with 8 deliveries
+     * and 8 hits) and on 26.6. **Measured NOT firing on iOS 18.7.9** while the app is already running,
+     * from any source — Notes, WhatsApp, and Safari's smart banner alike (Bugsink `SNAPSYNC-39`,
+     * `SNAPSYNC-43`, `SNAPSYNC-44`; builds 681/683, iPhone XS). There UIKit calls
+     * [onSceneWillContinueActivity], announcing a continuation, and then calls neither this hook nor
+     * [onSceneDidFailToContinueActivity]: it abandons the work without using its own failure path.
      *
-     * **Measured NOT working on iOS 18.7.9** (Bugsink `SNAPSYNC-25` + `SNAPSYNC-26`, iPhone XS,
-     * build 607, one 80-second window). Three warm taps at 19:04:40, 19:05:12 and 19:05:31 each
-     * brought the app to the front — `onForeground` fired every time, so iOS DID activate the app
-     * from the link — and produced no line here at all; the third was while UNJOINED, which rules
-     * out join and switch logic entirely. The cold entry then fired first try at 19:05:47 on a
-     * fresh process, proving this delegate is the scene's delegate on 18 and is not inert. So on
-     * 18.7.9 the platform activates the app for a universal link and does not call this hook.
-     * Expiry: re-measure at the next iOS 18 point release; the evidence is one device.
+     * Restoring SwiftUI's `.onOpenURL` delivered the link on that same OS build (687), which is why both
+     * paths are wired. **Why that works is unexplained**, and is not asserted here: July's matrix
+     * measured the modifier as failing with SwiftUI's own delegate in place, and it fires now with a
+     * custom one installed, so "our delegate starves SwiftUI's" predicts the reverse. An earlier
+     * revision of this KDoc said "on 18.7.9 the platform activates the app for a universal link and does
+     * not call this hook" — a claim about the PLATFORM, and false as stated. Scope such claims to the
+     * build and configuration measured, and prefer recording the outcome to explaining it. Expiry:
+     * re-measure at the next iOS major, and whenever a delivery hook is added or removed.
      *
-     * Its name is distinct from the cold entry's for exactly that reason — the dump pair above is
-     * readable only because cold and warm could not be confused for one another.
+     * Its name is distinct from every other delivery entry's because a dump must be able to COUNT
+     * deliveries: both paths are live, they overlap, and the gate absorbs the duplicate (capability
+     * `event-link`). Collapsed names would make "delivered twice" unreadable.
      */
     @PlatformEntry
     fun onSceneContinueActivity(activity: NSUserActivity) =
@@ -788,6 +796,28 @@ object SnapSyncRoot {
         log.invocation("onSceneWillContinueActivity", params = "type=$activityType") { }
 
     /**
+     * UIKit **attempted** a continuation of [activityType] and could not finish it, with [description]
+     * the platform's own rendering of the `NSError`.
+     *
+     * The third of `UISceneDelegate`'s continuation trio, and the only one that names a failure instead
+     * of leaving an absence to interpret (law "Absence is never silent" — "nothing" and "couldn't tell"
+     * are different answers). Measured never to fire on iOS 18.7.9: UIKit announces a continuation via
+     * [onSceneWillContinueActivity] and then abandons it without reporting failure, so "UIKit refused"
+     * and "UIKit never tried" were one observation for the length of the investigation. It is wired so
+     * that they are two from now on.
+     *
+     * The error is rendered by the platform and forwarded as a string: formatting it in Swift would be
+     * an untested decision under the shell gates, and `localizedDescription` is an encoding.
+     */
+    @PlatformEntry
+    fun onSceneDidFailToContinueActivity(activityType: String, description: String) =
+        log.invocation(
+            "onSceneDidFailToContinueActivity",
+            params = "type=$activityType error=$description",
+            severity = Severity.Warn,
+        ) { }
+
+    /**
      * The scene is entering the foreground, from its own delegate.
      *
      * Distinct from [onForeground], which Kotlin drives off the application-wide
@@ -822,6 +852,28 @@ object SnapSyncRoot {
     @PlatformEntry
     fun onSceneOpenUrlContexts(urls: List<String>) =
         log.invocation("onSceneOpenUrlContexts", params = "urls=${urls.size}") { }
+
+    /**
+     * A URL arrived at SwiftUI's `.onOpenURL` on the `WindowGroup` — **SwiftUI's** delivery path, as
+     * opposed to the scene delegate's (capability `event-link`).
+     *
+     * This is the path that carries a link opened while the app is ALREADY RUNNING on iOS 18.7.9, where
+     * `scene(_:continue:)` never fires however the link was opened. It is not a fallback: on that OS it
+     * is the only warm delivery there is. It is also not sufficient alone — it fired for 2 of 4
+     * deliveries on iOS 26.6 — which is why the scene delegate stays and why both are wired.
+     *
+     * SwiftUI hands the modifier a resolved `URL`, not an `NSUserActivity`, so this does NOT go through
+     * [deliverUserActivity]: there is no activity type to filter and nothing to widen. The
+     * `absoluteString` goes to the same [onOpenUrl] door every other path uses, so the tested `model/`
+     * codec still decides what the URL is — a foreign origin is rejected there, as it always was.
+     *
+     * Its own entry name matters more here than anywhere: this path and [onLaunchActivity] both fire on
+     * a cold launch, so a dump has to be able to COUNT deliveries. The gate absorbs the duplicate
+     * (capability `event-link`); the names are what prove it did.
+     */
+    @PlatformEntry
+    fun onSwiftUiOpenUrl(url: String) =
+        log.invocation("onSwiftUiOpenUrl", params = "url=$url") { onOpenUrl(url) }
 
     /**
      * The instrumented delivery of one `NSUserActivity`, shared by every hook that can receive one

@@ -418,6 +418,11 @@ class StatusContainerHost(
                 val eventId = result.payload.eventId
                 val current = config.value
                 when {
+                    // The two DUPLICATE rungs, first because they outrank every other reading of the same
+                    // link — including `autoJoin`, which used to be tested before any of this and would
+                    // therefore auto-provision once per delivery.
+                    pending.state.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
+                    current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
                     result.payload.autoJoin ->
                         autoConfirm(
                             eventId,
@@ -426,12 +431,38 @@ class StatusContainerHost(
                             result.payload.direction,
                             result.payload.saveToAlbum,
                         )
-                    current == null -> startPending(eventId)               // first join → JoiningEvent
-                    current.eventId != eventId -> startPending(eventId)    // switch → Joined.pendingSwitch
-                    else -> Unit                                           // same event → no-op
+                    // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch.
+                    // One rung now: the rung that told them apart was `current.eventId != eventId`, and the
+                    // same-event case is the duplicate rung above.
+                    else -> startPending(eventId)
                 }
             }
         }
+    }
+
+    /**
+     * A delivery of a link this gate is already acting on, or has already acted on — **recorded, then
+     * ignored** (capability `event-link`).
+     *
+     * The platform delivers the same link more than once, and that is measured rather than defensive:
+     * build 687 received one URL twice on an iOS 18.7.9 cold launch (~130 ms apart, the scene delegate's
+     * connection and then SwiftUI's `.onOpenURL`), and twice again on iOS 26.6 both while running (8 ms)
+     * and cold (105 ms). So "exactly once" is enforced here, in tested code, and NOT assumed of any
+     * arrangement of platform hooks — which is what lets more than one delivery hook stay live, and what
+     * keeps a hook a future iOS adds or removes from reintroducing a double join.
+     *
+     * Both rungs read state that already exists and already self-clears, so there is no duplicate-tracking
+     * field to leak or to forget to reset: `pending` is cleared when the join is committed or dismissed,
+     * and `config` names the event only while the membership stands. A repeat is therefore ignored exactly
+     * while the member is still deciding about it, and a genuinely re-opened invite afterwards is acted on
+     * again.
+     *
+     * It logs because "nothing happened, this was a duplicate" and "nothing happened, the link never
+     * arrived" are different answers with different causes (law "Absence is never silent"). A device log
+     * that could not tell them apart is what made `SNAPSYNC-25` take a day to characterise.
+     */
+    private fun ignoreRepeat(eventId: String, because: String) {
+        log("join gate: ignoring a repeated delivery of $eventId — $because")
     }
 
     /** Retry the details fetch after a transient load failure. */

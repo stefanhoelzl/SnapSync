@@ -261,6 +261,41 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    fun the_same_link_delivered_twice_enrolls_once() = worldTest {
+        // The platform delivers one opened link MORE THAN ONCE (capability `event-link`): measured on
+        // build 687, the scene delegate's connection and SwiftUI's `.onOpenURL` both fired for the same
+        // URL — ~130 ms apart on an iOS 18.7.9 cold launch, and 8 ms apart on iOS 26.6 while running.
+        // Both hooks stay live because neither is reliable on every OS, so "exactly once" is enforced by
+        // the gate rather than by the hook arrangement.
+        //
+        // autoJoin is the sharpest case: it auto-confirms with no surface and no tap, so before the
+        // duplicate rungs it was the one path a doubled delivery would double-PROVISION.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            val host = joinHost(w, scope)
+            val link = encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true))
+
+            host.onOpenUrl(link)
+            host.await { it is UiState.Joined }
+            // A real manifest, as a prior upload cycle would have written it.
+            w.store.putManifest(EVENT_E, w.ownDeviceId, foreignManifest(w.ownDeviceId, listOf(World.foreignAsset("A"))))
+
+            host.onOpenUrl(link) // the duplicate delivery
+            host.await { it is UiState.Joined }
+
+            // Joined once, to that event — and the second delivery re-enrolled nothing: a second
+            // provision republishes an EMPTY manifest, so a surviving non-empty one is the oracle.
+            assertEquals(EVENT_E, w.configSource.config.value?.eventId)
+            val manifest = w.store.manifestOf(EVENT_E, w.ownDeviceId)
+            assertTrue(manifest != null && manifest.assets.isNotEmpty(), "a duplicate delivery must not re-provision")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun re_scanning_the_joined_event_does_not_clobber_the_manifest() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {

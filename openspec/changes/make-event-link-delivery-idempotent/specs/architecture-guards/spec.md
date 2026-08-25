@@ -32,7 +32,8 @@ its subject changes — a guard that goes stale is a guard that fails open.
 
 This is the first guard over Swift. `:app:ios` and the Swift shell are wiring-only and **untested** by the
 project's hard rule, and on 2026-07-16 that rule's blind spot shipped: the app received event links via
-SwiftUI's `onOpenURL`, which never fires for a universal link, so **every invite silently did nothing**
+SwiftUI's `onOpenURL`, which did not fire for a universal link in that configuration, so **every
+invite silently did nothing**
 while every automated check stayed green. The guard does not test behavior — the seam remains
 device-verified — it pins the **structure** that behavior depends on, which is exactly what this
 capability exists for.
@@ -58,13 +59,15 @@ only thing standing between the next reader and re-introducing the bug. The evid
   18.7.9 while the app is already RUNNING** — measured on an iPhone XS, builds 681/683:
   `scene(_:willContinueUserActivityWithType:)` announces a continuation and then neither
   `scene(_:continue:)` nor `scene(_:didFailToContinueUserActivityWithType:error:)` follows, from Notes,
-  WhatsApp and Safari's smart banner alike; a Camera QR scan and any cold launch deliver normally. The
-  cause is ours: a scene has exactly ONE delegate, ours displaces SwiftUI's, and SwiftUI's machinery
-  feeds `.onOpenURL` — so restoring that modifier delivered the link on the same OS build (687). A
-  previous revision of this bullet said "iOS 18.7.9 does NOT call `scene(_:continue:)`", a claim about
-  the PLATFORM; it was disproved within hours on that same OS build. Scope such claims to the build and
-  configuration measured. The same signature is reported independently in Apple Developer Forums 758864
-  and 746362.
+  WhatsApp and Safari's smart banner alike; a Camera QR scan and any cold launch deliver normally. Restoring
+  SwiftUI's `.onOpenURL` delivered the link on that same OS build (687). **Why is unexplained**, and
+  SHALL NOT be asserted: the 2026-07-16 matrix measured that modifier as failing cold and warm with
+  SwiftUI's own scene delegate in place, and it fires now with a custom one installed — so "our delegate
+  starves SwiftUI's" predicts the reverse of what was observed. A previous revision of this bullet said
+  "iOS 18.7.9 does NOT call `scene(_:continue:)`", a claim about the PLATFORM; it was disproved within
+  hours on that same OS build. Scope such claims to the build and configuration measured, and prefer
+  recording an outcome to explaining it. The same signature is reported independently in Apple Developer
+  Forums 758864 and 746362.
 - **`.onOpenURL` is not reliable alone either** — it fired for 2 of 4 deliveries on an SE2 (iOS 26.6,
   build 687). Both paths are therefore pinned, and delivery is made idempotent in tested code
   (capability `event-link`) rather than by choosing between them.

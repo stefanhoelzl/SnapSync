@@ -201,6 +201,14 @@ private fun excludedTriggers(): Map<String, String> = mapOf(
         "records the connecting scene's activity count and nothing else; a rig call would log a " +
         "count the rig chose. What it answers — did iOS connect a scene carrying no activity — is " +
         "only answerable by iOS.",
+    "onSceneDidFailToContinueActivity" to
+        "records a continuation UIKit tried and abandoned, with the platform's own error. A rig call " +
+        "would manufacture both the attempt and the error text, which is the entire content.",
+    "onSwiftUiOpenUrl" to
+        "SwiftUI's delivery path. Its destination is shell.onOpenUrl, which the wired " +
+        "onSceneContinueActivity trigger already reaches, so joining stays driveable — and firing it " +
+        "here would exercise the Kotlin door, never the question this path exists for, which is whether " +
+        "the PLATFORM reaches the modifier on a given OS.",
     "onSceneWillContinueActivity" to
         "records that UIKit is starting a continuation. Invoking it here would assert exactly the " +
         "fact under investigation instead of observing it.",
