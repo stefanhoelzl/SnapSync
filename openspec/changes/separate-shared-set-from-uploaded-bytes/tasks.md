@@ -35,23 +35,26 @@ ever changing the listing, which is the manifest's job.
 
 ## 3. Guard the manifest write
 
-- [ ] 3.1 Make the cycle suppress the manifest write when the re-join reconcile defers, rather than only
+- [x] 3.1 Make the cycle suppress the manifest write when the re-join reconcile defers, rather than only
       skipping job creation.
-- [ ] 3.2 Make the cycle suppress the manifest write when the ledger rows cannot be read.
-- [ ] 3.3 Log suppression distinctly from publishing an empty manifest ("could not determine what is shared"
+- [x] 3.2 Make the cycle suppress the manifest write when the ledger rows cannot be read. **Already
+      structural**: `completedManifestRows()` is read inside the hook, so a read failure means `produce`
+      is never called and nothing is published.
+- [x] 3.3 Log suppression distinctly from publishing an empty manifest ("could not determine what is shared"
       vs "shares nothing"), at routine severity.
-- [ ] 3.4 Add `commonTest`s for both suppression paths and for the empty-manifest publish.
+- [x] 3.4 Add `commonTest`s for both suppression paths and for the empty-manifest publish.
 
 ## 4. Shrink the direction gate
 
-- [ ] 4.1 Move the re-join reconcile ahead of the direction gate, keeping the terminal-job settle pass first.
-- [ ] 4.2 Stop the gate withholding the manifest write; a non-contributing membership publishes an empty
+- [x] 4.1 Move the re-join reconcile ahead of the direction gate, keeping the terminal-job settle pass first.
+- [x] 4.2 Stop the gate withholding the manifest write; a non-contributing membership publishes an empty
       manifest.
-- [ ] 4.3 Keep job creation, the retry pass and the discovery walk behind the gate.
-- [ ] 4.4 Correct the gate's code comment: two of its three stated justifications no longer hold.
-- [ ] 4.5 Update `UploadCycleTest` for the new ordering, including the declined-cycle-still-reconciles and
+- [x] 4.3 Keep job creation, the retry pass and the discovery walk behind the gate.
+- [x] 4.4 Correct the gate's code comment: two of its three stated justifications no longer hold.
+- [x] 4.5 Update `UploadCycleTest` for the new ordering, including the declined-cycle-still-reconciles and
       declined-cycle-publishes-empty cases.
-- [ ] 4.6 Confirm 1.1 now passes for the direction-off case.
+- [x] 4.6 Confirm 1.1 now passes for the direction-off case. (1.1's tests were **inverted** to the new
+      intended behaviour — narrowing retracts at the manifest — since they had pinned the pre-change spec.)
 
 ## 5. Collapse the policy type
 

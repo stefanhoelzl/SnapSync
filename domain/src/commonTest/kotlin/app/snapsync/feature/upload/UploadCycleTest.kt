@@ -362,10 +362,12 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.SKIPPED, result, "declined, and distinguishable from a drained cycle")
         assertTrue(platform.created.isEmpty(), "no upload job for a membership that contributes nothing")
-        // The union-leak half, and the worse one: a manifest listing the member's assets offers them to
-        // every other member as bytes that were never uploaded (capability `photo-selection-policy`).
-        assertTrue("discovery" !in order, "no device manifest is written")
-        assertTrue("notify" !in order, "no event notify is fired")
+        // The manifest IS written, and is empty — the honest statement of "I share nothing" (capability
+        // `device-manifest`). Withholding it would leave a stale manifest advertising photos the member
+        // has stopped sharing. The projection is empty because the policy admits nothing, so the manifest
+        // still cannot offer bytes that were never uploaded.
+        assertTrue("discovery" in order, "an empty device manifest is published")
+        assertTrue("notify" !in order, "no event notify is fired — there is no completion to announce")
     }
 
     /**
@@ -374,18 +376,20 @@ class UploadCycleTest {
      * so a per-asset answer would spend minutes arriving at the empty set.
      */
     @Test
-    fun the_gate_precedes_the_reconcile_and_the_walk() = runTest {
+    fun the_gate_precedes_the_walk_but_not_the_reconcile_or_the_manifest() = runTest {
         val store = FakeStore()
         val platform = FakePlatform(discovered = listOf(resource("a")))
         val order = mutableListOf<String>()
 
         decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
 
-        // `order` records the reconcile, the manifest and the notify — none of which may run. The
-        // terminal-job settlement is deliberately NOT in it: acknowledging a job the OS already presented
-        // is not new work, and a declined cycle owes it (capability `upload-lifecycle`).
-        assertEquals(emptyList(), order, "no reconcile, no manifest, no notify")
-        assertNull(platform.discoverPolicyArg, "the library is never enumerated")
+        // What the gate withholds is NEW WORK — the walk and job creation. It does not withhold facts
+        // about what is already uploaded (the reconcile, capability `sync-ledger`) nor the statement of
+        // what this membership shares (the manifest, capability `device-manifest`). The terminal-job
+        // settlement is deliberately not in `order`: acknowledging a job the OS already presented is not
+        // new work, and a declined cycle owes it (capability `upload-lifecycle`).
+        assertEquals(listOf("reconcile", "discovery"), order, "reconcile then manifest; never a notify")
+        assertNull(platform.discoverPolicyArg, "the library is still never enumerated — that is the cost")
     }
 
     /** A declined cycle discovered nothing, so it advances nothing: the cursor stays exactly where it was. */
@@ -465,9 +469,9 @@ class UploadCycleTest {
             LedgerState.COMPLETED, backend.get("c-primary.heic")?.state,
             "settled, so re-enabling the direction later does not re-upload what already landed",
         )
-        // And it took nothing the gate withholds.
+        // And it took nothing the gate withholds: the walk and job creation.
         assertTrue(platform.created.isEmpty(), "no upload job is created")
-        assertEquals(emptyList(), order, "no reconcile, no manifest, no notify")
+        assertEquals(listOf("reconcile", "discovery"), order, "reconcile and manifest run; notify does not")
         assertNull(platform.discoverPolicyArg, "the library is never enumerated")
         assertNull(store.saved, "the discovery cursor does not advance")
         assertTrue(!store.cleared, "nor is it cleared")
@@ -1376,5 +1380,71 @@ class UploadCycleTest {
             "reconfigure-membership: a drained upload is recorded so that re-enabling the direction " +
                 "re-uploads nothing - turning the direction off must not wipe the event's ledger.",
         )
+    }
+
+    // ---- The manifest is published only from a settled ledger (capability `device-manifest`) ----------
+    // The manifest is a FULL-STATE document, so publishing one built from an incomplete ledger does not
+    // under-report — it UN-LISTS. Every resource missing from the projection stops being offered to the
+    // other members although its bytes are on the backend. Harmless while a short manifest and an intended
+    // one were indistinguishable in consequence; a live hazard now that a narrowing scope change retracts
+    // listings deliberately (capability `reconfigure-membership`).
+
+    @Test
+    fun a_deferred_reconcile_writes_no_manifest_for_a_contributor() = runTest {
+        val order = mutableListOf<String>()
+        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
+
+        val result = cycle(
+            InMemoryLedgerStore(), platform,
+            reconcile = { false }, // the device file listing failed or timed out
+            onDiscovery = { _, _ -> order += "discovery" },
+        ).run()
+
+        assertEquals(CycleResult.COMPLETED, result, "a deferral is a no-op, never a failure")
+        assertTrue(order.isEmpty(), "the ledger is unseeded, so no manifest is published over the last one")
+        assertTrue(platform.created.isEmpty(), "and no upload job is created")
+    }
+
+    @Test
+    fun a_deferred_reconcile_writes_no_manifest_for_a_non_contributor_either() = runTest {
+        // The path the reordering opened: a declined cycle now publishes an empty manifest, so it has to
+        // answer the same question. An unseeded ledger must not be published as "I share nothing".
+        val order = mutableListOf<String>()
+        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")))
+
+        val result = cycle(
+            InMemoryLedgerStore(), platform,
+            policy = SelectionPolicy.None,
+            reconcile = { false },
+            onDiscovery = { _, _ -> order += "discovery" },
+        ).run()
+
+        assertEquals(CycleResult.SKIPPED, result)
+        assertTrue(order.isEmpty(), "no manifest — 'could not tell' is not 'shares nothing'")
+    }
+
+    @Test
+    fun a_settled_reconcile_publishes_the_manifest_for_a_non_contributor() = runTest {
+        // The contrast that makes the test above mean something: with the ledger settled, the declined
+        // cycle DOES publish, and what it publishes is empty.
+        val order = mutableListOf<String>()
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordCompleted(resource("a-photo.jpg", "a"), attempt = 0, eventId = TEST_EVENT)
+        var listed: List<String>? = null
+
+        val result = cycle(
+            backend, FakePlatform(),
+            policy = SelectionPolicy.None,
+            reconcile = { true },
+            onDiscovery = { _, policy ->
+                order += "discovery"
+                listed = projectDeviceManifest("D", backend.completedManifestRows(), policy)
+                    .assets.map { it.assetId }
+            },
+        ).run()
+
+        assertEquals(CycleResult.SKIPPED, result)
+        assertEquals(listOf("discovery"), order, "the manifest is published")
+        assertEquals(emptyList(), listed, "and it is empty — the member currently shares nothing")
     }
 }
