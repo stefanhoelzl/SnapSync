@@ -11,7 +11,6 @@ import app.snapsync.rig.gallery.GalleryReader
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.WipeScope
 import app.snapsync.rig.gallery.WipeWindow
-import app.snapsync.rig.gallery.plantFallbackIdentity
 import app.snapsync.rig.gallery.seedPhotos
 import app.snapsync.rig.gallery.wipeGallery
 import co.touchlab.kermit.Logger
@@ -187,26 +186,6 @@ fun deviceCommands(
                         """"committed":${o.committed},"errorCode":${o.errorCode},""" +
                         """"errorDescription":${quoted(o.errorDescription)}}""",
                 )
-            }
-        }
-    },
-    "identity" to RigCommand { params ->
-        val id = params["id"]
-        when {
-            id.isNullOrBlank() -> CommandResult.badRequest("id is required")
-            else -> {
-                val outcome = plantFallbackIdentity(id)
-                if (outcome.path == null) {
-                    CommandResult.badRequest("could not plant the identity — ${outcome.reason}")
-                } else {
-                    // Deliberately does not claim the app WILL use it: a secure store that resolves an
-                    // identity ignores this file, and saying otherwise here would be a promise this
-                    // command cannot keep.
-                    CommandResult.ok(
-                        """{"planted":true,"path":"${outcome.path}","note":"fills an absence only; a """ +
-                            """resolvable secure store still wins"}""",
-                    )
-                }
             }
         }
     },

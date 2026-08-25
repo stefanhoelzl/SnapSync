@@ -60,6 +60,15 @@
 - [x] 8.3 Add the simulator port line to the `rig-channel` skill
 - [x] 8.4 State the non-goals in the skill — no `LIMITED`, no APNs, no OS-driven tier — so a later change does not write a scenario for a host that cannot run it
 
+## 8b. Rebase onto main and remove the competing plant
+
+- [x] 8b.1 Rebased onto `main` after `triggers-into-channel` landed (109 files). Resolved 4 conflicts; took main's `build.yml` fix, which independently found the same rig-hook rot and fixes it better (both properties, metadata-only)
+- [x] 8b.2 Removed main's plant: `SuppliedDeviceIdentity.kt`, `IdentityPlant.kt`, the `/device/identity` command, and the rig-channel doc line. `SnapSyncRoot` reverts to `KeychainDeviceIdentity(MINTING)`, which now resolves its store from the compilation target
+- [x] 8b.3 Added the `device-identity` `REMOVED Requirements` delta, recording what both designs agree on as well as where they differ
+- [x] 8b.4 KEPT `DeviceIdentityRetryTest` with its rationale rewritten: the no-memoized-failure property is load-bearing for the LOCKED-DEVICE case, which predates the supplier it was written for
+- [x] 8b.5 Rewrote the `ios-simulator` runbook against the channel verbs — the `SNAPSYNC_CREATE_EVENT`/`_EVENT_LINK` examples named triggers that no longer exist. `SNAPSYNC_RIG_PORT` survives (hook-read) and is now the only variable
+- [x] 8b.6 `./gradlew build` green; `architectureDiagrams` regenerated (one line in `di.md`) and committed
+
 ## 9. Close out
 
 - [x] 9.1 `./gradlew build` green; `architectureDiagrams` regenerated and produced NO change (the new files are adapter/test sources the diagrams do not project)
