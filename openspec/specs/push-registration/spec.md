@@ -3,7 +3,7 @@
 ## Purpose
 
 The device end of the backend→app channel: the app acquires its APNs token, registers it with the backend
-(`device-config-endpoint`), re-registers on rotation, and exposes a `PushReceiver` seam that an incoming
+(`api-endpoints`), re-registers on rotation, and exposes a `PushReceiver` seam that an incoming
 silent push is forwarded into.
 
 The seams exist so that logic stays testable while `:app:ios` stays wiring-only — token acquisition and push
@@ -134,11 +134,11 @@ receivers' active-event guards read current state.
 The app SHALL register the token when it becomes available after launch, **on join** (when the device
 provisions an event), and again whenever the APNs token rotates (a new token delivered by the OS).
 Registration SHALL be idempotent — re-registering the same token overwrites an identical
-`devices/<deviceId>.json` (last-write-wins at the endpoint) — so repeated launches and joins with an
+the device's stored record (last-write-wins at the endpoint) — so repeated launches and joins with an
 unchanged token are harmless.
 
 Registering on join exists to close a **warm-rejoin** window opened by the scheduled cleanup (capability
-`scheduled-cleanup`): when the sweep collects a fully-orphaned device's `devices/<deviceId>.json`, a
+`scheduled-cleanup`): when the sweep collects a fully-orphaned device's record, a
 device that then rejoins **without** a cold launch would otherwise have no registered token on the
 backend until its next launch, and silent pushes to it would be skipped. Registering on join restores the
 token immediately. Registration SHALL NOT be tied to every foreground (too frequent); launch, join, and

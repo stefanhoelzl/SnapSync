@@ -10,10 +10,10 @@ can pull new photos, never to interrupt the user. Delivery is reported **per tok
 can reject an individual token (expired, unregistered) without that being a failure of the fan-out, so the
 sender surfaces each outcome rather than collapsing them into one verdict. APNs is the **iOS binding of
 the platform-neutral wake-a-member need**; a future Android client would bind FCM behind the same
-per-token, best-effort sender seam, with the caller (`event-notify-endpoint`) unchanged.
+per-token, best-effort sender seam, with the caller (`api-endpoints`) unchanged.
 
 The APNs signing key (`APNS_PRIVATE_KEY`) is one of the backend's two environment **secrets**, fail-closed at startup; the key id and team id are resolved from the deployment and the topic is DERIVED from the bundle id (capabilities `deployment-configuration`, `backend-deployment`). The caller that decides
-*when* to send is `event-notify-endpoint`.
+*when* to send is `api-endpoints`.
 
 Decision record: `changes/archive/2026-07-05-push-notification-infra`.
 
@@ -67,7 +67,7 @@ For each target token the sender SHALL issue an `HTTP/2` `POST` to `/3/device/<t
 host, carrying the headers `apns-topic: <APNS_TOPIC>`, `apns-push-type: background`, and `apns-priority:
 5`, with the JSON body `{ "aps": { "content-available": 1 }, "eventId": "<eventId>" }` (a silent push —
 no `alert`, `sound`, or `badge`). The `eventId` is a top-level custom key carrying the event the push
-concerns (supplied by the caller — capability `event-notify-endpoint` — from the notify route path);
+concerns (supplied by the caller — capability `api-endpoints` — from the notify route path);
 the `aps` object itself is unchanged. The sender SHALL rely on the runtime `fetch`'s automatic HTTP/2
 negotiation and SHALL NOT require a bespoke HTTP/2 client library or a native dependency. A push SHALL
 carry only the transport discriminator's `kind == "apns"` tokens; a non-`apns` token SHALL be skipped.

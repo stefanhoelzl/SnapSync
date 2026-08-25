@@ -177,12 +177,12 @@ not named here SHALL require the token:
    state, and carries no side effect — and it cannot read the link's payload even in principle, because
    that payload is carried in the URL fragment, which a browser never transmits.
 8. `GET /api/v1/events/<eventId>/files` and `HEAD` on the same path — the event photo **union read** (capability
-   `bunny-list-endpoint`), which the no-app download page fetches from a browser that holds no attestation
+   `api-endpoints`), which the no-app download page fetches from a browser that holds no attestation
    (capability `web-event-download`). This exception SHALL be **method-scoped**: it admits only `GET` and
    `HEAD` on the union path; every non-`GET`/`HEAD` method on any `/api/v1/events/<eventId>/…` path (device
    manifest write, leave, notify) SHALL remain gated.
 9. `GET /api/v1/events/<eventId>` and `HEAD` on the same path — the event **marker/metadata read** (capability
-   `event-creation`), which the download page fetches to show the event name. This exception SHALL be
+   `api-endpoints`), which the download page fetches to show the event name. This exception SHALL be
    **method-scoped**: it admits only `GET` and `HEAD`; `POST /api/v1/events` (creation) SHALL remain gated.
 
 Entries 8 and 9 restate the gate's posture rather than carve a hole in it: attestation was never a
@@ -194,6 +194,14 @@ accepted, eyes-open cost — it lets any HTTP client that learns an `eventId` re
 (billed as storage egress), and because the union mints a fresh presigned URL on every call, a leaked
 `eventId` becomes a **perpetual** read grant rather than the inert value it is today. It is accepted with
 no per-event opt-in and no rate limit. Decision record: `changes/archive/2026-07-21-web-event-download`.
+
+This requirement absorbs five per-endpoint duplicates deleted by this change — `bunny-upload-endpoint`'s
+*Writes require a device token*, `event-creation`'s *Event routes require a device token*,
+`event-leave-endpoint`'s *Leave requires a device token*, `event-notify-endpoint`'s *Notify requires a
+device token*, and `device-config-endpoint`'s *The device-config write requires a device token*. They
+existed only because there were five endpoint specs; the rule and its closed list of exceptions were always
+stated here. **No route's gating changes.** `api-endpoints`' route table carries a `gated` column as a
+reader's summary and defers to this list as the authority.
 
 #### Scenario: A new route defaults to gated
 
@@ -233,10 +241,10 @@ no per-event opt-in and no rate limit. Decision record: `changes/archive/2026-07
 - **WHEN** a `GET /api/v1/events/<uuid>/files` (or `HEAD`) request arrives without a valid token
 - **THEN** it is answered by the union route (subject to that route's own existence gate), not `401`
 
-#### Scenario: The event marker read is served without a token
+#### Scenario: The event metadata read is served without a token
 
 - **WHEN** a `GET /api/v1/events/<uuid>` (or `HEAD`) request arrives without a valid token
-- **THEN** it is answered by the marker route (its metadata or `404`), not `401`
+- **THEN** it is answered by the metadata route (its fields or `404`), not `401`
 
 #### Scenario: A write method on an ungated read path stays gated
 

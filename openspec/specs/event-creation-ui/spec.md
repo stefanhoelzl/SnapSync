@@ -8,7 +8,7 @@ the creating device auto-joins. Defines the app-side seams (`EventCreator` comma
 `CreationStatusSource` state port, `CreationStatus`), the HTTP creator over an injected client, and the
 create screen that becomes the app's no-event layer.
 
-Before it, the backend could mint events (`event-creation`) but the app could only *join* one someone else
+Before it, the backend could mint events (`api-endpoints`) but the app could only *join* one someone else
 handed over by QR. This capability is what makes SnapSync a tool you can start an event with, not only be
 invited into — and it is where the product's framing is pinned: the copy describes **sharing photos to an
 event**, never personal backup.

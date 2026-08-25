@@ -11,7 +11,7 @@ the member contributes only photos taken within it. Without a lower bound, joini
 entire photo library — and because every uploaded asset enters the event union, every other member downloads
 it too. The joiner faced an all-or-nothing choice between sharing years of unrelated photos and not joining.
 The range makes contribution scopeable, and it defaults to the **whole event window** `[startsAt, endsAt]`
-(the instants the host sets at creation, capability `event-creation`), which is almost always what the member
+(the instants the host sets at creation, capability `api-endpoints`), which is almost always what the member
 means.
 
 The event's window is also a **floor and a ceiling** beneath the member's choice: the persisted range is
@@ -70,9 +70,9 @@ SHALL re-apply its clamp (`from` re-clamped to the `startsAt` **floor**, `until`
 `EventConfig`; the data model SHALL be shaped so a future set of memberships each carries its own range
 without relocating the fields).
 
-The event SHALL supply the lower bound's **default** (its `startsAt`, capability `event-creation`) and its
+The event SHALL supply the lower bound's **default** (its `startsAt`, capability `api-endpoints`) and its
 **floor** (see *The event's start date is a floor on every membership's cutoff*), and the upper bound's
-**default** (its `endsAt`, capability `event-creation` / `event-limits`) and its **ceiling** (see *The
+**default** (its `endsAt`, capability `api-endpoints` / `event-limits`) and its **ceiling** (see *The
 event's end date is a ceiling on every membership's upper bound*). The default range is therefore the full
 event window `[startsAt, endsAt]` — narrowing on doubt, never widening. The surviving safety invariant —
 the one this capability exists to protect — is directional:
@@ -151,7 +151,7 @@ bound its `PHFetchOptions` fetch, so an off-shape cutoff silently costs the boun
 
 Every cutoff SHALL be produced in this shape. The event's **`startsAt`** — the cutoff's default and floor
 — SHALL be carried in this shape **on the wire**: the backend requires the canonical form on
-`POST /events` and stores it verbatim (capability `event-creation`), so `startsAt` needs **no**
+`POST /events` and stores it verbatim (capability `api-endpoints`), so `startsAt` needs **no**
 client-side normalization and is directly comparable. This is deliberately unlike `createdAt`, which the
 backend mints with `new Date().toISOString()` and which therefore always carries **milliseconds**
 (`2026-07-09T19:24:17.182Z`); a cutoff derived from a `createdAt` — including the `startsAt` a legacy
@@ -228,7 +228,7 @@ create screen's default (see capability `event-creation-ui`) and the not-started
 
 ### Requirement: The event's start date is a floor on every membership's cutoff
 
-An event SHALL carry a **start date** (`startsAt`, capability `event-creation`), set once by the host at
+An event SHALL carry a **start date** (`startsAt`, capability `api-endpoints`), set once by the host at
 creation and immutable thereafter. It SHALL act as a **floor** on every membership's capture-date
 cutoff: a membership's **effective cutoff** SHALL be `max(chosen, startsAt)`.
 

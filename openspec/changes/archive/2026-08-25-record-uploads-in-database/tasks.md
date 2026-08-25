@@ -87,7 +87,7 @@
 
 ## 8. Specs and docs
 
-- [ ] 8.1 (SYNC PHASE — not apply) Sweep stale citations in specs whose requirements do not change — `event-rename`,
+- [x] 8.1 Swept stale citations in specs whose requirements do not change — `event-rename`,
       `web-event-download`, `push-registration`, `device-identity`, `leave-event`,
       `edge-upload-provider` — each naming a removed capability or a retired storage key in prose
 - [x] 8.2 Update `api/README.md` and the `local-backend` skill for the local database the dev rig needs

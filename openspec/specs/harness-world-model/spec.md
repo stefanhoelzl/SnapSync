@@ -20,7 +20,6 @@ orchestration and not just for pure functions.
 
 Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
 ## Requirements
-
 ### Requirement: Controllable in-memory world module
 
 The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that runs the
@@ -62,36 +61,47 @@ the contracts are test compilations, so no production edge is introduced).
 
 ### Requirement: Backend object store with faithful read-models
 
-The world SHALL provide an in-memory backend object store holding the edge's state: deposited object
-keys per device byte-partition (`files/devices/<deviceId>/<filename>`), one device manifest per
-`(eventId, deviceId)`, and a registered-event marker set. From this state it SHALL compute the edge's
-read-models **faithfully in behavior** — the per-device file listing (`GET /files/devices/<id>`), the
-event-wide union (`GET /events/<id>/files`), and the reconcile-seed listing — where the reconcile-seed
-listing is the **same** per-device read-model consumed by the rejoin reconciler. Byte-level fidelity to
-the real Deno `api/` edge is **NOT** required: drift is **accepted**, there is **no golden
-fixture**, and the store SHALL NOT mint real presigned S3 URLs (each `url` is a synthetic in-memory
-handle the fake download seams resolve store-direct). The per-device listing SHALL return one
-`{filename, size, url}` entry per stored object. The event-union SHALL include an asset **only when
-every** resource named by that asset's manifest entry is present in its device's byte partition, tag
-each asset with its owning `deviceId`, and gate on event-marker presence (an unregistered event is
-absent, not empty).
+The world SHALL provide an in-memory backend store holding the edge's state: deposited object keys per
+device byte-partition (`files/devices/<deviceId>/<filename>`), and the **relational** state the real
+backend keeps — events, per-`(eventId, deviceId)` memberships each carrying an `active`/`departed` state,
+each membership's asset set, and the device-scoped resources with their `uploaded` flag. From this state it
+SHALL compute the edge's read-models **faithfully in behavior** — the per-device file listing
+(`GET /files/devices/<id>`), the event-wide union (`GET /events/<id>/files`), and the reconcile-seed
+listing — where the reconcile-seed listing is the **same** per-device read-model consumed by the rejoin
+reconciler. Byte-level fidelity to the real Deno `api/` edge is **NOT** required: drift is **accepted**,
+there is **no golden fixture**, and the store SHALL NOT mint real presigned S3 URLs (each `url` is a
+synthetic in-memory handle the fake download seams resolve store-direct).
 
-#### Scenario: Per-device listing reflects deposited objects
+The per-device listing SHALL return one `{filename, url}` entry per resource recorded as uploaded. The
+event-union SHALL span a device's memberships whether `active` or `departed`, include an asset **only when
+every** resource that asset names is recorded as uploaded, tag each asset with its owning `deviceId`, and
+gate on event existence (an unregistered event is absent, not empty).
 
-- **WHEN** objects are deposited into a device's byte partition and the per-device listing is computed
-- **THEN** it returns one `{filename, size, url}` entry per deposited object
+Membership SHALL be modelled as a state on one membership record. The world SHALL NOT model the retired
+active/departed sibling objects, nor resolve membership from object timestamps.
+
+#### Scenario: Per-device listing reflects uploaded resources
+
+- **WHEN** objects are deposited into a device's byte partition and recorded as uploaded, and the
+  per-device listing is computed
+- **THEN** it returns one `{filename, url}` entry per uploaded resource
 
 #### Scenario: Union includes only complete assets, tagged by device
 
-- **WHEN** a device's manifest names an asset whose every resource `key` is present in that device's
-  partition, and another asset with a missing resource
+- **WHEN** a device's membership names an asset whose every resource is recorded as uploaded, and another
+  asset with a resource that is not
 - **THEN** the union includes the complete asset tagged with its `deviceId` and omits the incomplete one
+
+#### Scenario: A departed member still contributes to the union
+
+- **WHEN** a device's membership state is `departed` and its event still exists
+- **THEN** the union still includes the assets it published before leaving
 
 #### Scenario: Unregistered event is absent, not empty
 
-- **WHEN** the union is computed for an event with no registered marker
+- **WHEN** the union is computed for an event that does not exist
 - **THEN** the read-model reports the event absent (a 404-equivalent that surfaces as a failed
-  `union` `Result`), distinct from a registered event with no complete assets (an empty array)
+  `union` `Result`), distinct from an existing event with no complete assets (an empty array)
 
 #### Scenario: The reconcile seed reads the per-device listing
 
@@ -498,10 +508,10 @@ the best-effort backend leave notify (`DELETE /events/<eventId>/devices/<deviceI
 mini-edge), then clearing the config cell and the joined-event marker — while **retaining** imported
 foreign photos and the ledger on the device side. It SHALL NOT be modelled by rebuilding the world
 (which would forge the outcome and wrongly discard imported photos). The backend leave SHALL mutate the
-world's object store through the same mini-edge cascade a real backend runs (rename to `.left.json`,
-last-active-member reap, reference-checked GC), so integration tests can assert **both** the device
-outcome (join cleared, imports retained) and the **world** outcome (the device's manifest renamed
-departed; the event tree and freed byte partition removed when it was the last active member). Because
+world's state exactly as the real backend does — the membership's state becomes `departed` and nothing
+else moves — so integration tests can assert **both** the device outcome (join cleared, imports retained)
+and the **world** outcome (the membership departed, its assets still in the union, the event and every
+byte still present because reclamation belongs to the nightly sweep alone). Because
 clearing the config cell is reactive, the status projection SHALL leave the joined layer
 without any world rebuild, and re-provisioning the same event afterwards SHALL still find the previously
 imported foreign assets suppressed (real cross-event dedup).
@@ -525,28 +535,32 @@ imported foreign assets suppressed (real cross-event dedup).
 ### Requirement: Mini-edge leave cascade
 
 The `:test:world` mini-edge SHALL answer `DELETE /events/<eventId>/devices/<deviceId>` with the same
-cascade the real backend runs over its in-memory object store: rename the active manifest to
-`<deviceId>.left.json` (fresh write time), then, if no active member remains under
-`events/<eventId>/devices/` (resolved by the last-write-wins rule over sibling write times), delete the
-event tree and, for each freed device that appears in no surviving event, delete its
-`files/devices/<deviceId>/` objects and its `devices/<deviceId>.json` config. Its union and notify
-read-models SHALL apply the same active/departed last-write-wins resolution, so departed devices remain
-in the union but are excluded from notify fan-out. The cascade SHALL be idempotent under repeated calls.
+effect the real backend has: set that membership's state to `departed`. Its assets SHALL be retained, so
+the union keeps serving what the device shared before it left, and the mini-edge notify fan-out SHALL
+exclude it. The call SHALL be idempotent, and a leave naming a membership that never existed SHALL change
+nothing rather than fail.
 
-#### Scenario: Mini-edge renames then reaps
+The mini-edge SHALL NOT model the retired sibling-object cascade — the rename to `<deviceId>.left.json`,
+the last-write-wins resolution over sibling write times, or the leave-time reap of a freed device's bytes
+and config. Membership is one record with a state (capability `database`), and reclamation belongs solely
+to the nightly sweep (capability `scheduled-cleanup`); a harness that still performed a leave-time GC
+would let an integration test pass against a cascade the backend no longer runs.
+
+#### Scenario: A leave departs the membership and keeps its assets
 
 - **WHEN** the mini-edge receives `DELETE /events/<eventId>/devices/<deviceId>` for the last active member
-- **THEN** it renames the manifest to `.left.json`, deletes the event tree, and GCs the orphaned device's bytes and config
+- **THEN** that membership's state becomes `departed`, its assets remain, and neither the event nor the
+  device's bytes or config are deleted
 
 #### Scenario: Mini-edge union keeps a departed device, notify drops it
 
-- **WHEN** a device is departed (its winning sibling is `<deviceId>.left.json`) while the event has other members
+- **WHEN** a device's membership state is `departed` while the event has other members
 - **THEN** the mini-edge union includes that device's assets and the mini-edge notify fan-out excludes it
 
 ### Requirement: The world's event marker carries a start date
 
 The world's backend object store SHALL model the event marker as `{ eventId, name, createdAt, startsAt }`
-— the same four fields the real marker carries (capability `event-creation`) — and its registration seam
+— the same four fields the real marker carries (capability `api-endpoints`) — and its registration seam
 SHALL accept a `startsAt` so a test or the harness operator can register an event that has **already
 started**, **has not started yet**, or started in the **distant past**.
 
@@ -660,6 +674,7 @@ missing event is a `400` in both.
 #### Scenario: The rename echo matches the details fetch
 - **WHEN** a rename succeeds and `GET /events/<eventId>` is then requested
 - **THEN** both responses carry the same name and the same event facts
+
 ### Requirement: The world's marker write is a required collaborator
 
 The marker write the world's importer performs SHALL be a **required** collaborator of that importer, with
@@ -674,3 +689,4 @@ and takes the same posture as every other one in this project: supplied explicit
 
 - **WHEN** the world's importer is constructed
 - **THEN** the marker write must be supplied, rather than defaulting to a no-op
+

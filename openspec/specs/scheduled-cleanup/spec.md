@@ -36,7 +36,6 @@ Decision record: `changes/archive/2026-07-21-nightly-cleanup`;
 `changes/archive/…-decouple-event-window-from-lifetime` (deadline-or-empty predicate; notify removed);
 `changes/archive/2026-07-26-prune-swept-event-directories` (tombstone reclamation; why the recursive delete
 is confined to husks and never applied to a device byte partition; the measured bunny listing behaviour).
-
 ## Requirements
 ### Requirement: Scheduled runner with direct storage access
 
@@ -89,75 +88,75 @@ The sweep SHALL run the **event phase** to completion before the **asset phase**
 compute the referenced-byte set and every device's retention floor over the events that **survive** the
 event phase, so an asset whose only event was just deleted is correctly seen as unreferenced.
 
+Both phases SHALL read their inputs from the database (capability `database`) rather than from storage
+listings: the referenced-byte set is a query over surviving events' `event_assets` joined to `resources`,
+and each device's floor is a query over the events it is an active member of. Only the byte objects
+themselves are enumerated from storage.
+
 #### Scenario: Assets are evaluated against surviving events
 
 - **WHEN** the event phase deletes an event and the asset phase then runs
-- **THEN** the asset phase treats that event's manifests as gone and evaluates its bytes for collection
+- **THEN** the asset phase treats that event's assets as gone and evaluates its bytes for collection
+
+#### Scenario: The root set is a query, not a fan-out
+
+- **WHEN** the asset phase computes the referenced-byte set
+- **THEN** it issues a query over the surviving events' rows and performs no per-event, per-device manifest
+  read
 
 ### Requirement: Stale-event deletion
 
 The event phase SHALL delete every **stale event**, and SHALL leave every other event untouched. An event
-is stale when **any** of the following holds:
+is stale when **either** of the following holds:
 
-- **past its deadline** — `now` is later than the marker's derived delete-by
-  (`max(createdAt, startsAt) + lifetimeSeconds`, per capability `event-limits`; a marker carrying no
-  `lifetimeSeconds` derives it from the configured lifetime constant);
-- **empty** — the event's `events/<eventId>/devices/` listing carries **at least one** manifest object
-  and **no device resolves to `active`** (every enrolled device's winning manifest is its departed
-  `.left.json` sibling, per capability `device-manifest`);
-- **incomplete** — the marker is missing **while at least one manifest object remains**, or the marker
-  carries no `startsAt`, `endsAt`, or `capacity`, or a field that cannot be parsed.
+- **past its deadline** — `now` is later than the row's derived delete-by
+  (`max(createdAt, startsAt) + lifetimeSeconds`, per capability `event-limits`);
+- **empty** — the event has **at least one** membership row and **none** of them is `active`.
 
-A missing marker is therefore **not** on its own a stale event. A directory with no marker **and** no
-manifest object is a **tombstone**, reclaimed under *Tombstone reclamation* and counted as no event at all;
-only a marker-less directory that still holds manifests is the **incomplete** case deleted here.
+An event with **no membership rows at all** SHALL NOT be treated as empty: it has been minted but never
+joined (`POST /api/v1/events` always produces a zero-device event, because the creator confirms through the
+same join gate a scanned QR uses), and it SHALL survive until its deadline like any other event.
 
-An event whose `devices/` listing is **empty of manifest objects entirely** SHALL NOT be treated as empty:
-it has been minted but never joined (`POST /api/v1/events` always produces a zero-device event, because the
-creator confirms through the same join gate a scanned QR uses), and it SHALL survive until its deadline
-like any other event.
-
-Emptiness is **opportunistic reclamation, not a guarantee**. A leave whose backend notify never lands
-leaves an active manifest behind, so an abandoned event may never empty; the deadline is the only bound
+Emptiness is **opportunistic reclamation, not a guarantee**. A leave whose backend request never lands
+leaves an active membership behind, so an abandoned event may never empty; the deadline is the only bound
 that always holds, and no requirement, client behavior, or user-facing statement SHALL be written as if
 emptiness were assured.
 
-For each stale event the sweep SHALL delete its `metadata.json` marker and every `<deviceId>.json` /
-`<deviceId>.left.json` manifest under `events/<eventId>/devices/`, manifests first and the marker **last**.
-The sweep SHALL NOT notify the event's members before deleting it. Deletion SHALL be idempotent — a re-run
-over an already-deleted event is a harmless no-op.
+Deletion SHALL be a single `DELETE` of the event row, whose `ON DELETE CASCADE` removes its memberships and
+their assets atomically (capability `database`). There is no ordering to get right and no partially-deleted
+event to observe. The sweep SHALL NOT notify the event's members before deleting it. Deletion SHALL be
+idempotent — a re-run over an already-deleted event is a harmless no-op.
+
+The deletion **decision** SHALL be taken inside an interactive transaction, which runs against the primary.
+The emptiness rule is the exposed one: a stale replica that had not yet observed a **rejoin** would see a
+fully-departed event and delete a live one. The deadline rule reads immutable stamped columns and is
+stale-safe by contrast. Read-your-writes has not been measured from the edge (capability `database`).
 
 #### Scenario: An event past its deadline is deleted
 
-- **WHEN** an event's marker gives a derived delete-by earlier than `now`
-- **THEN** the sweep deletes its marker and all its manifests
+- **WHEN** an event's row gives a derived delete-by earlier than `now`
+- **THEN** the sweep deletes it, and its memberships and assets go with it
 
 #### Scenario: An emptied event is deleted
 
-- **WHEN** an event's `devices/` listing carries manifest objects and every device resolves to
-  `departed`
-- **THEN** the sweep deletes its marker and all its manifests, even though its deadline has not passed
+- **WHEN** an event has membership rows and every one of them is `departed`
+- **THEN** the sweep deletes it, even though its deadline has not passed
 
 #### Scenario: An event with one active member is left intact
 
-- **WHEN** an event within its deadline has at least one device resolving to `active`
+- **WHEN** an event within its deadline has at least one `active` membership
 - **THEN** the sweep deletes nothing for that event
 
 #### Scenario: A minted-but-never-joined event is not empty
 
-- **WHEN** an event within its deadline has no manifest objects at all under `devices/`
+- **WHEN** an event within its deadline has no membership rows at all
 - **THEN** the sweep deletes nothing for that event, and it survives until its deadline
 
-#### Scenario: An incomplete marker is deleted
+#### Scenario: The decision is taken against the primary
 
-- **WHEN** the sweep reads a marker that carries no `startsAt`, `endsAt`, or `capacity`
-- **THEN** the event is treated as stale and deleted exactly as an expired one
-
-#### Scenario: A missing marker with manifests remaining is incomplete, not a tombstone
-
-- **WHEN** an event directory has no marker object but its `devices/` listing still holds a manifest object
-- **THEN** it is stale as **incomplete**, its manifests are deleted object-by-object, and it is counted as a
-  deleted event
+- **WHEN** the sweep evaluates an event for deletion
+- **THEN** the evaluation runs inside an interactive transaction, so a stale replica cannot cause a live
+  event to be deleted
 
 #### Scenario: Deletion sends no notification
 
@@ -165,86 +164,34 @@ over an already-deleted event is a harmless no-op.
 - **THEN** it dispatches no push and makes no notify request; members discover the deletion on their own
   next foreground details fetch (capability `leave-event`)
 
-### Requirement: Tombstone reclamation
-
-The event phase SHALL reclaim every **tombstone** — an event directory `events/<eventId>/` carrying **no
-marker object AND no manifest object** — with a **single recursive delete** of `events/<eventId>/`, which
-removes the nested empty `devices/` directory in the same operation. Reclamation SHALL be idempotent and
-`404`-tolerant, so a re-run over an already-reclaimed directory is a harmless no-op.
-
-A tombstone is the husk of an event the sweep has already deleted: bunny retains a directory after its last
-object is removed, so every deleted event leaves one behind, and a tombstone is indistinguishable from a
-live event until its marker is read.
-
-A tombstone SHALL NOT be treated as a deleted event, and SHALL NOT join the surviving-event set the asset
-phase evaluates bytes and retention floors against.
-
-The recursive delete SHALL be applied **only** to a tombstone. An event directory that still holds any
-manifest object SHALL be deleted object-by-object — manifests first, the marker **last** — so an interrupted
-run leaves a still-existing event that the next run reclaims cleanly.
-
-Reclaiming a tombstone is race-free, and only because its marker is absent: the manifest-write and leave
-routes both gate on event existence (capabilities `device-manifest`, `leave-event`), so a marker-absent
-directory authorizes no write and nothing can appear inside it between classification and deletion.
-
-The sweep SHALL NOT reclaim a device byte partition `files/devices/<deviceId>/`, even when every byte in it
-has been collected and the device is an active member of no surviving event. The byte upload is **ungated**
-by design (capability `bunny-upload-endpoint`) — it reads no marker, because bytes are device-partitioned
-and event-independent — so a recursive directory delete could destroy an upload that landed after the
-listing and was therefore never seen. That photo is recorded as uploaded in the device's own ledger
-(capability `sync-ledger`) and would never be sent again. The husk is retained deliberately: it costs one
-listing per run and distorts no count.
-
-#### Scenario: A swept event's directory is reclaimed
-
-- **WHEN** the event phase enumerates an event directory whose marker is absent and whose `devices/` listing
-  holds no manifest object
-- **THEN** the sweep deletes `events/<eventId>/` recursively, removing the directory and its empty
-  `devices/` child
-
-#### Scenario: A marker-less directory holding manifests is not a tombstone
-
-- **WHEN** an event directory's marker is absent but its `devices/` listing still holds at least one
-  manifest object
-- **THEN** the sweep treats it as **incomplete**, deletes its manifests object-by-object and its marker
-  last, and applies no recursive delete
-
-#### Scenario: A reclaimed tombstone contributes nothing to the asset phase
-
-- **WHEN** the event phase reclaims a tombstone
-- **THEN** that directory contributes no referenced byte keys and no retention floor, exactly as a deleted
-  event does
-
-#### Scenario: Reclamation is idempotent
-
-- **WHEN** a run reclaims a tombstone that a prior interrupted run had already removed
-- **THEN** the delete is `404`-tolerant and the run continues without recording an error
-
-#### Scenario: A device byte partition is never reclaimed
-
-- **WHEN** a device is an active member of no surviving event and every byte under
-  `files/devices/<deviceId>/` has been collected
-- **THEN** the sweep deletes the byte objects but leaves the directory in place, issuing no directory delete
-  against the byte partition
-
 ### Requirement: Stale-asset collection
 
 The asset phase SHALL collect a byte object under `files/devices/<deviceId>/` if and only if **(a)** no
-surviving event's manifest — active `<deviceId>.json` **or** departed `<deviceId>.left.json` — references
-its key, **and (b)** its storage `DateCreated` (upload time) is **earlier than** `min(startsAt)` taken
-over the events the device is an **active** member of among surviving events, where `min` over **no**
-such events is `+∞`. There SHALL be no wall-clock age threshold: a live upload for any active event was
-uploaded at or after that event's start, hence at or after the floor, so it is never collected. A device
-that is in **no** surviving event (floor `= +∞`) SHALL additionally have its config object
-`devices/<deviceId>.json` and its attestation record `devices/<deviceId>.attest.json` collected — these
-carry no event date and are reclaimed only in this fully-orphaned case (a returning device re-registers
-its push token on its next launch or join and re-attests on demand).
+surviving event references its key — through any membership, `active` or `departed` — and **(b)** its
+storage `DateCreated` (upload time) is **earlier than** `min(startsAt)` taken over the events the device is
+an **active** member of among surviving events, where `min` over **no** such events is `+∞`. There SHALL be
+no wall-clock age threshold: a live upload for any active event was uploaded at or after that event's
+start, hence at or after the floor, so it is never collected.
+
+When a byte is collected, its `resources` row SHALL be deleted **before** the byte object. The order is
+load-bearing:
+
+- row then byte — a crash leaves an orphan byte, still unreferenced and still below the floor, so the next
+  run collects it. Self-healing.
+- byte then row — a crash leaves a row asserting `uploaded = 1` for bytes that no longer exist. That
+  residue is inert while nothing reads the row for dedup, and becomes a silently un-re-uploadable photo the
+  moment something does.
+
+A device that is in **no** surviving event (floor `= +∞`) SHALL additionally have its `device_records` row
+and its attestation record `devices/<deviceId>.attest.json` collected — these carry no event date and are
+reclaimed only in this fully-orphaned case (a returning device re-registers its push token on its next
+launch or join and re-attests on demand).
 
 #### Scenario: A pre-switch leftover byte is collected
 
-- **WHEN** a byte is unreferenced by any surviving manifest and its upload time is earlier than the start
-  of every surviving event the device is active in
-- **THEN** the sweep deletes that byte
+- **WHEN** a byte is unreferenced by any surviving event and its upload time is earlier than the start of
+  every surviving event the device is active in
+- **THEN** the sweep deletes that byte, having first deleted its `resources` row
 
 #### Scenario: A live upload is retained
 
@@ -254,19 +201,24 @@ its push token on its next launch or join and re-attests on demand).
 
 #### Scenario: A referenced byte is retained
 
-- **WHEN** a byte's key is named by a surviving event's active or departed manifest
+- **WHEN** a byte's key is named by a surviving event's assets
 - **THEN** the sweep retains the byte regardless of its upload time
+
+#### Scenario: A crash between the two deletions is self-healing
+
+- **WHEN** the sweep deletes a resource row and is killed before deleting its byte
+- **THEN** the byte remains unreferenced and below the floor, and the next run collects it
 
 #### Scenario: A fully-orphaned device is collected whole
 
 - **WHEN** a device is an active member of no surviving event
-- **THEN** every unreferenced byte under `files/devices/<deviceId>/`, its `devices/<deviceId>.json`, and
-  its `devices/<deviceId>.attest.json` are deleted
+- **THEN** every unreferenced byte under `files/devices/<deviceId>/`, its `device_records` row, and its
+  `devices/<deviceId>.attest.json` are deleted
 
 #### Scenario: A departed member's bytes are retained while its event survives
 
-- **WHEN** a device has left an event that has not yet expired, so its `<deviceId>.left.json` in that
-  surviving event still references its bytes
+- **WHEN** a device has left an event that has not yet expired, so that event's assets still reference its
+  bytes
 - **THEN** those bytes are retained until that event is deleted
 
 ### Requirement: Dry-run, best-effort, and a run summary

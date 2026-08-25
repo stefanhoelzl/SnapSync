@@ -225,7 +225,7 @@ composable, never a copy. No new testable domain logic SHALL be introduced in `:
 ### Requirement: The inspector's Create event control supplies a start date
 
 The world inspector's **Create event** control SHALL supply a `startsAt` alongside the event name, the
-real `POST /events` now requiring one (capability `event-creation`). It SHALL let the operator choose
+real `POST /events` now requiring one (capability `api-endpoints`). It SHALL let the operator choose
 between a start in the **past** (the event has begun — the ordinary case) and one in the **future** (the
 event has not begun), so both sides of the floor can be driven through the **real** stack rather than
 forged.
