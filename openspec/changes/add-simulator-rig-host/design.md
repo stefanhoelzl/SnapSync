@@ -475,10 +475,17 @@ target that cannot run on one. Rollback is reverting the commit.
 - ~~**Are downloads inert on a simulator?**~~ **ANSWERED, 2026-08-25 — and the honest answer is neither
   "inert" nor "they work".**
 
-  The background download session **runs**: `DownloadController` planned all three foreign assets, the
-  transport created tasks, and `didCompleteWithError` fired for each. So the premise
-  `fix-download-session-lifecycle` D5 rested on — *"the simulator cannot run background sessions"* —
-  stays **false**, as `delete-simulator-session-downgrade` already found for uploads.
+  Our **app-side pipeline** runs end to end: `DownloadController` planned all three foreign assets, the
+  transport created task objects, and `didCompleteWithError` fired for each. That is what makes this host
+  worth having for exercising the download code at all.
+
+  ⚠️ **An earlier revision read that as "the background session runs". It does not.** Measured 2026-08-25
+  (below): the **remote** session is never created — *"failed to create a background
+  NSURLSessionDownloadTask, as remote session is unavailable"* — so those local task objects have no
+  counterpart in the transfer daemon and no byte is ever moved. The premise
+  `fix-download-session-lifecycle` D5 rested on — *"the simulator cannot run background sessions"* — is
+  therefore **correct for third-party code**, which is the opposite of what this record said before the
+  mechanism was measured.
 
   But **every transfer failed immediately with `NSURLErrorDomain / -1` (`NSURLErrorUnknown`)**, against a
   loopback host **and** against the runner's LAN address, while in the *same process* the app's ordinary
@@ -488,20 +495,20 @@ target that cannot run on one. Rollback is reverting the commit.
   the URL.
 
   Consequently D5's closing sentence — *"downloads remaining inert on the simulator is a known, accepted
-  limitation"* — is **correct in outcome and wrong in mechanism**, and is superseded on those terms: the
-  session is alive and it is the transfers that cannot complete. That distinction matters, because
-  "cannot run background sessions" invites the wrong fix.
+  limitation"* — is **correct, in outcome and in mechanism**. An intermediate revision of this record
+  called it "wrong in mechanism", on the grounds that *"the session is alive and it is the transfers that
+  cannot complete"*; that is **withdrawn**.
 
   Getting from "unknown error" to `NSURLErrorDomain/-1` needed a rebuild, because the transport logged
   only `localizedDescription` — which iOS renders as the literal string "unknown error". The log line now
   carries the domain and code, so the next person does not pay that cost.
 
-  **Why it fails — MEASURED, 2026-08-25.** An earlier revision of this record guessed at the mechanism
-  from sources that do not describe our case. They were audited and mostly discarded; what follows is
-  the Simulator's own system log.
+  **Why it fails — MEASURED, 2026-08-25, from the daemon's own log.** One revision of this record guessed
+  the mechanism from sources that do not describe our case (audited and discarded); the next recorded the
+  client side correctly but left the cause **OPEN**. It is now closed.
 
   Background transfers are not performed in the app's process: `URLSession` hands them to
-  **`nsurlsessiond`** over XPC. That connection is refused for our app, verbatim from the log:
+  **`nsurlsessiond`** over XPC. The client side, verbatim:
 
   ```
   E  SnapSync [com.apple.CFNetwork:Default] BackgroundSession <…> an error occurred on the xpc
@@ -511,41 +518,92 @@ target that cannot run on one. Rollback is reverting the commit.
      NSURLSessionDownloadTask, as remote session is unavailable
   ```
 
-  The `NSURLErrorDomain/-1` the delegate reports is the **downstream symptom** of that refusal, not the
-  fault itself — which is why it names nothing useful.
+  **`NSCocoaErrorDomain 4097` is `NSXPCConnectionInterrupted`**, not `NSXPCConnectionInvalid` — read from
+  Foundation's own declarations via the platform klib (`Interrupted = 4097`, `Invalid = 4099`,
+  `ReplyInvalid = 4101`, `CodeSigningRequirementFailure = 4102`). An earlier revision named it "Invalid";
+  that was wrong, and the difference **is** the answer: the connection is **accepted and then torn down**,
+  not failed at lookup. `NSURLErrorDomain/-1` is the downstream symptom, which is why it names nothing.
 
-  **The daemon is not the problem.** In the same log window `nsurlsessiond` is running (pid confirmed via
-  `launchctl list`) and *completing background download tasks for `mobileassetd`* — "Task <…> completed
-  with error (null)", "Moving file in didFinishDownloadingToURL". So background sessions work on this
-  simulator; our app's connection to the daemon is what is rejected.
+  The daemon's side, from inside the simulator:
 
-  **Four things were tested and none of them fix it:**
+  ```
+  nsurlsessiond … Evaluating new XPC connection … from pid 6496 … client bundle identifier com.apple.trustd
+  nsurlsessiond … Evaluating new XPC connection … from pid 6608 … client bundle identifier com.apple.bird
+  nsurlsessiond … Evaluating new XPC connection … from pid 7126 … client bundle identifier (null)
+    ProbeApp[7126] … an error occurred on the xpc connection … Code=4097
+    ProbeApp[7126] … failed to create a background NSURLSessionDownloadTask, as remote session is unavailable
+  ```
+
+  `nsurlsessiond` resolves each client's **bundle identifier** as it evaluates the connection. Apple's own
+  processes resolve to a real one and their sessions work; every process we can build resolves to `(null)`,
+  and `(null)` is dropped after being accepted. pid 7126 is a purpose-built minimal app — a real installed
+  bundle declaring `CFBundleIdentifier = com.example.probesigned`, `simctl install`ed and `simctl launch`ed.
+  **Declaring a valid bundle identifier does not help**; the daemon still sees `(null)`.
+
+  **Six things were tested; none fixes it:**
 
   - **Ad-hoc signature** (the shipped `simulator.entitlements`): fails.
-  - **Real "Apple Development" identity**, same entitlements: launches, and fails **identically** — 3 XPC
-    setup errors in the window.
+  - **Real "Apple Development" identity**, same entitlements: launches, fails identically.
+  - **Signature stripped entirely**: identical — `(null)`, 4097. So `xamarin-macios#7101`'s 2019 fix
+    ("sign the application", for a `4099` at *lookup*) **does not reproduce** on a modern simulator: signed
+    and unsigned behave the same. That match is now closed as non-explanatory rather than left suggestive.
   - **Adding an app identity** (`application-identifier`, `com.apple.developer.team-identifier`,
-    `get-task-allow`): each key **individually** makes the app un-launchable with the same
-    `SBMainWorkspace` refusal as `keychain-access-groups`. A control re-signing with the base plist
-    launched, so those refusals are real. That route is closed.
-  - **A second runtime**: iOS **26.5** behaves exactly as 26.2 — `1 union asset(s), 1 foreign planned`
-    → `NSURLErrorDomain/-1`. Not a runtime regression.
+    `get-task-allow`): each key **individually** makes the app un-launchable with the same `SBMainWorkspace`
+    refusal as `keychain-access-groups`; a control re-sign with the base plist launched. Route closed.
+  - **A second runtime**: iOS 26.5 behaves exactly as 26.2. Not a runtime regression.
+  - **An entitlement**: there is none to add. `nsurlsessiond`'s own binary carries the client entitlements
+    it checks — `com.apple.private.nsurlsession.impersonate`, `…allow-discretionary-cellular`,
+    `…set-task-priority`, `…set-discretionary-override-value`, `…allow-duet-preauthorization`,
+    `…set-max-watch-cell-transfer-size`, `…allow-override-connection-pool` and
+    `…media-asset-download.can-specify-destination-url`. Every one is a privileged **modifier**; none is an
+    access gate and none concerns URLs or hosts. `mobileassetd`, a client whose sessions succeed, carries an
+    **empty** entitlements dictionary. And Foundation has a dedicated code for an entitlement/signing
+    refusal — `4102` — which we never receive.
 
-  Meanwhile the app's **default** session reaches the same server in the same process (create, join and
-  the union read all go through it) and `curl` fetches the identical presigned URL with `200`.
+  Meanwhile the app's **default** session reaches the same server in the same process, and a foreground
+  download of the identical URL returns `200` with the exact byte count.
 
-  **What remains unexplained is why the XPC connection is refused.** The closest published match is
-  `xamarin-macios#7101` — background download task, Simulator, the same `NSURLErrorDomain -1`, traced by
-  a maintainer to `NSCocoaErrorDomain 4099` on the same XPC connection and **fixed by signing the app**.
-  Our app is signed, two different ways, and still fails, so **that fix does not apply here** and the
-  match is suggestive rather than explanatory. Stated as an open question rather than closed with a
-  guess.
+  **Three client shapes, one cause**: a bare Kotlin/Native test binary, an installed signed app, and an
+  installed unsigned app — all `(null)`, all 4097. ⚠️ The test-binary result needed one control before it
+  counted: Kotlin/Native defaults `KotlinNativeSimulatorTest.standalone = true`, i.e. `simctl spawn
+  --standalone`, which runs the process **without bootstrapping into launchd** — on its own enough to break
+  any XPC lookup. Setting `standalone = false` changes nothing (same `(null)`, same 4097). Note it then
+  targets a device of its own choosing, not whichever one you booted, and fails with *"Process spawn via
+  launchd failed because device is not booted"* until you boot that one.
 
-  Apple's guidance is consistent with this but does **not** cover it: Quinn's pinned *Testing Background
-  Session Code* recommends testing on a real device, and its only Simulator caveat is that "Simulator may
-  not accurately simulate app suspend and resume" (r. 16532261). That is about **suspend/resume**, which
-  is 6.1's problem, not 6.2's — the post says nothing about transfers failing, and it was re-read
+  ⚠️ **A retracted observation.** An earlier revision said *"the daemon is not the problem — pid 22973 was
+  completing background download tasks for `mobileassetd`"*. macOS **also** runs a
+  `/usr/libexec/nsurlsessiond`, and that reading may have been of the **host's** daemon serving host
+  processes; it is withdrawn. The simulator's own daemon is independently confirmed
+  (`launchctl print system/com.apple.nsurlsessiond` → `state = running`, program under the runtime root)
+  and serving Apple clients *inside* the simulator — `geoanalyticsd` completes a
+  `background session setup will wait for reply`, and `trustd`/`bird` appear above.
+
+  **Honest limit of the claim.** The daemon logs `(null)` and then drops the connection; it does not print
+  *"rejecting because the bundle identifier is null"*. The causal link is inference from a perfect
+  correlation across five clients, not an explicit refusal message.
+
+  **Expiry.** Re-measure at the next iOS major, alongside the PhotoKit and limited-access platform facts.
+
+  **What the literature says.** No source — Apple or otherwise — states whether background `URLSession` is
+  supported on the Simulator; docs, release notes and DTS replies are all silent, so any claim in either
+  direction is unsourced. Two match this symptom exactly: `firebase-ios-sdk#14695` (same three strings,
+  same 4097, loopback target — closed 2026-03-03 citing a *different* ticket, the iOS 18.4 HTTP/3 `-1005`
+  bug, so its "fixed" status is a misattribution) and Apple Forums 725625 (process literally `xctest`;
+  Quinn replied but explicitly declined to diagnose it — *"Ignoring the specific error you're seeing for
+  the moment…"*). Forums 669148 is an App Clip on the Simulator with 4097 and *"connection to background
+  transfer daemon interrupted"*. Every previously attested case is `xctest`, XCUITest or an App Clip; **an
+  installed third-party app appears to be unreported**, which is what the minimal app above measures.
+
+  Quinn's pinned *Testing Background Session Code* recommends testing on a real device, but its only
+  Simulator caveat is that "Simulator may not accurately simulate app suspend and resume" (r. 16532261) —
+  that is 6.1's problem, not 6.2's, and the post says nothing about transfers failing. Re-read
   specifically to check that.
+
+  **Follow-up NAMED, not taken here** (behaviour-touching; capabilities `ios-url-session-upload` and
+  `photo-download`): `IosUrlSessionUploadPlatform`'s comment asserting that the simulator runs background
+  sessions is false, and `2026-08-09-delete-simulator-session-downgrade` **D1** — *"with no behavioural
+  difference between hosts there is no axis"* — is falsified by the above. That archive is not edited.
 - ~~**Does a signed simulator build route universal links?**~~ **SETTLED, 2026-08-25 — no, and it cannot.**
   The suspicion in the last sentence of this question was the right one: an unprovisioned
   `associated-domains` makes the app un-launchable exactly as `keychain-access-groups` does
