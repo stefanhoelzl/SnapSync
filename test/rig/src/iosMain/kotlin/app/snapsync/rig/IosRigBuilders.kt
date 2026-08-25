@@ -115,7 +115,17 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
 fun deviceCommands(
     core: () -> AppCore,
     photoAccess: PhotoLibraryPermission,
+    osSupportsOsDrivenUpload: Boolean,
 ): Map<String, RigCommand> = mapOf(
+    // The development pin on the upload mechanism — the channel's replacement for the deleted
+    // `SNAPSYNC_FORCE_URLSESSION_UPLOAD` (capability `upload-lifecycle`). Reports the pin AND what the
+    // app resolves with it, because a pin naming a mechanism this OS cannot run is clamped by the
+    // resolver and a pin is ignored entirely without usable photo access — so the two can disagree, and
+    // only one of them is what the app will actually do.
+    "upload-mechanism" to uploadMechanismCommand(
+        osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
+        permission = { photoAccess.permission.value },
+    ),
     "reset" to RigCommand {
         core().resetDeviceState.reset()
         // The counts AFTER the reset, so "it cleared" is verifiable rather than asserted. An in-flight
