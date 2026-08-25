@@ -1468,4 +1468,54 @@ class UploadCycleTest {
         assertEquals(listOf("discovery"), order, "the manifest is published")
         assertEquals(emptyList(), listed, "and it is empty — the member currently shares nothing")
     }
+
+    @Test
+    fun narrowing_then_widening_re_lists_without_re_uploading() = runTest {
+        // The round trip the whole change is for (capabilities `reconfigure-membership`, `sync-ledger`).
+        // A member shares a photo, raises their cutoff past it, then lowers it back. The listing must go
+        // and come back, and the bytes must not move twice.
+        val backend = InMemoryLedgerStore()
+        val old = datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")
+
+        // Shared under the original floor.
+        cycleWithCutoff(backend, FakePlatform(discovered = listOf(old), fullEnumeration = true), "2026-06-01T00:00:00Z").run()
+        LedgerWriter(backend).recordCompleted(old, attempt = 0, eventId = TEST_EVENT)
+        assertEquals(
+            listOf("old"),
+            projectDeviceManifest("D", backend.completedManifestRows(), admittingWith(cutoff = "2026-06-01T00:00:00Z"))
+                .assets.map { it.assetId },
+            "precondition: shared and listed",
+        )
+
+        // NARROWED past it. A real narrowed fetch no longer returns the asset, so the platform hands back
+        // nothing — which is exactly the case the deleted retain-live reconcile used to read as a deletion.
+        val narrowedPlatform = FakePlatform(discovered = emptyList(), fullEnumeration = true)
+        cycleWithCutoff(backend, narrowedPlatform, "2026-07-06T00:00:00Z").run()
+
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("old-primary.jpg")?.state,
+            "the ledger records bytes on the backend — a scope change is not a fact about that",
+        )
+        assertTrue(
+            projectDeviceManifest("D", backend.completedManifestRows(), admittingWith(cutoff = "2026-07-06T00:00:00Z"))
+                .assets.isEmpty(),
+            "but it stops being listed to the event",
+        )
+
+        // WIDENED back. The asset is in scope again and the fetch returns it.
+        val widenedPlatform = FakePlatform(discovered = listOf(old), fullEnumeration = true)
+        cycleWithCutoff(backend, widenedPlatform, "2026-06-01T00:00:00Z").run()
+
+        assertTrue(
+            widenedPlatform.created.isEmpty(),
+            "NO re-upload: the surviving COMPLETED row is what suppresses it. Under the old prune this " +
+                "row was gone and every narrowed-out photo uploaded again.",
+        )
+        assertEquals(
+            listOf("old"),
+            projectDeviceManifest("D", backend.completedManifestRows(), admittingWith(cutoff = "2026-06-01T00:00:00Z"))
+                .assets.map { it.assetId },
+            "and it is listed again",
+        )
+    }
 }

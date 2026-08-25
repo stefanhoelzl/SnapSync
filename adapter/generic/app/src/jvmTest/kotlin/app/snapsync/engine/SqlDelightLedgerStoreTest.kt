@@ -197,4 +197,52 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertEquals(LedgerState.COMPLETED, row?.state) // the row survives, so re-upload stays suppressed
         assertEquals(false, backend.get("k0")?.absent)
     }
+
+    @Test
+    fun `migration v6 to v7 adds absent unset and preserves COMPLETED rows`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // Stand up the v6 schema (manifest detail present, no `absent` column) holding a COMPLETED row.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE ledgerRow (
+                key TEXT NOT NULL PRIMARY KEY,
+                assetId TEXT NOT NULL,
+                state TEXT NOT NULL,
+                attempt INTEGER NOT NULL,
+                eventId TEXT NOT NULL DEFAULT '',
+                creationDate TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT '',
+                contentType TEXT NOT NULL DEFAULT '',
+                originalFilename TEXT NOT NULL DEFAULT ''
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow VALUES " +
+                "('A-photo.jpg', 'A', 'COMPLETED', 0, 'E1', '2026-07-10T00:00:00Z', 'PRIMARY', " +
+                "'image/jpeg', 'IMG_A.JPG')",
+            0,
+        )
+
+        // 6.sqm is ALTER TABLE ... ADD COLUMN — catalog-only, so no row is touched. That matters more than
+        // usual here: a surviving COMPLETED row is exactly what stops the next cycle re-uploading an
+        // already-stored resource, and losing them would re-upload every member's whole in-window library.
+        LedgerDatabase.Schema.migrate(driver, 6L, LedgerDatabase.Schema.version).await()
+
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        val survived = backend.get("A-photo.jpg")
+        assertEquals(LedgerState.COMPLETED, survived?.state)
+        assertEquals("A", survived?.assetId)
+        assertEquals("E1", survived?.eventId)
+        assertEquals("2026-07-10T00:00:00Z", survived?.creationDate)
+        // Unset is the correct resting value: a row recorded before this column existed was, by
+        // construction, not marked absent.
+        assertEquals(false, survived?.absent)
+        // And it still projects into the manifest, which filters on that column.
+        assertEquals(listOf("A"), backend.completedManifestRows().map { it.assetId })
+    }
 }

@@ -970,8 +970,9 @@ private fun ShareCountRow(
  * floor on the far side, in `ReconfigureEvent`.
  *
  * Consequences are surfaced as **inline helper text**, never a blocking dialog (Save is the confirmation):
- * turning the album on states it is forward-only (no backfill), and a standing line states that a change
- * never retracts photos already shared or received. Both switches off disables Save with a stated reason,
+ * turning the album on states it is forward-only (no backfill), and a standing line states what narrowing
+ * does: it stops listing the affected photos to the event, while anyone who already received them keeps
+ * them and the member's own received photos are untouched. Both switches off disables Save with a reason,
  * exactly as the join surface disables Join.
  */
 @Composable
@@ -1141,8 +1142,18 @@ private fun ReconfigureScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Standing consequence line: a change is forward-only and never retracts what already synced.
-            StatusHint("Changes apply from now on — photos already shared or received stay.")
+            // Standing consequence line. It used to say a change "never retracts photos already shared or
+            // received", and half of that became false: narrowing what you share now re-projects the
+            // device manifest, so those photos stop being listed to the event (capability
+            // `reconfigure-membership`).
+            //
+            // What it must NOT imply is deletion. The retraction is partial by nature — SnapSync syncs
+            // gallery-to-gallery, so a member who already downloaded the photo holds it in their own
+            // library and nothing here reaches it. Receiving is unaffected either way.
+            StatusHint(
+                "Sharing less stops listing those photos to the event — anyone who already received " +
+                    "them keeps them. Photos you've received stay.",
+            )
             if (!saveEnabled) {
                 StatusHint(
                     "Turn on sharing or receiving — a membership that does neither does nothing.",

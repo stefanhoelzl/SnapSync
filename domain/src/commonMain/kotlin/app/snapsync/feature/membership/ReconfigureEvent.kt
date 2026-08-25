@@ -94,7 +94,10 @@ class ReconfigureEvent(
         // A LOWERED cutoff widens scope: invalidate the forward-only discovery cursor BEFORE the arm kicks
         // the next cycle, so it re-enumerates at the new cutoff and back-shares the newly-in-scope older
         // photos — tier-agnostically. Cutoffs are canonical `…Z`, so a lexicographic `<` is chronological.
-        // Raising the cutoff needs no re-enumeration (nothing new comes into scope) and un-shares nothing.
+        // Raising the cutoff needs no re-enumeration — nothing new comes into scope. It DOES stop listing
+        // the now-out-of-scope photos: the manifest is re-projected against the new policy on the next
+        // cycle (capability `reconfigure-membership`). Their ledger rows are untouched, so lowering the
+        // cutoff again re-lists them without re-uploading a byte.
         if (newCfg.minPhotoDate < current.minPhotoDate) {
             step("clear discovery cursor") { clearDiscoveryCursor() }
         }

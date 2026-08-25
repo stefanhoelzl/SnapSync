@@ -64,17 +64,19 @@ ever changing the listing, which is the manifest's job.
 - [x] 5.3 Replace `from()` + `excluding()` with the single suspend rule-builder that gates on
       `config.direction.includesUpload` internally and invokes neither exclusion source when it excludes
       upload. Delete `excluding()`.
-- [ ] 5.4 Decide and implement the mechanism that keeps the derivation the only construction site — private
-      constructor with factory doors, or a `:test:architecture` gate. **Still open.** The constructor is
-      public today: the translator tests and the harnesses need to present arbitrary rule lists, which a
-      private constructor forbids. A textual guard over `src/*Main` is the codebase's established fallback.
+- [x] 5.4 **Chose the guard.** `SelectionPolicyConstructionTest` forbids `SelectionPolicy(` in any
+      production source set outside `SelectionPolicy.kt`. A private constructor was rejected: the platform
+      translator's tests and both harnesses must present arbitrary rule lists — that is what a translator
+      test is for — and the doors needed for them would be indistinguishable from the one being closed.
+      Production builds policies through `selectionPolicyFor` / `noContribution`; the guard found four
+      real sites when first run, all now converted.
 - [x] 5.5 Delete `enumerates` and update its two readers (`ShareableCount`, `EventPhotoSet`).
 - [x] 5.6 Update the consumers that exhausted the sealed type. Went further than planned: none of them
       needs a capture bound any more. `UploadCycle` reads the membership's policy supplier and gates on
       `contributes`; `OwnDeviceGalleryStatusSource` receives a finished policy and lost both exclusion
       readers; `InMemoryCandidateSource` translates rules like the real adapter does.
 - [x] 5.7 Update `projectDeviceManifest` for the new policy type.
-- [ ] 5.8 Update `SelectionPolicy.kt`'s KDoc: it currently documents the two-variant rationale and the
+- [x] 5.8 Update `SelectionPolicy.kt`'s KDoc: it currently documents the two-variant rationale and the
       derived-`CaptureAfter` decision at length, and both are superseded.
 
 ## 6. Translate the deny-everything rule
@@ -86,11 +88,12 @@ ever changing the listing, which is the manifest's job.
 
 ## 7. Reconfigure surface
 
-- [ ] 7.1 Replace the "narrowing does not retract" helper text with the partial-retraction wording. Draft it
-      for review rather than inventing final copy — the wording is an open question in the design.
-- [ ] 7.2 Correct `ReconfigureEvent`'s comment claiming a raised cutoff "un-shares nothing".
-- [ ] 7.3 Add a `commonTest` for the narrow-then-widen round trip: listings return, no byte re-uploads.
-- [ ] 7.4 Update any `:ui:screens` / `:ui:presentation` test that pins the old helper text.
+- [x] 7.1 Helper text replaced. **DRAFT WORDING — needs review**: "Sharing less stops listing those photos
+      to the event — anyone who already received them keeps them. Photos you've received stay." It must
+      not imply deletion or recall; the retraction cannot reach a member who already downloaded.
+- [x] 7.2 Correct `ReconfigureEvent`'s comment claiming a raised cutoff "un-shares nothing".
+- [x] 7.3 Add a `commonTest` for the narrow-then-widen round trip: listings return, no byte re-uploads.
+- [x] 7.4 Update any `:ui:screens` / `:ui:presentation` test that pins the old helper text. None did.
 
 ## 8. Test-only consumers
 
@@ -103,11 +106,11 @@ ever changing the listing, which is the manifest's job.
 
 ## 9. Verify
 
-- [ ] 9.1 `./gradlew build` green (domain `commonTest` on JVM, architecture guards, detekt).
-- [ ] 9.2 `./gradlew compileIosMainKotlinMetadata` green for `:adapter:ios:ext-safe` and `:test:rig`.
-- [ ] 9.3 `./gradlew architectureDiagrams` and commit if anything moved — stale diagrams block the PR.
-- [ ] 9.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
-- [ ] 9.5 Ledger schema migration applies cleanly over an existing database (migration test).
+- [x] 9.1 `./gradlew build` green (domain `commonTest` on JVM, architecture guards, detekt).
+- [x] 9.2 `./gradlew compileIosMainKotlinMetadata` green for `:adapter:ios:ext-safe` and `:test:rig`.
+- [x] 9.3 `./gradlew architectureDiagrams` and commit if anything moved — stale diagrams block the PR.
+- [x] 9.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
+- [x] 9.5 Ledger schema migration applies cleanly over an existing database (migration test).
 - [ ] 9.6 CI macOS job green for `iosSimulatorArm64Test` / `PhotoKitCandidateSourceTest`.
 
 ## 10. Measure on device before shipping
