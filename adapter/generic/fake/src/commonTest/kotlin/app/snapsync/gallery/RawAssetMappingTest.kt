@@ -16,6 +16,7 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
@@ -32,8 +33,8 @@ import kotlin.test.assertTrue
  * the iOS enumerator; here it runs on JVM and the iOS simulator against a fake raw-asset walk.
  */
 /** An admitting policy bounded below by [cutoff] — what the fake narrows its walk by. */
-private fun admitting(cutoff: String) =
-    SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
+private suspend fun admitting(cutoff: String) =
+    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
 
 /** The resources a source yields for [cutoff] — walk composed with the per-candidate mapping. */
 private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =

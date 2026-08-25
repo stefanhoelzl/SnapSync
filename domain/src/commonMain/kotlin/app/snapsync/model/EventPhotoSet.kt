@@ -69,13 +69,14 @@ class EventPhotoSet(
      */
     suspend fun resources(): List<Resource> = admitted().flatMap { it.resources() }
 
-    private suspend fun admitted(): List<Candidate> {
-        // A non-contributing membership reaches the empty answer WITHOUT enumerating: the walk costs one
-        // synchronous platform round-trip per asset, so a 4000-photo library would spend minutes of XPC
-        // to arrive at the empty set the direction already stated.
-        if (!policy.enumerates) return emptyList()
-        return candidates(policy).filter { policy.admits(it.facts) }
-    }
+    private suspend fun admitted(): List<Candidate> =
+        // No caller-side short-circuit for a non-contributing membership. The walk it used to avoid costs
+        // one synchronous platform round-trip per asset, and that cost is now removed where it actually
+        // arises: `DenyAll` is translated into a fetch predicate matching no asset (capability
+        // `gallery-status`), so the expensive path — a cold-start whole-library enumeration — returns
+        // nothing. The two predicate-less paths (the change-feed walk, the partial-grant observer) are
+        // bounded to a delta or a hand-picked selection by construction.
+        candidates(policy).filter { policy.admits(it.facts) }
 }
 
 /**

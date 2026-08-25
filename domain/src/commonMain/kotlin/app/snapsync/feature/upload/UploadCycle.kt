@@ -21,7 +21,6 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.excluding
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
 
@@ -94,28 +93,15 @@ class UploadCycle(
     // Required, with **no default**: a no-op means this device's photos never enter the event union — they
     // upload, and nobody can see them. That is the invisible failure, and `{}` states it silently.
     private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy) -> Unit,
-    // Suppression port (capability `photo-download`): the set of `assetId`s of foreign assets this
-    // device downloaded + imported. Read once per cycle; discovery drops these BEFORE fan-out so an
-    // imported foreign asset (a fresh local id) is never re-uploaded (the echo). Read-only, backed in
-    // iosMain by the app-written download store.
+    // The echo-suppression and denylisted-album readers used to be injected HERE, so the cycle could
+    // complete a config-derived policy. They moved to the one derivation in the shared composition
+    // (capability `photo-selection-policy`), which the membership's policy supplier closes over — so this
+    // cycle no longer reads either port, and cannot get the completion wrong or skip it.
     //
-    // Required, with **no default**: `{ emptySet() }` re-uploads every downloaded foreign photo back into
-    // the event.
-    private val suppressedAssetIds: suspend () -> Set<String>,
-    // Denylisted-album membership (capability `photo-selection-policy`): the normalized `assetId`s that sit
-    // in an album a messaging/social app made (WhatsApp, Telegram, …). Read once per cycle and dropped
-    // alongside the other origin exclusions, BEFORE the engine. Takes the cutoff,
-    // which scopes the album member fetch.
-    //
-    // An injected port rather than a rule in the pure filter, because album membership is the one origin
-    // fact that is NOT already on the resource — it needs a platform lookup. The POLICY (which titles)
-    // stays in `commonMain` (`model/`'s DENYLISTED_ALBUM_TITLES); this port only carries the
-    // answer. Cost is O(albums), not O(assets).
-    //
-    // Required, with **no default**: `{ emptySet() }` uploads the member's WhatsApp album into a stranger's
-    // event. A tier without an album source states `{ emptySet() }` at its call site, where a reviewer can
-    // see it — that is the difference this requirement buys.
-    private val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
+    // What made them required with **no default** still holds at their new home, and for the same reason:
+    // `{ emptySet() }` re-uploads every downloaded foreign photo back into the event, or uploads the
+    // member's WhatsApp album into a stranger's. A tier without an album source states that at its call
+    // site, where a reviewer can see it.
     // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
     // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
     // event union reflects the just-completed assets, so recipients woken by the fan-out find them.
@@ -171,7 +157,12 @@ class UploadCycle(
             is CycleGate.Run -> gate.config to gate.membership
         }
 
-        val configPolicy = membership.policy
+        // ONE derivation, invoked once per cycle (capability `photo-selection-policy`). The membership
+        // carries a supplier rather than a built policy because the derivation reads two ports, and the
+        // entry-gate translation that produced the membership must stay port-pure (capability
+        // `upload-lifecycle`). The supplier is closed over in the shared composition, where the config and
+        // both readers are in scope; a non-contributing membership still invokes neither reader.
+        val policy = membership.policy()
         val eventId = config.eventId
         val engine = engineFor(config)
 
@@ -221,18 +212,13 @@ class UploadCycle(
         // Withholding the write was previously justified by three consequences, two of which do not hold:
         // the notify is already conditioned on >= 1 real completion, and an empty manifest is already what
         // a contributing membership with nothing in range publishes.
-        val cutoff = when (configPolicy) {
-            SelectionPolicy.None -> {
-                settleTerminalJobs(engine)
-                // After the settle, so any drained terminal outcome is durable before the projection reads
-                // the ledger. Suppressed if the reconcile deferred — see [writeDeviceManifest].
-                writeDeviceManifest(eventId, configPolicy, ledgerSettled = mayUpload)
-                log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-                return CycleResult.SKIPPED
-            }
-            // An admitting policy carries its capture floor as a field, so there is no absent-bound case
-            // to guard here — the type closes it (capability `photo-selection-policy`).
-            is SelectionPolicy.Admitting -> configPolicy.cutoff
+        if (!policy.contributes) {
+            settleTerminalJobs(engine)
+            // After the settle, so any drained terminal outcome is durable before the projection reads the
+            // ledger. Suppressed if the reconcile deferred — see [writeDeviceManifest].
+            writeDeviceManifest(eventId, policy, ledgerSettled = mayUpload)
+            log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
+            return CycleResult.SKIPPED
         }
 
         if (!mayUpload) {
@@ -282,7 +268,7 @@ class UploadCycle(
         // cutoff came in with the contribution and is passed down, so a full enumeration is scoped at the
         // platform fetch rather than walked whole and filtered afterwards (capability
         // `photo-selection-policy`).
-        val discovery = platform.discoverResources(store.loadToken(), configPolicy)
+        val discovery = platform.discoverResources(store.loadToken(), policy)
         log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
 
         // THE ADMISSION (capability `photo-selection-policy`): one policy, applied once, deciding the
@@ -300,10 +286,6 @@ class UploadCycle(
         // readable: the echo ids (assets this device downloaded and imported — re-uploading one sends a
         // foreign photo back into the event) and the denylisted-album members (a platform lookup, scoped
         // by the same cutoff as the walk).
-        val policy = configPolicy.excluding(
-            suppressedAssetIds = suppressedAssetIds(),
-            albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
-        )
         // The fetch already narrowed by the rules the platform could express; this admission is
         // authoritative over whatever came back, and `resources()` pays the per-asset round-trip ONLY for
         // the assets it kept (capability `photo-selection-policy`).

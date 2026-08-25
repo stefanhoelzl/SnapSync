@@ -13,6 +13,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSDate
+import platform.Foundation.distantPast
 import platform.Foundation.NSISO8601DateFormatWithFractionalSeconds
 import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
 import platform.Foundation.NSISO8601DateFormatter
@@ -170,11 +171,25 @@ private class PhotoKitCandidate(
  */
 @OptIn(ExperimentalForeignApi::class)
 internal fun predicateFor(policy: SelectionPolicy): NSPredicate? {
-    val rules = (policy as? SelectionPolicy.Admitting)?.rules ?: return null
     val clauses = mutableListOf<String>()
     val args = mutableListOf<Any>()
 
-    for (rule in rules) when (rule) {
+    for (rule in policy.rules) when (rule) {
+        // A membership that contributes nothing, narrowed to nothing. Correctness does not depend on this
+        // — the caller's admission refuses every asset regardless — but without it a non-contributing
+        // membership pays a whole-library walk on every cold start to reach the empty set its own
+        // configuration already stated.
+        //
+        // Built from a comparison that is never satisfiable on a key PhotoKit is KNOWN to evaluate (the
+        // same `creationDate` comparison the bounds below use), deliberately NOT from the `(mediaSubtypes
+        // & N) == 0` form documented above as returning zero rows. That form is an artefact of the
+        // predicate parser, not a contract: were Apple ever to evaluate it correctly, `DenyAll` would
+        // begin admitting the WHOLE LIBRARY — the worst possible direction for a membership that shares
+        // nothing. An unsatisfiable comparison cannot fail that way.
+        SelectionRule.DenyAll -> {
+            clauses += "creationDate < %@"
+            args += NSDate.distantPast
+        }
         // The one REQUIRED narrowing: without a lower bound the walk is unbounded and the process is
         // watchdog-killed before the authoritative admission ever runs. Widened by a day — see [widened].
         is SelectionRule.CaptureAfter -> parseBound(rule.cutoff.at.iso)?.let {

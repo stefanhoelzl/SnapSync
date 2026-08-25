@@ -1,12 +1,16 @@
 package app.snapsync.gallery
 
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.MIN_IMAGE_PIXEL_AREA
+import app.snapsync.model.MIN_VIDEO_PIXEL_AREA
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -26,17 +30,30 @@ class PhotoKitCandidateSourceTest {
     private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
     private val ceiling = captureCeiling("2026-06-30T00:00:00Z")
 
-    // The capture floor is a FIELD of `Admitting`, not one rule among the rest, so every policy built
-    // here carries one. Pass `floor =` (named — it follows a vararg) only when the bound itself is what
-    // the test is about.
+    // Rule lists are built directly here rather than through the one derivation: this file is about the
+    // TRANSLATOR, so it must be able to present arbitrary rule sets — including ones the derivation would
+    // never emit. The floor is prepended because every contributing membership carries one; pass
+    // `floor =` (named — it follows a vararg) only when the bound itself is what the test is about.
     private fun admitting(vararg rest: SelectionRule, floor: CaptureCutoff = cutoff) =
-        SelectionPolicy.Admitting(floor, rest.toList())
+        SelectionPolicy(listOf(SelectionRule.CaptureAfter(floor)) + rest)
 
     @Test
-    fun `a non-contributing policy narrows nothing`() {
-        // `None` never reaches a walk in production (callers short-circuit), but the translation must not
-        // invent a predicate for it — a predicate built from no rules would silently mean "everything".
-        assertNull(predicateFor(SelectionPolicy.None))
+    fun `a non-contributing policy narrows to nothing`() {
+        // The deny-everything rule is translated into a query matching NO asset — not into "no predicate",
+        // which PhotoKit reads as "everything". Correctness never depended on this (the caller's admission
+        // refuses every asset regardless), but without it a non-contributing membership pays a
+        // whole-library walk on every cold start to reach the empty set its configuration already stated.
+        //
+        // Deliberately built from an unsatisfiable `creationDate` comparison — the same key the bounds
+        // use — and NOT from the `(mediaSubtypes & N) == 0` form that also returns zero rows. That form is
+        // an artefact of the predicate parser: were Apple to evaluate it correctly, this would begin
+        // admitting the whole library.
+        val predicate = predicateFor(SelectionPolicy(listOf(SelectionRule.DenyAll)))
+        assertNotNull(predicate)
+        assertTrue(
+            predicate.predicateFormat.contains("creationDate <"),
+            "expected an unsatisfiable creationDate comparison, got: ${predicate.predicateFormat}",
+        )
     }
 
     @Test
@@ -90,7 +107,13 @@ class PhotoKitCandidateSourceTest {
     @Test
     fun `a full policy narrows by what it can and drops the rest`() {
         val predicate = predicateFor(
-            SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = ceiling),
+            admitting(
+                SelectionRule.CaptureBefore(ceiling),
+                SelectionRule.ExcludeScreenshots,
+                SelectionRule.ExcludeScreenRecordings,
+                SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA),
+                SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA),
+            ),
         )!!
         val format = predicate.predicateFormat
         assertTrue(format.contains("creationDate >="), "floor")
@@ -107,7 +130,13 @@ class PhotoKitCandidateSourceTest {
         // could disagree at a boundary, over-returning costs a few round-trips the admission drops, while
         // under-returning silently loses a photo nothing can add back.
         val predicate = predicateFor(
-            SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = ceiling),
+            admitting(
+                SelectionRule.CaptureBefore(ceiling),
+                SelectionRule.ExcludeScreenshots,
+                SelectionRule.ExcludeScreenRecordings,
+                SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA),
+                SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA),
+            ),
         )!!
         // A day of slack on each side: the format carries the widened instants, not the exact bounds.
         assertTrue(!predicate.predicateFormat.contains("2026-06-01 00:00:00"), "the floor is widened earlier")

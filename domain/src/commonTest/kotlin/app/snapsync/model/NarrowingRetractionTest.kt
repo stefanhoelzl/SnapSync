@@ -36,8 +36,8 @@ class NarrowingRetractionTest {
         originalFilename = "IMG_$id.JPG",
     )
 
-    private fun policyWithFloor(floor: String): SelectionPolicy =
-        SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(floor), ceiling = null)
+    private suspend fun policyWithFloor(floor: String): SelectionPolicy =
+        SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(floor), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
 
     @Test
     fun `raising the cutoff past a shared photo stops listing it`() = runTest {
@@ -61,11 +61,10 @@ class NarrowingRetractionTest {
         val after = projectDeviceManifest(
             "D",
             listOf(uploaded),
-            SelectionPolicy.from(
+            SelectionPolicy(selectionRulesFor(
                 includesUpload = false,
                 cutoff = captureCutoff("2026-01-01T00:00:00Z"),
-                ceiling = null,
-            ),
+                ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() })),
         )
 
         assertTrue(after.assets.isEmpty(), "a membership that shares nothing publishes an empty manifest")

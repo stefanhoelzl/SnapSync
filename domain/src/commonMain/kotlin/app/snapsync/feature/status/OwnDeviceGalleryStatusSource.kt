@@ -1,9 +1,7 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.excluding
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.CandidateSource
 import co.touchlab.kermit.Logger
@@ -43,11 +41,11 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class OwnDeviceGalleryStatusSource(
     private val source: CandidateSource,
-    private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
-    // Denylisted-album membership (capability `photo-selection-policy`) — the SAME lookup the upload cycle
-    // is given, and the one origin fact that is not already on the asset. Takes the cutoff, which scopes
-    // the album member fetch exactly as it scopes the walk.
-    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String> = { emptySet() },
+    // The echo-suppression and denylisted-album readers used to sit here, so this source could complete a
+    // config-derived policy itself. They are gone with the two-phase construction: the one derivation runs
+    // in the shared composition, and `refresh` receives a finished policy (capability
+    // `photo-selection-policy`). Their `{ emptySet() }` defaults are gone with them — a default that
+    // silently admits a member's WhatsApp album is exactly what the required-ports rule exists to prevent.
     private val log: Logger = Logger.withTag("gallery"),
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : GalleryStatusSource {
@@ -77,29 +75,19 @@ class OwnDeviceGalleryStatusSource(
      * capture bound is actually bounding anything is invisible on a real device: a bounded and an
      * unbounded fetch differ only in how many assets they touch.
      */
-    suspend fun refresh(configPolicy: SelectionPolicy) {
-        // Exhausting the sealed policy: the non-contributing case is recognised as itself, before any
-        // bound is read. It is deliberately NOT reached by way of an absent floor — a contributing
-        // policy carries its cutoff as a field, so there is no second cause for "no bound" to hide
-        // behind (capability `photo-selection-policy`).
-        val cutoff = when (configPolicy) {
-            SelectionPolicy.None -> {
-                _size.value = 0
-                log.i { "gallery: this membership contributes nothing → N=0 (no enumeration)" }
-                return
-            }
-            is SelectionPolicy.Admitting -> configPolicy.cutoff
-        }
+    suspend fun refresh(policy: SelectionPolicy) {
+        // The policy arrives COMPLETE (capability `photo-selection-policy`): there is one derivation, and
+        // it runs where the config and the two port readers are both in scope — the shared composition.
+        // This source therefore receives a decision and never the material to re-decide, and there is no
+        // half-built policy for it to finish. A non-contributing membership carries `DenyAll`, so the
+        // count below reaches 0 through the same admission as every other answer, and the platform fetch
+        // returns nothing rather than the source guarding the walk itself.
         val started = timeSource.markNow()
-        val policy = configPolicy.excluding(
-            suppressedAssetIds = suppressedLocalIds(),
-            albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
-        )
         // `count()` reads facts only — no per-asset resource round-trip is issued for a number
         // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*).
         val size = EventPhotoSet(policy, source::candidates).count()
         _size.value = size
         val elapsed = started.elapsedNow()
-        log.i { "gallery: N=$size own admitted asset(s) since $cutoff in ${elapsed.inWholeMilliseconds}ms" }
+        log.i { "gallery: N=$size own admitted asset(s) in ${elapsed.inWholeMilliseconds}ms" }
     }
 }

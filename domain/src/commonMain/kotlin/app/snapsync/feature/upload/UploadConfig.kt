@@ -38,7 +38,22 @@ fun buildUploadConfig(eventId: String?, host: String?): UploadConfig? {
  */
 class JoinedMembership(
     val eventId: String,
-    val policy: SelectionPolicy,
+    /**
+     * The membership's selection policy, as a **supplier** rather than a built value.
+     *
+     * The one derivation reads two ports — the download store's imported ids and the platform album
+     * lookup (capability `photo-selection-policy`) — and the entry-gate translation that builds this
+     * membership must stay **port-pure** (capability `upload-lifecycle`: a fresh three-state config read,
+     * the identity probe, the host read, and nothing else). So the translation closes over the readers
+     * instead of calling them; the shared composition is where both the config and the readers are in
+     * scope, and invoking this is the cycle's business.
+     *
+     * Capturing a port is not reading one, so the gate's purity is intact. What this buys is that the
+     * cycle receives an already-decided policy — never a half-built one it has to complete, which is what
+     * the deleted `excluding()` step made it do, and why the capture floor kept having to be extracted
+     * back out of the policy to scope the album fetch.
+     */
+    val policy: suspend () -> SelectionPolicy,
     val saveToAlbum: Boolean,
 )
 

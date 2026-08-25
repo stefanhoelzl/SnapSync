@@ -5,9 +5,9 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.ports.CandidateSource
-import app.snapsync.model.excluding
 
 /**
  * The join-time **shareable-count preview** (capability `join-share-count`): how many of the device's own
@@ -59,11 +59,17 @@ class ShareableCountSource(
         // check does not belong in the source. Where candidates COME FROM is the source's business.
         if (!permission.grantsPhotoAccess) return null
 
-        val configPolicy = SelectionPolicy.from(includesUpload, cutoff, ceiling)
-        if (!configPolicy.enumerates) return 0
-        val policy = configPolicy.excluding(
-            suppressedAssetIds = suppressedLocalIds(),
-            albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
+        // ONE derivation (capability `photo-selection-policy`): the direction is resolved inside it, and a
+        // non-contributing membership invokes neither reader — so the album fetch is still not paid to
+        // learn that this preview counts nothing.
+        val policy = SelectionPolicy(
+            selectionRulesFor(
+                includesUpload = includesUpload,
+                cutoff = cutoff,
+                ceiling = ceiling,
+                suppressedAssetIds = suppressedLocalIds,
+                albumExcludedAssetIds = albumExcludedAssetIds,
+            ),
         )
         // Cheap AND exact: every rule decides on facts, so the count that skips the per-asset resource
         // read is the admitted-set size rather than an approximation of it (capability

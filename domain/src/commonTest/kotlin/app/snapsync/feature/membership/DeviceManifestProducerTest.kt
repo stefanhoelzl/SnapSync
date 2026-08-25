@@ -12,6 +12,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
@@ -28,8 +29,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** An admitting policy bounded below by [cutoff] and unbounded above — the projection's date filter. */
-private fun policyFrom(cutoff: String): SelectionPolicy =
-    SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
+private suspend fun policyFrom(cutoff: String): SelectionPolicy =
+    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
 
 class DeviceManifestProducerTest {
 

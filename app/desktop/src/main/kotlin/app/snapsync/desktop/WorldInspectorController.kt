@@ -29,8 +29,9 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.SelectionRule
+import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.captureCutoff
-import app.snapsync.model.excluding
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.world.World
@@ -448,12 +449,22 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
         // and have no way to tell "correctly excluded" from "silently broken".
         val cutoff = world.configSource.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
-        val configPolicy = world.selectionPolicy()
-        val policy = configPolicy.excluding(
-            suppressedAssetIds = emptySet(), // the badge below reports echo separately
-            albumExcludedAssetIds = world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso),
-        )
-        val candidates = world.enumerator.candidates(configPolicy)
+        // One derivation (capability `photo-selection-policy`) — the same one the cycle uses. The echo set
+        // is deliberately empty here because the badge below reports echo separately; the album lookup is
+        // real, so an operator can watch the denylist actually bite.
+        val policy = world.configSource.config.value
+            ?.let { config ->
+                selectionPolicyFor(
+                    config = config,
+                    suppressedAssetIds = { emptySet() },
+                    albumExcludedAssetIds = {
+                        world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, it.at.iso)
+                    },
+                )
+            }
+            // Unjoined: nothing to contribute, said the way every non-contributor says it.
+            ?: SelectionPolicy(listOf(SelectionRule.DenyAll))
+        val candidates = world.enumerator.candidates(policy)
         val admitted = EventPhotoSet(policy) { candidates }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
         val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted

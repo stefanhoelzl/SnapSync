@@ -119,10 +119,20 @@ class ShareableCountTest {
     }
 
     @Test
-    fun `a non-contributing candidate counts zero without consulting the source`() = runTest {
+    fun `a non-contributing candidate counts zero at the cost of one narrowed fetch`() = runTest {
         val source = FactsSource(listOf(asset("A")))
-        assertEquals(0, countSource(source).countFor(includesUpload = false))
-        assertEquals(0, source.consulted, "Share off / DownloadOnly reaches zero before any read")
+
+        assertEquals(0, countSource(source).countFor(includesUpload = false), "Share off counts nothing")
+
+        // The caller-side short-circuit is gone with `enumerates` (capability `photo-selection-policy`).
+        // The cost it avoided has not moved to the caller — it is removed where it actually arises: a
+        // deny-everything policy is translated into a fetch predicate matching NO asset, so a real
+        // platform returns nothing rather than a library's worth of round-trips. This fake does not
+        // translate rules, so it is consulted once and its (unnarrowed) list is refused by `admits`.
+        //
+        // One fetch is the price, and it is charged per cycle rather than per asset — which is the
+        // requirement (capability `gallery-status`: the count costs no PER-ASSET read).
+        assertEquals(1, source.consulted, "exactly one fetch, which a real platform narrows to nothing")
     }
 
     @Test
