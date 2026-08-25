@@ -386,6 +386,15 @@ Taking it upload-side would first require forcing the app-driven tier, and
 either. The upload-side confirmation arrives from that change's own device verification once the plant
 lands.
 
+**Measured, 2026-08-25 (iOS 26.2 simulator, real signed app bundle).** The relaunch question is **not
+answerable on this host**, and the reason is 6.2's answer: no background transfer can be kept in flight,
+because every one fails instantly. The attempt was made anyway — downloads kicked, app terminated two
+seconds later, 90 s of polling — and the app never relaunched and `handleBackgroundUrlSession` never
+fired. That negative is **doubly weak** and must not be read as "the OS does not relaunch a terminated
+app": under this repo's own reading rule a negative is suggestive at best, and here the *precondition*
+was never established — there were no pending background events to relaunch for. The property stays open
+and is device-only until something can hold a transfer open on a simulator.
+
 **Noted, not owned:** the two background sessions are configured asymmetrically. `IosDownloadTransport`
 sets `discretionary = false` and `sessionSendsLaunchEvents = true` explicitly; `IosUrlSessionUploadPlatform`
 sets neither and rides the defaults. The shipped 18–26.0 tier already depends on that default for upload
@@ -454,10 +463,33 @@ target that cannot run on one. Rollback is reverting the commit.
 
 ## Open Questions
 
-- **Does the OS relaunch a terminated app on a simulator?** Task 6.1. If it does not, a class of behaviour is
-  untestable there and this record must say so plainly, so #5–#7 do not build scenarios on it.
-- **Are downloads inert on a simulator?** Task 6.2, and the reason D5 exists. If they run, the rig gains the
-  whole `photo-download` capability there — a coverage gain.
+- **Does the OS relaunch a terminated app on a simulator?** **STILL OPEN, and now known to be
+  unanswerable here** — see D10. It requires a background transfer that outlives the process, and 6.2
+  shows none can exist on this host. Device-only until that changes. #5–#7 must not build a scenario on
+  it.
+- ~~**Are downloads inert on a simulator?**~~ **ANSWERED, 2026-08-25 — and the honest answer is neither
+  "inert" nor "they work".**
+
+  The background download session **runs**: `DownloadController` planned all three foreign assets, the
+  transport created tasks, and `didCompleteWithError` fired for each. So the premise
+  `fix-download-session-lifecycle` D5 rested on — *"the simulator cannot run background sessions"* —
+  stays **false**, as `delete-simulator-session-downgrade` already found for uploads.
+
+  But **every transfer failed immediately with `NSURLErrorDomain / -1` (`NSURLErrorUnknown`)**, against a
+  loopback host **and** against the runner's LAN address, while in the *same process* the app's ordinary
+  default-session HTTP reached the same server successfully — event creation, join and the union read all
+  went through it — and a plain `curl` fetched the identical presigned URL with `HTTP 200` and the exact
+  byte count. So the failure is specific to the **background** session, not to the host, the scheme, or
+  the URL.
+
+  Consequently D5's closing sentence — *"downloads remaining inert on the simulator is a known, accepted
+  limitation"* — is **correct in outcome and wrong in mechanism**, and is superseded on those terms: the
+  session is alive and it is the transfers that cannot complete. That distinction matters, because
+  "cannot run background sessions" invites the wrong fix.
+
+  Getting from "unknown error" to `NSURLErrorDomain/-1` needed a rebuild, because the transport logged
+  only `localizedDescription` — which iOS renders as the literal string "unknown error". The log line now
+  carries the domain and code, so the next person does not pay that cost.
 - ~~**Does a signed simulator build route universal links?**~~ **SETTLED, 2026-08-25 — no, and it cannot.**
   The suspicion in the last sentence of this question was the right one: an unprovisioned
   `associated-domains` makes the app un-launchable exactly as `keychain-access-groups` does

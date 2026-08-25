@@ -34,6 +34,13 @@ State these before writing a scenario against this host, or you will write one t
   Apple, so a synthetic token through the `onPushToken` trigger is the way in.
 - **No OS-driven PhotoKit upload tier.** The OS does not invoke the upload extension here at all, so
   uploads do not happen on this host yet — the extension-shaped second process is where they arrive.
+- **No downloads.** The background `URLSession` *runs* here — tasks are created and the delegate fires —
+  but **every transfer fails instantly with `NSURLErrorDomain/-1`** (`NSURLErrorUnknown`), measured
+  2026-08-25 against both a loopback and a LAN host. The app's ordinary default-session HTTP reaches the
+  same server fine in the same process, and `curl` fetches the identical presigned URL with `200`. So a
+  download that never lands is **the host**, not your setup — do not go hunting for it.
+- **No OS relaunch measurement.** Waking a terminated app for `handleEventsForBackgroundURLSession` needs
+  a transfer that outlives the process, and by the line above none can exist here. Device-only.
 - **It does not exercise the shipped identity path.** The device id resolves through a *different*
   `SecureStore` binding on this target (an App-Group file, because the Keychain group cannot exist
   here), so a regression in the Keychain binding is invisible on a simulator. Identity is a
@@ -150,6 +157,11 @@ join — `api/src/dev` is the only thing that fills an absent one.
 curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh -s -- -y
 cd ~/snapsync/api && nohup ~/.deno/bin/deno task dev:local > ~/deno.log 2>&1 &
 ```
+
+⚠️ **Warm it before you drive the app.** A cold `deno` server takes seconds to load its npm modules on the
+first request, and the app's HTTP client gives up at **5 s** — the create then fails with
+`Couldn't reach the server` while `curl` from the same machine works, which reads like a broken tunnel and
+is not. One `curl` against `/api/v1/events` first is enough.
 
 The simulator shares the host's loopback, so it reaches `http://127.0.0.1:8080/api/v1` with **no tunnel in
 the data path**. ATS exempts loopback, so plain HTTP needs no Info.plist exception. The host is stable, so

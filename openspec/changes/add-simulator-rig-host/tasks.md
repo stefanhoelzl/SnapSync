@@ -41,9 +41,9 @@
 
 ## 6. Measurements
 
-- [ ] 6.1 UNBLOCKED, not yet run. The blocker was never the platform: `simctl privacy grant photos` does not work for PhotoKit, but `applesimutils --setPermissions "photos=YES"` does — verified, the app reads GRANTED and a simulator now joins (`configResolved: true`, direction Both). What remains is the measurement itself: seed a foreign device's photos into the backend, start a download, terminate the app, and watch for an OS relaunch into `handleEventsForBackgroundURLSession`
-- [ ] 6.2 UNBLOCKED, not yet run — same setup as 6.1 and shares its in-flight download
-- [ ] 6.3 Record the supersession of `fix-download-session-lifecycle` D5's closing limitation in this change's design record; do not edit the archive
+- [x] 6.1 RUN, and the answer is that it is NOT ANSWERABLE on this host — recorded as such rather than as a result. Relaunch needs a background transfer that outlives the process, and 6.2 shows none can exist here. The attempt was made anyway (kick downloads, terminate after 2s, poll 90s): no relaunch, `handleBackgroundUrlSession` never fired. Confounded negative — the precondition was never established, so it is not evidence that the OS does not relaunch
+- [x] 6.2 ANSWERED: the background session RUNS (3 assets planned, tasks created, `didCompleteWithError` fired) but every transfer fails instantly with `NSURLErrorDomain/-1` — on loopback AND on the LAN address — while the default session in the same process reaches the same server, and curl fetches the identical presigned URL with 200 and the exact byte count. Inert in outcome, alive in mechanism
+- [x] 6.3 Supersession recorded in the design record on those exact terms — D5's closing limitation holds in OUTCOME, its premise ("cannot run background sessions") remains false. Archive untouched
 - [x] 6.4 SETTLED, decisively against the hopeful reading: an unprovisioned `associated-domains` makes the app UN-LAUNCHABLE with the same `SBMainWorkspace` refusal as `keychain-access-groups`. `openurl` was accepted but no link entry point fired (0 occurrences). So the 2026-08-09 negative is explained rather than overturned — a simulator cannot carry the entitlement at all, and SNAPSYNC-3 gains no repro path here. Variant discarded; working signature restored and verified
 
 ## 7. Prove the gate
