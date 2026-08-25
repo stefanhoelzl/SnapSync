@@ -103,6 +103,10 @@ tools/ config/ gradle/            more build tooling
   (`-Psnapsync.rig=true`, `/os`, `/user`, `/device`) -> load **`rig-channel`**. It needs the same device
   lease as `ios-device`. **There are no `SNAPSYNC_*` launch triggers any more**: production Kotlin declares
   none, and a guard fails the build if one returns. (`:test:rig`, `usbmux forward`)
+- **Running the app on a SIMULATOR** — two members of one event at once, a headlessly seeded/wiped
+  photo library, headless permission state -> load **`ios-simulator`**. It needs **no device lease**,
+  and the ad-hoc signature is not optional (an unsigned build has no App-Group container).
+  (`xcrun simctl`, `scripts/sim-sign`)
 - **Apple portal chores** - certificates, device UDIDs, provisioning profiles, bundle-id
   capabilities, App Store / TestFlight text metadata -> load **`asc-portal`**. (`app-store-connect`)
 

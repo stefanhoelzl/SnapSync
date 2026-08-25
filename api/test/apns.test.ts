@@ -9,6 +9,7 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   accessKey: "k",
   s3Region: "de",
   s3Host: "de-s3.storage.bunnycdn.com",
+  s3Scheme: "https",
   apnsKeyId: "ABC123KEYID",
   apnsTeamId: "E9Z8BADH58",
   apnsTopic: "app.snapsync",

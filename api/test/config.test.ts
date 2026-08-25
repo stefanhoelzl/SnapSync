@@ -29,6 +29,7 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     // DERIVED from the region, never restated — the two used to be separate constants that could
     // disagree, and a wrong S3 host mints presigned URLs that 403 at download while all else looks fine.
     s3Host: `${D.storage.s3Region}-s3.storage.bunnycdn.com`,
+    s3Scheme: "https",
     apnsKeyId: D.apnsKeyId,
     apnsTeamId: D.teamId,
     apnsPrivateKey: PEM,

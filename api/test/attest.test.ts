@@ -37,6 +37,7 @@ const CONFIG: Config = {
   accessKey: "zone-password",
   s3Region: "de",
   s3Host: "de-s3.storage.bunnycdn.com",
+  s3Scheme: "https",
   apnsKeyId: "ABC123KEYID",
   apnsTeamId: "E9Z8BADH58",
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",

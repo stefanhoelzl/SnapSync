@@ -10,10 +10,11 @@
 // It wraps the app with exactly two behaviors, both of which exist so the rig is usable without changing
 // a line of `app.ts`:
 //
-//  1. PRESIGNED DOWNLOADS. `s3Host` is the rig's own host, so `presignDownloadUrl` mints a real SigV4 URL
-//     of the identical production shape pointed home. Requests under `/<zone>/` are served off disk with
-//     the signature IGNORED — bunny's exact acceptance semantics are not reproducible, so validating
-//     locally would pin our guess rather than their behavior.
+//  1. PRESIGNED DOWNLOADS. `s3Host` and `s3Scheme` are the rig's own origin, so `presignDownloadUrl`
+//     mints a real SigV4 URL of the identical production shape pointed home — and pointed at a scheme
+//     this server actually speaks, so a device can follow it. Requests under `/<zone>/` are served off
+//     disk with the signature IGNORED — bunny's exact acceptance semantics are not reproducible, so
+//     validating locally would pin our guess rather than their behavior.
 //
 //  2. FALLBACK BEARER. The attestation gate stays fully ON. A request that arrives with NO
 //     `authorization` header gets a fixed dev token attached — the same trick `test/app.test.ts` uses to
@@ -55,8 +56,12 @@ let tunnel: Tunnel | null = null;
 if (options.tunnel) tunnel = await startTunnel(options.port);
 const origin = tunnel ? tunnel.origin : `http://127.0.0.1:${options.port}`;
 const publicHost = new URL(origin).host;
+// Both halves of the origin travel into the Config. The scheme matters because a presigned download URL
+// is fetched by the DEVICE: minting `https://` for a plain-HTTP loopback server hands every simulator a
+// URL that fails on TLS, which reads as "downloads are inert on this host" rather than as a wrong scheme.
+const publicScheme = new URL(origin).protocol.replace(":", "");
 
-const config = devConfig(publicHost);
+const config = devConfig(publicHost, publicScheme);
 const storage = fsFetch(config, options.store);
 const app = createApp({ config, fetch: storage });
 
@@ -96,13 +101,10 @@ console.log(`
 
   device build — paste onto the ssh-mac xcodebuild archive line:
     BACKGROUND_UPLOAD_URL_BASE=${origin}/api/v1
-${
-  tunnel ? "" : `
-  NOTE: presigned download URLs are minted as https://${publicHost}/... because the production URL
-  shape is fixed. This local server speaks plain HTTP, so swap the scheme when following one by hand:
-    curl "$(...url...)" | sed 's|^https://|http://|'
-`
-}
+
+  presigned downloads are minted at ${origin}/<zone>/... — this origin's own scheme, so a device
+  or a simulator can follow one directly, and so can curl.
+
   curl works with no authorization header; a request carrying a bad token still 401s.
 `);
 

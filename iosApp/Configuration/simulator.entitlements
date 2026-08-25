@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Entitlements for an AD-HOC SIGNED SIMULATOR build. Not a signing surface for any shipped binary:
+     `ios.yml`, `ios-archive` and every device build sign with iosApp.entitlements /
+     BackgroundUploadExtension.entitlements instead. This plist exists so a simulator build has an
+     App-Group container at all — `scripts/sim-sign` applies it to the appex and then the .app.
+
+     WHY THIS FILE EXISTS. An UNSIGNED simulator build has no App Group: `appGroupContainerPath` throws
+     `App Group container 'group.app.snapsync' unavailable — the application-groups entitlement is
+     missing or unprovisioned`, which is why screenshots.yml builds CODE_SIGNING_ALLOWED=NO and forge
+     boots no live stack. An ad-hoc signature carrying the key below fixes it (measured 2026-08-09,
+     macOS 26.5.2 / Xcode 26.6 / iOS 26.5 simulator).
+
+     ⚠️ WHY THERE IS NO keychain-access-groups KEY. Its ABSENCE IS THE DECISION, not an omission to
+     repair. Adding it makes the app UN-LAUNCHABLE on a simulator ("The request was denied by service
+     delegate (SBMainWorkspace)") — measured in the UNPREFIXED form, in the correctly PREFIXED
+     `E9Z8BADH58.app.snapsync.shared` form, on an ad-hoc signature, AND when signed with the real
+     "Apple Development" identity with the full repo entitlements expanded. That is why the device id
+     resolves through a per-target `SecureStore` binding (capability `device-identity`; the
+     iosSimulatorArm64 actual is an App-Group file store) rather than through the shared Keychain group
+     here. `RuntimeIdentityTest` asserts this key stays absent, so "add the missing entitlement" cannot
+     be applied as a fix to the mystery it would cause.
+
+     aps-environment and associated-domains are absent for the same class of reason: a simulator has no
+     APNs token, and neither entitlement is provisionable on an ad-hoc signature.
+
+     The App-Group id below is pinned by `RuntimeIdentityTest` in all THREE entitlements files. It is
+     the surface most likely to be forgotten in a rename, because no shipped build fails when it is
+     wrong — the simulator simply loses its container, which reads as the app being broken. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.snapsync</string>
+	</array>
+</dict>
+</plist>

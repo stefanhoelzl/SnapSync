@@ -54,13 +54,18 @@ export const DEV_TOKEN_DEVICE_ID = "00000000-0000-4000-8000-000000000000";
 
 /**
  * Build the rig's `Config`. `publicHost` is the host (no scheme, no trailing slash) the rig is reachable
- * on — `127.0.0.1:8080` for `dev:local`, the quick-tunnel hostname for `dev:tunnel`.
+ * on — `127.0.0.1:8080` for `dev:local`, the quick-tunnel hostname for `dev:tunnel` — and `s3Scheme` is
+ * that origin's scheme.
+ *
+ * The scheme has to travel with the host, because a presigned download URL is fetched by the DEVICE, not
+ * by the rig: minting `https://127.0.0.1:8080/...` for a plain-HTTP server hands every simulator a URL
+ * that fails on TLS, which reads as "downloads are inert on this host" rather than as a wrong scheme.
  *
  * Throws when the resolved deployment is not a `filesystem` one: running the rig against a bunny
  * deployment would write into a real storage zone, which is the accident `fs-storage.ts` exists to make
  * impossible.
  */
-export function devConfig(publicHost: string): Config {
+export function devConfig(publicHost: string, s3Scheme: string): Config {
   if (!isFilesystemDeployment(DEPLOYMENT)) {
     throw new Error(
       `the local rig requires a filesystem deployment; this bundle resolved ` +
@@ -75,6 +80,7 @@ export function devConfig(publicHost: string): Config {
     accessKey: DEV_ACCESS_KEY,
     s3Region: "dev",
     s3Host: publicHost,
+    s3Scheme,
     apnsKeyId: d.apnsKeyId,
     apnsTeamId: d.teamId,
     // Left blank deliberately. `createApnsSender` imports the key lazily and catches a signing failure

@@ -28,6 +28,7 @@ const CONFIG = {
   accessKey: "zone-password",
   s3Region: "de",
   s3Host: "de-s3.storage.bunnycdn.com",
+  s3Scheme: "https",
   apnsKeyId: "ABC123KEYID",
   apnsTeamId: "E9Z8BADH58",
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
@@ -60,7 +61,7 @@ function createApp(deps: Omit<Deps, "now">) {
 
 const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
 // The presigned-download S3 endpoint (path-style: `<s3Host>/<zone>/<key>`).
-const S3_ZONE = `https://${CONFIG.s3Host}/${CONFIG.zone}`;
+const S3_ZONE = `${CONFIG.s3Scheme}://${CONFIG.s3Host}/${CONFIG.zone}`;
 const MARKER_URL = `${ZONE}/events/${E}/metadata.json`; // event registry marker
 // `startsAt` is the CANONICAL cutoff shape (second precision, no fraction) while `createdAt` is whatever
 // `toISOString()` mints — the two are different facts and deliberately different shapes. `endsAt` and
@@ -1875,3 +1876,24 @@ Deno.test("health: the sha is injected, never read from the bundle's own module"
   const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "deadbeef" });
   assertEquals(await (await a.request("/health")).json(), { sha: "deadbeef" });
 });
+
+// `s3Scheme` is genuinely READ when presigning, not decoration on the Config type.
+//
+// Every other fixture here says "https", so a `presignDownloadUrl` that hardcoded the scheme — which it
+// did until the local rig needed otherwise — would pass all of them. This is the one case that fails if
+// it regresses. Not hypothetical: the local dev rig serves plain HTTP on loopback, and a device handed an
+// `https://127.0.0.1:8080/...` URL fails on TLS, which reads as "downloads do not work on this host"
+// rather than as a wrong scheme.
+Deno.test("presigned download URLs carry the configured scheme, not a hardcoded https", async () => {
+  const { fetchImpl } = listFake({
+    [DEVDIR_URL]: { body: [{ ObjectName: "A-primary.heic", Length: 100, IsDirectory: false }] },
+  });
+  const res = await createApp({ config: { ...CONFIG, s3Scheme: "http" }, fetch: fetchImpl })
+    .request(DEVLIST_PATH);
+  assertEquals(res.status, 200);
+  const url: string = (await res.json())[0].url;
+  assertEquals(
+    new URL(url).origin,
+    `http://${CONFIG.s3Host}`,
+    `expected the configured http scheme, got: ${url.slice(0, 60)}…`,
+  );});

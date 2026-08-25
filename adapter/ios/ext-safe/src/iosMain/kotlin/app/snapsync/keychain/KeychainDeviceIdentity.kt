@@ -95,13 +95,20 @@ enum class DeviceIdentityRole {
  */
 class KeychainDeviceIdentity(
     private val role: DeviceIdentityRole,
-    private val shared: SecureStore = deviceIdItem(SHARED_KEYCHAIN_ACCESS_GROUP),
     /**
-     * The unscoped view of the same item, consulted **only** by [DeviceIdentityRole.MINTING] and only
-     * when [shared] reports absence: it spans every group this process is entitled to and so can still
-     * see an id an older build placed in the process's own `application-identifier` group.
+     * Where the id is kept. Defaults to the **compilation target's** store ([deviceIdPrimaryStore]):
+     * the addressed shared-Keychain item on `iosArm64` — every shipped binary — and an App-Group file
+     * on `iosSimulatorArm64`, where that group cannot exist at all. The resolution below is identical
+     * either way; only the store moves. See [deviceIdPrimaryStore] for the measurement.
      */
-    private val legacy: SecureStore = deviceIdItem(accessGroup = null),
+    private val shared: SecureStore = deviceIdPrimaryStore(),
+    /**
+     * The adoption source, consulted **only** by [DeviceIdentityRole.MINTING] and only when [shared]
+     * reports absence. On the device target it is the unscoped view of the same item — spanning every
+     * group this process is entitled to, so it can still see an id an older build placed in the
+     * process's own `application-identifier` group. A target with no such history answers `Absent`.
+     */
+    private val legacy: SecureStore = deviceIdLegacyStore(),
     private val mint: () -> String = { NSUUID().UUIDString() },
 ) {
 
