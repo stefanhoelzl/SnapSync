@@ -175,14 +175,13 @@ class UploadCycle(
         val eventId = config.eventId
         val engine = engineFor(config)
 
-        // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the reconcile, the walk, job
-        // creation, the manifest write, and the notify: a non-contributor must not enumerate its library to
-        // discover it contributes nothing (the walk costs ~110 ms of PhotoKit XPC per asset). The discovery
-        // cursor is left exactly where it was.
+        // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the walk and job creation: a
+        // non-contributor must not enumerate its library to discover it contributes nothing (the walk costs
+        // ~110 ms of PhotoKit XPC per asset). The discovery cursor is left exactly where it was.
         //
-        // The gate bounds NEW WORK, not settlement. A declined cycle still runs the terminal-job pass,
-        // because acknowledging a job the OS ALREADY PRESENTED creates nothing, writes no manifest,
-        // enumerates nothing and issues no network call — it takes none of what this gate withholds.
+        // The gate bounds NEW WORK, not settlement, and not the record of what is already uploaded. A
+        // declined cycle still runs the terminal-job pass and the re-join reconciliation, and still
+        // publishes its (empty) manifest — none of which creates upload work.
         //
         // This pass used to sit below the gate, justified by "on iOS >=26.1 the OS presents no jobs because
         // `stop()` deregistered the extension". That premise holds only where a producer's `stop()` ran,
@@ -194,19 +193,10 @@ class UploadCycle(
         // upload-job configuration that deferred the extension ~300 s and escalates. Re-measure at the
         // next iOS major.
         //
-        // The declined branch settles and acknowledges only: no album placement and no notify fan-out,
-        // because no device manifest is written for a non-contributor, so there is nothing for another
-        // member to be woken for.
-        val cutoff = when (configPolicy) {
-            SelectionPolicy.None -> {
-                settleTerminalJobs(engine)
-                log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-                return CycleResult.SKIPPED
-            }
-            // An admitting policy carries its capture floor as a field, so there is no absent-bound case
-            // to guard here — the type closes it (capability `photo-selection-policy`).
-            is SelectionPolicy.Admitting -> configPolicy.cutoff
-        }
+        // The declined branch settles, acknowledges, and publishes an EMPTY device manifest: no album
+        // placement and no notify fan-out, because the notify is conditioned on >= 1 real completion and a
+        // non-contributor has none to announce.
+
         // Phase 0 — re-join reconciliation (capability `event-rejoin-reconciliation`), BEFORE any upload
         // job is created. On a marker mismatch it seeds the ledger from the device's stored-file listing
         // so nothing already contributed re-uploads; on a settled join it is a no-op. A `false` return is
@@ -214,10 +204,39 @@ class UploadCycle(
         // COMPLETED — a no-op, never a failure — so the next cycle retries with the marker still unset. A
         // THROW is treated identically to `false` (never a FAILED cycle), preserving the deferral the
         // roots previously applied with their own `runCatching`.
+        //
+        // It runs AHEAD of the direction gate. What it establishes — which of this device's resources are
+        // already on the backend — is a fact about BYTES, which this system defines as independent of the
+        // selection policy (capability `sync-ledger`); gating it on direction would make a
+        // policy-independent fact wait on a policy-dependent branch. It is marker-gated and a no-op on a
+        // settled join, so the cost is bounded to the first cycle after a join, switch, or reinstall — and
+        // running it here means a member who later re-enables their direction re-uploads nothing.
         val mayUpload = runCatching { reconcile(eventId) }
             .getOrElse { log.e(it) { "reconcile failed — deferring uploads this cycle" }; false }
+
+        // THE DIRECTION GATE's declined branch. It withholds upload job creation, the retry pass and the
+        // discovery walk — but NOT the device manifest. A membership that shares nothing publishes an
+        // EMPTY manifest (capability `device-manifest`): that is the honest statement of its state, and
+        // leaving a stale manifest in place would keep advertising photos the member has stopped sharing.
+        // Withholding the write was previously justified by three consequences, two of which do not hold:
+        // the notify is already conditioned on >= 1 real completion, and an empty manifest is already what
+        // a contributing membership with nothing in range publishes.
+        val cutoff = when (configPolicy) {
+            SelectionPolicy.None -> {
+                settleTerminalJobs(engine)
+                // After the settle, so any drained terminal outcome is durable before the projection reads
+                // the ledger. Suppressed if the reconcile deferred — see [writeDeviceManifest].
+                writeDeviceManifest(eventId, configPolicy, ledgerSettled = mayUpload)
+                log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
+                return CycleResult.SKIPPED
+            }
+            // An admitting policy carries its capture floor as a field, so there is no absent-bound case
+            // to guard here — the type closes it (capability `photo-selection-policy`).
+            is SelectionPolicy.Admitting -> configPolicy.cutoff
+        }
+
         if (!mayUpload) {
-            log.i { "reconcile deferred this cycle — creating no upload jobs" }
+            log.i { "reconcile deferred this cycle — creating no upload jobs, and writing no manifest" }
             return CycleResult.COMPLETED
         }
 
@@ -370,8 +389,7 @@ class UploadCycle(
         // Best-effort and bounded here, so a hung host can never stall a cycle and no root has to
         // remember to bound it (both used to, with the same two constants — one copied from the other,
         // along with a justification that only applied to the tier it was copied FROM).
-        runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy) } }
-            .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+        writeDeviceManifest(eventId, policy, ledgerSettled = true)
 
         // Notify the event's members (capability `upload-completion-notify`) — but only now, on a
         // fully-drained cycle that completed >= 1 upload, and AFTER the manifest PUT above: that is the
@@ -439,6 +457,43 @@ class UploadCycle(
      * the direction gate withholds. The only jobs it CAN create are replacements for retry-spent
      * failures the OS handed back, which are continuations of work already begun.
      */
+    /**
+     * Publish the device manifest for [eventId] under [policy] — or **suppress the write** when
+     * [ledgerSettled] is false (capability `device-manifest`).
+     *
+     * The suppression exists because the manifest is a **full-state** document. Publishing one built from
+     * an incomplete ledger does not under-report, it **un-lists**: every resource missing from the
+     * projection stops being offered to the other members, even though its bytes are on the backend. That
+     * became a live hazard the moment a narrowing scope change started retracting listings deliberately
+     * (capability `reconfigure-membership`) — before that, a short manifest and an intended one were
+     * indistinguishable in consequence, so nothing had to tell them apart.
+     *
+     * The known unsettled path is a deferred re-join reconciliation: it seeds the ledger from the device's
+     * stored-file listing, and returns `false` when that listing fails or times out. The ledger then does
+     * not yet know about resources this device really has uploaded.
+     *
+     * A read failure inside the hook suppresses the write too, structurally: the projection's rows are read
+     * there, so if that read throws, nothing is produced and nothing is published.
+     *
+     * **The two outcomes are logged distinctly, deliberately.** "Could not determine what this device
+     * shares" and "this device shares nothing" have opposite causes and opposite fixes, and collapsing them
+     * would make an outage read as a deliberate withdrawal (law: absence is never silent).
+     */
+    private suspend fun writeDeviceManifest(eventId: String, policy: SelectionPolicy, ledgerSettled: Boolean) {
+        if (!ledgerSettled) {
+            log.i {
+                "device.json NOT written this cycle — the ledger is unsettled, so the projection would " +
+                    "un-list resources that are really uploaded. The previous manifest stands."
+            }
+            return
+        }
+        // Best-effort and bounded here, so a hung host can never stall a cycle and no root has to
+        // remember to bound it (both used to, with the same two constants — one copied from the other,
+        // along with a justification that only applied to the tier it was copied FROM).
+        runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy) } }
+            .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+    }
+
     private suspend fun settleTerminalJobs(engine: SyncEngine): Settlement {
         var capHit = false
         // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
