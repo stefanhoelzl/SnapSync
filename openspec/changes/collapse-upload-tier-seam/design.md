@@ -126,6 +126,34 @@ in the controller and in the shell — uses those constants. The deadline was ne
 The objection "a future tier may need longer" dissolves twice: the budget is the OS's and cannot be
 granted, and the receipt already "bounds the hold, never the work."
 
+### D5c — The carve-out, measured
+
+D5 says the blanket repair must not fire when the disable hands over to a mechanism that reconciles
+precisely. Confirmed on device (SE2, iOS 26.6, 2026-08-25), with both branches in one log:
+
+```
+00:39:18.841  → photokit.start            the RE-REGISTER — repair belongs here
+00:39:18.842    → photokit.stop           full verb: disable + clearRequested + cursor reset
+00:39:18.852    extension enable succeeded
+
+00:40:37.894  → arm.onProvision           the TIER SWITCH — repair must not fire
+00:40:37.894  → photokit.deregister       narrow verb
+00:40:37.903  extension disable succeeded — a configuration record existed and was removed
+00:40:37.905  → url-session.start         no clearRequested, no cursor reset
+```
+
+The middle line is the one that could not be obtained any other way: a deregistration that **succeeds**,
+against a live record, under a full grant. The `GRANTED → LIMITED` path reaches the same cell but the
+platform refuses the operation there (D11), so it can only ever show a *refused* deregistration — which
+proves nothing about whether the repair would have run. The development override is what makes the
+succeeding case reachable, and is the reason it exists.
+
+**What is still not covered, stated rather than implied:** a `REQUESTED` row surviving *in flight*. Seeded
+uploads complete in well under a second, so the window in which a row is `REQUESTED` could not be
+constructed deliberately. The carve-out is therefore shown by *which verb runs* — observable in the log,
+since only `stop()` reaches `clearRequested` — plus the fact that `deregister()` touches no ledger state
+at all. A future run against slower or larger resources could close it directly.
+
 ### D5b — Both cells relinquish, symmetrically in structure and asymmetrically in content
 
 **Found during implementation, by a test that already existed.** `UploadArmTest`'s
