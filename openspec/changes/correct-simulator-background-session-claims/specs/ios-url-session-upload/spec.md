@@ -46,7 +46,7 @@ were tested — ad-hoc signature, an Apple Development identity, no signature at
 of which works. The daemon logs `(null)` and then drops the connection; it does not state that as its
 reason, so the causal link is a correlation across those clients rather than an explicit refusal message.
 ⏰ Re-measure at the next iOS major. Decision record:
-`changes/archive/<id>-correct-simulator-background-session-claims`.
+`changes/correct-simulator-background-session-claims`.
 
 This requirement therefore rests on a **choice**, not on host equivalence: a simulator-only foreground
 downgrade would make that host appear to work while removing the only host that exercises
@@ -80,3 +80,4 @@ tiers are never simultaneously live and the `sync-ledger` single-record-writer i
 - **WHEN** the app-driven tier is live on a device whose OS is ≥26.1 — because the photo grant is partial, or
   because a later runtime selection chose it
 - **THEN** `setUploadJobExtensionEnabled(true)` is not called for that producer, only the app-driven producer
+  is live, and exactly one process holds the `LedgerWriter`
