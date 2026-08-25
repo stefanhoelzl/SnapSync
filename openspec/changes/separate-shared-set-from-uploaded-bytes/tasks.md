@@ -111,7 +111,8 @@ ever changing the listing, which is the manifest's job.
 - [x] 9.3 `./gradlew architectureDiagrams` and commit if anything moved — stale diagrams block the PR.
 - [x] 9.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
 - [x] 9.5 Ledger schema migration applies cleanly over an existing database (migration test).
-- [ ] 9.6 CI macOS job green for `iosSimulatorArm64Test` / `PhotoKitCandidateSourceTest`.
+- [x] 9.6 macOS green for `iosSimulatorArm64Test` / `PhotoKitCandidateSourceTest` — run via the ssh-mac
+      loop rather than waiting for CI. See `MACOS-RUN.md` (0 failures, 0 skipped; the predicate test ran).
 
 ## 10. Measure on device before shipping
 
