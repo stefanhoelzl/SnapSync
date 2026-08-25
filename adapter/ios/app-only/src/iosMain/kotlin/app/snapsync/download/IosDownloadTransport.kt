@@ -156,7 +156,12 @@ class IosDownloadTransport(
             didCompleteWithError: NSError?,
         ) = transport.log.invocation(
             "download.didComplete",
-            params = "error=${didCompleteWithError?.localizedDescription ?: "«none»"}",
+            // Domain and code, not just `localizedDescription`. iOS renders NSURLErrorUnknown as the
+            // literal string "unknown error", which names nothing an operator can act on or search for —
+            // an absence collapse in the one line that reports a failed transfer. `NSURLErrorDomain/-1`
+            // is what identified the simulator's background-session behaviour (decision record:
+            // changes/add-simulator-rig-host, task 6.2) and cost a rebuild to recover.
+            params = "error=${didCompleteWithError?.let { "${it.domain}/${it.code}: ${it.localizedDescription}" } ?: "«none»"}",
             severity = Severity.Debug,
         ) {
             transport.onComplete(task, didCompleteWithError)
