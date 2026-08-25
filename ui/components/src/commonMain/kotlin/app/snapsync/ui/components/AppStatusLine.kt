@@ -168,10 +168,40 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ArrowIcon(Icons.Filled.ArrowUpward, "uploading", status.upload)
-                ArrowIcon(Icons.Filled.ArrowDownward, "downloading", status.download)
                 // Label tracks live activity: any pulsing (in-flight) arrow reads "ongoing", else "pending".
                 val ongoing = status.upload == Arrow.PULSING || status.download == Arrow.PULSING
+                // ONE phase for BOTH arrows, hoisted here — above either arrow — because an animation's
+                // phase starts when it enters composition, and the two arrows do not enter together. The
+                // upload arm starts at join; the download arm's total is populated only by the later
+                // reconcile, so the download arrow essentially always begins pulsing mid-fade. Owning a
+                // fade each, they settled into opposite halves of it and visibly beat against one another
+                // — reported from a device as "arrows are not pulsing in sync", and measured at ~90% of
+                // full opposition for a 366 ms offset.
+                //
+                // Sharing the VALUE, not merely the transition, is deliberate. An `InfiniteTransition`
+                // does share one play time, so a second `animateFloat` added later snaps into phase — but
+                // one frame late, rendering once at `StaticAlpha` before it does: a dim flash on the arrow
+                // that just appeared. One value has no such frame, and no second animation computing an
+                // identical number.
+                //
+                // Built only while something actually pulses, and never under reduce-motion (which drops
+                // the fade, not the meaning — see `ArrowIcon`). When the last pulse stops the phase ends,
+                // and a later resume starts a fresh one; that is fine, because both arrows resume on it
+                // together, which is the whole of what was wrong.
+                val pulseAlpha = if (ongoing && !LocalReduceMotion.current) {
+                    val transition = rememberInfiniteTransition(label = "pulse")
+                    val a by transition.animateFloat(
+                        initialValue = StaticAlpha,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+                        label = "pulse-alpha",
+                    )
+                    a
+                } else {
+                    1f
+                }
+                ArrowIcon(Icons.Filled.ArrowUpward, "uploading", status.upload, pulseAlpha)
+                ArrowIcon(Icons.Filled.ArrowDownward, "downloading", status.download, pulseAlpha)
                 val label = if (ongoing) "Synchronization ongoing…" else "Synchronization pending…"
                 LineText(label, MaterialTheme.colorScheme.onSurface)
             }
@@ -260,32 +290,28 @@ private fun LineText(text: String, color: Color) {
     Text(text = text, style = MaterialTheme.typography.titleMedium, color = color)
 }
 
+/**
+ * One direction arrow. It holds NO animation state: [pulseAlpha] is the one phase the caller shares
+ * across both arrows, so two pulsing arrows cannot drift apart however far apart they began. A newly
+ * shown arrow therefore adopts the fade already in progress — including at its dim end — rather than
+ * starting its own, because a fade of its own is precisely the drift this removes.
+ */
 @Composable
 private fun ArrowIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     level: Arrow,
+    pulseAlpha: Float,
 ) {
     if (level == Arrow.HIDDEN) return
     val pulsing = level == Arrow.PULSING
     // Pulsing (in-flight) arrows use the brand primary and fade; static arrows are a muted gray, no motion.
     val tint = if (pulsing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    // Reduce-motion drops the fade, never the meaning: the primary tint above already says "in flight",
-    // so a non-animating pulsing arrow is still unmistakably not a static one. It renders at full alpha —
-    // the fade's own bright end — so the only thing lost is the motion.
-    val animate = pulsing && !LocalReduceMotion.current
-    val alpha = if (animate) {
-        val transition = rememberInfiniteTransition(label = "pulse")
-        val a by transition.animateFloat(
-            initialValue = StaticAlpha,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
-            label = "pulse-alpha",
-        )
-        a
-    } else {
-        1f
-    }
+    // Only a pulsing arrow takes the fade. Under reduce-motion the caller passes a flat 1f, which drops
+    // the motion and never the meaning: the primary tint above already says "in flight", so a
+    // non-animating pulsing arrow is still unmistakably not a static one, and it renders at the fade's
+    // own bright end.
+    val alpha = if (pulsing) pulseAlpha else 1f
     Icon(
         icon,
         contentDescription = description,
