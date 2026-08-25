@@ -28,6 +28,10 @@ import app.snapsync.model.RESOURCE_META_IS_VIDEO
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.normalizeAssetId
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.loggerConfigInit
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -144,6 +148,7 @@ class UploadCycleTest {
         albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String> = { emptySet() },
         onBatchUploaded: suspend (String) -> Unit = {},
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
+        log: Logger = Logger.withTag("UploadCycleTest"),
     ): UploadCycle {
         val ledger = LedgerWriter(backend)
         return UploadCycle(
@@ -163,6 +168,7 @@ class UploadCycleTest {
             albumExcludedAssetIds = albumExcludedAssetIds,
             onBatchUploaded = onBatchUploaded,
             placeInAlbum = placeInAlbum,
+            log = log,
         )
     }
 
@@ -372,7 +378,10 @@ class UploadCycleTest {
 
         decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
 
-        assertEquals(emptyList(), order, "nothing runs — not even the reconcile")
+        // `order` records the reconcile, the manifest and the notify — none of which may run. The
+        // terminal-job settlement is deliberately NOT in it: acknowledging a job the OS already presented
+        // is not new work, and a declined cycle owes it (capability `upload-lifecycle`).
+        assertEquals(emptyList(), order, "no reconcile, no manifest, no notify")
         assertNull(platform.discoverPolicyArg, "the library is never enumerated")
     }
 
@@ -386,6 +395,79 @@ class UploadCycleTest {
 
         assertNull(store.saved, "the cursor must not advance")
         assertTrue(!store.cleared, "nor be cleared — this membership's state is untouched, not reset")
+    }
+
+    /**
+     * A download-only skip is the designed outcome of a setting the member chose — not a fault.
+     *
+     * This is the contract the inverted gate broke: because `None` carried no capture floor, every
+     * download-only cycle took a "malformed policy" branch and logged at `Error`, and `crash-reporting`
+     * turns `Error` into an event. One wrong severity became four Bugsink issues and an event on every
+     * foreground and every completed upload task, for as long as the membership stayed download-only.
+     * Both branches returned `SKIPPED` having touched nothing, which is exactly why the two tests above
+     * passed while running through the wrong one.
+     */
+    @Test
+    fun a_declined_cycle_reports_no_fault() = runTest {
+        val lines = mutableListOf<Pair<Severity, String>>()
+        val recorder = object : LogWriter() {
+            override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                lines += severity to message
+            }
+        }
+        val platform = FakePlatform(discovered = listOf(resource("a")))
+
+        val result = cycle(
+            InMemoryLedgerStore(), platform, FakeStore(),
+            policy = SelectionPolicy.None,
+            log = Logger(loggerConfigInit(recorder), "UploadCycleTest"),
+        ).run()
+
+        assertEquals(CycleResult.SKIPPED, result)
+        assertTrue(
+            lines.none { it.first >= Severity.Error },
+            "a routine skip must never become a crash report; logged: $lines",
+        )
+        assertTrue(
+            lines.any { it.first == Severity.Info && "contributes nothing" in it.second },
+            "and it must still SAY so — absence is never silent; logged: $lines",
+        )
+    }
+
+    /**
+     * The gate bounds new work, not settlement (capability `upload-lifecycle`).
+     *
+     * Acknowledging a job the OS already presented creates nothing, writes no manifest, enumerates
+     * nothing and issues no network call — so a declined cycle still owes it. Measured on iOS 26.6: a
+     * cycle that returned before this pass, with the extension still registered (which a reconfigure to
+     * download-only deliberately leaves it), made the system report error 50008, DISCARD the outstanding
+     * jobs, and defer the extension ~300 s against an escalating attempt count.
+     */
+    @Test
+    fun a_declined_cycle_still_acknowledges_the_jobs_the_os_presented() = runTest {
+        val backend = InMemoryLedgerStore()
+        val store = FakeStore()
+        val presented = platformJob("c-primary.heic", PlatformJobState.SUCCEEDED)
+        val platform = FakePlatform(discovered = listOf(resource("a")), ackJobs = listOf(presented))
+        val order = mutableListOf<String>()
+
+        val result = decliningCycle(backend, platform, store, order).run()
+
+        assertEquals(CycleResult.SKIPPED, result, "still declined — settling is not contributing")
+        assertContentEquals(
+            listOf(presented), platform.acknowledged,
+            "an un-acknowledged presented job errors the system 50008 and the OS discards it",
+        )
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("c-primary.heic")?.state,
+            "settled, so re-enabling the direction later does not re-upload what already landed",
+        )
+        // And it took nothing the gate withholds.
+        assertTrue(platform.created.isEmpty(), "no upload job is created")
+        assertEquals(emptyList(), order, "no reconcile, no manifest, no notify")
+        assertNull(platform.discoverPolicyArg, "the library is never enumerated")
+        assertNull(store.saved, "the discovery cursor does not advance")
+        assertTrue(!store.cleared, "nor is it cleared")
     }
 
     // ---- Phase 0: the re-join reconciliation gate (capability `event-rejoin-reconciliation`) ----------
@@ -927,7 +1009,7 @@ class UploadCycleTest {
         // fetch predicate be derived by translating the rules (capability `photo-selection-policy`).
         assertEquals(
             captureCutoff("2026-07-06T14:32:11Z"),
-            platform.discoverPolicyArg?.walkFloor,
+            (platform.discoverPolicyArg as? SelectionPolicy.Admitting)?.cutoff,
             "the platform receives the membership's policy, carrying its capture floor",
         )
     }

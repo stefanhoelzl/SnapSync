@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -25,7 +26,11 @@ class PhotoKitCandidateSourceTest {
     private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
     private val ceiling = captureCeiling("2026-06-30T00:00:00Z")
 
-    private fun admitting(vararg rules: SelectionRule) = SelectionPolicy.Admitting(rules.toList())
+    // The capture floor is a FIELD of `Admitting`, not one rule among the rest, so every policy built
+    // here carries one. Pass `floor =` (named — it follows a vararg) only when the bound itself is what
+    // the test is about.
+    private fun admitting(vararg rest: SelectionRule, floor: CaptureCutoff = cutoff) =
+        SelectionPolicy.Admitting(floor, rest.toList())
 
     @Test
     fun `a non-contributing policy narrows nothing`() {
@@ -38,7 +43,8 @@ class PhotoKitCandidateSourceTest {
     fun `the capture floor is always pushed`() {
         // The ONE required narrowing: an unbounded walk is watchdog-killed before the authoritative
         // admission ever runs, so this is liveness rather than correctness.
-        val predicate = predicateFor(admitting(SelectionRule.CaptureAfter(cutoff)))
+        // No rule is supplied at all: the floor rides on the variant, so it cannot be forgotten.
+        val predicate = predicateFor(admitting())
         assertTrue(predicate!!.predicateFormat.contains("creationDate >="))
     }
 
@@ -71,6 +77,10 @@ class PhotoKitCandidateSourceTest {
                     SelectionRule.MinVideoArea(1280L * 720L),
                     SelectionRule.NotEcho(setOf("A")),
                     SelectionRule.NotInDenylistedAlbum(setOf("B")),
+                    // The floor is mandatory on the variant, so "only unexpressible rules" is reachable
+                    // only when the bound itself fails to parse and its clause drops. Same assertion,
+                    // same reason — the state is now expressed through the one door that still opens it.
+                    floor = captureCutoff("not-a-date"),
                 ),
             ),
             "an unexpressible rule must not yield a predicate — a partial one would look like a narrowing",
@@ -108,7 +118,7 @@ class PhotoKitCandidateSourceTest {
         // A bound that cannot be parsed must not take the rest of the predicate with it — and must not
         // silently become "fetch nothing", which is the failure mode that hides as "sync is just slow".
         val predicate = predicateFor(
-            admitting(SelectionRule.CaptureAfter(captureCutoff("not-a-date")), SelectionRule.ExcludeScreenshots),
+            admitting(SelectionRule.ExcludeScreenshots, floor = captureCutoff("not-a-date")),
         )!!
         assertTrue(predicate.predicateFormat.contains("mediaSubtypes"), "the other clauses survive")
         assertEquals(false, predicate.predicateFormat.contains("creationDate"))

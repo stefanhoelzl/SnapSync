@@ -3,6 +3,7 @@ package app.snapsync.logging
 import app.snapsync.model.redactUuids
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
+import io.sentry.kotlin.multiplatform.Scope
 import io.sentry.kotlin.multiplatform.Sentry
 import io.sentry.kotlin.multiplatform.SentryLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
@@ -27,9 +28,21 @@ class SentryLogWriter : LogWriter() {
         when (severity) {
             Severity.Error, Severity.Assert -> {
                 // The message travels as an error breadcrumb even when a throwable is captured,
-                // so the event keeps the log line that explains it.
+                // so the event keeps the log line that explains it — WITH its `[entryPoint]` prefix.
                 Sentry.addBreadcrumb(Breadcrumb(level = SentryLevel.ERROR, message = text, category = tag))
-                if (throwable != null) Sentry.captureException(throwable) else Sentry.captureMessage(text)
+                // The prefix is context about WHICH TRIGGER was running, not about what went wrong — and
+                // the backend groups by message text, so leaving it in the message splits one cause into
+                // one issue per entry point. It did: a single wrong `Error` in the upload cycle arrived as
+                // four issues (`SNAPSYNC-27/28/29/30`), one each for `upload.didComplete`,
+                // `pump.onUploadCompleted`, `pump.onSessionEvents` and `url-session.onForeground`. So the
+                // event carries the bare redacted message and the entry point rides as a scope-local tag,
+                // on BOTH capture paths — one rule is easier to keep true than two, and it costs nothing
+                // on the exception path, which groups by stacktrace regardless.
+                val withEntryPoint: (Scope) -> Unit = { scope ->
+                    if (ctx != null) scope.setTag("entry_point", ctx)
+                }
+                if (throwable != null) Sentry.captureException(throwable, withEntryPoint)
+                else Sentry.captureMessage(redactUuids(message), withEntryPoint)
             }
             else -> Sentry.addBreadcrumb(
                 Breadcrumb(level = severity.toSentryLevel(), message = text, category = tag),
