@@ -6,33 +6,6 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 
 /**
- * The upload arm's tier-specific **mechanism** (capability `upload-lifecycle`). Each upload tier supplies
- * exactly one implementation:
- *
- * |            | `start()`                                   | `stop()`                                              |
- * |------------|---------------------------------------------|-------------------------------------------------------|
- * | PhotoKit   | the `PHPhotosError 3202` disable→enable dance | `enable(false)` + `clearRequested` + clear the cursor |
- * | URLSession | sweep staging + pump a cycle + arm the heartbeat | cancel transfers + cancel the heartbeat           |
- *
- * There are **two** verbs and no destructive third. This is deliberate and load-bearing: the tier-blind
- * `enableBackgroundUpload()` that this seam replaces composed a PhotoKit-only "toggle off, toggle on"
- * ritual, and on the app-driven tier its "off" half resolved to a full *leave* — cancelling transfers,
- * cancelling the heartbeat, and wiping the ledger **and** discovery cursor — while its "on" half was a
- * no-op below iOS 26.1. Joining an event therefore tore the upload arm down and started nothing.
- *
- * With no destructive verb on the seam there is no edge from *provision* to *destruction* to get wrong.
- * `stop()` never clears the **ledger**: that state is device-global dedup (`sync-ledger`,
- * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
- * reconciliation's `resetTo` ever re-baselines it (`event-rejoin-reconciliation`).
- *
- * The **cursor** is not dedup state, which is why the PhotoKit column above may clear it: the OS's
- * extension-disable wipes every in-flight job, and `clearRequested()` alone leaves those photos behind a
- * settled cursor that would never re-surface them (`ios-photokit-upload`). Clearing it costs one full
- * re-enumeration, which creates no job for anything already `COMPLETED` — the ledger it did not touch
- * still knows. A tier may clear its own cursor only to repair its own mechanism, and only while dedup
- * survives (`upload-lifecycle`).
- */
-/**
  * How a mechanism is **kicked** (capability `upload-lifecycle`, "Triggers are delivered to the mechanism
  * and declined explicitly") — a seam kept **separate** from [UploadProducer] so the lifecycle seam keeps
  * exactly its two verbs and the arm is handed no trigger it could invoke.
@@ -97,6 +70,33 @@ object IdleUploadMechanism : UploadMechanismRuntime {
     override suspend fun onSelectionChanged() = Unit
 }
 
+/**
+ * The upload arm's two-verb lifecycle seam (capability `upload-lifecycle`). Each upload mechanism
+ * implements it exactly once:
+ *
+ * |            | `start()`                                   | `stop()`                                              |
+ * |------------|---------------------------------------------|-------------------------------------------------------|
+ * | PhotoKit   | the `PHPhotosError 3202` disable→enable dance | `enable(false)` + `clearRequested` + clear the cursor |
+ * | URLSession | sweep staging + pump a cycle + arm the heartbeat | cancel transfers + cancel the heartbeat           |
+ *
+ * There are **two** verbs and no destructive third. This is deliberate and load-bearing: the tier-blind
+ * `enableBackgroundUpload()` that this seam replaces composed a PhotoKit-only "toggle off, toggle on"
+ * ritual, and on the app-driven tier its "off" half resolved to a full *leave* — cancelling transfers,
+ * cancelling the heartbeat, and wiping the ledger **and** discovery cursor — while its "on" half was a
+ * no-op below iOS 26.1. Joining an event therefore tore the upload arm down and started nothing.
+ *
+ * With no destructive verb on the seam there is no edge from *provision* to *destruction* to get wrong.
+ * `stop()` never clears the **ledger**: that state is device-global dedup (`sync-ledger`,
+ * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
+ * reconciliation's `resetTo` ever re-baselines it (`event-rejoin-reconciliation`).
+ *
+ * The **cursor** is not dedup state, which is why the PhotoKit column above may clear it: the OS's
+ * extension-disable wipes every in-flight job, and `clearRequested()` alone leaves those photos behind a
+ * settled cursor that would never re-surface them (`ios-photokit-upload`). Clearing it costs one full
+ * re-enumeration, which creates no job for anything already `COMPLETED` — the ledger it did not touch
+ * still knows. A tier may clear its own cursor only to repair its own mechanism, and only while dedup
+ * survives (`upload-lifecycle`).
+ */
 interface UploadProducer {
     /** Begin or resume uploading for the currently-configured membership. Idempotent. */
     suspend fun start()
@@ -110,26 +110,11 @@ interface UploadProducer {
 
 /**
  * The tier-neutral upload-arm lifecycle (capability `upload-lifecycle`): which producer verb fires on
- * which membership transition. It lives here — in a tested, platform-free capability — rather than in the
- * iOS composition root, because this *is* behavior, and the root is wiring-only and untested by the
- * project's hard rule. Parking it there is exactly why the destructive-provision bug had no test.
- *
- * The arm is enabled when photo access is granted **and** the configured membership's direction includes
- * upload (capability `join-event`). With **no event joined** there is no membership and therefore no
- * direction, so the arm is *not* enabled and neither verb fires.
- *
- * That is why [membershipIncludesUpload] is three-valued rather than a `Boolean`: "no membership" is a
- * distinct answer from "a membership that excludes upload", and collapsing the two in the composition
- * root is what previously answered *enabled* for an absent membership (a `?: true`), starting a producer
- * for an event that does not exist. Photo access can be `GRANTED` with no config — the join gate's
- * photo-access explainer raises the system dialog **before** the join is confirmed (capability
- * `join-event`), and that capability requires that "no config is saved and no upload producer is enabled
- * until the user confirms". So this is not a nicety: a two-valued seam violates it. The root now supplies
- * only a projection of the current config and defaults nothing.
- */
-/**
- * The tier-neutral upload-arm lifecycle (capability `upload-lifecycle`): which producer verb fires on
  * which membership transition, over the mechanism **resolution** yields.
+ *
+ * It lives here — in a tested, platform-free capability — rather than in the iOS composition root,
+ * because this *is* behavior, and the root is wiring-only and untested by the project's hard rule.
+ * Parking it there is exactly why the destructive-provision bug had no test.
  *
  * It holds **one** mechanism at a time. That is what makes the exactly-one-started invariant structural
  * again: starting two has no expression here, because there is only one reference to start. The invariant

@@ -124,10 +124,11 @@ handled by simply not enabling the producer, on the reasoning that "the OS never
 on ≥26.1, false here, where the *app* invokes its own cycle. `onForeground` walked straight past it and
 uploaded the camera roll of a member who had been promised "you won't share yours".
 
-**The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` selects
-**exactly one** `UploadProducer` for the process — `PhotoKitUploadProducer` (≥26.1) or
-`UrlSessionUploadController` (18–26.0) — and forwards membership transitions to the tested, tier-neutral
-`UploadArm` in `:domain`'s feature/upload. The seam has **two** verbs, `start()` and `stop()`, and **no
+**The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` supplies only
+**facts** — both mechanism thunks, whether this OS carries the OS-driven one, and any development
+override — and forwards membership transitions to the tested, tier-neutral `UploadArm` in `:domain`'s
+feature/upload, which holds **exactly one** `UploadMechanismRuntime` at a time, re-resolved per transition
+by `model/`'s `resolveUploadMechanism`. The seam has **two** verbs, `start()` and `stop()`, and **no
 destructive one**: no lifecycle transition (provision, switch, grant, direction change, leave) may clear
 the **ledger**. That is device-global dedup — it stays valid across events, and only a triggered
 reconciliation's `resetTo` re-baselines it. The **discovery cursor** is not dedup state and is not covered:
@@ -140,9 +141,10 @@ This structure is load-bearing, not tidiness. The lifecycle *used* to live here 
 `if (useAppDrivenUpload)` branches, and because this module is wiring-only and untested, nothing caught
 that `provisionEvent` → `enableBackgroundUpload()` → `disableExtension()` resolved, on the app-driven tier,
 to a **full leave** (cancel transfers, cancel the heartbeat, wipe ledger + cursor) followed by a no-op
-enable. Joining an event tore the upload arm down and started nothing. Selecting one producer also makes
-the two tiers mutually exclusive *structurally* — `setUploadJobExtensionEnabled` lives inside the PhotoKit
-producer, which is simply not constructed on the other tier, so nothing can enable both.
+enable. Joining an event tore the upload arm down and started nothing. Holding one mechanism *reference*
+also makes the tiers mutually exclusive **structurally**: starting two has no expression, because the arm
+can only name one. `ProducerExclusivityTest` guards what the compiler cannot — that no resolver cell yields
+a mechanism its OS cannot run, and that every switch observed stop-before-start.
 
 **Single-writer invariant — the writer's process depends on the tier** (`sync-ledger`: exactly one
 record-writer; its process placement is a platform binding). On **iOS ≥26.1** the **extension** is the
@@ -196,31 +198,39 @@ constructs no writer.
 
 ## iOS-version deviation & the two upload tiers
 
-App deploys **min iOS 18**. Upload runs on one of two tiers, selected **once per process** by the pure
-resolver (`model/`'s `resolveComposition`), whose **only** input is `isOperatingSystemAtLeastVersion(26.1)`
-— `SnapSyncRoot`'s one `when (tier)` switch picks the tier's mechanism thunks; no entry point re-checks a
-flag. There is no developer input to that resolution any more: no launch variable, no build property, no
-runtime override, so the tier a process runs is a function of the device it runs on.
+App deploys **min iOS 18**. Upload runs on one of two tiers, **re-resolved at every transition** by the
+pure resolver (`model/`'s `resolveUploadMechanism`) from three inputs: `isOperatingSystemAtLeastVersion(26.1)`,
+the current photo permission, and an optional development override. `SnapSyncRoot`'s one switch decides only
+**presence** — whether this OS carries the OS-driven mechanism at all — and no entry point re-checks a flag.
+A once-per-process answer could not express this: the OS refuses to register the extension under a partial
+grant, so the resolved mechanism genuinely changes when permission does. On a production build the override
+is always `null` (its only writer is the rig's boot hook, not compiled in without `-Psnapsync.rig=true`), so
+a shipped process's tier is a function of the device it runs on **and** the grant the user gave.
 
 - **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
   devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitUploadProducer`, which is only
-  constructed when this tier is selected — so it can never trap on a lower system. A later move to the
-  iOS 27 async `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment
-  target — and, on the Kotlin side, to a third `UploadProducer`.
-- **iOS 18–26.0 — app-driven `URLSession` (`ios-url-session-upload`).** No appex exists; the **main
-  app process** performs uploads over a background `URLSession` + `BGProcessingTask`, via
-  `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:adapter:ios:app-only`) driving the
-  same `:domain` feature/upload `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
-  is the single `LedgerWriter` (no extension process exists).
+  constructed where the OS carries this mechanism (≥26.1) — so it can never trap on a lower system. On
+  ≥26.1 under a partial grant it *is* constructed but never started, and the incoming app-driven mechanism
+  deregisters it (`RelinquishThenRun`). A later move to the iOS 27 async
+  `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target — and, on
+  the Kotlin side, to a third `UploadProducer`.
+- **app-driven `URLSession` (`ios-url-session-upload`) — all of iOS 18–26.0, and ≥26.1 under a partial
+  grant.** No OS-driven upload runs here; the **main app process** performs uploads over a background
+  `URLSession` + `BGProcessingTask`, via `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler`
+  (`:adapter:ios:app-only`) driving the same `:domain` feature/upload `UploadCycle` through the
+  `BackgroundUploadPump`. On this tier the **app**
+  is the single `LedgerWriter` — below 26.1 no extension process exists, and at ≥26.1 under a partial grant
+  the extension is not registered, so the OS never launches it.
 
-**Forcing the app-driven tier on a device is not currently possible.**
-`SNAPSYNC_FORCE_URLSESSION_UPLOAD` was deleted with the rest of the launch-trigger surface, and its
-replacement — a runtime-selectable tier, from the producer-resolution work — has not landed. On the
-agent-driveable SE2 (iOS 26.5) the app-driven producer is reachable only under a **`LIMITED`** photo grant,
-where the OS never invokes the extension. That exercises the pump, the scheduler, the background
-`URLSession`, staging and ledger writing, but **not** the full-library discovery walk: a partial grant feeds
-discovery the in-memory selection snapshot instead of walking.
+**Forcing the app-driven tier on a device works through the rig.** `SNAPSYNC_FORCE_URLSESSION_UPLOAD` was
+deleted with the rest of the launch-trigger surface; its replacement is the `uploadMechanismOverride` input
+to `resolveUploadMechanism`, pinned over the control channel (`:test:rig`'s boot hook assigns the thunk, so
+a build made without `-Psnapsync.rig=true` cannot carry one). Without the rig, on the agent-driveable SE2
+(iOS 26.5) the app-driven mechanism is reachable only under a **`LIMITED`** photo grant, where the OS
+refuses to register the extension. That exercises the pump, the scheduler, the background `URLSession`,
+staging and ledger writing, but **not** the full-library discovery walk: a partial grant feeds discovery
+the in-memory selection snapshot instead of walking.
 
 There is **no host axis** any more: nothing reads `SIMULATOR_DEVICE_NAME`, and there is no
 simulator-specific session. The transport used to be downgraded to a foreground session on the

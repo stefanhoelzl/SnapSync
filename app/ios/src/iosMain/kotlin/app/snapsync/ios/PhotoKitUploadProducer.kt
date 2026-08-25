@@ -119,7 +119,7 @@ class PhotoKitUploadProducer(
      * So the repair is not dropped, it is *scoped*: it belongs to re-registering this tier, where no API can
      * enumerate the vanished jobs, and it stays on [stop] for the leave path where nothing runs afterwards.
      * This method exists because the two-verb lifecycle seam has no room for a third verb, and should not
-     * gain one — `DeregisterThenRun` binds this as a lambda at the composition site instead.
+     * gain one — the composition site binds this as `RelinquishThenRun`'s relinquish lambda instead.
      */
     suspend fun deregister() = log.invocation("photokit.deregister") {
         setEnabled(false)

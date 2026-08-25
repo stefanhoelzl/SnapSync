@@ -53,16 +53,18 @@ walk. ⏰ Re-measure at the next iOS major; evidence is one device, one point re
 ② **the ≥26.1 PhotoKit
 extension cannot be REGISTERED under `.limited`** (`setUploadJobExtensionEnabled` is refused in *both*
 directions with `PHPhotosErrorAccessUserDenied` 3311 — measured, SE2/26.6; the older "registration
-succeeds and lies" reading is contradicted by measurement), so the OS never invokes it there — both producers
-are composed there and the permission-aware `UploadArm` starts exactly one (guarded by
-`ProducerExclusivityTest`); ③ asset/album **creation is unrestricted** under `.limited`, so downloads and
-the event album need no special handling (the album **denylist**, though, is inert — album structure is
+succeeds and lies" reading is contradicted by measurement), so the OS never invokes it there — under a
+partial grant resolution yields the app-driven mechanism instead (`resolveUploadMechanism`);
+③ asset/album **creation is unrestricted** under `.limited`, so downloads and the event album need no
+special handling (the album **denylist**, though, is inert — album structure is
 unreadable; the resolution floors still apply). Decision record:
 `openspec/changes/accept-limited-photo-access/` (`PROBE-FINDINGS.md` + `LIMITED-ACCESS-DESIGN.md`).
 
 Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
-(Two upload tiers per OS version: OS-driven PhotoKit on iOS ≥26.1, app-driven background `URLSession`
-on iOS 18–26.0 — see the `ios-photokit-upload` / `ios-url-session-upload` specs.)
+(Two upload tiers, resolved per transition from the OS fact AND the current photo permission: OS-driven
+PhotoKit only on iOS ≥26.1 under a full grant, app-driven background `URLSession` everywhere else — all of
+iOS 18–26.0, and ≥26.1 under a partial grant. See the `ios-photokit-upload` / `ios-url-session-upload`
+specs.)
 (`gradle/libs.versions.toml` is the source of truth for versions.)
 
 ## Repo layout
