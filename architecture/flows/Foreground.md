@@ -22,9 +22,9 @@ sequenceDiagram
   Trigger->>Foreground: run(…)
   Foreground->>effects: reloadConfig()
   Foreground->>effects: refreshAttestation()
-  Foreground->>effects: pumpForeground()
   Foreground->>statusPoller: start()
   par concurrent — awaited before the flow returns
+    Foreground--)effects: pumpForeground()
     Foreground--)effects: refreshStatus()
     opt only when activeEventId() resolves
       Foreground--)downloadController: reconcile(…)
