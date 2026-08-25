@@ -86,8 +86,26 @@ spec, because this module is untestable by rule. Pin a mechanism here only where
 contract.
 
 Each delivery hook SHALL forward under a **distinct entry-point name**, so the device log names which
-hook the platform actually invoked (capability `diagnostic-logging`). Two hooks that are
-indistinguishable in the log would leave the OS-version question open exactly as it is today.
+hook the platform actually invoked (capability `diagnostic-logging`). That is what MEASURED the iOS 18
+gap below: two hooks indistinguishable in the log would have read as "a link arrived once" and settled
+nothing.
+
+**This requirement is currently UNMET on iOS 18.7.9, measured, for the warm case.** Bugsink
+`SNAPSYNC-25` + `SNAPSYNC-26` (iPhone XS, build 607, one 80-second window): three warm taps each
+brought the app to the front — the foreground entry point fired every time, so iOS *did* activate the
+app from the link — and none reached `onOpenUrl`; the third was while the device was unjoined, ruling
+out join and switch logic. The cold half then delivered first try on a fresh process. The requirement
+is **not** weakened to match: the outcome it states is the contract, and a platform that does not meet
+it is a defect under investigation, not a contract to rewrite. The evidence and the expiry trigger live
+in capability `architecture-guards`.
+
+The scene delegate SHALL **record every callback it receives**, not only those carrying a link — the
+connection (including one carrying no activity at all), a continuation UIKit announces before
+attempting it, and the scene lifecycle. Without this, a delivery that fails is indistinguishable from a
+link the platform never routed to the app, and those two have different causes and different fixes.
+That is not a hypothetical: separating them is exactly what the dumps above could not do, and it cost
+the investigation a device session. These recorders SHALL decide nothing and route nothing — a
+diagnostic that changes behavior is no longer a diagnostic.
 
 Delivery SHALL be **exactly once** per opened link: a link that provisions twice is a bug, and stacking
 redundant delivery hooks is how that happens. That constraint is not merely prudence — it is now

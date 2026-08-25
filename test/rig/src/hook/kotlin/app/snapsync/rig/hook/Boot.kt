@@ -192,6 +192,30 @@ private fun excludedTriggers(): Map<String, String> = mapOf(
     "onSceneActive" to
         "a launch-shape query, not a trigger: it returns the resolved scene mode and nothing " +
         "downstream changes on a second call. /health reports the composition facts directly.",
+    // The six scene-delegate OBSERVERS share one consequence, stated per entry so each carries its
+    // own reason rather than pointing at a group. They record and do nothing else: firing one from
+    // here writes a log line that says the RIG called it, which is the opposite of the fact they
+    // exist to capture — whether the PLATFORM did. Their subject is UIKit's behaviour on an OS we
+    // cannot drive, so the only instrument that reads them is a device dump.
+    "onSceneWillConnect" to
+        "records the connecting scene's activity count and nothing else; a rig call would log a " +
+        "count the rig chose. What it answers — did iOS connect a scene carrying no activity — is " +
+        "only answerable by iOS.",
+    "onSceneWillContinueActivity" to
+        "records that UIKit is starting a continuation. Invoking it here would assert exactly the " +
+        "fact under investigation instead of observing it.",
+    "onSceneWillEnterForeground" to
+        "records that the scene DELEGATE was called, as distinct from the application-wide " +
+        "notification onForeground observes. A rig call cannot distinguish the two, which is its " +
+        "whole purpose.",
+    "onSceneDidBecomeActive" to
+        "the same delegate-liveness record as onSceneWillEnterForeground, at the active edge.",
+    "onSceneDidDisconnect" to
+        "records a scene teardown the rig cannot perform; forcing the line would misreport the " +
+        "process state a later cold delivery is read against.",
+    "onSceneOpenUrlContexts" to
+        "records URLs arriving on the retired custom-scheme path, which no shipped build declares. " +
+        "A rig call would manufacture the very arrival whose absence is the expected reading.",
 )
 
 /**

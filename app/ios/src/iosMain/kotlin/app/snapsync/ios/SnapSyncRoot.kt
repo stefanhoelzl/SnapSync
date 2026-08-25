@@ -735,18 +735,90 @@ object SnapSyncRoot {
      * WARM, via the scene delegate's `scene(_:continue:)` — the app's ONLY warm path.
      *
      * Measured working on iOS 26.5.2 twice: the 2026-07-16 session, and again on device
-     * 2026-08-04 (8 warm deliveries, 8 hits). On iOS 18.7.9 a warm-opened link reached nothing at
-     * all (Bugsink `SNAPSYNC-3`) and WHY is still unmeasured — there is no iOS 18 device here, and
-     * a simulator cannot stand in: on an iOS 26.5 SIMULATOR, where the device shows 8/8, the app
-     * received zero, so the simulator does not route universal links at all.
+     * 2026-08-04 (8 warm deliveries, 8 hits).
      *
-     * Its name is distinct from the cold entry's for exactly that reason. The next dump from an
-     * iOS 18 device settles it outright: this line present means the platform does call the scene
-     * delegate there and the defect is downstream of delivery; absent means it does not.
+     * **Measured NOT working on iOS 18.7.9** (Bugsink `SNAPSYNC-25` + `SNAPSYNC-26`, iPhone XS,
+     * build 607, one 80-second window). Three warm taps at 19:04:40, 19:05:12 and 19:05:31 each
+     * brought the app to the front — `onForeground` fired every time, so iOS DID activate the app
+     * from the link — and produced no line here at all; the third was while UNJOINED, which rules
+     * out join and switch logic entirely. The cold entry then fired first try at 19:05:47 on a
+     * fresh process, proving this delegate is the scene's delegate on 18 and is not inert. So on
+     * 18.7.9 the platform activates the app for a universal link and does not call this hook.
+     * Expiry: re-measure at the next iOS 18 point release; the evidence is one device.
+     *
+     * Its name is distinct from the cold entry's for exactly that reason — the dump pair above is
+     * readable only because cold and warm could not be confused for one another.
      */
     @PlatformEntry
     fun onSceneContinueActivity(activity: NSUserActivity) =
         deliverUserActivity("onSceneContinueActivity", activity)
+
+    /**
+     * The scene connected, carrying [activities] restored/continued `NSUserActivity` values —
+     * recorded **unconditionally, zero included** (spec `module-architecture`, "Absence is never
+     * silent"; spec `diagnostic-logging`).
+     *
+     * The Swift cold hook's only Kotlin call used to sit *inside* its `forEach` over
+     * `connectionOptions.userActivities`, so a scene connecting with an empty array recorded
+     * nothing whatsoever — and `SwiftShellGuardTest`'s forwarding rule cannot see that, because the
+     * call is lexically present and merely never runs. The cost is measured: on `SNAPSYNC-25` a
+     * delegate that was installed and handed nothing was indistinguishable from a delegate that was
+     * never installed, and that ambiguity was the whole investigation.
+     *
+     * It records and does nothing else. Doing no work can be right here; recording nothing never is.
+     */
+    @PlatformEntry
+    fun onSceneWillConnect(activities: Int) =
+        log.invocation("onSceneWillConnect", params = "activities=$activities") { }
+
+    /**
+     * UIKit is about to continue an activity of type [activityType] — offered **before**
+     * `scene(_:continue:)`, and carrying only the type, never the activity.
+     *
+     * Observation only: it can deliver no URL, so it cannot fix the iOS 18 warm gap. It NARROWS it,
+     * which is why it exists. Present with no [onSceneContinueActivity] after it ⇒ UIKit started a
+     * continuation our delegate did not receive. Absent ⇒ UIKit never started one. Those two have
+     * different fixes and the dumps so far cannot tell them apart.
+     */
+    @PlatformEntry
+    fun onSceneWillContinueActivity(activityType: String) =
+        log.invocation("onSceneWillContinueActivity", params = "type=$activityType") { }
+
+    /**
+     * The scene is entering the foreground, from its own delegate.
+     *
+     * Distinct from [onForeground], which Kotlin drives off the application-wide
+     * `UIApplicationDidBecomeActive` notification: that one fires whether or not our scene delegate
+     * is live, so it cannot answer "is the delegate being talked to?". This one can, and that is the
+     * question a failed warm delivery leaves open.
+     */
+    @PlatformEntry
+    fun onSceneWillEnterForeground() = log.invocation("onSceneWillEnterForeground") { }
+
+    /** The scene became active, from its own delegate — see [onSceneWillEnterForeground]. */
+    @PlatformEntry
+    fun onSceneDidBecomeActive() = log.invocation("onSceneDidBecomeActive") { }
+
+    /**
+     * The scene was disconnected. Recorded because it changes which half of delivery a later link
+     * takes: a disconnected scene makes the next link COLD (`onLaunchActivity`) even though the
+     * process never died, and without this line that transition is invisible.
+     */
+    @PlatformEntry
+    fun onSceneDidDisconnect() = log.invocation("onSceneDidDisconnect") { }
+
+    /**
+     * URL contexts were opened on the scene — the **custom-scheme** delivery path (capability
+     * `event-link`).
+     *
+     * The `snapsync` scheme is retired and the Info.plist declares no `CFBundleURLTypes`, so this
+     * should never fire. Forwarding it anyway is the point: if iOS 18 turns out to route a universal
+     * link here, the log says so rather than the URL vanishing. It records only — it does NOT route
+     * to `onOpenUrl`, because re-opening a second URL form is a behaviour change, not a diagnostic.
+     */
+    @PlatformEntry
+    fun onSceneOpenUrlContexts(urls: List<String>) =
+        log.invocation("onSceneOpenUrlContexts", params = "urls=${urls.size}") { }
 
     /**
      * The instrumented delivery of one `NSUserActivity`, shared by every hook that can receive one

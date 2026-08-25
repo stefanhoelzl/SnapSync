@@ -5,18 +5,22 @@
 # (ios-appstore-promote.yml, capability ios-appstore-release); the public alpha promotion was removed.
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
-#     iosArm64, so it IS the merge gate. Configuration is per-ref (capability ios-ci): main — the
-#     delivery source — archives RELEASE; every other push ref archives DEBUG,
+#     iosArm64, so it IS the merge gate. Configuration is keyed on whether the run DELIVERS
+#     (capability ios-ci): a push to main and a branch `workflow_dispatch` both archive RELEASE;
+#     every other push ref archives DEBUG,
 #     which compiles the identical surface and skips only the LLVM optimization pass that dominates
 #     the Release link (~5-9.5 min) on an archive that is discarded anyway. This job is a PURE GATE:
-#     it exports nothing and uploads nothing to Apple. On main it hands the archive to ios-deliver
-#     as a workflow artifact.
-#     Per-branch device installability before merge is served OUT OF BAND by the ssh-mac build loop
-#     (.github/workflows/ssh-mac.yml; see CLAUDE.md), not by a CI artifact.
+#     it exports nothing and uploads nothing to Apple. On a delivering run it hands the archive to
+#     ios-deliver as a workflow artifact.
+#     Per-branch device installability before merge is served either by a `workflow_dispatch` on
+#     this workflow (delivers the branch to internal TestFlight — the only route to a phone with no
+#     cable) or OUT OF BAND by the ssh-mac build loop (.github/workflows/ssh-mac.yml; see
+#     CLAUDE.md), which hands a human an IPA.
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
 #     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target. Runs in PARALLEL
 #     with ios-build (no `needs:`) — neither gate waits on the other.
-#   * ios-deliver — main ONLY, and `needs: [ios-build, ios-test]`: exports the App Store IPA from
+#   * ios-deliver — DELIVERING runs only (a push to main, or a branch dispatch), and
+#     `needs: [ios-build, ios-test]`: exports the App Store IPA from
 #     ios-build's archive and uploads it to TestFlight via codemagic's `app-store-connect publish`,
 #     which also attaches the "What to Test" note (`<PR title> (#<num>, <short sha>)`) in the same
 #     invocation. Because it needs BOTH gates, a RED TEST SUITE
@@ -28,11 +32,12 @@
 # build.yml; this workflow does only the irreducible Apple delta.
 #
 # Why delivery is a SEPARATE JOB and not a step: it makes "delivery never blocks merges" STRUCTURAL
-# rather than a `continue-on-error` convention. ios-deliver runs only on main (post-merge) and posts
+# rather than a `continue-on-error` convention. ios-deliver never runs on a PR branch's push and posts
 # no branch-protection status check, so it is free to fail RED without blocking anything — which is
 # strictly better than the old continue-on-error, where a failed TestFlight upload left the run green
 # and the failure was easy to miss. Do NOT add ios-deliver to .github/rulesets/main.json: it never
-# runs on a PR branch, so as a required check it would never be posted and merges would freeze.
+# runs on a PR branch's PUSH (a dispatch is a separate, deliberate run), so as a required check it
+# would never be posted and merges would freeze.
 #
 # Signing: TWO persistent certs — an Apple Distribution (SIGNING_CERT_* secrets) and an Apple
 # Development (SIGNING_DEV_CERT_* secrets) — are imported into one shared keychain, and
@@ -53,20 +58,39 @@ on:
     # still runs (no path filter), so the required `ios-build` / `ios-test` checks are posted on every
     # branch and PR and no merge can freeze.
     branches: ["**"]
-  # NO workflow_dispatch. There used to be one, carrying an `upload_host` input meant to point a dev
-  # IPA at an alternate HTTPS host — but it could never deliver that: ios-build publishes its archive
-  # `if: github.ref == 'refs/heads/main'`, so a dispatched run built a Debug archive and then THREW IT
-  # AWAY. There was no way to get the IPA out of it.
+  # A DELIBERATE BRANCH DELIVERY (capability `ios-ci`): dispatch this workflow on any ref and it
+  # archives RELEASE and DELIVERS to internal TestFlight, exactly as a push to main does. It exists
+  # for the one loop the repo otherwise cannot run — an iOS version we have no device for on a cable.
+  # The ssh-mac loop hands a human an IPA, which needs a USB cable; a tester's phone reachable only
+  # through TestFlight cannot be served by it at all, so a platform question that only that phone can
+  # answer had to merge to main to be asked. It no longer does.
   #
-  # Pointing a device build at another backend is an operator action on the ssh-mac loop's own
-  # xcodebuild line (`BACKGROUND_UPLOAD_URL_BASE=<https-host>`), where a human is present to receive
-  # the IPA — which is also where per-branch device installability already lives (capability `ios-ci`).
+  # WHY IT IS SAFE TO WIDEN. A dispatch is a deliberate human act on a named ref, not something a
+  # push can cause; `ios-deliver` keeps `needs: [ios-build, ios-test]`, so a red suite still stops a
+  # dispatched build; and delivery reaches only the INTERNAL `development` group — external
+  # distribution remains the separate, dispatch-driven App Store promotion.
   #
-  # Removing the trigger also removes the plain-dispatch escape hatch for exercising the RELEASE path
-  # on a branch pre-merge. Accepted, eyes open: it widens the trade-off `ios-ci` already documents for
-  # the Debug branch gate — a Release-only link failure (e.g. a Kotlin/Native optimizer crash) now
-  # surfaces only on the post-merge main run, red but non-gating, with delivery skipped because
-  # ios-deliver needs both gates.
+  # WHY IT MUST BE MARKED DISTRIBUTED. `SNAPSYNC_CHANNEL: release` is not cosmetic here: the xcconfig
+  # renderer emits `SENTRY_DSN` only for a distributed build (capability `deployment-configuration`,
+  # "absence is the off-switch"), and with NO DSN the in-app bug-report dialog does not open at all
+  # (capability `diagnostic-logging`). A branch build that could not send a dump would be useless for
+  # the only reason this trigger exists. A TestFlight build must carry production APNs anyway, which
+  # the same `release` channel derives — so one discriminator still decides all four settings and
+  # `deployment-configuration` is untouched. Its dumps report `environment=production` like main's;
+  # `data.dist` (the run number, unique and monotonic per run, dispatches included) is what tells one
+  # build from another, and the `/bugsink` skill already keys on it.
+  #
+  # The retired input is NOT coming back: the old dispatch carried `upload_host` and could never
+  # deliver it, because ios-build published its archive only on main, so a dispatched run built a
+  # Debug archive and threw it away. Pointing a device build at another backend stays an operator
+  # action on the ssh-mac loop's own xcodebuild line (`BACKGROUND_UPLOAD_URL_BASE=<https-host>`),
+  # where a human is present to receive the IPA.
+  workflow_dispatch:
+    inputs:
+      what_to_test:
+        description: "TestFlight 'What to Test' note (blank → <branch> (<short sha>))"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -74,8 +98,12 @@ permissions:
 # Namespaced group (NOT the bare github.ref used by build.yml) so the Linux build and the iOS
 # workflow do not share a concurrency group and cancel each other. A newer push to a ref cancels
 # its own in-progress iOS run — both jobs, since the group is workflow-wide.
+#
+# The event is part of the group so a push and a dispatch on the SAME ref do not cancel each other:
+# they are different intents, and a probe build killed by an unrelated push to its own branch is a
+# wasted TestFlight round-trip — the expensive unit in the loop this trigger exists for.
 concurrency:
-  group: ios-${{ github.ref }}
+  group: ios-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -91,8 +119,11 @@ jobs:
     # none unless the channel names a distributed build, so a stray secret cannot arm crash reporting on a
     # branch-gate archive (capability `ios-testflight-delivery`).
     env:
-      SNAPSYNC_CHANNEL: ${{ github.ref == 'refs/heads/main' && 'release' || 'dev' }}
-      SENTRY_DSN: ${{ github.ref == 'refs/heads/main' && secrets.SENTRY_DSN || '' }}
+      # DELIVERING — a push to main, or a deliberate branch dispatch. Both produce a build that goes
+      # to internal TestFlight, so both must be marked distributed: production APNs, and the DSN
+      # without which the in-app bug-report dialog never opens (see the trigger note above).
+      SNAPSYNC_CHANNEL: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && 'release' || 'dev' }}
+      SENTRY_DSN: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
     runs-on: macos-26
     steps:
       # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
@@ -101,9 +132,9 @@ jobs:
           fetch-tags: true
       # Pick the build configuration and APNs environment — two shapes, keyed on the ref alone
       # (capability ios-ci pins the per-ref configuration):
-      #   * push to main — RELEASE, APNs PRODUCTION: main's archive is the delivery source, and a
-      #     TestFlight/App Store distribution build must be production (capability
-      #     ios-testflight-delivery).
+      #   * a DELIVERING run — a push to main, or a branch `workflow_dispatch` — RELEASE, APNs
+      #     PRODUCTION: its archive is the delivery source, and a TestFlight/App Store distribution
+      #     build must be production (capability ios-testflight-delivery).
       #   * push to any OTHER ref — the DEBUG gate archive: identical compile surface (all iosArm64
       #     klibs, Swift, entitlements, signing), skipping only the LLVM optimization pass that
       #     dominates the Release link (measured 5-9.5 min of a 9-15 min job) on an archive that is
@@ -111,14 +142,17 @@ jobs:
       #     BUILD_CONFIG-keyed conditionals below give it the dev defaults automatically. Trade-off
       #     (accepted, capability ios-ci): a Release-only build failure surfaces on the post-merge
       #     main run — red but non-gating, and delivery is skipped because ios-deliver needs both
-      #     gates. With the dispatch trigger gone there is no pre-merge way to force the Release path.
+      #     gates. The pre-merge escape is a `workflow_dispatch` on the branch, which takes the
+      #     Release path in full.
       #
       # The upload host is NEVER overridden here: every ref bakes the Config.xcconfig default, the
       # single source of the host literal (capability ios-ci, "Compile-time edge host default"). A dev
       # build aimed at another backend is built on the ssh-mac loop instead.
       - name: Select build configuration
+        env:
+          DELIVERING: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$DELIVERING" = "true" ]; then
             echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
           else
             echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
@@ -248,11 +282,11 @@ jobs:
           [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::APNS_ENV is '$APNS', expected '$EXPECT_APNS'"; exit 1; }
 
       - name: Pack the signed archive for delivery
-        if: github.ref == 'refs/heads/main'
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
         run: tar -czf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP" SnapSync.xcarchive
 
       - name: Upload the signed archive for delivery
-        if: github.ref == 'refs/heads/main'
+        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: ios-archive
@@ -263,22 +297,22 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # TestFlight delivery — main ONLY, and gated on BOTH merge checks (capability
-  # ios-testflight-delivery). `needs: [ios-build, ios-test]` is the whole point of this job: it is what
-  # makes a RED TEST SUITE STOP THE RELEASE. If either gate fails, this job never runs and nothing
-  # reaches TestFlight.
+  # TestFlight delivery — DELIVERING runs only (a push to main, or a branch `workflow_dispatch`),
+  # and gated on BOTH merge checks (capability ios-testflight-delivery). `needs: [ios-build,
+  # ios-test]` is the whole point of this job: it is what makes a RED TEST SUITE STOP THE RELEASE.
+  # If either gate fails, this job never runs and nothing reaches TestFlight.
   #
-  # This job posts NO branch-protection status check (see the ruleset note in the header): it only ever
-  # runs on main, so requiring it would freeze merges. That means it is free to fail RED and block
-  # nothing — which is why the old `continue-on-error` on export/upload is gone. A delivery flake is now
-  # a visibly red run instead of a green one hiding a failed step.
+  # This job posts NO branch-protection status check (see the ruleset note in the header): it never
+  # runs on a PR branch's push, so requiring it would freeze merges. That means it is free to fail
+  # RED and block nothing — which is why the old `continue-on-error` on export/upload is gone. A
+  # delivery flake is now a visibly red run instead of a green one hiding a failed step.
   #
   # No Java/Gradle/Konan setup here: this job compiles nothing. It re-signs and packages the archive
   # ios-build already produced.
   ios-deliver:
     name: ios-deliver
     needs: [ios-build, ios-test]
-    if: github.ref == 'refs/heads/main'
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     runs-on: macos-26
     steps:
       # Needed for iosApp/ExportOptions.plist (the export method + signing style).
@@ -369,13 +403,24 @@ jobs:
       # carries is the authoritative half anyway. The note reaches the publish step ONLY via
       # $GITHUB_ENV → "$WHATS_NEW": a PR title inside `${{ }}` in a run: block would be script
       # injection by construction (titles are arbitrary text).
+      #
+      # A DISPATCHED build has no PR and its head commit's subject describes the branch, not the
+      # probe — so it takes the operator's `what_to_test` input when one was typed, and otherwise
+      # `<branch> (<short sha>)`, which is what actually tells two probe builds apart in the
+      # internal group. The input travels the same $GITHUB_ENV route and for the same reason: it is
+      # arbitrary operator text.
       - name: Compose the release note
         env:
           GH_TOKEN: ${{ github.token }}
+          WHAT_TO_TEST: ${{ inputs.what_to_test }}
         run: |
           PULLS=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" 2>/dev/null || echo '[]')
           SHORT_SHA=${GITHUB_SHA:0:7}
-          if [ "$(jq 'length' <<<"$PULLS")" -gt 0 ]; then
+          if [ -n "$WHAT_TO_TEST" ]; then
+            NOTE="$WHAT_TO_TEST ($SHORT_SHA)"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            NOTE="$GITHUB_REF_NAME ($SHORT_SHA)"
+          elif [ "$(jq 'length' <<<"$PULLS")" -gt 0 ]; then
             NOTE="$(jq -r '.[0].title' <<<"$PULLS") (#$(jq -r '.[0].number' <<<"$PULLS"), $SHORT_SHA)"
           else
             NOTE="$(git log -1 --format='%s') ($SHORT_SHA)"
