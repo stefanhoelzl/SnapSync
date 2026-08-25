@@ -38,7 +38,11 @@ State these before writing a scenario against this host, or you will write one t
   but **every transfer fails instantly with `NSURLErrorDomain/-1`** (`NSURLErrorUnknown`), measured
   2026-08-25 against both a loopback and a LAN host. The app's ordinary default-session HTTP reaches the
   same server fine in the same process, and `curl` fetches the identical presigned URL with `200`. So a
-  download that never lands is **the host**, not your setup — do not go hunting for it.
+  download that never lands is **the host**, not your setup — do not go hunting for it. Background
+  transfers run out-of-process in `nsurlsessiond` over XPC, and that is what the Simulator does not do
+  reliably; the same class shows up elsewhere as `4099` ("connection to com.apple.nsurlsessiond was
+  invalidated") and `-997` ("lost connection to background transfer service"). Apple's own guidance is
+  **"Test on a real device, not in Simulator"**.
 - **No OS relaunch measurement.** Waking a terminated app for `handleEventsForBackgroundURLSession` needs
   a transfer that outlives the process, and by the line above none can exist here. Device-only.
 - **It does not exercise the shipped identity path.** The device id resolves through a *different*
