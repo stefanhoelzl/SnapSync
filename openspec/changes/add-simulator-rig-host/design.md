@@ -89,8 +89,16 @@ are constructed.
 - **A two-member *scenario*.** #7. This change proves only that two instances are independently
   addressable and identified.
 - **`PermissionStatus.LIMITED` on a simulator.** Not grantable headlessly; accepted as an everywhere-gap,
-  since the device needs taps too, so nothing regresses. A `TCC.db` back door exists in principle
-  (the file appears once an app is installed, and has an `auth_value` column) and is unprobed.
+  since the device needs taps too, so nothing regresses.
+
+  **The `TCC.db` back door is now PROBED, and it does not work** (2026-08-25, iOS 26.2 simulator). Three
+  shapes, all rejected by PhotoKit: `simctl privacy grant photos` writes
+  `kTCCServicePhotos|app.snapsync|2|4` and the app still reads `NOT_DETERMINED`; a direct
+  `sqlite3` write of `auth_value=2, auth_reason=2, auth_version=1` performed while the device was
+  **shut down** (so photod could not be caching) reads `NOT_DETERMINED` after boot; and
+  `grant all` plus a restart reads **`DENIED`**. TCC is set — the row is there — and PhotoKit's
+  `authorizationStatus` does not honour it. So **FULL access is not grantable headlessly either**, which
+  is worse than the `LIMITED` gap and was not known when this change was scoped.
 - **A CI workflow.** D1.
 - **Exercising the shipped identity path.** The simulator binds a different `SecureStore`
   implementation (D6), so identity there is a **precondition**, not something the host validates. A
