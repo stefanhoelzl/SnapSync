@@ -23,8 +23,8 @@ rotation (a `StateFlow` of the latest token). Because the token is **OS-push-del
 the source is a settable holder — it exposes a `deliver(hexToken)` method that both the app-shell wiring
 and tests call, so it is its own test fake (no separate implementation is needed) and the registration
 logic is exercised on both the JVM and `iosSimulatorArm64`. The environment SHALL be an **injected
-compile-time** value (sourced from the build's `aps-environment`, e.g. a `Config.xcconfig`-baked
-`APNS_ENV`), not detected at runtime — mirroring how the upload host base is injected. The real APNs
+compile-time** value (sourced from the build's `aps-environment`, e.g. the `apnsEnv` value baked into the
+bundled `Deployment.plist`), not detected at runtime — mirroring how the upload host base is injected. The real APNs
 acquisition (calling `registerForRemoteNotifications` and receiving the token) is **app-shell wiring**
 (the Swift `AppDelegate` → `SnapSyncRoot.onPushToken(hex)` → `deliver`) in `:app:ios`, not a
 core type.

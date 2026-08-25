@@ -25,13 +25,17 @@ of it can ship.
 
 1. **Start the rig** — `cd api && deno task dev:local` (curl loop, `127.0.0.1:8080`) or
    `deno task dev:tunnel` (adds a cloudflared quick tunnel so a real device can reach it). Both print
-   the origin, the store path and a ready-to-paste `BACKGROUND_UPLOAD_URL_BASE=…` line, and write the
-   origin to `api/.localdev/host`. It is a long-lived server rather than the work itself, so wrap it
+   the origin and the store path, and write the origin to `api/.localdev/host`. (Any
+   `BACKGROUND_UPLOAD_URL_BASE=…` line it still prints is **dead** — see step 2.) It is a long-lived server rather than the work itself, so wrap it
    in **`ch-bg`** (CLAUDE.md, *Agent harness limits*) to keep the workspace able to go idle:
    `ch-bg deno task dev:tunnel`. Contract and detail: `api/README.md`.
 2. **Rebuild the IPA against it** — the upload host is **compile-time** (PhotoKit forces it), so this
-   needs a rebuild. Load **`ssh-mac-build`** → *Pointing a build at a local backend*. A quick tunnel's
-   hostname is random per session, so the IPA is rebuilt per session (~1 min incremental Debug).
+   needs a rebuild. 🚫 **Not via `BACKGROUND_UPLOAD_URL_BASE=` on the xcodebuild line**: that value now
+   lives in a generated bundle resource no build setting can reach, so the override is accepted, ignored,
+   and the build silently targets PRODUCTION. Point the build by writing the host into
+   `deployments/local.json` and re-running the resolver. Load **`ssh-mac-build`** → *Pointing a build at
+   a local backend* for the exact commands. A quick tunnel's hostname is random per session, so the IPA
+   is rebuilt per session (~1 min incremental Debug).
 3. **Install and launch with `SNAPSYNC_RESET_STATE=1`** — load **`ios-device`**, which also owns the
    device lease every phone command now requires. This step is not optional; see below.
 

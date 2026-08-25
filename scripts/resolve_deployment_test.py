@@ -265,6 +265,24 @@ class RenderingTest(unittest.TestCase):
         flat = Tree().standard().resolve()
         self.assertEqual("https://example.invalid/api/v1", plist(flat)["uploadBase"])
 
+    def test_a_loopback_host_is_plaintext_and_everything_else_is_not(self):
+        """The ATS constraint, derived from the host rather than declared beside it.
+
+        This is what replaces the retired `BACKGROUND_UPLOAD_URL_BASE=` xcodebuild override: an
+        operator points a build at the local rig by SELECTING that deployment, and the scheme follows
+        from the host. A tunnel is not loopback and must stay https, or the build fails silently on
+        device under default ATS.
+        """
+        for domain, expected in (
+            ("127.0.0.1:8080", "http://127.0.0.1:8080/api/v1"),
+            ("[::1]:8080", "http://[::1]:8080/api/v1"),      # the only URL-valid IPv6 form
+            ("localhost:8080", "https://localhost:8080/api/v1"),   # a NAME, not the exempt literal
+            ("random-words.trycloudflare.com", "https://random-words.trycloudflare.com/api/v1"),
+            ("example.invalid", "https://example.invalid/api/v1"),
+        ):
+            flat = Tree().standard(domain=domain).resolve()
+            self.assertEqual(expected, plist(flat)["uploadBase"], f"for domain {domain}")
+
     def test_the_plist_carries_exactly_the_device_facing_values(self):
         release = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
             env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "release"}

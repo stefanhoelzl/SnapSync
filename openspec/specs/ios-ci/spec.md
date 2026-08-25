@@ -3,7 +3,6 @@
 ## Purpose
 Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — doing only the irreducible Apple delta. **Two parallel jobs are the merge gates**: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` (the archive is the gate, and the app's only compile), and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. `ios-build` is a **pure gate** — it exports nothing and uploads nothing to Apple. **Delivery is a third job** (`ios-deliver`) that runs on **delivering runs** — a push to `main`, or a deliberate `workflow_dispatch` on any ref — and **depends on both gates**, so a red test suite stops the release; it re-signs and packages `ios-build`'s archive without recompiling (capability `ios-testflight-delivery`, which also details code signing). Per-branch device installability before merge is served by that dispatch (the only route to a test device reachable solely through TestFlight) or out of band by the ssh-mac build loop, which hands a human an IPA.
 ## Requirements
-
 ### Requirement: Build iOS on every push
 
 The system SHALL run a **GitHub Actions** job (`ios-build` in `.github/workflows/ios.yml`) on every push that builds the iOS **device (`iphoneos`, arm64)** app on a **`macos-26` hosted runner**, linking the `iosArm64` framework with the runner's **GM Xcode** (no Xcode beta), and reports a stable status-check context (`ios-build`) used to gate merges. On **every** ref the job SHALL produce a **signed archive** of the device app (signing — capability `ios-testflight-delivery`); the archive compiles `iosArm64`, so the `ios-build` check reflects whether the device app builds.
@@ -122,14 +121,14 @@ The delivery job `ios-deliver` SHALL NOT be a required status check. It runs onl
 
 ### Requirement: Compile-time edge host default
 
-The extension's `BackgroundUploadURLBase` (build setting `BACKGROUND_UPLOAD_URL_BASE`) SHALL be
+The extension's baked upload host (`uploadBase` in the generated `Deployment.plist`) SHALL be
 **derived from the resolved deployment** (capability `deployment-configuration`) — the single source of
 the host, shared with the app's `LINK_ORIGIN`, the `applinks:` entitlement, the AASA the backend serves,
 and the site's canonical URLs — so **every ref**, including the `main`/TestFlight build, targets the
 deployment's device-facing host (safe because the device carries no storage credential and the endpoint
 is the production backend). The iOS workflow SHALL **not** restate the host and SHALL provide **no**
-mechanism to override the value directly: it SHALL omit any `BACKGROUND_UPLOAD_URL_BASE` override on
-every ref and let the generated value flow through. This requirement is the **single owner** of the
+mechanism to override the value directly, and none is available to anyone: the value reaches a generated
+bundle RESOURCE, which no `xcodebuild` build-setting override can substitute into. This requirement is the **single owner** of the
 compile-time upload-host contract; the TestFlight build inherits whatever host this shared archive step
 bakes.
 
@@ -141,24 +140,29 @@ ssh-mac build invocation (dev infrastructure; see the runbook in `CLAUDE.md`), n
 target is a declared deployment it SHALL be expressed as **selecting** that deployment rather than as a
 bare host string.
 
-There is exactly ONE admitted exception, and it is forced rather than chosen: the local-rig tunnel. A
-quick tunnel's hostname is minted by cloudflared **inside the running rig**, after the resolver has run,
-and is random per session — no declared file can hold a value that does not yet exist. That case SHALL
-therefore remain a build-setting override on the operator's own invocation. It SHALL NOT be available as
-a CI input, and no other case SHALL use it.
+The previously admitted exception — a build-setting override for the local-rig tunnel, whose hostname
+cloudflared mints **inside the running rig** and is random per session — is **withdrawn**, because the
+mechanism it named no longer exists. An operator points a build at a local rig or a tunnel by writing
+that host into the local deployment and **re-running the resolver**, which happens after cloudflared has
+minted it. That is selecting a deployment rather than overriding a string, which this requirement already
+preferred; the override was only ever the concession to a value arriving late, and re-resolving answers
+that just as well. No CI input SHALL exist for it.
 
-The one generated setting feeds **both** targets' `Info.plist`, so a single selection covers the app and
-the background-upload extension together. The resulting host SHALL remain **HTTPS**: default ATS forbids
-plaintext and no `NSAllowsLocalNetworking` exception ships, so a baked `http://` host would fail
-silently on device.
+The one generated resource is copied into **both** bundles, so a single selection covers the app and the
+background-upload extension together. The URL **scheme** SHALL be DERIVED from the host rather than
+declared beside it: `http` for a loopback IP literal, `https` for every other host. Default ATS applies
+and no `NSAllowsLocalNetworking` exception ships, so a plaintext host reached over the network fails
+**silently** on device — while ATS exempts the loopback literal, which is what lets a simulator reach
+`deno task dev:local` at all. Deriving it means a deployment cannot name a host and a scheme that
+disagree, and a tunnel — not loopback — correctly stays HTTPS.
 
 Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe` (the host literal is removed
 rather than pinned).
 
 #### Scenario: Every build bakes the deployment's host
 - **WHEN** the iOS workflow runs on any ref
-- **THEN** the workflow sets no `BACKGROUND_UPLOAD_URL_BASE` override and the archive bakes the value
-  generated from the resolved deployment
+- **THEN** the workflow sets no host override and the archive bakes the value generated from the
+  resolved deployment into both bundles
 
 #### Scenario: No host literal survives in the build settings
 - **WHEN** the committed build settings are inspected
@@ -179,3 +183,15 @@ rather than pinned).
   the resolver has already run and differs every session
 - **THEN** the host is supplied as a build-setting override on that invocation
 - **AND** no CI workflow exposes that override as an input
+
+#### Scenario: A local rig is selected, not overridden
+
+- **WHEN** an operator needs a build pointed at a local backend or a cloudflared tunnel
+- **THEN** they set that host in the local deployment and re-run the resolver, because no build-setting
+  override can reach a generated bundle resource
+
+#### Scenario: The scheme follows the host
+
+- **WHEN** the resolved host is a loopback IP literal
+- **THEN** the baked base is `http`, and for every other host it is `https`
+
