@@ -57,9 +57,22 @@ Deno.test("classify: a different well-formed sha → stale-sha (propagating)", (
   assertEquals(classify(200, JSON.stringify({ sha: OTHER }), SHA), "stale-sha");
 });
 
-Deno.test("classify: the placeholder sha → unstamped, never stale-sha", () => {
-  // Waiting cannot turn `dev` into a commit, so this must be terminal rather than retried.
-  assertEquals(classify(200, JSON.stringify({ sha: UNSTAMPED }), SHA), "unstamped");
+Deno.test("classify: `dev` on the wire is STALE when we asked for a commit", () => {
+  // The bundle answering is not ours — it is a previous deployment that predates stamping, still being
+  // served while ours propagates. Time fixes that, so it must be retryable.
+  //
+  // This test previously asserted the OPPOSITE, which is why the conflation survived review: the probe
+  // failed at attempt one on a deploy that was live and healthy a minute later (2026-08-25, run
+  // 32901373285).
+  assertEquals(classify(200, JSON.stringify({ sha: UNSTAMPED }), SHA), "stale-sha");
+});
+
+Deno.test("classify: asking for `dev` is UNSTAMPED whatever answers", () => {
+  // Expecting `dev` means THIS run built an unstamped bundle — CI supplied no sha. That is terminal on
+  // its own terms: no answer from the origin can make the artifact stamped, so neither the matching
+  // reply nor a different one is worth retrying.
+  assertEquals(classify(200, JSON.stringify({ sha: UNSTAMPED }), UNSTAMPED), "unstamped");
+  assertEquals(classify(200, JSON.stringify({ sha: "other" }), UNSTAMPED), "unstamped");
 });
 
 Deno.test("classify: an HTML error page returned with 200 → unparseable", () => {
@@ -80,11 +93,11 @@ Deno.test("classify: an unexpected non-200 status → unparseable", () => {
 
 // ── Retry: only what time can fix ──────────────────────────────────────────────────────────────────
 
-async function probe(fetchImpl: FetchLike, opts: { step?: number } = {}) {
+async function probe(fetchImpl: FetchLike, opts: { step?: number; expectedSha?: string } = {}) {
   return await runProbe({
     fetch: fetchImpl,
     origin: "https://example.invalid",
-    expectedSha: SHA,
+    expectedSha: opts.expectedSha ?? SHA,
     now: clock(opts.step ?? 1),
     sleep: noSleep,
   });
@@ -121,11 +134,22 @@ Deno.test("runProbe: retries 404 then the previous bundle, then passes", async (
 });
 
 Deno.test("runProbe: an unstamped bundle fails IMMEDIATELY, without burning the deadline", async () => {
-  const s = scripted(() => health(UNSTAMPED));
-  const v = await probe(s.fetch);
+  // Asking for `dev` and being handed something else: this run built no stamp. Terminal.
+  const s = scripted(() => health("something-else"));
+  const v = await probe(s.fetch, { expectedSha: UNSTAMPED });
   assert(!v.ok);
   assertEquals(v.cause, "unstamped");
   assertEquals(v.attempts, 1); // terminal: exactly one request, not a two-minute timeout
+});
+
+Deno.test("runProbe: a `dev` bundle still serving is RETRIED, then passes", async () => {
+  // The regression this pair exists for. A previous deployment that predates stamping answers while
+  // ours propagates; the probe must wait it out rather than fail the deploy that is about to be live.
+  const s = scripted(() => health(UNSTAMPED), () => health(UNSTAMPED), () => health(SHA));
+  const v = await probe(s.fetch);
+  assert(v.ok);
+  assertEquals(v.cause, "match");
+  assertEquals(v.attempts, 3);
 });
 
 Deno.test("runProbe: an unparseable answer fails IMMEDIATELY", async () => {
