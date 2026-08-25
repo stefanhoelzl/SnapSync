@@ -453,7 +453,7 @@ class DownloadController(
     }
 
     /**
-     * The download half of a durable-state reset (capability `ios-app-shell`, `SNAPSYNC_RESET_STATE`).
+     * The download half of a durable-state reset (capability `ios-app-shell`, `POST /device/reset`).
      *
      * It lives HERE, not in the reset feature, because it must hold [mutex]: a ref is claimed under that
      * lock, so anything deciding what a prune may delete has to exclude new claims, not merely read a

@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * The `SNAPSYNC_RESET_STATE` reset (capability `ios-app-shell`), driven against the **honest** in-memory
+ * The device reset (capability `ios-app-shell`), driven against the **honest** in-memory
  * ledger and download stores rather than stubs — which matters most for the imported-rows assertion,
  * where the whole question is whether real prune semantics keep them.
  */

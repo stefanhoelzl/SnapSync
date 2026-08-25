@@ -88,7 +88,7 @@ object UploadExtensionRoot {
         Logger.withTag("UploadExtension").i { logDestination.bannerLine }
         // The BAKED backend this build uploads to — the same diagnostic the app emits, and it matters
         // more here: this process IS the upload path, and pointing a build at a different backend
-        // without `SNAPSYNC_RESET_STATE` leaves the ledger claiming everything is already COMPLETED, so
+        // without a device reset leaves the ledger claiming everything is already COMPLETED, so
         // the cycle enumerates and enqueues nothing with no error anywhere. Read beside this process's
         // own `enumeration: N seen, X new, Y already-uploaded`, a changed host names the cause at once.
         Logger.withTag("UploadExtension").i { "[boot] upload base = ${bakedUploadBase()}" }

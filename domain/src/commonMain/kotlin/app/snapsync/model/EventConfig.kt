@@ -113,7 +113,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * on TestFlight), so every device that has foregrounded since has already persisted a concrete ceiling —
  * the reconcile fills `endsAt` and `maxPhotoDate` from the fetched details on any config that lacked them.
  * A device that has *not* foregrounded since then loses its membership on update; that is the accepted cost
- * on this controlled, internal install base, and `SNAPSYNC_RESET_STATE` clears any holdout.
+ * on this controlled, internal install base, and a device reset clears any holdout.
  *
  * [endsAt] stays nullable, deliberately. It is the *event's* fact rather than the membership's bound: it
  * feeds the "Event ended" line and gives the reconfigure surface something to clamp against, and neither

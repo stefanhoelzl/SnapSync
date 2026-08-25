@@ -59,7 +59,7 @@ class EventConfigTest {
         // Safe only by sequencing, and the sequence has run: the ceiling and its reconcile backfill shipped
         // together in `add-event-date-range`, so a device that has foregrounded since already persisted a
         // concrete ceiling. One that has not loses its membership on update — the accepted cost on this
-        // controlled install base, with `SNAPSYNC_RESET_STATE` as the escape hatch.
+        // controlled install base, with a device reset as the escape hatch.
         val preCeiling =
             """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff"}"""
         assertFailsWith<SerializationException> {

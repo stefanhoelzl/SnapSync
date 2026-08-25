@@ -50,6 +50,16 @@ val linkDomain: String = requireNotNull(resolvedDeployment["domain"]) {
     "deployment '$deploymentName' resolved no `domain` — the event link has no origin"
 }
 
+// ⚠️ The scheme is UNCONDITIONALLY `https`, and that is NOT an oversight to be "fixed" into agreement
+// with the upload base, which derives `http` for a loopback host (`upload_scheme`, the resolver). The two
+// are asymmetric because the platform rules behind them are different, and only one has an exemption:
+//   * the UPLOAD BASE is an ordinary network request, governed by ATS — which exempts the loopback IP
+//     literal, which is the only reason a simulator can reach `deno task dev:local` over plain HTTP.
+//   * LINK_ORIGIN is a UNIVERSAL LINK origin. `applinks:` and the AASA are HTTPS-only by Apple's
+//     contract (capability `event-link`: "the HTTPS Universal Link"); iOS will not claim an `http://`
+//     link at all, so deriving a scheme here would generate a constant that cannot work.
+// A local deployment therefore gets an https LINK_ORIGIN it never exercises — correct and inert — rather
+// than an http one that would look consistent and mean nothing.
 val generateLinkOrigin by tasks.registering {
     val outDir = layout.buildDirectory.dir("generated/linkOrigin/kotlin")
     val domain = linkDomain
