@@ -22,14 +22,25 @@ interface BackgroundTransfer {
     /** System jobs offered for their single `.retry` (first failures). */
     suspend fun fetchRetryJobs(): List<PlatformUploadJob>
 
-    /** Terminal system jobs awaiting `.acknowledge` (succeeded, or retry-spent failures). */
-    suspend fun fetchAckJobs(): List<PlatformUploadJob>
+    /**
+     * Record every terminal outcome the platform is holding into the ledger, settle it with the platform,
+     * and return **only the jobs the cycle must still act on** — retry-spent failures whose resource is
+     * still available, so the cycle can re-create them in this same cycle.
+     *
+     * A terminal fact never crosses this seam. The platform tells exactly one party that an upload ended,
+     * and that party records it where it survives the process (`sync-ledger`'s guarded `markTerminal`);
+     * handing the fact up for a later cycle to collect is what made a completed upload re-upload after
+     * process death. So a succeeded job is written and acknowledged in place, and the cycle learns about
+     * it by reading `UPLOADED` rows, not from this list.
+     *
+     * The implementation also owes the platform whatever settling it demands — the PhotoKit tier must
+     * acknowledge **every** presented job or the system reports error 50008, whether or not its guarded
+     * write applied.
+     */
+    suspend fun drainTerminals(): List<PlatformUploadJob>
 
     /** Re-point a `.retry` job at a freshly presigned [request] (the system's single free retry). */
     suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest)
-
-    /** Acknowledge a terminal [job], freeing its slot. */
-    suspend fun acknowledge(job: PlatformUploadJob)
 
     /**
      * Enumerate the asset resources changed since [sinceToken] (null / expired → a full enumeration),
@@ -47,23 +58,27 @@ interface BackgroundTransfer {
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
 }
 
-/** Terminal-ish state of a returned system job, mirroring `PHAssetResourceUploadJobState`. */
-enum class PlatformJobState { SUCCEEDED, FAILED, CANCELLED, PENDING, REGISTERED }
-
 /**
- * A platform-neutral view of a returned system upload job. [key] is recovered from the job's own
- * destination URL (the only field reliably present across the whole lifecycle — `resource` is nil
- * for succeeded jobs). [data] is the opaque `PHAssetResource` *when still available* (used to
- * re-create a retry-spent job; null for succeeded/released jobs). [handle] is the opaque underlying
- * system job (handed back to [BackgroundTransfer.retryJob] / [BackgroundTransfer.acknowledge]).
+ * A platform-neutral view of a returned system upload job — now only ever a **retry-spent failure the
+ * cycle must re-create**, since terminal facts are recorded by the platform adapter and never handed up
+ * (see [BackgroundTransfer.drainTerminals]).
+ *
+ * [key] is recovered from the job's own destination URL (the only field reliably present across the whole
+ * lifecycle — `resource` is nil for succeeded jobs). [contentType] is the type the request was created
+ * with; reporting a placeholder here is not inert, because the cycle rebuilds a retried job's `Resource`
+ * from the key alone and the object would be mistyped for the rest of its life. [data] is the opaque
+ * `PHAssetResource`, present because a job only appears here when it can still be re-created. [error] is
+ * what the platform said went wrong — carried for the engine's failure line, which is the only record of
+ * why a key is being retried.
+ *
+ * `state` and `handle` are gone with the terminal facts: one kind of job comes back now, and the adapter
+ * settles with the platform in place rather than handing a system handle up to be acknowledged later.
  */
 class PlatformUploadJob(
     val key: String,
     val contentType: String,
-    val state: PlatformJobState,
     val error: UploadError?,
     val data: Any?,
-    val handle: Any,
 )
 
 /**

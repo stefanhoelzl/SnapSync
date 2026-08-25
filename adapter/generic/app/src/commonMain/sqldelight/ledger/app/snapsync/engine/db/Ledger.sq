@@ -57,13 +57,20 @@ SET creationDate = :creationDate,
     originalFilename = :originalFilename
 WHERE key = :key AND creationDate = '';
 
--- The COMPLETED rows that carry manifest detail — the device manifest, projected. Rows still bare
+-- The SETTLED rows that carry manifest detail — the device manifest, projected. Rows still bare
 -- (`creationDate = ''`) are excluded: they are mid-backfill, and listing a resource with no capture
 -- date would put it outside every membership window rather than inside the right one.
+--
+-- `:doneStates` is bound from Kotlin's `LedgerState.isDone` rather than written as a literal here, so a
+-- state added later must be classified in one compile-checked place instead of landing silently on one
+-- side of this predicate. It resolves to exactly `COMPLETED` today, so the projection is unchanged; an
+-- UPLOADED row is deliberately NOT settled and stays out of the manifest until the cycle promotes it.
+-- `state` is selected so the mapper reads it rather than asserting it (it used to hardcode COMPLETED,
+-- which a second settled state would have made a lie).
 selectCompletedManifestRows:
-SELECT key, assetId, creationDate, role, contentType, originalFilename
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename
 FROM ledgerRow
-WHERE state = 'COMPLETED' AND creationDate != '' AND absent = 0;
+WHERE state IN :doneStates AND creationDate != '' AND absent = 0;
 
 -- Rewrite the provenance of every pre-provenance row (`eventId = ''` — rows recorded by a build
 -- before 4.sqm, or by a staged-revert build) to the live event id. Touches ONLY the sentinel:
@@ -96,14 +103,14 @@ WHERE assetId = :assetId;
 -- materializing the (large, static) completed set. Shrinks as sync drains.
 selectPending:
 SELECT assetId, key FROM ledgerRow
-WHERE state != 'COMPLETED' AND absent = 0;
+WHERE state NOT IN :doneStates AND absent = 0;
 
 -- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
 -- count. A photo is complete only when none of its rows is non-COMPLETED.
 aggregates:
 WITH perAsset AS (
     SELECT assetId,
-           SUM(CASE WHEN state != 'COMPLETED' THEN 1 ELSE 0 END) AS notDone
+           SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
     FROM ledgerRow
     WHERE absent = 0
     GROUP BY assetId
@@ -112,3 +119,57 @@ SELECT
     COUNT(CASE WHEN notDone > 0 THEN 1 END) AS pending,
     COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed
 FROM perAsset;
+
+-- Flip ONE row's state, but only while it is still REQUESTED — the guarded terminal write
+-- (capability `sync-ledger`). Two writers reach this row holding no shared lock: a platform callback on
+-- the platform's own queue, and the upload cycle on the composition lane. A read-then-write pair is not
+-- atomic against the one that does not take the lock, so the guard lives in the statement.
+--
+-- Every other column is preserved by construction — this is an UPDATE of one column, not an upsert, so
+-- assetId, attempt, eventId and all four manifest columns cannot be blanked by a caller that does not
+-- know them. That matters: the party that learns an upload terminated is a delegate holding only the key.
+markTerminal:
+UPDATE ledgerRow
+SET state = :state
+WHERE key = :key AND state = 'REQUESTED';
+
+-- How many rows the statement immediately before it changed, read INSIDE that statement's own
+-- transaction — the same mechanism `DownloadStore.sq` uses for its three callback writes, and for the
+-- same reason: "did this take effect?" is a real question here. A `markTerminal` that matches nothing
+-- means the row moved on (already terminal, or pruned), which is a different fact from "recorded" and
+-- may not be silent (`module-architecture`, "Absence is never silent").
+changedRows:
+SELECT changes();
+
+-- The rows whose bytes are stored but whose completion work has not run — what the cycle's promotion
+-- pass consumes. Whole rows, not keys: the pass needs `assetId` for the event-album placement, and the
+-- manifest detail travels with the row so promoting it cannot blank what it already carries.
+--
+-- Deliberately NOT filtered by `absent`. An asset can leave the library between the upload landing and
+-- the cycle that promotes it, and the row is still true — the bytes are on the backend, which is the one
+-- thing `absent` does not change. Excluding it would leave the row resting `UPLOADED` for good, invisible
+-- to every other read (they all filter `absent`), and never settled. The album placement it triggers is
+-- best-effort and simply finds no asset to add.
+selectUploaded:
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
+FROM ledgerRow
+WHERE state = 'UPLOADED';
+
+-- Settle an UPLOADED row once the work a completion triggers has run. Guarded like `markTerminal`, and
+-- for the same reason: it is an UPDATE of ONE column, so every other fact about the row — provenance,
+-- attempt, the manifest detail, and whether the asset has since left the library — survives by
+-- construction rather than by a caller remembering to re-state it. The earlier version re-stated the row
+-- in full and would have dropped `absent` the moment that column arrived.
+promoteUploaded:
+UPDATE ledgerRow
+SET state = 'COMPLETED'
+WHERE key = :key AND state = 'UPLOADED';
+
+-- The REQUESTED keys — the candidates for stranded reconciliation (capability
+-- `ios-url-session-upload`). Deliberately NOT the whole non-settled backlog: a FAILED row has already
+-- been adjudicated, and re-surfacing it every cycle re-writes the row, signals a change, and reports a
+-- loss that did not happen. That defect put one key in a device log as "stranded" twelve times inside a
+-- single process, seven of them within sixteen seconds.
+selectRequestedKeys:
+SELECT key FROM ledgerRow
+WHERE state = 'REQUESTED';

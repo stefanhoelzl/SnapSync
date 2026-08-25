@@ -90,10 +90,12 @@ class SyncEngine(
     /** Pure query: read the ledger, mint for `Work`, write nothing (recording is [started]). */
     private suspend fun decide(resource: Resource): SyncDecision {
         val entry = ledger.entry(resource.filename)
-        // COMPLETED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
+        // COMPLETED/UPLOADED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
+        // UPLOADED skips for the same reason COMPLETED does — its bytes ARE stored; what it still owes is
+        // the album placement and the notify, which the cycle's promotion pass performs, never a re-upload.
         // FAILED or absent → fresh upload. Only new keys ever upload.
         return when (entry?.state) {
-            LedgerState.COMPLETED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
+            LedgerState.COMPLETED, LedgerState.UPLOADED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
             LedgerState.FAILED, null -> SyncDecision.Upload(mint(resource, attempt = 0))
         }
     }

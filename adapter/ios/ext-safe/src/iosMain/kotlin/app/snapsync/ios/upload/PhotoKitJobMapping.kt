@@ -2,7 +2,6 @@ package app.snapsync.ios.upload
 
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CreateResult
-import app.snapsync.ports.PlatformJobState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLRequest
@@ -50,11 +49,21 @@ import platform.Photos.PHPhotosErrorLimitExceeded
  * Decision record: `changes/archive/2026-08-09-extract-upload-platform-mappings` (design D2).
  */
 
+/**
+ * Terminal-ish state of a returned system job, mirroring `PHAssetResourceUploadJobState`.
+ *
+ * It lives here rather than on the shared `BackgroundTransfer` port because this is now its only reader:
+ * terminal facts no longer cross that seam (the adapter records them into the ledger and acknowledges in
+ * place), so a platform-neutral job state had no one left to be neutral for. It is PhotoKit vocabulary,
+ * and an adapter is exactly where technology vocabulary belongs.
+ */
+enum class PhotoKitJobState { SUCCEEDED, FAILED, CANCELLED, PENDING, REGISTERED }
+
 /** The disposition of one fetched system job, before the loop attaches what cannot leave it. */
 sealed interface FetchedJob {
 
     /** The job maps to a ledger key and should be surfaced to the cycle. */
-    data class Emit(val key: String, val state: PlatformJobState, val error: UploadError?) : FetchedJob
+    data class Emit(val key: String, val state: PhotoKitJobState, val error: UploadError?) : FetchedJob
 
     /**
      * The job carries no recoverable ledger key. It is **still acknowledged**: every presented job must
@@ -86,11 +95,11 @@ fun classifyPhotoKitJob(
 }
 
 /**
- * `PHAssetResourceUploadJobState` → the platform-neutral [PlatformJobState].
+ * `PHAssetResourceUploadJobState` → the platform-neutral [PhotoKitJobState].
  *
  * All five states the SDK declares are named. The `else` therefore means exactly one thing — a value no
  * SDK header carries — rather than doubling as the arm that handles `Pending`. It maps to
- * [PlatformJobState.PENDING], which the terminal-job drain adjudicates as a retry-spent failure: the
+ * [PhotoKitJobState.PENDING], which the terminal-job drain adjudicates as a retry-spent failure: the
  * key is recorded `FAILED`, a fresh job is created if the resource survives, and the job is
  * acknowledged either way. That is safe (the edge PUT is idempotent and keys are deterministic, so a
  * re-send overwrites the same object) but it is a guess, which is why the declared set is pinned at
@@ -100,13 +109,13 @@ fun classifyPhotoKitJob(
  * The `else` cannot be removed: cinterop renders `NS_ENUM` as a typealias over `NSInteger` plus loose
  * constants, never a Kotlin `enum class`, so a `when` over one can never be compiler-exhaustive.
  */
-fun photoKitJobState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {
-    PHAssetResourceUploadJobStateSucceeded -> PlatformJobState.SUCCEEDED
-    PHAssetResourceUploadJobStateFailed -> PlatformJobState.FAILED
-    PHAssetResourceUploadJobStateCancelled -> PlatformJobState.CANCELLED
-    PHAssetResourceUploadJobStateRegistered -> PlatformJobState.REGISTERED
-    PHAssetResourceUploadJobStatePending -> PlatformJobState.PENDING
-    else -> PlatformJobState.PENDING
+fun photoKitJobState(state: PHAssetResourceUploadJobState): PhotoKitJobState = when (state) {
+    PHAssetResourceUploadJobStateSucceeded -> PhotoKitJobState.SUCCEEDED
+    PHAssetResourceUploadJobStateFailed -> PhotoKitJobState.FAILED
+    PHAssetResourceUploadJobStateCancelled -> PhotoKitJobState.CANCELLED
+    PHAssetResourceUploadJobStateRegistered -> PhotoKitJobState.REGISTERED
+    PHAssetResourceUploadJobStatePending -> PhotoKitJobState.PENDING
+    else -> PhotoKitJobState.PENDING
 }
 
 /**

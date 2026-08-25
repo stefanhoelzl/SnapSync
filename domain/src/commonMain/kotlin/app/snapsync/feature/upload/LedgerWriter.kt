@@ -59,6 +59,20 @@ class LedgerWriter(
     /** The COMPLETED rows the device manifest projects from. */
     suspend fun completedManifestRows(): List<LedgerEntry> = backend.completedManifestRows()
 
+    /** The rows the platform recorded `UPLOADED` — what the cycle's promotion pass consumes. */
+    suspend fun uploadedRows(): List<LedgerEntry> = backend.uploadedRows()
+
+    /**
+     * Promote one `UPLOADED` row to `COMPLETED` — the cycle's half of the two-phase completion, run once
+     * the event-album placement and the notify have been dealt with.
+     *
+     * Delegates to the store's guarded update rather than writing the row back: a re-statement would have
+     * to name every column, and would silently drop whichever one it had not been taught about. This is
+     * the write that makes a row eligible for the device manifest, so blanking its detail here would drop
+     * the photo out of the event union at the exact moment it became listable.
+     */
+    suspend fun promote(key: String): Boolean = backend.promoteUploaded(key)
+
     /**
      * Record a state transition, carrying the manifest detail off the resource that caused it — and
      * **never erasing** detail the row already holds.

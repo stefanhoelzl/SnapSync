@@ -101,7 +101,9 @@ object UploadExtensionRoot {
         IosDiscovery(log, PhotoKitCandidateSource())
     }
     private val platform: IosPhotoKitUploadPlatform by lazy {
-        IosPhotoKitUploadPlatform(log, discovery)
+        // The adapter records terminal outcomes into the ledger and acknowledges in place; the cycle's
+        // promotion pass then places in the album, notifies, and promotes. Same store the cycle gets.
+        IosPhotoKitUploadPlatform(log, discovery, ledgerStore)
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 

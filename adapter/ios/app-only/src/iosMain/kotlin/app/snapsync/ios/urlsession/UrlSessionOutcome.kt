@@ -68,17 +68,26 @@ fun urlSessionUploadError(statusCode: Long, error: NSError?): UploadError =
     UploadError.Unknown(error?.let { "${it.domain}:${it.code}" } ?: "http:$statusCode")
 
 /**
- * The ledger keys stranded since the last drain: `REQUESTED` in the ledger, with **no live task** and
- * **no completion delivered this round**. Each is surfaced as a terminal failure so the row flips
- * `REQUESTED`→`FAILED` and a later full enumeration re-uploads it — the precise replacement for the
- * PhotoKit tier's blanket `clearRequested`.
+ * The `REQUESTED` keys the session no longer holds a task for — the transfers that were lost.
  *
- * This is why the tier recovers from process death at all: a task lost when the app was force-quit
- * leaves a `REQUESTED` row that the engine treats as in-flight and never re-issues, so without this
+ * Each is recorded `FAILED` so a later full enumeration re-uploads it. This is why the tier recovers from
+ * process death at all: a task the OS dropped, or a force-quit cancelled, delivers **no completion**, so
+ * nothing else will ever move that row — and the engine never re-issues a `REQUESTED` key, so without this
  * subtraction the photo is abandoned silently and permanently.
  *
- * Pure set arithmetic over `String` — no platform type reaches it, which is what makes the recovery
- * rule assertable without a session, a task, or a device.
+ * [pending] is `REQUESTED` rows, exactly — never the whole non-settled backlog. A `FAILED` row has already
+ * been adjudicated, and re-reporting it every cycle writes the row again, signals a change, and claims a
+ * loss that did not happen: a field log shows one key "stranded" twelve times inside a single process,
+ * seven of them within sixteen seconds.
+ *
+ * There is no third term. This used to subtract the completions *drained this round* as well, because a
+ * completion lived in memory until a cycle collected it, and a key could be both `REQUESTED` and already
+ * finished. It cannot be any more — the outcome is recorded the moment the platform reports it, so a
+ * finished key is no longer `REQUESTED` and never enters this set. The subtraction had become a no-op the
+ * adapter was passing an empty set to.
+ *
+ * Pure set arithmetic over `String` — no platform type reaches it, which is what makes the recovery rule
+ * assertable without a session, a task, or a device.
  */
-fun strandedKeys(pending: Set<String>, live: Set<String>, drained: Set<String>): List<String> =
-    pending.filter { it !in live && it !in drained }
+fun strandedKeys(pending: Set<String>, live: Set<String>): List<String> =
+    pending.filter { it !in live }
