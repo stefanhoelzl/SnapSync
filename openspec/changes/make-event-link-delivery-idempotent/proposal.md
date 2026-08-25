@@ -10,13 +10,15 @@ discriminator is **whether the app is already running**, not the link's source a
 this was first framed. Reported by a member as Bugsink `SNAPSYNC-25`: *"clicked another invite, did not
 get the switch dialog"*, and every guest who receives an invite while the app is resident hits it.
 
-The cause is ours, not Apple's. A scene has exactly **one** delegate; installing our own for the cold
-path means SwiftUI's is never created, and SwiftUI's machinery is what feeds `.onOpenURL`. On iOS 26
-that costs nothing because our delegate's warm path works there. On iOS 18 the SwiftUI path is the
-only warm path, and we had disabled it. The same signature is reported independently in Apple Developer
-Forums 758864 and 746362, where DTS answers that `scene(_:continue:)` is a UIKit-app path and a SwiftUI
-app receives the link at `.onOpenURL` — and where a barebones project works precisely because it has no
-custom scene delegate.
+**Why the platform behaves this way is not established, and this change does not assert it.** The
+outcome is: SwiftUI's `.onOpenURL` delivers the link on iOS 18.7.9 where the scene delegate's
+continuation does not. A tempting explanation — that our custom scene delegate displaces SwiftUI's and
+starves the modifier — is **contradicted by our own record**: the 2026-07-16 matrix measured
+`.onOpenURL` as failing both cold and warm on iOS 26.5.2 *with SwiftUI's own delegate in place*, and it
+fires today *with a custom one installed*, which is the opposite of what starvation predicts. Apple
+Developer Forums 758864 and 746362 report our exact signature and DTS answers that a SwiftUI app
+receives the link at `.onOpenURL` — corroborating the outcome, not any mechanism. The fix rests on the
+outcome alone, and the idempotence rule below is indifferent to the cause.
 
 ## What Changes
 

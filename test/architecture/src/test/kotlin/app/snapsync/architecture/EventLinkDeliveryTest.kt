@@ -9,8 +9,9 @@ import kotlin.test.fail
  * **The Swift shell keeps the event link's delivery seam** (capability `architecture-guards`).
  *
  * The first guard over Swift, and it exists because of what happened without one. On 2026-07-16 the
- * app shipped receiving event links via SwiftUI's `.onOpenURL` — which **never fires for a Universal
- * Link** — so every invite silently did nothing while every automated check stayed green: the decoder
+ * app shipped receiving event links via SwiftUI's `.onOpenURL` **as its only hook**, and that hook was
+ * measured not to fire in that configuration — so every invite silently did nothing while every
+ * automated check stayed green: the decoder
  * was tested on two targets, Apple's CDN had fetched and approved the AASA, the entitlement was verified
  * in the installed binary, and a guard held the link domain across four files. The one seam none of that
  * covers is `iosApp/`, which the project declares wiring-only and untested. `:test:architecture` read
@@ -73,9 +74,12 @@ class EventLinkDeliveryTest {
         |Universal links are delivered as an NSUserActivity to the SCENE delegate, because a SwiftUI
         |WindowGroup is a scene (Apple: "Supporting universal links in your app"). Each of these was
         |measured on a device on 2026-07-16 and is NOT sufficient:
-        |  * .onOpenURL                                  — the application(_:open:options:) path a custom
-        |                                                  scheme uses. NEVER fires for a universal link.
-        |                                                  THIS SHIPPED, and every invite silently died.
+        |  * .onOpenURL                                  — measured ✗/✗ in July, as the SOLE hook and with
+        |                                                  SwiftUI's own scene delegate in place. THIS
+        |                                                  SHIPPED, and every invite silently died. It is
+        |                                                  wired again now ALONGSIDE the delegate, where
+        |                                                  it is measured to deliver; why the two
+        |                                                  measurements differ is unexplained.
         |  * .onContinueUserActivity                     — WARM only in July's matrix, and it CANNOT
         |                                                  be added alongside this delegate: a scene has
         |                                                  ONE delegate, this is it, so SwiftUI's own —
@@ -141,6 +145,41 @@ class EventLinkDeliveryTest {
             "$shellPath forwards onSceneWillConnect but not BEFORE iterating userActivities. Inside " +
                 "the loop it inherits the very hole it exists to close: the call is lexically present " +
                 "and runs zero times when the array is empty.$whyItMatters",
+        )
+    }
+
+    /**
+     * **SwiftUI's delivery path** (spec `architecture-guards`, "The Swift shell keeps the event link's
+     * delivery seam"; spec `ios-app-shell`).
+     *
+     * `.onOpenURL` on the `WindowGroup` is what carries a link opened while the app is ALREADY RUNNING
+     * on iOS 18.7.9, where the scene delegate's continuation never arrives however the link was opened
+     * (Bugsink `SNAPSYNC-39`/`-43`/`-44`, builds 681/683: `willContinueUserActivityWithType` announces
+     * and nothing follows, from Notes, WhatsApp and Safari's smart banner alike).
+     *
+     * This is the assertion most likely to be met by a reader who "knows" it is wrong, because this
+     * repo's own shell said so for six weeks — *"`.onOpenURL` never fires for a universal link, cold or
+     * warm. THIS SHIPPED, and every invite silently died."* Both measurements are real and WHY THEY
+     * DIFFER IS UNEXPLAINED: July's was taken with SwiftUI's own scene delegate in place, and the
+     * modifier fires now with a custom one installed. Do not delete this on the strength of the older
+     * line, and do not restore a mechanism story to justify either — every invite dies again if you are
+     * wrong, silently, on iOS 18, with CI green.
+     */
+    @Test
+    fun `the shell keeps SwiftUI's delivery path`() {
+        assertTrue(
+            Regex("""\.onOpenURL\s*\{""").containsMatchIn(code),
+            "$shellPath no longer declares `.onOpenURL` on the WindowGroup. That is the path a link takes " +
+                "when it is opened while the app is ALREADY RUNNING on iOS 18.7.9, where the scene " +
+                "delegate's continuation never fires. It reads like cruft — this file argued for six " +
+                "weeks that the modifier never fires for a universal link — and it is not.$whyItMatters",
+        )
+        assertTrue(
+            code.contains("SnapSyncRoot.shared.onSwiftUiOpenUrl"),
+            "$shellPath declares `.onOpenURL` but no longer forwards to " +
+                "SnapSyncRoot.shared.onSwiftUiOpenUrl. A delivery hook that reaches no Kotlin delivers " +
+                "nothing, and its own entry name is what lets a dump COUNT deliveries — which is how " +
+                "'exactly once' is verified now that more than one hook is live.$whyItMatters",
         )
     }
 

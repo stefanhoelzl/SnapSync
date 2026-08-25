@@ -26,13 +26,18 @@ by 678's 5/5 without it; (2) that the discriminator was warm-vs-cold — killed 
 (3) that it was WhatsApp or an in-app browser — killed by Notes, which has neither. The surviving
 discriminator is **whether the app is already running**.
 
-**The cause is ours.** A scene has exactly one delegate. `application(_:configurationForConnecting:)`
-installs ours, so SwiftUI's is never created — and SwiftUI's machinery is what feeds `.onOpenURL`.
-Measured 2026-08-04: with our delegate installed, 8 warm deliveries, 8 hits on `scene(_:continue:)`,
-zero on the SwiftUI modifier. On iOS 26 that costs nothing. On iOS 18 the SwiftUI path is the only
-warm path and we had switched it off. Independently reported with the identical signature — SwiftUI +
-custom scene delegate, `willContinue` fires, `continue` does not, cold fine, *"works in a barebones
-project"* — in Apple Developer Forums 758864 and 746362.
+**The cause is not established, and this design does not claim one.** The outcome is what is measured:
+with both hooks live, delivery works on both OS majors. The obvious story — that our custom scene
+delegate displaces SwiftUI's and starves `.onOpenURL` — is **contradicted by our own record**, and the
+contradiction is worth stating precisely because it was believed for several hours: the 2026-07-16
+matrix measured `.onOpenURL` as ✗ cold and ✗ warm on iOS 26.5.2 **with SwiftUI's own delegate in
+place**, and the modifier fires today **with a custom delegate installed**. Starvation predicts the
+reverse. Apple Developer Forums 758864 and 746362 report the identical signature and DTS answers that a
+SwiftUI app receives the link at `.onOpenURL` — which corroborates the outcome and settles no mechanism.
+
+That is the fourth mechanism this investigation proposed and could not sustain, after
+`willContinueUserActivityWithType`, warm-vs-cold, and the link's source. It is the reason decision 1
+does not depend on knowing why.
 
 ## Goals / Non-Goals
 
@@ -142,6 +147,10 @@ invite — while leaving iOS 26 healthy. There is no safer prior state.
   closest to the pending-join state it keys on) or `:domain`? The gate already owns "re-scanning the
   already-joined event is a no-op", which is the same species of rule, and that argues for keeping
   them together.
+- **Why does `.onOpenURL` fire now and not in July, with the delegate configuration inverted?**
+  Unexplained, and deliberately not guessed at again. Settling it needs one probe — this branch minus
+  the scene delegate — to see whether the modifier still fires without it. Orthogonal to shipping the
+  fix, which rests on the outcome.
 - **Is the SE2's `.onOpenURL` intermittency a dedupe inside SwiftUI?** Both firings on iOS 26.6
   carried the same payload, and later taps of the same link did not re-fire. If SwiftUI itself
   suppresses a repeated identical URL, that is a second, invisible layer of the behaviour this change

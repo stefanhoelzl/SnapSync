@@ -284,9 +284,14 @@ iOS matches the AASA, foregrounds the app, and the app drops the URL — indisti
 and on an unjoined device the create screen it lands on is the correct resting state. That shipped
 (2026-07-16). The link is delivered as an `NSUserActivity` to the **scene** delegate — a SwiftUI
 `WindowGroup` is a scene — so `scene(_:willConnectTo:options:)` (app NOT running) and `scene(_:continue:)`
-(running) are the only hooks that work. `.onOpenURL` never fires for a universal link;
-`.onContinueUserActivity` is warm-only; `application(_:continue:)` is never called in a SwiftUI app. A
-`:test:architecture` guard now pins this (`EventLinkDeliveryTest`).
+(app running) both carry links. **So does SwiftUI's `.onOpenURL` on the `WindowGroup`, and it is not
+optional**: on iOS 18.7.9 the scene delegate's `continue` never fires while the app is already running,
+from any source, and `.onOpenURL` is the only path that delivers there (Bugsink `SNAPSYNC-39`/`-43`/`-44`,
+builds 681/683/687). It is intermittent on iOS 26.6 (2 of 4), so neither hook is sufficient alone and
+both are wired; the duplicates they produce are absorbed by the join gate, which acts on a repeated link
+once. `.onContinueUserActivity` is warm-only; `application(_:continue:)` is never called in a SwiftUI
+app (re-measured on iOS 18, build 683: zero hits on all three app-delegate continuation callbacks). A
+`:test:architecture` guard pins the scene delegate AND the modifier (`EventLinkDeliveryTest`).
 
 **The authoritative on-device check is `debug.log`, not the screen** (spec `ios-app-shell`): read the
 `[onOpenUrl]` lines. A **cold** delivery is an `onOpenUrl` sharing a timestamp with

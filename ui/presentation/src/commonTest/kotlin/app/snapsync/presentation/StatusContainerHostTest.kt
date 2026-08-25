@@ -917,6 +917,116 @@ class StatusContainerHostTest {
     }
 
     /**
+     * The platform delivers the same link TWICE (capability `event-link`): measured on build 687, once on
+     * an iOS 18.7.9 cold launch ~130 ms apart and again on iOS 26.6 both while running (8 ms) and cold
+     * (105 ms), because the scene delegate and SwiftUI's `.onOpenURL` are both live and neither is
+     * reliable alone. "Exactly once" is therefore enforced here, not assumed of the hooks.
+     *
+     * `loads` is the oracle rather than the state: a second `startPending` would reset the phase to
+     * Loading and re-fetch, and the re-fetch is the visible cost.
+     */
+    @Test
+    fun `the same link delivered twice starts one pending join`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        var loads = 0
+        val ready = JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED),
+            configFake = FakeConfig(SAMPLE_CONFIG),
+            loadJoinDetails = { loads++; JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+        ).test(this) {
+            runOnCreate()
+            val link = encodeEventUrl(EventLinkPayload(other))
+            containerHost.onOpenUrl(link)
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, ready)))
+            containerHost.onOpenUrl(link).join()
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(1, loads)
+    }
+
+    /**
+     * A **different** link still supersedes — the duplicate rung keys on the event, not on "some link
+     * already arrived", so switching from one invite to another remains possible without dismissing.
+     */
+    @Test
+    fun `a different link supersedes the pending join`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val third = "33333333-3333-4333-8333-333333333333"
+        val ready = JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED),
+            configFake = FakeConfig(SAMPLE_CONFIG),
+            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, ready)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(third)))
+            // The synchronous fake resolves within the intent, so the Loading frame collapses into Ready.
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(third, ready)))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    /**
+     * The same link after the member dismissed the surface is a fresh delivery — the boundary is what the
+     * member is currently deciding, not a timer and not "this link was seen once".
+     */
+    @Test
+    fun `the same link after a dismissal is acted on again`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        var loads = 0
+        val ready = JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED),
+            configFake = FakeConfig(SAMPLE_CONFIG),
+            loadJoinDetails = { loads++; JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+        ).test(this) {
+            runOnCreate()
+            val link = encodeEventUrl(EventLinkPayload(other))
+            containerHost.onOpenUrl(link)
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, ready)))
+            containerHost.onCancelSwitch().join()
+            containerHost.onOpenUrl(link).join()
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(2, loads)
+    }
+
+    /**
+     * The sharpest case: `autoJoin=true` auto-confirms with no surface and no tap, so before the duplicate
+     * rungs it was the one path a doubled delivery would double-PROVISION. The rungs are tested ahead of
+     * the autoJoin rung for exactly this reason.
+     */
+    @Test
+    fun `an autoJoin link delivered twice enrolls once`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val configFake = FakeConfig(null)
+        var joins = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { id, name, _, _, _, _, _, _, _ ->
+                joins++
+                configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING))
+                true
+            },
+        ).test(this) {
+            runOnCreate()
+            val link = encodeEventUrl(EventLinkPayload(other, autoJoin = true))
+            containerHost.onOpenUrl(link).join()
+            containerHost.onOpenUrl(link).join()
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(1, joins)
+    }
+
+    /**
      * The switch's confirm runs the **leave and nothing else** (capability `join-event`). It commits no
      * join: once the leave clears the config, the surviving pending join reduces — through the reduction's
      * config-absent rung — to the regular full-screen join surface, where the member makes the choices the

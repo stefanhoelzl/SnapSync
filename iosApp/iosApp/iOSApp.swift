@@ -126,8 +126,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 //
 // Everything else was tried on device (2026-07-16). Read this table before deleting anything — each
 // row is the reason some OTHER hook exists, and the two halves must both survive:
-//   * `.onOpenURL` — the `application(_:open:options:)` path the retired `snapsync://` scheme used.
-//     Never fires for a universal link, cold or warm. THIS SHIPPED, and every link silently died.
+//   * `.onOpenURL` — measured ✗ cold and ✗ warm in July's matrix, with SwiftUI's own scene delegate in
+//     place. THIS SHIPPED as the sole hook, and every link silently died. It is wired again NOW, on the
+//     WindowGroup below, because it is measured to deliver where the scene delegate does not — see the
+//     note there, including why the difference between the two measurements is unexplained.
 //   * `AppDelegate.application(_:continue:restorationHandler:)` — never called at all: a SwiftUI app
 //     gets only `didFinishLaunchingWithOptions` and `applicationWillTerminate` on its app delegate.
 //   * `.onContinueUserActivity` — measured **warm YES / cold NO** in July, and it is TEMPTING to add
@@ -204,6 +206,23 @@ final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
         SnapSyncRoot.shared.onSceneWillContinueActivity(activityType: userActivityType)
     }
 
+    // The third of UISceneDelegate's continuation trio, and the only one that NAMES a failure: UIKit
+    // calls it when it attempted a continuation and could not finish. Measured NEVER to fire on iOS
+    // 18.7.9 (builds 683/687) — UIKit announces via `willContinueUserActivityWithType` and then abandons
+    // the work without using this path at all, which is why the failure was diagnosable only as a
+    // silence for a whole day. It stays wired so the next such silence is not: absent AND never-called
+    // are the same observation only while the hook does not exist.
+    func scene(
+        _ scene: UIScene,
+        didFailToContinueUserActivityWithType userActivityType: String,
+        error: Error
+    ) {
+        SnapSyncRoot.shared.onSceneDidFailToContinueActivity(
+            activityType: userActivityType,
+            description: error.localizedDescription
+        )
+    }
+
     // OBSERVATION ONLY: the scene lifecycle, so a warm link activation is visible as SOMETHING even
     // when no continuation arrives. Without these, a warm delivery that fails looks exactly like a
     // link iOS never routed to us — which is the pair SNAPSYNC-25 could not tell apart. Distinct
@@ -243,8 +262,37 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // NOTE: the event link does NOT arrive here, and `.onContinueUserActivity` CANNOT be
-                // added to make it — see the measured note on the scene delegate above.
+                // SwiftUI's delivery path — the one that carries a link opened while the app is ALREADY
+                // RUNNING on iOS 18.7.9, where the scene delegate's continuation never arrives.
+                //
+                // This file argued the opposite for six weeks: "`.onOpenURL` never fires for a universal
+                // link, cold or warm. THIS SHIPPED, and every invite silently died." That measurement was
+                // real — and so is this one. WHY THEY DIFFER IS UNEXPLAINED, and is deliberately not
+                // guessed at here.
+                //
+                // The tempting story is that our custom scene delegate displaces SwiftUI's and starves
+                // this modifier. Our own record contradicts it: July's ✗/✗ was measured with SwiftUI's
+                // OWN delegate in place, and the modifier fires today with a custom one installed —
+                // the reverse of what starvation predicts. Four mechanisms have now been proposed for
+                // this defect and abandoned (`willContinueUserActivityWithType`, warm-vs-cold, the
+                // link's source, and starvation); the fix depends on none of them.
+                //
+                // NEITHER PATH IS RELIABLE ALONE, both measured: the scene delegate's continuation never
+                // fires on 18.7.9 while running (builds 681/683 — from Notes, WhatsApp and Safari's
+                // banner alike), and this modifier fired for only 2 of 4 deliveries on 26.6 (build 687).
+                // The union delivered in every configuration tested, so both are declared and the
+                // duplicates they produce are absorbed by the gate, which acts on a repeated link once
+                // (capability `event-link`). That is why "delivery exactly once" is no longer a property
+                // we hope the hooks have.
+                //
+                // Reported independently with our exact signature — SwiftUI + custom scene delegate,
+                // `willContinue` fires, `continue` does not, cold fine, "works in a barebones project" —
+                // in Apple Developer Forums 758864 and 746362, where DTS answers that `scene(_:continue:)`
+                // is a UIKit-app path and a SwiftUI app receives the link here. A barebones project works
+                // because it has no custom scene delegate to starve SwiftUI's.
+                .onOpenURL { url in
+                    SnapSyncRoot.shared.onSwiftUiOpenUrl(url: url.absoluteString)
+                }
         }
     }
 }

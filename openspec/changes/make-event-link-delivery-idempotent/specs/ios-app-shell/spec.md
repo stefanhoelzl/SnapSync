@@ -51,9 +51,11 @@ the event link exists (capability `event-link`).
 
 Link delivery SHALL be independent of scene composition: a link SHALL reach `onOpenUrl` whether or not a
 scene has been composed. The delivery hooks SHALL include **both** the scene delegate's callbacks and
-SwiftUI's `.onOpenURL` on the `WindowGroup`. Those are fed by different machinery — a scene has exactly
-one delegate, so installing our own means SwiftUI's is never created and its modifier is starved — which
-is why neither covers every case and why both are declared here rather than one being chosen.
+SwiftUI's `.onOpenURL` on the `WindowGroup`. Both are declared because neither covers every case —
+measured, on the builds named below — and NOT because the mechanism that makes each fire is understood.
+It is not: the same modifier was measured failing in an earlier delegate configuration and firing in
+this one, which no available explanation accounts for. The contract is therefore the outcome, and the
+redundancy is what makes the outcome robust to an explanation nobody has.
 
 The string forwarded SHALL be the **complete** URL including its fragment, which carries the entire
 payload (capability `event-link`) — a truncated URL is an empty invite.
