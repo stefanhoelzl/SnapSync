@@ -23,7 +23,7 @@ Decision record: `changes/archive/2026-07-04-add-url-session-upload` (the tier),
 `changes/archive/2026-07-12-fix-download-session-lifecycle` (why no lifecycle verb may invalidate the
 background session — the `disable` bullet used to instruct exactly that, and the sibling download client
 that followed it aborted in production),
-`changes/correct-simulator-background-session-claims` (why a background `URLSession` transfers nothing on
+`changes/archive/2026-08-25-correct-simulator-background-session-claims` (why a background `URLSession` transfers nothing on
 an iOS simulator, and why the one-transport requirement is kept anyway).
 
 The **App-driven lifecycle** requirement (re-provision, leave) and the tier-force flag were corrected in
@@ -581,7 +581,7 @@ were tested — ad-hoc signature, an Apple Development identity, no signature at
 of which works. The daemon logs `(null)` and then drops the connection; it does not state that as its
 reason, so the causal link is a correlation across those clients rather than an explicit refusal message.
 ⏰ Re-measure at the next iOS major. Decision record:
-`changes/correct-simulator-background-session-claims`.
+`changes/archive/2026-08-25-correct-simulator-background-session-claims`.
 
 This requirement therefore rests on a **choice**, not on host equivalence: a simulator-only foreground
 downgrade would make that host appear to work while removing the only host that exercises
