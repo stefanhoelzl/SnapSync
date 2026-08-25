@@ -7,7 +7,7 @@
 	     from "development" to "debugging" (the old spelling warns as deprecated). -->
 	<key>method</key>
 	<string>debugging</string>
-	<!-- Apple Team ID (same value as TEAM_ID in Config.xcconfig). -->
+	<!-- Apple Team ID (same value as TEAM_ID in the generated Configuration/Deployment.xcconfig). -->
 	<key>teamID</key>
 	<string>E9Z8BADH58</string>
 	<!-- Auto-managed signing: xcodebuild -allowProvisioningUpdates reuses the imported Apple

@@ -52,14 +52,39 @@ RID=$(gh run list -w ssh-mac.yml -L1 --json databaseId -q '.[0].databaseId')
 # 4. Get the host from the ssh-mac-host ARTIFACT (logs are unreadable mid-run; v4 artifacts are)
 until gh run download "$RID" -n ssh-mac-host -D "$S/host" 2>/dev/null; do sleep 5; done
 HOST=$(cat "$S/host/ssh-mac-host.txt")                        # = <random>.trycloudflare.com
-# 5. Connect (runner user is `runner`)
-alias sshmac='ssh -i "$S/ssh-mac" -o StrictHostKeyChecking=no \
-  -o ProxyCommand="'"$S"'/cloudflared access ssh --hostname %h" runner@<HOST>'
+# 5. Connect (runner user is `runner`). Write the ssh invocation to a WRAPPER SCRIPT, not an alias:
+#    rsync's `-e` re-splits what you hand it, and the ProxyCommand's own quotes do not survive that —
+#    you get rsync's bare usage dump from the REMOTE side, which reads like a flag typo rather than a
+#    quoting fault. A wrapper has no quoting to lose, and `-e "$S/sshmac.sh"` is then trivially correct.
+cat > "$S/sshmac.sh" <<EOF
+#!/bin/sh
+exec ssh -i "$S/ssh-mac" -o StrictHostKeyChecking=no -o BatchMode=yes \\
+  -o ProxyCommand="$S/cloudflared access ssh --hostname %h" "\$@"
+EOF
+chmod +x "$S/sshmac.sh"
+sshmac() { "$S/sshmac.sh" runner@$HOST "$@"; }
 # 6. Iterate. NB: $RUNNER_TEMP is UNSET in an ssh shell (it is a GH-Actions-step var) — write outputs
 #    under $HOME, not $RUNNER_TEMP, or paths resolve to read-only "/".
-rsync -az --delete -e "..." --exclude .git --exclude build --exclude .gradle ./ runner@<HOST>:snapsync/
+rsync -a --delete --protocol=29 -e "$S/sshmac.sh" \
+  --exclude .git --exclude build --exclude .gradle --exclude .kotlin ./ runner@$HOST:snapsync/
 sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
 ```
+
+⚠️ **`--protocol=29` is REQUIRED, and omitting it fails in a way that names nothing.** macOS 26 ships
+**openrsync** (`openrsync: protocol version 29`, self-described as "rsync version 2.6.9 compatible"),
+not GNU rsync — Apple replaced it. A modern local rsync (3.2.7 here) negotiates protocol 31 and sends
+options openrsync does not accept, so the remote prints its **whole usage block** and the local end
+reports:
+
+```
+rsync: connection unexpectedly closed (0 bytes received so far) [sender]
+rsync error: error in rsync protocol data stream (code 12) at io.c(232) [sender=3.2.7]
+```
+
+Nothing in that says "different rsync implementation" — it reads as a bad flag, and the usage dump
+invites you to go hunting through your own options. `-z` is one of the casualties, hence `-a` above
+rather than `-az`. Measured 2026-08-25 on macos-26 / Xcode 26.6; check `rsync --version` on the runner
+before assuming otherwise, since this is an image property and Apple may move again.
 
 Do **not** wrap the `until gh run download` poll in `ch-bg`: that poll is the workspace genuinely
 waiting on its own build, so it *should* read as busy (CLAUDE.md, *Agent harness limits*). `ch-bg` is
@@ -122,6 +147,18 @@ unrecoverable. This is why we now GENERATE the claim instead of narrowing the gr
 narrowing only ever fixes the wildcard you already know about (`associated-domains` was narrowed in
 July; `keychain-access-groups` sat there unnarrowed the whole time and nobody connected the two).
 
+⚠️ **A DONATED WILDCARD IS ONE WAY IN; A GARBAGE SUBSTITUTION IS THE OTHER.** `build_ent` is only as
+good as the values it interpolates, and an EMPTY one lands in the same place by a different road:
+`$(AppIdentifierPrefix)` → a bare `.`, so the binary claims `.app.snapsync.shared` and the app boots with
+no device id, exactly as above. This is not hypothetical — it happened on 2026-08-25, because
+`TEAM_ID`/`ASSOCIATED_DOMAIN` had moved into the generated `Deployment.xcconfig` and this step still
+awked them out of `Config.xcconfig`, which matches nothing and yields the empty string in silence.
+Neither existing check could see it: the wildcard guard tests for the ABSENCE of a leaked grant, and
+`.app.snapsync.shared` contains no wildcard; `codesign -v` validates the signature, not the claim.
+Hence the fail-closed checks below and the POSITIVE post-sign assertion beside the negative one — and
+in the repo, a `:test:architecture` gate that no file reads a fragment-owned key out of
+`Config.xcconfig` (capability `deployment-configuration`).
+
 The profile-resolve supplied THREE things for free that the repo `.entitlements` do NOT carry —
 `application-identifier`, `com.apple.developer.team-identifier`, and `get-task-allow`. The first is
 MANDATORY: without it the install is refused ("Application is missing the application-identifier
@@ -138,9 +175,18 @@ ID=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $
 APP="SnapSync.xcarchive/Products/Applications/SnapSync.app"
 EXT="$APP/Extensions/BackgroundUploadExtension.appex"          # iOS 26 uses Extensions/, NOT PlugIns/
 PB=/usr/libexec/PlistBuddy
-CFG="$SRC/Configuration/Config.xcconfig"
+# The GENERATED fragment, NOT Config.xcconfig. `TEAM_ID` and `ASSOCIATED_DOMAIN` moved here (capability
+# `deployment-configuration`); Config.xcconfig now names them only in a header comment, so awking IT
+# matches nothing and both variables come back EMPTY — the trap described above. xcodebuild's Gradle
+# build phase runs the resolver, so this file exists by the time the archive does. The rendered domain
+# already carries its `applinks:` prefix; nothing below prepends it.
+CFG="$SRC/Configuration/Deployment.xcconfig"
 TEAM=$(awk -F= '/^TEAM_ID/{gsub(/[ \t]/,"",$2);print $2}' "$CFG")
 DOMAIN=$(awk -F= '/^ASSOCIATED_DOMAIN/{gsub(/[ \t]/,"",$2);print $2}' "$CFG")
+# FAIL CLOSED. An empty value here is not a missing nicety — it signs a WRONG IDENTITY that every later
+# check passes. If either fires, run `python3 scripts/resolve-deployment.py prod` and re-archive.
+[ -n "$TEAM" ]   || { echo "TEAM_ID empty in $CFG — refusing to sign"; exit 1; }
+[ -n "$DOMAIN" ] || { echo "ASSOCIATED_DOMAIN empty in $CFG — refusing to sign"; exit 1; }
 build_ent() {                                                  # $1 = repo .entitlements, $2 = out, $3 = matched profile
   sed -e 's|\$(AppIdentifierPrefix)|'"$TEAM"'.|g' \
       -e 's|\$(ASSOCIATED_DOMAIN)|'"$DOMAIN"'|g' \
@@ -171,12 +217,29 @@ for fw in "$APP"/Frameworks/*.framework; do
 done
 codesign -f -s "$ID" --entitlements ext.plist "$EXT"           # …then the extension (inside-out)…
 codesign -f -s "$ID" --entitlements app.plist "$APP"           # …then the app
-# THE GUARD: no wildcard may reach a signed binary. Key-agnostic ON PURPOSE — it catches whichever
-# wildcard key Apple adds next, which per-key narrowing by construction cannot.
+# THE GUARDS — two of them, asking OPPOSITE questions. Neither subsumes the other; keep both.
+# (1) NEGATIVE — no wildcard may reach a signed binary. Key-agnostic ON PURPOSE: it catches whichever
+#     wildcard key Apple adds next, which per-key narrowing by construction cannot.
+# (2) POSITIVE — the claim carries the REAL identity. (1) is blind to this: an empty $TEAM yields
+#     `.app.snapsync.shared`, which contains no wildcard and sails straight through, and `codesign -v`
+#     passes too — the signature is perfectly valid, it just claims the wrong identity. Absence of a
+#     wildcard is not presence of the right prefix. Checked on BOTH binaries: app and extension must
+#     land in the SAME keychain group or they hold different device ids (the 2026-07-20 split above).
+#     `grep -qF` because the `.` in `<TEAM>.app.snapsync.shared` is a regex metacharacter.
 for b in "$EXT" "$APP"; do
-  if codesign -d --entitlements :- "$b" 2>/dev/null | grep -q '[*]'; then
+  ENT=$(codesign -d --entitlements :- "$b" 2>/dev/null)
+  if printf '%s' "$ENT" | grep -q '[*]'; then
     echo "WILDCARD LEAKED into $b — do not install this build:"
-    codesign -d --entitlements :- "$b" 2>/dev/null | plutil -p -; exit 1
+    printf '%s' "$ENT" | plutil -p -; exit 1
+  fi
+  if ! printf '%s' "$ENT" | grep -qF "$TEAM.app.snapsync.shared"; then
+    echo "KEYCHAIN GROUP LACKS THE TEAM PREFIX ($TEAM) in $b — do not install this build:"
+    printf '%s' "$ENT" | plutil -p -; exit 1
+  fi
+  # The app claims the associated domain; the extension declares none (it never handles URLs).
+  if [ "$b" = "$APP" ] && ! printf '%s' "$ENT" | grep -qF "$DOMAIN"; then
+    echo "ASSOCIATED DOMAIN ($DOMAIN) MISSING from $b — every universal link would open Safari:"
+    printf '%s' "$ENT" | plutil -p -; exit 1
   fi
 done
 codesign -v "$EXT" && codesign -v "$APP"

@@ -162,7 +162,8 @@ class EventLinkDomainTest {
         assertTrue(
             entitlements.contains("\$(ASSOCIATED_DOMAIN)"),
             "iosApp.entitlements hard-codes its associated domain instead of taking " +
-                "\$(ASSOCIATED_DOMAIN) from Config.xcconfig, re-opening the drift this guard closes.",
+                "\$(ASSOCIATED_DOMAIN) from the generated Deployment.xcconfig, re-opening the drift " +
+                "this guard closes.",
         )
     }
 
