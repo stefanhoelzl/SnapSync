@@ -1223,10 +1223,13 @@ Deno.test("health → foreign keys OFF is reported, not hidden behind a 200", as
     transaction: () => Promise.reject(new Error("unused")),
     foreignKeysEnabled: () => Promise.resolve(false),
   };
-  const res = await createRealApp({ config: CONFIG, db: off, fetch: recorder().fetchImpl }).request(
-    "/health",
-  );
-  assertEquals(await res.json(), { sha: "dev", database: "foreign-keys-off" });
+  const res = await createRealApp({
+    config: CONFIG,
+    db: off,
+    fetch: recorder().fetchImpl,
+    buildSha: "pinned",
+  }).request("/health");
+  assertEquals(await res.json(), { sha: "pinned", database: "foreign-keys-off" });
 });
 
 Deno.test("health → an unreachable store is distinguishable from a misprovisioned one", async () => {
