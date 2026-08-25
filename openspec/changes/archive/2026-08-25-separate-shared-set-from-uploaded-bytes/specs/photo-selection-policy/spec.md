@@ -131,8 +131,8 @@ NOT take the ledger's contents for the admitted set.
 #### Scenario: Origin-excluded resources never reach the engine
 
 - **WHEN** the cycle discovers a resource whose owning asset an origin rule rejects
-- **THEN** the resource is dropped before the engine and before `retainAssets`, so no upload job is created
-  and the ledger gains no entry for it
+- **THEN** the resource is dropped before the engine, so no upload job is created and the ledger gains no
+  entry for it
 
 #### Scenario: The filter covers the incremental walk
 
@@ -176,6 +176,30 @@ NOT take the ledger's contents for the admitted set.
 - **THEN** neither the screenshot nor the pre-lower-bound photo gains a ledger row, and the manifest
   projected from the ledger's `COMPLETED` rows — admitted by the same membership policy — lists only the
   in-range camera photo, so no consumer downstream can re-derive a different set
+
+### Requirement: The policy scopes the own-device status total
+
+The own-device upload **total** `N` SHALL count exactly the assets in the membership's **admitted set** —
+the same set the upload cycle admits — and SHALL NOT re-apply the policy's rules independently. `N` SHALL
+respect the capture-date **range** (both bounds), the origin exclusions, the echo suppression, and the
+album denylist by deriving from that set, so an asset the policy excludes never counts toward `N`.
+Counting an excluded asset would peg completeness permanently below 100% and hold the screen at "pending"
+forever — which is the concrete failure a floor-only `N` produced.
+
+A **non-contributing** membership — one whose rule list carries the deny-everything rule — SHALL report
+`N = 0`. It reaches that answer through the same admission as every other, and the platform query is
+narrowed to match no asset (capability `gallery-status`), so no per-asset round-trip is paid for it.
+
+#### Scenario: N counts the admitted set, ceiling included
+
+- **WHEN** the device holds photos both within and after the membership's capture-date range
+- **THEN** `N` counts only those within the full range `[cutoff, until]` — a post-ceiling photo is not
+  counted, so completeness can reach 100%
+
+#### Scenario: N derives from the same set as upload
+
+- **WHEN** the upload cycle admits a set and `N` is computed
+- **THEN** `N` equals the size of that admitted own-device set, not a separately-filtered count
 
 ## ADDED Requirements
 
