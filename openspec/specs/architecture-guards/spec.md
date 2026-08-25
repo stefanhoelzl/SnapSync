@@ -330,8 +330,14 @@ or a new occurrence — SHALL fail the build.
 The pinned inventory (this list is the contract of record; adding, removing, or re-valuing a pin
 is a spec change to this requirement, deliberately):
 
-- **App-Group id** `group.app.snapsync` — once in Kotlin, plus once in each of the two
-  entitlements files (`iosApp.entitlements`, `BackgroundUploadExtension.entitlements`).
+- **App-Group id** `group.app.snapsync` — once in Kotlin, plus once in each of the **three**
+  entitlements files (`iosApp.entitlements`, `BackgroundUploadExtension.entitlements`,
+  `simulator.entitlements`). The third is not a signing surface for any shipped build: it is the
+  App-Group-only plist an ad-hoc signature carries so a simulator build has a container at all. It
+  is pinned for the same reason as the other two and one more — it is the surface most likely to be
+  forgotten, because no shipped build fails when it is wrong. Re-value the App Group without it and
+  the simulator host silently loses its container, which reads as the app being broken rather than
+  as a rename being incomplete.
 - **Keychain entries**, pinned as (service, account) **pairs** — the pair is the unit of
   identity, so a cross-swap of accounts between services fails even though every individual
   string survives: (`app.snapsync.deviceid`, `deviceid`),
@@ -344,12 +350,18 @@ is a spec change to this requirement, deliberately):
   identity is now carried entirely by the `eventconfig.json` pin below.
 - **Keychain access group** — the shared group the device-id item is addressed with (capability
   `device-identity`). Pinned once in production Kotlin, and cross-checked against the **suffix**
-  declared in each of the two entitlements files together with `TEAM_ID` from `Config.xcconfig`:
-  the guard SHALL assert the Kotlin literal equals `<TEAM_ID>.` followed by the entitlements'
-  declared group, and that both entitlements files declare the same group. Drift here does not
-  fail loudly — the item is written to a *different real group*, both processes still read
-  successfully, and each simply reads a different item. That is the split-identity fault, which
-  is invisible to every existing gate and unrecoverable once written.
+  declared in each of the **two signing** entitlements files together with `TEAM_ID` from
+  `Config.xcconfig`: the guard SHALL assert the Kotlin literal equals `<TEAM_ID>.` followed by the
+  entitlements' declared group, and that both signing entitlements files declare the same group.
+  `simulator.entitlements` SHALL be excluded from this cross-check and SHALL declare **no**
+  `keychain-access-groups` key at all — its omission is load-bearing rather than incidental: adding
+  that entitlement to an ad-hoc-signed simulator build makes the app un-launchable, which is why
+  `device-identity` carries a planted-identity path for hosts where the addressed group is
+  unreachable. The guard SHALL assert the absence, so that "add the missing key" cannot be applied
+  as a fix to a mystery it would cause. Drift in the signing files does not fail loudly — the item
+  is written to a *different real group*, both processes still read successfully, and each simply
+  reads a different item. That is the split-identity fault, which is invisible to every existing
+  gate and unrecoverable once written.
 - **The unscoped-Keychain inventory** — the guard SHALL pin, as an exact set, which Keychain seats
   search **without** naming an access group. That set SHALL be
   (`app.snapsync.attest`, `token`), (`app.snapsync.attest`, `keyid`),
@@ -411,10 +423,23 @@ files.
 
 #### Scenario: The access group disagrees with the entitlements
 
-- **WHEN** the Kotlin access-group literal, the group declared in the entitlements files, or
-  `TEAM_ID` are edited so they no longer compose to the same string, or the two entitlements
+- **WHEN** the Kotlin access-group literal, the group declared in the signing entitlements files, or
+  `TEAM_ID` are edited so they no longer compose to the same string, or the two signing entitlements
   files declare different groups
 - **THEN** the pin guard fails, naming the Kotlin value and the composed entitlements value
+
+#### Scenario: The App Group is renamed without the simulator plist
+
+- **WHEN** the App-Group id is re-valued in Kotlin and both signing entitlements files, and
+  `simulator.entitlements` keeps the old value
+- **THEN** the pin guard fails, naming the third file — rather than leaving a simulator host that
+  launches and then reports its container as unavailable
+
+#### Scenario: The simulator plist gains a keychain group
+
+- **WHEN** `simulator.entitlements` declares a `keychain-access-groups` key
+- **THEN** the guard fails, because that entitlement makes an ad-hoc-signed simulator build
+  un-launchable and its absence is a deliberate decision rather than an omission to repair
 
 #### Scenario: A new unscoped Keychain seat appears
 
