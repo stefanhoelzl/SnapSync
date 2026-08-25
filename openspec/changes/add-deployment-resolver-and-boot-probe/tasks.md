@@ -61,7 +61,7 @@
 - [x] 8.2 Strip `BUNDLE_ID`, `TEAM_ID`, `APP_NAME`, `MARKETING_VERSION`, `ASSOCIATED_DOMAIN`, `BACKGROUND_UPLOAD_URL_BASE`, `APS_ENVIRONMENT`, `APNS_ENV`, `SENTRY_DSN` and `SENTRY_ENVIRONMENT` from `Config.xcconfig`; add the hard `#include` of `Deployment.xcconfig`
 - [x] 8.3 Add the resolver step to `ios.yml`, before "Archive signed device app", and pass the computed `MARKETING_VERSION` and `SENTRY_DSN` into it as build-scope environment values
 - [x] 8.4 Document why the ssh-mac tunnel override STAYS a bare `BACKGROUND_UPLOAD_URL_BASE` string — a quick tunnel's hostname is minted after the resolver runs and is random per session, so no declared file can hold it (the same timing fact that kept `domain` literal-only); runbook and the `ios-ci` delta updated to admit the one forced exception
-- [ ] 8.5 **Verify on a Mac:** a full `xcodebuild` archive resolves the fragment, and both `Info.plist`s carry the expected host, bundle id, team id and APNs environment
+- [x] 8.5 **VERIFIED** (run 32798482386, macos-26) — and made a STANDING gate rather than a one-off: `ios.yml` reads the archive's `Info.plist` and asserts the baked values against the resolved deployment. Observed: `base=https://snapsync.stho.net/api/v1 bundle=app.snapsync apns=sandbox (channel=dev)`
 
 ## 9. Metadata
 
