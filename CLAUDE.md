@@ -174,6 +174,21 @@ Two harness facts that are invisible until they bite, and that no amount of loca
   iOS-only breakage here. The actual iOS tests (`iosSimulatorArm64Test`, etc.) are **macOS-only**
   and run on GitHub Actions `macos-26`.
 
+**Complexity ceilings** (capability `complexity-budgets`) gate `build` too, as eight
+`detekt*Tier` tasks — `shell` · `flow` · `compose` · `core` · `ui` · `harness` · `tests` ·
+`buildscripts` — one per scope, because a detekt 1.x rule carries exactly ONE threshold per config.
+Each tier's numbers live in `config/detekt/<tier>.yml`, and **every number there is a ceiling that may
+only fall**: lowering one is ordinary work, raising one needs a stated forcing proof in the PR. Nothing
+enforces that — it is a ratchet carried by the contract at the head of each config, and the configs say
+so. `api/` carries the same measure through `api/src/lint/complexity.ts`, a `deno lint` plugin under the
+`deno lint` gate `api-deploy.yml` already runs (no published Deno rule measures complexity).
+
+⚠️ **`detektAppShell` is NOT one of these and must never be folded into them.** It is a *proof* —
+threshold 2 asserts the shells hold no decisions — and its value comes from the number being 2. The
+tiers are *budgets*, seeded at what the tree measured. Tier membership is derived from the live Gradle
+project model, so a new module is scanned automatically or `DetektTierCoverageTest` fails naming it;
+do not add a path list.
+
 **Don't prefix commands with `cd <workspace root>`.** Every Bash call *starts* at the workspace
 root and is reset back to it afterwards — shell state (cwd, env vars, functions) does not persist
 between calls — so that leading `cd` is always a no-op. It was on 45% of commands (6,517 of 14,340

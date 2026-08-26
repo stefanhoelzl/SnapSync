@@ -177,13 +177,21 @@ path-scoped deploy workflow and was required by nothing, so a pull request that 
 merged green and the failure surfaced on `main`, with the deploy skipped and production silently
 serving the previous bundle.
 
+The `deno lint` invocation SHALL run the project's **local lint plugins** in addition to Deno's built-in
+rules, declared in `deno.json` so that CI and a developer's local `deno lint` run the same rule set. The
+complexity ceiling on this backend's TypeScript (capability `complexity-budgets`) is delivered as one such
+plugin, because `deno lint` ships no complexity rule and no published plugin provides one. Adding it
+therefore requires **no new workflow step and no second toolchain**: the gate this requirement already
+describes is the gate that enforces it.
+
 The type-check and test steps SHALL be invoked **through their `deno.json` tasks** (`deno task check`,
 `deno task test`) rather than by restating the commands in the workflow, so the set of type-checked
 directories and the permissions the suite runs under are defined in exactly one place and cannot drift
 between CI and what a developer runs locally. The type-check SHALL cover **all** source — `src/` including
-`main.ts`/SDK wiring the test run does not reach, the dev-only `src/dev/` tree (the local backend rig), and
-the out-of-bundle `src/scripts/` tree (the programs other workflows invoke) — so a broken rig or a broken
-job fails CI rather than only surfacing when someone next tries to use it.
+`main.ts`/SDK wiring the test run does not reach, the dev-only `src/dev/` tree (the local backend rig), the
+out-of-bundle `src/scripts/` tree (the programs other workflows invoke), and the `src/lint/` tree (the local
+lint plugins, which no test imports and no bundle contains) — so a broken rig, a broken job, or a broken
+lint rule fails CI rather than only surfacing when someone next tries to use it.
 
 The test task SHALL carry **only** the filesystem permissions its own suite needs (`--allow-read`,
 `--allow-write`, for the dev storage shim's contract test). It SHALL NOT grant `--allow-net`: that absence
@@ -211,6 +219,18 @@ that the bundle that shipped actually boots and serves.
 - **THEN** it does not re-run `deno fmt --check`, `deno lint`, the type-check, or the test suite,
   because no commit could have reached `main` without them passing
 
+#### Scenario: A local lint plugin's rule blocks deploy
+
+- **WHEN** source violates a rule supplied by a project-local lint plugin declared in `deno.json`
+- **THEN** `deno lint` fails and the deploy is blocked, with no workflow step beyond the existing
+  `deno lint` invocation
+
+#### Scenario: CI and a local run enforce the same rules
+
+- **WHEN** a developer runs `deno lint` locally
+- **THEN** the project's local plugins run too, because they are declared in `deno.json` rather than on the
+  workflow's command line
+
 #### Scenario: The type-check reaches the dev-only tree
 
 - **WHEN** a change breaks compilation anywhere under `api/src/dev/`
@@ -222,6 +242,12 @@ that the bundle that shipped actually boots and serves.
 - **WHEN** a change breaks compilation anywhere under `api/src/scripts/`
 - **THEN** the type-check step fails and the pull request is blocked, even though nothing under
   `src/scripts/` reaches the deployed bundle
+
+#### Scenario: The type-check reaches the lint plugins
+
+- **WHEN** a change breaks compilation anywhere under `api/src/lint/`
+- **THEN** the type-check step fails and the deploy is blocked, even though nothing under `src/lint/`
+  reaches the deployed bundle and no test imports it
 
 #### Scenario: No test can reach the real storage zone
 

@@ -20,7 +20,7 @@
     // src/scripts/ holds the out-of-bundle programs other workflows invoke (the sweep, the deploy probe).
     // They are type-checked here for the same reason src/dev/ is: a broken one must fail CI rather than
     // surface the next time someone runs it.
-    "check": "deno task config && deno check src/*.ts src/dev/*.ts src/scripts/*.ts",
+    "check": "deno task config && deno check src/*.ts src/dev/*.ts src/scripts/*.ts src/lint/*.ts",
     // The local backend rig (dev infrastructure — non-gating, no spec). `dev:local` is the curl loop;
     // `dev:tunnel` adds a cloudflared quick tunnel so a physical device can reach it under default ATS.
     // Both resolve the `local` deployment, whose filesystem storage kind the rig requires — running them
@@ -47,5 +47,11 @@
   "fmt": {
     "lineWidth": 100
   },
-  "lint": {}
+  // The project's own lint rules, declared here rather than on a workflow command line so that CI
+  // and a developer's local `deno lint` run the SAME rule set (capability `backend-deployment`).
+  // `complexity.ts` carries this backend's cyclomatic ceiling — the TypeScript half of capability
+  // `complexity-budgets`. It needs no new CI step: `api-deploy.yml` already gates on `deno lint`.
+  "lint": {
+    "plugins": ["./src/lint/complexity.ts"]
+  }
 }
