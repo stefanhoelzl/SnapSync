@@ -52,6 +52,15 @@ kotlin {
         }
         iosMain.dependencies {
             if (rigEnabled) implementation(project(":test:rig"))
+            // The upload extension's composition root, so the control channel can invoke the OS-driven
+            // tier's REAL cycle rather than a copy of its wiring. Rig-gated exactly like `:test:rig`
+            // itself: a production build links no part of this and contains no route to that root.
+            //
+            // Two static Xcode frameworks in one bundle would both pull the shared domain code into one
+            // image, which is why the app and the appex are separate frameworks. A Gradle module
+            // dependency folds it into `SnapSyncKit` instead — settled by a compile
+            // (`linkDebugFrameworkIosSimulatorArm64`), not by reasoning.
+            if (rigEnabled) implementation(project(":app:ios:extension"))
             api(project(":domain"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:presentation"))

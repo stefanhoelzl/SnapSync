@@ -27,6 +27,8 @@ import app.snapsync.model.toFacts
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscoveryStore
+import app.snapsync.ios.registry.uploadExtensionRegistry
+import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
@@ -52,6 +54,7 @@ import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
+import app.snapsync.feature.upload.OsDrivenUploadMechanism
 import app.snapsync.feature.upload.UploadMechanismRuntime
 import app.snapsync.model.UploadMechanism
 import app.snapsync.model.resolveUploadMechanism
@@ -217,6 +220,17 @@ object SnapSyncRoot {
      */
     private val osDrivenUploadThunk: () -> UploadMechanismRuntime? =
         if (osSupportsOsDrivenUpload) ({ photoKitProducer }) else ({ null })
+
+    /**
+     * The OS's registration record, composed under the same switch and for the same reason: both of its
+     * verbs are 26.1 selectors, so the adapter must not exist where they do not.
+     *
+     * `internal` so the rig's hook can read the registration through the very port the app registers
+     * through, rather than asking PhotoKit a second time and possibly getting a different answer. Not
+     * exported to the ObjC framework header.
+     */
+    internal val osExtensionRegistryThunk: () -> UploadExtensionRegistry? =
+        if (osSupportsOsDrivenUpload) ({ extensionRegistry }) else ({ null })
 
     private val shell: Shell = LiveShell()
 
@@ -1051,15 +1065,20 @@ object SnapSyncRoot {
     // can rescue a membership provisioned while access was already granted — the provision flow owns
     // that case.
 
-    // The two candidate mechanisms this OS can carry. Both are `by lazy`: `PhotoKitUploadProducer` is
+    // The two candidate mechanisms this OS can carry. Both are `by lazy`: `OsDrivenUploadMechanism` is
     // constructed only where its registration selector exists (≥26.1), so no code path can trap on a
     // lower system. Which one RUNS is `resolveUploadMechanism`'s answer, re-read at every transition —
     // on ≥26.1 under a partial grant BOTH are constructed and only the app-driven one is started.
     // (The tier-neutral `UploadArm` — which verb fires on which membership transition — is composed in
     // the app graph as `app.uploadArm`, over the resolved mechanism.)
-    private val photoKitProducer: PhotoKitUploadProducer by lazy {
-        PhotoKitUploadProducer(ledgerStore, log)
+    private val photoKitProducer: OsDrivenUploadMechanism by lazy {
+        OsDrivenUploadMechanism(ledgerStore, extensionRegistry, IosDiscoveryStore(), log, IosLogScope)
     }
+
+    // The registration port's adapter, chosen by compilation target (capability `ios-photokit-upload`).
+    // Hoisted beside the producer because two readers share it: the producer, which performs the ritual,
+    // and the control channel, which reports what the OS answers.
+    private val extensionRegistry: UploadExtensionRegistry by lazy { uploadExtensionRegistry(log) }
 
     // The ONE PhotoKit read seam this process holds (shared by the gallery walk and the
     // selection-snapshot mapping — one mapping, one place).

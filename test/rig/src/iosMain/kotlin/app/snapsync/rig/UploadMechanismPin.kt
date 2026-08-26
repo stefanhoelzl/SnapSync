@@ -57,7 +57,7 @@ object UploadMechanismPin {
 fun uploadMechanismCommand(
     osSupportsOsDrivenUpload: () -> Boolean,
     permission: () -> app.snapsync.model.PermissionStatus,
-): RigCommand = RigCommand { params ->
+): RigCommand = RigCommand { params, _ ->
     val raw = params["value"]
     val cleared = raw.equals("none", ignoreCase = true) || raw.equals("clear", ignoreCase = true)
     val named = UploadMechanism.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }

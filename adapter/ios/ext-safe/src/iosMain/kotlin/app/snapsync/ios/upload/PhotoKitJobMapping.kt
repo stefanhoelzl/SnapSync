@@ -1,5 +1,6 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.model.LedgerState
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CreateResult
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -91,6 +92,46 @@ fun classifyPhotoKitJob(
         key = key,
         state = photoKitJobState(state),
         error = error?.let { photoKitUploadError(it) },
+    )
+}
+
+/**
+ * What a **terminal** job means: which ledger state to record, and whether the cycle must re-create it.
+ *
+ * This is a per-job decision, and it lived in [app.snapsync.ios.upload.IosPhotoKitUploadPlatform]'s
+ * `drainTerminals` body until now — although this file's own KDoc already claimed *"every mapping and
+ * per-job decision now lives in `PhotoKitJobMapping.kt`"*. Eight lines is little enough to overlook and
+ * more than enough to get wrong, and it is exactly the decision a substituted job queue would otherwise
+ * re-implement. A drift between what one host adjudicates and what another does would not fail a test; it
+ * would make every scenario on the substituting host quietly report a different ledger than the device.
+ *
+ * A succeeded job becomes [LedgerState.UPLOADED], **not** `COMPLETED`: the cycle's promotion pass owes it
+ * an event-album placement and a completion notify, and it finds that work by reading `UPLOADED` rows.
+ * Writing `COMPLETED` here would present the pass with an already-settled row and skip both.
+ *
+ * Every non-succeeded terminal state — `FAILED`, `CANCELLED`, and the `PENDING` an untaught state maps to
+ * — is recorded `FAILED` and re-created **iff its resource is still live**. `resourceIsLive` is a fact
+ * about the platform's job object rather than a policy: `resource` is nil for every succeeded job, and nil
+ * for a failure whose asset has since been deleted, and neither can be re-created from nothing.
+ *
+ * [reCreate] is deliberately not "should retry": the free retry the system grants happens on the retry
+ * bucket, before a job is terminal at all. By the time a job reaches here its retry is spent, so
+ * re-creation is the only route left and the edge PUT's idempotence is what makes it safe (keys are
+ * deterministic, so a re-send overwrites the same object).
+ */
+data class TerminalDisposition(
+    /** What to record for this key. */
+    val ledgerState: LedgerState,
+    /** Whether the cycle should create a fresh job for this key in this same cycle. */
+    val reCreate: Boolean,
+)
+
+/** The pure adjudication both the PhotoKit queue and any substituted queue apply. */
+fun terminalDisposition(state: PhotoKitJobState, resourceIsLive: Boolean): TerminalDisposition {
+    val succeeded = state == PhotoKitJobState.SUCCEEDED
+    return TerminalDisposition(
+        ledgerState = if (succeeded) LedgerState.UPLOADED else LedgerState.FAILED,
+        reCreate = !succeeded && resourceIsLive,
     )
 }
 

@@ -32,19 +32,53 @@ State these before writing a scenario against this host, or you will write one t
   exists). Accepted everywhere-gap: the device needs taps for it too.
 - **No APNs token** — `no valid "aps-environment" entitlement string found`. `simctl push` never contacts
   Apple, so a synthetic token through the `onPushToken` trigger is the way in.
-- **No OS-driven PhotoKit upload tier — so PIN the app-driven one, or nothing uploads.** The OS never
-  invokes the upload extension here. But this simulator's OS is ≥26.1, so the tier still *resolves* to
-  `photokit` under a full grant, and you get no cycle and no error. One call fixes it, and every upload
-  scenario on this host needs it:
+- **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** The tier
+  resolves to `photokit` here under a full grant, exactly as it does on a ≥26.1 device, and it now runs:
+  `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCore`,
+  the entry gate, the re-join reconcile, real PhotoKit discovery, the real selection policy, the real
+  App-Group ledger and a real backend are all exercised. **Do not pin `url_session` for a photokit
+  scenario any more** — the pin is now only for exercising the app-driven tier, and the trigger refuses
+  outright while a pin is in force (two `LedgerWriter`s over one ledger).
+
+  What this target substitutes, and nothing else, is the **OS upload-job subsystem**: the registration
+  record and the job queue. You play the OS for both.
 
   ```bash
-  curl -s -X POST "http://127.0.0.1:$PORT/device/upload-mechanism?value=url_session"
-  # → {"pinned":"url_session","resolves":"url_session",…}  — check `resolves`, not just `pinned`
+  # one cycle: hand in what the OS "finished", get back what the cycle created
+  curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
+       -d '{"finished":[],"jobLimit":100}'
+  # → {"processRawValue":1,"result":"processing","queue":"simulated","created":[{"key":"…-primary.png",
+  #    "destination":"http://127.0.0.1:8080/api/v1/file/…","headers":{…}}]}
+
+  # move one job's bytes for real (or ?fail=network to forge a failure and drive the retry chain)
+  curl -sS -X POST "http://127.0.0.1:$PORT/device/upload-jobs/perform" \
+       -d '{"key":"…","destination":"…","headers":{…}}'
+
+  # present it back as finished, and the next cycle records it
+  curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
+       -d '{"finished":[{"key":"…","action":"acknowledge","state":"succeeded"}]}'
   ```
 
-  With that pinned, uploads work (measured 2026-08-26). **Two members of one event, both directions, are
-  what this host is for**: A uploaded three photos and B — joined `DownloadOnly` off A's invite link —
-  downloaded and imported all three, `status=200` with received == expected on every transfer.
+  ⚠️ **The transfers `perform` makes use a DEFAULT session, so they die with the process** — the OS's own
+  queue genuinely survives. Kill the app mid-transfer and the job is simply lost, where a device would
+  have finished it. That is the host, not a fault.
+
+  ⚠️ **The registration record is the rig's, not the OS's.** `POST /device/upload-extension/record?registered=true`
+  plants a stale record (so the ritual's leading disable has something to remove) and `&failNextWith=3202`
+  arms the next change to fail. It does **not** survive an app restart, where the real record survives
+  reinstall and reboot.
+
+  🚫 **What this host still cannot do**: OS scheduling of `process()`, the appex Swift shell and its
+  `processingResultRawValue` handoff, the appex memory cap, and cross-process ledger locking. All
+  device-only, unchanged.
+
+  📏 **Why the substitution exists, measured 2026-08-26 (iOS 26.5, full grant, clean device, appex embedded
+  and signed):** `setUploadJobExtensionEnabled(true)` is **refused** — `false`, `PHPhotosErrorDomain:-1`,
+  a code distinct from `3201`/`3202`/`3311` — and with no configuration record
+  `creationRequestForJobWithDestination` raises `NSInvalidArgumentException` **inside PhotoKit** and
+  terminates the process. It does not return an error. That is why the binding is per compilation target:
+  a device binary contains no route to the substitute, and this one contains no route to the real calls.
+  Full record: `openspec/changes/…/exercise-os-driven-upload-on-simulator/PROBE-FINDINGS.md`.
 
   ⚠️ **Do not assert success on `/device/state`'s `download` view.** It is a *progress* read-model and
   returns to `{downloaded:0,total:0}` the moment the queue drains — transfers finish about a second after
@@ -52,6 +86,12 @@ State these before writing a scenario against this host, or you will write one t
   `transfer finished: status=… expected=… received=…` and `imported foreign asset … as …` lines. The
   gallery census is not clean proof either: a simulator ships with stock photos, so a device that imported
   3 reads `total: 9`.
+
+  **The app-driven tier still works here too**, and `POST /device/upload-mechanism?value=url_session` is
+  how you reach it (check `resolves`, not just `pinned`). Two members of one event, both directions, were
+  measured that way on 2026-08-26: A uploaded three photos and B — joined `DownloadOnly` off A's invite
+  link — downloaded and imported all three.
+
 - **No background `URLSession` at all — so this target does not use one.** Bytes DO move here: the
   `iosSimulatorArm64` build binds an ordinary **default** session instead (`transferSessionConfiguration`
   in `:adapter:ios:app-only`, capability `ios-url-session-upload`). Uploads and downloads both work.
@@ -285,7 +325,7 @@ SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18101 xcrun simctl launch "$DEV_A" app.snapsync
 SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18102 xcrun simctl launch "$DEV_B" app.snapsync
 ```
 
-Everything past `/health` — `/state`, `/logs`, `/triggers`, `POST /trigger/<name>`, the receipted-vs-202
+Everything past `/health` — `/state`, `/logs`, `POST /os/<root>/<member>`, the receipted-vs-202
 split, the `onForeground`-before-membership ordering trap — is in `rig-channel` and is identical here.
 
 ## Driving an event
@@ -301,7 +341,7 @@ curl -X POST "localhost:$P/user/confirmJoin?cutoff=2026-08-24T00:00:00Z&until=20
 ```
 
 To put a SECOND instance on the same event, drive its channel through the warm universal-link entry —
-`POST /os/onSceneContinueActivity?arg=<link>` — which takes the same decode → gate → join path a scanned QR
+`POST /os/app/onSceneContinueActivity?arg=<link>` — which takes the same decode → gate → join path a scanned QR
 does. `simctl openurl` cannot be used for this (see the entitlement note above).
 
 ⚠️ **Never join an event you did not create.**

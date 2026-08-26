@@ -29,9 +29,8 @@ class RigControlChannelTest {
         return file.readText()
     }
 
-    // ── 1. Trigger coverage is derived, never hand-enumerated ─────────────────────────────────────
+    // ── 1. Trigger coverage is derived per COMPOSITION ROOT, never hand-enumerated ────────────
 
-    private val root = "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt"
     private val hook = "test/rig/src/hook/kotlin/app/snapsync/rig/hook/Boot.kt"
 
     /**
@@ -46,18 +45,76 @@ class RigControlChannelTest {
         "ui/presentation/src/commonMain/kotlin/app/snapsync/presentation/StatusContainerHost.kt"
 
     /**
-     * The app-process platform-entry population, derived from the source.
+     * The composition roots the channel reaches, by their `/os/<root>/…` group name.
+     *
+     * **This table is the novelty gate, not a convenience.** Its keys are asserted equal to the groups the
+     * hook declares, so adding a group without telling the guard where to derive its population from fails
+     * the build rather than quietly creating an unscanned namespace (`architecture-guards`, "Gates fail
+     * closed on novelty").
+     *
+     * That the channel can reach two roots from one process is a property of the simulator host, where the
+     * OS never invokes the upload extension and the rig invokes its root directly. In production these are
+     * two processes.
+     */
+    private val roots = mapOf(
+        "app" to RootUnderChannel(
+            source = "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt",
+            excludedIn = "excludedTriggers",
+        ),
+        "photokit-ext" to RootUnderChannel(
+            source = "app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt",
+            excludedIn = "excludedExtensionTriggers",
+        ),
+    )
+
+    /**
+     * @param source the root's own file, whose `@PlatformEntry` members are its population.
+     * @param excludedIn the hook function holding this group's exclusions. Every group has one, even when
+     *   it excludes nothing — a group with no exclusion function is a group whose omissions could not be
+     *   read, and the two are not the same answer.
+     */
+    private class RootUnderChannel(val source: String, val excludedIn: String)
+
+    /**
+     * The group names the hook declares.
+     *
+     * Matched on the constructor's name ending in `TriggerGroup`, which both the plain constructor and a
+     * builder like `extensionTriggerGroup` satisfy, so a group whose maps live in another module is still
+     * seen. Deliberately not scoped by argument order: a derivation that broke when someone reordered a
+     * named argument would fail as if the inventory had drifted.
+     */
+    private fun declaredGroups(): Set<String> =
+        Regex(""""([\w-]+)"\s+to\s+\w*TriggerGroup\(""")
+            .findAll(read(hook))
+            .map { it.groupValues[1] }
+            .toSet()
+
+    /**
+     * One `private fun <name>(` block of the hook, up to the next top-level `private fun` or end of file.
+     */
+    private fun hookBlock(function: String): String {
+        val text = read(hook)
+        val at = text.indexOf("private fun $function(")
+        assertTrue(at >= 0, "guard is scanning nothing — no `private fun $function(` in $hook")
+        val next = text.indexOf("\nprivate fun ", at + 1)
+        return if (next < 0) text.substring(at) else text.substring(at, next)
+    }
+
+    /** The `object <Name>` a root file declares — the receiver its entry points are invoked on. */
+    private fun rootType(file: String): String =
+        Regex("""^object (\w+)""", RegexOption.MULTILINE).find(read(file))?.groupValues?.get(1)
+            ?: fail("no top-level `object` in $file — the root-type derivation is broken")
+
+    /**
+     * One root's platform-entry population, derived from its source.
      *
      * Deriving from the `@PlatformEntry` marker is sound HERE — unlike in `PlatformEntryLoggingTest`,
      * where it would be circular — precisely because that guard already proves the marker is present on
      * every member Swift calls. So the marked set is a superset of the driveable set, and reading it
      * cannot inherit the hand-enumeration hole.
-     *
-     * Scoped to `SnapSyncRoot` on purpose: the rig runs in the app process, so the extension root's
-     * entry points are not reachable from it and are not its to account for.
      */
-    private fun derivedEntryPoints(): Set<String> {
-        val lines = read(root).lines()
+    private fun derivedEntryPoints(file: String): Set<String> {
+        val lines = read(file).lines()
         return lines.indices
             .filter { lines[it].trim() == "@PlatformEntry" }
             .mapNotNull { i ->
@@ -67,45 +124,126 @@ class RigControlChannelTest {
             .toSet()
     }
 
-    private fun wiredTriggers(): Set<String> =
-        Regex(""""(\w+)"\s+to\s+(?:\n\s*)?RigTrigger\.""").findAll(read(hook))
-            .map { it.groupValues[1] }.toSet()
+    /**
+     * Which of a root's members the channel actually REACHES — scraped from the call, not the route.
+     *
+     * The same reasoning `/user` already records: what the coverage question asks is whether every entry
+     * point is reachable or consciously not, and that is answered by the call. It also means a route leaf
+     * may be renamed without the guard reporting a phantom mismatch.
+     *
+     * Both call shapes count — `Root.member(` for a lambda body and `Root::member` for a method reference —
+     * because the hook uses each where it reads better, and a derivation that saw only one would report a
+     * wired entry point as unaccounted.
+     *
+     * Whole-file rather than per-function: the hook is the single place either root is reached from, and a
+     * root's non-entry-point members (`SnapSyncRoot.app`, `.host`, `.permission`) are referenced without a
+     * trailing `(` or `::`, so they cannot be mistaken for wired triggers.
+     */
+    private fun wiredTriggers(type: String): Set<String> =
+        Regex("""\b$type(?:\.(\w+)\(|::(\w+))""").findAll(read(hook))
+            .map { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+            .toSet()
 
-    private fun excludedTriggers(): Set<String> =
-        Regex(""""(\w+)"\s+to\s*\n?\s*"""").findAll(read(hook))
+    private fun excludedTriggers(function: String): Set<String> =
+        Regex(""""(\w+)"\s+to\s*\n?\s*"""").findAll(hookBlock(function))
             .map { it.groupValues[1] }.toSet()
 
     @Test
+    fun `every declared trigger group has a root the guard can derive from`() {
+        val declared = declaredGroups()
+        assertTrue(
+            declared.isNotEmpty(),
+            "derived no trigger groups from $hook — the `triggerGroups` derivation is broken, and a guard " +
+                "that scans nothing fails open",
+        )
+        assertEquals(
+            roots.keys.sorted(),
+            declared.sorted(),
+            "the hook's trigger groups drifted from the roots this guard knows how to scan.\n" +
+                "  declared but unscanned (add its root here): ${(declared - roots.keys).sorted()}\n" +
+                "  scanned but no longer declared (drop it): ${(roots.keys - declared).sorted()}",
+        )
+    }
+
+    @Test
     fun `every platform entry point is either wired to a trigger or excluded with a reason`() {
-        val derived = derivedEntryPoints()
-        // Non-vacuity twin: the shell forwards at least the lifecycle, activity, push and background-task
-        // entries. A regex that stops matching must fail here, never pass empty.
+        val failures = buildList {
+            for ((group, root) in roots) {
+                val derived = derivedEntryPoints(root.source)
+                // Non-vacuity, per group: a regex that stops matching must fail here, never pass empty.
+                if (derived.isEmpty()) {
+                    add("group '$group': derived NO platform entry points from ${root.source} — broken")
+                    continue
+                }
+                val wired = wiredTriggers(rootType(root.source))
+                val excluded = excludedTriggers(root.excludedIn)
+                val overlap = wired intersect excluded
+                if (overlap.isNotEmpty()) {
+                    add("group '$group': both wired AND excluded, which cannot both be true: $overlap")
+                }
+                val accounted = wired + excluded
+                if (derived.sorted() != accounted.sorted()) {
+                    add(
+                        "group '$group': the rig's trigger inventory drifted from ${root.source}'s " +
+                            "platform-entry population.\n" +
+                            "  unaccounted (add a trigger, or exclude it WITH THE REASON that makes the " +
+                            "omission safe): ${(derived - accounted).sorted()}\n" +
+                            "  named but no longer an entry point (drop it): ${(accounted - derived).sorted()}",
+                    )
+                }
+            }
+        }
+        assertTrue(failures.isEmpty(), failures.joinToString("\n\n"))
+    }
+
+    /**
+     * The app root carries the lifecycle, activity, push and background-task entries at minimum. Held
+     * separately from the per-group non-vacuity above because this is the one population whose size is
+     * known, and a silent shrink there is the failure the derivation exists to refuse.
+     */
+    @Test
+    fun `the app root's derived population is not vacuous`() {
+        val derived = derivedEntryPoints(roots.getValue("app").source)
         assertTrue(
             derived.size >= 10,
-            "derived only ${derived.size} platform entry points from $root — the derivation is broken",
+            "derived only ${derived.size} platform entry points from the app root — the derivation is broken",
         )
-        val wired = wiredTriggers()
-        val excluded = excludedTriggers()
+    }
 
-        val overlap = wired intersect excluded
-        assertTrue(overlap.isEmpty(), "these are both wired AND excluded, which cannot both be true: $overlap")
-
+    /**
+     * Two roots may legitimately declare an entry point of the same name, and the per-group comparison is
+     * what keeps both accounted. A flat set across roots would deduplicate the pair and drop one from the
+     * inventory while still passing — which is why grouping is structural here rather than cosmetic.
+     *
+     * Asserted as a property of the derivation rather than of today's names: the guard must be scanning
+     * more than one group for the grouping to mean anything at all.
+     */
+    @Test
+    fun `coverage is accounted per group, so two roots may share a member name`() {
+        assertTrue(
+            roots.size >= 2,
+            "only ${roots.size} trigger group(s) — the per-group derivation is untested by this suite",
+        )
+        val perGroup = roots.mapValues { (_, root) -> derivedEntryPoints(root.source) }
+        val total = perGroup.values.sumOf { it.size }
+        val flattened = perGroup.values.flatten().toSet().size
+        val shared = perGroup.values.flatten().groupingBy { it }.eachCount().filterValues { it > 1 }.keys
         assertEquals(
-            derived.sorted(),
-            (wired + excluded).sorted(),
-            "the rig's trigger inventory drifted from the platform-entry population.\n" +
-                "  unaccounted (add a trigger, or exclude it WITH THE REASON that makes the omission " +
-                "safe): ${(derived - wired - excluded).sorted()}\n" +
-                "  named but no longer an entry point (drop it): ${((wired + excluded) - derived).sorted()}",
+            total - flattened, shared.size,
+            "the per-group populations are inconsistent with their union; shared names: $shared",
         )
     }
 
     @Test
     fun `every exclusion states a reason`() {
-        val text = read(hook)
-        val reasoned = Regex(""""(\w+)"\s+to\s*\n?\s*"([^"]{20,})""").findAll(text)
-            .map { it.groupValues[1] }.toSet()
-        val unreasoned = excludedTriggers() - reasoned
+        val unreasoned = buildList {
+            for ((group, root) in roots) {
+                val block = hookBlock(root.excludedIn)
+                val reasoned = Regex(""""(\w+)"\s+to\s*\n?\s*"([^"]{20,})""").findAll(block)
+                    .map { it.groupValues[1] }.toSet()
+                (excludedTriggers(root.excludedIn) - reasoned).forEach { add("$group/$it") }
+            }
+        }
         assertTrue(
             unreasoned.isEmpty(),
             "an exclusion with no stated reason is indistinguishable from an oversight: $unreasoned",

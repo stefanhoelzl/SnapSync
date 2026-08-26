@@ -32,6 +32,7 @@ pins and the pending zone gates: `changes/archive/2026-07-17-pin-runtime-identit
 ## Requirements
 ### Requirement: Architecture guards are executable and gate the build
 
+
 The project SHALL enforce, mechanically, structural invariants that the compiler cannot express. The
 guards SHALL live in a test-only module (`:test:architecture`) and SHALL run as part of the canonical
 check (`./gradlew build`), so a violation fails the build locally and in CI rather than relying on
@@ -50,6 +51,7 @@ pass by inspecting nothing.
 - **THEN** the guard fails rather than reporting success
 
 ### Requirement: Keychain access is confined to one module
+
 
 All Keychain access SHALL be confined to a single module (`:adapter:ios:ext-safe` — the
 extension-safe adapter module, where the migration seated the Keychain impls; before migration
@@ -81,6 +83,7 @@ withhold.
 
 ### Requirement: The data-protection entitlement never raises the default protection class
 
+
 Neither target's entitlements (`iosApp.entitlements`, `BackgroundUploadExtension.entitlements`) SHALL
 set `com.apple.developer.default-data-protection` to `NSFileProtectionComplete`.
 
@@ -101,6 +104,7 @@ while presenting as a security improvement.
 - **THEN** the guard passes
 
 ### Requirement: The event-link domain agrees across the app and the backend
+
 
 The event link's domain SHALL be **single-sourced from one resolved deployment** (capability
 `deployment-configuration`) in every place it appears: the app's `applinks:` associated-domains
@@ -151,6 +155,7 @@ staleness check once every copy is generated).
 - **THEN** the guard passes
 
 ### Requirement: The Swift shell keeps the event link's delivery seam
+
 
 A test-only JVM guard SHALL assert that the iOS Swift shell still carries **every** event-link delivery
 path and forwards each to the Kotlin entry point (capability `ios-app-shell`). There are two, fed by
@@ -269,6 +274,7 @@ only thing standing between the next reader and re-introducing the bug. The evid
   this guards against is a reader trusting the older, falsified claim that the modifier never fires
 
 ### Requirement: Gates fail closed on novelty
+
 Every architecture gate SHALL derive its scope from the repository's structure at test runtime —
 directory listings for feature enumeration, package patterns for zones, "everything not
 allowlisted" for purity — never from a hand-maintained inclusion list. The only permitted lists
@@ -286,6 +292,7 @@ nothing), not import lists.
 - **THEN** the gate's non-vacuity twin fails rather than the gate passing forever
 
 ### Requirement: The zone gates
+
 The build SHALL enforce, over source text with derived scopes: `model/` references nothing
 project-internal outside `model/`; `ports/` references only `model/`; features reference only
 `model/` and `ports/` and never a sibling feature (pairwise, features enumerated from the
@@ -305,6 +312,7 @@ directory and declares no `project()` dependency.
 - **THEN** the gate fails, naming the file, before any device build
 
 ### Requirement: The extension-safety text gate
+
 Because Kotlin/Native does not enforce `NS_EXTENSION_UNAVAILABLE`, the build SHALL fail when any
 source under `:adapter:ios:ext-safe` or `:app:ios:extension` references `platform.UIKit` or
 `platform.BackgroundTasks`. The module split prevents cross-module leaks; this gate covers
@@ -315,6 +323,7 @@ in-module ones.
 - **THEN** the gate fails before any device build, naming the file
 
 ### Requirement: The shell gates
+
 The build SHALL enforce zero conditionals in `:app:*` Kotlin via a detekt complexity gate
 (threshold: no function above cyclomatic complexity 1 beyond pinned wiring forms), **gating**
 (`ignoreFailures = false`, wired into `check`) over all production `:app:*` source sets including
@@ -353,6 +362,7 @@ handler.
   nothing anywhere
 
 ### Requirement: The fake-honesty gate
+
 Every public type in `:adapter:generic:fake` SHALL expose only members of the port interfaces it
 implements plus a constructor taking initial state — no public mutable properties, no non-port
 public functions. Operator rigging lives in `:test:world` wrappers, never in fakes.
@@ -362,6 +372,7 @@ public functions. Operator rigging lives in `:test:world` wrappers, never in fak
 - **THEN** the gate fails; the lever moves to a world wrapper
 
 ### Requirement: Runtime identity is pinned
+
 
 `:test:architecture` SHALL pin every runtime-identity literal — a string the OS or the installed
 base holds on its side, so that changing it strands or corrupts state on devices already in the
@@ -511,6 +522,7 @@ files.
 
 ### Requirement: The zone gates exist before their zones, pending and self-arming
 
+
 The five zone gates SHALL exist in `:test:architecture` **before** the zones they guard exist —
 the gates of requirement "The zone gates": model-purity, ports→model, feature-blindness,
 flow-no-ports, presentation-imports — following the fake-honesty gate's self-arming pattern:
@@ -556,6 +568,7 @@ pending state is historical; the self-arming contract stands for any future scop
   forever
 
 ### Requirement: The migration's laws are permanent gates
+
 Every law the migration beacon measured SHALL be enforced permanently in `:test:architecture`
 under `./gradlew build`. (The module-architecture migration is complete; its beacon — the
 detached burn-down module and the non-required `verify` job — measured zero on every law at the
@@ -604,6 +617,7 @@ canonical build.
   decision record, so the resurrection is loud rather than silent
 
 ### Requirement: Dead-edge analysis is scoped honestly
+
 The build SHALL run dependency-analysis `buildHealth` warn-only for jvm/common declared-unused
 edges (with the `kotlin-metadata-jvm` force it requires). iOS-only adapter edges are covered by
 the text gates, not by `buildHealth` (no upstream iOS-target support).
@@ -613,6 +627,7 @@ the text gates, not by `buildHealth` (no upstream iOS-target support).
 - **THEN** `buildHealth` reports it in the job summary
 
 ### Requirement: The upload producers are never both started
+
 
 A `:test:architecture` guard SHALL pin the invariants of `upload-lifecycle` that the compiler cannot,
 at the two places the risk lives once exclusion is structural again:
@@ -649,6 +664,7 @@ none. The guard follows the risk rather than the original wording.
 - **THEN** the guard fails the build
 
 ### Requirement: Platform entry points are derived and logged before deciding
+
 
 A test-only JVM guard SHALL assert that every platform entry point is instrumented before it
 decides anything (capability `diagnostic-logging`; spec `module-architecture`, "Absence is never
@@ -695,6 +711,7 @@ outcome this requirement exists to avoid.
 
 ### Requirement: Nullable port seams carry a stated consequence
 
+
 A test-only JVM guard SHALL assert that every nullable-returning member of the `ports/` boundary has
 a recorded verdict naming the consequence that makes its collapse safe, or is expressed as a
 distinguishing result type instead (spec `module-architecture`, "Absence is never silent").
@@ -717,6 +734,7 @@ would be neither.
 - **THEN** the guard fails, so the verdict inventory cannot outlive the seams it describes
 
 ### Requirement: The main lane is contained to platform UI
+
 
 A gate SHALL fail the build when a main-thread dispatcher is named outside an allowlist of platform-UI
 adapters. The watched forms SHALL cover both languages, because either can put work back on the main
@@ -745,6 +763,7 @@ documented execution model rather than a call inside the core.
 
 ### Requirement: Every user command declares its dispatcher lane
 
+
 A gate SHALL fail the build when any field of the user-command bundle is built without a lane-declaring
 decorator. Two decorators SHALL exist — one for commands that present platform UI and must run on the main
 lane, one for everything else — and neither SHALL be a default, so a command that declares no lane does
@@ -766,6 +785,7 @@ this project.
 
 ### Requirement: Adapter constructors perform no blocking work
 
+
 A gate SHALL fail the build when a blocking platform call appears in a property initialiser or `init`
 block of an iOS adapter. Construction happens during graph assembly, which runs on whichever thread
 touches the graph first — so constructor I/O is a race between the launch path and the first render, and a
@@ -786,6 +806,7 @@ that reason, so the exemption is a decision rather than an oversight.
 - **THEN** the allowlist entry states the constraint that makes fixing it a separate change
 
 ### Requirement: The composition seam gate
+
 The build SHALL fail when the function-typed field inventory of `AppPorts` or `UploadPorts` differs
 from a pinned list held in `:test:architecture`, exact in **both** directions. A new function-typed
 field fails until it is pinned with a stated reason it is not a port; a removed one fails until the
@@ -821,6 +842,7 @@ by the platform, not accessing it, and is out of scope.
   know about is a third place the composition can hand the core a lambda unseen
 
 ### Requirement: The platform-identifier gate
+
 The build SHALL fail when an Apple identifier appears in the **code** of `:domain`'s `model/`,
 `ports/` or `feature/` zones. Comments and KDoc are **exempt**, and that exemption is what gives the
 gate its signal: measured when the gate was introduced, scanning those zones including comments
@@ -913,6 +935,7 @@ owed.
 
 ### Requirement: Every runbook pointer resolves to a skill that exists
 
+
 A test-only JVM guard SHALL assert that every skill named in `CLAUDE.md`'s runbook pointer block
 resolves to an existing `.claude/skills/<name>/SKILL.md`, and that every such skill file carries a
 `name:` field in its frontmatter equal to the directory it lives in.
@@ -966,6 +989,7 @@ that demanded a pointer for each would make `openspec update`'s regenerated outp
 - **THEN** the guard fails rather than passing while inspecting nothing
 
 ### Requirement: The platform-vocabulary pin
+
 
 For every Apple enumeration an adapter decodes with a **fallback arm**, `:test:architecture` SHALL
 pin the complete set of constants that enumeration declares, with their exact values, and SHALL fail
@@ -1037,6 +1061,7 @@ Decision record: `changes/archive/2026-08-09-extract-upload-platform-mappings`.
   the guard's green result is never read as evidence that such a value cannot occur
 
 ### Requirement: Source contributed into a shell's source set is shell source for the gates
+
 The shell gates SHALL scan every source directory that is compiled into a `:app:*` module, including
 directories contributed from another module by the build script. The scanned-root list of the detekt gate
 and the mirrored list in its non-vacuity guard SHALL name such directories explicitly, and SHALL move
@@ -1060,6 +1085,7 @@ failure mode these gates exist to remove.
   SHALL not be contributed into a shell at all
 
 ### Requirement: The control channel's trigger coverage is derived, never hand-enumerated
+
 Where a dev/test control surface exposes platform entry points, the set it exposes SHALL be **derived**
 from the same entry-point population the entry-point guard derives, and every member SHALL be either
 wired to a trigger or named in an exclusion list carrying its reason. A guard SHALL assert that the
@@ -1072,6 +1098,21 @@ stated, which is the same bargain the entry-point guard already imposes.
 An exclusion SHALL name the consequence that makes it safe. Re-invoking an entry point that registers
 process-lifetime observers, or one that reads a process environment fixed for the life of the process, is
 a defect rather than an omission, and the reason distinguishes the two.
+
+Where the control surface reaches **more than one composition root**, the derivation SHALL be **grouped by
+root**: each root's entry-point population is compared against the wired-plus-excluded set of that root's
+own group, and the trigger namespace SHALL name the root it addresses. Comparing one flat set across roots
+is not sufficient and SHALL NOT be used — two roots may legitimately declare an entry point of the same
+name, and a set comparison silently deduplicates the pair, dropping one entry point from the inventory
+while the guard still passes. Grouping makes that collision unrepresentable instead of asserted about, and
+it keeps a route leaf equal to the member name it invokes without either root having to rename a member for
+disambiguation.
+
+The scope of the derivation SHALL be stated as a consequence of what the surface can reach, not as a
+convenience. A scoping reason that has been falsified by the surface growing SHALL be replaced rather than
+reworded: the surface previously reached only the app's root, and the exclusion of the extension root's
+entry points rested on their being unreachable from it, which ceased to be true when the control channel
+began invoking that root.
 
 #### Scenario: A new entry point is added without a trigger disposition
 - **WHEN** a new platform entry point is added to a composition root
@@ -1086,7 +1127,18 @@ a defect rather than an omission, and the reason distinguishes the two.
 - **WHEN** a trigger is deleted but its entry point still exists
 - **THEN** the guard fails until the entry point moves to the exclusion list with its reason
 
+#### Scenario: An entry point of a second root is unaccounted for
+- **WHEN** the control surface reaches a second composition root and one of that root's entry points is
+  neither wired nor excluded within that root's group
+- **THEN** the guard fails, naming the root and the entry point
+
+#### Scenario: Two roots declare the same entry-point name
+- **WHEN** two composition roots each declare an entry point of the same name and both are wired
+- **THEN** the guard accounts for both, because each is compared within its own root's group, and neither
+  is absorbed by the other
+
 ### Requirement: A dev/test control channel binds the loopback address only
+
 A control channel served from inside the app SHALL bind the loopback address and no other. A guard SHALL
 assert that the channel's source names no bind address but the loopback constant.
 
@@ -1107,6 +1159,7 @@ making it.
   otherwise indistinguishable from an app that is not running or a port forward that was never set up
 
 ### Requirement: The OS-receipt expiry line is pinned
+
 The diagnostic line emitted when an OS-handler receipt is released on its deadline SHALL be pinned by a
 guard, in the same manner as other cross-boundary literals.
 
@@ -1137,6 +1190,7 @@ level down. Each declared emitter SHALL state which expiry it reports, and SHALL
   because the work completed"
 
 ### Requirement: OS completion handlers are held in one type
+
 
 Holding an OS-supplied completion handler SHALL be confined to the single `:domain` `ports/` type that
 bounds the hold and releases every outstanding handler (`BackgroundEventsReceipts`, capability
@@ -1205,6 +1259,7 @@ rather than an exception added.
 
 ### Requirement: Production Kotlin declares no launch triggers
 
+
 A test-only JVM guard SHALL assert that production Kotlin source declares **no** `"SNAPSYNC_*"` string
 literal at all.
 
@@ -1249,6 +1304,7 @@ condition, and a scan that resolves zero Kotlin files SHALL fail rather than pas
 - **THEN** the guard fails rather than passing while inspecting nothing
 
 ### Requirement: A KDoc block is never silently dropped
+
 
 A `:test:architecture` guard SHALL fail the build when two KDoc blocks appear consecutively with only
 blank lines between them and a declaration already appears earlier in the file.
@@ -1298,6 +1354,7 @@ evidence that it is.
 - **THEN** the guard fails, rather than reporting success over an empty set
 
 ### Requirement: No reader is left behind on a moved deployment key
+
 
 A guard SHALL assert that no file in the repository, other than the resolver itself, extracts from the
 committed `Config.xcconfig` a build setting that `Config.xcconfig` does not itself assign. The guarded set
@@ -1366,6 +1423,7 @@ runs and finds nothing.
 
 ### Requirement: The transport-binding gate
 
+
 `:test:architecture` SHALL pin, by source text, which `URLSession` configuration each iOS target's
 transport-session seam yields (`ios-url-session-upload`, "The transport binding is fixed by the compilation
 target"). The gate SHALL assert, **exactly in both directions**:
@@ -1408,6 +1466,7 @@ factory, never that the resulting session behaves; only a device run shows that.
 - **THEN** the gate fails rather than passing vacuously
 
 ### Requirement: The simulator transport binding is asserted where it can be executed
+
 
 `:adapter:ios:app-only` SHALL carry an `iosSimulatorArm64` test asserting that the seam yields a
 configuration with a **nil** session identifier on that target, and that the reported binding names the
@@ -1496,3 +1555,51 @@ found, so it cannot pass by scanning nothing.
 
 - **WHEN** the shell source the guard scans is absent or renamed out from under it
 - **THEN** the guard fails rather than reporting success over nothing
+
+### Requirement: The upload-job subsystem binding gate
+
+
+`:test:architecture` SHALL pin, by source text, which implementation each iOS target binds for the **OS
+upload-job subsystem** — the registration record and the job queue (`ios-photokit-upload`, "The upload-job
+subsystem binding is fixed by the compilation target"). The gate SHALL assert, **exactly in both
+directions**:
+
+- the `iosArm64` actuals name the PhotoKit APIs — `setUploadJobExtensionEnabled` and
+  `creationRequestForJobWithDestination`; and
+- the `iosSimulatorArm64` actuals name **neither**.
+
+A source-text gate is the mechanism for the same reason the transport-binding gate uses one: this repo's
+iOS tests run on `iosSimulatorArm64` and nothing else, so the **device** actual is never executed by
+anything in CI. A swap of the two actuals would ship a binary whose uploads are inert to real users and
+would pass the build, `codesign`, and the whole `iosSimulatorArm64Test` suite.
+
+The stakes are higher here than for the transport binding, and in the opposite direction. Reaching the
+PhotoKit job creation on a simulator does not degrade — it raises an uncaught `NSInvalidArgumentException`
+from inside PhotoKit and terminates the process. So a mis-bound simulator actual destroys the host it was
+meant to serve, with a crash whose stack names Apple's frames rather than ours.
+
+The gate SHALL fail on a missing actual as well as on a wrong one, so deleting a target's actual is not a
+way past it. Adding a third iOS target SHALL require extending this pin rather than silently escaping it,
+by the rule in "Gates fail closed on novelty".
+
+The gate SHALL NOT assert anything about the *runtime behaviour* of either binding — that the PhotoKit
+subsystem accepts a registration on a device, or that it refuses one on a simulator. Those are platform
+facts with their own forcing proofs and expiry triggers in `ios-photokit-upload`, and a text gate that
+claimed them would be asserting what it cannot observe.
+
+#### Scenario: The device actual loses its PhotoKit call
+- **WHEN** the `iosArm64` binding stops naming `setUploadJobExtensionEnabled` or
+  `creationRequestForJobWithDestination`
+- **THEN** the gate fails, because a shipped binary would register nothing and create no upload job
+
+#### Scenario: The simulator actual gains a PhotoKit call
+- **WHEN** the `iosSimulatorArm64` binding names either PhotoKit API
+- **THEN** the gate fails, because reaching that call on a simulator terminates the process
+
+#### Scenario: A target's actual is deleted
+- **WHEN** either target's actual is removed
+- **THEN** the gate fails on the missing actual rather than passing vacuously
+
+#### Scenario: A third iOS target is added
+- **WHEN** a new iOS compilation target is introduced
+- **THEN** the gate fails until the pin names that target's binding explicitly

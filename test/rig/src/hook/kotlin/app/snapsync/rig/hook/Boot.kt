@@ -11,7 +11,11 @@ import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.rig.RigCommand
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
+import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.rig.RigTrigger
+import app.snapsync.rig.extensionTriggerGroup
+import app.snapsync.rig.resolvedMechanism
+import app.snapsync.rig.TriggerGroup
 import app.snapsync.rig.RigUserCommand
 import app.snapsync.rig.UploadMechanismPin
 import app.snapsync.rig.deviceCommands
@@ -113,8 +117,32 @@ private fun iosHooks() = RigHooks(
     // would not be the call the OS makes, which is the whole reason triggers are entry points.
     mainLane = Dispatchers.Main,
     deviceLog = IosDeviceLogSource(),
-    triggers = triggers(),
-    excludedTriggers = excludedTriggers(),
+    // Grouped by composition root: the `/os/<root>/<member>` segment names whose entry point a caller
+    // invokes. `app` is `SnapSyncRoot`'s. A second group joins it when the channel reaches a second root.
+    triggerGroups = mapOf(
+        // Swift calls this root's entry points from the main thread, so the rig does too.
+        "app" to TriggerGroup(lane = Dispatchers.Main, wired = triggers(), excluded = excludedTriggers()),
+        "photokit-ext" to extensionTriggerGroup(
+            // THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls
+            // `Logger.setLogWriters(…)`, and a bound method reference FORCES that object where it is
+            // written — here, at boot. Measured 2026-08-26: with `::processRawValue` the extension's boot
+            // banner appeared at hook-construction time and `SnapSyncRoot`'s own `onLaunch` lines then
+            // landed in `ext-debug.log`, because the app's log destination had already been replaced
+            // before `SnapSyncRoot` initialised. `debug.log` was never created at all.
+            //
+            // A lambda body is not evaluated until it is called, so the root is forced by the first
+            // request that needs it — which is the same rule this file already follows for
+            // `SnapSyncRoot.app` and `.host`, and for the same reason.
+            process = { UploadExtensionRoot.processRawValue() },
+            terminate = { UploadExtensionRoot.onTerminate() },
+            resolvedMechanism = resolvedMechanism(
+                osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
+                permission = { SnapSyncRoot.permission.permission.value },
+            ),
+            permission = { SnapSyncRoot.permission.permission.value },
+            excluded = excludedExtensionTriggers(),
+        ),
+    ),
     // The `/user` maps and the `/device` verbs are built in `:test:rig`, not here. Same reason every
     // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
     // shell gate, which permits no decisions — and a command map's bodies are full of them.
@@ -126,7 +154,7 @@ private fun iosHooks() = RigHooks(
         osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
     ),
     readGallery = galleryReader(core = { SnapSyncRoot.app }),
-    osExtensionEnabled = osExtensionEnabled(osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload),
+    osExtensionEnabled = osExtensionEnabled(registry = SnapSyncRoot.osExtensionRegistryThunk),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,
     // which has no branch to make. `Documents/` rather than the App Group deliberately: a simulator host
     // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling
@@ -180,6 +208,20 @@ private fun triggers(): Map<String, RigTrigger> = mapOf(
             SnapSyncRoot.handleBackgroundUrlSession(arg.orEmpty(), done)
         },
 )
+
+/**
+ * EXCLUDED entry points of the upload extension's root — **none**, and the empty map is the statement.
+ *
+ * Both of that root's `@PlatformEntry` members are driveable: `processRawValue` runs a cycle and answers
+ * with the tri-state result the OS reads, and `onTerminate` records what the root knows about its in-flight
+ * work. Neither is a record of whether the PLATFORM called it, which is what makes the app root's scene
+ * observers undriveable.
+ *
+ * The function exists rather than being omitted because the coverage guard derives every group's exclusions
+ * from a named function: a group with none would be a group whose omissions could not be read, and "nothing
+ * is excluded" and "nothing could be looked at" are not the same answer.
+ */
+private fun excludedExtensionTriggers(): Map<String, String> = emptyMap()
 
 /**
  * EXCLUDED entry points, each with the consequence that makes the omission safe rather than an oversight.

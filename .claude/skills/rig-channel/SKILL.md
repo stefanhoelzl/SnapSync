@@ -88,7 +88,9 @@ no population to derive from, so it is hand-listed and small.
 ```
 GET  /health                            rig=up, port, boot instant — liveness ONLY
 
-POST /os/<entry>?arg=…                  the real @PlatformEntry member, invoked as Swift invokes it
+POST /os/<root>/<entry>?arg=…           the real @PlatformEntry member, invoked as the platform invokes it
+                                        <root> is app | photokit-ext — WHOSE entry point, since the
+                                        channel reaches two composition roots
 POST /user/<command>?…                  the real StatusContainerHost command, as a tap invokes it
 
 GET  /device/state                      the real UiState + readiness + ledger + downloads + build facts
@@ -112,13 +114,44 @@ build facts (which backend this build points at), and the OS's own view of the e
 or absent log is a `404` with a stated reason, never an empty `200`. It reads the **current** file only —
 a rolled `.1` sibling is not reachable this way.
 
+
+## `/os/photokit-ext` — the OS-driven upload tier's own root
+
+The channel reaches **two** composition roots, and the path segment says which. `/os/app/<member>` is
+`SnapSyncRoot`'s — everything the Swift app shell forwards. `/os/photokit-ext/<member>` is
+`UploadExtensionRoot`'s: the upload extension's, invoked directly rather than waiting for the OS to
+schedule an appex.
+
+```
+POST /os/photokit-ext/processRawValue   run one upload cycle; ANSWERS with the tri-state result
+                                        the OS reads, plus what the cycle created
+POST /os/photokit-ext/onTerminate       the OS killing a cycle
+```
+
+`processRawValue` is the channel's only **answering** trigger: the OS invokes `process()` synchronously and
+acts on its return, so the rig receives that value rather than inferring it from a poll — the same
+reasoning that makes a receipted trigger receive its completion handler.
+
+It runs on **its own serial thread, never main**. The extension process has no main lane, and running its
+`runBlocking` on the app's UI thread would freeze the app for the whole cycle.
+
+⚠️ **Refused unless the resolved mechanism is `photokit`**, naming what resolved. Under `url_session` the
+app's own arm holds a live `LedgerWriter` and this cycle would be a second one over the same App-Group
+ledger. Clear any pin first (`POST /device/upload-mechanism?value=none`) and hold a full photo grant.
+
+**On a device** this drives the **real** OS job queue — forcing a cycle on demand instead of waiting for
+the OS to schedule one. Send no body there; the OS holds the queue and a body is refused rather than
+ignored. **On a simulator** the queue is substituted and you play the OS: hand the finished job sets in,
+get the created jobs back, and move their bytes with `POST /device/upload-jobs/perform`. Load
+`ios-simulator` for that half — the shape, the levers and the two host divergences are documented there.
+
 ## Driving an event end to end
 
 Everything below assumes a rig build installed and launched (`ios-device`) and `usbmux forward 18099`.
 
 ```
 # JOIN — the warm universal-link path, same decode -> gate -> join a scanned QR takes
-curl -X POST "localhost:18099/os/onSceneContinueActivity?arg=https://snapsync.stho.net/join%23v=3&d=<payload>"
+curl -X POST "localhost:18099/os/app/onSceneContinueActivity?arg=https://snapsync.stho.net/join%23v=3&d=<payload>"
 
 # CREATE — exactly as a user creates one: mint, then confirm the gate it opens
 curl -X POST "localhost:18099/user/create?name=Trip&startsAt=2026-08-23T00:00&endsAt=2026-08-30T00:00"
@@ -281,7 +314,7 @@ this OS cannot run is clamped by the resolver:
 ```
 
 Verified 2026-08-25 on the SE2 (iOS 26.5.2): pinning `url_session` on a ≥26.1 device under a **full**
-grant drove real uploads through the app-driven pump. Fire `POST /os/runUploadHeartbeat` to kick it —
+grant drove real uploads through the app-driven pump. Fire `POST /os/app/runUploadHeartbeat` to kick it —
 `runUploadHeartbeat` is the app-driven tier's entry point and does nothing for the OS-driven one, whose
 extension the OS invokes on its own cadence.
 

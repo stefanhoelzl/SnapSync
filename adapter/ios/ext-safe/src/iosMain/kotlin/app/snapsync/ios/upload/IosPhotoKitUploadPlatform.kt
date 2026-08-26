@@ -107,14 +107,15 @@ class IosPhotoKitUploadPlatform(
                         log.w { "upload job without destination URL — acknowledging to drain" }
                     }
                     is FetchedJob.Emit -> {
-                        val succeeded = classified.state == PhotoKitJobState.SUCCEEDED
-                        val state = if (succeeded) LedgerState.UPLOADED else LedgerState.FAILED
-                        if (!ledger.markTerminal(classified.key, state)) {
+                        // The adjudication is `terminalDisposition` (beside the other per-job decisions in
+                        // PhotoKitJobMapping.kt, where it is tested); this body supplies only the effect.
+                        val disposition = terminalDisposition(classified.state, resourceIsLive = resource != null)
+                        if (!ledger.markTerminal(classified.key, disposition.ledgerState)) {
                             // Not silent: the row was not REQUESTED — already settled, or pruned.
-                            log.i { "terminal ${classified.key} -> $state applied to no row" }
+                            log.i { "terminal ${classified.key} -> ${disposition.ledgerState} applied to no row" }
                         }
                         // Only a retry-spent failure that can still be re-created is the cycle's business.
-                        if (!succeeded && resource != null) {
+                        if (disposition.reCreate) {
                             out += PlatformUploadJob(
                                 key = classified.key,
                                 contentType = photoKitContentType(destination, resource),
