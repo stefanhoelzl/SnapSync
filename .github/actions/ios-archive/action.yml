@@ -212,6 +212,36 @@ runs:
         [ -n "$IN_MARKETING_VERSION" ] && args="$args MARKETING_VERSION=$IN_MARKETING_VERSION"
         echo "XCB_OVERRIDES=$args" >> "$GITHUB_ENV"
 
+    # Cache the RESOLVED SwiftPM CHECKOUT — the archive's largest single item once the Kotlin links
+    # came down to 41 s and 23 s: 30.5 s cloning getsentry/sentry-cocoa on every run, with nothing
+    # caching it (measured on the 4.05-min archive that followed the ~/.konan fix).
+    #
+    # ⚠️ `irgaly/xcode-cache` was tried here first and CANNOT do this job, which is not obvious from its
+    # README. It caches SourcePackages only as a rider on DerivedData: with no DerivedData restored it
+    # logs "There are no SourcePackages directory in DerivedData, skip restoring SourcePackages" and
+    # returns green (measured, run 32967629400). And DerivedData is CONFIGURATION-SCOPED — main archives
+    # Release, the branch gate archives Debug — so a branch can never restore it, and would therefore
+    # never restore the SwiftPM half either. The gate would have gained nothing while a large entry ate
+    # a cache budget already at 9.7 of 10 GB. A plain actions/cache on the checkout directory has no
+    # such coupling.
+    #
+    # Keyed on project.pbxproj because this repo has NO Package.resolved — the pin lives in the pbxproj
+    # (`kind = exactVersion; version = 8.58.2`), which is also why xcode-cache's default key, a
+    # hashFiles over `**/Package.resolved`, would have hashed nothing and produced one constant key that
+    # never invalidates on a dependency bump. pbxproj is over-sensitive instead (7 commits touched it in
+    # 60 days): a spurious miss costs one clone, a spurious HIT would serve a stale revision.
+    #
+    # EXACT KEY, NO restore-keys: this entry is a function of the pin, so a near-miss is worth nothing —
+    # xcodebuild re-resolves any checkout whose revision does not match, and a broad restore-key would
+    # only pay to unpack something it then discards. The checkout is configuration-independent, so main
+    # writes it once per pin and every branch reads it.
+    - name: Restore the resolved SwiftPM checkout
+      id: spm
+      uses: actions/cache/restore@v6
+      with:
+        path: build/ios/SourcePackages
+        key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
+
     # The signed archive both compiles iosArm64 (so it doubles as the build gate) and is the delivery
     # source. -allowProvisioningUpdates cloud-manages the PROFILE while reusing the imported cert.
     - name: Archive signed device app
@@ -238,6 +268,18 @@ runs:
           CURRENT_PROJECT_VERSION="$CPV" \
           $XCB_OVERRIDES \
           archive
+
+    # Save it only when the restore genuinely MISSED. With an exact key a hit means the entry is already
+    # correct, and re-saving it would fail to reserve the key and log `Failed to save` at
+    # `outcome=success` — the same silent duplicate-key failure that kept ios-build's ~/.konan save from
+    # landing for weeks (see the restore step above). Guarding on the miss keeps that noise out of the
+    # log entirely, so a real failure here would still be legible.
+    - name: Save the resolved SwiftPM checkout
+      if: github.ref == 'refs/heads/main' && steps.spm.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: build/ios/SourcePackages
+        key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
 
     # Build the DEBUG cache family main would otherwise never produce (capability `ios-ci`).
     #
@@ -299,3 +341,34 @@ runs:
       with:
         path: ~/.konan
         key: ${{ steps.konan.outputs.cache-primary-key }}
+
+    # Reclaim the entries this save superseded. Without it ~/.konan accumulates one ~500 MB entry per
+    # merge — the run id in the key mints a new one every time and only the newest is ever restored —
+    # and five such orphans (~2.1 GB) were live at once against a budget already at 9.7 of 10 GB.
+    #
+    # That accumulation stopped being cosmetic the moment the warm-up above started working: the merge
+    # gate's 12.1 -> 4.3 min now DEPENDS on the newest `-device-` entry being there, and LRU eviction
+    # under a full budget is exactly what would take it — silently, with nothing red, the gate simply
+    # back at twelve minutes.
+    #
+    # Scoped by SUFFIX rather than by the dependency hash, so a hash rotation (a Kotlin or dependency
+    # bump) cannot strand the pre-bump entries forever; and scoped to `-device-` so it can never touch
+    # the `-sim-` entry ios-test owns. `continue-on-error` because reclaiming space must never fail a
+    # merge that delivers.
+    - name: Reclaim superseded ~/.konan entries
+      if: github.ref == 'refs/heads/main'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEEP: ${{ steps.konan.outputs.cache-primary-key }}
+        PATTERN: ^konan-${{ runner.os }}-.*-device-
+      run: |
+        set -uo pipefail
+        gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+          --jq ".actions_caches[] | select(.key | test(\"$PATTERN\")) | select(.key != \"$KEEP\") | [.id, .key] | @tsv" \
+        | while IFS=$'\t' read -r id key; do
+            echo "reclaiming $key"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent \
+              || echo "::warning::could not delete superseded cache $key"
+          done

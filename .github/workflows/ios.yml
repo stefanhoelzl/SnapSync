@@ -112,6 +112,14 @@ jobs:
     # Changing it without updating the ruleset would freeze merges (the required check would
     # never be posted).
     name: ios-build
+    # `actions: write` beyond the workflow-level `contents: read`: this job reclaims the ~/.konan entries
+    # its own saves supersede (the last step of .github/actions/ios-archive). Deleting a cache entry is
+    # an Actions API write; without this the reclaim is a 403 and the entries accumulate against a budget
+    # already at 9.7 of 10 GB — with the newest `-device-` entry, which the gate's 12.1 -> 4.3 min
+    # depends on, eventually evicted along with them.
+    permissions:
+      contents: read
+      actions: write
     # Build-scope values, read by EVERY resolver invocation in this job — this workflow's explicit step
     # and the one `:domain` performs at Gradle configuration time. Setting them at job level is what makes
     # re-resolving idempotent. `channel` is the single discriminator the xcconfig renderer derives
@@ -486,6 +494,11 @@ jobs:
     # the two jobs compile different Kotlin/Native targets, so the heavy per-target work is not
     # duplicated — only checkout/setup + the commonMain klib compile is re-paid.
     name: ios-test
+    # See ios-build's note: reclaiming this job's own superseded `-sim-` entries is an Actions API
+    # write, and the workflow-level grant is `contents: read` only.
+    permissions:
+      contents: read
+      actions: write
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7.0.1
@@ -577,3 +590,26 @@ jobs:
         with:
           path: ~/.konan
           key: ${{ steps.konan.outputs.cache-primary-key }}
+
+      # Reclaim what this save superseded — the `-sim-` half of the same accumulation ios-build's
+      # `-device-` reclaim documents: the run id mints a new ~430 MB entry every merge and only the
+      # newest is ever restored. Scoped by SUFFIX so a dependency-hash rotation cannot strand the
+      # pre-bump entries, and to `-sim-` so it can never touch ios-build's `-device-` entry, which the
+      # merge gate's 12.1 -> 4.3 min now depends on. `continue-on-error`: reclaiming space must never
+      # fail a merge.
+      - name: Reclaim superseded ~/.konan entries
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ steps.konan.outputs.cache-primary-key }}
+          PATTERN: ^konan-${{ runner.os }}-.*-sim-
+        run: |
+          set -uo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+            --jq ".actions_caches[] | select(.key | test(\"$PATTERN\")) | select(.key != \"$KEEP\") | [.id, .key] | @tsv" \
+          | while IFS=$'\t' read -r id key; do
+              echo "reclaiming $key"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent \
+                || echo "::warning::could not delete superseded cache $key"
+            done
