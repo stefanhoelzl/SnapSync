@@ -68,39 +68,96 @@ launch. And, combined with *"MetricKit starts accumulating reports for your app 
 was never open.** It did not age out; it never accumulated. No build shipped at any speed could have
 recovered it.
 
-### 4. ❌ A crash diagnostic did NOT arrive within 30 minutes
+### 4. Delivery is ~24 h later, one-shot, and durable — NOT "immediately" ⚠️ REVISED
 
-The load-bearing negative. Method:
+**This finding was recorded backwards on 2026-08-25 and is corrected here.** The first pass measured
+30 minutes of silence after a real crash and treated it as possibly fatal to the design. It was not:
+the payloads arrived, a day later, on the first launch of a subscribing build.
+
+Timeline across both days:
 
 | time (UTC) | event |
 |---|---|
-| 22:05:31 | probe arms, subscriber registered |
+| 2026-08-25 22:05:31 | probe arms, subscriber registered |
 | 22:06:15 | rig `POST /device/crash` → `abort()` |
-| 22:06:16 | OS records `SnapSync-2026-08-26-000616.ips` — `EXC_CRASH` / `SIGABRT` / `Abort trap: 6` |
-| 22:09:04 | app relaunched, armed, `pastDiagnosticPayloads=0` |
-| 22:09–22:34 | app **alive and subscribed** for 25 min, polled once a minute |
-| 22:36:33 | SIGKILL + **cold launch**, `pastDiagnosticPayloads=0` |
+| 22:06:16 | OS records `.ips` — `EXC_CRASH` / `SIGABRT` |
+| 22:09 – 22:36 | app alive + subscribed 25 min, then a cold launch. **Nothing delivered** |
+| 22:44 | a **third** crash (pid 14748), unobserved at the time |
+| 2026-08-26 ~11:30 | another workspace installs a build **without** the probe |
+| 22:10 | 8 process starts that day, **no arm line** — the probe was gone |
+| 22:12:27.499 | probe build reinstalled and launched, arms |
+| **22:12:27.796** | **`didReceiveDiagnosticPayloads(count=1)`** — 297 ms after arming |
+| **22:12:27.861** | **`didReceiveMetricPayloads(count=1)`** — 362 ms after arming |
+| 22:14 / 22:15 / 22:15 | three further launches — **nothing** |
 
-`didReceiveDiagnosticPayloads` never fired. The crash was real and the subscriber was armed 44 s
-before it.
+**What this establishes.**
 
-**This falsifies the plan of manufacturing a watchdog kill to verify the chain "in minutes"**, and
-it undercuts the design split that treated diagnostics as the prompt per-incident channel and
-metrics as the daily heartbeat. Apple's *"Diagnostic reports arrive immediately in iOS 15 and
-later"* does not mean what it appears to mean here.
+- **Dev-signed sideload builds DO receive MetricKit payloads.** The gating unknown is closed.
+  The payload says so itself: `"isTestFlightApp" : false`.
+- **Delivery is one-shot per payload**, on the *first* launch of a subscribing process after the
+  payload exists. Three subsequent launches delivered nothing.
+- **Payloads are durable across a non-subscribing build.** A build without the probe sat on the
+  device for a day; the payloads were still delivered when a subscriber returned. This is Apple's
+  *"any previously undelivered daily reports"* holding in practice, and it means a missed launch
+  delays attribution rather than losing it.
+- *"Diagnostic reports arrive immediately in iOS 15 and later"* does **not** mean minutes. The
+  observed lag from crash to delivery was **~22 hours**, and the diagnostic arrived in the same
+  breath as the daily metric payload — so in practice both channels run on **one ~daily cadence**.
+  The two-tempo model (diagnostics prompt, metrics daily) does not survive this measurement.
+- `pastPayloads` / `pastDiagnosticPayloads` read **0 at every arm**, including the arm 300 ms before
+  a delivery. They are not an inspection route.
 
-Three explanations remain, **not yet separable**:
+### 4a. What a crash diagnostic actually contains
 
-1. dev-signed builds receive nothing at all;
-2. diagnostics are batched on roughly the metric cadence;
-3. delivery is gated on device analytics-sharing, or on idle/charging conditions.
+```
+exceptionType: 10 (EXC_CRASH)   exceptionCode: 0   signal: 6 (SIGABRT)
+terminationReason: null
+pid 14748 · appVersion 0.1 · appBuildVersion 1 · iPhone OS 26.6 (23G71) · iPhone12,8 · arm64e
+```
 
-The analytics-sharing setting is **not readable headlessly** — no lockdown domain exposes it
-(`pymobiledevice3 lockdown` has no `get_value`).
+- **`terminationReason` is null** for a plain SIGABRT. The human-readable string is not always
+  there, so a design that leans on it must treat absence as normal, not exceptional. The three
+  scalars are what you reliably get.
+- Only **one** crash diagnostic was delivered, though at least three SnapSync crashes occurred in the
+  window — and it was for the 00:44 crash, **not** the deliberate 00:06 abort. Whether MetricKit
+  coalesces, samples, or simply had the others still queued is **not established**.
+- The payload window is a **point**: `timeStampBegin == timeStampEnd == "2026-08-26 00:44:00"`.
 
-**The distinguishing experiment is already running**: the first daily metric payload, earliest
-~22:05 UTC on 2026-08-26. A metric payload arriving with no diagnostic isolates it to diagnostics;
-nothing arriving means dev builds are excluded and all verification moves to TestFlight.
+### 4b. 🔴 The call stack is 314 KB — this breaks the plan to log it verbatim
+
+One crash diagnostic: **314,196 bytes**, 19 thread call stacks, 351 frames,
+**20 distinct `binaryUUID`s**.
+
+Two consequences, both design-changing:
+
+1. **The scrub collision is real, as predicted.** Those 20 `binaryUUID`s are UUID-shaped, and
+   `crash-reporting`'s content-blind rule would replace every one with the redaction marker —
+   destroying exactly the field offline `atos` symbolication resolves against.
+2. **Writing it verbatim to `debug.log` does not work.** At 314 KB per crash, ~32 crashes fill the
+   10 MB roll, and a single one would dominate the 700 KB diagnostic-dump budget and crowd out the
+   log tail that dump exists to carry. The earlier suggestion to "write the diagnostic verbatim to
+   `debug.log`, scalars to the reporting channel" holds **only for the scalars**. The call stack
+   needs a deliberate decision of its own — summarise, drop, or truncate — and cannot simply ride
+   an existing channel.
+
+### 4c. ⚠️ `applicationExitMetrics` has still NOT been observed
+
+The delivered metric payload carried **only** `diskSpaceUsageMetrics` — no exit metrics, no CPU, no
+memory:
+
+```json
+{ "diskSpaceUsageMetrics": {...}, "timeStampBegin": "2026-08-26 11:09:50",
+  "timeStampEnd": "2026-08-26 11:09:50", "appVersion": "0.1",
+  "metaData": { "isTestFlightApp": false, "osVersion": "iPhone OS 26.6 (23G71)",
+                "deviceType": "iPhone12,8", "bundleIdentifier": "app.snapsync", "pid": -1 } }
+```
+
+Its window is also a **point**, not 24 hours. This is consistent with Apple's *"Some metrics
+originate from different system sources and arrive in a separate payload"* — but it means **the
+central object of this whole design has not yet been seen on a device.** Everything about
+`MXAppExitMetric`'s content, cadence, and window remains klib- and documentation-derived only.
+
+**This is the one question the probe has not answered.**
 
 ---
 
@@ -176,9 +233,12 @@ code, but it cost a full crash cycle here and reads as "the app crashes on launc
 
 ## Still open
 
-- **the gating question** — does a dev-signed build receive MetricKit payloads at all? (pending,
-  ~22:05 UTC 2026-08-26)
-- whether diagnostics ever arrive, and on what cadence
-- whether analytics-sharing gates delivery
+- 🔴 **`applicationExitMetrics` has never been observed on a device** — the central object of the
+  design. Its real cadence, window and content remain documentation-derived
+- whether the other two crashes were coalesced, sampled, or merely still queued
+- what `terminationReason` holds for a **watchdog** kill (it is null for SIGABRT), which is the
+  string a design would lean on to separate watchdog from background-assertion timeout
+- ~~does a dev-signed build receive payloads~~ — **answered: yes** (`isTestFlightApp: false`)
+- ~~whether analytics-sharing gates delivery~~ — **moot**: delivery works on this device as configured
 - extension exits: structurally unattributable (daily report cadence vs a per-invocation process
   lifetime), unchanged by anything measured here
