@@ -20,6 +20,7 @@ import app.snapsync.rig.gallery.wipeGallery
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.Json
+import platform.posix.abort
 
 /**
  * Everything the hook would otherwise have to decide.
@@ -260,6 +261,27 @@ fun deviceCommands(
                 )
             }
         }
+    },
+    // ⚠️ PROBE — temporary, delete with the change that replaces it (capability `crash-reporting`,
+    // exit attribution). Manufactures a REAL termination so MetricKit's diagnostic channel can be
+    // observed on demand instead of waiting for a natural one: Apple says diagnostics arrive
+    // "immediately in iOS 15 and later", which cannot mean immediately for a process that has been
+    // killed, and only a device says what it does mean.
+    //
+    // `abort()` and not a main-thread hang, deliberately: SIGABRT is a deterministic, standard crash
+    // report, which is what tests whether the CHANNEL works at all. A watchdog kill (the SNAPSYNC-23
+    // shape) is the same channel with a different classification, and manufacturing one means naming
+    // `Dispatchers.Main` here — which the main-lane containment gate would have to be taught about.
+    // That belongs to the real change, not to a probe.
+    //
+    // It never answers: the process is gone before a response can be written, and the caller sees the
+    // connection drop. That IS the confirmation.
+    "crash" to RigCommand {
+        log.i { "[metrickit] probe: aborting on request to manufacture a crash diagnostic" }
+        abort()
+        // `abort(): Unit` in the posix klib, so the map's value type still needs one. The process is
+        // gone before this is reached.
+        CommandResult.ok("""{"crashed":true}""")
     },
 )
 
