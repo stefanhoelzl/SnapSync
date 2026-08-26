@@ -72,7 +72,12 @@ tapping an invite for the first time never has the app running, and bootstrappin
 the event link exists (capability `event-link`).
 
 Link delivery SHALL be independent of scene composition: a link SHALL reach `onOpenUrl` whether or not a
-scene has been composed, because the delivery hooks are the scene delegate's and not the scene's.
+scene has been composed. The delivery hooks SHALL include **both** the scene delegate's callbacks and
+SwiftUI's `.onOpenURL` on the `WindowGroup`. Both are declared because neither covers every case —
+measured, on the builds named below — and NOT because the mechanism that makes each fire is understood.
+It is not: the same modifier was measured failing in an earlier delegate configuration and firing in
+this one, which no available explanation accounts for. The contract is therefore the outcome, and the
+redundancy is what makes the outcome robust to an explanation nobody has.
 
 The string forwarded SHALL be the **complete** URL including its fragment, which carries the entire
 payload (capability `event-link`) — a truncated URL is an empty invite.
@@ -90,14 +95,17 @@ hook the platform actually invoked (capability `diagnostic-logging`). That is wh
 gap below: two hooks indistinguishable in the log would have read as "a link arrived once" and settled
 nothing.
 
-**This requirement is currently UNMET on iOS 18.7.9, measured, for the warm case.** Bugsink
-`SNAPSYNC-25` + `SNAPSYNC-26` (iPhone XS, build 607, one 80-second window): three warm taps each
-brought the app to the front — the foreground entry point fired every time, so iOS *did* activate the
-app from the link — and none reached `onOpenUrl`; the third was while the device was unjoined, ruling
-out join and switch logic. The cold half then delivered first try on a fresh process. The requirement
-is **not** weakened to match: the outcome it states is the contract, and a platform that does not meet
-it is a defect under investigation, not a contract to rewrite. The evidence and the expiry trigger live
-in capability `architecture-guards`.
+Delivery SHALL work **whether or not the app is already running**, and the shell SHALL NOT rely on any
+single platform hook to achieve that. Neither available hook is sufficient alone, and both statements
+are measured, on the configuration and builds named: with a custom scene delegate installed, the scene
+delegate's continuation does not fire on iOS 18.7.9 while the app is running (builds 681/683, iPhone
+XS; `scene(_:willContinueUserActivityWithType:)` announces and nothing follows, from Notes, WhatsApp
+and Safari's smart banner alike), and SwiftUI's `.onOpenURL` fired for only 2 of 4 deliveries on iOS
+26.6 (build 687, SE2). The union of the two delivered in every measured configuration. A previous
+revision of this paragraph asserted that iOS 18.7.9 does not call `scene(_:continue:)` at all — a claim
+about the **platform**, disproved on that same OS build once `.onOpenURL` was restored. Scope such
+claims to the build and configuration measured; expiry: re-measure at the next iOS major, and whenever
+a delivery hook is added or removed.
 
 The scene delegate SHALL **record every callback it receives**, not only those carrying a link — the
 connection (including one carrying no activity at all), a continuation UIKit announces before
@@ -107,14 +115,17 @@ That is not a hypothetical: separating them is exactly what the dumps above coul
 the investigation a device session. These recorders SHALL decide nothing and route nothing — a
 diagnostic that changes behavior is no longer a diagnostic.
 
-Delivery SHALL be **exactly once** per opened link: a link that provisions twice is a bug, and stacking
-redundant delivery hooks is how that happens. That constraint is not merely prudence — it is now
-measured. A second warm hook (SwiftUI's continuation modifier) was added and removed in one change: a
-scene has exactly ONE delegate, this app installs its own for the cold path, and SwiftUI's — which feeds
-that modifier — is therefore never created. On device it took 8 warm deliveries with 8 hits on the scene
-delegate and **zero** on the modifier. The hooks named in July's matrix are mutually exclusive
-configurations, not features that compose; a future reader tempted to "add a second warm path" SHALL
-re-derive that before doing so.
+Delivery SHALL be **exactly once** per opened link — and that SHALL be enforced by the app, in tested
+code, rather than assumed of the platform (capability `event-link`). A link that provisions twice is a
+bug, and the platform demonstrably delivers the same link more than once: measured on build 687, the
+same URL arrived twice on an iOS 18.7.9 cold launch (~130 ms apart) and twice on iOS 26.6 both while
+running (8 ms) and cold (105 ms). Because the app deduplicates, **more than one delivery hook MAY be
+live**, and that redundancy is the availability strategy rather than a hazard: no hook is reliable on
+every OS, and a hook that fires twice costs nothing once the second delivery is a no-op. This inverts a
+previous revision, which forbade "stacking redundant delivery hooks" — correct while delivery was not
+idempotent, and obsolete now that it is. What a future reader SHALL still not do is add a hook and
+*assume* it composes: each one forwards under its own entry-point name so a dump can count deliveries,
+and the count is what proves this requirement.
 
 The mechanism by which the shell re-asks for the root view controller at activation is an
 implementation decision, not part of this contract — but it SHALL key on a signal that fires however the
@@ -194,6 +205,23 @@ The extension target SHALL NOT declare an associated domain: it never handles UR
 #### Scenario: The app registers no custom URL scheme
 - **WHEN** the app's `Info.plist` is inspected
 - **THEN** it declares no `CFBundleURLTypes`, so a retired `snapsync://` URL reaches nothing
+
+#### Scenario: A link opened while the app is already running still arrives
+- **WHEN** an event link is opened from another app — a messenger, Notes, or a browser's smart banner —
+  while the app is running or suspended in memory
+- **THEN** the complete URL, fragment included, reaches `SnapSyncRoot.onOpenUrl(_:)`, by whichever
+  delivery hook the platform invokes
+
+#### Scenario: The platform delivering twice provisions once
+- **WHEN** the platform delivers the same opened link through more than one hook — measured on a cold
+  launch as the scene delegate's connection followed ~130 ms later by SwiftUI's `.onOpenURL`
+- **THEN** each delivery is logged under its own entry-point name, and the link is acted on exactly
+  once (capability `event-link`)
+
+#### Scenario: A delivery hook is present for both machineries
+- **WHEN** the Swift shell is inspected
+- **THEN** it installs a scene delegate handling the connection and continuation callbacks, AND
+  declares `.onOpenURL` on the `WindowGroup`, so neither machinery is relied on alone
 
 ### Requirement: Portrait-only orientation
 
