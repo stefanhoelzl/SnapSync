@@ -1,7 +1,25 @@
 # api-endpoints Specification
 
 ## Purpose
-TBD - created by archiving change record-uploads-in-database. Update Purpose after archive.
+
+**The whole `/api/v1` surface, in one place.** Every route's method, path, parameters, request body,
+response shape and status codes — and nothing else. This capability owns *what a request looks like and
+what it gets back*; it owns no rule that has a reason behind it.
+
+That division is deliberate and load-bearing. Before this capability the surface was spread across six
+endpoint specs, and every rule with a decision behind it was stated twice — once where it was decided and
+once where it was enforced. The `endsAt` validation rules lived in full in both `event-limits` and
+`event-creation`; the "requires a device token" rule was written **seven** times. Nothing contradicted, but
+nothing prevented it from starting to, and `openspec validate --specs --strict` never compares two specs to
+each other.
+
+So: **this spec cites, it does not restate.** Where a rule is decided elsewhere it names the capability and
+the status code a violation earns, and stops. A reader who wants to know *why* a window is capped at 30
+days is sent to `event-limits`; a reader who wants to know what a client gets for exceeding it reads `400`
+here.
+
+Decision record: `changes/record-uploads-in-database`.
+
 ## Requirements
 ### Requirement: The route table is closed
 

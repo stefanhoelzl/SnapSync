@@ -1,7 +1,26 @@
 # database Specification
 
 ## Purpose
-TBD - created by archiving change record-uploads-in-database. Update Purpose after archive.
+
+**The backend's relational store**, and the invariants it is here to make unforgettable.
+
+Before this capability every relational fact was encoded in the shape of an S3 key namespace: an event
+existed iff a marker object was present, a device was an active member iff one object was newer than its
+sibling, and the event union was assembled by listing one directory per member. Storage has no referential
+integrity, no atomic multi-key write, and no compare-and-set, so each of those invariants was
+re-implemented by every consumer that needed it — and two whole classes of cleanup logic existed only to
+repair states a foreign key forbids.
+
+This capability owns the schema, what atomicity each write requires, and how existence and capacity are
+decided. It does **not** own the routes that read and write it (capability `api-endpoints`), nor any
+product rule about what a bound *means* (capabilities `event-limits`, `photo-selection-policy`).
+
+The store holds only **derived, rebuildable** state: every row can be reconstructed from the storage zone
+plus one manifest republish per device. That is what makes it safe to put on a platform in public preview.
+
+Decision record: `changes/record-uploads-in-database` (`design.md` for the decisions, `PROBE-FINDINGS.md`
+for the measurements each one rests on).
+
 ## Requirements
 ### Requirement: Five tables, with resources outside the event ownership chain
 
