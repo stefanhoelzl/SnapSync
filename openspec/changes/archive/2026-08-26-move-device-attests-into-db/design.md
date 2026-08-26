@@ -1,3 +1,23 @@
+> **CORRECTED AFTER ARCHIVING — D8 and D11 below are superseded.** The cutover had not run when this was
+> archived, and two decisions did not survive contact with it:
+>
+> 1. **v2 dropped `device_records` instead of migrating it.** The rows' push tokens were to be carried by
+>    the one-time program, which made data preservation depend on operator ordering — and made loss the
+>    default outcome of an ordinary deploy, since CI applies migrations on every push. v2 now carries every
+>    row with `INSERT … SELECT`, leaving the attestation columns nullable (their values live in the storage
+>    zone, which SQL cannot reach), and a new **v3** tightens them to `NOT NULL` behind a precondition that
+>    refuses rather than dropping unattested rows. The governing principle, and it is the general one: **a
+>    migration migrates its data; it does not drop it.**
+> 2. **The one-time program is not committed** (D8's workflow and script are deleted). That contradicted the
+>    relational migration's own **D13a** — "the cutover's programs are throwaway, and are not committed…
+>    they live in a scratchpad, run through `proton-env`" — which this design cited elsewhere and then did
+>    not follow. It also no longer deletes the `.attest.json` objects: while the previous bundle is live it
+>    is still reading them to renew, so they stay, alongside the other legacy objects D13 left in place.
+>
+> A third defect was found the same way: `migrate.ts` resolved config through `readSweepConfig`, which
+> demands the storage access key that D7 deliberately withholds from the deploy workflow — so the first
+> deploy failed on a credential the step was right not to hold. It now uses a database-only reader.
+
 ## Context
 
 The relational migration (`changes/archive/2026-08-25-record-uploads-in-database`) moved every relational

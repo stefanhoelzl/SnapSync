@@ -254,6 +254,35 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
 }
 
 /**
+ * Build a Config for DATABASE-ONLY tooling — the schema migration `api-deploy.yml` runs before it
+ * publishes (capability `database`).
+ *
+ * It exists because `readSweepConfig` demands EVERY secret, storage access key included, and the deploy
+ * workflow deliberately holds none: `backend-deployment` requires that key to be an Edge Script
+ * environment value and not a CI secret, because bunny issues no scoped keys and that one also owns the
+ * zone holding every user's photos. Resolving the sweep's config there therefore fails at startup on a
+ * credential the step must never have — which is exactly what it did, blocking a deploy on a key it was
+ * right not to hold. Every field the migration does not touch is blank.
+ */
+export function migrateConfig(env: Record<string, string | undefined>): Config {
+  const d = deployed();
+  const missing: string[] = [];
+  const databaseUrl = secret(d.databaseUrl, env, missing);
+  const databaseToken = secret(d.databaseToken, env, missing);
+  if (missing.length > 0) {
+    throw new Error(`missing configuration: ${missing.join(", ")}`);
+  }
+  return {
+    ...publicFields(d),
+    accessKey: "",
+    apnsPrivateKey: "",
+    attestTokenKey: "",
+    databaseUrl,
+    databaseToken,
+  };
+}
+
+/**
  * Build a Config for storage-ONLY tooling that runs outside the Edge Script and needs only the storage
  * `AccessKey` — currently the `site/` mirror-deploy (capability `web-site`, `site/scripts/deploy.ts`).
  * It reuses the SAME resolved deployment the edge and the sweep use, so the deploy can never target a

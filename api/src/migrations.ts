@@ -31,6 +31,15 @@ export type Migration = {
   /** Human name, for the runner's log. Not load-bearing; the `version` is the identity. */
   name: string;
   statements: readonly string[];
+  /**
+   * Checked before the statements run; THROWS to refuse the migration.
+   *
+   * For migrations that TIGHTEN a constraint. A rebuild that narrows a column can only carry rows that
+   * already satisfy the narrower shape, so without a precondition it would silently drop the rest — and a
+   * migration must migrate its data, not discard it. Refusing instead leaves the store on the previous
+   * version, the deploy fails with the previous bundle still live, and the operator is told what to run.
+   */
+  precondition?: (db: Db) => Promise<void>;
 };
 
 /**
@@ -102,30 +111,82 @@ const V1: Migration = {
 };
 
 /**
- * v2 — `device_records` becomes `devices`, carrying the attestation the object store used to hold.
+ * v2 — `device_records` becomes `devices`, carrying every row.
  *
- * A REBUILD, NOT AN ALTER, and that is forced: SQLite cannot `ADD COLUMN … NOT NULL` without a DEFAULT,
- * and the attestation columns must be `NOT NULL` (a row exists only where a device has attested —
- * capability `device-attestation`). Any default would be a fabricated attestation, which is worse than no
- * row at all.
+ * A REBUILD, NOT AN ALTER, and that is forced: SQLite cannot `ADD COLUMN … NOT NULL` without a DEFAULT.
+ * But a rebuild MIGRATES its rows; it does not drop them. The `INSERT … SELECT` below is the whole point
+ * of this migration — the push registrations it carries are live tokens for real devices, and losing them
+ * would silence every one of those phones until it next launched.
  *
- * THIS MIGRATION CARRIES NO ROWS ACROSS, and that is deliberate rather than an omission. The attested key
- * lives in the STORAGE ZONE, which SQL cannot reach — so the rows are inserted by the one-time program in
- * `scripts/migrate-attest.ts`, which reads both halves, applies this migration between them, and joins.
- * Running this migration WITHOUT that program is survivable, not catastrophic: every device re-attests
- * once (recreating its row) and re-registers its push token at its next launch, because iOS redelivers the
- * APNs token on every launch. That is the failure mode if a deploy ever races ahead of the program — one
- * Apple attestation per device, no photo affected, no operator action.
+ * THE ATTESTATION COLUMNS ARE NULLABLE HERE, and only here. Their values live in the STORAGE ZONE, which
+ * SQL cannot reach, so a `NOT NULL` column at this moment could only be satisfied by a fabricated
+ * attestation — worse than an absent one. v3 tightens them once the data is in, and refuses to run until
+ * it is.
  *
- * `created_at` means FIRST ATTESTED. That is not a convention this migration invents; it is forced by the
- * gate: every route but `/attest/*` needs a token, and a token needs an attestation, so attestation is
- * strictly the first thing any device does.
+ * A NULL `attest_key` is therefore a real, legible state during the cutover: *this device has a row and a
+ * push registration, but the backend holds no attestation for it*. Every reader already answers that
+ * correctly — `readAttestation` returns null, so renewal `401`s and the device attests, which fills the
+ * columns. The store heals itself even if the backfill never runs; the backfill's job is to save each
+ * device the throttled Apple round-trip, not to make the system work.
+ *
+ * `created_at` seeds from `updated_at`: an UPPER BOUND on when the device was first seen, not a claim to
+ * know it. `push_updated_at` seeds from the same column, where it is exact.
  */
 const V2: Migration = {
   version: 2,
-  name: "devices carries the attestation",
+  name: "devices carries the attestation, preserving every row",
   statements: [
     `CREATE TABLE IF NOT EXISTS devices (
+       device_id               TEXT PRIMARY KEY NOT NULL,
+       created_at              TEXT NOT NULL,
+       attest_key              TEXT,
+       attest_env              TEXT,
+       attested_at             TEXT,
+       attest_token_expires_at TEXT,
+       push_kind               TEXT,
+       push_token              TEXT,
+       push_env                TEXT,
+       push_updated_at         TEXT
+     ) STRICT`,
+    `INSERT OR IGNORE INTO devices
+       (device_id, created_at, push_kind, push_token, push_env, push_updated_at)
+     SELECT device_id, updated_at, push_kind, push_token, push_env, updated_at
+       FROM device_records`,
+    `DROP TABLE IF EXISTS device_records`,
+  ],
+};
+
+/**
+ * v3 — the attestation columns become `NOT NULL`, restoring the invariant the schema should express: a
+ * `devices` row exists IF AND ONLY IF that device has attested (capability `device-attestation`).
+ *
+ * ⚠️ THE PRECONDITION IS WHAT MAKES THIS SAFE, and it is not defensive decoration. This rebuild can only
+ * carry rows that already have an attestation; run against the cutover state — every row carried by v2,
+ * none of them attested yet — it would drop all of them, which is precisely what a migration must never
+ * do. Refusing instead is fail-closed: v2 stays applied, the deploy fails with the previous bundle live,
+ * and the message says what to run.
+ *
+ * With the precondition satisfied the `INSERT … SELECT` is total: every row qualifies, nothing is
+ * dropped, and the tightening is pure. On a fresh store there are no rows and it passes trivially.
+ */
+const V3: Migration = {
+  version: 3,
+  name: "the attestation columns are NOT NULL",
+  precondition: async (db) => {
+    const { rows } = await db.execute(
+      `SELECT COUNT(*) AS n FROM devices WHERE attest_key IS NULL`,
+    );
+    const pending = Number(rows[0].n);
+    if (pending > 0) {
+      throw new Error(
+        `refusing to tighten: ${pending} device row(s) carry no attestation yet. Tightening now would ` +
+          `drop them. Run the one-time attestation backfill (it fills these columns from the ` +
+          `devices/<id>.attest.json objects), then re-run this deploy.`,
+      );
+    }
+  },
+  statements: [
+    `CREATE TABLE devices_attested (
        device_id               TEXT PRIMARY KEY NOT NULL,
        created_at              TEXT NOT NULL,
        attest_key              TEXT NOT NULL,
@@ -137,12 +198,14 @@ const V2: Migration = {
        push_env                TEXT,
        push_updated_at         TEXT
      ) STRICT`,
-    `DROP TABLE IF EXISTS device_records`,
+    `INSERT INTO devices_attested SELECT * FROM devices`,
+    `DROP TABLE devices`,
+    `ALTER TABLE devices_attested RENAME TO devices`,
   ],
 };
 
 /** Every migration, in the order they must be applied. Append only; never edit one that has shipped. */
-export const MIGRATIONS: readonly Migration[] = [V1, V2];
+export const MIGRATIONS: readonly Migration[] = [V1, V2, V3];
 
 /**
  * Apply every migration this store has not seen, in order, recording each.
@@ -159,6 +222,9 @@ export async function migrate(db: Db, log: (msg: string) => void = () => {}): Pr
 
   for (const m of MIGRATIONS) {
     if (applied.has(m.version)) continue;
+    // Refused BEFORE anything is written, so a migration that cannot carry its data leaves the store on
+    // the previous version rather than half-applied.
+    if (m.precondition) await m.precondition(db);
     await db.batch([
       ...m.statements.map((sql) => ({ sql })),
       {
