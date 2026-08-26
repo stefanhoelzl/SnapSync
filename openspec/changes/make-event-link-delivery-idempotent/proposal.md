@@ -62,6 +62,10 @@ None.
 - `architecture-guards`: the delivery-seam requirement covers the SwiftUI path as well as the scene
   delegate, and its evidence block is corrected to scope the iOS 18 measurement to "app already
   running" rather than to the OS.
+- `join-event`: the `autoJoin` requirement states that the duplicate check precedes the `autoJoin`
+  reading. As written it promises an auto-confirm on every decoded `autoJoin` link, which is no longer
+  unconditionally true — and `autoJoin` is the one path with no confirmation surface, so it is the only
+  one a repeated delivery could provision twice.
 
 ## Impact
 

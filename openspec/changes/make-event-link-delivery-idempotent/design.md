@@ -141,6 +141,28 @@ is the regression this change exists to prevent, and the per-path entry names ma
 **Rollback.** Reverting restores the iOS 18 defect — a resident app that silently ignores every
 invite — while leaving iOS 26 healthy. There is no safer prior state.
 
+## Delta completeness (archive gate 2)
+
+Every module this change touches, resolved to its owning capability. Recorded here because the gate
+exists to force the question, and the answer is only useful if it outlives the archive.
+
+| module | capability | delta |
+|---|---|---|
+| `iosApp/iosApp`, `app/ios/…/snapsync/ios` | `ios-app-shell` | yes |
+| `ui/presentation/…` | `join-event` | yes — see below |
+| `ui/presentation/…` (link delivery rule) | `event-link` | yes |
+| `test/architecture/…` | `architecture-guards` | yes |
+| `test/rig/…` | none — test-only dev infra, non-gating, no spec by CLAUDE.md's module list | n/a |
+| `test/integration/…` | none — test-only, no spec | n/a |
+| `.claude/skills/ios-device` | none — runbook prose, gated by `RunbookSkillsTest`, no spec | n/a |
+
+The one that needed the gate: the fix lives in `StatusContainerHost`, and the capability that owns that
+gate's behaviour is `join-event`, not `event-link`. Both get a delta, and they say different things —
+`event-link` states that a repeated delivery is acted on once; `join-event` states that the duplicate
+check precedes the `autoJoin` reading. The second is not implied by the first. `join-event`'s existing
+text promises an auto-confirm on **every** decoded `autoJoin` link, which this change makes untrue, and
+`autoJoin` is the only path with no confirmation surface to absorb a second delivery.
+
 ## Open Questions
 
 - **Where does the idempotence rule belong** — the presentation gate (`StatusContainerHost.onOpenUrl`,
