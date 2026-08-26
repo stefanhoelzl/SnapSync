@@ -380,7 +380,16 @@ configured).
 ### Requirement: The autoJoin flag auto-confirms the gate
 When a decoded event link carries `autoJoin = true`, the system SHALL run the **same** gate — decode,
 fetch details, and (when already joined to a different event) leave-then-join — but SHALL **auto-fire**
-the confirm once details reach the loaded phase, rather than waiting for a user tap. The auto-fired
+the confirm once details reach the loaded phase, rather than waiting for a user tap.
+
+The `autoJoin` reading SHALL be reached **only after** the delivery has been established as one the gate
+has not already acted on (capability `event-link`): a repeat of a link whose pending join is open, or
+whose event is already the joined one, is ignored **whatever `autoJoin` says**. That ordering is the
+whole of the protection, because this is the one path with no confirmation surface to absorb a second
+delivery — everything else asks for a tap, and a tap happens once however many times the link arrived.
+The platform does deliver the same link more than once (measured: twice on an iOS 18.7.9 cold launch
+~130 ms apart, and twice on iOS 26.6 both while running and cold), so before that ordering an
+`autoJoin` link provisioned once per delivery. The auto-fired
 confirm SHALL use the **default** cutoff (the loaded event's **`startsAt`** — never an absent cutoff,
 capability `photo-selection-policy`) unless the event link carries an explicit dev/test cutoff (see capability
 `event-link`), in which case that value SHALL be used **subject to the floor**: the persisted cutoff
@@ -423,6 +432,12 @@ than parking on a retryable error state.
 #### Scenario: autoJoin aborts on failure instead of showing Retry
 - **WHEN** the details fetch returns 404 (or the enrollment fails) on an `autoJoin` launch
 - **THEN** the flow aborts and logs, presenting no retryable error surface
+
+#### Scenario: A repeated autoJoin link provisions once
+- **WHEN** the same event link carrying `autoJoin = true` is delivered twice through two different
+  platform delivery hooks
+- **THEN** the device provisions exactly once, the second delivery performing no enrollment, and the
+  ignored repeat is recorded (capability `event-link`)
 
 ### Requirement: The join gate explains photo access before the first system dialog
 

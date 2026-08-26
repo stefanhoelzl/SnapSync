@@ -73,5 +73,8 @@
       all four cases, and the join surface renders
 - [x] 7.3 Confirm from a diagnostic dump that duplicates are logged and ignored rather than silently
       absent
-- [ ] 7.4 Open the PR with the `bug` changelog label, and a `Bugsink-Resolves:` trailer for
-      `SNAPSYNC-25`
+- [x] 7.4 Open the PR with the `bug` changelog label, and a `Bugsink-Resolves:` trailer for
+      `SNAPSYNC-25`. ⚠️ ORDER: this cannot precede the archive — `/ship`'s precondition 1.3 aborts
+      while any change is un-archived — so the sync-and-archive commit is part of the PR that ships,
+      and this task completes on that merge. The task list originally implied the reverse order,
+      which cannot occur

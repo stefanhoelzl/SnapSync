@@ -152,9 +152,15 @@ staleness check once every copy is generated).
 
 ### Requirement: The Swift shell keeps the event link's delivery seam
 
-A test-only JVM guard SHALL assert that the iOS Swift shell still installs a **scene delegate** that
-handles **both** halves of universal-link delivery and forwards to the Kotlin entry point
-(capability `ios-app-shell`). Specifically it SHALL assert that the shell:
+A test-only JVM guard SHALL assert that the iOS Swift shell still carries **every** event-link delivery
+path and forwards each to the Kotlin entry point (capability `ios-app-shell`). There are two, fed by
+different machinery, and neither is sufficient alone — so the guard SHALL pin both. Specifically it
+SHALL assert that the shell:
+
+0. declares SwiftUI's **`.onOpenURL`** on the `WindowGroup`, forwarding the URL to Kotlin — the path
+   that carries a link opened while the app is already RUNNING on iOS 18.7.9, where the scene
+   delegate's continuation never fires. It is the likeliest of all of these to be deleted as cruft,
+   because this file's own history argued for years that it never fires for a universal link;
 
 1. installs a scene delegate via the app delegate's `application(_:configurationForConnecting:options:)`
    (setting `delegateClass`) — without this the delegate is inert;
@@ -176,7 +182,8 @@ its subject changes — a guard that goes stale is a guard that fails open.
 
 This is the first guard over Swift. `:app:ios` and the Swift shell are wiring-only and **untested** by the
 project's hard rule, and on 2026-07-16 that rule's blind spot shipped: the app received event links via
-SwiftUI's `onOpenURL`, which never fires for a universal link, so **every invite silently did nothing**
+SwiftUI's `onOpenURL`, which did not fire for a universal link in that configuration, so **every
+invite silently did nothing**
 while every automated check stayed green. The guard does not test behavior — the seam remains
 device-verified — it pins the **structure** that behavior depends on, which is exactly what this
 capability exists for.
@@ -198,15 +205,27 @@ only thing standing between the next reader and re-introducing the bug. The evid
   SwiftUI's — which feeds that modifier — is never created. Measured on device 2026-08-04: 8 warm
   deliveries, 8 hits on `scene(_:continue:)`, **zero** on the modifier. The 2026-07-16 matrix measured
   it in the opposite configuration; those rows are mutually exclusive setups, not composable features.
-- **iOS 18.7.9 does NOT call `scene(_:continue:)`.** Measured from a pair of device dumps (Bugsink
-  `SNAPSYNC-25` + `SNAPSYNC-26`, iPhone XS, build 607, one 80-second window): three warm taps each
-  brought the app to the front — `onForeground` fired every time, so iOS *did* activate the app from
-  the link — and none produced an `onSceneContinueActivity` line; the third was while the device was
-  **unjoined**, which rules out join and switch logic. The cold entry then fired first try on a fresh
-  process, proving the delegate IS the scene's delegate on 18 and is not inert. What remains unknown is
-  *why*, not *whether*. Expiry: re-measure at the next iOS 18 point release — the evidence is one
-  device. This is also why a simulator cannot substitute: it does not route universal links at all (on
-  an iOS 26.5 simulator, where a device shows 8/8, the app received zero).
+- **With a custom scene delegate installed, the scene delegate's continuation does not fire on iOS
+  18.7.9 while the app is already RUNNING** — measured on an iPhone XS, builds 681/683:
+  `scene(_:willContinueUserActivityWithType:)` announces a continuation and then neither
+  `scene(_:continue:)` nor `scene(_:didFailToContinueUserActivityWithType:error:)` follows, from Notes,
+  WhatsApp and Safari's smart banner alike; a Camera QR scan and any cold launch deliver normally. Restoring
+  SwiftUI's `.onOpenURL` delivered the link on that same OS build (687). **Why is unexplained**, and
+  SHALL NOT be asserted: the 2026-07-16 matrix measured that modifier as failing cold and warm with
+  SwiftUI's own scene delegate in place, and it fires now with a custom one installed — so "our delegate
+  starves SwiftUI's" predicts the reverse of what was observed. A previous revision of this bullet said
+  "iOS 18.7.9 does NOT call `scene(_:continue:)`", a claim about the PLATFORM; it was disproved within
+  hours on that same OS build. Scope such claims to the build and configuration measured, and prefer
+  recording an outcome to explaining it. The same signature is reported independently in Apple Developer
+  Forums 758864 and 746362.
+- **`.onOpenURL` is not reliable alone either** — it fired for 2 of 4 deliveries on an SE2 (iOS 26.6,
+  build 687). Both paths are therefore pinned, and delivery is made idempotent in tested code
+  (capability `event-link`) rather than by choosing between them.
+- A **simulator cannot substitute** for any of this: the associated-domains entitlement makes the app
+  un-launchable there, so no link entry point fires at all (measured 2026-08-25), and `simctl openurl`
+  is accepted while delivering nothing.
+- Expiry: re-measure at the next iOS major, and whenever a delivery hook is added or removed. Evidence
+  is one device per OS major.
 
 #### Scenario: Removing the scene delegate fails the build
 
@@ -240,6 +259,14 @@ only thing standing between the next reader and re-introducing the bug. The evid
 - **WHEN** the shell installs the scene delegate and implements both halves, forwarding the
   delivered activity whole to `onUserActivity`
 - **THEN** the guard passes
+
+#### Scenario: Removing the SwiftUI delivery path fails the build
+
+- **WHEN** the Swift shell no longer declares `.onOpenURL` on the `WindowGroup`, or no longer forwards
+  its URL to Kotlin
+- **THEN** the guard test fails, naming what is missing and carrying the evidence that this path is the
+  one that delivers a link opened while the app is already running on iOS 18.7.9 — because the deletion
+  this guards against is a reader trusting the older, falsified claim that the modifier never fires
 
 ### Requirement: Gates fail closed on novelty
 Every architecture gate SHALL derive its scope from the repository's structure at test runtime —
