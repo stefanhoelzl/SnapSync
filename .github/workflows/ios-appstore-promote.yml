@@ -87,7 +87,7 @@ jobs:
       DO_NOT_TRACK: "1"
     steps:
       # fetch-depth: 0 so the resolved origin commit is present locally to tag; fetch-tags for the guard.
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true

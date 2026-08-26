@@ -32,12 +32,12 @@ jobs:
   diagrams:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21 # launcher only; the build's toolchain auto-provisions via foojay
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       - name: Regenerate diagrams
         run: ./gradlew architectureDiagrams
       - name: Fail if committed diagrams are stale

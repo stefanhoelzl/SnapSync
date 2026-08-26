@@ -35,7 +35,7 @@ jobs:
     name: appstore-metadata-validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       # Validate what will actually be APPLIED, not the committed templates. The listing's
       # domain-derived URLs carry a `{{domain}}` placeholder that the resolver substitutes (capability
       # `deployment-configuration`); validating the template would both fail URL checks and prove
@@ -63,7 +63,7 @@ jobs:
       DO_NOT_TRACK: "1"
       ASC_APP_ID: "6781692480"
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       # The listing's domain-derived URLs (marketing, support, privacy policy) are RENDERED from the
       # resolved deployment, so the store can never advertise a host the app and backend have moved off
       # (capability `deployment-configuration`). The committed files stay hand-written copy carrying a

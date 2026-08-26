@@ -78,8 +78,8 @@ jobs:
     # Hard backstop under the 6h per-job cap; the interactive step also self-closes at `stop_after` min.
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v7.0.0
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
@@ -95,7 +95,7 @@ jobs:
       # ~500 MB session-end entry into an already-full 10 GB budget would not pay for itself here:
       # sessions are rare, hand-dispatched, and branch-scoped.
       - name: Restore Kotlin/Native (~/.konan)
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
