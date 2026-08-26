@@ -20,7 +20,9 @@ is now the build-time-only control channel, which a production build does not co
 binary target rather than remaining a mode of it.
 
 Decision record: `changes/archive/2026-06-17-ios-first-target`; the retirement of the launch triggers and
-the forge target's extraction: `changes/archive/2026-08-24-retire-launch-env-triggers`.
+the forge target's extraction: `changes/archive/2026-08-24-retire-launch-env-triggers`; the scene-rebuild
+rule, the create-don't-reuse contract and the placeholder's backdrop:
+`changes/archive/2026-08-26-stop-rebuilding-the-composed-scene`.
 ## Requirements
 ### Requirement: iOS application shell
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a
@@ -33,6 +35,28 @@ That view controller SHALL be obtained **only while the app is active**. A proce
 the background — by a silent push, a `BGTask`, or a background `URLSession` event — SHALL compose **no**
 scene: no `ComposeUIViewController`, no Compose runtime, and no renderer. The scene SHALL be composed at
 the first activation and not before.
+
+Whether a scene is composed and whether an already-composed scene is **rebuilt** are two different
+questions, and the second SHALL be answered from **what the shell has already handed out**, never from
+which observer of the activation notification happened to run first. The shell advances a rebuild signal
+as it hands each scene out, by a pure, tested rule: handing out a placeholder advances it; handing out a
+live scene carries it forward unchanged. The app-level foreground entry and the first evaluation of the
+platform view therefore race harmlessly — BOTH orderings SHALL produce a correct result, which is what
+makes their order not worth contracting.
+
+That signal SHALL be **monotonic** across the life of a process. The UI framework rebuilds on a CHANGE in
+the value, not on its magnitude, so a signal that fell back would rebuild exactly as surely as one that
+rose. A rule that answered from the mode most recently handed out satisfies every sentence above and is
+still wrong for this reason: once the placeholder is replaced, the most recent mode is the live one, the
+answer falls, and the next ordinary foreground rebuilds a scene that did not need rebuilding. Measured on
+a simulator (iOS 26, 2026-08-26) as a third scene construction in one process, on the first warm
+foreground.
+
+A rebuild SHALL create a new view controller. The shell SHALL NOT hand the platform a controller it has
+already installed: the framework's contract is that its factory *creates* the controller and that
+teardown *removes* it, so returning an already-installed instance makes one object simultaneously the
+thing the incoming host adopts and the thing the outgoing host removes — measured on device to leave the
+scene detached and the screen blank until the process restarts.
 
 This is a **mitigation for a renderer defect, not an architectural preference**, and SHALL be described as
 such wherever it is documented. Apple's contract is that a backgrounded app must not submit GPU work
@@ -134,6 +158,19 @@ a scene session. A scene-level callback does not satisfy that (measured 2026-08-
 never received `sceneDidBecomeActive` and showed a black screen), and losing the headless path would cost
 this project the only way an agent can see the app at all.
 
+The deferred placeholder SHALL paint the platform's own system background colour rather than being left
+untinted. A launch screen with no configured content, an untinted placeholder and a detached scene are
+otherwise the same white, which is indistinguishable to a reporter and to whoever reads their dump; it
+also flashes white on every cold launch in dark mode. This SHALL NOT be read as a promise that the three
+are visually distinguishable in every appearance — in light mode the system colour IS white, and the log
+line below is what separates them.
+
+The **resolved rebuild signal** SHALL be recorded in the device log alongside the resolved mode, under the
+same platform-invocation logging (capability `diagnostic-logging`). Recording only that the activation
+entry point ran is not sufficient: what distinguishes a healthy process from one carrying a stale rebuild
+signal is the VALUE it answered, and without it the distinction can only be inferred from the absence of a
+deferred-mode line elsewhere in the log.
+
 The **resolved mode** SHALL be recorded in the device log under the shell's platform-invocation logging
 (capability `diagnostic-logging`) — not merely the fact that the entry point ran. The entry point runs in
 both cases; what distinguishes them is what it returned, so the log SHALL name it. That line is the
@@ -157,12 +194,36 @@ The extension target SHALL NOT declare an associated domain: it never handles UR
 - **WHEN** a process that was launched into the background is later brought to the foreground
 - **THEN** the scene is composed at that activation, and the log records the live mode only at or after
   activation, never before it (the app-level foreground entry and the scene composition ride the same
-  notification, so their relative order is not contracted)
+  notification; their order is not contracted BECAUSE the rebuild rule above makes both orderings
+  correct, not because the consequences were left open)
 
 #### Scenario: A later activation does not rebuild the scene
-- **WHEN** an app whose scene is already composed is backgrounded and brought forward again
-- **THEN** the same scene is presented, and screen-local state such as an open settings surface or a
-  half-typed report survives
+- **WHEN** an app whose scene is already composed is backgrounded and brought forward again, repeatedly
+- **THEN** the rebuild signal reads the same value at every one of those activations, so the platform is
+  not asked for the root view controller again, the same scene is presented, and screen-local state such
+  as an open settings surface or a half-typed report survives
+
+#### Scenario: A process that composed its scene before the first activation is not rebuilt
+- **WHEN** the activation notification is observed before the platform view is first evaluated, so the
+  very first resolution is the live mode and no placeholder is ever installed
+- **THEN** that activation and every later one request no rebuild, and the app remains rendered — the
+  shape that previously left a live scene installed against a stale rebuild signal and blanked the
+  screen on the next ordinary foreground (Bugsink SNAPSYNC-15, SNAPSYNC-24)
+
+#### Scenario: A rebuild never reuses an installed controller
+- **WHEN** the shell is asked for the root view controller a second time in one process
+- **THEN** it returns a newly created controller rather than one it has already handed out, so the
+  outgoing host's teardown cannot detach the controller the incoming host just adopted
+
+#### Scenario: The placeholder is not bare white
+- **WHEN** a process composes the deferred placeholder
+- **THEN** the placeholder paints the platform system background colour, so a dark-appearance device
+  shows no white flash on the way to the live scene
+
+#### Scenario: The log names the rebuild signal, not just the entry point
+- **WHEN** the app becomes active
+- **THEN** the device log records the value the activation entry point answered, so a report can be read
+  for whether that process was carrying a stale rebuild signal without inferring it from what is missing
 
 #### Scenario: A background wake still does its work without a scene
 - **WHEN** a silent push wakes a process that composes no scene
