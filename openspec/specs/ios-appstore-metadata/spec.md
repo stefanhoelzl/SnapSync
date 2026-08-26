@@ -11,8 +11,8 @@ it is derived per release from the labelled pull requests since the previous one
 release itself (capabilities `changelog-labels`, `ios-appstore-release`). Because an omitted field is
 never deleted here, the two writers do not collide.
 
-A credential-free **`appstore-metadata-validate`** gate runs on **every** ref (a required status check —
-capability `branch-protection`) and fails the merge on any character-limit, URL-format, or unknown-key
+A credential-free **`appstore-metadata-validate`** gate runs on **every** ref (a required status check
+in the committed branch ruleset, `.github/rulesets/main.json`) and fails the merge on any character-limit, URL-format, or unknown-key
 violation *before* it can reach Apple. **`appstore-metadata-apply`** runs on **`main` only**, resolves the
 app's currently **editable** App Store version at run time, and applies the committed per-locale files to
 that version's localizations **declaratively** — the file wins; drift entered in the console is overwritten.
@@ -163,8 +163,8 @@ Store Connect.
 `appstore-metadata-validate` SHALL validate the committed metadata files **offline** — enforcing App Store
 character limits (`description` ≤ 4000, `keywords` ≤ 100, `promotionalText` ≤ 170, `whatsNew` ≤ 4000,
 `subtitle` ≤ 30), URL syntactic validity, and rejection of unknown keys — on **every** ref, using **no**
-App Store Connect credentials. A violation SHALL fail the job. This job is a required status check
-(capability `branch-protection`), so an invalid listing file cannot merge.
+App Store Connect credentials. A violation SHALL fail the job. This job is a required status check in
+the committed branch ruleset (`.github/rulesets/main.json`), so an invalid listing file cannot merge.
 
 #### Scenario: An over-length field fails the gate
 - **WHEN** a per-locale file's `keywords` string exceeds 100 characters on a PR branch
