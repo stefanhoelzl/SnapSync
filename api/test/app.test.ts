@@ -9,9 +9,10 @@ import {
   putAttestation,
   putDeviceRecord,
   readAttestation,
+  readDeviceRecord,
   touchTokenExpiry,
 } from "../src/db.ts";
-import { migrate } from "../src/migrations.ts";
+import { migrate, MIGRATIONS } from "../src/migrations.ts";
 import { enrolDevice } from "./support/db.ts";
 
 // The whole API is gated on a device token (capability `device-attestation`), so every request in this
@@ -1397,5 +1398,64 @@ Deno.test("devices → readAttestation tells absence from a stored key", async (
   assertEquals(await readAttestation(db, D), null);
   await putAttestation(db, D, { publicKey: "k", environment: "development" }, "t0", "e0");
   assertEquals(await readAttestation(db, D), { publicKey: "k", environment: "development" });
+  db.close();
+});
+
+// ── The cutover window: a row that exists but has not attested ─────────────────────────────────────
+//
+// Migration v2 carries every legacy row across WITH its push registration and leaves the attestation
+// columns NULL, because their values live in the storage zone and SQL cannot reach them. That state is
+// real, temporary, and legible — and both readers below would answer it wrongly without care.
+//
+// These run against a store stopped at v2, because that is the ONLY place the state exists: v3 tightens
+// the columns to NOT NULL, so afterwards an unattested row is not merely absent but unrepresentable. A
+// test written against the fully-migrated store cannot even construct the case.
+
+/** A store at the state migration v2 leaves behind — v3 not yet applied. */
+async function storeAtV2() {
+  const db = sqliteDb(":memory:");
+  for (const m of MIGRATIONS.filter((m) => m.version <= 2)) {
+    for (const sql of m.statements) await db.execute(sql);
+  }
+  return db;
+}
+
+Deno.test("devices → a carried row with no attestation reads as NOT attested, not as a garbage key", async () => {
+  // `String(null)` is the literal "null". Handing renewal that as a public key fails to verify and reads
+  // as a REFUSED ASSERTION — blaming the device's Secure Enclave for something the backend never had.
+  const db = await storeAtV2();
+  await db.execute(
+    `INSERT INTO devices (device_id, created_at, push_kind, push_token, push_env)
+     VALUES (?, 't0', 'apns', 'tok', 'sandbox')`,
+    [D],
+  );
+  assertEquals(await readAttestation(db, D), null);
+  db.close();
+});
+
+Deno.test("devices → a carried row keeps its push token but cannot register again until it attests", async () => {
+  // The 401 must keep meaning "this device has not attested" rather than decaying into "no row exists".
+  // The token it already had survives — so notify still reaches it — and the next write is refused until
+  // the device attests, which fills the columns and lets the write through.
+  const db = await storeAtV2();
+  await db.execute(
+    `INSERT INTO devices (device_id, created_at, push_kind, push_token, push_env)
+     VALUES (?, 't0', 'apns', 'carried', 'sandbox')`,
+    [D],
+  );
+
+  assertEquals(
+    (await putDeviceRecord(db, D, { kind: "apns", token: "new", env: "sandbox" }, "t1"))
+      .rowsAffected,
+    0,
+  );
+  assertEquals(await readDeviceRecord(db, D), { kind: "apns", token: "carried", env: "sandbox" });
+
+  await putAttestation(db, D, { publicKey: "k", environment: "production" }, "t2", "e2");
+  assertEquals(
+    (await putDeviceRecord(db, D, { kind: "apns", token: "new", env: "sandbox" }, "t3"))
+      .rowsAffected,
+    1,
+  );
   db.close();
 });

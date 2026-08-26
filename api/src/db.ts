@@ -532,7 +532,13 @@ export async function readAttestation(
     [deviceId],
   );
   if (rows.length === 0) return null;
-  return { publicKey: String(rows[0].attest_key), environment: String(rows[0].attest_env) };
+  const { attest_key: key, attest_env: env } = rows[0];
+  // A row can exist with NO attestation during the cutover (migration v2 carries every legacy row across
+  // before the attestation columns are filled). `String(null)` would yield the literal "null" and hand
+  // renewal a garbage public key, which fails to verify and reads as a REFUSED ASSERTION — naming the
+  // device's Secure Enclave for something the backend never had. Absent is absent.
+  if (typeof key !== "string" || typeof env !== "string") return null;
+  return { publicKey: key, environment: env };
 }
 
 /**
@@ -575,11 +581,16 @@ export async function putDeviceRecord(
   at: string,
 ): Promise<WriteResult> {
   const { rowsAffected } = await db.execute(
+    // `AND attest_key IS NOT NULL` keeps the question "has this device ATTESTED", which is what the 401
+    // means — rather than letting it degrade into "does a row exist" during the cutover window, when v2
+    // has carried legacy rows across but their attestation columns are not yet filled. Such a device
+    // keeps the push token it already had (the row survived) and is refused the next write until it
+    // attests, which fills the columns and lets the write through.
     `UPDATE devices SET push_kind       = ?,
                         push_token      = ?,
                         push_env        = ?,
                         push_updated_at = ?
-      WHERE device_id = ?`,
+      WHERE device_id = ? AND attest_key IS NOT NULL`,
     [push?.kind ?? null, push?.token ?? null, push?.env ?? null, at, deviceId],
   );
   return { rowsAffected };

@@ -6,14 +6,20 @@
 // Idempotent — the version record makes an already-migrated store a no-op — so this runs on every deploy
 // and does nothing on most of them.
 //
-// It holds the DATABASE credentials only. The storage access key is deliberately not available here; the
-// one migration that needs both is `migrate-attest.ts`, which runs from its own dispatched job.
+// It holds the DATABASE credentials only, and resolves config through `migrateConfig` rather than
+// `readSweepConfig` for that reason: the sweep's reader demands every secret including the storage access
+// key, which `backend-deployment` forbids this workflow from holding. Asking for it here fails the deploy
+// on a credential the step is right not to have.
+//
+// The one-time ATTESTATION backfill needs both halves and is NOT here: it is a throwaway that runs once,
+// from a scratchpad, through `proton-env` (decision record: the relational migration's D13a — the cutover's
+// programs are not committed).
 
-import { readSweepConfig } from "../config.ts";
+import { migrateConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
 import { appliedVersions, migrate } from "../migrations.ts";
 
-const config = readSweepConfig(Deno.env.toObject());
+const config = migrateConfig(Deno.env.toObject());
 const db = libsqlDb(config.databaseUrl, config.databaseToken);
 
 const before = await appliedVersions(db);
