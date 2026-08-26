@@ -1,0 +1,100 @@
+# Tier `flow` — the OS-callback trigger flows (`:domain` `flow/`)
+#
+# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
+# RAISING one requires a stated forcing proof in that change's description, naming what the platform,
+# the language, or the shape of the problem makes unavoidable. There is no check that enforces this:
+# it is a ratchet carried by this paragraph and by review, and it is deliberately NOT a proof. The
+# gate beside it, `detektAppShell`, is a proof; this is not, and the two must not be confused.
+#
+# HOW TO READ A NUMBER. detekt's `threshold` is the first value that FAILS, so a ceiling reads one
+# above the largest value this scope tolerates. `ReturnCount.max` and `MaxLineLength.maxLineLength`
+# are the opposite — they are the largest tolerated value itself.
+#
+# HOW THESE NUMBERS WERE SEEDED. Each is the tightest value this scope passed on the day the gate
+# landed — EXCEPT where that value fell below detekt's own default. There, the default is used
+# instead, because a ceiling tighter than the tool's default is a claim, and a claim has to be
+# argued rather than measured: `:ui:*` tolerates only ~15-line classes because Compose has almost no
+# classes, not because anyone decided that. The exceptions are the scopes that DO carry a claim —
+# the shells, `flow/` and `compose/` — where tightness on the DECISION measures (cyclomatic,
+# cognitive, `ComplexCondition`, `NestedBlockDepth`, `ReturnCount`) restates a written law, while
+# the SIZE measures (`LongMethod`, `LargeClass`, `TooManyFunctions`, `MaxLineLength`) stay at the
+# default because length is not a decision.
+#
+# `NestedBlockDepth` and `LargeClass` report no measured value in their findings, so their ceilings
+# were found by BINARY SEARCH at 10-line granularity rather than read off a report. Treat them as
+# search results: re-derive rather than adjust.
+#
+# THE ANALYSER LAGS THE LANGUAGE. detekt 1.23.8 — the latest stable — parses with
+# `kotlin-compiler-embeddable` 2.0.21, while this repo is on Kotlin 2.4.0 (`gradle/libs.versions.toml`).
+# All source parses today, verified when this gate landed, but syntax introduced after Kotlin 2.0 may
+# not. detekt 2.0.0-alpha.6 embeds Kotlin 2.4.10 and would erase the lag; it is an alpha and this gate
+# runs in everyone's `./gradlew build`, so it was not adopted. EXPIRY: revisit when detekt 2.0 reaches
+# stable, or at the first parse failure on newer syntax — whichever comes first.
+#
+# WHAT THIS TIER IS FOR. Making an existing LAW executable. `module-architecture` states that flows
+# COORDINATE and never DECIDE, and until this gate landed nothing enforced it — the zone sat at
+# cyclomatic 3 across four sites, one step from being provable.
+#
+# The DECISION measures are therefore tight ON PURPOSE, and are the one place in this file where a
+# number below detekt's default is a claim rather than an accident. The SIZE measures stay at the
+# default: a flow that coordinates many steps is long by design, and length is not a decision.
+#
+# TARGET: cyclomatic 2 — the same decision-free value the shells carry. On reaching it this scope
+# MERGES INTO the shell tier, because at that point the two make the same claim and there is no
+# reason for two configurations to state it.
+#
+# `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
+# statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
+# a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
+# which is where you want to see it — the version is pinned, so an upgrade is always deliberate.
+
+complexity:
+  CyclomaticComplexMethod:
+    # Target 2. Four sites stand between here and there: `Foreground`, `Provision`, and two in
+    # `SilentPush`.
+    active: true
+    threshold: 4
+  CognitiveComplexMethod:
+    active: true
+    threshold: 2
+  ComplexCondition:
+    active: true
+    threshold: 2
+  NestedBlockDepth:
+    active: true
+    threshold: 2
+  LongMethod:
+    active: true
+    threshold: 60
+  LongParameterList:
+    active: true
+    functionThreshold: 10
+    constructorThreshold: 10
+  TooManyFunctions:
+    active: true
+    excludes: []
+    thresholdInFiles: 11
+    thresholdInClasses: 11
+    thresholdInInterfaces: 11
+    thresholdInObjects: 11
+    thresholdInEnums: 11
+  LargeClass:
+    active: true
+    threshold: 600
+style:
+  ReturnCount:
+    active: true
+    max: 1
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+  MagicNumber:
+    active: true
+naming:
+  FunctionNaming:
+    active: true
+    excludes: []
+    ignoreAnnotated: ['Composable']
+comments:
+  active: false

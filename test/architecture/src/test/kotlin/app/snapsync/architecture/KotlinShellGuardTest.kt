@@ -51,8 +51,15 @@ class KotlinShellGuardTest {
      * `-Psnapsync.rig=true`, so it is shell source and is gated as such rather than exempted
      * (capability `architecture-guards`, "Source contributed into a shell's source set is shell
      * source for the gates").
+     *
+     * `app/ios/forge/src` is the forge shell, built under `-Psnapsync.forge=true`. It was missing
+     * from BOTH this list and the build's — the mirror was faithful and both copies were wrong,
+     * which is the argument recorded in `complexity-budgets` for deriving the wider gate's coverage
+     * from the Gradle model instead of mirroring a list. This gate keeps the list because one of its
+     * roots (`test/rig/src/hook`) is not a module and the project model cannot express it.
      */
-    private val shellSourceRoots = listOf("app/ios/src", "app/ios/extension/src", "test/rig/src/hook")
+    private val shellSourceRoots =
+        listOf("app/ios/src", "app/ios/extension/src", "app/ios/forge/src", "test/rig/src/hook")
 
     /** file (relative) → pinned `@Suppress("CyclomaticComplexMethod")` count. Exact, both directions. */
     private val pins: Map<String, Int> = mapOf(

@@ -1,0 +1,119 @@
+# Tier `harness` — test equipment (`:app:desktop`, `:test:rig`, `:test:world`, `:test:harness-driver`, `:tools:diagrams`)
+#
+# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
+# RAISING one requires a stated forcing proof in that change's description, naming what the platform,
+# the language, or the shape of the problem makes unavoidable. There is no check that enforces this:
+# it is a ratchet carried by this paragraph and by review, and it is deliberately NOT a proof. The
+# gate beside it, `detektAppShell`, is a proof; this is not, and the two must not be confused.
+#
+# HOW TO READ A NUMBER. detekt's `threshold` is the first value that FAILS, so a ceiling reads one
+# above the largest value this scope tolerates. `ReturnCount.max` and `MaxLineLength.maxLineLength`
+# are the opposite — they are the largest tolerated value itself.
+#
+# HOW THESE NUMBERS WERE SEEDED. Each is the tightest value this scope passed on the day the gate
+# landed — EXCEPT where that value fell below detekt's own default. There, the default is used
+# instead, because a ceiling tighter than the tool's default is a claim, and a claim has to be
+# argued rather than measured: `:ui:*` tolerates only ~15-line classes because Compose has almost no
+# classes, not because anyone decided that. The exceptions are the scopes that DO carry a claim —
+# the shells, `flow/` and `compose/` — where tightness on the DECISION measures (cyclomatic,
+# cognitive, `ComplexCondition`, `NestedBlockDepth`, `ReturnCount`) restates a written law, while
+# the SIZE measures (`LongMethod`, `LargeClass`, `TooManyFunctions`, `MaxLineLength`) stay at the
+# default because length is not a decision.
+#
+# `NestedBlockDepth` and `LargeClass` report no measured value in their findings, so their ceilings
+# were found by BINARY SEARCH at 10-line granularity rather than read off a report. Treat them as
+# search results: re-derive rather than adjust.
+#
+# THE ANALYSER LAGS THE LANGUAGE. detekt 1.23.8 — the latest stable — parses with
+# `kotlin-compiler-embeddable` 2.0.21, while this repo is on Kotlin 2.4.0 (`gradle/libs.versions.toml`).
+# All source parses today, verified when this gate landed, but syntax introduced after Kotlin 2.0 may
+# not. detekt 2.0.0-alpha.6 embeds Kotlin 2.4.10 and would erase the lag; it is an alpha and this gate
+# runs in everyone's `./gradlew build`, so it was not adopted. EXPIRY: revisit when detekt 2.0 reaches
+# stable, or at the first parse failure on newer syntax — whichever comes first.
+#
+# WHAT THIS TIER IS FOR. Code that is read once and never shipped: the two desktop harnesses, the
+# on-device control channel, the in-memory world, the diagram generators. These ceilings exist to
+# CATCH A REGRESSION, not to converge — nothing here is expected to fall, and that is stated rather
+# than left to be inferred from numbers that never move.
+#
+# `miniEdgeClient` (`:test:world`) sets the cyclomatic number at 51 by itself, and `WorldInspector`
+# the cognitive one.
+#
+# `test/rig/src/hook` is excluded by the task: it is compiled INTO `:app:ios` and is held at cyclomatic
+# 2 by `detektAppShell`. Scanning it here too would subject shell source to a ceiling 25x looser.
+#
+# `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
+# statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
+# a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
+# which is where you want to see it — the version is pinned, so an upgrade is always deliberate.
+
+complexity:
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 51
+  CognitiveComplexMethod:
+    active: true
+    threshold: 64
+  LongMethod:
+    active: true
+    threshold: 171
+  LongParameterList:
+    active: true
+    # 24, not the 17 a first pass read off detekt's finding message: that message truncates and its
+    # parameter list contains nested generic lambdas, so counting its commas undercounts. `StatusPane`
+    # (`:app:desktop`) has 23 parameters. Derived by binary search, like the two rules below.
+    functionThreshold: 24
+    constructorThreshold: 24
+  ComplexCondition:
+    active: true
+    threshold: 6
+  NestedBlockDepth:
+    active: true
+    threshold: 8
+  TooManyFunctions:
+    active: true
+    excludes: []
+    thresholdInFiles: 43
+    thresholdInClasses: 43
+    thresholdInInterfaces: 43
+    thresholdInObjects: 43
+    thresholdInEnums: 43
+  LargeClass:
+    # Default, consistent with `core`: this tier is documented as regression-detection only, so
+    # inventing a size claim here would contradict its own framing.
+    active: true
+    threshold: 600
+style:
+  ReturnCount:
+    active: true
+    max: 5
+  MaxLineLength:
+    active: true
+    maxLineLength: 159
+  MagicNumber:
+    # REGISTER — 15 sites.
+    active: false
+  LoopWithTooManyJumpStatements:
+    # REGISTER — 5 sites.
+    active: false
+  UnusedParameter:
+    # REGISTER — 3 sites.
+    active: false
+empty-blocks:
+  EmptyFunctionBlock:
+    # REGISTER — 8 sites. Harness doubles legitimately implement a port method as a no-op.
+    active: false
+naming:
+  FunctionNaming:
+    # REGISTER — 56 sites, all `snake_case` contract functions in `:test:world`'s `commonMain`.
+    # They are test-contract declarations that live in a main source set only because a test
+    # source set cannot be exported (see CLAUDE.md on the storage contracts). detekt's default
+    # `**/test/**` exclusion would have hidden them for the wrong reason — `test/` is a module
+    # prefix here, not a source-set marker — so the rule is switched off explicitly instead.
+    active: false
+  MatchingDeclarationName:
+    # REGISTER — 2 sites.
+    active: false
+comments:
+  active: false

@@ -1,0 +1,127 @@
+# Tier `tests` — every test source set, plus `:test:architecture` and `:test:integration`
+#
+# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
+# RAISING one requires a stated forcing proof in that change's description, naming what the platform,
+# the language, or the shape of the problem makes unavoidable. There is no check that enforces this:
+# it is a ratchet carried by this paragraph and by review, and it is deliberately NOT a proof. The
+# gate beside it, `detektAppShell`, is a proof; this is not, and the two must not be confused.
+#
+# HOW TO READ A NUMBER. detekt's `threshold` is the first value that FAILS, so a ceiling reads one
+# above the largest value this scope tolerates. `ReturnCount.max` and `MaxLineLength.maxLineLength`
+# are the opposite — they are the largest tolerated value itself.
+#
+# HOW THESE NUMBERS WERE SEEDED. Each is the tightest value this scope passed on the day the gate
+# landed — EXCEPT where that value fell below detekt's own default. There, the default is used
+# instead, because a ceiling tighter than the tool's default is a claim, and a claim has to be
+# argued rather than measured: `:ui:*` tolerates only ~15-line classes because Compose has almost no
+# classes, not because anyone decided that. The exceptions are the scopes that DO carry a claim —
+# the shells, `flow/` and `compose/` — where tightness on the DECISION measures (cyclomatic,
+# cognitive, `ComplexCondition`, `NestedBlockDepth`, `ReturnCount`) restates a written law, while
+# the SIZE measures (`LongMethod`, `LargeClass`, `TooManyFunctions`, `MaxLineLength`) stay at the
+# default because length is not a decision.
+#
+# `NestedBlockDepth` and `LargeClass` report no measured value in their findings, so their ceilings
+# were found by BINARY SEARCH at 10-line granularity rather than read off a report. Treat them as
+# search results: re-derive rather than adjust.
+#
+# THE ANALYSER LAGS THE LANGUAGE. detekt 1.23.8 — the latest stable — parses with
+# `kotlin-compiler-embeddable` 2.0.21, while this repo is on Kotlin 2.4.0 (`gradle/libs.versions.toml`).
+# All source parses today, verified when this gate landed, but syntax introduced after Kotlin 2.0 may
+# not. detekt 2.0.0-alpha.6 embeds Kotlin 2.4.10 and would erase the lag; it is an alpha and this gate
+# runs in everyone's `./gradlew build`, so it was not adopted. EXPIRY: revisit when detekt 2.0 reaches
+# stable, or at the first parse failure on newer syntax — whichever comes first.
+#
+# WHAT THIS TIER IS FOR. Test code measured structurally SIMPLER than production (cyclomatic 23
+# against `harness`'s 50) and far WIDER (89 functions in one class against `core`'s 25). A single
+# budget covering tests and production together would be loose in one dimension and meaningless in
+# the other, which is why this is a tier and not a per-module concern.
+#
+# It is a source-set dimension as well as a module bucket: this scope is every `*Test` directory in
+# every module, plus the two modules that contain nothing else.
+#
+# `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
+# statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
+# a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
+# which is where you want to see it — the version is pinned, so an upgrade is always deliberate.
+
+complexity:
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 24
+  CognitiveComplexMethod:
+    active: true
+    threshold: 40
+  LongMethod:
+    # Default. A test that builds a world is legitimately long, and 41 would be a length claim
+    # about tests that nobody has made.
+    active: true
+    threshold: 60
+  LongParameterList:
+    active: true
+    functionThreshold: 12
+    constructorThreshold: 12
+  ComplexCondition:
+    # Default. A complex condition inside a test is rare and usually deliberate.
+    active: true
+    threshold: 4
+  NestedBlockDepth:
+    active: true
+    threshold: 5
+  TooManyFunctions:
+    active: true
+    excludes: []
+    thresholdInFiles: 90
+    thresholdInClasses: 90
+    thresholdInInterfaces: 90
+    thresholdInObjects: 90
+    thresholdInEnums: 90
+  LargeClass:
+    active: true
+    threshold: 1300
+style:
+  ReturnCount:
+    active: true
+    max: 5
+  MaxLineLength:
+    active: true
+    maxLineLength: 216
+  MagicNumber:
+    active: true
+  LoopWithTooManyJumpStatements:
+    # REGISTER — 1 site.
+    active: false
+  UnusedPrivateProperty:
+    # REGISTER — 1 site.
+    active: false
+  UseCheckOrError:
+    # REGISTER — 3 sites.
+    active: false
+  UnusedParameter:
+    # REGISTER — 1 site.
+    active: false
+exceptions:
+  TooGenericExceptionThrown:
+    # REGISTER — 8 sites. A test that throws to prove a failure path is not modelling an error.
+    active: false
+empty-blocks:
+  EmptyFunctionBlock:
+    # REGISTER — 8 sites.
+    active: false
+  EmptyElseBlock:
+    # REGISTER — 1 site.
+    active: false
+naming:
+  FunctionNaming:
+    # REGISTER — 1330 sites: Kotlin's backtick test-name idiom, which detekt's `functionPattern`
+    # cannot express. detekt's own default excludes would have switched this off silently; it is
+    # switched off explicitly, with the reason, so the absence is stated.
+    active: false
+  VariableNaming:
+    # REGISTER — 5 sites.
+    active: false
+  MatchingDeclarationName:
+    # REGISTER — 1 site.
+    active: false
+comments:
+  active: false
