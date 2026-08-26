@@ -66,7 +66,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-java@v5
+    - uses: actions/setup-java@v6
       with:
         distribution: temurin
         java-version: 25
@@ -105,7 +105,7 @@ runs:
     # stale-entry trap ios-test documents (both konan families were once frozen 18 days).
     - name: Restore Kotlin/Native (~/.konan)
       id: konan
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@v6
       with:
         path: ~/.konan
         # Narrow → broad: this family's newest entry, then any konan entry at all (ios-test's plain
@@ -206,7 +206,7 @@ runs:
     # protection — which is the other half of why the combined step was split.
     - name: Save Kotlin/Native (~/.konan)
       if: github.ref == 'refs/heads/main'
-      uses: actions/cache/save@v5
+      uses: actions/cache/save@v6
       with:
         path: ~/.konan
         key: ${{ steps.konan.outputs.cache-primary-key }}
