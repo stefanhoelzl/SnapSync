@@ -230,7 +230,10 @@ They land dated ~now, so they are in scope for an event started earlier in the s
 ## The backend
 
 App Attest does not exist here, so there is no attestation token and the deployed backend refuses every
-join — `api/src/dev` is the only thing that fills an absent one.
+join — `api/src/dev` is the only thing that fills an absent one. It fills the absent ENROLMENT too: a
+`devices` row is created only by a real attestation, and the push-registration write requires one, so
+without the rig a simulator could never register for push (and would never recover, because its refresh
+returns early rather than attesting).
 
 **Run it ON THE RUNNER.** The repo is already rsync'd there, and deno installs in seconds:
 

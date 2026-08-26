@@ -1,0 +1,70 @@
+name: migrate-attest
+
+# THE ONE-TIME ATTESTATION MIGRATION (capabilities `device-attestation`, `database`). Carries every
+# `devices/<id>.attest.json` object into the `devices` table and then deletes the objects.
+#
+# WHY THIS IS ITS OWN WORKFLOW, run by hand, rather than a step in `api-deploy.yml`. It needs BOTH
+# credential sets, and `backend-deployment` requires that `BUNNY_STORAGE_ACCESS_KEY` be an Edge Script
+# environment value and NOT a deploy-workflow secret — bunny issues no scoped keys, so the key that reads
+# the attestation objects also owns the zone holding every user's photos. The deploy workflow therefore
+# holds the database credentials only, and this one holds both, on a trigger that is never automatic.
+#
+# ORDERING. Run this BEFORE the first `main` deploy that carries the new bundle. The schema migration it
+# applies (v2) creates `devices` and drops `device_records`, and only this program can fill the new table
+# from the objects.
+#
+# GETTING THE ORDER WRONG IS SURVIVABLE, and worth stating so nobody treats this as a lock: if the deploy
+# lands first, `devices` is empty, every device re-attests once (recreating its row) and re-registers its
+# push token at its next launch, because iOS redelivers the APNs token on every launch. One Apple
+# attestation per device, no photo affected, no operator action. Run this afterwards anyway — it is
+# re-runnable, and it still deletes the objects.
+#
+# ALWAYS DRY-RUN FIRST. Its output is the only preview of how many legacy rows have no attestation object
+# and will be dropped:
+#
+#   gh workflow run migrate-attest.yml -f dry_run=true
+#   gh workflow run migrate-attest.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report what would be written and deleted, changing nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Never two at once: the second would read a half-migrated store.
+concurrency:
+  group: migrate-attest
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # The same deployment the Edge Script and the sweep resolve, so this can never migrate one store
+      # while reading another's zone.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
+      # `--allow-write` is scoped to `$GITHUB_STEP_SUMMARY` only: the run appends its summary to the job's
+      # Summary panel and touches no other file.
+      - name: Migrate the attestation records
+        working-directory: api
+        env:
+          BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
+          BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
+          BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
+        run: |
+          deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" \
+            src/scripts/migrate-attest.ts \
+            ${{ inputs.dry_run && '--dry-run' || '' }}

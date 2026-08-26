@@ -65,8 +65,13 @@ export interface Db {
 }
 
 /**
- * The schema. Idempotent and re-runnable — every statement is `IF NOT EXISTS`, so running it against an
- * already-migrated store is a no-op rather than an error.
+ * The schema as it stands — every statement needed to build it FROM NOTHING, and the readable statement
+ * of what these tables are today. The statements below are written against this shape.
+ *
+ * This is HALF the schema's expression. It cannot change a store that already holds tables (every
+ * statement is `IF NOT EXISTS`), so evolving one is `migrations.ts`'s ordered list. The two are bound by
+ * `migrations.test.ts`, which builds one store from each and asserts the schemas are identical — so this
+ * can never quietly describe something the deployed store is not.
  */
 export const SCHEMA: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS events (
@@ -109,35 +114,53 @@ export const SCHEMA: readonly string[] = [
      PRIMARY KEY (device_id, key)
    ) STRICT`,
   `CREATE INDEX IF NOT EXISTS resources_by_asset ON resources (device_id, asset_id)`,
+  // ONE ROW PER DEVICE, TWO INDEPENDENTLY-WRITTEN GROUPS.
+  //
   // The push token is THREE columns, not a document. It began as one `push_token TEXT` holding the
   // config body verbatim, on the reasoning that the shape is `push-registration`'s to decide and the
   // backend should hold no second opinion. That reasoning was wrong: `readPushToken` reads exactly
   // `kind`, `token` and `env` and ignores everything else, so the opinion existed either way — it was
   // just buried in a parser instead of declared here, where STRICT can type it and a malformed write
-  // fails at the endpoint that made it rather than on the notify path days later. It also nested a
-  // token three deep: column `push_token` → key `pushToken` → field `token`.
+  // fails at the endpoint that made it rather than on the notify path days later.
   //
-  // Nullable TOGETHER: a device with no registered token is an ordinary state (it has not launched
-  // since joining), and is why notify is best-effort.
-  `CREATE TABLE IF NOT EXISTS device_records (
-     device_id  TEXT PRIMARY KEY NOT NULL,
-     push_kind  TEXT,
-     push_token TEXT,
-     push_env   TEXT,
-     -- ISO-8601 UTC with milliseconds and a literal Z — what new Date().toISOString() mints, and the
-     -- ONLY shape this column may hold. The cutover backfill wrote bunny storage LastChanged instead
-     -- (…362813+00:00: microseconds, numeric offset), so one column carried two spellings of the same
-     -- instant. Nothing read it, which is what let it survive — and what made it cheap to correct.
-     -- The trap: + is 0x2B and Z is 0x5A, so the lexicographic comparison every other date in this
-     -- codebase relies on orders …+00:00 BEFORE …Z for the same moment.
-     updated_at TEXT NOT NULL
+  // The push group is nullable TOGETHER: a device with no registered token is an ordinary state (it has
+  // not launched since attesting), and is why notify is best-effort.
+  //
+  // The ATTESTATION group is `NOT NULL`, because A ROW EXISTS IF AND ONLY IF THE DEVICE HAS ATTESTED
+  // (capability `device-attestation`). That is not a convention chosen here — it is forced by the gate:
+  // every route but `/attest/*` requires a device token, and a token is obtainable only by attesting, so
+  // no device can reach any other device-scoped write first. `created_at` therefore means FIRST ATTESTED.
+  //
+  // EACH GROUP HAS ONE WRITER, and each writer names ONLY its own columns, so neither can overwrite the
+  // other's fact. `created_at` is written on insert and never rewritten.
+  //
+  // ⚠️ EVERY TIMESTAMP BELOW IS ISO-8601 UTC WITH MILLISECONDS AND A LITERAL Z — what
+  // `new Date().toISOString()` mints, and the ONLY shape these columns may hold. This is inherited law,
+  // not a fresh preference: the cutover backfill once wrote bunny storage's `LastChanged` into
+  // `updated_at` (…362813+00:00 — microseconds, numeric offset), so one column carried two spellings of
+  // the same instant. `+` is 0x2B and `Z` is 0x5A, so the lexicographic comparison every other date in
+  // this codebase relies on orders …+00:00 BEFORE …Z for the same moment.
+  //
+  // THAT TRAP IS NO LONGER HYPOTHETICAL HERE. `updated_at` was safe because nothing read it; its
+  // successors are not. `attest_token_expires_at` is compared lexicographically by the nightly sweep
+  // (see `collectableDevices`) to decide whether a device may still hold a working credential — and a
+  // row spelled the other way would sort as ALREADY EXPIRED, collecting a device that is still using its
+  // token and driving it into the re-attestation loop that clause exists to prevent. Both writers here
+  // mint through `tokenExpiryIso`, which is `toISOString()`; the one-time attestation migration seeds
+  // through the same helper. Do not reach for whatever timestamp is already in hand.
+  `CREATE TABLE IF NOT EXISTS devices (
+     device_id               TEXT PRIMARY KEY NOT NULL,
+     created_at              TEXT NOT NULL,
+     attest_key              TEXT NOT NULL,
+     attest_env              TEXT NOT NULL,
+     attested_at             TEXT NOT NULL,
+     attest_token_expires_at TEXT NOT NULL,
+     push_kind               TEXT,
+     push_token              TEXT,
+     push_env                TEXT,
+     push_updated_at         TEXT
    ) STRICT`,
 ];
-
-/** Apply the schema. Safe to run against an already-migrated store. */
-export async function migrate(db: Db): Promise<void> {
-  for (const sql of SCHEMA) await db.execute(sql);
-}
 
 // ── Events ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -453,30 +476,113 @@ export async function deviceFiles(db: Db, deviceId: string): Promise<{ key: stri
   return rows.map((r) => ({ key: String(r.key) }));
 }
 
-// ── Device records ────────────────────────────────────────────────────────────────────────────────
+// ── Devices: the attestation group ────────────────────────────────────────────────────────────────
+//
+// The ONE writer of `attest_*` and `created_at`, and the only route that may create a row at all.
+
+/** A device's attestation, as `/attest/token` records it and `/attest/renew` reads it. */
+export type DeviceAttestation = {
+  /** The attested public key, base64 — a raw uncompressed EC point. */
+  publicKey: string;
+  environment: string;
+};
+
+/**
+ * Record an attestation. Creates the row, or replaces the attestation on a device that already has one
+ * (a reinstall mints a fresh Secure-Enclave key against the same `deviceId`).
+ *
+ * Names ONLY the attestation columns in the conflict clause, so a re-attestation cannot disturb a push
+ * registration — and leaves `created_at` alone, so it keeps meaning *first* attested rather than *most
+ * recently* attested.
+ */
+export async function putAttestation(
+  db: Db,
+  deviceId: string,
+  attestation: DeviceAttestation,
+  at: string,
+  tokenExpiresAt: string,
+): Promise<void> {
+  await db.execute(
+    `INSERT INTO devices (device_id, created_at, attest_key, attest_env, attested_at,
+                          attest_token_expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (device_id) DO UPDATE SET
+       attest_key              = excluded.attest_key,
+       attest_env              = excluded.attest_env,
+       attested_at             = excluded.attested_at,
+       attest_token_expires_at = excluded.attest_token_expires_at`,
+    [deviceId, at, attestation.publicKey, attestation.environment, at, tokenExpiresAt],
+  );
+}
+
+/**
+ * The device's attested public key, or `null` when the backend holds no attestation for it.
+ *
+ * Absence: `null` means **no row** and nothing else. A transport failure THROWS, so "we have never seen
+ * this device" is never confused with "we could not ask" — the first is a `401` telling the device to
+ * attest afresh, the second a `502` telling it to retry. Collapsing them would send a device down a full
+ * Apple attestation because the database blinked.
+ */
+export async function readAttestation(
+  db: Db,
+  deviceId: string,
+): Promise<DeviceAttestation | null> {
+  const { rows } = await db.execute(
+    `SELECT attest_key, attest_env FROM devices WHERE device_id = ?`,
+    [deviceId],
+  );
+  if (rows.length === 0) return null;
+  return { publicKey: String(rows[0].attest_key), environment: String(rows[0].attest_env) };
+}
+
+/**
+ * Advance the recorded expiry of the device's most recently minted token. Called by renewal BEFORE it
+ * mints, so the store never understates how long a device is protected from collection.
+ *
+ * `rowsAffected` is returned rather than swallowed: zero means the row vanished between the read and this
+ * write (the sweep, a restore), and the caller must not mint against a record that is gone.
+ */
+export async function touchTokenExpiry(
+  db: Db,
+  deviceId: string,
+  expiresAt: string,
+): Promise<WriteResult> {
+  const { rowsAffected } = await db.execute(
+    `UPDATE devices SET attest_token_expires_at = ? WHERE device_id = ?`,
+    [expiresAt, deviceId],
+  );
+  return { rowsAffected };
+}
+
+// ── Devices: the push-registration group ──────────────────────────────────────────────────────────
 
 /** A device's registered push token, as the notify fan-out needs it (capability `apns-push-sender`). */
 export type DevicePushToken = { kind: string; token: string; env: string };
 
 /**
- * Last-write-wins, by construction: the upsert replaces all three columns. Passing `null` clears the
- * registration, which is a real state and distinct from "this device has no record at all".
+ * Last-write-wins over the push columns alone. Passing `null` clears the registration, which is a real
+ * state and distinct from "this device has no record at all".
+ *
+ * An UPDATE, never an upsert. A row exists only where a device has attested, and this route cannot attest
+ * on the device's behalf — so `rowsAffected === 0` means the backend holds no attestation for this device,
+ * which the caller answers with `401` (capability `api-endpoints`). Inserting a row here would fabricate
+ * an enrolment, and the `NOT NULL` attestation columns make it impossible anyway.
  */
 export async function putDeviceRecord(
   db: Db,
   deviceId: string,
   push: DevicePushToken | null,
   at: string,
-): Promise<void> {
-  await db.execute(
-    `INSERT INTO device_records (device_id, push_kind, push_token, push_env, updated_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (device_id) DO UPDATE SET push_kind  = excluded.push_kind,
-                                           push_token = excluded.push_token,
-                                           push_env   = excluded.push_env,
-                                           updated_at = excluded.updated_at`,
-    [deviceId, push?.kind ?? null, push?.token ?? null, push?.env ?? null, at],
+): Promise<WriteResult> {
+  const { rowsAffected } = await db.execute(
+    `UPDATE devices SET push_kind       = ?,
+                        push_token      = ?,
+                        push_env        = ?,
+                        push_updated_at = ?
+      WHERE device_id = ?`,
+    [push?.kind ?? null, push?.token ?? null, push?.env ?? null, at, deviceId],
   );
+  return { rowsAffected };
 }
 
 /**
@@ -489,7 +595,7 @@ export async function readDeviceRecord(
   deviceId: string,
 ): Promise<DevicePushToken | null> {
   const { rows } = await db.execute(
-    `SELECT push_kind, push_token, push_env FROM device_records WHERE device_id = ?`,
+    `SELECT push_kind, push_token, push_env FROM devices WHERE device_id = ?`,
     [deviceId],
   );
   if (rows.length === 0) return null;
@@ -583,29 +689,44 @@ export async function activeFloors(
   return out;
 }
 
-/** Every device holding a membership in a surviving event, in either state. */
-export async function devicesInEvents(
+/**
+ * The devices whose row may be collected: those holding **no membership of any state** in a surviving
+ * event, whose recorded token expiry has **passed**.
+ *
+ * ⚠️ THE EXPIRY CLAUSE IS FORCING, NOT TIDINESS. A device token is verified from its own signature, so it
+ * keeps working for its full lifetime whether or not this row still exists. Collect earlier and the next
+ * device-scoped write from that device is refused, and it recovers by minting a fresh Secure-Enclave key
+ * and completing a full Apple attestation — the throttled path. Because this sweep runs nightly and the
+ * device is still orphaned the following night, that repeats once per launch-day for as long as it stays
+ * orphaned, silently, until Apple throttles it. Every event has a stamped lifetime of at most thirty days,
+ * so EVERY user is orphaned between events: this is the common path, not an edge case. Past the expiry it
+ * costs nothing — the device cannot make a gated call anyway.
+ *
+ * `excludeEvents` mirrors every other sweep query: in a dry run nothing was deleted, so the stale ids must
+ * be excluded explicitly for both modes to evaluate the identical surviving world.
+ */
+export async function collectableDevices(
   db: Db,
+  nowIso: string,
   excludeEvents: ReadonlySet<string> = new Set(),
-): Promise<Set<string>> {
-  const { rows } = await db.execute(`SELECT DISTINCT device_id, event_id FROM memberships`);
-  const out = new Set<string>();
+): Promise<string[]> {
+  const { rows } = await db.execute(
+    `SELECT d.device_id,
+            (SELECT GROUP_CONCAT(m.event_id) FROM memberships m WHERE m.device_id = d.device_id)
+              AS event_ids
+       FROM devices d
+      WHERE d.attest_token_expires_at < ?
+      ORDER BY d.device_id`,
+    [nowIso],
+  );
+  const out: string[] = [];
   for (const r of rows) {
-    if (excludeEvents.has(String(r.event_id))) continue;
-    out.add(String(r.device_id));
+    const raw = r.event_ids;
+    // No membership row at all, or every one of them belongs to an event this run is deleting.
+    const eventIds = raw === null || raw === undefined ? [] : String(raw).split(",");
+    if (eventIds.every((id) => excludeEvents.has(id))) out.push(String(r.device_id));
   }
   return out;
-}
-
-/** Every device the store holds a record or a resource for — the asset phase's device roster. */
-export async function knownDevices(db: Db): Promise<string[]> {
-  const { rows } = await db.execute(
-    `SELECT device_id FROM device_records
-     UNION
-     SELECT DISTINCT device_id FROM resources
-     ORDER BY device_id`,
-  );
-  return rows.map((r) => String(r.device_id));
 }
 
 /**
@@ -619,32 +740,16 @@ export async function deleteResource(db: Db, deviceId: string, key: string): Pro
   await db.execute(`DELETE FROM resources WHERE device_id = ? AND key = ?`, [deviceId, key]);
 }
 
-/** Collect a fully-orphaned device's record. Its attestation object is collected from storage beside it. */
-export async function deleteDeviceRecord(db: Db, deviceId: string): Promise<void> {
-  await db.execute(`DELETE FROM device_records WHERE device_id = ?`, [deviceId]);
+/** How many device rows the store holds — the summary's devices tier reports kept as total minus deleted. */
+export async function countDevices(db: Db): Promise<number> {
+  const { rows } = await db.execute(`SELECT COUNT(*) AS n FROM devices`);
+  return Number(rows[0].n);
 }
 
 /**
- * Is the store COMPLETELY empty — no events, no memberships, no assets, no resources, no device records?
- *
- * This exists for exactly one caller and one question. The nightly sweep marks from this store, so an
- * empty one says "nothing is referenced" — and its asset phase then reads every byte in the zone as
- * unreferenced, with every device's retention floor `+∞` because no membership supplies one. That is a
- * correct reading of an empty store and a catastrophic reading of an un-backfilled one, and the two are
- * indistinguishable from inside the store. The caller pairs this with "storage nonetheless holds bytes",
- * which IS distinguishable, and refuses.
- *
- * A legitimately emptied world does not look like this: the sweep collects a fully-orphaned device's
- * bytes as it empties, so zero rows and a non-empty zone cannot both be true of a store that was ever
- * populated. They can only both be true before the first backfill.
+ * Collect a fully-orphaned device's row — its whole global record, attestation included. There is no
+ * second object beside it any more; the row IS the record.
  */
-export async function storeIsEmpty(db: Db): Promise<boolean> {
-  const { rows } = await db.execute(
-    `SELECT (SELECT COUNT(*) FROM events)
-          + (SELECT COUNT(*) FROM memberships)
-          + (SELECT COUNT(*) FROM event_assets)
-          + (SELECT COUNT(*) FROM resources)
-          + (SELECT COUNT(*) FROM device_records) AS n`,
-  );
-  return Number(rows[0].n) === 0;
+export async function deleteDevice(db: Db, deviceId: string): Promise<void> {
+  await db.execute(`DELETE FROM devices WHERE device_id = ?`, [deviceId]);
 }

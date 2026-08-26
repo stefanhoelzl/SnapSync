@@ -330,6 +330,17 @@ class World(
 
     // Attestation is composed (AppPorts requires the seams) but never exercised: the mini-edge is
     // unauthenticated and nothing in the world wakes the DeviceAttestation lazily composed on [core].
+    //
+    // TWO BACKEND BEHAVIOURS THE WORLD THEREFORE DOES NOT MODEL, stated rather than left to be discovered:
+    //  * the token gate itself — every mini-edge route answers without one; and
+    //  * `PUT /devices/<id>` answering 401 for a device the backend holds no ATTESTATION record for
+    //    (capability `device-attestation`: a device row exists iff the device has attested). The real
+    //    recovery is 401 → drop the token → attest afresh → `tokenChanged` → re-register, and the world
+    //    cannot run it because `generateKey` below refuses.
+    // Modelling either means teaching this fake to attest, which is a world-model change in its own right.
+    // Until then the loop's halves are covered separately — the trust feature by its own suite, the
+    // shell's rejection hook by `:test:architecture`'s CredentialRejectionWiringTest — and the join in
+    // `AppCore.installPushRegistration` is exercised only for its token-delivered arm.
     private val attestKey: AttestKey = object : AttestKey {
         override fun isSupported(): Boolean = false
         override suspend fun generateKey(): String = error("the world does not attest")

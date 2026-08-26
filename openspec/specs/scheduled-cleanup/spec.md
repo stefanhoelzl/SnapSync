@@ -182,10 +182,21 @@ load-bearing:
   residue is inert while nothing reads the row for dedup, and becomes a silently un-re-uploadable photo the
   moment something does.
 
-A device that is in **no** surviving event (floor `= +∞`) SHALL additionally have its `device_records` row
-and its attestation record `devices/<deviceId>.attest.json` collected — these carry no event date and are
-reclaimed only in this fully-orphaned case (a returning device re-registers its push token on its next
-launch or join and re-attests on demand).
+A device that holds **no membership of any state** in a surviving event SHALL additionally have its
+`devices` row collected — but **only once no device token minted for it can still verify**, which the row's
+recorded token expiry states (capability `device-attestation`). The row is the device's whole global
+record; there is no second object beside it.
+
+The expiry condition is **forcing, not tidiness**. A device's token is verified from its signature alone,
+so it keeps working for its full lifetime whether or not the backend still holds the attestation behind it.
+Collecting the row earlier therefore deletes the record backing a credential the device is still using: its
+next device-scoped write is refused, and it recovers by completing a full Apple attestation — the throttled
+path. Because this sweep runs nightly and the device is still orphaned the following night, that recurs for
+as long as it stays orphaned, once per launch-day, with no error and no user-visible symptom until Apple
+throttles it. Waiting for the expiry costs nothing: past it the device cannot make a gated call anyway.
+
+The phase SHALL identify its candidates by query rather than by enumerating a device roster. A returning
+device re-registers its push token on its next launch or join and re-attests on demand.
 
 #### Scenario: A pre-switch leftover byte is collected
 
@@ -209,11 +220,16 @@ launch or join and re-attests on demand).
 - **WHEN** the sweep deletes a resource row and is killed before deleting its byte
 - **THEN** the byte remains unreferenced and below the floor, and the next run collects it
 
-#### Scenario: A fully-orphaned device is collected whole
+#### Scenario: A fully-orphaned device with a dead credential is collected whole
 
-- **WHEN** a device is an active member of no surviving event
-- **THEN** every unreferenced byte under `files/devices/<deviceId>/`, its `device_records` row, and its
-  `devices/<deviceId>.attest.json` are deleted
+- **WHEN** a device holds no membership in any surviving event and its recorded token expiry has passed
+- **THEN** every unreferenced byte under `files/devices/<deviceId>/` and its `devices` row are deleted
+
+#### Scenario: A fully-orphaned device that may still hold a working token is retained
+
+- **WHEN** a device holds no membership in any surviving event but its recorded token expiry is in the
+  future
+- **THEN** its `devices` row is retained, so the device is not driven into a re-attestation it does not need
 
 #### Scenario: A departed member's bytes are retained while its event survives
 
@@ -227,9 +243,8 @@ The sweep SHALL support a **dry-run** mode that logs every event, **tombstone**,
 and deletes nothing. A real run SHALL delete **best-effort** per object — a single delete failure SHALL be
 logged and SHALL NOT abort the run (deletes are idempotent and `404`-tolerant) — and SHALL emit a
 **summary** over three tiers, each reporting the count **deleted** and the count **kept**: **events**,
-**devices** (a device counted once regardless of how many of its global config/attestation records exist),
-and **files** (byte objects) — with the file tallies additionally carrying the **total byte size** of each,
-so the summary reports storage actually reclaimed and not merely an object count.
+**devices**, and **files** (byte objects) — with the file tallies additionally carrying the **total byte
+size** of each, so the summary reports storage actually reclaimed and not merely an object count.
 
 The **events** tier SHALL count **events**: a reclaimed tombstone is not an event and SHALL appear in
 neither the deleted nor the kept count. The two event counts therefore do **not** partition the directories

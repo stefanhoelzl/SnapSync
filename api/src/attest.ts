@@ -24,7 +24,14 @@ import { type CBORType, decodeCBOR } from "@levischuck/tiny-cbor";
 import * as x509 from "@peculiar/x509";
 import { decodeBase64Url, encodeBase64 } from "@std/encoding";
 import type { Config } from "./config.ts";
-import type { AttestEnvironment } from "./storage.ts";
+
+/**
+ * Which App Attest environment attested a device — recorded alongside the attested key (capability
+ * `database`). Defined HERE, with the verifier that produces it, because it is the verifier's own output:
+ * `storage.ts` used to host it only so that module could stay free of this one's `@peculiar/x509` graph,
+ * and with the record no longer an object there is nothing left in storage to keep free of it.
+ */
+export type AttestEnvironment = "production" | "development";
 
 /** Apple puts the attestation's nonce in this certificate extension. */
 const APPLE_NONCE_OID = "1.2.840.113635.100.8.2";
@@ -133,9 +140,25 @@ export async function challengeIsValid(
 // `<deviceId>.<expiry>.<hmac>`. Verification is ONE HMAC comparison — no storage read, no Apple call —
 // which is what keeps the streaming byte-upload path free of any added round-trip.
 
+/**
+ * The epoch-second expiry a token minted at `nowMs` will carry.
+ *
+ * ONE derivation, shared by the mint and by the record the store keeps of it. They must not be computed
+ * twice: the sweep decides whether a device may still hold a working credential from the recorded value,
+ * and a record that understated the token's real life would collect a device that is still using it —
+ * costing it a full Apple attestation on the throttled path.
+ */
+export function tokenExpiryAt(config: Config, nowMs: number): number {
+  return Math.floor(nowMs / 1000) + config.attestTokenTtlSeconds;
+}
+
+/** The same instant as an ISO string — the form the store records. */
+export const tokenExpiryIso = (config: Config, nowMs: number): string =>
+  new Date(tokenExpiryAt(config, nowMs) * 1000).toISOString();
+
 /** Mint a device token valid for the configured TTL. */
 export async function mintToken(config: Config, deviceId: string, nowMs: number): Promise<string> {
-  const expiry = Math.floor(nowMs / 1000) + config.attestTokenTtlSeconds;
+  const expiry = tokenExpiryAt(config, nowMs);
   const payload = `${deviceId}.${expiry}`;
   const sig = await hmac(config.attestTokenKey, `token:${payload}`);
   return `${payload}.${bytesToB64(sig)}`;

@@ -123,6 +123,31 @@ jobs:
             exit 1
           }
 
+      # --- Migrate BEFORE publishing. main only, like the deploy itself. ---
+      #
+      # The bundle about to ship is written against the schema this step produces, so a bundle must never
+      # be published against a store that has not had it applied. Ordered before the deploy and not
+      # `continue-on-error`: a failed migration fails the run with the previous bundle still live, which
+      # is the recoverable state. The reverse order — publish, then migrate — puts new code on an old
+      # store and has nothing watching.
+      #
+      # WHY CI HOLDS THESE AND NOT THE STORAGE KEY. `backend-deployment` requires that
+      # BUNNY_STORAGE_ACCESS_KEY be an Edge Script environment value and NOT a deploy-workflow secret,
+      # because bunny issues no scoped keys and that one also owns the zone holding every user's photos.
+      # The database credentials are a third category, admitted deliberately: CI — not the endpoint — is
+      # what applies migrations. This widens a compromised deploy path's reach to the relational store
+      # and SHALL NOT be widened further to storage.
+      #
+      # Applying an already-applied migration is a no-op (the version is recorded), so this runs on every
+      # deploy and does nothing on most of them.
+      - name: Migrate the relational store
+        if: github.ref == 'refs/heads/main'
+        working-directory: api
+        env:
+          BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
+          BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
+        run: deno run --allow-net --allow-env src/scripts/migrate.ts
+
       # --- Deploy: main only. Feature-branch pushes run the checks (incl. bundle) but do not ship
       #     to the single live script. Idempotent: re-deploys overwrite the same script_id. ---
       - name: Deploy to bunny Edge Scripting

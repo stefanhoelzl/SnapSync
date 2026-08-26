@@ -1,123 +1,147 @@
-// Hono app for the backend (capabilities `event-creation` + `event-limits` + `bunny-upload-endpoint` +
-// `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint` + `device-attestation`,
-// over the shared `backend-deployment`; pushes via `apns-push-sender`).
+// Hono app for the backend: the whole device API in one place (capabilities `api-endpoints` for the route
+// shapes, `database` for what each one reads and writes, `device-attestation` for the gate, plus
+// `event-limits`, `event-rename`, `leave-event`, `apns-push-sender`, `web-site` and `event-link`, over the
+// shared `backend-deployment`).
 //
 // VERSIONED PREFIX (capability `backend-deployment`): every device-API route below is served under the
 // prefix `/api/v1` — the paths are written that way here, and that is the one shape they answer at. The
 // web/link routes (`/`, `/join`, the AASA) stay at the ROOT only, never under `/api/v1`. The routing is
 // version-parametric: a future `/api/v2` is one more mount in `createApp`.
 //
-// EVERY ROUTE BELOW REQUIRES A DEVICE TOKEN (capability `device-attestation`) — obtainable only by
-// completing App Attest, so the API is callable by a genuine, unmodified SnapSync on a genuine Apple
-// device and by nothing else. Exactly four things are ungated, and the list is CLOSED: the three
-// `/attest/*` routes (self-authenticating — they issue the token) and `OPTIONS` (the pull zone may answer
-// the preflight itself, so the script cannot gate it). See the middleware in `createApp`.
+// ── WHERE STATE LIVES ─────────────────────────────────────────────────────────────────────────────
+//
+// THE DATABASE HOLDS THE FACTS; STORAGE HOLDS THE BYTES. An event exists iff its `events` row exists; a
+// membership is a row with a state, not a pair of objects whose timestamps are compared; the union is one
+// join. This module therefore reaches storage for exactly one thing — the photo bytes — and everything
+// else is a statement in `db.ts` (capability `database`).
+//
+// A `devices` ROW EXISTS IFF THAT DEVICE HAS ATTESTED. That is forced by the gate rather than chosen:
+// every route but `/attest/*` needs a token, and a token needs an attestation, so no device can reach any
+// other device-scoped write first. It is why the push registration UPDATEs and never inserts.
+//
+// ── THE GATE (capability `device-attestation`) ────────────────────────────────────────────────────
+//
+// EVERY ROUTE REQUIRES A DEVICE TOKEN — obtainable only by completing App Attest, so the API is callable
+// by a genuine, unmodified SnapSync on a genuine Apple device and by nothing else. The exceptions are a
+// CLOSED LIST, and each is exempt for its own stated reason (see the middleware in `createApp`):
+//
+//   * the three `/attest/*` issuers — self-authenticating; they cannot require the token they mint.
+//   * `OPTIONS` on any path — the pull zone may answer the preflight itself, so the script cannot gate it.
+//   * `GET`/`HEAD` on exactly `/`, `/join` and the AASA — static, source-owned, read no storage.
+//   * `GET`/`HEAD` on `/health` — the post-deploy probe runs before any credential exists.
+//   * `GET`/`HEAD` on `/api/v1/events/<id>` and `/api/v1/events/<id>/files` — the no-app download page
+//     holds no attestation, and possession of the eventId IS the read capability. Every non-GET method on
+//     those paths stays gated.
+//
+// VERIFYING A TOKEN TOUCHES NOTHING: one HMAC comparison, no read, no Apple call. That is load-bearing
+// rather than an optimisation — verification runs on the streaming byte-upload path, where a round-trip
+// per resource would be paid on every photo. A route that additionally needs the device's RECORD reads it
+// itself, after the gate has passed; the gate never does.
 //
 //   GET /api/v1/attest/challenge
 //     → a stateless, HMAC-signed, time-bounded nonce. Writes NOTHING.
 //   POST /api/v1/attest/token
 //     → verifies an App Attest attestation (chain → Apple's root, nonce, app-id hash, counter, aaguid),
-//       persists the attested public key at `devices/<id>.attest.json`, and mints a 30-day bearer token.
+//       records the attested key AND the minted token's expiry as the device's row, then mints a 30-day
+//       bearer token. That record IS the device's enrolment. PERSISTS BEFORE MINTING: a token handed out
+//       against a record we failed to write is a credential nothing knows about → 502, mint nothing.
 //   POST /api/v1/attest/renew
-//     → verifies a local Secure-Enclave ASSERTION against that stored key and mints a fresh token — no
-//       Apple round-trip, because re-attestation is the throttled path.
+//     → verifies a local Secure-Enclave ASSERTION against that stored key — no Apple round-trip, because
+//       re-attestation is the throttled path — advances the recorded expiry, THEN mints. 401 when no
+//       record is on file (attest afresh); 502 when the store cannot be read or written, because absence
+//       and "could not ask" have different remedies and must not collapse.
 //
 //   POST /api/v1/events
-//     → mints an event: writes the marker `events/<id>/metadata.json` — stamping `capacity` and the
-//       `lifetimeSeconds` DURATION, and validating the creator's `endsAt` against the configured window
-//       maximum (capability `event-limits`) — and returns
-//       {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
+//     → mints an event: INSERTs the `events` row, stamping `capacity` and the `lifetimeSeconds` DURATION
+//       and validating the creator's `endsAt` against the configured window maximum (capability
+//       `event-limits`); returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
 //   GET /api/v1/events/:eventId
-//     → returns the event (existence check) with the DERIVED `deletesAt`; 404 when absent OR `gone`
-//       (legacy/corrupt marker). Never deletes on touch, even past the deadline.
+//     → the event row with the DERIVED `deletesAt`; 404 when absent. Never deletes on touch, even past
+//       the deadline. UNGATED (GET/HEAD only).
 //   PATCH /api/v1/events/:eventId
-//     → renames the event (capability `event-rename`): the ONLY route that rewrites an existing marker,
-//       and it replaces `name` alone — every other field written back verbatim, so a race with the sweep
-//       self-defuses. No ownership check (there is no owner); the device-token gate is the whole
-//       authorization. 400 on a bad id/body/name, 404 when absent OR `gone`, 502 on any upstream failure.
+//     → renames (capability `event-rename`): the ONLY write to an existing event row, and it sets `name`
+//       ALONE — every other column is write-once, which is why the statement is spelled out in `db.ts`
+//       rather than composed. No ownership check (there is no owner); the token gate is the whole
+//       authorization.
 //   PUT /api/v1/devices/:deviceId
-//     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
-//       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
-//       `files/devices/<deviceId>/` byte partition, so never listed as an asset.
+//     → the push registration (capability `push-registration`): UPDATEs the device's push columns and
+//       NEVER inserts. 401 when it affects no row — the token verified, but we hold no attestation for
+//       this device. The shipped client recovers unaided: the 401 drops its token, it attests (which
+//       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
+//       be a silent absence — the device would believe it is reachable while no push could reach it.
 //   POST /api/v1/events/:eventId/notify
-//     → sends a fixed SILENT (content-available) push to every ACTIVE member device (a departed
-//       `<id>.left.json` member is skipped). GATED on the marker (404/502). Enumerate members
-//       (LIST `events/<id>/devices/`, resolve active via last-write-wins) → read each `devices/<id>.json`
-//       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
-//       fails. Authorized by a device token — the ONLY credential this backend accepts.
+//     → a fixed SILENT (content-available) push to every ACTIVE member (departed members are skipped).
+//       GATED on the event row (404/502). Members come from one query, each member's token from its row;
+//       the fan-out is best-effort — a member with no registered token is skipped and a per-token failure
+//       never fails the request. Bare 202; 502 only if the member read fails.
 //   PUT /api/v1/files/devices/:deviceId/:filename
-//     → streams the request body into ONE bunny native Storage PUT. Requires the token, but reads NO
-//       marker: bytes are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`),
-//       uploaded once and linked into events by reference. The device id remains self-asserted — the token
-//       proves a genuine app instance, NOT ownership of the partition (a stated non-goal; the UUID is the
-//       capability). The OS performs this PUT and DOES carry the header (verified on device). (There is no
-//       download GET on this path — the listing hands out a presigned S3 URL fetched directly from S3.)
+//     → streams the request body into ONE bunny native Storage PUT, then BEST-EFFORT records the resource
+//       row as uploaded (a failure there never changes the response — the response is the storage
+//       outcome). Requires the token but reads NO event: bytes are device-partitioned and
+//       event-independent, uploaded once and linked into events by reference. The device id remains
+//       self-asserted — the token proves a genuine app instance, NOT ownership of the partition (a stated
+//       non-goal; the UUID is the capability). The OS performs this PUT and DOES carry the header
+//       (verified on device). There is no download GET here; the listing hands out a presigned S3 URL.
 //   GET /api/v1/files/devices/:deviceId
-//     → lists the device's RAW stored objects (a single LIST of `files/devices/<deviceId>/`); each is
-//       `{ filename, size, url }` where `url` is a presigned S3 GET URL. No manifest read, no
-//       completeness, no event gate. `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls;
-//       see NO_CACHE — the pull zone honors `no-cache`, not `no-store`).
+//     → the device's uploaded resources, from ONE query — no storage LIST. Each entry is
+//       `{ filename, url }`, where `filename` is the STORED OBJECT KEY (what the rejoin reconciler matches
+//       its ledger against, capability `event-rejoin-reconciliation`) and `url` is a presigned S3 GET.
+//       `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls; see NO_CACHE — the pull zone
+//       honors `no-cache`, not `no-store`).
 //   PUT /api/v1/events/:eventId/devices/:deviceId
-//     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
-//       existence (the marker read) so a manifest is never written under a non-existent event, AND on
-//       CAPACITY (capability `event-limits`): a device id never enrolled (no active or `.left` sibling)
-//       is refused 409 once `capacity` distinct device ids have ever enrolled (leaving frees no slot);
-//       a known device's writes always pass. Capacity is the ONLY refusal — enrollment is never closed
-//       by time, however long after `endsAt` it arrives.
+//     → publishes the device manifest. GATED on existence AND on CAPACITY by ONE conditional statement
+//       (capability `event-limits`): a device never enrolled is refused 409 once `capacity` distinct ids
+//       have ever enrolled — leaving frees no slot, a rejoin reuses its own — and a zero-row outcome is
+//       disambiguated into 409-vs-404 by a follow-up read rather than collapsed. Capacity is the ONLY
+//       refusal; enrollment is never closed by time, however long after `endsAt` it arrives. The write is
+//       ONE ATOMIC BATCH: membership → active, the membership's assets REPLACED with exactly what the body
+//       lists (an omitted asset is removed), each named resource upserted with `uploaded` MONOTONE.
 //   DELETE /api/v1/events/:eventId/devices/:deviceId
-//     → LEAVE (capability `event-leave-endpoint`): RENAME-ONLY. Renames the device's active manifest to
-//       `<deviceId>.left.json` (departed — still served by the union, skipped by notify) and returns 200
-//       regardless of remaining membership. NON-DESTRUCTIVE: no reap here, no leave-time GC. When this
-//       was the LAST active member the event becomes EMPTY, and the nightly sweep (capability
-//       `scheduled-cleanup`) reclaims it on its next run. GATED on the marker (404/502). Idempotent.
+//     → LEAVE (capability `leave-event`): marks the membership `departed`. GATED on the event row
+//       (404/502), idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving
+//       what the device shared. No reap here and no leave-time GC. When this was the last active member
+//       the event becomes EMPTY and the nightly sweep reclaims it on its next run.
 //   GET /api/v1/events/:eventId/files
-//     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
-//       every resource its device.json names is present in `files/devices/<deviceId>/`), flattened across
-//       devices, each tagged with its owning deviceId. GATED on event existence (marker read). Fans
-//       out: marker → LIST `events/<id>/devices/` → per device (read device.json + LIST its files) →
-//       complete-only projection. Faithful: any non-404 read failure anywhere (incl. a manifest JSON
-//       parse failure) → 502 (never a partial union). `Cache-Control: no-store, no-cache, max-age=0`
-//       (live read over mutable manifests + listings; see NO_CACHE). Identity-blind: own-vs-foreign
-//       skip is the client's concern.
+//     → the event-wide UNION, as ONE query joining the event's assets to their resources across ACTIVE
+//       AND DEPARTED memberships (a member who left keeps contributing what it already shared). An asset
+//       naming a resource with no recorded upload is dropped — defense in depth, since the manifest lists
+//       only completed resources. Faithful: any read failure → 502, never a partial union. UNGATED
+//       (GET/HEAD only). Identity-blind: own-vs-foreign skip is the client's concern.
+//       `Cache-Control: no-store, no-cache, max-age=0`.
+//   GET /health
+//     → the post-deploy boot probe (capability `deployment-configuration`): this bundle's stamped SHA and
+//       the store's foreign-key posture, reported SEPARATELY so a misprovisioned store is distinguishable
+//       from one that is merely still starting.
 //
-// EVENT LIFECYCLE (capability `event-limits`): every event-scoped route above resolves its event through
-// ONE gate (`gateEvent`), and the lifecycle is BINARY — the event exists, or the sweep has deleted it.
-// `endsAt` is NOT a lifecycle input: it bounds only which captures may be UPLOADED, so nothing closes
-// when the window does (in particular, JOINING IS NEVER CLOSED BY TIME — a guest who scans days late
-// still holds in-window captures that belong in the event).
+// ── EVENT LIFECYCLE (capability `event-limits`) ───────────────────────────────────────────────────
+//
+// Every event-scoped route resolves its event through ONE gate (`gateEvent`), and the lifecycle is
+// BINARY — the event exists, or the sweep has deleted it. `endsAt` is NOT a lifecycle input: it bounds
+// only which captures may be UPLOADED, so nothing closes when the window does (in particular, JOINING IS
+// NEVER CLOSED BY TIME — a guest who scans days late still holds in-window captures that belong in the
+// event).
 //
 // The nightly sweep (capability `scheduled-cleanup`, run out-of-edge from GitHub Actions) is the ONLY
-// deleter. It reclaims an event that is past its derived delete-by (`max(createdAt, startsAt) +
-// lifetimeSeconds` — the guarantee) or EMPTY (ever joined, no active member left — opportunistic, since
-// a leave whose DELETE never landed keeps a manifest active). No route reaps on touch, even past the
-// deadline: that is what makes a 404 a REAL deletion, and therefore safe as one of the two witnesses the
-// client's self-leave requires (capability `leave-event`). A legacy/corrupt marker (missing `startsAt`,
-// `endsAt`, or `capacity`) is `gone`: the gate answers 404 and the sweep deletes it.
+// deleter. It reclaims an event past its derived delete-by (`max(createdAt, startsAt) + lifetimeSeconds`
+// — the guarantee) or EMPTY (ever joined, no active member left — opportunistic, since a leave whose
+// DELETE never landed keeps a membership active). No route reaps on touch, even past the deadline: that
+// is what makes a 404 a REAL deletion, and therefore safe as one of the two witnesses the client's
+// self-leave requires (capability `leave-event`).
 //
-// EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
-// eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
-// `events/<id>/devices/<deviceId>.json`, and the device-global byte store `files/devices/<deviceId>/…`
-// are mutually disjoint and never collide. Existence is a small `GET` of the marker (bunny's Edge Storage
-// API has no HEAD); a non-404 read failure surfaces as 502 (a transient failure is never mistaken for
-// absence). Only the device-manifest write, the metadata route, and the event-wide union read the
-// marker — the byte upload and per-device list routes are event-independent (they read no marker, though
-// they still require the token). The token check ALWAYS runs first, so an unauthenticated caller cannot
-// tell an existing event from a missing one.
+// The token check ALWAYS runs before the existence gate, so an unauthenticated caller cannot tell an
+// existing event from a missing one — except on the two routes the closed list deliberately opens, where
+// eventId-possession is itself the read capability.
+//
+// ── THE BYTE ROUTE ────────────────────────────────────────────────────────────────────────────────
 //
 // The per-device byte WRITE route is defined on a child Hono (`byteFile`) and mounted under
 // `/files/devices/:deviceId/:filename` via app.route(), so PUT (upload) and OPTIONS share it.
-// `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a mount,
-// hence the guard); the filename is re-encoded per-segment when building the bunny URL, so the stored
-// object is the real filename and keys stay flat. Config is injected (validated at startup). Upload
-// invariants: pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed store),
-// last-write-wins. There is NO download route: the listing's `url` is a presigned S3 GET the device
-// fetches directly from bunny's S3 endpoint (the short-read integrity check moves to the client).
-//
-// The list route returns the device's raw objects from a single bunny native Storage LIST of
-// `files/devices/<deviceId>/` — no manifest content reads. Completeness is computed by the app (the shared
-// gallery enumeration seam × this raw list), not server-side. Faithful: any LIST transport failure →
-// 502 (never a partial list); a 404 on the device dir is "no objects" → 200 []. Each `url` is a
-// presigned S3 GET URL (see `presignDownloadUrl`).
+// `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a mount, hence
+// the guard); the filename is re-encoded per-segment when building the bunny URL, so the stored object is
+// the real filename and keys stay flat. Config is injected (validated at startup). Upload invariants:
+// pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed store), last-write-wins.
+// There is NO download route: the listing's `url` is a presigned S3 GET the device fetches directly from
+// bunny's S3 endpoint (the short-read integrity check moves to the client).
 
 import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
@@ -138,20 +162,15 @@ import {
   challengeIsValid,
   mintChallenge,
   mintToken,
+  tokenExpiryIso,
   verifyAssertion,
   verifyAttestation,
   verifyToken,
 } from "./attest.ts";
-// Storage primitives — now only the BYTE store and the attestation record; every relational fact moved
-// to the database (capability `database`).
-import {
-  type AttestRecord,
-  byteKey,
-  deviceAttestKey,
-  type FetchLike,
-  putObject,
-  readObjectText,
-} from "./storage.ts";
+// Storage primitives — now ONLY the byte store. The attestation record was the last non-byte object this
+// script touched, and it is a row now (capability `database`): storage holds bytes, the database holds
+// facts.
+import { byteKey, type FetchLike } from "./storage.ts";
 // The relational store (capability `database`) — the authority for events, memberships, assets,
 // resources and device records, shared with the nightly sweep.
 import {
@@ -165,10 +184,13 @@ import {
   markUploaded,
   membersOf,
   publishStatements,
+  putAttestation,
   putDeviceRecord,
+  readAttestation,
   readDeviceRecord,
   readEvent,
   renameEvent,
+  touchTokenExpiry,
   unionRows,
 } from "./db.ts";
 // Event lifecycle, shared with the nightly sweep.
@@ -368,7 +390,7 @@ async function serveSiteObject(
 
 /**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
- * `bunny-list-endpoint`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
+ * `api-endpoints`): `<s3Scheme>://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…` — `https` in
  * every deployed configuration; only the local dev rig moves it, so it can serve loopback HTTP that a
  * device can actually fetch. Path-style, each
  * key segment percent-encoded (deviceId is a UUID → identity), `X-Amz-Expires` 7 days. The zone name is
@@ -412,7 +434,7 @@ async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null
 export function createApp(
   { fetch: fetchImpl, config, db, now = Date.now, buildSha = BUILD_SHA }: Deps,
 ): Hono {
-  // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
+  // The S3 signer used ONLY to presign download URLs (capability `api-endpoints`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
   // listings stay on the native API and are not signed with this.
   const aws = new AwsClient({
@@ -429,8 +451,8 @@ export function createApp(
 
   // ── THE EVENT-LIMITS GATE (capability `event-limits`) ───────────────────────────────────────────
   //
-  // Every event-scoped route resolves its event through `gateEvent` below: read the marker and check it
-  // is complete. The lifecycle is BINARY — an event exists, or the sweep has deleted it. `endsAt` is NOT
+  // Every event-scoped route resolves its event through `gateEvent` below: one row read. The lifecycle
+  // is BINARY — an event exists, or the sweep has deleted it. `endsAt` is NOT
   // consulted: it bounds only which captures may be UPLOADED, and closes nothing. In particular JOINING
   // IS NEVER CLOSED BY TIME, because a guest who scans days late still holds in-window captures that
   // belong in the event. There is no on-touch reap: deleting is the nightly sweep's alone
@@ -454,7 +476,7 @@ export function createApp(
   }
 
   /**
-   * The WIRE shape of an event (capabilities `event-creation`, `event-limits`): the marker's public
+   * The WIRE shape of an event (capabilities `api-endpoints`, `event-limits`): the row's public
    * fields with the stamped `lifetimeSeconds` replaced by the DERIVED `deletesAt`, in the canonical
    * cutoff shape.
    *
@@ -468,15 +490,16 @@ export function createApp(
     return { ...wire, deletesAt: canonicalFromMs(deleteByMs(event)) };
   }
 
-  // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
+  // Per-device byte WRITE route (capability `api-endpoints`). Mounted under
   // `/files/devices/:deviceId/:filename`, so the handlers read `deviceId`/`filename` from the mount.
   // (Downloads are no longer proxied here — the listing hands out a presigned S3 GET URL the device
   // fetches directly from bunny's S3 endpoint.)
   const byteFile = new Hono();
 
-  // Upload — UNGATED. No marker read: bytes are device-partitioned and event-independent. Stream the
-  // body straight into one bunny native PUT at `files/devices/<deviceId>/<filename>`. Faithful: 201 only on a
-  // confirmed store; last-write-wins (no existence check on the object key).
+  // Upload — GATED by the device token like every other route, but it reads NO EVENT: bytes are
+  // device-partitioned and event-independent, so there is nothing to resolve. Stream the body straight
+  // into one bunny native PUT at `files/devices/<deviceId>/<filename>`, then best-effort record the
+  // resource row. Faithful: 201 only on a confirmed store; last-write-wins (no existence check on the key).
   byteFile.put("/", async (c) => {
     const deviceId = c.req.param("deviceId");
     const filename = c.req.param("filename");
@@ -543,7 +566,7 @@ export function createApp(
   //
   // Every route requires a device token, obtainable ONLY by completing App Attest — so the API is
   // callable by a genuine, unmodified SnapSync on a genuine Apple device, and by nothing else. What this
-  // closes is bill/storage abuse: the byte route reads no marker, the device id is self-asserted, and the
+  // closes is bill/storage abuse: the byte route resolves no event, the device id is self-asserted, and the
   // host ships in plaintext in every IPA, so before this an unbounded write to the zone was available to
   // anyone who read the binary.
   //
@@ -595,7 +618,7 @@ export function createApp(
       path === "/.well-known/apple-app-site-association" ||
       path.startsWith("/_astro/");
     // The two event READS the no-app download page fetches (capability `web-event-download`): the event
-    // marker `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
+    // metadata `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
     // eventId-possession alone — the eventId IS the read capability — so a browser that holds no attestation
     // can fetch them. This narrows the gate's READ posture (attestation never proved who may read whose
     // photos, and the presigned bytes it fronts were always ungated); it does NOT open any WRITE. The match
@@ -775,19 +798,18 @@ export function createApp(
 
     // Persist the attested key so RENEWAL can verify a cheap local assertion against it instead of
     // forcing a fresh attestation — which is the throttled path, and which would make renewal too
-    // expensive to attempt at every wake.
-    const record: AttestRecord = {
-      publicKey: bytesToB64(verified.publicKey),
-      environment: verified.environment,
-      attestedAt: new Date(now()).toISOString(),
-    };
+    // expensive to attempt at every wake. This INSERT is also the device's enrolment: a `devices` row
+    // exists if and only if the device has attested, and this is the only route that creates one.
+    //
+    // PERSIST BEFORE MINTING. A token handed out against a record we failed to write is a credential
+    // nothing knows about; the client retries at its next wake, so refusing costs nothing.
     try {
-      await putObject(
-        fetchImpl,
-        config,
-        deviceAttestKey(deviceId),
-        JSON.stringify(record),
-        "application/json",
+      await putAttestation(
+        db,
+        deviceId,
+        { publicKey: bytesToB64(verified.publicKey), environment: verified.environment },
+        new Date(now()).toISOString(),
+        tokenExpiryIso(config, now()),
       );
     } catch (e) {
       console.error(`attest: could not persist the attestation record for ${deviceId}: ${e}`);
@@ -813,14 +835,21 @@ export function createApp(
     }
     if (!await challengeIsValid(config, challenge, now())) return c.text("stale challenge", 401);
 
-    let record: AttestRecord;
+    let record: Awaited<ReturnType<typeof readAttestation>>;
     try {
-      const raw = await readObjectText(fetchImpl, config, deviceAttestKey(deviceId));
-      if (raw === null) return c.text("not attested", 401); // never attested, or GC'd → attest afresh
-      record = JSON.parse(raw) as AttestRecord;
+      record = await readAttestation(db, deviceId);
     } catch (e) {
+      // Absence and "could not ask" are DIFFERENT answers here and must not collapse: absence sends the
+      // device down a full Apple attestation, which is the throttled path, so a database blink must read
+      // as retry-me and not as attest-again.
       console.error(`renew: could not read the attestation record for ${deviceId}: ${e}`);
       return c.text("upstream error", 502);
+    }
+    if (record === null) {
+      // Two causes, one answer, and the log keeps them apart: a device the backend has never seen, or one
+      // whose row the nightly sweep collected. Both mean "attest afresh", which is what the client does.
+      console.info(`renew: no attestation on file for ${deviceId} — never attested, or collected`);
+      return c.text("not attested", 401);
     }
 
     try {
@@ -835,13 +864,29 @@ export function createApp(
       return c.text("assertion rejected", 401);
     }
 
+    // RECORD THE NEW EXPIRY BEFORE MINTING, exactly as `/attest/token` persists before minting. The sweep
+    // decides whether this device may still hold a working credential from this value; minting first and
+    // writing after would leave the store understating the token's life, and the sweep would then collect
+    // a device that is still using it — costing it a full re-attestation.
+    try {
+      const { rowsAffected } = await touchTokenExpiry(db, deviceId, tokenExpiryIso(config, now()));
+      if (rowsAffected === 0) {
+        // The row went away between the read and this write. Nothing to renew against.
+        console.info(`renew: the attestation record for ${deviceId} vanished mid-renewal`);
+        return c.text("not attested", 401);
+      }
+    } catch (e) {
+      console.error(`renew: could not record the token expiry for ${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+
     return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
   });
 
-  // Create an event (capability `event-creation`). GATED by the device token above (an ungated create
-  // let a stranger mint unbounded event markers). Beyond that gate it stays possession-is-
-  // capability model). Validates the name, mints a server-side UUID, and writes the marker. Faithful
-  // outcome: 201 only after bunny confirms the marker store; any upstream failure → 502.
+  // Create an event (capabilities `api-endpoints`, `event-limits`). GATED by the device token above (an
+  // ungated create let a stranger mint unbounded events). Beyond that gate it stays a
+  // possession-is-capability model. Validates the name, mints a server-side UUID, and INSERTs the row.
+  // Faithful outcome: 201 only after the store confirms the write; any failure → 502.
   deviceApi.post("/events", async (c) => {
     let body: unknown;
     try {
@@ -863,7 +908,7 @@ export function createApp(
     // ABSENT it falls back to `startsAt + windowMax`, so old clients that send only `startsAt` keep
     // working. A present-but-invalid `endsAt` is a 400. `capacity` and `lifetimeSeconds` stay
     // server-resolved — a client-supplied `capacity` (and `eventId`) is still ignored. The config values
-    // are consulted HERE ONLY; enforcement reads the marker's own stamped fields.
+    // are consulted HERE ONLY; enforcement reads the row's own stamped fields.
     const rawEndsAt = (body as { endsAt?: unknown } | null)?.endsAt;
     let endsAt: string;
     if (rawEndsAt === undefined || rawEndsAt === null) {
@@ -896,11 +941,11 @@ export function createApp(
     return c.json(publicEvent(event), 201);
   });
 
-  // Event metadata / existence (capability `event-creation`). Returns the event — always carrying
-  // `startsAt`, `endsAt`, `capacity`, and the derived `deletesAt`, because the gate never serves a marker
-  // without the first three — or 404 when the event was never created OR its marker is incomplete
-  // (capability `event-limits`); a non-404 marker read failure → 502. This is the canonical existence
-  // check the device-manifest write gate relies on.
+  // Event metadata / existence (capability `api-endpoints`). Returns the event — always carrying
+  // `startsAt`, `endsAt`, `capacity`, and the derived `deletesAt`, because those are `NOT NULL` columns
+  // — or 404 when the event was never created or the sweep deleted it; a read failure → 502. This is the
+  // canonical existence check the device-manifest write gate relies on. There is no third answer: the
+  // INCOMPLETE case the object era had to carry is unstateable now (see `gateEvent`).
   //
   // An event past its WINDOW (`endsAt`) serves normally — the window closes nothing. An event past its
   // derived `deletesAt` ALSO serves normally until the nightly sweep removes it: no route deletes on
@@ -921,9 +966,9 @@ export function createApp(
     }
   });
 
-  // Rename an event (capability `event-rename`). The ONLY route that rewrites an existing marker, and
-  // it rewrites exactly ONE field. `name` is the single exception to the marker's write-once rule
-  // (capability `event-creation`) because it touches neither threat that rule names: a name cannot
+  // Rename an event (capability `event-rename`). The ONLY route that writes an existing event row, and
+  // it writes exactly ONE column. `name` is the single exception to the row's write-once rule
+  // (capability `event-limits`) because it touches neither threat that rule names: a name cannot
   // retroactively widen a joiner's capture scope and cannot extend an event's limits. It is cosmetic to
   // the upload gate, cosmetic to the extension, and load-bearing for display alone.
   //
@@ -933,7 +978,7 @@ export function createApp(
   //
   // ⚠️ Every other field is written back VERBATIM — never restamped, never recomputed. That is what
   // makes a race with the nightly sweep (capability `scheduled-cleanup`) self-defusing: a rename that
-  // re-creates a marker the sweep has just deleted re-creates it carrying its ORIGINAL `createdAt`,
+  // re-creates a row the sweep has just deleted re-creates it carrying its ORIGINAL `createdAt`,
   // `startsAt`, and `lifetimeSeconds`, so its derived delete-by is still in the past and the next sweep
   // reaps it again. Restamping any of those would resurrect the event for a fresh lifetime.
   //
@@ -956,8 +1001,8 @@ export function createApp(
       return c.text("invalid name", 400); // missing/empty/whitespace/too long
     }
 
-    // The same existence gate the metadata route serves from: absent or incomplete → 404 (never a
-    // partial rewrite of a marker the sweep is about to delete); a transport failure → 502, so a
+    // The same existence gate the metadata route serves from: absent → 404 (never a partial
+    // rewrite of a row the sweep is about to delete); a transport failure → 502, so a
     // transient fault is never mistaken for absence.
     let current: EventRow;
     try {
@@ -983,14 +1028,15 @@ export function createApp(
     return c.json(publicEvent({ ...current, name }));
   });
 
-  // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).
-  // GATED on event existence AND capacity (capability `event-limits`): read the marker, then LIST
-  // `events/<eventId>/devices/` to classify the writer as KNOWN (an active `<id>.json` or departed
-  // `<id>.left.json` exists — a member's manifest update, or a rejoin reusing its own slot) vs NEW (an
-  // enrollment). Resolution order: absent → 404; new ∧ ever-enrolled ≥ capacity → 409 (active and
-  // departed both count: leaving frees no slot); otherwise stream the body into one bunny native PUT at
-  // `events/<eventId>/devices/<deviceId>.json`. Any non-404 marker/LIST failure → 502 (never mistaken
-  // for absent or full).
+  // Write a device's per-event manifest (capabilities `api-endpoints`, `device-manifest`).
+  // GATED on event existence AND capacity (capability `event-limits`) by ONE conditional statement: it
+  // admits the device when the event exists AND (it already holds a membership — a rejoin reuses its own
+  // slot — OR the event has fewer than `capacity` memberships of ANY state, because leaving frees none).
+  // The count and the insert are evaluated together, so concurrent first enrollments cannot overshoot.
+  // A zero-row outcome CONFLATES at-capacity with no-such-event, so it is disambiguated by a follow-up
+  // existence read rather than guessed: absent → 404, otherwise → 409. The body then publishes as ONE
+  // atomic batch (see `publishStatements`). Any transport failure → 502 (never mistaken for absent or
+  // full).
   //
   // CAPACITY IS THE ONLY REFUSAL. There is no time-based rejection: a device may enroll for as long as
   // the event exists, however long after `endsAt` that is, because a guest who scans days late still
@@ -1044,14 +1090,13 @@ export function createApp(
     return c.body(null, 201);
   });
 
-  // Leave an event (capability `event-leave-endpoint`). RENAME-ONLY: leaving is non-destructive. GATED
-  // on the marker (absent → 404; non-404 read failure → 502). Rename the device's active manifest to its
-  // `.left.json` sibling (copy content → FRESH timestamp, then delete the active) so the union still
-  // serves its photos, then return 200 REGARDLESS of remaining membership — the event survives until it
-  // expires and is deleted by the nightly sweep (capability `scheduled-cleanup`), which also collects the
-  // bytes. No last-member reap, no leave-time garbage collection. Idempotent + leak-safe: the `.left.json`
-  // is written BEFORE the active is deleted, so a failure between them leaves the device recoverable; a
-  // missing active manifest (already departed / never a member) is a no-op, so a retried DELETE re-runs
+  // Leave an event (capability `leave-event`). A STATE CHANGE, and non-destructive: mark the membership
+  // `departed`. GATED on the event row (absent → 404; read failure → 502). The membership's assets are
+  // RETAINED, so the union still serves what the device shared, and the route returns 200 REGARDLESS of
+  // remaining membership — the event survives until it expires and is deleted by the nightly sweep
+  // (capability `scheduled-cleanup`), which also collects the bytes. No last-member reap, no leave-time
+  // garbage collection. Idempotent: a repeated leave, or one naming a membership that never existed,
+  // changes nothing and is not an error, so a retried DELETE re-runs
   // harmlessly. Any transport failure → 502.
   deviceApi.delete("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
@@ -1061,8 +1106,8 @@ export function createApp(
     }
 
     try {
-      // The lifecycle gate (capability `event-limits`): a `gone` (legacy/corrupt) marker 404s, which the
-      // client already treats as "nothing to leave". A leave DURING grace proceeds: members may still
+      // The lifecycle gate (capability `event-limits`): an absent event 404s, which the client already
+      // treats as "nothing to leave". A leave DURING grace proceeds: members may still
       // depart an over-but-not-yet-swept event.
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
@@ -1085,16 +1130,18 @@ export function createApp(
     }
   });
 
-  // Event-wide UNION read (capability `bunny-list-endpoint`). GATED on event existence (marker read):
-  // absent → 404, non-404 read failure → 502. Then fan out: one LIST of `events/<eventId>/devices/` to
-  // discover the contributing devices, and per device (in parallel) read its `device.json` and LIST
-  // its `files/devices/<deviceId>/` partition. An asset is emitted only when EVERY resource its manifest names
-  // is present in that device's byte store (complete-only); each kept asset is flattened into one
-  // array, tagged with its owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is
-  // the client's concern). The stored manifest is already the event's date-filtered projection, so its
-  // asset list is trusted as-is (no re-filtering). Faithful: any non-404 read failure anywhere in the
-  // fan-out (incl. a manifest JSON parse failure) → 502, never a partial union; a per-device file dir
-  // 404 is "no bytes" (every asset incomplete), not a failure. The 200 response is non-cacheable.
+  // Event-wide UNION read (capability `api-endpoints`). UNGATED by the token — the no-app download page
+  // fetches it from a browser that holds no attestation, so eventId-possession IS the read capability
+  // (`device-attestation`'s closed list, entry 8) — but still gated on event EXISTENCE: absent → 404,
+  // read failure → 502.
+  //
+  // ONE QUERY, no fan-out: the event's assets joined to their resources across ACTIVE and DEPARTED
+  // memberships, so a member who has left keeps contributing what it already shared. An asset naming a
+  // resource with no recorded upload is dropped — defense in depth, since a manifest lists only completed
+  // resources (capability `api-endpoints`). Each kept asset is flattened into one array, tagged with its
+  // owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is the client's concern). The
+  // published manifest is already the event's date-filtered projection, so its asset list is trusted
+  // as-is (no re-filtering). Faithful: any read failure → 502, never a partial union. Non-cacheable.
   deviceApi.get("/events/:eventId/files", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -1213,8 +1260,25 @@ export function createApp(
     } catch {
       return c.text("invalid body", 400);
     }
+    // An UPDATE, never an insert: a `devices` row exists only where the device has attested, and this
+    // route cannot attest on its behalf (capability `device-attestation`).
     try {
-      await putDeviceRecord(db, deviceId, push, new Date(now()).toISOString());
+      const { rowsAffected } = await putDeviceRecord(
+        db,
+        deviceId,
+        push,
+        new Date(now()).toISOString(),
+      );
+      if (rowsAffected === 0) {
+        // The token verified — it is ours and unexpired — but we hold no attestation for this device.
+        // `401` is the answer because the remedy is the same one a rejected token has, and the shipped
+        // client already takes it: drop the token, attest afresh (which CREATES the row), and re-send
+        // this registration when a new token arrives. A `201` here would be a silent absence — the device
+        // would believe it is reachable while no push could ever reach it, and it writes its registration
+        // once per OS-delivered token, so nothing would retry.
+        console.info(`config: no attestation on file for ${deviceId} — refusing the registration`);
+        return c.text("unattested", 401);
+      }
     } catch (e) {
       console.error(`config: device record write failed for ${deviceId}: ${e}`);
       return c.text("upstream error", 502);
@@ -1222,12 +1286,13 @@ export function createApp(
     return c.body(null, 201);
   });
 
-  // Notify an event's members (capability `event-notify-endpoint`). GATED on the marker (absent → 404,
-  // non-404 read failure → 502). Enumerate members with one LIST of `events/<eventId>/devices/`; a LIST
-  // transport failure → 502 (nothing enumerable). Then BEST-EFFORT: read each member's config token
-  // (absent/unparseable/no-token → skipped) and send a silent (content-available) push carrying the
-  // route's `eventId` in its payload to the rest. Per-member read/send failures never fail the request
-  // — always a bare 202 once the marker gate passed and members were enumerated. Server-chosen payload
+  // Notify an event's members (capabilities `api-endpoints`, `apns-push-sender`). GATED on the event row
+  // (absent → 404, read failure → 502). Enumerate the ACTIVE members with one query — departed members
+  // are skipped, which is what makes leaving stop the pushes without stopping the union; a read failure
+  // → 502 (nothing enumerable). Then BEST-EFFORT: read each member's registered push token (no row, or
+  // no registration → skipped) and send a silent (content-available) push carrying the route's `eventId`
+  // in its payload to the rest. Per-member read/send failures never fail the request
+  // — always a bare 202 once the gate passed and members were enumerated. Server-chosen payload
   // (the path event id), all members, no exclusion; the uploader fires this via `upload-completion-notify`.
   deviceApi.post("/events/:eventId/notify", async (c) => {
     const eventId = c.req.param("eventId");

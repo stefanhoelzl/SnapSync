@@ -232,6 +232,13 @@ The two runtime secrets (`BUNNY_STORAGE_ACCESS_KEY`, `APNS_PRIVATE_KEY`) SHALL b
 Script environment values, **not** as deploy-workflow secrets — they are the endpoint's runtime config,
 not CI credentials.
 
+The **database** credentials are a third category and SHALL be held by the deploy workflow, because CI —
+not the endpoint — is what applies schema migrations (capability `database`). The migration step SHALL run
+**before** the bundle is published and SHALL fail the run without publishing if it fails, so a bundle is
+never served against a store it does not expect. Holding them widens what a compromised deploy path can
+reach to the relational store; it SHALL NOT be widened further to the storage access key, which would
+extend that reach to every user's photos and is what the exclusion above exists to prevent.
+
 #### Scenario: Deploy uses secret-held, script-scoped credentials
 
 - **WHEN** the deploy step runs
@@ -242,6 +249,16 @@ not CI credentials.
 
 - **WHEN** the deploy workflow is inspected
 - **THEN** it holds no bunny account API key, and performs no platform-configuration write
+
+#### Scenario: The storage access key is absent from the deploy workflow
+
+- **WHEN** the deploy workflow is inspected
+- **THEN** it holds no storage access key, and performs no read or write against the storage zone
+
+#### Scenario: A failed migration publishes nothing
+
+- **WHEN** the migration step fails
+- **THEN** the run fails and the bundle is not published
 
 ### Requirement: Idempotent deploy target
 

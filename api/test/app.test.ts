@@ -3,7 +3,16 @@ import { createApp as createRealApp, type Deps, type FetchLike } from "../src/ap
 import { deleteByMs } from "../src/lifecycle.ts";
 import { mintToken } from "../src/attest.ts";
 import { sqliteDb } from "../src/dev/db-sqlite.ts";
-import { type Db, insertEvent, migrate } from "../src/db.ts";
+import {
+  type Db,
+  insertEvent,
+  putAttestation,
+  putDeviceRecord,
+  readAttestation,
+  touchTokenExpiry,
+} from "../src/db.ts";
+import { migrate } from "../src/migrations.ts";
+import { enrolDevice } from "./support/db.ts";
 
 // The whole API is gated on a device token (capability `device-attestation`), so every request in this
 // file needs one. Rather than thread a header through every call site, `createApp` is shadowed here by a
@@ -1007,6 +1016,7 @@ Deno.test("leave → absent event → 404; non-UUID → 400", async () => {
 
 Deno.test("device config → the token lands in its own columns, last-write-wins", async () => {
   const db = await store();
+  await enrolDevice(db, D);
   const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
   const doc = (token: string) =>
     JSON.stringify({ pushToken: { kind: "apns", token, env: "sandbox" } });
@@ -1020,7 +1030,7 @@ Deno.test("device config → the token lands in its own columns, last-write-wins
   );
   const stored = await rows(
     db,
-    `SELECT push_kind, push_token, push_env FROM device_records WHERE device_id=?`,
+    `SELECT push_kind, push_token, push_env FROM devices WHERE device_id=?`,
     [D],
   );
   assertEquals(stored.length, 1);
@@ -1046,19 +1056,20 @@ Deno.test("device config → a malformed pushToken is REFUSED at the write, not 
       body,
     );
   }
-  assertEquals((await rows(db, `SELECT * FROM device_records`)).length, 0);
+  assertEquals((await rows(db, `SELECT * FROM devices`)).length, 0);
   db.close();
 });
 
 Deno.test("device config → an explicitly absent pushToken is recorded, not refused", async () => {
   // A device saying "I have no registration" is an ordinary state, distinct from a malformed body.
   const db = await store();
+  await enrolDevice(db, D);
   const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
     `/api/v1/devices/${D}`,
     { method: "PUT", body: JSON.stringify({}) },
   );
   assertEquals(res.status, 201);
-  const stored = await rows(db, `SELECT push_token FROM device_records WHERE device_id=?`, [D]);
+  const stored = await rows(db, `SELECT push_token FROM devices WHERE device_id=?`, [D]);
   assertEquals(stored, [{ push_token: null }]);
   db.close();
 });
@@ -1121,10 +1132,13 @@ function apnsRecorder(status = 200) {
 }
 
 async function registerToken(db: Db, deviceId: string, token: string) {
+  // A registration is an UPDATE on a row attestation created, so the device must be enrolled first.
+  await enrolDevice(db, deviceId);
   await db.execute(
-    `INSERT INTO device_records (device_id, push_kind, push_token, push_env, updated_at)
-     VALUES (?, 'apns', ?, 'sandbox', '2026-07-14T00:00:00Z')`,
-    [deviceId, token],
+    `UPDATE devices SET push_kind = 'apns', push_token = ?, push_env = 'sandbox',
+                        push_updated_at = '2026-07-14T00:00:00Z'
+      WHERE device_id = ?`,
+    [token, deviceId],
   );
 }
 
@@ -1312,5 +1326,76 @@ Deno.test("presigned download URLs carry the configured scheme, not a hardcoded 
   );
   const body = await res.json() as Record<string, unknown>[];
   assert(String(body[0].url).startsWith("http://127.0.0.1:8080/"));
+  db.close();
+});
+
+// ── The devices table's two writers (capability `database`) ────────────────────────────────────────
+//
+// One row, two independently-written column groups. The property under test is that neither writer can
+// disturb the other's fact — which no route test can show, because each route exercises only its own half.
+//
+// NOT COVERED HERE, and stated rather than left to be assumed: the `502` branches of `/attest/token` and
+// `/attest/renew` (a verified attestation or assertion whose record cannot be persisted). Reaching either
+// needs a valid App Attest attestation minted against this deployment's app id and a live challenge, and
+// the committed fixture is a real device's attestation for a DIFFERENT app — so the verifier refuses it
+// long before persistence is attempted. The statements below are what those branches call.
+
+Deno.test("devices → attestation creates the row; a re-attestation leaves the push registration alone", async () => {
+  const db = await store();
+  await putAttestation(db, D, { publicKey: "k1", environment: "development" }, "t0", "e0");
+  await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" }, "t1");
+
+  await putAttestation(db, D, { publicKey: "k2", environment: "production" }, "t2", "e2");
+
+  const [row] = await rows(db, `SELECT * FROM devices WHERE device_id=?`, [D]);
+  assertEquals(row.attest_key, "k2");
+  assertEquals(row.attest_env, "production");
+  assertEquals(row.attest_token_expires_at, "e2");
+  assertEquals(row.push_token, "tok"); // untouched by the re-attestation
+  assertEquals(row.created_at, "t0"); // FIRST attested, not most recently
+  db.close();
+});
+
+Deno.test("devices → a push registration leaves the attestation alone", async () => {
+  const db = await store();
+  await putAttestation(db, D, { publicKey: "k1", environment: "development" }, "t0", "e0");
+  await putDeviceRecord(db, D, { kind: "apns", token: "tok", env: "sandbox" }, "t1");
+
+  const [row] = await rows(db, `SELECT * FROM devices WHERE device_id=?`, [D]);
+  assertEquals(row.attest_key, "k1");
+  assertEquals(row.attest_token_expires_at, "e0");
+  assertEquals(row.created_at, "t0");
+  assertEquals(row.push_updated_at, "t1");
+  db.close();
+});
+
+Deno.test("devices → a registration for an unattested device affects no row", async () => {
+  // What the route turns into its 401. An insert here would fabricate an enrolment.
+  const db = await store();
+  const { rowsAffected } = await putDeviceRecord(db, D, null, "t1");
+  assertEquals(rowsAffected, 0);
+  assertEquals((await rows(db, `SELECT * FROM devices`)).length, 0);
+  db.close();
+});
+
+Deno.test("devices → the expiry bump reports a vanished row rather than recreating it", async () => {
+  // Renewal reads, verifies, then writes. The sweep can collect the row in between; minting against a
+  // record that is gone would hand out a credential nothing knows about.
+  const db = await store();
+  assertEquals((await touchTokenExpiry(db, D, "e9")).rowsAffected, 0);
+  await putAttestation(db, D, { publicKey: "k", environment: "production" }, "t0", "e0");
+  assertEquals((await touchTokenExpiry(db, D, "e9")).rowsAffected, 1);
+  assertEquals(
+    (await rows(db, `SELECT attest_token_expires_at FROM devices WHERE device_id=?`, [D]))[0],
+    { attest_token_expires_at: "e9" },
+  );
+  db.close();
+});
+
+Deno.test("devices → readAttestation tells absence from a stored key", async () => {
+  const db = await store();
+  assertEquals(await readAttestation(db, D), null);
+  await putAttestation(db, D, { publicKey: "k", environment: "development" }, "t0", "e0");
+  assertEquals(await readAttestation(db, D), { publicKey: "k", environment: "development" });
   db.close();
 });
