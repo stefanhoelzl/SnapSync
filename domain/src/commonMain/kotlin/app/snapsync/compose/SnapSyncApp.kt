@@ -96,6 +96,8 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1051,6 +1053,29 @@ class AppCore internal constructor(
                     }
                 }
             }
+        }
+        scope.launch {
+            // THE ONE ADJUDICATION CALL SITE (capability `photo-download`). Once per process, here, and
+            // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a
+            // process that DIED can leave a row no running import will settle, so a running process asking
+            // again about rows it opened itself buys nothing and costs a synchronous XPC round-trip each
+            // time: 1,149 discarded verdicts in one measured burst.
+            //
+            // Ordered INSIDE this method, after the subscriptions above, rather than left to the shell to
+            // sequence: the requirement is that the presence source can answer when the sweep asks, and a
+            // convention the shell has to honour is not a guarantee.
+            //
+            // Under a PARTIAL grant the answer comes from `latestSelectionSnapshot`, which is null until the
+            // observer's first emission and yields UNKNOWN for every row until then. With one sweep per
+            // process and no re-arm, a sweep that ran first would defer every inherited row to the next
+            // launch — and on a URLSession-driven relaunch that never foregrounds, potentially every launch.
+            // So under that grant it waits for the snapshot rather than asking a question the source cannot
+            // answer yet. If the emission never comes the sweep never runs, which costs the same deferral
+            // without the wasted lookup.
+            if (ports.photoAccess.permission.value == PermissionStatus.LIMITED) {
+                latestSelectionSnapshot.filterNotNull().first()
+            }
+            downloadController.sweepInterruptedImports()
         }
     }
 

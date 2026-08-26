@@ -106,18 +106,18 @@ class DownloadController(
      * process is suspended for arbitrary spans between a change block and its completion (measured 116 s
      * and 254 s), so any elapsed-time bound would expire against transactions that are alive.
      *
-     * **In memory, and its erasure is load-bearing.** A durable claim would outlive the process that owned
-     * the transaction and would never be released, so that photo would never arrive. After a relaunch every
-     * *absent* answer is trustworthy again — which is precisely when the guard should do its original job.
+     * **In memory, and its erasure is load-bearing.** This set records imports running **here**; a process
+     * that has ended is running none. A durable claim would outlive the process that owned the transaction
+     * and would never be released, so that photo would never arrive.
      *
-     * ⚠️ That rests on one premise carrying **no forcing proof**: *a `performChanges` transaction cannot
-     * outlive the process that opened it.* `PHPhotoLibrary` hands the change request to out-of-process
-     * `photolibraryd`, and nothing cited here establishes that a client SIGKILL between the change block
-     * and the commit rolls that commit back. If it does not, a relaunch adjudicates an *absent* answer
-     * about a commit still in flight and clears a live marker — `SNAPSYNC-9`, with the guard nominally in
-     * place. This premise was inherited (it is the prior change's D2), but the deadline and the unreported
-     * record are both gone, so it is now the SOLE defence on that path. ⏰ Measure it: kill the app
-     * mid-`performChanges` on device, relaunch, and check whether the asset appears.
+     * ⚠️ It does **not** rest on the premise that a `performChanges` transaction cannot outlive its
+     * process. That premise was inherited from the prior change's D2 and has since been **measured false**
+     * (SE2 / iOS 26.5.2, 2026-08-09: a SIGKILL 200 ms after the change block returned still left the asset
+     * in the library). What makes the post-relaunch path safe is the *present* branch, which finds that
+     * asset and settles the row against the marker it already holds. The residual — a relaunch adjudicating
+     * while a surviving commit is still in flight — is accepted, and pinned by
+     * `a_surviving_commit_still_in_flight_at_relaunch_is_the_accepted_residual`. Decision record:
+     * `changes/archive/2026-08-10-take-imports-off-the-download-lock`.
      *
      * A plain `MutableSet`, not an atomic one: unlike the record it replaces, nothing outside [mutex]
      * writes it — the platform's completion callback resumes the drain, and the drain takes the lock.
@@ -136,8 +136,6 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
-        // Before any drain, and before the lock: settle rows whose asset was created but never confirmed.
-        adjudicateUnconfirmed()
         // A failed union fetch costs us this wake's DISCOVERY, not this wake's WORK. The import drain
         // below reads only the store and the staged bytes already on disk — no network — so returning
         // here would strand assets that are ready to import for no reason. That was harmless while a
@@ -154,7 +152,7 @@ class DownloadController(
             for (asset in assets) {
                 if (asset.deviceId == myDeviceId) continue // own contribution — already in this library
                 val ref = AssetRef(asset.deviceId, asset.assetId)
-                if (store.isImported(ref)) continue // delete-proof / cross-event dedup
+                if (store.isSettled(ref)) continue // imported or unimportable — delete-proof / cross-event dedup
                 store.plan(ref, asset.creationDate, asset.resources.map {
                     PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
                 })
@@ -179,20 +177,51 @@ class DownloadController(
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
         log.invocation(logScope, "onResourceStaged", params = "key=$resourceKey") {
-            adjudicateUnconfirmed() // outside the lock, per the guard's contract
             mutex.withLock { store.markStaged(ref, resourceKey, stagedPath) }
             drainImportable()
         }
 
     /** Import every asset whose resources are all staged and that is not yet imported. */
     suspend fun importReady() = log.invocation(logScope, "importReady") {
+        drainImportable()
+    }
+
+    /**
+     * The process's one recovery pass: adjudicate what a dead process left behind, then drain.
+     *
+     * The drain is not optional and not a caller's business. The *absent* branch **clears a marker**, and
+     * clearing it is what returns the row to importable work; a clear that nothing then imports moves the
+     * stall from "blocked by a marker" to "waiting for some later trigger". Pairing them here is what
+     * makes this one call a complete recovery rather than half of one.
+     *
+     * Invoked once per process, from the composition's startup path, and from nowhere else — see
+     * [adjudicateUnconfirmed] for why every other call site was removed.
+     */
+    suspend fun sweepInterruptedImports() = log.invocation(logScope, "sweepInterruptedImports") {
         adjudicateUnconfirmed()
         drainImportable()
     }
 
     /**
-     * Phase 1 of the guard (capability `photo-download`): settle the rows whose asset was created but
-     * whose import was never confirmed — a process death, or an import whose completion has not arrived.
+     * The per-process recovery sweep (capability `photo-download`): settle the rows this process
+     * **inherited** — an asset was created for them and the confirmation never arrived, because the
+     * process that opened the transaction died.
+     *
+     * **Called from exactly one place: the composition's startup path.** It is deliberately NOT the first
+     * act of `reconcile`, `importReady` and `onResourceStaged` any more. Those fire once per trigger and
+     * once per staged resource, and during a burst the only unconfirmed row is the import currently in
+     * flight — whose transaction is open, so the library can only answer *absent*, and whose *absent* the
+     * gate below is required to discard. Measured on an iPhone XS: 1,164 verdicts in one 131-asset burst,
+     * **1,149 of them thrown away**, each one a synchronous XPC round-trip. Nothing a running process can
+     * observe changes the answer for a row it opened itself; only a process that has died leaves a row no
+     * running import will settle.
+     *
+     * **Its dominant outcome is *present*, not *absent*.** A `performChanges` commit survives the death of
+     * the process that opened it (measured, SE2 / iOS 26.5.2, 2026-08-09), so the ordinary inherited row
+     * has a real asset behind it: settle it, release its bytes, and let the download count stop reporting
+     * it as outstanding. The *absent* branch is for the two narrow cases — a death inside the change block
+     * before the transaction was submitted, and a commit that genuinely failed with no completion
+     * delivered — not the reason this runs.
      *
      * **Runs OUTSIDE [mutex], deliberately.** The presence lookup is a synchronous, thread-blocking
      * platform call that no timeout can abandon (cancellation is cooperative), so holding the lock across
@@ -211,8 +240,9 @@ class DownloadController(
      * correct only by the narrowest margin; the store now answers "did my verdict apply?" atomically, at
      * the moment it matters.
      *
-     * Costs nothing in the ordinary case — no row carries a marker, so this is one store read that
-     * returns nothing and no platform call at all.
+     * Costs nothing in a process that inherited nothing: one store read that returns nothing, and no
+     * platform call at all. That was always the claim; running per staged resource is what made it false,
+     * because a burst always has an import open.
      */
     private suspend fun adjudicateUnconfirmed() {
         val unconfirmed = store.unconfirmedImports()
@@ -391,7 +421,31 @@ class DownloadController(
                         releaseStagedBytes(ref)
                     }
                     is ImportResult.Failed ->
-                        log.w { "import deferred for ${ref.sourceAssetId}: ${result.message}" } // retried later
+                        // Two failures, two outcomes, and the library's own behaviour is what tells them
+                        // apart (capability `photo-download`). It takes a resource's file at INGEST, before
+                        // validating the content — so a content rejection leaves no bytes, and a staged
+                        // resource is never re-downloaded. Retrying that imports from files that no longer
+                        // exist, on every trigger, for the life of the install.
+                        if (result.consumedResources) {
+                            if (store.settleUnimportable(ref)) {
+                                // ERROR, not WARN, and that severity is the decision (capability
+                                // `crash-reporting`): this photo will never arrive, and it is otherwise
+                                // absent from the member's library with no error surface and absent from the
+                                // log except as a repetition of the failure that caused it. "Failed, will
+                                // retry" and "will never arrive" are different answers.
+                                log.e {
+                                    "import settled UNIMPORTABLE for ${ref.sourceAssetId}: ${result.message} " +
+                                        "— the library consumed its staged bytes and created no asset, so " +
+                                        "nothing can retry it and this photo will not arrive"
+                                }
+                            } else {
+                                // The guarded write matched nothing: the row moved on while this import ran.
+                                // Settling it would overwrite whatever it moved on to.
+                                log.i { "import for ${ref.sourceAssetId} failed, but its row already settled — discarded" }
+                            }
+                        } else {
+                            log.w { "import deferred for ${ref.sourceAssetId}: ${result.message}" } // retried later
+                        }
                 }
                 // AFTER the writes above, in the same acquisition. Releasing first would let the row move
                 // on between the release and `markImported`, which is exactly what that write's

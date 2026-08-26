@@ -81,7 +81,7 @@ class StagedByteReclaimIntegrationTest {
             w.stagedBytes.files.none { it in paths },
             "foreground entry freed the redundant bytes",
         )
-        assertTrue(w.downloadStore.isImported(ref), "while the asset row stays terminal")
+        assertTrue(w.downloadStore.isSettled(ref), "while the asset row stays terminal")
         assertTrue(
             "LOCAL-${ref.sourceAssetId}" in w.downloadStore.suppressedLocalIds(),
             "and its marker survives — it is what stops the photo being uploaded back into the event",

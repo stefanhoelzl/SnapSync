@@ -75,7 +75,7 @@ UPDATE downloadAsset
 SET createdLocalId = NULL
 WHERE sourceDeviceId = :sourceDeviceId
   AND sourceAssetId = :sourceAssetId
-  AND state != 'IMPORTED'
+  AND state NOT IN ('IMPORTED', 'UNIMPORTABLE')
   AND createdLocalId = :createdLocalId;
 
 -- The SUCCESS mirror: the completion callback settles the row itself, against the marker it already
@@ -92,6 +92,26 @@ WHERE sourceDeviceId = :sourceDeviceId
   AND sourceAssetId = :sourceAssetId
   AND createdLocalId = :createdLocalId;
 
+-- Settle a row as permanently unimportable (capability `photo-download`). The library rejected its
+-- resource content and consumed the staged file, so there is nothing left to retry with and every later
+-- trigger would spend a photo-library transaction rediscovering that.
+--
+-- GUARDED on the row still being non-terminal, for the same reason its two siblings are: the completion
+-- callback that reaches this runs on the platform's own queue and takes no lock, so a row adjudication
+-- has already settled must not be overwritten. NOT guarded on the marker, because this write's precondition
+-- is that no asset was created — the marker is already cleared by the failure completion, and requiring it
+-- would match nothing.
+--
+-- `createdLocalId` is left NULL rather than set: a terminal row is a suppression handle only when an asset
+-- exists, and none does here (capability `download-store`).
+settleUnimportable:
+UPDATE downloadAsset
+SET state = 'UNIMPORTABLE'
+WHERE sourceDeviceId = :sourceDeviceId
+  AND sourceAssetId = :sourceAssetId
+  AND state NOT IN ('IMPORTED', 'UNIMPORTABLE')
+  AND createdLocalId IS NULL;
+
 -- How many rows the statement immediately before it changed, read INSIDE that statement's own transaction.
 --
 -- This is how a non-suspending marker write reports whether it applied (capability `download-store`). The
@@ -107,11 +127,14 @@ WHERE sourceDeviceId = :sourceDeviceId
 changedRows:
 SELECT changes();
 
-isImported:
+-- "This ref is done with, whichever way it ended" — the re-plan guard. BOTH terminal states answer yes:
+-- an `UNIMPORTABLE` row re-planned would have its resource rows recreated, and the whole point of
+-- settling it was that nothing about it can succeed.
+isSettled:
 SELECT EXISTS(
     SELECT 1 FROM downloadAsset
     WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
-      AND state = 'IMPORTED'
+      AND state IN ('IMPORTED', 'UNIMPORTABLE')
 );
 
 -- The suppression set the upload extension reads (read-only): every created local id of an imported
@@ -124,8 +147,12 @@ countImported:
 SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED';
 
 -- Every foreign asset known for download (pending + imported) — the download-progress denominator.
+-- The download-progress DENOMINATOR. An `UNIMPORTABLE` asset is excluded deliberately (capability
+-- `photo-download`, design D8): its import can never succeed, so counting it pegs the line below
+-- completion forever on work that will never finish. The loss is reported at `Error` to the
+-- crash-reporting sink instead of being displayed as permanent incompleteness.
 countAssets:
-SELECT COUNT(*) FROM downloadAsset;
+SELECT COUNT(*) FROM downloadAsset WHERE state != 'UNIMPORTABLE';
 
 -- The rows a prune would drop: non-terminal and carrying no `createdLocalId`. Read inside the prune's own
 -- transaction so the caller can subtract the refs whose imports are in flight and free exactly the files it
@@ -135,6 +162,10 @@ SELECT COUNT(*) FROM downloadAsset;
 -- this ref, and it is the only thing keeping that asset out of the upload universe; deleting the row
 -- destroys it, and the created asset is then uploaded back into the event. The invariant is
 -- "handle-carrying rows are permanent", not "terminal rows are permanent".
+-- `UNIMPORTABLE` is prunable, and that follows the invariant stated above rather than breaking it: such a
+-- row carries no marker, so it is holding no asset out of the upload universe and there is nothing to
+-- destroy by deleting it. A rejoin re-plans the ref, re-downloads it, fails once more and settles again —
+-- one transaction per membership, not one per trigger, which is the bound this change is buying.
 selectPrunableAssets:
 SELECT sourceDeviceId, sourceAssetId FROM downloadAsset
 WHERE state != 'IMPORTED' AND createdLocalId IS NULL;
@@ -160,7 +191,7 @@ WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
 -- these against the photo library instead of importing them again.
 selectUnconfirmedAssets:
 SELECT sourceDeviceId, sourceAssetId, createdLocalId FROM downloadAsset
-WHERE state != 'IMPORTED' AND createdLocalId IS NOT NULL;
+WHERE state NOT IN ('IMPORTED', 'UNIMPORTABLE') AND createdLocalId IS NOT NULL;
 
 deleteNonTerminalResources:
 DELETE FROM downloadResource
@@ -199,7 +230,7 @@ WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND re
 -- not yet imported. The download analogue of the upload ledger's in-flight `pending` (asset-counted).
 countInFlightAssets:
 SELECT COUNT(*) FROM downloadAsset a
-WHERE a.state != 'IMPORTED'
+WHERE a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
   AND EXISTS (
       SELECT 1 FROM downloadResource r
       WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
@@ -217,7 +248,7 @@ SELECT r.sourceDeviceId, r.sourceAssetId, r.resourceKey, r.url, r.role, r.conten
 FROM downloadResource r
 JOIN downloadAsset a
   ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
-WHERE r.stagedPath IS NULL AND a.state != 'IMPORTED';
+WHERE r.stagedPath IS NULL AND a.state NOT IN ('IMPORTED', 'UNIMPORTABLE');
 
 -- Assets whose every expected resource is staged but not yet imported — ready to import.
 --
@@ -228,7 +259,7 @@ WHERE r.stagedPath IS NULL AND a.state != 'IMPORTED';
 selectImportableAssets:
 SELECT a.sourceDeviceId, a.sourceAssetId, a.creationDate
 FROM downloadAsset a
-WHERE a.state != 'IMPORTED'
+WHERE a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
   AND a.createdLocalId IS NULL
   AND NOT EXISTS (
       SELECT 1 FROM downloadResource r

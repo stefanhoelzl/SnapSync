@@ -94,7 +94,7 @@ class ResetDeviceStateTest {
 
         assertEquals(1, f.downloads.importedCount(), "imported rows must survive the reset")
         assertEquals(1, f.downloads.assetCount(), "the non-terminal row must be gone")
-        assertTrue(f.downloads.isImported(imported))
+        assertTrue(f.downloads.isSettled(imported))
         // The suppression handle is the reason imported rows are kept: the upload path reads it to
         // avoid re-uploading a photo this device downloaded (the echo).
         assertEquals(setOf("local-123"), f.downloads.suppressedLocalIds())

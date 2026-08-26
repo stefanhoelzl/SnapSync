@@ -1,11 +1,14 @@
 package app.snapsync.integration
 
+import app.snapsync.model.PermissionStatus
 import app.snapsync.model.normalizeAssetId
 import app.snapsync.ports.AssetRef
 import app.snapsync.world.World
 import app.snapsync.world.worldTest
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -61,18 +64,18 @@ class InterruptedImportIntegrationTest {
         // this test would pass for the wrong reason.
         assertTrue(w.gallery.current().any { it.assetId == firstCopy }, "the asset was created")
         assertTrue(firstCopy in w.downloadStore.suppressedLocalIds(), "its marker was recorded")
-        assertTrue(!w.downloadStore.isImported(ref), "but the import was never confirmed")
+        assertTrue(!w.downloadStore.isSettled(ref), "but the import was never confirmed")
 
         // The next pass — a relaunch, a foreground, a download wake. It must adjudicate the row, not
         // import it again.
-        w.downloadController.importReady()
+        w.downloadController.sweepInterruptedImports()
 
         assertEquals(listOf(ref), w.importer.imported, "exactly one asset created for this ref")
         assertTrue(
             w.gallery.current().none { it.assetId == secondCopy },
             "no second copy in the library",
         )
-        assertTrue(w.downloadStore.isImported(ref), "the row settles against the asset that exists")
+        assertTrue(w.downloadStore.isSettled(ref), "the row settles against the asset that exists")
     }
 
     @Test
@@ -80,7 +83,7 @@ class InterruptedImportIntegrationTest {
         val w = World(this)
         w.stageWithAbandonedImport("E")
 
-        w.downloadController.importReady()
+        w.downloadController.sweepInterruptedImports()
         w.runUploadCycle()
 
         // The reported harm. `SNAPSYNC-6` uploaded key `BB4F7765-…-primary.heic` — the orphaned first
@@ -110,9 +113,9 @@ class InterruptedImportIntegrationTest {
         assertTrue(staged.isNotEmpty(), "the transfer staged bytes")
         assertEquals(staged, w.stagedBytes.files, "unconfirmed → the bytes stay; the retry needs them")
 
-        w.downloadController.importReady() // adjudicates → PRESENT → settles the row
+        w.downloadController.sweepInterruptedImports() // adjudicates → PRESENT → settles the row
 
-        assertTrue(w.downloadStore.isImported(ref))
+        assertTrue(w.downloadStore.isSettled(ref))
         assertTrue(
             w.stagedBytes.files.none { it in staged },
             "confirmed → the bytes are redundant and released, so a received photo is not stored twice forever",
@@ -129,11 +132,11 @@ class InterruptedImportIntegrationTest {
         w.stageAllDownloads()
 
         assertTrue(w.stagedBytes.files.isNotEmpty(), "a failed import must not take its bytes with it")
-        assertTrue(!w.downloadStore.isImported(ref))
+        assertTrue(!w.downloadStore.isSettled(ref))
 
         // The retry now succeeds off those same bytes.
         w.downloadController.importReady()
-        assertTrue(w.downloadStore.isImported(ref), "the photo still arrives")
+        assertTrue(w.downloadStore.isSettled(ref), "the photo still arrives")
     }
 
     /**
@@ -162,7 +165,7 @@ class InterruptedImportIntegrationTest {
 
         w.leave()
         w.provision("E2")
-        w.downloadController.importReady()
+        w.downloadController.sweepInterruptedImports()
         w.runUploadCycle()
 
         assertEquals(listOf(ref), w.importer.imported, "still exactly one asset created for this ref")
@@ -186,7 +189,7 @@ class InterruptedImportIntegrationTest {
             "precondition: unconfirmed, so progress is genuinely short",
         )
 
-        w.downloadController.importReady()
+        w.downloadController.sweepInterruptedImports()
 
         assertEquals(
             w.downloadStore.assetCount(),
@@ -243,7 +246,7 @@ class InterruptedImportIntegrationTest {
         w.resumeSuspendedImport(succeeded = true)
         importing.join()
 
-        assertTrue(w.downloadStore.isImported(ref), "the row settles")
+        assertTrue(w.downloadStore.isSettled(ref), "the row settles")
         assertEquals(
             1, w.gallery.current().count { it.assetId == firstCopy },
             "exactly one asset for this photo",
@@ -261,5 +264,76 @@ class InterruptedImportIntegrationTest {
             w.platform.created.none { it.assetId == firstCopy },
             "the downloaded photo creates no upload job — the reported harm, asserted rather than inferred",
         )
+    }
+
+    /**
+     * THE ORDERING GUARANTEE, asserted directly because nothing enforces it at compile time (capability
+     * `photo-download`): adjudication is no longer any trigger's business, so the only thing that settles a
+     * row a dead process left behind is the composition's own startup sweep. If a future edit drops that
+     * call, every interrupted import stalls forever and no other test notices — the rows simply sit there,
+     * correct and unimported.
+     */
+    @Test
+    fun the_composition_startup_sweep_settles_what_a_dead_process_left() = worldTest {
+        val w = World(this)
+        w.stageWithAbandonedImport("E")
+        // The row is exactly what a killed process leaves: an asset in the library, a row that does not
+        // know it. No trigger will settle this — that is the point.
+        assertEquals(1, w.downloadStore.unconfirmedImports().size, "an inherited unconfirmed row")
+        w.downloadController.reconcile("E")
+        w.downloadController.importReady()
+        assertEquals(
+            1, w.downloadStore.unconfirmedImports().size,
+            "and a full trigger cycle leaves it alone — triggers do not adjudicate any more",
+        )
+
+        // Host assembly is what runs the sweep, and this is the call the iOS shell makes.
+        w.core.installPermissionSubscriptions()
+        // The sweep is launched into the composition's scope, so await its effect rather than assume it.
+        withTimeout(5_000) { while (w.downloadStore.unconfirmedImports().isNotEmpty()) delay(10) }
+
+        assertEquals(
+            emptyList(), w.downloadStore.unconfirmedImports(),
+            "the startup sweep settled it against the marker it already held",
+        )
+        assertTrue(w.downloadStore.isSettled(ref), "the row is terminal")
+        assertEquals(setOf(firstCopy), w.downloadStore.suppressedLocalIds(), "and the FIRST copy is suppressed")
+    }
+
+    /**
+     * D3's SECOND ordering requirement, and the one whose failure would be systematic rather than racy
+     * (capability `photo-download`).
+     *
+     * Under a partial grant the presence source answers from the held selection snapshot, which is `null`
+     * until the observer's first emission. A sweep that ran before it would answer *unknown* for every
+     * inherited row — and with one sweep per process and no re-arm, that row waits for the NEXT LAUNCH.
+     * On a relaunch driven by a `URLSession` staging callback, which may never foreground, the same
+     * ordering could repeat every launch and the photo would never arrive.
+     *
+     * So the sweep waits for a snapshot rather than asking a question the source cannot answer yet.
+     */
+    @Test
+    fun under_a_partial_grant_the_sweep_waits_for_the_selection_snapshot() = worldTest {
+        val w = World(this)
+        w.stageWithAbandonedImport("E")
+        assertEquals(1, w.downloadStore.unconfirmedImports().size, "an inherited unconfirmed row")
+
+        w.permission.set(PermissionStatus.LIMITED)
+        w.core.installPermissionSubscriptions()
+
+        // No emission yet: the snapshot is null, so an eager sweep would read UNKNOWN and settle nothing —
+        // permanently, because nothing re-arms it. Give it room to do the wrong thing before asserting.
+        repeat(20) { delay(10) }
+        assertEquals(
+            1, w.downloadStore.unconfirmedImports().size,
+            "the sweep must NOT have asked yet — an unknown here is deferred to the next launch",
+        )
+
+        // The observer emits, and the created asset is in the member's hand-picked selection.
+        w.changeSelection(firstCopy)
+
+        withTimeout(5_000) { while (w.downloadStore.unconfirmedImports().isNotEmpty()) delay(10) }
+        assertTrue(w.downloadStore.isSettled(ref), "once the snapshot exists, the sweep settles the row")
+        assertEquals(setOf(firstCopy), w.downloadStore.suppressedLocalIds(), "against the marker it held")
     }
 }

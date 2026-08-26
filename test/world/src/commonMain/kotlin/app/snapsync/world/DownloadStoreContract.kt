@@ -30,7 +30,7 @@ abstract class DownloadStoreContract {
         val s = createStore()
         s.plan(ref, "2026-06-30T10:00:00Z", resources())
         assertEquals(2, s.pendingDownloads().size)
-        assertFalse(s.isImported(ref))
+        assertFalse(s.isSettled(ref))
         assertTrue(s.importableAssets().isEmpty()) // nothing staged yet
     }
 
@@ -73,7 +73,7 @@ abstract class DownloadStoreContract {
         s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
         s.markImported(ref, "LOCAL-NEW/L0/001")
 
-        assertTrue(s.isImported(ref))
+        assertTrue(s.isSettled(ref))
         assertEquals(setOf("LOCAL-NEW/L0/001"), s.suppressedLocalIds())
         assertEquals(1, s.importedCount())
         assertTrue(s.importableAssets().isEmpty()) // imported, no longer importable
@@ -115,7 +115,7 @@ abstract class DownloadStoreContract {
         s.markStaged(ref, "ASSET-Q-live.mov", "/l")
         s.markImported(ref, "LOCAL-NEW")
         s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a later union read re-offers it
-        assertTrue(s.isImported(ref))
+        assertTrue(s.isSettled(ref))
         assertEquals(1, s.importedCount())
     }
 
@@ -141,7 +141,7 @@ abstract class DownloadStoreContract {
         assertEquals(listOf(ref to "LOCAL-CREATED"), s.unconfirmedImports().map { it.ref to it.createdLocalId })
         // Suppressed from the moment the marker exists — the asset is observable before it is confirmed.
         assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
-        assertFalse(s.isImported(ref), "still unconfirmed")
+        assertFalse(s.isSettled(ref), "still unconfirmed")
 
         // The marker is the only record that this asset must not be uploaded: a prune must not take it.
         assertTrue(s.pruneNonTerminal(protecting = emptySet()).isEmpty(), "it strands no files either")
@@ -175,7 +175,7 @@ abstract class DownloadStoreContract {
             s.clearCreatedLocalId(ref, "LOCAL-CREATED"),
             "a clear against a settled row applies to nothing",
         )
-        assertTrue(s.isImported(ref), "the row is still terminal")
+        assertTrue(s.isSettled(ref), "the row is still terminal")
         assertEquals(
             setOf("LOCAL-CREATED"),
             s.suppressedLocalIds(),
@@ -246,7 +246,7 @@ abstract class DownloadStoreContract {
         // Dropping the resource rows is what makes a release pass self-extinguishing.
         s.dropResources(ref)
         assertTrue(s.stagedPathsOfImportedAssets().isEmpty(), "a second pass finds nothing")
-        assertTrue(s.isImported(ref), "while the row and its marker remain")
+        assertTrue(s.isSettled(ref), "while the row and its marker remain")
         assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
     }
 
@@ -263,7 +263,7 @@ abstract class DownloadStoreContract {
 
         s.confirmCreatedLocalId(ref, "LOCAL-CREATED")
 
-        assertTrue(s.isImported(ref), "settled by the party that learned the outcome")
+        assertTrue(s.isSettled(ref), "settled by the party that learned the outcome")
         assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds(), "against the marker it already held")
         assertTrue(s.unconfirmedImports().isEmpty(), "and it no longer awaits adjudication")
     }
@@ -286,7 +286,7 @@ abstract class DownloadStoreContract {
             "and it reports that it applied to nothing — the caller gates a byte release on this",
         )
 
-        assertFalse(s.isImported(ref), "the stale completion settled nothing")
+        assertFalse(s.isSettled(ref), "the stale completion settled nothing")
         assertEquals(
             listOf(ref to "SECOND"),
             s.unconfirmedImports().map { it.ref to it.createdLocalId },
@@ -305,9 +305,9 @@ abstract class DownloadStoreContract {
 
         s.pruneNonTerminal(protecting = emptySet())
 
-        assertTrue(s.isImported(imported)) // terminal row preserved (delete-proof, cross-event dedup)
+        assertTrue(s.isSettled(imported)) // terminal row preserved (delete-proof, cross-event dedup)
         assertEquals(setOf("LOCAL-DONE"), s.suppressedLocalIds())
-        assertFalse(s.isImported(ref))
+        assertFalse(s.isSettled(ref))
         assertTrue(s.pendingDownloads().isEmpty()) // the non-terminal asset's resources were dropped
     }
 
@@ -371,5 +371,59 @@ abstract class DownloadStoreContract {
         assertEquals(listOf("/stage/r.heic"), stranded, "only the unprotected row's files are stranded")
         assertEquals(2, s.stagedResources(ref).size)
         assertTrue(s.stagedResources(other).isEmpty(), "and only its rows are gone")
+    }
+
+    /**
+     * A row settled as permanently unimportable leaves every read that could offer it work again
+     * (capability `download-store`). Both implementations must agree, because the SQL expresses "terminal"
+     * as a `NOT IN` list and the fake expresses it as an enum property — two spellings of one notion, and a
+     * predicate missed on either side puts the row back into the retry loop this state exists to end.
+     */
+    @Test
+    fun a_settled_unimportable_row_is_offered_no_work_and_holds_no_handle() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
+        assertEquals(1, s.importableAssets().size)
+
+        assertTrue(s.settleUnimportable(ref), "the row was non-terminal and carried no marker")
+
+        assertTrue(s.isSettled(ref), "discovery must not plan it again")
+        assertTrue(s.importableAssets().isEmpty(), "no import may be attempted")
+        assertTrue(s.unconfirmedImports().isEmpty(), "and it is not adjudicated — no asset was created")
+        assertTrue(s.pendingDownloads().isEmpty(), "nor re-downloaded")
+        assertTrue(s.stagedResources(ref).isEmpty(), "the rows that made it findable are dropped")
+        assertTrue(s.suppressedLocalIds().isEmpty(), "it is NOT a suppression handle: no asset exists")
+        assertEquals(0, s.importedCount(), "it never counts as arrived")
+        assertEquals(0, s.assetCount(), "and it leaves the denominator, so the screen can still complete")
+    }
+
+    /** The guard: a row that already settled one way must not be re-settled another. */
+    @Test
+    fun settling_an_already_terminal_row_applies_nothing() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
+        s.markImported(ref, "LOCAL-1")
+
+        assertFalse(s.settleUnimportable(ref), "an imported row is terminal — this must match nothing")
+        assertEquals(setOf("LOCAL-1"), s.suppressedLocalIds(), "and its handle is untouched")
+        assertEquals(1, s.importedCount())
+    }
+
+    /** And a row mid-import — marker written, commit not landed — is not a row to give up on. */
+    @Test
+    fun settling_a_row_that_carries_a_marker_applies_nothing() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
+        s.recordCreatedLocalId(ref, "LOCAL-1")
+
+        assertFalse(s.settleUnimportable(ref), "an asset WAS created for this ref — it is not unimportable")
+        assertEquals(1, s.unconfirmedImports().size, "it stays adjudicable")
+        assertEquals(setOf("LOCAL-1"), s.suppressedLocalIds(), "and stays suppressed")
     }
 }

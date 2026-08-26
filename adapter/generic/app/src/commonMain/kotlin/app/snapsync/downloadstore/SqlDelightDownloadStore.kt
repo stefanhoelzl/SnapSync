@@ -22,8 +22,8 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     override suspend fun suppressedLocalIds(): Set<String> =
         q.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
 
-    override suspend fun isImported(ref: AssetRef): Boolean =
-        q.isImported(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
+    override suspend fun isSettled(ref: AssetRef): Boolean =
+        q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
 
     override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) {
         q.transaction {
@@ -107,6 +107,21 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     private fun applied(write: () -> Unit): Boolean = q.transactionWithResult {
         write()
         q.changedRows().executeAsOne() > 0L
+    }
+
+    /**
+     * Settle a row as permanently unimportable, and drop the resource rows that made it findable — one
+     * transaction, so a reader can never see a settled row that still advertises staged paths for files the
+     * library has already taken.
+     *
+     * `suspend` unlike the three marker writes: this one is reached from the drain, not from inside a
+     * PhotoKit block, so it has no reason to carry their constraint.
+     */
+    override suspend fun settleUnimportable(ref: AssetRef): Boolean = q.transactionWithResult {
+        q.settleUnimportable(ref.sourceDeviceId, ref.sourceAssetId)
+        val applied = q.changedRows().executeAsOne() > 0L
+        if (applied) q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
+        applied
     }
 
     override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()

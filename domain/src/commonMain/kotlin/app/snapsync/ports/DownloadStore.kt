@@ -1,7 +1,31 @@
 package app.snapsync.ports
 
-/** Lifecycle of a foreign asset in the download store. No terminal failure state — see the no-FAILED posture. */
-enum class DownloadState { PENDING, IMPORTED }
+/**
+ * Lifecycle of a foreign asset in the download store. Two states are terminal — [IMPORTED] and
+ * [UNIMPORTABLE] — and "terminal" is what every non-terminal predicate in this store means.
+ *
+ * [UNIMPORTABLE] is **not** the `sync-status` no-FAILED posture being reversed. That posture governs
+ * `SyncState`, which classifies the **upload** side, where `failed ≡ 0` because uploads really are retried
+ * forever. It was over-read into this enum. Here a failure genuinely is tellable: the photo library takes a
+ * resource's file at ingest, so a rejection of the file's CONTENT leaves no bytes to retry from, and every
+ * later trigger would spend a library transaction rediscovering that (capability `photo-download`).
+ *
+ * A row in this state carries **no** `createdLocalId`: no asset was created, so it is not a suppression
+ * handle, and it is prunable like any other handle-free row.
+ */
+enum class DownloadState {
+    PENDING,
+    IMPORTED,
+    UNIMPORTABLE,
+    ;
+
+    /**
+     * The one notion of "done with", matching the store's SQL `NOT IN ('IMPORTED', 'UNIMPORTABLE')`
+     * predicates. Stated by enumeration rather than as `!= PENDING` so a future non-terminal state does
+     * not silently join it.
+     */
+    val isTerminal: Boolean get() = this == IMPORTED || this == UNIMPORTABLE
+}
 
 /** The source identity of a foreign asset: its owning device and that device's assetId. */
 data class AssetRef(val sourceDeviceId: String, val sourceAssetId: String)
@@ -53,8 +77,13 @@ interface SuppressionSource {
  * cross-event dedup are by [AssetRef]; terminal (`IMPORTED`) rows are permanent.
  */
 interface DownloadStore : SuppressionSource {
-    /** True if this foreign asset was already imported (skip re-download). */
-    suspend fun isImported(ref: AssetRef): Boolean
+    /**
+     * True if this foreign asset is **settled** — imported, or settled as permanently unimportable — so
+     * discovery neither re-plans nor re-downloads it. Both terminal states answer yes: re-planning an
+     * unimportable ref would recreate the resource rows that settling it dropped, and nothing about it can
+     * succeed.
+     */
+    suspend fun isSettled(ref: AssetRef): Boolean
 
     /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
     suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>)
@@ -168,10 +197,30 @@ interface DownloadStore : SuppressionSource {
      */
     fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
 
+    /**
+     * Settle a row as permanently unimportable, reporting whether it applied (capability `photo-download`).
+     *
+     * Called when the library rejected a resource's content and consumed its staged file, so no bytes
+     * remain to retry from and no asset was created. Guarded on the row still being non-terminal, because
+     * the completion callback that reaches this takes no lock and a row adjudication already settled must
+     * not be overwritten.
+     *
+     * The caller SHALL report the settlement at a severity that reaches the crash-reporting sink: a photo
+     * that will never arrive is otherwise absent from the library with no error surface and absent from the
+     * logs except as a repetition of the failure that caused it.
+     */
+    suspend fun settleUnimportable(ref: AssetRef): Boolean
+
     /** Count of imported foreign assets (the download-progress numerator). */
     suspend fun importedCount(): Int
 
-    /** Count of all foreign assets known for download — pending + imported (the progress denominator). */
+    /**
+     * Count of foreign assets known for download that can still arrive — the progress denominator.
+     *
+     * Excludes `UNIMPORTABLE` rows deliberately (design D8): counting work that can never finish pegs the
+     * download line below completion forever, in a state the member can neither act on nor dismiss. The
+     * loss reaches the operator through the crash-reporting sink instead of the screen.
+     */
     suspend fun assetCount(): Int
 
     /** Count of foreign assets with a resource in flight — enqueued to the OS but not yet staged (the ↓-pulse signal). */
