@@ -9,6 +9,8 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
+import app.snapsync.fake.InMemoryAttestClient
+import app.snapsync.fake.InMemoryAttestKey
 import app.snapsync.fake.InMemoryAttestStore
 import app.snapsync.fake.InMemoryDeviceLogSource
 import app.snapsync.fake.InMemoryDiagnosticsReporter
@@ -118,6 +120,17 @@ class World(
      * device-only one (`changes/fix-lost-upload-acks`).
      */
     val ledgerBackend: InMemoryLedgerStore = InMemoryLedgerStore(),
+    /**
+     * Whether this world can ATTEST (capability `device-attestation`). **Off by default**, which is the
+     * world as it has always been: attestation is composed because `AppPorts` requires the seams, and
+     * nothing exercises it.
+     *
+     * Turn it on to drive anything that depends on a CREDENTIAL CHANGE — the token-changed arm of
+     * [AppCore.installPushRegistration] is the reason it exists. Off, `DeviceAttestation.refresh` returns
+     * early without attesting, exactly as it does in the upload extension and on a simulator, so every
+     * test that does not ask for this sees the behaviour it always saw.
+     */
+    val attests: Boolean = false,
 ) {
 
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
@@ -328,37 +341,23 @@ class World(
         override fun choosePhotos() {}
     }
 
-    // Attestation is composed (AppPorts requires the seams) but never exercised: the mini-edge is
-    // unauthenticated and nothing in the world wakes the DeviceAttestation lazily composed on [core].
+    // Attestation (capability `device-attestation`), OFF unless [attests] says otherwise — see that
+    // parameter for why the default is off and what turning it on is for.
     //
-    // TWO BACKEND BEHAVIOURS THE WORLD THEREFORE DOES NOT MODEL, stated rather than left to be discovered:
-    //  * the token gate itself — every mini-edge route answers without one; and
-    //  * `PUT /devices/<id>` answering 401 for a device the backend holds no ATTESTATION record for
-    //    (capability `device-attestation`: a device row exists iff the device has attested). The real
-    //    recovery is 401 → drop the token → attest afresh → `tokenChanged` → re-register, and the world
-    //    cannot run it because `generateKey` below refuses.
-    // Modelling either means teaching this fake to attest, which is a world-model change in its own right.
-    // Until then the loop's halves are covered separately — the trust feature by its own suite, the
-    // shell's rejection hook by `:test:architecture`'s CredentialRejectionWiringTest — and the join in
-    // `AppCore.installPushRegistration` is exercised only for its token-delivered arm.
-    private val attestKey: AttestKey = object : AttestKey {
-        override fun isSupported(): Boolean = false
-        override suspend fun generateKey(): String = error("the world does not attest")
-        override suspend fun attest(keyId: String, challenge: String): ByteArray =
-            error("the world does not attest")
-        override suspend fun assert(keyId: String, challenge: String): ByteArray =
-            error("the world does not attest")
-    }
-    private val attestClient: AttestClient = object : AttestClient {
-        override suspend fun challenge(): String? = null
-        override suspend fun mintToken(
-            deviceId: String,
-            keyId: String,
-            attestation: ByteArray,
-            challenge: String,
-        ): String? = null
-        override suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): String? = null
-    }
+    // TWO BACKEND BEHAVIOURS THE WORLD STILL DOES NOT MODEL, stated rather than left to be discovered:
+    // the token GATE itself (every mini-edge route answers without one), and `PUT /devices/<id>` answering
+    // 401 for a device the backend holds no attestation record for. Modelling either means teaching the
+    // mini-edge to gate, which is a change to what this harness models rather than a lever on it.
+    //
+    // The honest doubles come from `:adapter:generic:fake`; the LEVER is here, which is the split the
+    // fake-honesty gate enforces. `renews = false` is the fake's own faithful default: a refresh falls
+    // through to a full attestation, the path a device actually takes when the backend holds no record.
+    //
+    // What this makes reachable: the CREDENTIAL arm of `AppCore.installPushRegistration` — see
+    // `:test:integration`'s `a_new_credential_re_registers_the_push_token_with_no_new_delivery`, which
+    // needs a token change to happen at all.
+    private val attestKey: AttestKey = InMemoryAttestKey(supported = attests)
+    private val attestClient: AttestClient = InMemoryAttestClient(mints = attests)
 
     /**
      * The world's wall clock, in epoch millis — an operator **lever**, pinned at the epoch so nothing

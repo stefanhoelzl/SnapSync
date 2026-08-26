@@ -92,6 +92,10 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // A mock engine so `withCredentialInterceptor`'s 401 branch — the entry point of the
+            // credential-recovery loop — can be exercised against a real response. The Darwin engine
+            // cannot produce one without a server, and this module's tests deliberately stand up none.
+            implementation(libs.ktor.client.mock)
         }
     }
 }

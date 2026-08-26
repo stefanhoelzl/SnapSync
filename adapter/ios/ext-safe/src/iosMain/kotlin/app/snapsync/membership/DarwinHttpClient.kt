@@ -60,7 +60,23 @@ fun darwinHttpClient(
     onRejected: () -> Unit = {},
 ): HttpClient = HttpClient(Darwin) {
     install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }
-}.also { client ->
+}.withCredentialInterceptor(token, onRejected)
+
+/**
+ * Install the credential + logging interceptor on [this] client.
+ *
+ * Split out of [darwinHttpClient] so it is REACHABLE BY A TEST. The 401 branch below is the entry point of
+ * the whole credential-recovery loop — a rejected token is dropped and a fresh one obtained — and it can
+ * only be exercised against a response, which the Darwin engine cannot be made to produce without a
+ * server. A test builds its own client over a mock engine and applies this same function, so what it
+ * asserts is this interceptor rather than a copy of it.
+ *
+ * Behaviour is identical to having it inline; the engine choice stays in [darwinHttpClient].
+ */
+internal fun HttpClient.withCredentialInterceptor(
+    token: () -> String?,
+    onRejected: () -> Unit,
+): HttpClient = also { client ->
     client.plugin(HttpSend).intercept { request ->
         token()?.let { request.headers.append("Authorization", "Bearer $it") }
         val start = TimeSource.Monotonic.markNow()

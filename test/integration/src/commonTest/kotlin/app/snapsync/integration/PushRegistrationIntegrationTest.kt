@@ -8,6 +8,8 @@ import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.ports.PushHttpClient
+import app.snapsync.ports.PushTokenSource
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.world.BackendStore
 import app.snapsync.world.World
@@ -80,5 +82,69 @@ class PushRegistrationIntegrationTest {
         // world runs on real time, so poll for it to settle.
         withTimeout(2000) { while (w.registerPushCount == 0) yield() }
         assertEquals(1, w.registerPushCount) // fired exactly once, on join
+    }
+
+    /**
+     * **The credential arm of `AppCore.installPushRegistration` is wired** (capabilities
+     * `push-registration`, `device-attestation`).
+     *
+     * THE JOIN THIS PINS. The app writes its push registration ONCE per APNs token the OS delivers. A
+     * registration refused because the backend rejected the credential is therefore never re-sent on its
+     * own, and the device goes silently unregistered — no silent pushes, no download wakes, and none of the
+     * wake-driven attestation renewals that depend on them. What saves it is that obtaining a NEW
+     * credential re-runs the registration, and that is a join between two features that are blind to each
+     * other: the trust feature announces the new token, the push feature consumes the announcement.
+     *
+     * It lives in `compose/` rather than the shell precisely so this test can exist — assembled in
+     * `:app:ios` it would be unreachable, because that module is wiring-only and untested by law and the
+     * world composes `snapSyncApp` rather than the root.
+     *
+     * ISOLATING THE ARM. `PushRegistration.run` merges two sources — token deliveries and credential
+     * changes — so a test that simply delivers a token proves nothing about the second. Here the first
+     * write is unambiguously the DELIVERY arm, and the second happens with no further delivery: it can only
+     * have arrived through the credential announcement.
+     *
+     * The write is counted at the port rather than asserted on the backend, because registration is
+     * last-write-wins: the second write stores exactly what the first did, so the world's stored config
+     * cannot tell one from two.
+     */
+    @Test
+    fun a_new_credential_re_registers_the_push_token_with_no_new_delivery() = worldTest {
+        // `attests = true` is what lets a credential change happen at all; off (the default) the refresh
+        // returns early without attesting, as it does in the extension and on a simulator.
+        val w = World(this, attests = true)
+
+        var writes = 0
+        val counting = object : PushHttpClient {
+            private val inner = KtorPushHttpClient(w.client)
+            // Counted AFTER the write completes, so the count means "registrations that landed" — a
+            // count taken on entry would let the wait below proceed while the PUT was still in flight.
+            override suspend fun put(url: String, jsonBody: String): Result<Unit> =
+                inner.put(url, jsonBody).also { writes++ }
+
+            override suspend fun post(url: String): Result<Unit> = inner.post(url)
+        }
+        val tokens = PushTokenSource("sandbox")
+        w.core.installPushRegistration(
+            PushRegistration(counting, w.host, deviceId = { w.ownDeviceId }),
+            tokens,
+        )
+
+        // The OS delivers a token: registration #1, through the DELIVERY arm.
+        tokens.deliver("DEADBEEF")
+        withTimeout(5_000) { while (writes < 1) yield() }
+        assertEquals(
+            """{"pushToken":{"kind":"apns","token":"DEADBEEF","env":"sandbox"}}""",
+            w.store.deviceConfigOf(w.ownDeviceId),
+        )
+
+        // The backend rejects the credential — the 401 the shell routes here. The token is dropped and the
+        // next refresh obtains a new one, which ANNOUNCES itself.
+        w.core.attestation.onRejected()
+        w.core.attestation.refresh()
+
+        // Registration #2, with no second delivery: the credential arm, and nothing else, can have done it.
+        withTimeout(5_000) { while (writes < 2) yield() }
+        assertEquals(2, writes)
     }
 }

@@ -81,15 +81,15 @@
       construction and the token-changed re-send subscription, beside `installPermissionSubscriptions()`
 - [x] 8.2 Remove the corresponding construction and subscription from `SnapSyncRoot`; the root invokes the
       installer from its host-assembly path only
-- [ ] 8.3 **BLOCKED — needs a decision.** A test that a refused registration is re-sent once a new token
-      is obtained requires the world to ATTEST: `World.kt`'s `AttestKey` reports `isSupported() = false`
-      and `generateKey()` throws, and the mini-edge is unauthenticated, so `tokenChanged` never emits and
-      the join has nothing to observe. Teaching it to attest is a `harness-world-model` change that would
-      switch attestation on for every existing world test. The token-delivered arm alone tests nothing
-      new (it is `PushRegistration.run`'s own contract). Recorded in `World.kt` beside the fake; the
-      shell half is pinned by `CredentialRejectionWiringTest` instead
-- [x] 8.4 Add the `:test:architecture` pin that the root still passes the rejection hook into the shared
-      client and that it reaches the trust feature — failing closed if the scanned source is absent
+- [x] 8.3 Add a `:test:integration` test that a refused registration is re-sent once a new token is
+      obtained — `a_new_credential_re_registers_the_push_token_with_no_new_delivery`. Needed honest
+      `InMemoryAttestKey`/`InMemoryAttestClient` in `:adapter:generic:fake` and a `World(attests = …)`
+      lever (default off, so no existing world test moved). Verified to fail when the join is cut.
+      Also closed the hop that started the loop: `DarwinHttpClientTest` asserted only that a transport
+      failure does NOT fire `onRejected` — which would pass with the hook unwired — so the positive 401
+      case is now pinned, over a mock engine against the same `withCredentialInterceptor` the Darwin
+      factory installs. The remaining uncovered hop is the shell's, which a law forbids testing and
+      `CredentialRejectionWiringTest` pins
 
 ## 9. The dev rig (D11)
 
