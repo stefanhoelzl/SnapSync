@@ -45,6 +45,7 @@ import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpDeviceFilesSource
+import app.snapsync.metrics.MetricKitProbe
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
@@ -165,6 +166,22 @@ object SnapSyncRoot {
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
+
+    /**
+     * ⚠️ **PROBE — temporary, delete with the change that replaces it** (capability
+     * `crash-reporting`, exit attribution).
+     *
+     * Seated HERE, in the object's own initialization, rather than on [app]: `app` is `by lazy` on
+     * purpose so a cold background wake does not force the graph, and MetricKit delivers shortly
+     * after launch — including launches the graph never comes up for. This is also the earliest
+     * point that runs on EVERY process start, which matters because accumulation begins at the first
+     * `MXMetricManager.shared` touch and never retroactively: a launch that does not arm is a day of
+     * attribution nobody gets back.
+     *
+     * Retained in a field because `addSubscriber` is not documented to keep a strong reference, and
+     * the sibling `PhotoSelectionObserver` measured exactly that hazard with `PHPhotoLibrary`.
+     */
+    private val metricKitProbe: MetricKitProbe = MetricKitProbe().also { it.register() }
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
     // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
