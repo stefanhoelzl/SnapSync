@@ -9,6 +9,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSError
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSMutableArray
 import platform.Foundation.NSURL
@@ -17,6 +18,9 @@ import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResourceCreationOptions
+import platform.Photos.PHPhotosErrorDomain
+import platform.Photos.PHPhotosErrorInvalidResource
+import platform.Photos.PHPhotosErrorMissingResource
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
 
@@ -118,7 +122,29 @@ class IosPhotoLibraryImporter(
                         // name, so the photo would land in the library called
                         // "<assetId>-primary.heic". The name is decided in `:domain` model/
                         // (`importFilename`), which is where its fallback is unit-tested.
-                        val options = PHAssetResourceCreationOptions().apply { originalFilename = filename }
+                        val options = PHAssetResourceCreationOptions().apply {
+                            originalFilename = filename
+                            // MOVE, not copy (capability `photo-download`). Two things follow, and both are
+                            // load-bearing rather than incidental:
+                            //
+                            //  - an importing asset stops holding its bytes TWICE. Under copy it does so
+                            //    from the commit until the client's own release (which follows the
+                            //    confirming write), and that window is the instant a device short of space
+                            //    fails: the library must find room for a full second copy right then
+                            //    (`PHPhotosErrorNotEnoughSpace`). A move within the same data volume is a
+                            //    rename and needs no second copy at all. NOTE this is per-asset and
+                            //    windowed — it does NOT shrink the staging backlog, which is identical
+                            //    either way.
+                            //  - the consumed file becomes the honest signal for "there is nothing left to
+                            //    retry with", which is what lets a doomed import SETTLE instead of being
+                            //    retried on every trigger forever.
+                            //
+                            // ⚠️ The library takes the file at INGEST — before it validates the content and
+                            // before the commit — so a failure can leave no bytes behind. That is why the
+                            // failure branch below reports `consumedResources`, and why nothing here may
+                            // assume a staged file survives an unsuccessful import.
+                            shouldMoveFile = true
+                        }
                         request.addResourceWithType(type, NSURL.fileURLWithPath(path), options)
                     }
                     // Preserve the ORIGINAL capture date so the imported photo sorts by when it was
@@ -203,12 +229,43 @@ class IosPhotoLibraryImporter(
                         // import whose requester died self-correcting — a late success keeps its marker
                         // for the guard to settle, a late failure clears it here.
                         if (id != null) clearCreatedLocalId(ref, id)
-                        cont.resume(ImportResult.Failed(error?.localizedDescription ?: "performChanges failed / no placeholder"))
+                        cont.resume(
+                            ImportResult.Failed(
+                                message = error?.localizedDescription ?: "performChanges failed / no placeholder",
+                                consumedResources = consumedResources(error),
+                            ),
+                        )
                     }
                 },
             )
         }
     }
+
+/**
+ * Did this failure leave the staged files behind, or has the library already taken them?
+ *
+ * **Measured, not inferred** (iOS 26.2, 2026-08-26, resources staged in the App Group and added with
+ * `shouldMoveFile = true`): the library takes a resource's file when it INGESTS it, which happens before it
+ * validates the content and before the commit. So the boundary is *what was rejected*, not *when*:
+ *
+ *  - `InvalidResource` (3302) — the file's CONTENT was rejected, and it was already gone, with no asset
+ *    created. Nothing remains to retry from.
+ *  - `MissingResource` (3303) — the file was not there to begin with. Also nothing to retry from, and the
+ *    shape a process death between ingest and the marker write leaves behind.
+ *  - `ChangeNotSupported` (3300) — the REQUEST was rejected before any resource was ingested; every file
+ *    survived. Retrying is correct.
+ *
+ * Everything else answers `false`, deliberately: retrying a recoverable failure costs one library
+ * transaction, while settling an unconsumed one costs the photo permanently. The asymmetry decides the
+ * default, and an error this table does not know is an error whose ingest behaviour nobody has measured.
+ *
+ * Measured on TWO hosts, agreeing case for case: a simulator (iOS 26.2) and the SE2 (iOS 26.6), both on
+ * 2026-08-26. ⏰ Re-measure at the next iOS major.
+ */
+private fun consumedResources(error: NSError?): Boolean {
+    if (error == null || error.domain != PHPhotosErrorDomain) return false
+    return error.code == PHPhotosErrorInvalidResource || error.code == PHPhotosErrorMissingResource
+}
 
     /** Readback proof: fetch the created asset and log its actual creationDate vs the intended one. */
     private fun logImportedDate(rawLocalId: String?, intended: String) {

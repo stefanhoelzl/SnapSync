@@ -70,6 +70,21 @@ class DownloadControllerTest {
         val attempted = mutableListOf<AssetRef>()
         var failNext = false
 
+        /** Whether a forced failure reports that the library already took the staged files. */
+        var failConsumingResources = false
+
+        /**
+         * Where the in-block marker write lands, when a test needs one.
+         *
+         * The REAL importer records `createdLocalId` from inside `performChanges`, before the commit is
+         * observable — which is precisely what makes a row unconfirmed for the whole duration of its
+         * import. A fake that skips it cannot reproduce a burst's steady state, and a test written against
+         * such a fake passes whether or not adjudication runs. That is not hypothetical: this fake did skip
+         * it, and the first version of `a_burst_of_staged_resources_asks_the_photo_library_nothing` survived
+         * having the removed call sites put back.
+         */
+        var markerStore: InMemoryDownloadStore? = null
+
         /** Assets whose import never returns — the library is not answering about them. */
         val hangFor = mutableSetOf<String>()
 
@@ -95,13 +110,30 @@ class DownloadControllerTest {
                 "imported ${ref.sourceAssetId} $forThisRef times (cap $attemptCap) — the drain is " +
                     "live-locking on one ref instead of offering it once per pass"
             }
+            markerStore?.recordCreatedLocalId(ref, "LOCAL-${ref.sourceAssetId}_L0_001")
             if (ref.sourceAssetId in hangFor) {
                 hanging.complete(ref)
                 never.await() // no deadline anywhere: this is what a stalled library looks like
             }
-            if (failNext) return ImportResult.Failed("forced")
+            if (failNext) return ImportResult.Failed("forced", consumedResources = failConsumingResources)
             imported += ref
             return ImportResult.Imported("LOCAL-${ref.sourceAssetId}_L0_001")
+        }
+    }
+
+    /**
+     * Counts library lookups, so "how often did we ask?" is assertable rather than inferred from a log.
+     * Rigging, so it lives in the test and not in `:adapter:generic:fake` (`FakeHonestyTest`).
+     */
+    private class CountingPresence(
+        private val delegate: ImportedAssetPresence = InMemoryAssetPresence(),
+    ) : ImportedAssetPresence {
+        var calls = 0
+            private set
+
+        override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
+            calls++
+            return delegate.presence(localIds)
         }
     }
 
@@ -138,13 +170,13 @@ class DownloadControllerTest {
         val ref = AssetRef("DEVICE-A", "Q")
 
         c.reconcile("event")
-        assertFalse(store.isImported(ref)) // nothing staged yet
+        assertFalse(store.isSettled(ref)) // nothing staged yet
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         assertTrue(importer.imported.isEmpty()) // live still missing → not importable
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
 
         assertEquals(listOf(ref), importer.imported)
-        assertTrue(store.isImported(ref))
+        assertTrue(store.isSettled(ref))
         assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds()) // suppression handle recorded
         assertEquals(1, store.importedCount())
     }
@@ -159,11 +191,11 @@ class DownloadControllerTest {
         c.reconcile("event")
         c.onResourceStaged(ref, "Q-primary.heic", "/p")
         c.onResourceStaged(ref, "Q-live.mov", "/l")
-        assertFalse(store.isImported(ref)) // failed → not imported
+        assertFalse(store.isSettled(ref)) // failed → not imported
 
         importer.failNext = false
         c.importReady() // retry succeeds
-        assertTrue(store.isImported(ref))
+        assertTrue(store.isSettled(ref))
     }
 
     @Test
@@ -247,7 +279,7 @@ class DownloadControllerTest {
             .reconcile("event")
 
         assertEquals(listOf(ref), importer.imported, "a fast union failure must not strand a staged asset")
-        assertTrue(store.isImported(ref))
+        assertTrue(store.isSettled(ref))
         assertEquals(enqueuedBefore, jobs.enqueued.size, "discovery is skipped: nothing new is enqueued")
     }
 
@@ -288,7 +320,7 @@ class DownloadControllerTest {
             setOf("BBB", "CCC"), importer.imported.mapTo(mutableSetOf()) { it.sourceAssetId },
             "every other ref imported while AAA's transaction stayed open",
         )
-        assertFalse(store.isImported(AssetRef("DEVICE-A", "AAA")), "and AAA is still not imported")
+        assertFalse(store.isSettled(AssetRef("DEVICE-A", "AAA")), "and AAA is still not imported")
         stalled.cancel()
     }
 
@@ -359,7 +391,7 @@ class DownloadControllerTest {
         delay(2.seconds)
         assertTrue(released, "the OS handler must be released even though the import never answered")
 
-        assertFalse(store.isImported(ref), "a photo whose import never reported stays importable")
+        assertFalse(store.isSettled(ref), "a photo whose import never reported stays importable")
         assertEquals(1, store.importableAssets().size)
         held.cancel()
     }
@@ -407,7 +439,7 @@ class DownloadControllerTest {
         // from inside `performChanges`, which is why it is not the importer fake's business here.
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
 
-        c.importReady() // a second trigger adjudicates the unconfirmed row
+        c.sweepInterruptedImports() // a second trigger adjudicates the unconfirmed row
 
         assertEquals(
             setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
@@ -429,7 +461,7 @@ class DownloadControllerTest {
         // A marker left by a PREVIOUS process: nothing is claimed here, so absence is trustworthy.
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
 
-        c.importReady()
+        c.sweepInterruptedImports()
 
         assertTrue(
             store.suppressedLocalIds().isEmpty(),
@@ -463,14 +495,14 @@ class DownloadControllerTest {
         // The commit DID land; only the callback was lost. The library can see it.
         present.value = setOf("LOCAL-Q_L0_001")
 
-        c.importReady()
+        c.sweepInterruptedImports()
 
-        assertTrue(store.isImported(ref), "the row is settled against the marker it already held")
+        assertTrue(store.isSettled(ref), "the row is settled against the marker it already held")
         assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds())
         // The claim is released, so a leave's prune is no longer told to protect this ref — the
         // observable consequence of the release, since the set itself is private.
         c.onLeaveOrSwitch()
-        assertTrue(store.isImported(ref), "and the settled row survives the leave on its own merits")
+        assertTrue(store.isSettled(ref), "and the settled row survives the leave on its own merits")
         stalled.cancel()
     }
 
@@ -584,13 +616,13 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.recordCreatedLocalId(ref, "FIRST") // the verdict below is computed for THIS marker
 
-        c.importReady()
+        c.sweepInterruptedImports()
 
         assertEquals(
             setOf("SECOND"), store.suppressedLocalIds(),
             "the stale verdict did not overwrite the marker the row now holds",
         )
-        assertFalse(store.isImported(ref), "and it did not settle a row it no longer describes")
+        assertFalse(store.isSettled(ref), "and it did not settle a row it no longer describes")
     }
 
     /**
@@ -621,13 +653,13 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
 
-        c.importReady()
+        c.sweepInterruptedImports()
 
         assertEquals(
             setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
             "the settled row keeps its marker — clearing it leaves the asset permanently unsuppressed",
         )
-        assertTrue(store.isImported(ref), "and the row stays settled")
+        assertTrue(store.isSettled(ref), "and the row stays settled")
     }
 
     /**
@@ -646,13 +678,13 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
 
-        c.importReady()
+        c.sweepInterruptedImports()
 
         assertEquals(
             setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
             "a miss under an unreadable grant is not absence",
         )
-        assertFalse(store.isImported(ref), "and nothing was settled on an answer we did not get")
+        assertFalse(store.isSettled(ref), "and nothing was settled on an answer we did not get")
     }
 
     /**
@@ -670,7 +702,7 @@ class DownloadControllerTest {
         c.reconcile("event")
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
 
-        c.importReady()
+        c.sweepInterruptedImports()
 
         assertEquals(
             setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
@@ -704,7 +736,7 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-live.mov", "/l")
         store.recordCreatedLocalId(ref, "FIRST-COPY")
 
-        c.importReady() // the relaunched process adjudicates
+        c.sweepInterruptedImports() // the relaunched process adjudicates
 
         // What happens today, asserted so a future change cannot alter it silently: the marker is
         // cleared, the asset is imported a SECOND time, and the suppression set holds only the second
@@ -716,5 +748,146 @@ class DownloadControllerTest {
             "and the FIRST copy's handle is gone — this is the residual, not a desired outcome",
         )
         assertTrue("FIRST-COPY" !in store.suppressedLocalIds(), "the surviving commit's asset is unsuppressed")
+    }
+
+    /**
+     * THE REGRESSION THIS CHANGE EXISTS TO PREVENT (capability `photo-download`).
+     *
+     * Adjudication used to be the first act of `reconcile`, `importReady` and `onResourceStaged`. The last
+     * fires once per staged resource, and during a burst the only unconfirmed row is the import in flight —
+     * whose transaction is open, so the library can only answer *absent*, and whose *absent* the gate then
+     * discards. Measured on an iPhone XS: 1,164 verdicts in one 131-asset burst, 1,149 of them thrown away.
+     *
+     * A process that inherited nothing must ask nothing, however much work it does.
+     */
+    @Test
+    fun a_burst_of_staged_resources_asks_the_photo_library_nothing() = runTest {
+        val presence = CountingPresence()
+        val store = InMemoryDownloadStore()
+        // Q's change block runs, writes its marker and never returns — the library is mid-commit. Q is now
+        // unconfirmed AND claimed, which is a burst's steady state, and exactly the row every staged
+        // resource used to ask about.
+        val importer = FakeImporter().apply { markerStore = store; hangFor += "Q" }
+        val q = AssetRef("DEVICE-A", "Q")
+        val r = AssetRef("DEVICE-A", "R")
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
+            store = store, importer = importer, presence = presence,
+        )
+
+        c.reconcile("event")
+        // Staged into the store directly: routing these through `onResourceStaged` would drain inline and
+        // the second call would never return, because Q's import is the one that hangs.
+        store.markStaged(q, "Q-primary.heic", "/qp")
+        store.markStaged(q, "Q-live.mov", "/ql")
+        val stalled = launch { c.importReady() }
+        importer.hanging.await()
+        assertEquals(1, store.unconfirmedImports().size, "the in-flight import IS an unconfirmed row")
+
+        // The rest of the burst arrives while that commit is open.
+        c.onResourceStaged(r, "R-primary.heic", "/rp")
+        c.onResourceStaged(r, "R-live.mov", "/rl")
+        c.reconcile("event")
+        c.importReady()
+
+        assertEquals(
+            0, presence.calls,
+            "a burst must cost ZERO library lookups: the only unconfirmed row is the import in flight, " +
+                "whose transaction is open, so the library can only answer *absent* and the gate can only " +
+                "throw that answer away — 1,149 times in the measured burst",
+        )
+        stalled.cancel()
+    }
+
+    /** And the sweep, which is the one thing that may ask, asks once. */
+    @Test
+    fun the_sweep_asks_once_and_only_about_what_it_inherited() = runTest {
+        val presence = CountingPresence()
+        val store = InMemoryDownloadStore()
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, presence = presence)
+
+        c.sweepInterruptedImports()
+        assertEquals(0, presence.calls, "nothing inherited → no row carries a marker → no lookup at all")
+
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001") // what a dead process left behind
+        c.sweepInterruptedImports()
+        assertEquals(1, presence.calls, "one inherited row → exactly one batched lookup")
+    }
+
+    /**
+     * A failure that consumed the staged files can never succeed: the library takes a resource at ingest,
+     * and a resource recorded as staged is never re-downloaded. Retrying it spends a library transaction
+     * per trigger forever, which is the second half of this change.
+     */
+    @Test
+    fun an_import_whose_bytes_the_library_consumed_settles_instead_of_retrying() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().apply { failNext = true; failConsumingResources = true }
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        c.importReady()
+
+        assertEquals(1, importer.attempted.size, "attempted once")
+        assertTrue(store.isSettled(ref), "and settled, so discovery never plans it again")
+        assertTrue(store.importableAssets().isEmpty(), "it is out of importable work")
+        assertTrue(store.stagedResources(ref).isEmpty(), "and the rows that made it findable are gone")
+
+        c.importReady()
+        c.importReady()
+        assertEquals(1, importer.attempted.size, "no later trigger attempts it again")
+    }
+
+    /** The mirror: a failure that consumed nothing is still ordinary retryable work. */
+    @Test
+    fun an_import_rejected_before_ingest_keeps_its_bytes_and_is_retried() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().apply { failNext = true; failConsumingResources = false }
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        c.importReady()
+
+        assertFalse(store.isSettled(ref), "the request was rejected, not the bytes — nothing is settled")
+        assertEquals(2, store.stagedResources(ref).size, "its bytes are intact")
+
+        importer.failNext = false
+        c.importReady()
+        assertTrue(store.isSettled(ref), "and a later trigger imports it")
+    }
+
+    /**
+     * An asset that can never arrive leaves the DENOMINATOR (design D8). Counting it pegs the download line
+     * below completion forever, in a state the member can neither act on nor dismiss; the loss reaches the
+     * operator through the crash-reporting sink instead of the screen.
+     */
+    @Test
+    fun a_settled_unimportable_asset_leaves_the_download_total() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().apply { failNext = true; failConsumingResources = true }
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
+            store = store, importer = importer,
+        )
+
+        c.reconcile("event")
+        assertEquals(2, store.assetCount(), "both are outstanding while both can still arrive")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        c.importReady()
+
+        assertEquals(1, store.assetCount(), "the unimportable one is no longer counted as outstanding")
+        assertEquals(0, store.importedCount(), "and it is emphatically not counted as arrived")
     }
 }

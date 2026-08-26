@@ -33,12 +33,12 @@ class InMemoryDownloadStore : DownloadStore {
         assets.values.mapNotNull { it.createdLocalId }.toSet()
     }
 
-    override suspend fun isImported(ref: AssetRef): Boolean = lock.withLock {
-        assets[ref]?.state == DownloadState.IMPORTED
+    override suspend fun isSettled(ref: AssetRef): Boolean = lock.withLock {
+        assets[ref]?.state?.isTerminal == true
     }
 
     override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) = lock.withLock {
-        if (assets[ref]?.state == DownloadState.IMPORTED) return@withLock
+        if (assets[ref]?.state?.isTerminal == true) return@withLock
         assets.getOrPut(ref) { AssetRow(DownloadState.PENDING, creationDate, null) }
         val byKey = this.resources.getOrPut(ref) { linkedMapOf() }
         // Refresh the planned resource (its `url`) for new AND not-yet-staged rows so a freshly
@@ -52,7 +52,7 @@ class InMemoryDownloadStore : DownloadStore {
     override suspend fun pendingDownloads(): List<PendingDownload> = lock.withLock {
         buildList {
             resources.forEach { (ref, byKey) ->
-                if (assets[ref]?.state == DownloadState.IMPORTED) return@forEach
+                if (assets[ref]?.state?.isTerminal == true) return@forEach
                 byKey.values.forEach { (planned, staged) ->
                     if (staged == null) add(PendingDownload(ref, planned))
                 }
@@ -73,7 +73,7 @@ class InMemoryDownloadStore : DownloadStore {
 
     override suspend fun importableAssets(): List<ImportableAsset> = lock.withLock {
         assets.filter { (ref, row) ->
-            row.state != DownloadState.IMPORTED &&
+            !row.state.isTerminal &&
                 // A row carrying a marker already has an asset in the library: adjudicated, not imported.
                 row.createdLocalId == null &&
                 resources[ref]?.isNotEmpty() == true &&
@@ -84,7 +84,7 @@ class InMemoryDownloadStore : DownloadStore {
     override suspend fun unconfirmedImports(): List<UnconfirmedImport> = lock.withLock {
         assets.mapNotNull { (ref, row) ->
             row.createdLocalId
-                ?.takeIf { row.state != DownloadState.IMPORTED }
+                ?.takeIf { !row.state.isTerminal }
                 ?.let { UnconfirmedImport(ref, it) }
         }
     }
@@ -121,7 +121,7 @@ class InMemoryDownloadStore : DownloadStore {
      */
     override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
         val row = assets[ref] ?: return false
-        if (row.state == DownloadState.IMPORTED || row.createdLocalId != createdLocalId) return false
+        if (row.state.isTerminal || row.createdLocalId != createdLocalId) return false
         row.createdLocalId = null
         return true
     }
@@ -141,11 +141,15 @@ class InMemoryDownloadStore : DownloadStore {
         assets.values.count { it.state == DownloadState.IMPORTED }
     }
 
-    override suspend fun assetCount(): Int = lock.withLock { assets.size }
+    // An `UNIMPORTABLE` asset leaves the denominator (design D8): it can never arrive, so counting it
+    // pegs the download line below completion forever on work that will never finish.
+    override suspend fun assetCount(): Int = lock.withLock {
+        assets.values.count { it.state != DownloadState.UNIMPORTABLE }
+    }
 
     override suspend fun inFlightCount(): Int = lock.withLock {
         assets.count { (ref, row) ->
-            row.state != DownloadState.IMPORTED &&
+            !row.state.isTerminal &&
                 enqueued[ref].orEmpty().any { key -> resources[ref]?.get(key)?.second == null }
         }
     }
@@ -166,6 +170,20 @@ class InMemoryDownloadStore : DownloadStore {
         val stranded = drop.flatMap { ref -> resources[ref].orEmpty().values.mapNotNull { it.second } }
         drop.forEach { assets.remove(it); resources.remove(it); enqueued.remove(it) }
         stranded
+    }
+
+    /**
+     * Settle a row as permanently unimportable and drop the resource rows that made it findable, mirroring
+     * the real store's single transaction. Guarded on the row still being non-terminal and carrying no
+     * marker: this write's precondition is that no asset was created.
+     */
+    override suspend fun settleUnimportable(ref: AssetRef): Boolean = lock.withLock {
+        val row = assets[ref] ?: return@withLock false
+        if (row.state.isTerminal || row.createdLocalId != null) return@withLock false
+        row.state = DownloadState.UNIMPORTABLE
+        resources.remove(ref)
+        enqueued.remove(ref)
+        true
     }
 
     override suspend fun stagedPathsOfImportedAssets(): List<String> = lock.withLock {

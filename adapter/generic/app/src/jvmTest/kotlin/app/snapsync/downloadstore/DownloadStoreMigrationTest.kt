@@ -56,6 +56,6 @@ class DownloadStoreMigrationTest {
         val store = SqlDelightDownloadStore(DownloadDatabase(driver))
         assertEquals(setOf("LOCAL-OLD"), store.suppressedLocalIds(), "suppression row survived the migration")
         assertEquals(1, store.importedCount())
-        assertEquals(true, store.isImported(AssetRef("DEV-A", "OLD")))
+        assertEquals(true, store.isSettled(AssetRef("DEV-A", "OLD")))
     }
 }
