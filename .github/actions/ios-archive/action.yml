@@ -106,9 +106,11 @@ runs:
     # keyed and 12.2 min after removal (n=66 / n=71). The removal commit had the reason right even
     # though its premise was wrong: GitHub cache entries are BRANCH-SCOPED and branches here are
     # one-ship-and-deleted, so a Debug entry a branch saved was restorable by nothing. Both eras ran
-    # cold. A second key does not fix that. What fixes it is the ONE main-owned entry actually
-    # CONTAINING the Debug family — which it never has, because main archives Release and so never
-    # builds one. That is what the warm-up step below the archive is for.
+    # cold. Keying on the configuration does not fix that. What fixes it is the main-owned entry this
+    # job restores actually CONTAINING the Debug family — which it never has, for two independent
+    # reasons that had to be fixed together: main archives Release, so nothing ever built one (the
+    # warm-up step below the archive), and this job's save could not have landed it anyway (the
+    # `-device-` namespace on the key below).
     #
     # RESTORE AND SAVE ARE SPLIT, and saving is GATED TO main — the same pattern, for the same
     # reasons, as ios.yml's ios-test (see its comment). Two things forced it here:
@@ -130,11 +132,26 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.konan
-        # Narrow → broad: this family's newest entry, then any konan entry at all (ios-test's plain
-        # `konan-<os>-…` family included), so a cold runner still lands on a toolchain rather than
-        # downloading 1.6 GB.
-        key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
+        # `-device-` NAMESPACES THIS JOB'S ENTRY, and that is a bug fix, not tidiness. ios-build and
+        # ios-test are two jobs of the SAME workflow run, so `github.run_id` is identical — and both
+        # used to save under this one key. ios-test finishes in ~4 min and ios-build in ~14, so
+        # ios-test won every time and ios-build's save NEVER LANDED: `Failed to save: Unable to
+        # reserve cache with key konan-macOS-<hash>-<run_id>`, reported as `outcome=success` with no
+        # warning and no annotation (main run 32908143963, 23:06:59, against ios-test's save at
+        # 22:55:00). What main published was therefore always the entry a SIMULATOR TEST job warmed;
+        # the device families in it were inherited leftovers, copied forward run after run and never
+        # refreshed. That is the stale `ios_arm64-gSTATIC-*` the warm-up below exists to fix, and
+        # without this namespace the warm-up would build it and then have its save discarded too.
+        #
+        # It also explains the "frozen 18 days" both konan entries were once observed in: adding the
+        # run id unfroze the race's WINNER and permanently locked out the loser.
+        #
+        # Narrow → broad: this job's own family first, then either job's entry for this dependency
+        # set (the pre-namespace shape included), then any konan entry at all — so a cold runner
+        # still lands on a toolchain rather than downloading 1.6 GB.
+        key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-device-${{ github.run_id }}
         restore-keys: |
+          konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-device-
           konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
           konan-${{ runner.os }}-
 

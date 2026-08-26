@@ -527,12 +527,19 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.konan
-          # Narrow → broad: first this family (main's newest run-id entry), then any konan entry at
-          # all — the pre-run-id shape and ios-archive's `konan-<os>-<config>-…` families included —
-          # so a cold runner or a brand-new branch still lands on a toolchain instead of downloading
-          # one.
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
+          # `-sim-` NAMESPACES THIS JOB'S ENTRY. Until now this job and ios-build saved under the
+          # SAME key — same workflow run, so the same `github.run_id` — and only the first to finish
+          # could write it. This job is the fast one (~4 min against ios-build's ~14), so it always
+          # won, and ios-build's save silently failed to reserve the key for weeks. Namespacing lets
+          # each job keep its own family warm: this one the `ios_simulator_arm64-*` caches the tests
+          # build, ios-build the `ios_arm64-*` device caches the merge gate links against.
+          #
+          # Narrow → broad: this job's own family first, then either job's entry for this dependency
+          # set (the pre-namespace shape included), then any konan entry at all — so a cold runner
+          # or a brand-new branch still lands on a toolchain instead of downloading one.
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-${{ github.run_id }}
           restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
       - name: Run Kotlin/Native unit tests on the iOS simulator
