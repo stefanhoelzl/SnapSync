@@ -98,8 +98,15 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.konan
+          # Prefer the DEVICE family: this loop's dominant cost is `xcodebuild -configuration Debug
+          # -destination 'generic/platform=iOS'` (the `ssh-mac-build` skill mandates Debug), which
+          # links `iosArm64` against exactly the `ios_arm64-gSTATIC-*` caches ios-build now warms.
+          # The skill's own "cold-from-empty-`build/`: Debug 348 s" was measured with a `~/.konan`
+          # that was toolchain-warm but device-cache-cold, because no entry had ever carried one.
+          # `iosSimulatorArm64Test` in a session still falls through to the shared prefix below.
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
           restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-device-
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
 
