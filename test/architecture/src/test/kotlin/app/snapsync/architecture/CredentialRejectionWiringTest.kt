@@ -25,7 +25,8 @@ import kotlin.test.fail
  * it cannot reach this either.
  *
  * (The other half of the loop, `tokenChanged` → re-register, is NOT pinned here: it moved into
- * `compose/` as `AppCore.installPushRegistration`, where the harness exercises it for real.)
+ * `compose/` as `AppCore.installPushRegistration`, and `:test:integration`'s
+ * `a_new_credential_re_registers_the_push_token_with_no_new_delivery` drives it over the world for real.)
  *
  * WHAT THIS PROVES, exactly: that the route is still CONNECTED — not that it works. That is the failure
  * mode worth catching, because the call site is two lambdas whose purpose is not legible where they sit,

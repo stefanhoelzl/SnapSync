@@ -19,6 +19,12 @@ which is what makes testing rule 1 (every unit test also runs on the iOS simulat
 orchestration and not just for pure functions.
 
 Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
+The world composes attestation because `AppPorts` requires the seams, and leaves it **inert by default** —
+`isSupported()` is false, so a refresh returns early without attesting, exactly as it does in the upload
+extension and on a simulator. An opt-in lever turns it on for the tests that need a credential *change* to
+happen at all. Two backend behaviours it still does not model, stated so they are not assumed: the token
+gate itself, and the `401` a device-scoped write answers when the backend holds no attestation record.
+
 ## Requirements
 ### Requirement: Controllable in-memory world module
 
