@@ -248,9 +248,76 @@ Internal changes include: refactors, test additions/fixes, documentation, CI/CD,
 
 **If `category` is `"feature"` or `"bugfix"`:**
 
+⚠️ **This title is the App Store bullet.** It is not addressed to this repository. At release
+time `.github/scripts/release_notes.py` takes the title of every `enhancement`/`bug` PR in the
+range, applies exactly three transforms — strips `type(scope):`, strips a leading
+`Fix`/`Fixes`/`Fixed`, capitalizes the first letter — and publishes the remainder **verbatim** as
+a `- ` bullet under **New** or **Fixed** in the App Store listing. There is no editorial pass
+after this moment, and correcting an already-promoted version's notes is a manual console upload.
+Write the sentence a customer reads.
+
+This is what shipped to customers when that was forgotten:
+
+| PR | what the App Store showed |
+| --- | --- |
+| #202 | *"Take the photo-library import out from under the lock."* |
+| #200 | *"Hold both background-session completion handlers in a bounded receipt."* |
+| #151 | *"Download page."* |
+| #133 | *"UI refresh."* |
+
+**The four rules.**
+
+1. **Every noun must be one a SnapSync user has seen** — in the app or the App Store listing:
+   *event, photos, album, join, leave, share, sync, invite, QR code, phone, event settings, event
+   dates, download*. If a word names something only this repository knows about, it may not
+   appear. Observed leaks, as examples rather than as the list: *ledger, manifest, upload cycle,
+   PhotoKit, URLSession, App Group, port, flow, lock, completion handler, MIME, UTI, extension,
+   backend, endpoint, cursor, seam, adapter*.
+2. **Name an observable outcome, never the area touched.** Vagueness and jargon are the same
+   failure wearing two faces — both describe the change to the repository instead of the change to
+   the user. *"Download page"* → *"Download an event's photos from the web"*. *"UI refresh"* →
+   name what a user now sees or can do.
+3. **A `bug` title states the symptom, gone.** It appears under a heading that already says
+   **Fixed**, so *"Photos no longer arrive twice in an event"* reads correctly and *"Corrected the
+   dedup key"* does not. Good shape: #196 *"photos no longer arrive twice for everyone in an
+   event"*, #187 *"garbled screen after the app has been in the background"*, #217 *"config
+   buttons appeared delayed"*.
+4. **No scope.** The prefix is bare `feat: ` or `fix: ` — never `fix(download): `. The renderer
+   strips a scope either way, so this costs the customer nothing; it exists to keep you writing to
+   the customer rather than to the module. #202 and #182 broke this rule.
+
+**Procedure.**
+
 1. Determine the prefix: `feat: ` for feature, `fix: ` for bugfix.
-2. If a title was provided in parentheses (e.g., `feat(Add dark mode)`): PR title = `feat: Add dark mode`
-3. If no title in parentheses: Analyze the changes and propose 3 concise PR title options via AskUserQuestion (the user can also pick "Other" to enter a custom title). Prepend the appropriate prefix (`feat: ` or `fix: `) to the selected title.
+
+2. **If a title was provided in parentheses** (e.g., `feat(Add dark mode)`): PR title =
+   `feat: Add dark mode`. Check it against the four rules. If it violates one, say which rule and
+   what the customer would read, and offer a compliant alternative via AskUserQuestion — with the
+   user's original as the first option. **The user's answer is final**; this is a single check, not
+   a negotiation, and a title that passes the rules goes through with no question at all.
+
+3. **If no title in parentheses:** derive the **user-visible symptom or capability** from the diff
+   and the commit messages — what did a user experience before, and what do they experience now?
+
+   - **If you cannot derive it**, do NOT propose technical titles and do NOT invent a symptom you
+     are not sure of: a confident wrong claim reaches customers and is worse than jargon. Ask,
+     via AskUserQuestion with no preset options: *"I can't tell what a user experienced here. What
+     did they see before this fix?"* (or, for a feature, *"...what can they now do?"*). Then write
+     the title from the answer. "I could not tell" and "there is no user-visible symptom" are
+     different answers — if it is really the second, the PR is `internal`, so go back to §7.1.
+
+   - **Otherwise**, propose 3 title options via AskUserQuestion (the user can also pick "Other").
+     Each option MUST carry, in its `preview` field, the **rendered customer-visible line** — the
+     three transforms applied, under the heading it will appear beneath:
+
+     ```
+     Fixed
+     - Config buttons appeared delayed
+     ```
+
+     Approve what the customer reads, not what the repository reads.
+
+4. Prepend the prefix (`feat: ` or `fix: `) to the selected title.
 
 **If `category` is `null`:**
 
@@ -272,6 +339,10 @@ Determine PR title using the standard convention:
 #### 7.3. Create the PR
 
 - **PR body**: Bullet-point summary of changes
+  - **The body is where the technical detail belongs** — the mechanism, the module, the root
+    cause, the internal vocabulary §7.2 forbids in the title. Nothing here is customer-visible:
+    the release notes read the **title** only, never the body. So a user-facing title that lost
+    detail has not lost it from the PR; put it here rather than smuggling it back into the title.
   - If `--resolves <number>` was provided (directly or via `?` selection), append an empty line followed by `resolves #<number>`
 
 **Example PR body with resolves:**

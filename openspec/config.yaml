@@ -58,6 +58,22 @@ context: |
   you did not scroll to. Build each one from the current main spec and diff it —
   the removed lines must be only the ones you intended.
 
+  WHAT EARNS A SPEC. A spec exists where a contract is spread across artifacts and
+  drift between them is invisible until it costs something. Where a SINGLE committed
+  artifact IS the contract and carries its own rationale, a spec is a second copy —
+  a drift source with no gate behind it. Apply this when a capability is touched, not
+  as a sweep. Worked examples, from the change that recorded this rule
+  (changes/archive/2026-08-26-address-pr-titles-to-users): ship-command and
+  branch-protection were REMOVED — /ship is `ship.md` + `ship-wait.ts`, the ruleset is
+  `.github/rulesets/main.json`, each self-documenting, and a line-by-line rescue pass
+  found zero claims stated only in the spec. changelog-labels was KEPT — its contract
+  spans `release_notes.py`, `check-label.yml` and a ruleset entry, and a label renamed
+  in one but not the others silently loses a changelog heading, discovered at a release
+  that already shipped. openspec-archive-command was KEPT although its artifact lives
+  in `.claude/`: that directory is REGENERATED, so a rule written there is deleted by
+  the next `openspec update` — which is why these gates are in this file. A `.claude/`
+  artifact can therefore never be the single artifact this rule means.
+
   MISSION (decision record: changes/archive/2026-07-21-align-specs-with-mission). SnapSync
   lets joined users easily share the photos they take during an event. Events are
   short-lived — days/weeks: celebrations, holidays, trips — with a host-declared

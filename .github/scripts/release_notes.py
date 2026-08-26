@@ -60,7 +60,7 @@ MAX_CHARS = 4000
 FALLBACK = "Under-the-hood improvements and fixes."
 
 # THE SINGLE PLACE a changelog label maps to a heading, and the single place `internal` is excluded.
-# `/ship` puts exactly one of the three labels on every PR (capability `ship-command`) and
+# The `/ship` command puts exactly one of the three labels on every PR as it opens it, and
 # `check-label.yml` fails a PR carrying none, so the set below is total.
 #
 # The headings are read by App Store CUSTOMERS — hence "New"/"Fixed" rather than "Features"/"Bug
