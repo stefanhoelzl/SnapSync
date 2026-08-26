@@ -461,6 +461,12 @@ from OS facts, current photo permission, and whether the app-driven tier is forc
 SHALL hold **at most one** producer reference at any time, and SHALL obtain a new one only by
 re-resolving when a resolution input changes.
 
+The **transport binding** the app-driven mechanism uses is a different axis and SHALL NOT enter this
+resolution: it is fixed by the compilation target (`ios-url-session-upload`, "The transport binding is
+fixed by the compilation target"), and `module-architecture` requires that a fact fixed by the
+compilation target is not re-derived at runtime nor admitted into this function. Which mechanism runs
+stays a genuine runtime decision; which session kind it transfers over is not a decision at all.
+
 Resolution SHALL be total, and SHALL NOT yield a kind whose mechanism this OS cannot run: the OS-driven
 mechanism's registration selector does not exist below iOS 26.1, so a cell yielding it there would trap
 and abort the process. The resolver — not a composition root — SHALL own this, because a root is
@@ -472,10 +478,13 @@ left a present mechanism with no route to its own teardown on a forced build: th
 not constructed, so nothing could call the `stop()` that deregisters its extension, while the OS's
 upload-job configuration record — keyed by bundle id and surviving relaunch **and** reinstall — remained.
 
-The factory SHALL cache an instance whose platform demands a process-lifetime singleton. The app-driven
-mechanism owns a background `URLSession` whose identifier must stay stable and whose invalidation is
-terminal (`ios-url-session-upload`, "Cancellation never invalidates the background session"), so
-re-resolving to that kind SHALL return the same instance rather than constructing a second one.
+The factory SHALL cache an instance whose platform demands a process-lifetime singleton. On every shipped
+binary the app-driven mechanism owns a background `URLSession` whose identifier must stay stable and whose
+invalidation is terminal (`ios-url-session-upload`, "Cancellation never invalidates the background
+session"), so re-resolving to that kind SHALL return the same instance rather than constructing a second
+one. The caching SHALL NOT be conditioned on the transport binding: on `iosSimulatorArm64`, where the
+session is a default one and its identifier is inert, a second instance would still mean two live sessions
+and two task registries for one mechanism, so the same single instance SHALL be returned there too.
 
 Where an OS carries more than one mechanism, **each** resolved mechanism SHALL relinquish what the other
 leaves behind, before it starts. Both leave state the OS keeps across process death — the OS-driven one a
@@ -513,12 +522,17 @@ currently held: a mechanism this process never started can still have work outst
 - **WHEN** every combination of OS facts, permission, and forced state is resolved
 - **THEN** no combination yields the OS-driven kind on an OS that lacks it
 
+#### Scenario: The transport binding is not a resolution input
+
+- **WHEN** the resolver's inputs are enumerated
+- **THEN** the session kind the app-driven mechanism transfers over is not among them, and no cell varies
+  by it
+
 #### Scenario: Re-resolving to the app-driven kind reuses its instance
 
 - **WHEN** the resolved kind changes away from the app-driven mechanism and later back to it
-- **THEN** the same instance is obtained, its background session was never invalidated, and uploads
+- **THEN** the same instance is obtained, its session was never invalidated, and uploads
   resume without aborting the process
-
 ### Requirement: A mechanism override is a runtime input a shipped build cannot carry
 
 Resolution SHALL accept an optional **override** naming a mechanism kind, read fresh at every resolution

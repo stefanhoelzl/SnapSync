@@ -4,6 +4,7 @@ package app.snapsync.rig.hook
 
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.ios.SnapSyncRoot
+import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.logging.IosDeviceLogSource
 import app.snapsync.logging.documentsDirectory
 import app.snapsync.ports.ReceiptDeadlines
@@ -105,6 +106,9 @@ private fun iosHooks() = RigHooks(
         permission = PermissionStatus.GRANTED,
     ).diagnosticName,
     uploadBase = bakedUploadBase(),
+    // A compile-time fact, read rather than derived: the adapter that CHOSE the binding is the one that
+    // reports it, so the rig cannot disagree with the transport about what this build does.
+    transferBinding = transferSessionBinding,
     // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
     // would not be the call the OS makes, which is the whole reason triggers are entry points.
     mainLane = Dispatchers.Main,

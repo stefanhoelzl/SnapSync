@@ -32,22 +32,74 @@ State these before writing a scenario against this host, or you will write one t
   exists). Accepted everywhere-gap: the device needs taps for it too.
 - **No APNs token** — `no valid "aps-environment" entitlement string found`. `simctl push` never contacts
   Apple, so a synthetic token through the `onPushToken` trigger is the way in.
-- **No OS-driven PhotoKit upload tier.** The OS does not invoke the upload extension here at all, so
-  uploads do not happen on this host yet — the extension-shaped second process is where they arrive.
-- **No downloads, and no background `URLSession` at all.** The *remote* session is never created here, so
-  no byte ever moves: **every transfer fails instantly with `NSURLErrorDomain/-1`** (`NSURLErrorUnknown`),
-  measured 2026-08-25 against loopback and a LAN host. Your app-side pipeline still runs — tasks are
-  created locally and the delegate fires — which is why this reads as "it ran and failed" rather than "it
-  never started". The ordinary default session reaches the same server fine in the same process, and a
-  *foreground* download of the identical URL returns `200` with the right byte count. So a download that
-  never lands is **the host**, not your setup — do not go hunting for it.
+- **No OS-driven PhotoKit upload tier — so PIN the app-driven one, or nothing uploads.** The OS never
+  invokes the upload extension here. But this simulator's OS is ≥26.1, so the tier still *resolves* to
+  `photokit` under a full grant, and you get no cycle and no error. One call fixes it, and every upload
+  scenario on this host needs it:
 
-  **The cause, measured from the daemon's own log.** `nsurlsessiond` resolves each client's bundle
-  identifier as it evaluates the XPC connection. Apple's processes resolve to a real one (`com.apple.trustd`,
-  `com.apple.bird`) and their background sessions work. Everything we can build resolves to **`(null)`**,
-  and `(null)` is dropped *after* being accepted — which is why the code is `NSCocoaErrorDomain 4097`
-  (`NSXPCConnectionInterrupted`, **not** `Invalid`, which is 4099), followed by *"failed to create a
-  background NSURLSessionDownloadTask, as remote session is unavailable"*. Read both sides with:
+  ```bash
+  curl -s -X POST "http://127.0.0.1:$PORT/device/upload-mechanism?value=url_session"
+  # → {"pinned":"url_session","resolves":"url_session",…}  — check `resolves`, not just `pinned`
+  ```
+
+  With that pinned, uploads work (measured 2026-08-26). **Two members of one event, both directions, are
+  what this host is for**: A uploaded three photos and B — joined `DownloadOnly` off A's invite link —
+  downloaded and imported all three, `status=200` with received == expected on every transfer.
+
+  ⚠️ **Do not assert success on `/device/state`'s `download` view.** It is a *progress* read-model and
+  returns to `{downloaded:0,total:0}` the moment the queue drains — transfers finish about a second after
+  the trigger, so a poll 25 s later reads 0/0 and looks exactly like a failure. Assert on the device log's
+  `transfer finished: status=… expected=… received=…` and `imported foreign asset … as …` lines. The
+  gallery census is not clean proof either: a simulator ships with stock photos, so a device that imported
+  3 reads `total: 9`.
+- **No background `URLSession` at all — so this target does not use one.** Bytes DO move here: the
+  `iosSimulatorArm64` build binds an ordinary **default** session instead (`transferSessionConfiguration`
+  in `:adapter:ios:app-only`, capability `ios-url-session-upload`). Uploads and downloads both work.
+  Verified 2026-08-25 end to end for uploads: three photos, ledger `completed=3`, objects in
+  `api/.localstore`.
+
+  **What that binding does NOT give you**, and must never be reported as if it did:
+
+  - transfers do **not** survive suspension or process death — they run in-process;
+  - the OS never relaunches the app for `handleEventsForBackgroundURLSession`. You can still fire the
+    `handleBackgroundUrlSession` trigger, but it exercises adopt + session-identifier routing ONLY;
+  - because a default session never sends `didFinishEventsForBackgroundURLSession`, that trigger's
+    receipt **always** runs to its 20 s deadline and logs an expiry. **That expiry is the host, not a
+    fault.** The app logs the whole caveat at session construction, and `/trigger` returns it in the
+    response's `note` beside `transferBinding`;
+  - `__NSURLBackgroundSession` is never exercised, so it cannot cover the invalidation defect in
+    `changes/archive/2026-07-12-fix-download-session-lifecycle` D5. Measured: after the daemon rejects the
+    connection the session does not even report `didBecomeInvalidWithError`.
+
+  Read the binding rather than guessing: `GET /device/state` → `build.transferBinding`
+  (`"default"` here, `"background"` on a device).
+
+  **The underlying platform fact is unchanged** — a *background* session still transfers nothing here, so
+  if you construct one yourself, **every transfer fails instantly with `NSURLErrorDomain/-1`**
+  (`NSURLErrorUnknown`), measured against loopback and a LAN host. The app-side pipeline still runs — tasks
+  are created locally and the delegate fires — which is why that reads as "it ran and failed" rather than
+  "it never started".
+
+  **The cause, measured from the daemon's own log — which states it outright.** `nsurlsessiond` resolves
+  each client's bundle identifier as it evaluates the XPC connection. Apple's processes resolve to a real
+  one (`com.apple.trustd`, `com.apple.bird`) and their background sessions work. Everything we can build
+  resolves to **`(null)`**, and the daemon then says so in as many words, at error severity (2026-08-25,
+  with the client's own pid):
+
+  ```
+  Evaluating new XPC connection … from pid <n> … with client bundle identifier (null)
+  Process with pid <n> does not have a bundle ID, rejecting connection
+  … invalidated … xpc_connection_cancel()
+  ```
+
+  ⚠️ This **supersedes** `changes/archive/2026-08-25-correct-simulator-background-session-claims`, which
+  recorded as an open risk that the daemon "does not state that as its reason, so the causal link is a
+  correlation". It states it; the link is not an inference.
+
+  The connection is dropped *after* being accepted — which is why the client's code is
+  `NSCocoaErrorDomain 4097` (`NSXPCConnectionInterrupted`, **not** `Invalid`, which is 4099), followed by
+  *"failed to create a background NSURLSessionDownloadTask, as remote session is unavailable"*. Read both
+  sides with:
 
   ```bash
   xcrun simctl spawn <dev> log stream --style compact --level debug \

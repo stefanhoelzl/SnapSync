@@ -299,9 +299,11 @@ class RigServer(
                 val held = mark.elapsedNow().inWholeMilliseconds
                 respondText(
                     "{\"trigger\":\"$name\",\"heldMs\":$held,\"deadlineMs\":${trigger.deadlineMs}," +
+                        "\"transferBinding\":\"${hooks.transferBindingFact}\"," +
                         "\"note\":\"heldMs and deadlineMs are measured facts; whether the receipt was " +
                         "released on completion or on its deadline is answered by the OsReceipt expiry " +
-                        "line in /logs after this request's [rig] marker\"}\n",
+                        "line in /logs after this request's [rig] marker" +
+                        hooks.bindingCaveat(name) + "\"}\n",
                 )
             }
         }
