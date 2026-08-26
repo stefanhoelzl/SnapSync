@@ -34,10 +34,9 @@ export type Migration = {
   /**
    * Checked before the statements run; THROWS to refuse the migration.
    *
-   * For migrations that TIGHTEN a constraint. A rebuild that narrows a column can only carry rows that
-   * already satisfy the narrower shape, so without a precondition it would silently drop the rest — and a
-   * migration must migrate its data, not discard it. Refusing instead leaves the store on the previous
-   * version, the deploy fails with the previous bundle still live, and the operator is told what to run.
+   * Required of any migration that TIGHTENS a constraint (capability `database`, "A migration migrates its
+   * data; it does not drop it"): a rebuild that narrows a column can only carry rows that already satisfy
+   * the narrower shape, so it must refuse rather than discard the rest. `migrations.test.ts` gates this.
    */
   precondition?: (db: Db) => Promise<void>;
 };
@@ -114,9 +113,9 @@ const V1: Migration = {
  * v2 — `device_records` becomes `devices`, carrying every row.
  *
  * A REBUILD, NOT AN ALTER, and that is forced: SQLite cannot `ADD COLUMN … NOT NULL` without a DEFAULT.
- * But a rebuild MIGRATES its rows; it does not drop them. The `INSERT … SELECT` below is the whole point
- * of this migration — the push registrations it carries are live tokens for real devices, and losing them
- * would silence every one of those phones until it next launched.
+ * The `INSERT … SELECT` below is what makes it a migration rather than a deletion — the push registrations
+ * it carries are live tokens for real devices, and losing them would silence every one of those phones
+ * until it next launched.
  *
  * THE ATTESTATION COLUMNS ARE NULLABLE HERE, and only here. Their values live in the STORAGE ZONE, which
  * SQL cannot reach, so a `NOT NULL` column at this moment could only be satisfied by a fabricated
@@ -162,9 +161,8 @@ const V2: Migration = {
  *
  * ⚠️ THE PRECONDITION IS WHAT MAKES THIS SAFE, and it is not defensive decoration. This rebuild can only
  * carry rows that already have an attestation; run against the cutover state — every row carried by v2,
- * none of them attested yet — it would drop all of them, which is precisely what a migration must never
- * do. Refusing instead is fail-closed: v2 stays applied, the deploy fails with the previous bundle live,
- * and the message says what to run.
+ * none of them attested yet — it would drop all of them. Refusing instead is fail-closed: v2 stays
+ * applied, the deploy fails with the previous bundle live, and the message says what to run.
  *
  * With the precondition satisfied the `INSERT … SELECT` is total: every row qualifies, nothing is
  * dropped, and the tightening is pure. On a fresh store there are no rows and it passes trivially.
