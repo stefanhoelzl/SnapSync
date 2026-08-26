@@ -7,7 +7,8 @@ assets from the event-wide union listing and imports them, full-fidelity, into t
 a shared event's photos appear on every participant's phone without anyone opening the app.
 
 This is what turns a one-way contribution client into photo sharing. Foreign assets are selected by
-`deviceId` (anything not this device's); transfers run on a background `URLSession` over Wi-Fi and cellular;
+`deviceId` (anything not this device's); transfers run over Wi-Fi and cellular on a `URLSession` whose
+binding is fixed by the compilation target — a **background** one on every shipped binary;
 import preserves the original capture date so photos sort by when they were taken. Downloaded photos are
 suppressed from re-upload — no echo — and a photo the user deletes locally is never re-imported, because
 respecting a deletion matters more than completeness.
@@ -19,7 +20,11 @@ direction (`join-event`).
 Decision record: `changes/archive/2026-06-30-add-photo-download` (the download client),
 `changes/archive/2026-07-12-fix-download-session-lifecycle` (the transfer/session lifecycle: why
 cancellation is task-level and never invalidates the background session, and the transport seam that puts
-that logic under test).
+that logic under test),
+`changes/bind-transport-session-by-target` (why the session's binding is fixed by the compilation target,
+so downloads land on a simulator too — that record supersedes this one's D5 closing line that "downloads
+remaining inert on the simulator is a known, accepted limitation", while leaving D5's refusal of a
+*runtime* host downgrade intact).
 ## Requirements
 
 ### Requirement: Foreign-asset selection by device identity
@@ -49,13 +54,22 @@ completeness computation of its own.
 
 ### Requirement: Background resource download to durable staging
 
-Selected resources SHALL be downloaded via a background `URLSession` (so transfers continue while the
-app is suspended), fetching each resource **directly** from the presigned S3 URL carried in its union
+Selected resources SHALL be downloaded via a `URLSession` whose configuration is bound per **compilation
+target** (`ios-url-session-upload`, "The transport binding is fixed by the compilation target"): on
+`iosArm64` — every shipped binary — a **background** session, so transfers continue while the app is
+suspended and the OS relaunches the app on completion; on `iosSimulatorArm64` a **default** session, which
+transfers in-process and survives neither suspension nor process death. The download transport SHALL
+obtain that configuration from the same seam the app-driven upload platform uses, so the two cannot hold
+different bindings in one build. Every requirement below holds identically on both targets.
+
+The session SHALL fetch each resource **directly** from the presigned S3 URL carried in its union
 `resource.url` (capability `api-endpoints`) — i.e. straight from bunny's S3 endpoint, not through
 the backend. The session SHALL allow **both Wi-Fi and cellular** (not Wi-Fi-only) and SHALL NOT be
 discretionary, so downloads make progress on mobile networks too, with a bounded number of in-flight
-tasks (enqueue more as tasks complete). A transfer failure SHALL leave the resource pending for retry (no
-terminal failure state).
+tasks (enqueue more as tasks complete). (`discretionary` and the launch-events request are background-only
+properties; on the default binding they are inert, which is why they are declared where the background
+configuration is built rather than at this call site.) A transfer failure SHALL leave the resource pending
+for retry (no terminal failure state).
 
 A finished transfer is not a successful one, and SHALL NOT be staged on the strength of having finished.
 Before its bytes are moved into staging, the download client SHALL evaluate the transfer's outcome — the
@@ -66,7 +80,7 @@ transfer, to be retried:
 - a response whose received body is **shorter than its `Content-Length`** (a truncated download) — the
   integrity signal formerly guaranteed by the download proxy, now evaluated against bunny's S3 GET response.
 
-A status check is not redundant with the transport's own error reporting: a background `URLSession` reports
+A status check is not redundant with the transport's own error reporting: a `URLSession` reports
 an HTTP error as a *successful transfer of an error body* — the download-finished callback fires with the
 error document in hand and the completion error is absent — so the status check is the only thing that sees
 a `502`.
@@ -86,21 +100,34 @@ staging location and recorded in the download store. A **rejected** transfer's b
 recorded: the resource stays un-staged, which is the existing pending-for-retry state rather than a new
 terminal one, and the next reconcile re-downloads it. Because staging replaces whatever occupies the
 destination path, evaluating the outcome **before** the move also prevents a rejected body from destroying
-an earlier good file.
+an earlier good file. The finished-transfer callback delivers a temporary-location URL on **both**
+bindings, and the move out of it SHALL be performed within that callback on both, so the staging step does
+not vary by target.
 
 The transport seam SHALL carry these outcome facts to the client, and the decision SHALL be taken in code
 covered by `commonTest` rather than in the platform edge, which is the platform boundary and nothing more.
 
 #### Scenario: A completed download is staged durably
 
-- **WHEN** a background download task for a resource finishes with a success status and no short read
+- **WHEN** a download task for a resource finishes with a success status and no short read
 - **THEN** its bytes are moved to durable App-Group staging and the resource is marked downloaded in
   the store
+
+#### Scenario: The shipped binary downloads over a background session
+
+- **WHEN** the app runs on a physical device
+- **THEN** transfers run over a background `URLSession` and continue while the app is suspended
+
+#### Scenario: A simulator downloads, and claims nothing about suspension
+
+- **WHEN** the app runs on an iOS simulator and a foreign resource is enqueued
+- **THEN** the bytes transfer over the default session, are staged and imported exactly as on a device, and
+  the run is not treated as evidence that transfers survive suspension or that the OS relaunches the app
 
 #### Scenario: A resource is fetched directly from bunny's S3 endpoint
 
 - **WHEN** a resource is enqueued for download
-- **THEN** the background task targets its presigned S3 `url` directly (no backend byte proxy), needing
+- **THEN** the task targets its presigned S3 `url` directly (no backend byte proxy), needing
   no per-task authorization header
 
 #### Scenario: A failed transfer is retried, not failed
@@ -142,7 +169,6 @@ covered by `commonTest` rather than in the platform edge, which is the platform 
 - **WHEN** a transfer is rejected and a previously staged, valid file already exists at that resource's
   staging path
 - **THEN** the existing file is left intact, because a rejected transfer's bytes are never moved into staging
-
 ### Requirement: Expired presigned download URLs self-heal on rediscovery
 
 A presigned download `url` that expires before its background transfer runs SHALL be **superseded by

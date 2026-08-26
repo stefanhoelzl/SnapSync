@@ -6,6 +6,7 @@ import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.TransferOutcome
 
 import app.snapsync.logging.invocation
+import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.model.PlatformEntry
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -18,19 +19,25 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
-import platform.Foundation.NSURLSessionConfiguration
 import platform.Foundation.NSURLSessionDownloadDelegateProtocol
 import platform.Foundation.NSURLSessionDownloadTask
 import platform.Foundation.NSURLSessionTask
 import platform.darwin.NSObject
 
-/** Background-session identifier — stable so an app relaunch reconnects to the same transfers. */
+/**
+ * Background-session identifier — stable so an app relaunch reconnects to the same transfers. Honoured on
+ * every shipped binary; inert on `iosSimulatorArm64`, whose default configuration ignores it
+ * ([transferSessionConfiguration]).
+ */
 private const val DOWNLOAD_SESSION_ID = "app.snapsync.download.bg"
 
 /**
- * The iOS [DownloadTransport] (capability `photo-download`): a **background** `URLSession` (Wi-Fi *and*
- * cellular, non-discretionary) that keeps downloading while the app is suspended and relaunches it on
- * completion. Bytes are moved into durable App-Group staging as each transfer finishes.
+ * The iOS [DownloadTransport] (capability `photo-download`): a `URLSession` (Wi-Fi *and* cellular,
+ * non-discretionary) which on every shipped binary is a **background** session that keeps downloading while
+ * the app is suspended and relaunches it on completion. The binding is fixed by the compilation target —
+ * see [transferSessionConfiguration] for what `iosSimulatorArm64` gets instead, and for the list of
+ * properties a run on that target does **not** evidence. Bytes are moved into durable App-Group staging as
+ * each transfer finishes, identically on both.
  *
  * This class is the ObjC edge and nothing more — the queue, the bounded window, the transfer-description
  * codec, the staging-path derivation, and the URL guard all live in [QueuedPhotoDownloadJobs], where they
@@ -53,16 +60,20 @@ class IosDownloadTransport(
      * Built eagerly: the owner constructs this transport exactly when a session is wanted — on the first
      * transfer, or on a `handleEventsForBackgroundURLSession` relaunch, where the session must exist for
      * the OS to deliver the pending completions to its delegate.
+     *
+     * The configuration comes from [transferSessionConfiguration], which binds it to the **compilation
+     * target**: background on every shipped binary, default on `iosSimulatorArm64` where a background one
+     * transfers nothing. The transport's policy — Wi-Fi *and* cellular, no deferral to discretionary
+     * windows, relaunch on completion — is declared there, on the target that can honour it. Everything
+     * below this line is target-independent: the delegate, the staging move and the outcome read are the
+     * same either way (measured 2026-08-25). Read that file before assuming a simulator run evidences a
+     * background-session property; it enumerates the ones it does not.
      */
-    private val session: NSURLSession = run {
-        val config = NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(DOWNLOAD_SESSION_ID)
-        // Transfer over Wi-Fi AND cellular, and don't defer to "discretionary" windows (which strongly
-        // favor Wi-Fi + charging): downloads should make progress on mobile too.
-        config.discretionary = false
-        config.allowsCellularAccess = true
-        config.sessionSendsLaunchEvents = true
-        NSURLSession.sessionWithConfiguration(config, delegate, null as NSOperationQueue?)
-    }
+    private val session: NSURLSession = NSURLSession.sessionWithConfiguration(
+        transferSessionConfiguration(DOWNLOAD_SESSION_ID),
+        delegate,
+        null as NSOperationQueue?,
+    )
 
     override fun start(url: String, description: String): DownloadTask? {
         val nsUrl = NSURL.URLWithString(url) ?: return null

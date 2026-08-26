@@ -22,7 +22,6 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
-import platform.Foundation.NSURLSessionConfiguration
 import platform.Foundation.NSURLSessionTask
 import platform.Foundation.NSURLSessionTaskDelegateProtocol
 import platform.Foundation.NSURLSessionUploadTask
@@ -32,9 +31,10 @@ import platform.darwin.NSObject
 import kotlin.coroutines.resume
 
 /**
- * The app-driven (iOS 18–26.0) implementation of `:domain`'s [BackgroundTransfer] port,
- * backed by a **background `URLSession`** — the OS-owned durable queue the PhotoKit tier gets for free,
- * reimplemented in the app process. `UploadCycle` runs unchanged over it; only the job lifecycle
+ * The app-driven (iOS 18–26.0) implementation of `:domain`'s [BackgroundTransfer] port, backed on every
+ * shipped binary by a **background `URLSession`** — the OS-owned durable queue the PhotoKit tier gets for
+ * free, reimplemented in the app process. (The session's binding is fixed per compilation target; see
+ * [transferSessionConfiguration].) `UploadCycle` runs unchanged over it; only the job lifecycle
  * differs, mapped to `URLSession` semantics (see the change `add-url-session-upload`):
  *
  * - [createJob] stages the resource's bytes to a temp file (per open slot, bounded by [cap]) and
@@ -116,43 +116,28 @@ class IosUrlSessionUploadPlatform(
     private val sessionId = sessionIdentifier
 
     /**
-     * One transport, every host — a **background** session, so transfers survive suspension
-     * (`ios-url-session-upload`).
+     * On every shipped binary a **background** session, so transfers survive suspension
+     * (`ios-url-session-upload`). The binding is fixed by the **compilation target**, not chosen here and
+     * not read from the host: see [transferSessionConfiguration], which is the single place this file and
+     * [app.snapsync.download.IosDownloadTransport] both resolve it, so the two cannot diverge.
      *
-     * This used to be a choice: the simulator was downgraded to a foreground session. The downgrade was
-     * deleted 2026-08-09 on the strength of a probe that was read as showing background sessions working
-     * here. **That reading was wrong**, and this comment asserted it as fact for sixteen days. The probe
-     * aimed an upload task at a *closed* port and took the delegate's `(unknown error)` as proof the task
-     * had executed; its own stated criterion — "a refusal still proves the session executed the task" —
-     * needed `NSURLErrorCannotConnectToHost` (-1004). "unknown error" is `NSURLErrorUnknown` (**-1**).
+     * **That file, not this comment, is where the platform facts live.** This spot has carried a false
+     * claim twice — first that a simulator cannot run background sessions (unproven when written), then
+     * that it can (a probe that aimed at a closed port and read `NSURLErrorUnknown` as a refusal). Both
+     * survived because the claim lived in a comment beside the code it justified, where nothing
+     * re-measured it. It is stated once now, on the seam, with its evidence and its ⏰ expiry trigger, and
+     * two gates hold the bindings in place (`architecture-guards`, "The transport-binding gate").
      *
-     * **Measured 2026-08-25** (macOS 26.5.2 / Xcode 26.6, iOS 26.2 and 26.5), with a foreground control
-     * succeeding against the same URL in the same process: a background `URLSession` **transfers nothing
-     * on a simulator**, for any third-party process. `nsurlsessiond` resolves each client's bundle
-     * identifier as it evaluates the XPC connection and drops the connection when it is `(null)` — which
-     * it is for everything an app author can build there, including a real installed app declaring a valid
-     * `CFBundleIdentifier`. Hence `NSCocoaErrorDomain` 4097 (`NSXPCConnectionInterrupted`: accepted, then
-     * torn down — *not* 4099 `Invalid`, *not* 4102 `CodeSigningRequirementFailure`), then "failed to create
-     * a background NSURLSessionDownloadTask, as remote session is unavailable", and `NSURLErrorDomain/-1`
-     * at the delegate. Apple's own simulator processes resolve to real bundle identifiers and theirs work.
+     * ⚠️ [reattach] is structurally inert wherever the binding is `default`: `getAllTasks` can never find a
+     * prior process's task, because no transfer outlives the process there.
      *
-     * **The single transport is kept anyway, and that is now a deliberate trade, not host equivalence.** A
-     * simulator-only foreground session would make that host appear to work while removing the only host
-     * that exercises `__NSURLBackgroundSession` — the class `fix-download-session-lifecycle` D5's defect
-     * lives in. Six candidate fixes were tested (ad-hoc signature, an Apple Development identity, no
-     * signature at all, `application-identifier`/`team-identifier`/`get-task-allow`, a second runtime, any
-     * entitlement); none works, so do not spend time on them. ⏰ Re-measure at the next iOS major.
-     *
-     * ⚠️ Whether the OS relaunches a terminated app to deliver `handleEventsForBackgroundURLSession` on a
-     * simulator remains unproven — and is now **unmeasurable** there, since it needs a transfer that
-     * outlives the process and none can exist.
-     *
-     * Decision record: `changes/correct-simulator-background-session-claims` (superseding
-     * `changes/archive/2026-08-09-delete-simulator-session-downgrade` D1, which is not edited).
+     * Decision record: `changes/bind-transport-session-by-target` (superseding
+     * `changes/archive/2026-08-25-correct-simulator-background-session-claims` D1 and
+     * `changes/archive/2026-08-09-delete-simulator-session-downgrade` D1; neither archive is edited).
      */
     private val session: NSURLSession by lazy {
         NSURLSession.sessionWithConfiguration(
-            NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(sessionId),
+            transferSessionConfiguration(sessionId),
             delegate = delegate,
             delegateQueue = null,
         )

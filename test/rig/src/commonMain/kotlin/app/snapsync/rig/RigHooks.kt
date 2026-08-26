@@ -31,6 +31,18 @@ class RigHooks(
     /** The baked `uploadBase` — the oracle for "which backend is this build pointed at". */
     private val uploadBase: String,
     /**
+     * Which `URLSession` binding this binary compiled — `"background"` or `"default"` — fixed by the
+     * compilation target (`ios-url-session-upload`, "The transport binding is fixed by the compilation
+     * target").
+     *
+     * Reported rather than inferred, because the two are told apart by *what does not happen*: under
+     * `"default"` transfers move bytes but die with the process, and a background-events wake expires
+     * instead of draining. A caller that had to deduce that from a stall or a log substring would deduce
+     * it wrongly, and would then have no way to say which of its assertions its host could actually
+     * support.
+     */
+    private val transferBinding: String,
+    /**
      * The lane platform entry points are invoked on. Swift calls them from the **main** thread, so the rig
      * does too — a trigger that ran on a different lane would not be the same call the OS makes, which is
      * the whole reason triggers are entry points rather than `flow/` classes.
@@ -136,7 +148,37 @@ class RigHooks(
     internal fun buildFacts(): Map<String, String> = mapOf(
         "uploadTier" to uploadTier,
         "uploadBase" to uploadBase,
+        "transferBinding" to transferBinding,
     )
+
+    /** The binding, for the trigger response — which reports it beside the numbers it qualifies. */
+    internal val transferBindingFact: String get() = transferBinding
+
+    /**
+     * What a receipted trigger's numbers mean **on this build's binding**, appended to the `note` that
+     * already says what they do not answer.
+     *
+     * Only `handleBackgroundUrlSession` earns a caveat, and only under `"default"`. That entry is the one
+     * whose receipt is released by the session reporting its events drained — a callback a default session
+     * never sends (`ios-url-session-upload`, "The transport binding is fixed by the compilation target") —
+     * so on that binding the hold is *always* the deadline and the expiry says nothing about the app. The
+     * other receipted entries answer their own handlers and are unaffected.
+     *
+     * This is a labelling obligation, not decoration. `fix-download-session-lifecycle` D5 refused a
+     * simulator hatch because a session that "runs straight through" a defect manufactures false
+     * confidence; this change takes the hatch and pays for it here, by making the result state what it
+     * did and did not exercise. A caller cannot read the numbers without reading this.
+     */
+    internal fun bindingCaveat(trigger: String): String =
+        if (trigger != "handleBackgroundUrlSession" || transferBinding == "background") {
+            ""
+        } else {
+            ". NOTE transferBinding=default (iosSimulatorArm64): this exercised adopt + session-identifier " +
+                "routing ONLY. The OS delivered no events and relaunched nothing, and no transfer outlived " +
+                "the process. The hold is the deadline because this binding's session never reports its " +
+                "events drained — that is the host, not a fault. Suspension survival and OS relaunch are " +
+                "device-only and are NOT evidenced by this result"
+        }
 }
 
 /**
