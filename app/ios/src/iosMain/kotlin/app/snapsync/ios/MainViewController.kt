@@ -9,7 +9,9 @@ import app.snapsync.model.SceneMode
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
+import platform.UIKit.UIColor
 import platform.UIKit.UIViewController
+import platform.UIKit.systemBackgroundColor
 
 /**
  * The iOS entry point. The Swift app (iosApp/) calls [MainViewController] to obtain the root
@@ -57,24 +59,59 @@ private fun sceneFor(mode: SceneMode): UIViewController = when (mode) {
 
 /**
  * The placeholder installed while the app is not active: an empty view controller that composes nothing
- * and owns nothing. Its view is deliberately left untinted — the backdrop belongs to the window, which the
- * scene delegate colours once, so this stays a bare placeholder rather than a second opinion about
- * appearance.
+ * and owns nothing.
+ *
+ * It paints the platform's own system background so it is not bare white. Three different things render
+ * white otherwise — the launch screen (which configures no content), this placeholder, and a scene that
+ * has been detached — and a reporter cannot tell them apart, nor can whoever reads their dump; on a
+ * dark-appearance device it also flashes white on the way to a `#0C0E12` app. `systemBackgroundColor` is
+ * ONE symbol and UIKit resolves light/dark itself, so this stays wiring: the shell branches on nothing
+ * (`module-architecture`, "Shells are wiring only"). It is not the app's own background colour, which
+ * would need a `userInterfaceStyle` read — a decision, and one this module may not hold.
+ *
+ * ⚠️ This does **not** make the three whites distinguishable in every appearance: in light mode the
+ * system colour IS white. What separates them is the generation line in the log
+ * ([SnapSyncRoot.onSceneActive]), not the pixels.
+ *
+ * (This KDoc used to say the backdrop "belongs to the window, which the scene delegate colours once".
+ * Nothing colours any window — `SnapSyncSceneDelegate` implements only `willConnectTo` and `continue`,
+ * and no `UIWindow`/`backgroundColor` exists anywhere in the app — so that claim was false, and it was
+ * the reason this view was left untinted.)
  */
-private fun deferredScene(): UIViewController = UIViewController(nibName = null, bundle = null)
+private fun deferredScene(): UIViewController {
+    // Statements rather than `.apply { … }`: `detektAppShell` holds this module at straight-line
+    // complexity and counts a trailing lambda against it. Suppressing would be the wrong trade for a
+    // two-line body — `sceneFor`'s suppression is meant to stay the only one in this file.
+    val placeholder = UIViewController(nibName = null, bundle = null)
+    placeholder.view.backgroundColor = UIColor.systemBackgroundColor()
+    return placeholder
+}
 
 /**
- * The live scene, realized **once per process** and reused thereafter — `by lazy` rather than a
- * hand-rolled null check, so the shell carries no branch for it.
+ * The live scene — **created on every call**, because that is what the platform's contract says this is.
  *
- * The reuse is what keeps the Swift side a transcriber. The scene delegate installs
- * `MainViewController()` unconditionally at both connect and activation, and every activation after the
- * first must be a no-op — re-composing on each foreground would discard screen-local Compose state (an
- * open reconfigure surface, a half-typed bug report, a scroll position) on every ordinary app switch,
- * which is the option this change deliberately did not take. Memoizing here means Swift needs no
- * "is it already installed?" branch, and the decision stays in tested Kotlin.
+ * Apple, `UIViewControllerRepresentable.makeUIViewController(context:)`: *"Creates the view controller
+ * object and configures its initial state… You must implement this method and use it to **create** your
+ * view controller object. The system calls this method only once, when it creates your view controller for
+ * the first time."* That "only once" is **per view identity**, and the Swift host's `.id(…)` exists
+ * precisely to mint a new identity when the placeholder must become the live scene. Teardown then
+ * *"removes your view controller cleanly"*.
+ *
+ * So handing back an instance already installed under the OUTGOING identity makes one object
+ * simultaneously the thing the incoming host adopts and the thing the outgoing host removes — and the
+ * removal wins. **Measured on device** (SE2, iOS 26.6, 2026-08-25): two builds differing only in this
+ * line, both forced through a rebuild and both logging the identical two `MainViewController(mode=live)`
+ * calls — memoized rendered a **white screen**, per-call rendered the app. That is the shape behind
+ * Bugsink SNAPSYNC-15 and SNAPSYNC-24, and it is permanent, because the generation does not change again.
+ *
+ * This used to be `by lazy`, defended on the grounds that re-composing would discard screen-local Compose
+ * state (an open reconfigure surface, a half-typed bug report, a scroll position) on every foreground.
+ * That defence died with the generation rule: the only rebuild left is the placeholder → live swap, and
+ * the placeholder composes nothing, so no screen-local state exists at that instant. The two changes are
+ * not redundant — the generation rule removes the *spurious* rebuild, this removes the *consequence* of
+ * any rebuild, including one nobody predicted.
  */
-private val liveScene: UIViewController by lazy { composeScene() }
+private val liveScene: UIViewController get() = composeScene()
 
 private fun composeScene(): UIViewController =
     ComposeUIViewController {

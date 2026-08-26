@@ -102,3 +102,52 @@ fun resolveScene(visibility: AppVisibility, everActive: Boolean): SceneMode = wh
     everActive -> SceneMode.Live
     else -> SceneMode.Deferred
 }
+
+/**
+ * The scene generation after the shell has handed out [handedOut] — the value the SwiftUI host binds to
+ * `.id(…)`, so a **change** in it is what makes the platform ask for the root view controller again
+ * (capability `ios-app-shell`).
+ *
+ * **It counts placeholders retired, and it never decreases.** That monotonicity is the whole contract:
+ * `.id(…)` reacts to CHANGE, not to magnitude, so a value that fell back would rebuild just as surely as
+ * one that rose. An earlier revision of this rule answered from the mode most recently handed out, which
+ * reads correctly and is wrong: after the placeholder is replaced the record says [SceneMode.Live], the
+ * answer drops `1 → 0`, and the first ordinary foreground rebuilds a scene that did not need rebuilding.
+ * Measured on a simulator (iOS 26, 2026-08-26) before this note existed — three `MainViewController`
+ * calls in one process, the third on a warm activation. Threading the previous value through is what
+ * makes "once retired, stays retired" expressible without the shell holding a branch.
+ *
+ * **Why it is a function of what was handed out and not of the activation notification.** The shell learns
+ * "the app became active" through two independent subscriptions to the same notification: Kotlin's own
+ * `NSNotificationCenter` observer (which writes `resolveScene`'s `everActive`) and SwiftUI's `.onReceive`
+ * (which assigns this value). Only one of them exists before the platform view's body is first evaluated,
+ * and WHICH one is not ours to decide. Deriving the rebuild signal from the notification made it disagree
+ * with the scene actually installed: when the notification won, the first resolution was already
+ * [SceneMode.Live] while `.onReceive` — not yet subscribed — missed it, leaving a live scene sitting
+ * against a signal that had never advanced. The next ordinary foreground then advanced it and rebuilt a
+ * scene that did not need it (Bugsink SNAPSYNC-15, SNAPSYNC-24). Reading what was handed out instead makes
+ * both orderings correct, which is why the spec can leave the ordering uncontracted rather than trying to
+ * pin it — the platform's callback order is not something this app can constrain.
+ *
+ * The two answers, and why each is the only safe one:
+ *
+ * - [SceneMode.Deferred] — a placeholder is being installed. It composes nothing, so it MUST be replaced,
+ *   and this is the one case that advances the signal.
+ * - [SceneMode.Live] — the real scene is being installed. The signal carries forward unchanged: no rebuild
+ *   is asked for now, and none will be later, because nothing else can move it. A rebuild here is not
+ *   merely wasteful — it discards screen-local Compose state, and (before the scene stopped being reused)
+ *   detached the scene entirely.
+ *
+ * Total over the sealed type, so a third [SceneMode] fails the compile here rather than silently picking a
+ * rebuild policy. Expiry: dies with the deferral, when CMP-5978 is fixed upstream.
+ */
+fun sceneGenerationAfter(previous: Int, handedOut: SceneMode): Int = when (handedOut) {
+    SceneMode.Deferred -> SCENE_GENERATION_AFTER_PLACEHOLDER
+    SceneMode.Live -> previous
+}
+
+/** The generation a process starts at, before any scene has been handed out. */
+const val SCENE_GENERATION_INITIAL: Int = 0
+
+/** The generation that retires a placeholder — the ONE rebuild a process may legitimately ask for. */
+private const val SCENE_GENERATION_AFTER_PLACEHOLDER: Int = 1
