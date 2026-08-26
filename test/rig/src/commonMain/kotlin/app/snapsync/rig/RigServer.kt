@@ -10,6 +10,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.path
+import io.ktor.server.request.receiveText
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -130,7 +131,9 @@ class RigServer(
         routing {
             get("/health") { call.traced { call.respondText(hooks.health(port)) } }
 
-            post("/os/{name}") { call.traced { call.respondTrigger() } }
+            // `/os/<root>/<member>` — the root segment names WHOSE entry point this is, because the
+            // channel reaches more than one composition root. See `RigHooks.triggerGroups`.
+            post("/os/{path...}") { call.traced { call.respondTrigger() } }
             post("/user/{name}") { call.traced { call.respondUserCommand() } }
 
             get("/device/state") { call.traced { call.respondState() } }
@@ -190,6 +193,15 @@ class RigServer(
     }
 
     /**
+     * The request body, or `null` when there is none.
+     *
+     * Only [RigTrigger.Answering] reads it: an entry point the rig plays the OS for may need state the OS
+     * holds outside the process handed in per invocation, and a query string is the wrong shape for a list.
+     */
+    private suspend fun ApplicationCall.receiveTextOrNull(): String? =
+        receiveText().takeIf { it.isNotBlank() }
+
+    /**
      * The ROUTE segment, read from the request PATH and never from `parameters`.
      *
      * `call.parameters` merges the path and the query, so a command carrying a query argument of the same
@@ -244,7 +256,7 @@ class RigServer(
                 status = HttpStatusCode.NotFound,
             )
         val params = request.queryParameters.entries().associate { it.key to it.value.first() }
-        val result = command.run(params)
+        val result = command.run(params, receiveTextOrNull())
         respondText(result.body, status = HttpStatusCode.fromValue(result.status))
     }
 
@@ -266,26 +278,44 @@ class RigServer(
     }
 
     /**
-     * `POST /trigger/{name}?arg=…` — invoke the real entry point on the main lane, and answer with
-     * whatever the platform gives back.
+     * `POST /os/{root}/{member}?arg=…` — invoke the real entry point of a named composition root, and
+     * answer with whatever the platform gives back.
+     *
+     * The root segment is required rather than optional. An unprefixed form would have to mean "the app",
+     * which is a convention no guard can check, and it would leave the one group that needs no prefix
+     * special-cased in both the router and the coverage derivation.
      */
     private suspend fun ApplicationCall.respondTrigger() {
-        val name = routeName("/os")
+        val route = routeName("/os")
+        val root = route.substringBefore('/', missingDelimiterValue = "")
+        val name = route.substringAfter('/', missingDelimiterValue = "")
         val arg = request.queryParameters["arg"]
-        val trigger = hooks.triggers[name]
+        val group = hooks.triggerGroups[root]
             ?: return respondText(
-                excludedOrUnknown(name, hooks.excludedTriggers, "entry point"),
+                "unknown entry-point root '$root' — expected one of " +
+                    "${hooks.triggerGroups.keys.sorted().joinToString("|")}, as `/os/<root>/<member>`\n",
+                status = HttpStatusCode.NotFound,
+            )
+        val trigger = group.wired[name]
+            ?: return respondText(
+                excludedOrUnknown(name, group.excluded, "entry point of '$root'"),
                 status = HttpStatusCode.NotFound,
             )
         when (trigger) {
             is RigTrigger.Fire -> {
-                withContext(hooks.mainLane) { trigger.run(arg) }
+                withContext(group.lane) { trigger.run(arg) }
                 respondText(
-                    "{\"trigger\":\"$name\",\"accepted\":true,\"waited\":false," +
+                    "{\"trigger\":\"$root/$name\",\"accepted\":true,\"waited\":false," +
                         "\"note\":\"the platform hands this entry no completion handler, so neither does " +
                         "the rig — poll /state\"}\n",
                     status = HttpStatusCode.Accepted,
                 )
+            }
+            is RigTrigger.Answering -> {
+                // The platform waits for this entry's value, so the rig does too, and answers with it
+                // verbatim. Invoked on the ROOT's lane (`TriggerGroup.lane`), never main.
+                val answer = withContext(group.lane) { trigger.run(arg, receiveTextOrNull()) }
+                respondText(answer)
             }
             is RigTrigger.Receipted -> {
                 val released = CompletableDeferred<Unit>()
@@ -294,11 +324,11 @@ class RigServer(
                 // at-most-once guarantee (`OsReceipt.releaseOnce`) needs no help here — and a second
                 // call is tolerated rather than thrown, since throwing inside an OS handler lambda has
                 // no good owner.
-                withContext(hooks.mainLane) { trigger.run(arg) { released.complete(Unit) } }
+                withContext(group.lane) { trigger.run(arg) { released.complete(Unit) } }
                 released.await()
                 val held = mark.elapsedNow().inWholeMilliseconds
                 respondText(
-                    "{\"trigger\":\"$name\",\"heldMs\":$held,\"deadlineMs\":${trigger.deadlineMs}," +
+                    "{\"trigger\":\"$root/$name\",\"heldMs\":$held,\"deadlineMs\":${trigger.deadlineMs}," +
                         "\"transferBinding\":\"${hooks.transferBindingFact}\"," +
                         "\"note\":\"heldMs and deadlineMs are measured facts; whether the receipt was " +
                         "released on completion or on its deadline is answered by the OsReceipt expiry " +

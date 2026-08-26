@@ -45,7 +45,6 @@ Roots found:
 | `IosDiscoveryStore` | x | x | x |
 | `IosDownloadTransport` | x | | |
 | `IosJoinedEventMarker` | | x | x |
-| `IosPhotoKitUploadPlatform` | | x | |
 | `IosPhotoLibraryImporter` | x | | |
 | `IosShareSheet` | x | | |
 | `IosStagedBytes` | x | | |
@@ -53,10 +52,10 @@ Roots found:
 | `KeychainAttestStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
 | `KtorPushHttpClient` | x | x | x |
+| `OsDrivenUploadMechanism` | x | | |
 | `OsReceipt` | x | | |
 | `PhotoKitAssetPresence` | x | | |
 | `PhotoKitCandidateSource` | x | x | x |
-| `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |
 | `PhotoSelectionSnapshotSource` | x | | |
 | `PublicNSLogWriter` | x | x | |

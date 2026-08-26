@@ -6,6 +6,7 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.permission.PhotoLibraryPermission
+import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReader
 import app.snapsync.rig.gallery.SeedKind
@@ -16,7 +17,6 @@ import app.snapsync.rig.gallery.wipeGallery
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.Json
-import platform.Photos.PHPhotoLibrary
 
 /**
  * Everything the hook would otherwise have to decide.
@@ -127,7 +127,7 @@ fun deviceCommands(
     core: () -> AppCore,
     photoAccess: PhotoLibraryPermission,
     osSupportsOsDrivenUpload: Boolean,
-): Map<String, RigCommand> = mapOf(
+): Map<String, RigCommand> = uploadJobDeviceCommands() + mapOf(
     // The development pin on the upload mechanism — the channel's replacement for the deleted
     // `SNAPSYNC_FORCE_URLSESSION_UPLOAD` (capability `upload-lifecycle`). Reports the pin AND what the
     // app resolves with it, because a pin naming a mechanism this OS cannot run is clamped by the
@@ -137,7 +137,7 @@ fun deviceCommands(
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
         permission = { photoAccess.permission.value },
     ),
-    "reset" to RigCommand {
+    "reset" to RigCommand { _, _ ->
         core().resetDeviceState.reset()
         // The counts AFTER the reset, so "it cleared" is verifiable rather than asserted. An in-flight
         // upload cycle can still write rows behind this read — stated in `device-state-reset` rather than
@@ -146,7 +146,7 @@ fun deviceCommands(
         val counts = core().ledgerCounts.counts.value
         CommandResult.ok("""{"reset":true,"ledgerCompleted":${counts.completed},"ledgerPending":${counts.pending}}""")
     },
-    "gallery/seed" to RigCommand { params ->
+    "gallery/seed" to RigCommand { params, _ ->
         val n = params["n"]?.toIntOrNull()
         val kind = SeedKind.entries.firstOrNull { it.name.equals(params["kind"], ignoreCase = true) }
         when {
@@ -164,7 +164,7 @@ fun deviceCommands(
             }
         }
     },
-    "gallery/wipe" to RigCommand { params ->
+    "gallery/wipe" to RigCommand { params, _ ->
         // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be
         // undone, so a stale or mistyped scope must refuse rather than delete something. `limit`/`offset`
         // are held to the same standard for the same reason: a mistyped `limit=al` must NOT fall back to
@@ -225,9 +225,14 @@ fun galleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> S
  * read returns `false` for a live configuration record whenever the app does not hold photo access, so a
  * `false` here means "no record **or** not allowed to look". Read it beside the reported permission.
  */
-fun osExtensionEnabled(osSupportsOsDrivenUpload: Boolean): () -> Boolean? = {
-    // A branch, not a `takeIf`: the selector must not be *evaluated* where it does not exist.
-    if (osSupportsOsDrivenUpload) PHPhotoLibrary.sharedPhotoLibrary().isUploadJobExtensionEnabled() else null
+fun osExtensionEnabled(registry: () -> UploadExtensionRegistry?): () -> Boolean? = {
+    // Read through the PORT, never through PhotoKit directly. The adapter behind it is the repo's sole
+    // caller of `isUploadJobExtensionEnabled`, and on a target whose host cannot hold a record it is the
+    // substitute — so this answers what the app itself would read rather than a second opinion.
+    //
+    // A null registry is the OS having no such notion at all: below 26.1 the selector does not exist, so
+    // the app composes no registry and `notApplicable` is the honest answer.
+    registry()?.isEnabled()
 }
 
 /**

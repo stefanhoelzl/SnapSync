@@ -319,6 +319,6 @@ To test a **backend change** without deploying it, point the device at a local r
 ## The headless per-build loop
 
 `ssh-mac-build` builds the dev IPA **with `-Psnapsync.rig=true`** → `apps install` → `dvt launch` → join
-over the channel (`POST /os/onSceneContinueActivity?arg=<link>`, using a **fresh event id**, or the
+over the channel (`POST /os/app/onSceneContinueActivity?arg=<link>`, using a **fresh event id**, or the
 reconcile seeds already-stored photos and nothing uploads) → the OS invokes the upload extension on its
 own cadence → confirm the objects landed in the backend's bunny storage zone.

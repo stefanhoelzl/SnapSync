@@ -1,38 +1,43 @@
-package app.snapsync.ios
+package app.snapsync.feature.upload
 
-import app.snapsync.engine.DISCOVERY_TOKEN_KEY
-import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.LedgerStore
-import app.snapsync.feature.upload.clearRequestedOffMain
-import app.snapsync.feature.upload.UploadMechanismRuntime
-import app.snapsync.logging.invocation
+import app.snapsync.ports.UploadExtensionRegistry
+import app.snapsync.ports.LogScope
+import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.BetaInteropApi
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.value
-import platform.Foundation.NSUserDefaults
-import app.snapsync.model.registrationOutcome
-import platform.Foundation.NSError
-import platform.Photos.PHPhotoLibrary
 
 /**
- * The OS-driven (iOS ≥26.1) tier's [UploadProducer] — the PhotoKit upload-extension registration
- * mechanism (capability `ios-photokit-upload`). Constructed **only** when that tier is selected; on iOS
- * 18–26.0 (or under the dev tier-force flag) this object never exists, so its `PHPhotoLibrary` calls
- * cannot run. That is what makes the two tiers mutually exclusive *structurally* rather than by a runtime
- * guard — and it is why the force flag can no longer enable both tiers at once (two `LedgerWriter`s over
- * one App-Group ledger would breach `sync-ledger`'s single-record-writer invariant).
+ * **The OS-driven upload mechanism** (iOS ≥26.1) — the tier whose uploads the system performs, driven by
+ * registering a background-upload extension (capability `ios-photokit-upload`; the lifecycle seam is
+ * `upload-lifecycle`).
+ *
+ * Named for the need rather than the technology, because it lives in the platform-free core: what this
+ * mechanism *is* is "the one where the OS does the uploading", and PhotoKit is merely how iOS spells that.
+ * It reaches the platform through two ports — [UploadExtensionRegistry] for the registration record, and
+ * [DiscoveryStore] for the cursor — so it names no platform API at all.
+ *
+ * It used to be `PhotoKitUploadProducer` in `:app:ios`, which is wiring-only and **untested by rule**. That
+ * placement is what made the ritual below unverifiable anywhere: the two things it exists to get right —
+ * the disable→enable toggle, and the repair its disable makes necessary — could only be exercised by
+ * contriving a real device into the state they defend against. Here they are ordinary tested code.
+ *
+ * Constructed **only** where the OS carries this mechanism at all: below iOS 26.1 the registration selector
+ * does not exist, and the adapter behind [UploadExtensionRegistry] would trap. That containment is
+ * structural — the composition never builds this object there — rather than a runtime guard, and it is why
+ * the two tiers are mutually exclusive by construction: the arm holds one mechanism reference, so starting
+ * two has no expression (two `LedgerWriter`s over one App-Group ledger would breach `sync-ledger`'s
+ * single-record-writer invariant).
  *
  * The app performs no upload, fetch, enumeration, or seed on this tier: the extension self-reconciles on
  * its next cycle, gated by its `joinedEventId` marker (`event-rejoin-reconciliation`).
  */
-class PhotoKitUploadProducer(
+class OsDrivenUploadMechanism(
     private val ledgerStore: LedgerStore,
-    private val log: Logger,
+    private val registry: UploadExtensionRegistry,
+    private val discoveryStore: DiscoveryStore,
+    private val log: Logger = Logger.withTag("OsDrivenUploadMechanism"),
+    private val logScope: LogScope = LogScope.NoOp,
 ) : UploadMechanismRuntime {
 
     /**
@@ -50,10 +55,20 @@ class PhotoKitUploadProducer(
      * `enableBackgroundUpload()` this producer replaces — resolved to a destructive teardown followed by a
      * no-op.
      */
-    override suspend fun start() = log.invocation("photokit.start") {
+    override suspend fun start() = log.invocation(logScope, "photokit.start") {
         stop() // awaited: the off-main REQUESTED clear completes BEFORE the re-enable below
-        setEnabled(true)
-        log.i { "background-upload extension re-registered (disable→enable, cleared REQUESTED)" }
+        // The outcome IS the report. There used to be an `Info` line here claiming the extension had been
+        // re-registered, logged unconditionally — so a device whose enable had just failed terminally at
+        // `Error` also carried a plain statement that it had succeeded, in the one capability whose stated
+        // failure mode is that "nothing else will report it". Both halves of that claim were already made
+        // by the code that performed them: the enable by its own outcome, the REQUESTED clear by the clear.
+        //
+        // Deleted rather than made conditional, and the shell gate is what forces that: this module is held
+        // at `CyclomaticComplexMethod` threshold 2, so a branch on the outcome is a decision it may not
+        // hold. `RegistrationOutcome` carries its own severity and message precisely so the shell renders
+        // without deciding — a shell that asserts is a shell that decided.
+        registry.setEnabled(true)
+        Unit
     }
 
     /**
@@ -75,9 +90,12 @@ class PhotoKitUploadProducer(
      *
      * `COMPLETED` rows are untouched, so stored files never re-upload. This destroys no dedup state.
      */
-    override suspend fun stop() = log.invocation("photokit.stop") {
-        setEnabled(false)
-        NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
+    override suspend fun stop() = log.invocation(logScope, "photokit.stop") {
+        registry.setEnabled(false)
+        // Through the port, not a second raw `NSUserDefaults` write. `DiscoveryStore.clearToken()` is the
+        // same key in the same App-Group suite, and open-coding it here meant the cursor had two writers —
+        // one of which no test, fake or harness could observe or substitute.
+        discoveryStore.clearToken()
         clearRequestedOffMain({ ledgerStore.clearRequested() }, log = log) // Boolean; the seam returns Unit
         Unit
     }
@@ -121,48 +139,8 @@ class PhotoKitUploadProducer(
      * This method exists because the two-verb lifecycle seam has no room for a third verb, and should not
      * gain one — the composition site binds this as `RelinquishThenRun`'s relinquish lambda instead.
      */
-    suspend fun deregister() = log.invocation("photokit.deregister") {
-        setEnabled(false)
-    }
-
-    /**
-     * Change the registration, and **report a failure instead of discarding it**.
-     *
-     * `setUploadJobExtensionEnabled` returns a `Boolean` and takes an `NSError**`, and this call site
-     * discarded both until now. That mattered because the failure it hid is invisible and terminal: if
-     * enabling fails, the extension is never registered, the OS never launches it, no cycle ever runs, and
-     * the screen sits at "Synchronization pending…" forever with nothing in the log, on the screen, or in
-     * crash reporting to say why.
-     *
-     * One helper for both halves, deliberately: this serves `start()` and `stop()`, and checking one but
-     * not the other would be a blind spot chosen on purpose.
-     *
-     * **`PHPhotosErrorIdentifierNotFound` (3201) on a DISABLE is not a failure.** `start()` is a
-     * disable→enable ritual, so its leading disable runs against no configuration record on any clean
-     * device — measured twice on an SE2 (iOS 26.6), reproducing as `returned=false` with that code. Raising
-     * on it would put a reporting event on the first join of every fresh install, burying the real signal in
-     * noise this very requirement created.
-     *
-     * The disable's return is also **evidence**, not just an error check: a disable that FINDS a record
-     * returns `true` with no error, so the write distinguishes "there was a registration" from "there was
-     * not" as a side effect of doing its job — which the read-back cannot reliably do, being grant-dependent.
-     */
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    private fun setEnabled(enabled: Boolean) = memScoped {
-        val errorVar = alloc<ObjCObjectVar<NSError?>>()
-        val ok = PHPhotoLibrary.sharedPhotoLibrary()
-            .setUploadJobExtensionEnabled(enabled, error = errorVar.ptr)
-        val error = errorVar.value
-        // Every branch is the tested classifier's; this reports the platform's raw facts and renders the
-        // answer. `Error` severity is what carries a failure to crash reporting.
-        val outcome = registrationOutcome(
-            enabling = enabled,
-            ok = ok,
-            errorDomain = error?.domain,
-            errorCode = error?.code,
-        )
-        // No branch: the outcome carries Kermit's own severity, so this renders without deciding. An
-        // `Error` here is what `crash-reporting` carries onward as field telemetry.
-        log.log(outcome.severity, log.tag, null, outcome.message)
+    suspend fun deregister() = log.invocation(logScope, "photokit.deregister") {
+        registry.setEnabled(false)
+        Unit
     }
 }

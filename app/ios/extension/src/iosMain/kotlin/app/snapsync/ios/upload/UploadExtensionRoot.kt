@@ -18,6 +18,7 @@ import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.join.HttpEnrollment
+import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.processingResultRawValue
 import app.snapsync.ports.requeueWhilePending
@@ -100,10 +101,16 @@ object UploadExtensionRoot {
     private val discovery: IosDiscovery by lazy {
         IosDiscovery(log, PhotoKitCandidateSource())
     }
-    private val platform: IosPhotoKitUploadPlatform by lazy {
+    private val platform: BackgroundTransfer by lazy {
         // The adapter records terminal outcomes into the ledger and acknowledges in place; the cycle's
         // promotion pass then places in the album, notifies, and promotes. Same store the cycle gets.
-        IosPhotoKitUploadPlatform(log, discovery, ledgerStore)
+        //
+        // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `ios-photokit-upload`,
+        // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is
+        // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
+        // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
+        // the process. This root is unchanged either way: it names the need, and the target answers it.
+        uploadJobQueue(log, discovery, ledgerStore)
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 

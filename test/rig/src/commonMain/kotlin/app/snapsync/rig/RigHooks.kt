@@ -50,10 +50,17 @@ class RigHooks(
     val mainLane: CoroutineContext,
     /** The device-log port, supplied by the shell because `AppCore` does not expose its ports. */
     val deviceLog: DeviceLogSource,
-    /** Wired triggers, by name. Coverage against the `@PlatformEntry` population is gated, not curated. */
-    val triggers: Map<String, RigTrigger>,
-    /** Entry points deliberately NOT wired, each with the reason that makes the omission safe. */
-    val excludedTriggers: Map<String, String>,
+    /**
+     * The wired entry points, **grouped by composition root** — the group name is the `/os/<root>/…` path
+     * segment. Coverage against each root's `@PlatformEntry` population is gated per group, not curated.
+     *
+     * Grouped rather than flat because the channel now reaches more than one root, and a flat map would
+     * make two roots declaring an entry point of the same name **unrepresentable in the inventory**: a set
+     * comparison deduplicates the pair and drops one, while the guard still passes. Grouping removes that
+     * hazard by construction instead of asserting about it, and it lets a route leaf stay equal to the
+     * member name it invokes without either root renaming a member for disambiguation.
+     */
+    val triggerGroups: Map<String, TriggerGroup>,
     /**
      * Wired user commands, by name — the members of `StatusContainerHost`'s public command surface.
      * Coverage against that population is gated exactly as [triggers] is: the set is derivable from source,
@@ -182,6 +189,32 @@ class RigHooks(
 }
 
 /**
+ * One composition root's entry points: those wired to a trigger, and those deliberately not.
+ *
+ * A root is a **process's** composition root in production — `SnapSyncRoot` is the app's,
+ * `UploadExtensionRoot` is the upload extension's. That the channel can reach both from one process is a
+ * property of this host, not of the design: the group name says whose entry point a caller is invoking,
+ * so `/os/photokit-ext/onTerminate` cannot be read as the app terminating.
+ */
+class TriggerGroup(
+    /**
+     * The lane this root's entry points are invoked on — a property of the **root**, not of the server,
+     * because it models the thread the platform itself calls that root from.
+     *
+     * The app's root is called from the **main** thread by Swift, so the rig calls it there too. The upload
+     * extension's root is not: *"In the extension process there is no UI and no main lane: `process()` is
+     * synchronous by the OS's contract and runs under `runBlocking` on the OS-invoked thread"* (spec
+     * `module-architecture`). Invoking that root on main would run its `runBlocking` on the live app's UI
+     * thread — freezing the UI for the whole cycle, and deadlocking on anything the cycle needs from main.
+     */
+    val lane: CoroutineContext,
+    /** Wired entry points, by member name. The route leaf is this name, verbatim. */
+    val wired: Map<String, RigTrigger>,
+    /** Entry points deliberately NOT wired, each with the reason that makes the omission safe. */
+    val excluded: Map<String, String>,
+)
+
+/**
  * A wired platform entry point.
  *
  * The split is **derived from the platform contract, not chosen by us**: an entry the OS hands a
@@ -212,6 +245,22 @@ sealed interface RigTrigger {
      * other, readable through `/logs` after the `[rig]` marker.
      */
     class Receipted(val deadlineMs: Long, val run: (arg: String?, done: () -> Unit) -> Unit) : RigTrigger
+
+    /**
+     * The platform **waits for this entry's return value and acts on it** — the third shape, and neither of
+     * the two above can carry it.
+     *
+     * `UploadExtensionRoot.processRawValue()` is the case: the OS invokes `process()` synchronously and
+     * reads a `PHBackgroundResourceUploadProcessingResult` back, which decides whether it re-invokes. The
+     * return IS the OS's channel, exactly as [Receipted]'s completion handler is — so the rig, playing the
+     * OS, receives it rather than inferring it from a poll. Answering `202` and polling would discard the
+     * tri-state result the entry point exists to produce.
+     *
+     * [body] is the request body, because an entry point the rig must play the OS for may need more state
+     * handed in than a query string carries — the upload-job sets, for instance, which the OS holds outside
+     * the process and hands in per invocation.
+     */
+    class Answering(val run: suspend (arg: String?, body: String?) -> String) : RigTrigger
 }
 
 /**
@@ -237,7 +286,7 @@ class RigUserCommand(val run: (params: Map<String, String>) -> Unit)
  * before sending the next is serial by construction; a caller that deliberately fires two destructive
  * commands at its own device concurrently is not a failure mode worth machinery.
  */
-class RigCommand(val run: suspend (params: Map<String, String>) -> CommandResult)
+class RigCommand(val run: suspend (params: Map<String, String>, body: String?) -> CommandResult)
 
 /**
  * What a `/device` command answers with.

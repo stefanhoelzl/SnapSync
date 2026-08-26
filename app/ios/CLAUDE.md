@@ -209,7 +209,9 @@ a shipped process's tier is a function of the device it runs on **and** the gran
 
 - **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
-  devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitUploadProducer`, which is only
+  devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitExtensionRegistry` (`:adapter:ios:app-only`), the
+  sole caller of that selector and of its read-back, reached through the `UploadExtensionRegistry` port by
+  `OsDrivenUploadMechanism` (`:domain` `feature/upload`), which is only
   constructed where the OS carries this mechanism (≥26.1) — so it can never trap on a lower system. On
   ≥26.1 under a partial grant it *is* constructed but never started, and the incoming app-driven mechanism
   deregisters it (`RelinquishThenRun`). A later move to the iOS 27 async
