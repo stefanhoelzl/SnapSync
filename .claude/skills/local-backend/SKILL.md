@@ -81,6 +81,17 @@ objects (capability `database`), which is where events, memberships, assets and 
 live. `rm -rf api/.localstore` clears both halves; clearing one and not the other leaves a rig whose
 events exist but whose photos do not, which looks like "downloads are inert" with no error anywhere.
 
+⚠️ **The rig migrates on start, and fills an absent ENROLMENT as well as an absent token.** The schema is
+applied from `migrations.ts`'s ordered list (not from `SCHEMA`), so a `.localstore` from an older rig is
+migrated forward rather than needing a wipe.
+
+A `devices` row is created **only** by `POST /attest/token`, and `PUT /devices/<id>` (the push
+registration) now UPDATEs that row — answering `401` when there is none. A physical device recovers by
+itself: the `401` drops its token, it runs its real App Attest flow against the rig, and re-registers.
+**A simulator cannot** — App Attest does not exist there, so it would `401` forever — so the fallback
+bearer enrols the device the path names whenever it supplies the token. A caller carrying its own token
+is untouched.
+
 ⚠️ **`api/.localstore` survives across sessions.** If it still holds objects from an earlier run, the
 re-join reconcile (`event-rejoin-reconciliation`) seeds them as `COMPLETED` from the device's
 stored-file listing and they never re-upload. `rm -rf api/.localstore` when you want a clean slate —

@@ -571,22 +571,11 @@ object SnapSyncRoot {
         // calls sat: a cold backstop/URLSession wake that merely touches [app] must not fire a
         // producer-start off the permission StateFlow's replay.
         app.installPermissionSubscriptions()
-        // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
-        // (StateFlow-retained, so a token delivered before this launches is still registered).
-        //
-        // ATTEST FIRST. The registration `PUT /devices/<id>` is gated, and on a fresh install the APNs
-        // token can arrive before this device has any attestation token — which is exactly what happened
-        // on the SE2: the PUT took a 401. Awaiting `ensureFresh` first removes that race.
-        //
-        // `tokenChanged` is the backstop that retries a refused registration WITHIN this process
-        // lifetime. (Not because the token arrives only once — Apple documents an up-to-date token on
-        // EVERY successful registration, and AppDelegate registers every launch — but a PUT refused
-        // now would otherwise wait for the next launch to be retried: no silent pushes, no download
-        // wakes, none of the wake-driven renewals until then.) Any new credential re-runs it.
-        scope.launch {
-            runCatching { app.attestation.ensureFresh() }
-            pushRegistration.run(pushTokenSource, app.attestation.tokenChanged)
-        }
+        // Start registering the APNs token. The attest-first ordering and the `tokenChanged` retry arm
+        // live in `compose/` (`AppCore.installPushRegistration`) — they are a join between two blind
+        // features, which is behaviour rather than wiring — and install ONLY from this host-assembly
+        // path, beside the permission subscriptions and for the same reason.
+        app.installPushRegistration(pushRegistration, pushTokenSource)
         // The host observes the adapters' read-model StateFlows directly (migration step 9's split:
         // presentation names no ports — the Keychain/PhotoKit adapters stay behind their flows).
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.

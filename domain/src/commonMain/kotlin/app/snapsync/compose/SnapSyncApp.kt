@@ -12,6 +12,7 @@ import app.snapsync.feature.download.QueuedPhotoDownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.toJoinLoad
+import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.LeaveEvent
@@ -54,6 +55,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.UserCommands
+import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.Clock
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
@@ -1049,6 +1051,37 @@ class AppCore internal constructor(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Start registering the device's APNs token, and keep the registration alive across a credential
+     * change (capability `push-registration`). Invoked from the shell's host-assembly path, beside
+     * [installPermissionSubscriptions].
+     *
+     * **ATTEST FIRST.** `PUT /devices/<id>` is gated, and on a fresh install the APNs token can arrive
+     * before this device has attested at all — measured on the SE2, where that `PUT` took a `401`.
+     * Awaiting a refresh first removes the race.
+     *
+     * **THE `tokenChanged` ARM IS THE POINT, and it is a JOIN BETWEEN TWO BLIND FEATURES** — trust emits
+     * that a new credential exists, push consumes it. Neither knows the other, and the join is the whole
+     * recovery path for a registration the backend refused: the device writes its registration once per
+     * APNs token the OS delivers, so without this a refused `PUT` waits for the next launch to be retried
+     * — no silent pushes, no download wakes, and none of the wake-driven attestation renewals that
+     * depend on them until then.
+     *
+     * That is why it lives HERE rather than in the shell. A join is behaviour, not wiring; assembled in
+     * `:app:*` it is untested by law and invisible to the world harness, so nothing would observe it being
+     * removed. Composed here, the same call the device makes is the one the harness makes.
+     *
+     * The registration and the token source are passed in rather than built: both are platform-shaped
+     * (a Ktor client over the shell's shared HTTP stack, and the compile-time APNs environment), and
+     * `:domain` builds no platform object.
+     */
+    fun installPushRegistration(registration: PushRegistration, tokens: PushTokenSource) {
+        scope.launch {
+            runCatching { attestation.ensureFresh() }
+            registration.run(tokens, attestation.tokenChanged)
         }
     }
 }

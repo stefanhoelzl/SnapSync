@@ -1,5 +1,5 @@
-import { emptyStore } from "./support/db.ts";
-import { insertEvent } from "../src/db.ts";
+import { emptyStore, enrolDevice } from "./support/db.ts";
+import { type Db, insertEvent } from "../src/db.ts";
 import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import {
@@ -92,9 +92,9 @@ function recorder(objects: Record<string, string> = {}) {
   return { calls, fetchImpl };
 }
 
-const app = (objects: Record<string, string> = {}) => {
+const app = (objects: Record<string, string> = {}, db: Db = DB) => {
   const { calls, fetchImpl } = recorder(objects);
-  return { calls, app: createApp({ config: CONFIG, db: DB, fetch: fetchImpl, now: () => NOW }) };
+  return { calls, app: createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW }) };
 };
 
 const token = await mintToken(CONFIG, D, NOW);
@@ -228,13 +228,21 @@ Deno.test("gate: EVERY route refuses an unauthenticated request, and touches no 
 });
 
 Deno.test("gate: EVERY route accepts a valid token", async () => {
+  // The config route additionally requires an ATTESTATION RECORD, and answers 401 without one
+  // (capability `device-attestation`). That is a route-level refusal, not the gate's — enrol the device
+  // so this test keeps asserting what it is about: that a valid token is never rejected by the GATE.
+  // In a store of its OWN: enrolling into the shared one would leak into the "never attested" tests below
+  // and make them pass for the wrong reason.
+  const enrolled = await emptyStore();
+  await enrolDevice(enrolled, D);
   for (const [path, init] of GATED) {
     const { app: a } = app({
       [`events/${E}/metadata.json`]: JSON.stringify({ eventId: E, name: "x", createdAt: "t" }),
-    });
+    }, enrolled);
     const res = await a.request(path, { ...init, headers: bearer });
     assert(res.status !== 401, `${init.method ?? "GET"} ${path} rejected a VALID token`);
   }
+  enrolled.close();
 });
 
 Deno.test("gate: an expired token is refused like no token at all", async () => {
@@ -501,11 +509,42 @@ Deno.test("renew: a device that never attested must attest, not renew", async ()
   assertEquals(res.status, 401);
 });
 
+Deno.test("renew: an unreadable store is 502, never the 401 that means 'attest again'", async () => {
+  // Absence and "could not ask" have DIFFERENT remedies and must not collapse. A 401 sends the device
+  // down a full Apple attestation — the throttled path — so a database blink must read as retry-me.
+  const failing: Db = { ...DB, execute: () => Promise.reject(new Error("store down")) };
+  const { app: a } = app({}, failing);
+  const res = await a.request("/api/v1/attest/renew", {
+    method: "POST",
+    body: JSON.stringify({
+      deviceId: D,
+      assertion: "AA==",
+      challenge: await mintChallenge(CONFIG, NOW),
+    }),
+  });
+  assertEquals(res.status, 502);
+});
+
+Deno.test("config: a device with no attestation on file is refused, and nothing is created", async () => {
+  // The token verifies — it is ours and unexpired — but the backend holds no attestation for this device.
+  // `401` because the remedy is the one a rejected token already has, and the shipped client takes it.
+  const db = await emptyStore();
+  const { app: a } = app({}, db);
+  const res = await a.request(`/api/v1/devices/${D}`, {
+    method: "PUT",
+    body: JSON.stringify({ pushToken: { kind: "apns", token: "t", env: "sandbox" } }),
+    headers: bearer,
+  });
+  assertEquals(res.status, 401);
+  assertEquals((await db.execute(`SELECT * FROM devices`)).rows.length, 0);
+  db.close();
+});
+
 // ── Leave is rename-only (capability `event-leave-endpoint`) ─────────────────────────────────────────
 
 Deno.test("leave: the departing device's record + attestation are RETAINED (no leave-time GC)", async () => {
   // Leaving is non-destructive: it marks the membership `departed` and returns 200, touching neither the
-  // device's record nor its attestation. A fully-orphaned device is collected only by the nightly sweep
+  // device's push registration nor its attestation — one row now holds both. A fully-orphaned device is collected only by the nightly sweep
   // (capability `scheduled-cleanup`), never by leave — which is what lets a device rejoin, or join a
   // different event, without re-attesting.
   const db = await emptyStore();
@@ -523,10 +562,7 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
     `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'active', 'x')`,
     [E2, D],
   );
-  await db.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', 'x')`,
-    [D],
-  );
+  await enrolDevice(db, D);
 
   const calls: Call[] = [];
   const fetchImpl: FetchLike = (url, init) => {
@@ -542,12 +578,12 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
     (await db.execute(`SELECT state FROM memberships WHERE device_id = ?`, [D])).rows,
     [{ state: "departed" }],
   );
-  // The record survives …
+  // The record survives — attestation and all, since they are one row now …
   assertEquals(
-    (await db.execute(`SELECT * FROM device_records WHERE device_id = ?`, [D])).rows.length,
-    1,
+    (await db.execute(`SELECT attest_key FROM devices WHERE device_id = ?`, [D])).rows,
+    [{ attest_key: "BASE64KEY" }],
   );
-  // … and nothing was deleted from storage, where the attestation record lives.
+  // … and nothing was deleted from storage either.
   assert(!calls.some((c) => (c.init.method ?? "GET") === "DELETE"));
   db.close();
 });

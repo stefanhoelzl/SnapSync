@@ -9,7 +9,9 @@ import {
 import type { Config } from "../../src/config.ts";
 import type { FetchLike } from "../../src/storage.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
-import { type Db, insertEvent, migrate, publishStatements } from "../../src/db.ts";
+import { type Db, insertEvent, publishStatements } from "../../src/db.ts";
+import { migrate } from "../../src/migrations.ts";
+import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
 
 // The sweep (capability `scheduled-cleanup`) MARKS FROM THE DATABASE and DELETES FROM STORAGE. These
 // tests therefore drive two doubles: a real in-process SQLite for the relational half (so cascades and
@@ -324,21 +326,36 @@ Deno.test("asset phase → a collected byte's ROW is deleted BEFORE the byte", a
   d.close();
 });
 
-Deno.test("asset phase → a device in NO surviving event loses its bytes, record and attestation", async () => {
+Deno.test("asset phase → a device in NO surviving event loses its bytes and its whole record", async () => {
   const d = await db();
-  await d.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', '2026-07-01T00:00:00Z')`,
-    [ORPHAN],
-  );
+  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
   const store = fake({
     [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 7 },
-    [`devices/${ORPHAN}.attest.json`]: {},
   });
   const { summary } = await run(d, store);
   assertEquals(summary.devices, { deleted: 1, kept: 0 });
   assertEquals(summary.files.deleted.count, 1);
-  assert(!store.store.has(`devices/${ORPHAN}.attest.json`));
-  assertEquals((await d.execute(`SELECT * FROM device_records`)).rows.length, 0);
+  // One row, attestation included — there is no second object beside it any more.
+  assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 0);
+  d.close();
+});
+
+Deno.test("asset phase → an orphan that may still hold a WORKING token keeps its row", async () => {
+  // The expiry clause, and it is forcing rather than tidy. A device token is verified from its own
+  // signature, so it keeps working whether or not this row survives. Collect the row while the token
+  // lives and the device's next config write is refused, and it recovers by minting a fresh
+  // Secure-Enclave key and completing a full Apple attestation — the throttled path — which this nightly
+  // run then re-arms the following night, once per launch-day, for as long as it stays orphaned.
+  const d = await db();
+  await enrolDevice(d, ORPHAN, LIVE_TOKEN);
+  const store = fake({
+    [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 7 },
+  });
+  const { summary } = await run(d, store);
+  assertEquals(summary.devices, { deleted: 0, kept: 1 });
+  // Its BYTES are still collected — that rule keys on membership alone and is unchanged.
+  assertEquals(summary.files.deleted.count, 1);
+  assertEquals((await d.execute(`SELECT * FROM devices`)).rows.length, 1);
   d.close();
 });
 
@@ -350,10 +367,7 @@ Deno.test("asset phase → a DEPARTED member of a surviving event keeps its byte
   // A second, ACTIVE member: an event whose every member has departed is EMPTY and would be reclaimed,
   // taking the departed member's bytes with it — which is a different rule than the one under test.
   await member(d, E, D2, []);
-  await d.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', '2026-07-01T00:00:00Z')`,
-    [D],
-  );
+  await enrolDevice(d, D, DEAD_TOKEN);
   const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 3 } });
   const { summary } = await run(d, store);
   assertEquals(summary.devices, { deleted: 0, kept: 1 });
@@ -413,10 +427,7 @@ Deno.test("dry-run → deletes NOTHING, but counts the same candidates a real ru
 
 Deno.test("summary → file bytes are the SUM of each entry's Length, not the object count", async () => {
   const d = await db();
-  await d.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', '2026-07-01T00:00:00Z')`,
-    [ORPHAN],
-  );
+  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
   const store = fake({
     [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1500 },
     [`files/devices/${ORPHAN}/b.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 2500 },
@@ -426,45 +437,9 @@ Deno.test("summary → file bytes are the SUM of each entry's Length, not the ob
   d.close();
 });
 
-Deno.test("an EMPTY store with bytes in the zone is REFUSED, not swept", async () => {
-  // The un-backfilled state. An empty store says "nothing is referenced", and the asset phase would
-  // then read every byte as unreferenced with every floor `+∞` — deleting the whole zone. This is the
-  // guard that makes a failed cutover a loud, harmless failure instead of a silent mass deletion.
-  const d = await db();
-  const store = fake({
-    [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 10 },
-    [`files/devices/${D2}/b.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 10 },
-  });
-  let threw = "";
-  try {
-    await run(d, store);
-  } catch (e) {
-    threw = String(e);
-  }
-  assertStringIncludes(threw, "refusing to sweep");
-  assertStringIncludes(threw, "un-backfilled");
-  assertEquals(store.deletes, []); // nothing collected
-  d.close();
-});
-
-Deno.test("a DRY RUN over an empty store is refused too", async () => {
-  // A dry run reporting "would delete every byte in the zone" is a report nobody should have to
-  // interpret, and treating it as informational invites someone to re-run it for real.
-  const d = await db();
-  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 } });
-  let threw = "";
-  try {
-    await run(d, store, true);
-  } catch (e) {
-    threw = String(e);
-  }
-  assertStringIncludes(threw, "refusing to sweep");
-  d.close();
-});
-
 Deno.test("an empty store with an EMPTY zone sweeps normally", async () => {
-  // The guard keys on the CONTRADICTION, not on emptiness: a genuinely empty world has no bytes either,
-  // and must not be blocked from running.
+  // An empty world is an ordinary world: nothing referenced, nothing stored, nothing to do. (There is no
+  // longer a refusal for the empty-store-with-bytes case — see this change's design.md D9.)
   const d = await db();
   const { summary } = await run(d, fake({}));
   assertEquals(summary.errors, 0);
@@ -473,7 +448,8 @@ Deno.test("an empty store with an EMPTY zone sweeps normally", async () => {
 });
 
 Deno.test("a POPULATED store still collects an orphaned device's bytes", async () => {
-  // The guard must not have disabled the fully-orphaned collection it sits next to.
+  // The byte rule keys on membership and the retention floor, independently of whether the device's own
+  // row survives — an orphan with a live token keeps its row and still loses its bytes.
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
@@ -493,10 +469,7 @@ Deno.test("site/ prefix is never touched by the sweep", async () => {
   // The storage zone is a co-tenant: the public `site/` prefix lives beside private user data
   // (capability `backend-deployment`). The sweep enumerates `files/devices/` and nothing else.
   const d = await db();
-  await d.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', '2026-07-01T00:00:00Z')`,
-    [ORPHAN],
-  );
+  await enrolDevice(d, ORPHAN, DEAD_TOKEN);
   const store = fake({
     "site/index.html": {},
     "site/_astro/app.abc123.js": {},

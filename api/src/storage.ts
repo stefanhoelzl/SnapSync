@@ -9,14 +9,6 @@ import type { Config } from "./config.ts";
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/**
- * Which App Attest environment attested a device — persisted in {@link AttestRecord}. Defined here (with
- * the storage shapes) rather than in `attest.ts` so this module carries NO dependency on the attest
- * verifier (and its `@peculiar/x509` graph); the verifier imports this type. Keeping `storage.ts` free of
- * heavy deps is what lets storage-only tooling (the `site/` mirror-deploy) reuse its primitives.
- */
-export type AttestEnvironment = "production" | "development";
-
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
 // and from the byte store `files/devices/<deviceId>/…`.
@@ -78,23 +70,6 @@ export function deviceDir(deviceId: string): string {
 export function deviceConfigKey(deviceId: string): string {
   return `devices/${encodeURIComponent(deviceId)}.json`;
 }
-
-/**
- * Storage key of a device's attestation record: `devices/<deviceId>.attest.json` (capability
- * `device-attestation`). Holds the attested public key, written ONCE at attestation and read ONLY when
- * renewing — never on a gated request, so no route pays a storage read to authenticate. A flat sibling of
- * `devices/<deviceId>.json`, and disjoint from every other namespace.
- */
-export function deviceAttestKey(deviceId: string): string {
-  return `devices/${encodeURIComponent(deviceId)}.attest.json`;
-}
-
-/** A device's attestation record: the attested public key, base64, plus which environment attested it. */
-export type AttestRecord = {
-  publicKey: string;
-  environment: AttestEnvironment;
-  attestedAt: string;
-};
 
 /**
  * The event marker's contents — the registry record written on create (capability `event-creation`).

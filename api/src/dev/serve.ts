@@ -23,12 +23,23 @@
 //     `DeviceAttestation.rejected()` on the device then drops it and re-attests, so crossing backends
 //     heals the credential with no operator action. `/attest/*` is ungated either way, so the device's
 //     REAL attestation flow runs for real against the rig.
+//
+//     THE FALLBACK ALSO FILLS AN ABSENT ENROLMENT, and must. A `devices` row is created only by
+//     `POST /attest/token` (capability `device-attestation`: a row exists iff the device has attested),
+//     and `PUT /api/v1/devices/<id>` — the push registration — now UPDATEs that row and answers 401 when
+//     there is none. On a SIMULATOR that is unrecoverable rather than a first-launch round-trip: App
+//     Attest does not exist there (`DCAppAttestService.isSupported` is false), so the app never attests,
+//     `DeviceAttestation.refresh` returns early without trying, and the registration would 401 forever.
+//     Supplying a credential without the enrolment it implies is half a credential, so the fallback
+//     supplies both. A caller with its own token is untouched here too — a real device attests for real.
 
 import { createApp } from "../app.ts";
 import { mintToken } from "../attest.ts";
+import { putAttestation } from "../db.ts";
+import { DEV_ATTEST_TTL_MS, enrolmentTarget } from "./fallback.ts";
 import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
-import { migrate } from "../db.ts";
+import { migrate } from "../migrations.ts";
 import { fsFetch } from "./fs-storage.ts";
 import { startTunnel, type Tunnel } from "./tunnel.ts";
 
@@ -95,6 +106,18 @@ async function handler(request: Request): Promise<Response> {
   }
 
   if (!request.headers.get("authorization")) {
+    // The push registration is the one route that needs an enrolment as well as a token. Enrol exactly
+    // the device the path names — not a fixed dev id — because the route reads the row by that id.
+    const enrol = enrolmentTarget(request.method, path);
+    if (enrol) {
+      await putAttestation(
+        db,
+        enrol,
+        { publicKey: "dev-rig-not-a-real-attestation", environment: "development" },
+        new Date().toISOString(),
+        new Date(Date.now() + DEV_ATTEST_TTL_MS).toISOString(),
+      );
+    }
     const headers = new Headers(request.headers);
     headers.set("authorization", `Bearer ${devToken}`);
     request = new Request(request, { headers });
@@ -117,6 +140,8 @@ console.log(`
   or a simulator can follow one directly, and so can curl.
 
   curl works with no authorization header; a request carrying a bad token still 401s.
+  a push registration from an un-attested caller (curl, or a SIMULATOR — App Attest does not exist
+  there) is enrolled by the rig rather than refused.
 `);
 
 Deno.serve({ port: options.port, hostname: "127.0.0.1" }, handler);

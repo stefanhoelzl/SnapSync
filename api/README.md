@@ -4,9 +4,9 @@ A **streaming proxy** (Deno/TypeScript + **Hono**) on **bunny Edge Scripting** �
 The device-facing origin is the custom domain **`snapsync.stho.net`** (our Bunny DNS zone, Let's
 Encrypt cert), `CNAME`'d to the bunny **pull zone** that fronts the Edge Script. It mints events,
 streams photo bytes from the iOS background-upload extension straight into a bunny **native**
-Storage zone, records per-event device manifests, and serves per-device and event-wide listings.
-Downloads are **presigned S3 GET URLs** the device fetches directly from bunny's S3 endpoint — no
-download proxy, no on-device SigV4, no per-resource mint round-trip.
+Storage zone, records what each device shares in a **relational store**, and serves per-device and
+event-wide listings. Downloads are **presigned S3 GET URLs** the device fetches directly from
+bunny's S3 endpoint — no download proxy, no on-device SigV4, no per-resource mint round-trip.
 
 > A CDN pull zone sits between every device and this script. Anything the device depends on must
 > hold **as observed through the pull zone**, not merely at the origin — it may answer `OPTIONS`
@@ -14,34 +14,50 @@ download proxy, no on-device SigV4, no per-resource mint round-trip.
 > `no-cache`, not just `no-store`; bunny documents the former, never the latter). Deno Deploy, the
 > retired runtime, had no CDN in front and so could not exhibit this class of behavior at all.
 
-Authoritative contracts: `openspec/specs/event-creation`, `openspec/specs/bunny-upload-endpoint`,
-`openspec/specs/bunny-list-endpoint`, `openspec/specs/device-manifest`,
-`openspec/specs/event-leave-endpoint`, and `openspec/specs/backend-deployment` (which owns the
-deployment pipeline **and** the configuration contract — the former `backend-config` capability
-folded into it). Rationale lives in each spec's `## Purpose` and its `Decision record:` pointer into
-`openspec/changes/archive/`.
+Authoritative contracts: `openspec/specs/api-endpoints` (the route table — bodies, statuses, and
+which routes are gated), `openspec/specs/database` (the relational store),
+`openspec/specs/device-attestation` (the gate), `openspec/specs/event-limits`,
+`openspec/specs/leave-event`, `openspec/specs/scheduled-cleanup`, and
+`openspec/specs/backend-deployment` + `openspec/specs/deployment-configuration` (the pipeline and
+the configuration contract). Rationale lives in each spec's `## Purpose` and its `Decision record:`
+pointer into `openspec/changes/archive/`.
 
-## Storage layout
+## Where state lives
 
-Disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, never a literal label, so
-nothing collides). The private data (below) is joined by one PUBLIC `site/` prefix holding the built
-browser-facing site (capability `web-site`), which the api proxies (`serveSiteObject`); the nightly
-sweep is prefix-scoped and never touches it:
+**The database holds the facts; storage holds the bytes.** Five tables (capability `database`),
+reached through the one narrow `Db` port in `db.ts`:
 
 ```
-events/<eventId>/metadata.json                 event marker / registry record { eventId, name, createdAt, startsAt, endsAt, capacity }
-events/<eventId>/devices/<deviceId>.json       per-event device manifest — ACTIVE member (projected assets)
-events/<eventId>/devices/<deviceId>.left.json  per-event device manifest — DEPARTED (left; still in the union)
+events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds
+memberships   (event_id → events, device_id), state ∈ {active, departed}, joined_at
+event_assets  (event_id, device_id → memberships), asset_id, creation_date
+resources     (device_id, key), asset_id, role, content_type, filename, uploaded
+devices       device_id, created_at, attest_key/env/attested_at/token_expires_at, push_* (nullable)
+```
+
+`memberships` and `event_assets` cascade from `events`, so deleting an event removes both in one
+statement. **`resources` is deliberately outside that chain**: the byte upload route addresses a row
+from the URL path alone (`/api/v1/files/devices/<id>/<filename>`), which carries no event — a row
+bearing `event_id` could not be written by the route that knows a byte landed. That is also what
+lets one uploaded byte serve two events during a switch without being stored twice.
+
+An event **exists** iff its `events` row does — the whole existence gate, and what makes a `404` a
+sealed absence a client's self-leave can act on. A **`devices` row exists iff that device has
+attested**; the ordering is forced by the gate below, not chosen.
+
+The storage zone now holds only bytes and the public site:
+
+```
 files/devices/<deviceId>/<filename>            a device's raw uploaded photo/resource byte objects
-devices/<deviceId>.json                        a device's config { pushToken: { kind, token, env } } (NOT a file)
 site/index.html · site/join/index.html · site/_astro/*   the Astro build (public; mirror-deployed by site-deploy.yml)
 ```
 
-An event **exists** iff its marker `events/<eventId>/metadata.json` is present. Bunny's Edge Storage
-API has no `HEAD`, so existence is a small `GET` of the marker. The **byte store is
-device-partitioned and event-independent** — a resource is uploaded once under its device's
-namespace and linked into any number of events by reference (the per-event manifest). The device id
-is self-asserted (possession of the UUID is the capability); App Attest is the noted hardening path.
+> **Legacy objects.** `events/<id>/metadata.json`, `events/<id>/devices/<id>.json[.left]`,
+> `devices/<id>.json` and `devices/<id>.attest.json` may still be present. **Nothing reads or writes
+> them.** The first three were left in place as the relational migration's rollback path
+> (`changes/archive/2026-08-25-record-uploads-in-database`, D13) and reclaiming them is a later
+> change's job; the attestation objects are deleted by this change's one-time migration. The nightly
+> sweep does not touch any of them.
 
 Every event is **bounded** (capability `event-limits`), along two INDEPENDENT axes:
 
@@ -49,22 +65,38 @@ Every event is **bounded** (capability `event-limits`), along two INDEPENDENT ax
   otherwise; absent `endsAt` falls back to the maximum). It bounds only which photos may be
   **uploaded** and closes nothing: joining is never refused on time, so a guest who scans days late
   still contributes the in-window photos still on their phone.
-- the **lifetime** — `lifetimeSeconds` (30 days), stamped onto the write-once marker as a DURATION.
+- the **lifetime** — `lifetime_seconds` (30 days), stamped onto the write-once row as a DURATION.
   The delete-by is DERIVED per read as `max(createdAt, startsAt) + lifetimeSeconds`: anchoring at
   the later of the two keeps a back-dated event from being born expired and a created-early one from
   dying inside its own window. Stamping the duration rather than the instant keeps the per-event
   value immutable against a config change while leaving the anchor policy correctable without
-  rewriting stored markers.
+  rewriting stored rows.
 
-`capacity = 10` (ever-enrolled, active ∪ departed) is the only refusal a route makes, `409`.
+`capacity = 10` (ever-enrolled, active ∪ departed) is the only refusal a route makes, `409`. It is
+enforced by **one conditional statement**, so concurrent first enrollments cannot overshoot —
+measured: ten devices racing for three slots enrolled ten under read-then-write and exactly three
+here.
 
 The lifecycle is **binary**: the event exists, or the nightly sweep (capability `scheduled-cleanup`)
 has deleted it. No route reaps on touch, even past the delete-by — which is what makes a `404` a
-REAL deletion, and therefore safe as one of the two witnesses a client's self-leave requires
-(capability `leave-event`). The sweep reclaims an event past its delete-by (the guarantee) or one
-that is EMPTY — ever joined, no active member left (opportunistic: a leave whose `DELETE` never
-landed keeps a manifest active, so an abandoned event may never empty). A marker missing
-`startsAt`/`endsAt`/`capacity` is `gone`: `404`, and the sweep deletes it.
+REAL deletion. The sweep reclaims an event past its delete-by (the guarantee) or one that is EMPTY —
+ever joined, no active member left (opportunistic: a leave whose `DELETE` never landed keeps a
+membership active, so an abandoned event may never empty).
+
+## The gate
+
+**Every route requires a device token** (capability `device-attestation`) — a backend-minted,
+HMAC-signed bearer credential obtainable only by completing App Attest. The exceptions are a
+**closed list**: the three `/api/v1/attest/*` issuers, `OPTIONS` on any path, `GET`/`HEAD` on
+exactly `/`, `/join` and `/.well-known/apple-app-site-association`, and `GET`/`HEAD` on
+`/api/v1/events/<id>` and `/api/v1/events/<id>/files` (the no-app download page holds no
+attestation; possession of the `eventId` is the read capability). Every non-`GET` method on those
+event paths stays gated.
+
+**Verifying a token touches nothing** — one HMAC comparison, no storage read, no Apple call. That is
+load-bearing: verification runs on the streaming byte-upload hot path, where a round-trip per
+resource would be paid on every photo. A route that additionally needs the device's _record_ reads
+it itself, after the gate has passed.
 
 ## Contract
 
@@ -76,197 +108,239 @@ landed keeps a manifest active, so an abandoned event may never empty). A marker
 > `createApp`.
 
 ```
+GET  /api/v1/attest/challenge                              (UNGATED — it issues the input to attestation)
+    →  200 {challenge}   a stateless, HMAC-signed, time-bounded nonce. Writes NOTHING.
+
+POST /api/v1/attest/token                                  (UNGATED — self-authenticating)
+    body: {deviceId, keyId, attestation, challenge}
+    →  verifies chain → Apple's root, nonce, app-id hash, counter, aaguid
+    →  records the attested key + the minted token's expiry as the device's row  (the ENROLMENT)
+    →  201 {token}  | 401 on any failed check or a stale challenge | 502 if the record cannot be written
+       PERSISTS BEFORE MINTING: a token issued against a record we failed to write is a credential
+       nothing knows about.
+
+POST /api/v1/attest/renew                                  (UNGATED — self-authenticating)
+    body: {deviceId, assertion, challenge}                 (no keyId — the key is found by deviceId)
+    →  verifies a local Secure-Enclave ASSERTION against the stored key; no Apple round-trip
+    →  advances the recorded token expiry, THEN mints
+    →  201 {token}  | 401 when no attestation is on file, or the assertion is refused | 502 on a read
+       or write failure (absence and "could not ask" are DIFFERENT answers — 401 sends the device
+       down a full, throttled re-attestation, so a database blink must read as retry-me)
+
 POST /api/v1/events
     body: {"name": "<name>", "startsAt": "<canonical instant>"}   (name trimmed, non-empty, ≤100 chars)
     body: … optional {"endsAt": "<canonical instant>"}  (strictly after startsAt, ≤30 days after it)
-    →  bunny native PUT  events/<minted-uuid>/metadata.json   (stamps capacity + lifetimeSeconds)
+    →  INSERT events  (stamps capacity + lifetime_seconds)
     →  201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}   | 400 | 502
 
-GET  /api/v1/events/<eventId>
+GET  /api/v1/events/<eventId>                              (UNGATED — GET/HEAD only)
+    →  SELECT events
     →  200 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}
-       (`deletesAt` DERIVED per response, never stored; a legacy/incomplete marker is never served)
-       | 404 when never created OR already swept | 502 on a non-404 marker read failure
+       (`deletesAt` DERIVED per response, never stored)
+       | 404 when never created OR already swept | 502 on a read failure
 
-PUT  /api/v1/files/devices/<deviceId>/<filename>          (byte upload — UNGATED, no marker read)
+PATCH /api/v1/events/<eventId>                             (RENAME — capability `event-rename`)
+    body: {"name": "<name>"}
+    →  UPDATE events SET name  — the ONLY write to an existing event row; every other column is
+       write-once, which is why the statement is spelled out in one place rather than composed
+    →  200 | 400 | 404 | 502            No ownership check: the device-token gate is the whole authorization.
+
+PUT  /api/v1/files/devices/<deviceId>/<filename>           (byte upload — GATED by token, reads no event)
     body: raw resource bytes (streamed, never buffered)
     →  bunny native PUT  https://<host>/<zone>/files/devices/<deviceId>/<filename>
        header  AccessKey: <storage-zone password>
+    →  then BEST-EFFORT: record the resource row as uploaded (a failure never changes the response)
     →  201 on confirmed store | 502 on any upstream error/abort
     OPTIONS → 204 (no resumable-upload advertised → the iOS uploader falls back to a plain PUT)
+       The device id stays self-asserted: the token proves a genuine app instance, NOT ownership of
+       the partition (a stated non-goal — the UUID is the capability).
 
-GET  /api/v1/files/devices/<deviceId>                     (per-device raw listing — UNGATED)
-    →  single bunny native LIST of  files/devices/<deviceId>/
-    →  200 [ {filename, size, url}, … ]  (200 [] for an empty/unknown partition) | 502 on LIST failure
-       url = a presigned S3 GET URL (below);  Cache-Control: no-store, no-cache, max-age=0
+GET  /api/v1/files/devices/<deviceId>                      (per-device listing)
+    →  SELECT resources WHERE uploaded = 1
+    →  200 [ {filename, url}, … ]  (200 [] for a device with nothing stored) | 502
+       `filename` is the stored object KEY (what the rejoin reconciler matches its ledger against),
+       not the human capture name;  url = a presigned S3 GET URL (below)
+       Cache-Control: no-store, no-cache, max-age=0
 
-PUT  /api/v1/devices/<deviceId>                    (device config / push token — UNGATED by event)
-    body: { pushToken: { kind: "apns", token, env } }  (streamed)     DEVICE-ID is the capability
-    →  bunny native PUT  devices/<deviceId>.json   → 201 | 502   (last-write-wins; not a listed file)
+PUT  /api/v1/devices/<deviceId>                            (push registration — DEVICE-ID is the capability)
+    body: { pushToken: { kind: "apns", token, env } }   or  {} / {"pushToken": null} for an explicit absence
+    →  UPDATE devices SET push_*   — an UPDATE, never an insert: a row is created only by attestation
+    →  201 | 400 on a malformed pushToken | 502
+    →  401 when the write affects NO ROW — the token verified, but the backend holds no attestation
+       for this device. The shipped client recovers with no change: it drops the token, attests
+       (which creates the row), and re-sends the registration when the new credential arrives.
 
-POST /api/v1/events/<eventId>/notify                       (silent push to members — GATED on event existence)
-    →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
-    →  LIST events/<eventId>/devices/  → per ACTIVE member (LWW): read devices/<id>.json → APNs silent push
-    →  202 (bare)  |  502 only if the member LIST fails
+POST /api/v1/events/<eventId>/notify                       (silent push to members — GATED on existence)
+    →  [gate] SELECT events → absent? 404 | read failure? 502
+    →  SELECT memberships WHERE state = 'active' → read each device's push token → APNs silent push
+    →  202 (bare) | 502 only if the member read fails
        best-effort: members without a token are skipped; a per-token failure never fails the request
-       fixed payload (content-available), ACTIVE members only (a departed <id>.left.json is skipped)
+       fixed payload (content-available); DEPARTED members are skipped
 
-PUT  /api/v1/events/<eventId>/devices/<deviceId>   (device manifest — GATED on existence + event limits)
-    body: full-state JSON device manifest (streamed)
-    →  [gate] GET events/<eventId>/metadata.json  → absent? 404 (stream nothing) | non-404 failure? 502
-       then LIST events/<eventId>/devices/ (known-vs-new + the capacity count):
-       NEW device with ever-enrolled (active ∪ departed) ≥ capacity → 409  — the ONLY refusal; there is
-       no time-based rejection, however long after endsAt the enrollment arrives
-       (a KNOWN device — active or .left — always passes; leaving frees no slot; rejoin reuses its slot)
-    →  bunny native PUT  events/<eventId>/devices/<deviceId>.json   → 201 | 502
+PUT  /api/v1/events/<eventId>/devices/<deviceId>           (device manifest — GATED on existence + capacity)
+    body: full-state JSON device manifest
+    →  [gate] enrol via ONE conditional statement: a NEW device is refused 409 once `capacity`
+       distinct device ids have ever enrolled (leaving frees no slot; a rejoin reuses its own).
+       Capacity is the ONLY refusal — enrollment is never closed by time, however long after endsAt.
+       A zero-row outcome is disambiguated by a follow-up read, never collapsed: 409 vs 404.
+    →  ONE ATOMIC BATCH: membership → active; the membership's event_assets REPLACED with exactly
+       what the body lists (an omitted asset is removed); each named resource upserted, with
+       `uploaded` MONOTONE (an out-of-order publish cannot un-say an upload)
+    →  201 | 400 | 404 | 409 | 502
 
-DELETE /api/v1/events/<eventId>/devices/<deviceId>          (LEAVE — GATED on event existence)
-    →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
-    →  (1) rename active manifest → events/<eventId>/devices/<deviceId>.left.json (copy → FRESH ts, then delete active)
-       (2) if NO active member remains (last-write-wins over the devices/ listing): delete the events/<eventId>/ tree
-       (3) per freed device with NO manifest in any surviving event: delete files/devices/<id>/* + devices/<id>.json
-    →  200  |  502 on any transport failure
-       idempotent + leak-safe (write .left.json BEFORE deleting .json; every delete of an absent object is a no-op)
-       membership is last-write-wins: a departed <id>.left.json stays in the UNION but is skipped by NOTIFY & the reap
+DELETE /api/v1/events/<eventId>/devices/<deviceId>         (LEAVE — GATED on existence)
+    →  [gate] SELECT events → absent? 404 | read failure? 502
+    →  UPDATE memberships SET state = 'departed'
+    →  200 | 502
+       Idempotent and NON-DESTRUCTIVE: the assets are RETAINED, so the union keeps serving what the
+       device shared. No reap here and no leave-time GC — when this was the last active member the
+       event becomes EMPTY and the nightly sweep reclaims it.
 
-GET  /api/v1/events/<eventId>/files                        (event-wide UNION — GATED on event existence)
-    →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
-    →  LIST events/<eventId>/devices/  → per device: read device.json + LIST files/devices/<deviceId>/
-    →  200 [ {deviceId, assetId, creationDate, resources:[{role,contentType,key,filename,size,url}]} ]
-       complete assets only (every named resource present in the device's byte partition), flattened
-       across devices, each tagged with its owning deviceId;  200 [] for an empty event
-       any non-404 read failure anywhere (incl. a manifest JSON parse) → 502 (never a partial union)
+GET  /api/v1/events/<eventId>/files                        (event-wide UNION — UNGATED, GET/HEAD only)
+    →  [gate] SELECT events → absent? 404 | read failure? 502
+    →  ONE query joining event_assets to resources, spanning active AND departed memberships
+    →  200 [ {deviceId, assetId, creationDate, resources:[{role,contentType,key,filename,url}]} ]
+       an asset naming an unrecorded resource is dropped (defense in depth); 200 [] for an empty event
        Cache-Control: no-store, no-cache, max-age=0
 ```
 
-- `eventId` / `deviceId` — **UUIDs** (Hono route params, validated). The UUID is the capability (no
-  token); the event marker is consulted for **existence**, never authorization.
+- `eventId` / `deviceId` — **UUIDs** (Hono route params, validated). The UUID is the capability; the
+  event row is consulted for **existence**, never authorization.
 - `filename` — a single path segment; a literal or encoded `/` (`%2F`) or `..` is rejected (`400`)
   so keys stay flat. It is percent-encoded into the storage key and decoded back on listing, so the
   round-trip is byte-exact.
-- **Stored keys are bare** — the URL labels (`files`/`devices`/`events`) are structural, not part of
-  the stored key beyond the layout above.
-- **Last-write-wins** — every object write is one unconditional PUT with no existence check on the
-  object key. A byte key is device-partitioned (same-device overwrite of a byte-identical
-  re-upload); a manifest is rewritten in full each cycle.
-- **Faithful outcome** — a write returns `2xx` **only** when bunny confirms the store; any upstream
+- **Faithful outcome** — a write returns `2xx` **only** when the store confirms it; any upstream
   error/abort → `502` (the iOS ledger retries). A read returns a `2xx` array **only** when every
-  required LIST/GET succeeds; otherwise `502`, never a partial/truncated result. Never a false
-  success.
+  required query/LIST succeeds; otherwise `502`, never a partial result. Never a false success.
 - **Presigned download URLs** — each listed object's `url` is an AWS **SigV4 presigned S3 GET URL**
   (path-style `https://<s3-host>/<zone>/files/devices/<deviceId>/<filename>?X-Amz-…`,
   `X-Amz-Expires` **7 days**), signed with the zone name as the S3 Access Key ID and the storage
   `AccessKey` as the secret. The query signature is the sole authorization — the device fetches the
   object directly from bunny's S3 endpoint with no credential. A **fresh** URL is minted on every
   list/union response (never cached), so each read yields one valid for a further 7 days. Both the
-  per-device list and the union use the same builder, so their `url`s agree by construction. The
-  former download-proxy route is retired.
-- **Methods** — `POST /api/v1/events`, `GET /api/v1/events/<id>`, `GET /api/v1/files/devices/<id>`,
-  `PUT`/`OPTIONS` on `/api/v1/files/devices/<id>/<name>`, `PUT /api/v1/events/<id>/devices/<id>`,
-  `DELETE /api/v1/events/<id>/devices/<id>`, `GET /api/v1/events/<id>/files` (plus the
-  `/api/v1/attest/*` issuers). Any other method or unmatched path → **`404`** (Hono's default — no
-  `405`). Bad UUID / unsafe filename / invalid name → `400`.
+  per-device list and the union use the same builder, so their `url`s agree by construction.
+- **Methods** — anything not listed above → **`404`** (Hono's default — no `405`). Bad UUID / unsafe
+  filename / invalid name → `400`.
 
-> **Deployment invariant.** The storage `HOST` constant MUST be the storage zone's **main** region
-> host (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from
-> the main region are read-after-write consistent, so a just-created marker is visible to the
-> immediately following join/list/upload. A replica host could lag and `404` a fresh event.
+> **Deployment invariant.** The storage `host` MUST be the storage zone's **main** region host
+> (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from the
+> main region are read-after-write consistent.
 >
-> The **leave** cascade depends on this too, and more sharply: its reap decision (is any active
-> member left?) and its GC reference-check (does a freed device appear in another event?) LIST the
-> devices directories, and a stale replica read could miss a concurrent rejoin's fresh `<id>.json`
-> and reap an event out from under an active device. Every other failure mode of leave is a harmless
-> orphan; this is the one that would delete in-use data — so the reap MUST read the main region.
-> Never point the storage `HOST` constant at a replica.
-
-> **Note.** The byte-upload route is **ungated** (it reads no marker), so it never `404`s for an
-> "unknown event" — bytes are event-independent. Only the device-manifest write and the event union
-> are gated on event existence.
+> The relational store has the matching hazard, and it is handled where it bites: **read-your-writes
+> is unmeasured from the edge**, so the nightly sweep's deletion decision runs inside an interactive
+> transaction — which executes against the PRIMARY — rather than on whatever replica an ordinary
+> read reaches. A stale read that missed a rejoin would otherwise let it delete a live event.
+> Ordinary request handling may use ordinary reads. Any future change that lets a **destructive**
+> operation act on an ordinary read must first re-confirm read-your-writes from the edge.
 
 ## Layout
 
 ```
-src/app.ts        Hono app (createApp({config, fetch}) → routes): create + metadata + byte upload +
-                  per-device list + device-manifest write + event union + device config + event notify;
-                  PLUS the static-site proxy (serveSiteObject → GET /, /join, /_astro/* from the storage
-                  site/ prefix, capability web-site) and the AASA. Key helpers (markerKey,
-                  deviceManifestKey/Dir, byteKey, deviceDir, deviceConfigKey), the existence gates,
-                  presignDownloadUrl(), and readPushToken() (notify fan-out). The landing + /join pages
-                  are NOT here — they are built by the sibling site/ Astro module.
+src/app.ts        Hono app (createApp({config, db, fetch}) → routes): the attest issuers, create +
+                  metadata + rename, byte upload, per-device list, device-manifest publish, leave,
+                  event union, push registration, notify; PLUS the static-site proxy (serveSiteObject
+                  → GET /, /join, /_astro/* from the storage site/ prefix, capability web-site) and the
+                  AASA. Holds the token gate's closed list and presignDownloadUrl().
+src/db.ts         the RELATIONAL STORE: the `Db` port, `SCHEMA` (the created shape), and every
+                  statement — the capacity gate, the atomic publish, the union, the sweep's queries.
+src/migrations.ts schema EVOLUTION: the ordered `MIGRATIONS` list + a `schema_migrations` record, and
+                  `migrate()`. Bound to `SCHEMA` by migrations.test.ts, which asserts a store built
+                  from each is identical. Never reached from main.ts — the edge does not migrate.
+src/db-libsql.ts  the `Db` over bunny Database (libsql/web) — the deployed driver.
+src/storage.ts    storage primitives for the BYTE store + the site prefix (key builders, LIST/GET/
+                  PUT/DELETE), shared verbatim with the out-of-edge sweep so the two cannot drift.
+src/attest.ts     App Attest verification (chain/nonce/app-id/counter/aaguid), the stateless
+                  challenge, and the device token — mint, verify, and the ONE expiry derivation both
+                  the token and its stored record come from.
+src/lifecycle.ts  the event lifecycle rules (deleteByMs, eventIsStale), shared with the sweep.
 src/apns.ts       createApnsSender(config, fetch) → { sendSilent(tokens) }: ES256 provider-JWT signing
                   (WebCrypto, memoized) + a silent HTTP/2 push per token; per-token best-effort outcomes.
-src/validators.ts validateUUID / validateFilename → boolean; validateEventName(raw) → trimmed | null
-src/config.ts     the 7 non-secret SOURCE CONSTANTS (zone/host/S3 region+host/APNs kid+iss+topic) +
-                  readConfig(env) → Config, which reads only the 2 SECRETS and THROWS if either is
-                  missing/blank. Env is never consulted for a constant.
+src/validators.ts validateUUID / validateFilename / validateEventName / validateStartsAt
+src/config.ts     readConfig(env) / readSweepConfig(env) / storageConfig() over the RESOLVED
+                  deployment — non-secret values come from the generated deployment.ts, secrets from
+                  the environment, and it THROWS on a missing secret.
+src/deployment.ts GENERATED by scripts/resolve-deployment.py. Never committed, never hand-edited.
 src/main.ts       Edge Scripting entry: reads config at startup, serves createApp(...).fetch via the SDK
+src/scripts/      OUT-OF-EDGE programs (never bundled): sweep.ts (the nightly cleanup), migrate.ts
+                  (applied by api-deploy before it publishes), migrate-attest.ts (the one-time
+                  attestation data migration), probe.ts (the post-deploy boot probe).
 src/dev/*.ts      DEV-ONLY, never imported by main.ts (so `deno bundle` cannot reach it): the local rig —
                   fs-storage.ts (a FetchLike answering bunny's native Storage API off a directory),
-                  config.ts (source constants + dev secrets, s3Host pointed at the rig), serve.ts (the
-                  second entry: presigned-path serving + the fallback bearer), tunnel.ts (cloudflared)
-test/*.test.ts    Deno tests (app via app.request(), upstream fetch + config injected)
+                  db-sqlite.ts (the `Db` over node:sqlite — also what the tests run), config.ts,
+                  serve.ts (the second entry: presigned-path serving + the fallback bearer),
+                  tunnel.ts (cloudflared)
+test/*.test.ts    Deno tests (app via app.request(), upstream fetch + db + config injected)
+test/support/db.ts  a migrated in-memory store + `enrolDevice` (the attestation row every other
+                  device-scoped write now requires)
 test/dev/         the fs shim's contract test — pins it to the same bunny assumptions the mocks encode
                   (proves shim ≡ mocks, NOT that either matches bunny; nothing here ever has)
 ```
 
-## Configuration — 7 source constants, 2 env secrets
+## Configuration — a resolved deployment, plus secrets from the environment
 
-**Non-secret config lives in `src/config.ts`, not in the environment. Source wins: the environment
-is not consulted for any of it**, so a stale platform variable cannot override git.
+**Non-secret config is not in the environment and not hand-written in source.** It is _resolved_
+from the authored deployments under `deployments/` (capability `deployment-configuration`) by
+`scripts/resolve-deployment.py`, which generates `src/deployment.ts`. The generated module is never
+committed; every toolchain that needs a value — the bundle, the sweep, the migrations, the iOS build
+— resolves the same deployment, so they cannot name different zones.
 
-| Source constant | Value                        | Meaning                                                                 |
-| --------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| `ZONE`          | `snap-sync-dev`              | storage zone name (also the S3 Access Key ID + bucket)                  |
-| `HOST`          | `storage.bunnycdn.com`       | native Storage host (DE/Falkenstein) — **main region, never a replica** |
-| `S3_REGION`     | `de`                         | S3 region — used only to presign download URLs                          |
-| `S3_HOST`       | `de-s3.storage.bunnycdn.com` | bunny S3 endpoint — the presigned-URL origin                            |
-| `APNS_KEY_ID`   | the `.p8` Key ID             | the provider-JWT `kid`                                                  |
-| `APNS_TEAM_ID`  | `E9Z8BADH58`                 | the provider-JWT `iss`                                                  |
-| `APNS_TOPIC`    | `app.snapsync`               | the `apns-topic` header (the app bundle id)                             |
+```
+deployments/prod.json                      extends the components below; declares which env var
+                                           supplies each secret
+deployments/components/policy.json         eventCapacity, eventWindowMaxSeconds, eventLifetimeSeconds,
+                                           attestTokenTtlSeconds
+deployments/components/apple.json          bundleId, teamId, apnsKeyId, appStoreUrl, appAttestRootCa
+deployments/components/storage-*.json      the storage kind/zone/host/s3Region + the access-key env ref
+deployments/components/build.json          the build-scope values (sha, channel)
+```
 
-Every one of these is a **public fact** — the team id and bundle id ship inside every IPA; the key
-id rides in the JWT header Apple receives. Committing them exposes nothing.
+The **five secrets** are named by the deployment and read from the environment — never in source:
 
-| Env secret                 | Meaning                                                                                      |
-| -------------------------- | -------------------------------------------------------------------------------------------- |
-| `BUNNY_STORAGE_ACCESS_KEY` | storage-zone **password** (the `AccessKey`; also the S3 secret; **not** the account API key) |
-| `APNS_PRIVATE_KEY`         | the APNs Auth Key `.p8` **PEM contents** (not a path) — ES256-signs the provider JWT         |
+| Env secret                  | Meaning                                                                                      |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| `BUNNY_STORAGE_ACCESS_KEY`  | storage-zone **password** (the `AccessKey`; also the S3 secret; **not** the account API key) |
+| `APNS_PRIVATE_KEY`          | the APNs Auth Key `.p8` **PEM contents** (not a path) — ES256-signs the provider JWT         |
+| `ATTEST_TOKEN_KEY`          | the HMAC key the device token and the attest challenge are signed with                       |
+| `BUNNY_DATABASE_URL`        | the relational store's endpoint                                                              |
+| `BUNNY_DATABASE_AUTH_TOKEN` | its access token                                                                             |
 
-`main.ts` reads the two secrets once at startup via `readConfig(Deno.env.toObject())`, which
-**throws** on either being missing/blank → a misconfigured deployment **fails to boot** (fail-closed
-at deploy, never a mis-targeted upload and never a blank/unsignable download URL). The validated
-`Config` is injected into the app, so the request handlers have no configuration path. **No secret
-is in source.**
+`main.ts` reads them once at startup via `readConfig(Deno.env.toObject())`, which **throws** on any
+being missing/blank → a misconfigured deployment **fails to boot** (fail-closed at deploy, never a
+mis-targeted upload and never a blank/unsignable download URL). The validated `Config` is injected
+into the app, so the request handlers have no configuration path.
 
-> **Why config is in source.** Bunny issues **no scoped API key**: writing an Edge Script's
-> environment variables requires the full-access **account** key, which also owns the storage zone
-> holding every user's photos and the `stho.net` DNS zone. CI therefore holds only the
-> _script-scoped deploy key_ — and so **CI can ship code but cannot ship config**. That gap is not
-> theoretical: it is exactly how this backend died. On 2026-07-02 a change added two required env
-> vars, set them on the (then-active) Deno Deploy runtime only, and left the bunny script
-> fail-closed at boot for two weeks — with CI green throughout, because `POST /code` + `/publish`
-> succeed whether or not the script boots.
+> **Why config is resolved rather than platform-set.** Bunny issues **no scoped API key**: writing
+> an Edge Script's environment variables requires the full-access **account** key, which also owns
+> the storage zone holding every user's photos and the `stho.net` DNS zone. CI therefore holds only
+> the _script-scoped deploy key_ — and so **CI can ship code but cannot ship platform config**. That
+> gap is not theoretical: it is exactly how this backend died. On 2026-07-02 a change added two
+> required env vars, set them on the (then-active) Deno Deploy runtime only, and left the bunny
+> script fail-closed at boot for two weeks — with CI green throughout, because `POST /code` +
+> `/publish` succeed whether or not the script boots.
 >
-> Source-owned config closes it structurally: **a new non-secret value ships in the same bundle as
-> the code that reads it**, so it cannot be forgotten. The two secrets are exempt because they are
-> genuine credentials and change ~never. Do not "simplify" this by giving CI the account key — that
-> trades a config-drift bug for a blast radius over every user's photos.
+> Resolving closes it structurally: **a non-secret value ships in the same bundle as the code that
+> reads it**, so it cannot be forgotten, and it stays diffable in git rather than pinned into one
+> toolchain's source. The secrets are exempt because they are genuine credentials and change ~never.
+> Do not "simplify" this by giving CI the account key — that trades a config-drift bug for a blast
+> radius over every user's photos.
 
 ## Develop & test
 
 ```bash
-deno task test          # full suite; upstream bunny mocked, config injected → offline
+deno task test          # full suite; upstream bunny mocked, db in-memory, config injected → offline
 deno task lint
-deno task check         # type-checks src/ AND src/dev/
+deno task check         # type-checks src/, src/dev/ AND src/scripts/
 deno fmt --check
 
-# The LOCAL RIG — the real app over a FILESYSTEM store, touching no bunny zone:
+# The LOCAL RIG — the real app over a FILESYSTEM store and a real SQLite, touching no bunny zone:
 deno task dev:local     # 127.0.0.1:8080 — the curl loop
 deno task dev:tunnel    # + a cloudflared quick tunnel, so a physical device can reach it
 ```
 
 `deno task test` carries `--allow-read --allow-write` for the dev shim's contract test.
 **`--allow-net` is deliberately absent** — that absence is what guarantees no test can reach the
-real zone: a network call fails as a permission error rather than becoming a live request.
+real zone or the real store: a network call fails as a permission error rather than becoming a live
+request.
 
 **The local rig** (`src/dev/`, dev infrastructure — non-gating, no spec) composes the **same**
 `createApp({ config, db, fetch })` this file documents, with a filesystem `fetch` in place of bunny
@@ -281,6 +355,27 @@ publish behave here as they do in production. Inspect it with any `sqlite3`. It 
 store directory on purpose, so `rm -rf api/.localstore` clears both halves at once: clearing the
 objects and keeping the rows leaves a rig whose events exist but whose photos do not, which reads as
 "downloads are broken" with no error anywhere. Reset is still `rm -rf api/.localstore`.
+
+**The schema is applied by an ordered migration list**, not by the create statements. `db.ts`'s
+`SCHEMA` is the current shape (readable, and what every statement in that file is written against);
+`migrations.ts` holds the ordered history plus a `schema_migrations` record, and `migrate()` applies
+only what a store has not yet seen. `migrations.test.ts` builds one store from each and asserts the
+two agree, so they cannot drift. The deployed store is migrated by `api-deploy.yml` **before** it
+publishes the bundle — a failed migration fails the run with the previous bundle still live. The rig
+migrates on start, so a `.localstore` from an older rig is carried forward rather than needing a
+wipe.
+
+⚠️ **A device must ATTEST before any other device-scoped write**, and the rig fills that in the same
+place it fills an absent token. A `devices` row is created only by `POST /api/v1/attest/token`, so
+`PUT /api/v1/devices/<id>` (the push registration) answers `401` for a device the backend has never
+seen attest. A physical device recovers from that by itself — the `401` drops its token, it attests
+for real against the rig, and re-registers — so there it is one extra round-trip, not a failure.
+
+**A SIMULATOR cannot recover, which is why the rig enrols it.** App Attest does not exist on the
+simulator (`DCAppAttestService.isSupported` is false), so the app never attests, its refresh returns
+early without trying, and the registration would `401` forever. The fallback bearer therefore enrols
+the device the path names when it supplies the token — supplying a credential without the enrolment
+it implies is half a credential. A caller carrying its own token is untouched, exactly as before.
 
 ⚠️ **A `filesystem` deployment declares no database credentials at all.** That is not an oversight —
 it is what makes it structurally impossible for a dev run to address the PRODUCTION store, which
@@ -304,14 +399,29 @@ BUNNY_STORAGE_ACCESS_KEY=k APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
 ```
 
 Provision the APNs **Auth Key** (`.p8`) for team `E9Z8BADH58` once (App Store Connect API / portal)
-and set `APNS_PRIVATE_KEY` (the PEM) as an Edge Script **secret**. `APNS_KEY_ID` / `APNS_TEAM_ID` /
-`APNS_TOPIC` are source constants — update `config.ts` if the key is ever rotated.
+and set `APNS_PRIVATE_KEY` as an Edge Script **secret**. `apnsKeyId` / `teamId` / `bundleId` live in
+`deployments/components/apple.json` — update that component if the key is ever rotated.
 
 ## Deploy
 
-CI deploys via `.github/workflows/api-deploy.yml` (path-scoped to `api/**`, **gated on green
-`deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. It ships **code only** —
-it configures nothing (see above). Provision once:
+CI deploys via `.github/workflows/api-deploy.yml` (path-scoped to `api/**` + `deployments/**`,
+**gated on green `deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. On
+`main` it **migrates the relational store, then publishes, then probes**.
+
+> **The migrate step holds the DATABASE credentials only.** `backend-deployment` requires that
+> `BUNNY_STORAGE_ACCESS_KEY` be an Edge Script environment value and **not** a deploy-workflow
+> secret — bunny issues no scoped keys, so the key that reads the zone also owns every user's
+> photos. The database credentials are a third category, admitted deliberately because CI (not the
+> endpoint) is what applies migrations. Do not widen it further.
+
+> **There IS a post-publish boot probe, and it is required.** `POST /code` + `/publish` succeed
+> whether or not the script can boot — that is how the previous runtime stayed fail-closed for two
+> weeks with CI green. The probe polls the DEVICE-FACING origin and matches the bundle's stamped
+> SHA. Be precise about which half it restores: it witnesses that the script BOOTED and that THIS
+> bundle is serving. It does **not** witness that a configured value is CORRECT — a value that is
+> present but wrong boots and probes green, which was the other half of the 2026-07 outage. The
+> probe also **cannot roll back**: the script-scoped deploy key returns `401` on the release
+> endpoints, so a red run means a broken script is live and a human fixes it forward.
 
 > **The browser-facing site is a SEPARATE deploy.** `.github/workflows/site-deploy.yml` builds the
 > Astro `site/` module (under Node) and **mirror-deploys** it to the storage `site/` prefix
@@ -320,24 +430,40 @@ it configures nothing (see above). Provision once:
 > Edge Script proxies that prefix, so the routing lives in the bundle as source-owned code — **no
 > pull-zone edge rules**. Capability `web-site`.
 
-1. With the Bunny **account API key**: an **S3-enabled** Storage zone (DE), and the Edge Scripting
-   app (record its **script id** and a **deploy key**). Set the two **secrets** on the Edge Script.
-2. Add GH secrets `BUNNY_SCRIPT_ID` and `BUNNY_DEPLOY_KEY`. The deploy key is script-scoped (it can
-   push code to that one script and nothing else); the **account API key is never in CI**.
+Provision once:
+
+1. With the Bunny **account API key**: an **S3-enabled** Storage zone (DE), a Database, and the Edge
+   Scripting app (record its **script id** and a **deploy key**). Set the secrets on the Edge
+   Script.
+2. Add GH secrets `BUNNY_SCRIPT_ID`, `BUNNY_DEPLOY_KEY`, `BUNNY_DATABASE_URL`,
+   `BUNNY_DATABASE_AUTH_TOKEN` and `BUNNY_STORAGE_ACCESS_KEY` (the last two are used by the nightly
+   sweep and the one-time migration workflows, **not** by the deploy). The deploy key is
+   script-scoped; the **account API key is never in CI**.
 
 The device-facing origin is the custom domain **`snapsync.stho.net`** — a `CNAME` in our `stho.net`
 Bunny DNS zone pointing at the pull zone that fronts the Edge Script. Because we own the name,
-swapping the runtime that answers it stays a **DNS repoint, never a new iOS build** (the
-compile-time `BACKGROUND_UPLOAD_URL_BASE` names this domain, not a provider hostname). That property
+swapping the runtime that answers it stays a **DNS repoint, never a new iOS build**. That property
 is what let Deno Deploy be retired without a TestFlight round — keep it.
-
-> **No boot probe.** CI cannot tell a booting script from a dead one. Prevention (config in source)
-> replaces detection here; if you ever reintroduce platform-side _required_ config, reintroduce a
-> post-deploy probe with it (`GET /api/v1/events/<uuid>` must answer `404`, not a bodyless `400`).
 
 > **bunny is load-bearing.** There is no second runtime and no warm standby. A bunny outage is a
 > SnapSync outage; recovery means standing a runtime back up from this bundle and repointing DNS.
 > The engine retries forever, so uploads are **delayed, never lost**.
+
+## Out-of-edge workflows
+
+The Edge Script caps a request at 50 subrequests and 30 s CPU, so anything that walks the whole
+store runs from GitHub Actions against the same modules:
+
+- **`nightly-cleanup.yml`** (03:17 UTC, capability `scheduled-cleanup`) — MARKS FROM THE DATABASE
+  and DELETES FROM STORAGE. Two ordered phases: stale events (past their derived delete-by, or
+  empty), then unreferenced bytes below each device's retention floor. A device holding no
+  membership in a surviving event also loses its `devices` row — but only once **no token minted for
+  it can still verify**, because collecting earlier deletes the attestation behind a credential the
+  device is still using and drives it into a nightly re-attestation loop. `-f dry_run=true` reports
+  and deletes nothing.
+- **`migrate-attest.yml`** — the ONE-TIME attestation data migration. Holds both credential sets, on
+  a manual trigger only. Dry-run first: its output is the only preview of how many legacy rows have
+  no attestation object and will be dropped.
 
 ## Edge Scripting limits worth knowing
 
@@ -348,4 +474,8 @@ is what let Deno Deploy be retired without a TestFlight round — keep it.
   request timeout** (`http_timeout`). That, not the CPU budget, is the real ceiling on a large
   Live-Photo paired video over a slow link. If it ever bites, the fix is **server-side resumable
   uploads**.
-- 10 MB script size, 500 ms startup, 50 subrequests, 128 env vars.
+- 10 MB script size, 500 ms startup, **50 subrequests**, 128 env vars.
+- The relational store is **public preview**: a 1 GB per-database ceiling, a **10-second maximum
+  data-loss window** on primary failover, and a 32 766 bound-parameter cap per statement. Every row
+  is reconstructible by a device round-trip — a manifest republish or a re-attestation — which is
+  what makes those limits acceptable.

@@ -35,6 +35,13 @@
 //     device record and its attestation object. No wall-clock age fudge: a live upload is always ≥ its
 //     event's start ≥ the floor.
 //
+// ⚠️ THERE IS NO LONGER A REFUSAL TO SWEEP AN EMPTY STORE. A guard used to throw when the database held
+// no rows at all while storage held device partitions — the signature of a store whose cutover backfill
+// had not run, and of one this sweep would then read as "nothing is referenced" and empty entirely. It was
+// removed deliberately (this change's design.md D9): it covered only the empty-store case and never the
+// wrong-but-populated-store one, and the state it was written for is past. Nothing now stands between a
+// store that does not describe this zone and the deletion of every byte in it.
+//
 // WHAT THIS SWEEP NO LONGER DOES, deliberately: it does not touch the legacy `events/` markers and
 // manifests, or the legacy `devices/<id>.json` configs, that the object-store era wrote. Those objects
 // are the ROLLBACK PATH for this change (design.md D13) — nothing reads them, nothing adds to them, and
@@ -42,25 +49,17 @@
 
 import { readSweepConfig } from "../config.ts";
 import { libsqlDb } from "../db-libsql.ts";
-import {
-  decodeObjectName,
-  deleteObject,
-  deviceAttestKey,
-  deviceDir,
-  type FetchLike,
-  listDir,
-} from "../storage.ts";
+import { decodeObjectName, deleteObject, deviceDir, type FetchLike, listDir } from "../storage.ts";
 import {
   activeFloors,
+  collectableDevices,
+  countDevices,
   type Db,
-  deleteDeviceRecord,
+  deleteDevice,
   deleteEvent,
   deleteResource,
-  devicesInEvents,
   eventsWithCounts,
-  knownDevices,
   referencedKeys,
-  storeIsEmpty,
 } from "../db.ts";
 import { eventIsStale } from "../lifecycle.ts";
 import type { Config } from "../config.ts";
@@ -74,6 +73,10 @@ export type Tally = { count: number; bytes: number };
  * config + attestation records — one device may own two objects, so this counts DEVICES, not records),
  * and FILES (the stored resource byte objects). Files carry both a `count` and a real `bytes` total so
  * the log shows how much storage was actually reclaimed, not just how many objects.
+ *
+ * The devices tier counts DEVICE ROWS. It used to note "a device counted once regardless of how many of
+ * its global config/attestation records exist"; a device now has exactly one record, so there is nothing
+ * left to disambiguate.
  */
 export type SweepSummary = {
   events: { deleted: number; kept: number };
@@ -155,33 +158,11 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const staleIds = new Set(stale);
   const referenced = await referencedKeys(db, staleIds);
   const floors = await activeFloors(db, staleIds);
-  const inSurviving = await devicesInEvents(db, staleIds);
 
   // Walk every device's byte partition and collect the unreferenced, below-floor bytes.
   const deviceDirEntries = await listDir(f, config, `files/devices/`);
   const deviceIds = deviceDirEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
 
-  // ⚠️ THE REFUSAL. An EMPTY store says "nothing is referenced", and this phase would then read every
-  // byte in the zone as unreferenced with every device's floor `+∞` — deleting the entire zone. That is
-  // a correct reading of a store that is genuinely empty and a catastrophic reading of one that has not
-  // been BACKFILLED yet, and from inside the store the two are identical.
-  //
-  // Storage tells them apart. A legitimately emptied world has no bytes left either — the sweep collects
-  // a fully-orphaned device's bytes as it empties it — so "zero rows AND bytes present" cannot describe a
-  // store that was ever populated. It describes a deploy whose cutover has not run.
-  //
-  // This is a SYSTEMIC failure, not a per-object one: it throws, fails the job loudly, and deletes
-  // nothing. Fail toward reclamation is the right instinct for one unreadable event; it is the wrong
-  // instinct for the whole world at once, which is why this check sits outside that rule rather than
-  // inside it. Dry-run is not exempt — a dry run reporting "would delete everything" is a report nobody
-  // should have to interpret.
-  if (deviceIds.length > 0 && await storeIsEmpty(db)) {
-    throw new Error(
-      `refusing to sweep: the database holds no rows at all while storage holds ${deviceIds.length} ` +
-        `device partition(s). That is the un-backfilled state, not an empty world — running would ` +
-        `collect every byte in the zone. Run the cutover backfill and verify it before sweeping.`,
-    );
-  }
   for (const deviceId of deviceIds) {
     // A device with no active surviving membership has floor `+∞`: nothing of its is above the floor.
     const floorMs = floors.has(deviceId) ? ms(floors.get(deviceId)) : Infinity;
@@ -223,29 +204,30 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     }
   }
 
-  // Device-global records: the device's row and its attestation object. A device is KEPT iff it appears
-  // in a surviving event; otherwise it is FULLY ORPHANED and both go. Neither carries an event date, so
-  // this is the only case in which they can be reclaimed at all — and a returning device re-registers its
-  // push token on its next launch or join, and re-attests on demand.
-  for (const deviceId of await knownDevices(db)) {
-    if (inSurviving.has(deviceId)) {
-      summary.devices.kept++;
-      continue;
-    }
+  // Device rows: a device's whole global record, attestation included. Collected iff it holds no
+  // membership in any surviving event AND no token minted for it can still verify — see the header for
+  // why the second clause is forcing. A returning device re-attests on demand and re-registers its push
+  // token on its next launch.
+  //
+  // ONE PREDICATE, NOT A ROSTER WALK. The device roster this used to iterate existed to find devices whose
+  // attestation OBJECT needed collecting even though they held no row; the object is a column now, so
+  // there is nothing left for a roster to find.
+  const totalDevices = await countDevices(db);
+  for (const deviceId of await collectableDevices(db, new Date(now()).toISOString(), staleIds)) {
     try {
       if (dryRun) {
-        log(`[dry-run] would collect device record + attestation for ${deviceId}`);
+        log(`[dry-run] would collect the device record for ${deviceId}`);
         summary.devices.deleted++;
         continue;
       }
-      await deleteDeviceRecord(db, deviceId);
-      await deleteObject(f, config, deviceAttestKey(deviceId));
+      await deleteDevice(db, deviceId);
       summary.devices.deleted++;
     } catch (err) {
       summary.errors++;
       log(`device ${deviceId} record collection failed (continuing): ${err}`);
     }
   }
+  summary.devices.kept = totalDevices - summary.devices.deleted;
 
   return summary;
 }
