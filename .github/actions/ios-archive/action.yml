@@ -72,24 +72,43 @@ runs:
         java-version: 25
     - uses: gradle/actions/setup-gradle@v5
 
-    # Cache the Kotlin/Native TOOLCHAIN (~/.konan = the 1.6 GB prebuilt compiler + 497 MB of
-    # dependencies). That is ALL this entry holds, and the distinction is load-bearing.
+    # Cache the Kotlin/Native toolchain AND the per-dependency compiler caches a link builds into it
+    # (~/.konan = the 1.6 GB prebuilt compiler + ~500 MB of dependencies + the `klib/cache` families).
+    # That second half is the part this comment got wrong for two weeks; see below.
     #
-    # ⚠️ This step used to be keyed on the BUILD CONFIGURATION, on the premise that "a Debug link
-    # builds per-dependency compiler caches (Compose, Skiko, …) into ~/.konan", making a Debug-family
-    # entry worth ~6 min → ~1 min on the branch gate. THAT PREMISE IS FALSE — measured 2026-08-09 on
-    # macos-26 / Kotlin 2.4.0: a Debug device link writes NOTHING to ~/.konan. There is no
-    # ~/.konan/cache directory at all (~/.konan/dependencies/cache is 0 B, untouched since the runner
-    # image was built), and no file anywhere under ~/.konan is modified by a build. Kotlin/Native does
-    # not build per-dependency compiler caches for an iOS DEVICE target — corroborated independently
-    # by `-Pkotlin.native.cacheKind.iosArm64=none` being a measured no-op (paired runs: 24 s / 28 s
-    # static vs 28 s none). So a per-configuration key partitioned the cache for no benefit.
+    # ⚠️ THE PREMISE THIS STEP USED TO CARRY IS FALSE, and it matters which half. It said "a Debug
+    # device link writes NOTHING to ~/.konan … no ~/.konan entry can shorten it", from a 2026-08-09
+    # measurement, and concluded "do not re-add a configuration-keyed key expecting to". Re-measured
+    # 2026-08-26, macos-26 / Kotlin 2.4.0 (`hw.ncpu`=3, 7 GB, Apple M1 virtual — so "3-core runner"
+    # below is right, and GitHub's published macos-26 spec of 4 vCPU / 14 GB does not describe the
+    # runner this account gets):
     #
-    # What the archive actually costs, profiled in CI via a Gradle init script (run 31329437059,
-    # 6.9 min archive): `:app:ios:linkDebugFrameworkIosArm64` 248.8 s and
-    # `:app:ios:extension:linkDebugFrameworkIosArm64` 44.8 s — 71% of the step — against ~1 s of
-    # Gradle configuration. That is CPU-bound linking of the Compose/Skiko closure on a 3-core runner.
-    # No ~/.konan entry can shorten it. Do not re-add a configuration-keyed key expecting to.
+    #   * `~/.konan/kotlin-native-prebuilt-macos-aarch64-2.4.0/klib/cache` EXISTS and holds eight
+    #     families, with `ios_arm64-gSTATIC-*` (Debug) and `ios_arm64STATIC-*` kept separate.
+    #   * One cold `:app:ios:linkDebugFrameworkIosArm64` grows that directory 505 MB → 819 MB.
+    #   * That same link, re-run after a real source edit with those caches on disk: 525 s → 38 s.
+    #
+    # So the link is not CPU-bound optimisation no cache can shorten — it is ~90% REBUILDING DEPENDENCY
+    # COMPILER CACHES. `-Xprofile-phases` corroborates from the other side: it accounts for only ~29 s
+    # of compiler work inside a 302 s task, because the cache-building compilations are separate
+    # invocations the profiled one never sees. And the `-Pkotlin.native.cacheKind.iosArm64=none` no-op
+    # offered as independent corroboration is not evidence either way: that property was DEPRECATED in
+    # Kotlin 2.3.20 (replaced by the `disableNativeCache()` DSL), so at 2.4.0 an ignored property and a
+    # real no-op are indistinguishable.
+    #
+    # Refreshed per-task cost (`--profile`, same three Gradle invocations the archive runs):
+    # `:app:ios:linkDebugFrameworkIosArm64` 301.9 s (96% of its invocation) and
+    # `:app:ios:extension:linkDebugFrameworkIosArm64` 56.5 s (97%) — up from 248.8 s / 44.8 s at run
+    # 31329437059. Every klib compile in the app invocation put together is 10.5 s.
+    #
+    # WHY THIS DOES NOT RE-ADD THE CONFIGURATION-KEYED KEY. That key was live 2026-07-21 → 2026-08-09
+    # and bought nothing measurable — branch-push ios.yml wall clock was 11.8 min median while it was
+    # keyed and 12.2 min after removal (n=66 / n=71). The removal commit had the reason right even
+    # though its premise was wrong: GitHub cache entries are BRANCH-SCOPED and branches here are
+    # one-ship-and-deleted, so a Debug entry a branch saved was restorable by nothing. Both eras ran
+    # cold. A second key does not fix that. What fixes it is the ONE main-owned entry actually
+    # CONTAINING the Debug family — which it never has, because main archives Release and so never
+    # builds one. That is what the warm-up step below the archive is for.
     #
     # RESTORE AND SAVE ARE SPLIT, and saving is GATED TO main — the same pattern, for the same
     # reasons, as ios.yml's ios-test (see its comment). Two things forced it here:
@@ -102,7 +121,10 @@ runs:
     #     orphan, evicting main's live entries. main OWNS the entry; every branch run is a consumer.
     # The run id in the primary key makes it never hit, so the restore always falls through to
     # restore-keys (newest match wins) and main's save always writes a fresh entry — the same
-    # stale-entry trap ios-test documents (both konan families were once frozen 18 days).
+    # stale-entry trap ios-test documents (both konan families were once frozen 18 days). That
+    # never-hit key is now doubly load-bearing: it is what keeps the Debug family the warm-up builds
+    # from going stale as dependencies move, which is exactly how the family in the entry rotted
+    # before anyone noticed it was there.
     - name: Restore Kotlin/Native (~/.konan)
       id: konan
       uses: actions/cache/restore@v6
@@ -199,6 +221,56 @@ runs:
           CURRENT_PROJECT_VERSION="$CPV" \
           $XCB_OVERRIDES \
           archive
+
+    # Build the DEBUG cache family main would otherwise never produce (capability `ios-ci`).
+    #
+    # The branch gate archives Debug; main archives Release. Only main's ~/.konan entry is restorable
+    # by a branch, so the `ios_arm64-gSTATIC-*` family the gate needs has only ever been whatever an
+    # older era happened to leave behind — carried along and re-saved on every merge, never refreshed
+    # against the current dependency set. Every branch push therefore rebuilds ~314 MB of it, which is
+    # ~90% of the archive step: 525 s cold against 38 s warm for the same link (see the restore step).
+    #
+    # These are exactly the two link tasks the archive's two Xcode "Compile Kotlin Framework" script
+    # phases run on a branch. `compileKotlinIosArm64` is configuration-independent and the Release
+    # archive above already ran it, so this is the two links and nothing else. Its own output is
+    # discarded — the cache entries it leaves in ~/.konan are the entire point — and it writes to
+    # `app/ios/build/bin/`, not the archive `ios-deliver` re-signs, so it cannot disturb delivery.
+    #
+    # COST, and why it is not on anyone's critical path: the first main run after this lands pays the
+    # full cold build (~9 min); every merge after restores the family it saved and pays roughly the
+    # warm link. `ios-build` on main posts a required check but no merge waits on a main run, and
+    # `ios-deliver` needs this job only for its archive artifact, which is already uploaded above.
+    #
+    # `continue-on-error` because a cache warm-up must NEVER fail a merge that delivers to TestFlight.
+    # Absence is not silent, though: the step below reports what actually landed and warns when the
+    # family is missing, so a warm-up that quietly stops working shows up in the run summary instead
+    # of resurfacing months later as a slow gate nobody can account for.
+    - name: Warm the Debug Kotlin/Native cache for the branch gate
+      if: github.ref == 'refs/heads/main'
+      continue-on-error: true
+      shell: bash
+      run: ./gradlew :app:ios:linkDebugFrameworkIosArm64 :app:ios:extension:linkDebugFrameworkIosArm64
+
+    # What the entry is about to carry. Reported unconditionally so the number is in the run log of the
+    # merge that produced the entry, and warned on when the Debug family is absent — the one state that
+    # silently returns the branch gate to rebuilding it on every push.
+    - name: Report the Debug Kotlin/Native cache family
+      if: github.ref == 'refs/heads/main'
+      shell: bash
+      run: |
+        set -uo pipefail
+        K=""
+        for d in "$HOME"/.konan/kotlin-native-prebuilt-*/klib/cache; do [ -d "$d" ] && K="$d"; done
+        if [ -z "$K" ]; then
+          echo "::warning::No Kotlin/Native klib/cache directory under ~/.konan — the branch gate will rebuild its dependency caches on every push (see the restore step's comment)."
+          exit 0
+        fi
+        echo "klib/cache: $K"
+        du -sh "$K"
+        ls -1 "$K"
+        if ! ls -1 "$K" | grep -q '^ios_arm64-g'; then
+          echo "::warning::Debug cache family (ios_arm64-g*) absent from ~/.konan — the warm-up did not produce one, so every branch push will rebuild ~314 MB of dependency caches (see the restore step's comment)."
+        fi
 
     # main OWNS the ~/.konan entry; branch runs are pure consumers (see the restore step). Deliberately
     # last and deliberately un-`always()`-ed: a failed archive can leave ~/.konan half-written, and a
