@@ -71,9 +71,12 @@
       device config objects → `device_records`
 - [x] 6.2 Write the verifier (throwaway, scratchpad): for each surviving event, compare the database-served union against what the
       previous implementation would have served, as sets of `(deviceId, assetId, key)`
-- [ ] 6.3 (OPERATOR — needs the deployed store) From the scratchpad: `./run.sh probe`, `./run.sh backfill
-      --dry-run`, `./run.sh backfill`, `./run.sh verify` — and see verify GREEN **before** the next
-      nightly sweep window (03:17 UTC). Record what the probe measured in `PROBE-FINDINGS.md`
+- [x] 6.3 Cutover RUN against the deployed store, 2026-08-25: probe (all six capabilities green, recorded
+      in `PROBE-FINDINGS.md` §5) → backfill dry-run → backfill (22 events, 22 active + 11 departed
+      memberships, 874 assets, 1090 resources, 17 devices, 0 errors, 8 marker-less husks correctly
+      skipped) → **verify 22/22 unions matched, 0 errors**. The first nightly sweep then ran against the
+      populated store and deleted 9 stale events and **zero bytes** (1252 objects / 4.9 GB kept, 0 errors,
+      no orphan memberships or assets left by the cascade)
 - [x] 6.4 Confirm no code path deletes a marker, manifest, or config object — they stay in place as the
       rollback path (design.md D13)
 
