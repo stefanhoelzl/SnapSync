@@ -155,7 +155,8 @@ The decision logic SHALL live in a pure `commonMain` coordinator — the members
 resolve-or-create the album, reuse-on-rejoin, dispatch-or-skip an add, and the import-time album
 lookup (`albumIdFor(eventId, saveToAlbum)`, the opt-in-gated map read the download importer
 borrows) — depending on two seams: an `AlbumManager` (the iOS `PHAssetCollection`
-create / exists / add operations, `iosMain`, wiring-only and untested) and an `AlbumMapStore` (the shared
+create / exists / add operations, an adapter in `:adapter:ios:ext-safe`, placed by linkage and
+covered by that module's own `iosTest` suite) and an `AlbumMapStore` (the shared
 leave-surviving `eventId → albumLocalId` map). The coordinator and seams SHALL be fakeable so that
 `:test:world` integration tests can assert which asset identifiers were placed into which album, and the
 reuse-on-rejoin behavior, without invoking PhotoKit. No album decision logic SHALL live in the untested

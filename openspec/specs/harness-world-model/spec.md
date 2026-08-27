@@ -15,8 +15,8 @@ desktop full-stack harness (`:app:desktop`) and `:test:integration`.
 It exists because the code that most needs coverage — the upload cycle's adjudication, the rejoin reconcile,
 the download echo-suppression — is exactly the code that ran only inside an iOS extension that cannot be
 tested on a simulator. Faking the *execution edge* rather than the logic lets the real stack run anywhere,
-which is what makes testing rule 1 (every unit test also runs on the iOS simulator) achievable for
-orchestration and not just for pure functions.
+which is what makes the standing target rule (capability `testing-architecture`, "Every test runs on
+every target its module declares") achievable for orchestration and not just for pure functions.
 
 Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
 The world composes attestation because `AppPorts` requires the seams, and leaves it **inert by default** —
@@ -24,6 +24,7 @@ The world composes attestation because `AppPorts` requires the seams, and leaves
 extension and on a simulator. An opt-in lever turns it on for the tests that need a credential *change* to
 happen at all. Two backend behaviours it still does not model, stated so they are not assumed: the token
 gate itself, and the `401` a device-scoped write answers when the backend holds no attestation record.
+
 
 ## Requirements
 
@@ -39,7 +40,8 @@ backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`,
 (`WorldGallery`, `RecordingDownloadStore`) — per the fake-honesty gate (`architecture-guards`).
 The module SHALL declare targets `jvm()` and `iosSimulatorArm64` **only** (no `iosArm64` — it
 never links into a shipped framework), so its logic and self-tests execute on **both** JVM and the
-iOS simulator per testing rule 1. Its `commonMain` SHALL also host the shared storage-seam
+iOS simulator per capability `testing-architecture` ("Every test runs on every target its module
+declares"). Its `commonMain` SHALL also host the shared storage-seam
 contracts (`LedgerStoreContract`, `DownloadStoreContract`) — a test source set cannot be depended
 on across modules, and this is the one test-infra `commonMain` every implementor's test source set
 (`:test:world` commonTest for the fakes, `:adapter:generic:app` `jvmTest`/`iosSimulatorArm64Test` for
@@ -521,12 +523,15 @@ re-install and the permission would only license a divergence nobody needs.
 ### Requirement: Integration tests assert UiState and world outcomes
 
 The `:test:integration` module SHALL consume `:test:world` and `:ui:presentation` (re-homed from
-`:domain:presentation` at migration step 9) to assert both the
-projected `UiState` **and** world outcomes from world mutations and cycle invocations — not `UiState`
-alone. World outcomes SHALL include: objects landed in the backend store (the per-device listing grows),
-ledger rows reaching `COMPLETED`, and foreign photos imported into the in-memory gallery. This is the
-testing-rule-3 seam ↔ UI-state integration surface, now spanning the real upload/download execution edge
-rather than injected `SyncEvent`s alone, and it SHALL run on JVM and `iosSimulatorArm64`.
+`:domain:presentation` at migration step 9) to assert **world outcomes** from world mutations and cycle
+invocations — never injected `SyncEvent`s alone. World outcomes SHALL include: objects landed in the
+backend store (the per-device listing grows), ledger rows reaching `COMPLETED`, and foreign photos
+imported into the in-memory gallery. Where the seam under test reaches presentation, the test SHALL
+**also** assert the projected `UiState`; where it does not, the world outcomes are the complete
+assertion — an exclusion is proved by the absence of bytes, of a ledger row, and of a manifest entry,
+none of which is a `UiState`. This is the seam-to-UI-state integration surface owned by capability
+`testing-architecture`, spanning the real upload/download execution edge, and it SHALL run on JVM and
+`iosSimulatorArm64`.
 
 #### Scenario: A completed upload advances both UiState and the store
 
