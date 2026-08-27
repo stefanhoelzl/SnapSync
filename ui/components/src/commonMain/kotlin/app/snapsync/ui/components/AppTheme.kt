@@ -22,6 +22,61 @@ private val GreenDark = Color(0xFF2FD69B)
 // 9:1 as text, so it is reused there unchanged — this token only splits the *light* value.
 private val AccentTextLight = Color(0xFF0A7A53)
 
+// The rest of the palette, one NAME PER DISTINCT VALUE. Naming these is not decoration: seven of them
+// were written twice, once in each scheme, where changing a value and forgetting its twin is silent —
+// `GreenContainerLight` was `primaryContainer` and `secondaryContainer` spelled out separately, and so
+// were their `on*` partners in both schemes. A duplicated literal cannot drift once it has one home.
+//
+// Named for the ROLE in the palette rather than the hue, because that is what a reader is looking for
+// when they arrive here: the schemes below read as a mapping from M3 slot to palette role, and a slot
+// whose value looks wrong is checked by reading one line.
+
+// Light — the brand green's container pair, shared by `primary*` and `secondary*`.
+private val GreenContainerLight = Color(0xFFD9F0E6)
+private val OnGreenContainerLight = Color(0xFF06452F)
+
+// Light — surfaces and the text that sits on them.
+private val BackgroundLight = Color(0xFFF4F6F8)
+private val SurfaceVariantLight = Color(0xFFE8ECF1)
+private val OnSurfaceLight = Color(0xFF14181D)
+private val OnSurfaceVariantLight = Color(0xFF5B6472)
+
+// Light — boundaries. See the note at `outline` below for why these two differ in weight.
+private val OutlineLight = Color(0xFF7C8798)
+private val OutlineVariantLight = Color(0xFFDCE1E8)
+
+// Dark — the brand green's container pair and the ink that sits ON the green, shared as above.
+private val OnGreenDark = Color(0xFF04231A)
+private val GreenContainerDark = Color(0xFF10382B)
+private val OnGreenContainerDark = Color(0xFFAFEFD6)
+
+// Dark — surfaces and the text that sits on them.
+private val BackgroundDark = Color(0xFF0C0E12)
+private val SurfaceDark = Color(0xFF171B22)
+private val SurfaceVariantDark = Color(0xFF232833)
+private val OnSurfaceDark = Color(0xFFEAEDF1)
+private val OnSurfaceVariantDark = Color(0xFF8B95A5)
+
+// Dark — boundaries.
+private val OutlineDark = Color(0xFF6B7585)
+private val OutlineVariantDark = Color(0xFF2B313C)
+
+// The attention line's amber (capability `sync-status-screen`), read through [appAttentionText] /
+// [appAttentionContainer] below. It lives HERE and not beside the component that draws it because a
+// design system with two places to define a colour has two places for one to drift; the component keeps
+// the behaviour, the palette keeps the values.
+//
+// Amber is not an M3 `colorScheme` token, so its light/dark split is picked by hand via [appIsDark] —
+// the same rule the scheme itself is chosen by.
+//
+// Light was failing WCAG: #E8820C text on a 0x22 amber pill measured ~2.24:1 (needs 4.5:1 at 16sp), and
+// the pill barely separated from the page (1.13:1). Light now uses a dark amber for text/icons (5.0:1 on
+// the pill) over a stronger 0x3D fill (pill/page ~1.25:1). Dark already passed (5.2-6.0:1) and is kept.
+private val AmberTextLight = Color(0xFF8A4B00)
+private val AmberTextDark = Color(0xFFE8820C)
+private val AmberContainerLight = Color(0x3DE8820C)
+private val AmberContainerDark = Color(0x22E8820C)
+
 // The container/outline tokens M3 components reach for when a call site does not name a colour. They
 // are NOT new hues: each is either an existing neutral of this palette or a tint of the SAME brand
 // green above. Supplying them is a bug fix, not a restyle — an unspecified token falls back to the
@@ -32,45 +87,45 @@ private val AccentTextLight = Color(0xFF0A7A53)
 private val LightColors = lightColorScheme(
     primary = GreenLight,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD9F0E6),
-    onPrimaryContainer = Color(0xFF06452F),
+    primaryContainer = GreenContainerLight,
+    onPrimaryContainer = OnGreenContainerLight,
     secondary = GreenLight,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD9F0E6),
-    onSecondaryContainer = Color(0xFF06452F),
-    background = Color(0xFFF4F6F8),
-    surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFE8ECF1),
-    onBackground = Color(0xFF14181D),
-    onSurface = Color(0xFF14181D),
-    onSurfaceVariant = Color(0xFF5B6472),
+    secondaryContainer = GreenContainerLight,
+    onSecondaryContainer = OnGreenContainerLight,
+    background = BackgroundLight,
+    surface = Color.White,
+    surfaceVariant = SurfaceVariantLight,
+    onBackground = OnSurfaceLight,
+    onSurface = OnSurfaceLight,
+    onSurfaceVariant = OnSurfaceVariantLight,
     // The text-field outline: darkened from the old #9BA4B2 (2.5:1 on surface, below the 3:1 floor for a
     // component boundary) to 3.6:1 on surface / 3.4:1 on background, so an unfocused field reads as a
     // bordered control rather than a ghost. Only OutlinedTextField (and any M3 default reaching for
     // `outline`) consumes this token; card/divider hairlines use the fainter `outlineVariant` below.
-    outline = Color(0xFF7C8798),
-    outlineVariant = Color(0xFFDCE1E8),
+    outline = OutlineLight,
+    outlineVariant = OutlineVariantLight,
 )
 
 private val DarkColors = darkColorScheme(
     primary = GreenDark,
-    onPrimary = Color(0xFF04231A),
-    primaryContainer = Color(0xFF10382B),
-    onPrimaryContainer = Color(0xFFAFEFD6),
+    onPrimary = OnGreenDark,
+    primaryContainer = GreenContainerDark,
+    onPrimaryContainer = OnGreenContainerDark,
     secondary = GreenDark,
-    onSecondary = Color(0xFF04231A),
-    secondaryContainer = Color(0xFF10382B),
-    onSecondaryContainer = Color(0xFFAFEFD6),
-    background = Color(0xFF0C0E12),
-    surface = Color(0xFF171B22),
-    surfaceVariant = Color(0xFF232833),
-    onBackground = Color(0xFFEAEDF1),
-    onSurface = Color(0xFFEAEDF1),
-    onSurfaceVariant = Color(0xFF8B95A5),
+    onSecondary = OnGreenDark,
+    secondaryContainer = GreenContainerDark,
+    onSecondaryContainer = OnGreenContainerDark,
+    background = BackgroundDark,
+    surface = SurfaceDark,
+    surfaceVariant = SurfaceVariantDark,
+    onBackground = OnSurfaceDark,
+    onSurface = OnSurfaceDark,
+    onSurfaceVariant = OnSurfaceVariantDark,
     // Raised from #5B6472 (2.9:1 on surface, under the 3:1 boundary floor) to 3.7:1 on surface, so the
     // text-field outline clears the same threshold in dark as in light.
-    outline = Color(0xFF6B7585),
-    outlineVariant = Color(0xFF2B313C),
+    outline = OutlineDark,
+    outlineVariant = OutlineVariantDark,
 )
 
 /**
@@ -129,3 +184,14 @@ fun appIsDark(): Boolean = LocalDarkThemeOverride.current ?: isSystemInDarkTheme
  */
 @Composable
 fun appAccentText(): Color = if (appIsDark()) GreenDark else AccentTextLight
+
+/**
+ * The attention line's amber text/icon colour (capability `sync-status-screen`). A skin-local semantic
+ * colour, not an M3 `colorScheme` token, so it follows [appIsDark] the way the scheme itself does.
+ */
+@Composable
+internal fun appAttentionText(): Color = if (appIsDark()) AmberTextDark else AmberTextLight
+
+/** The attention line's amber pill fill. See [appAttentionText]. */
+@Composable
+internal fun appAttentionContainer(): Color = if (appIsDark()) AmberContainerDark else AmberContainerLight

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.SceneMode
+import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
@@ -140,38 +141,40 @@ private fun composeScene(): UIViewController =
         // for the process would ignore a user who turns it on while the app is open.
         CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
             StatusScreen(
-                state,
-                host::onRequestPermission,
-                host::onOpenSettings,
-                onLeaveEvent = host::onLeaveEvent,
-                onShareInvite = host::onShareInvite,
-                onSendDiagnostics = host.onSendDiagnostics,
+                state = state,
                 membership = membership,
-                onReconfigure = host::onReconfigure,
                 inviteUrl = inviteUrl,
                 eventName = eventName,
-                onCreateEvent = host::onCreateEvent,
                 transientError = transientError,
-                onConfirmJoin = host::onConfirmJoin,
-                onAcknowledgeAccess = host::onAcknowledgeAccess,
-                onChoosePhotos = host::onChoosePhotos,
-                onCancelJoin = host::onCancelJoin,
-                onRetryLoad = host::onRetryLoad,
-                onRetryJoin = host::onRetryJoin,
-                onConfirmSwitch = host::onConfirmSwitch,
-                onCancelSwitch = host::onCancelSwitch,
                 // The root's one system-bound formatter (migration step 9: the screen's default died with
                 // the through-ports repayment; forge and live share this same instance).
                 cutoff = SnapSyncRoot.cutoffFormatter,
-                // The join-time shareable-count preview (capability `join-share-count`): the permission-aware,
-                // no-network query, plus the live grant as its recompute trigger.
-                shareableCount = SnapSyncRoot.shareableCount,
                 photoPermission = photoPermission,
-                // The heading rename (capability `event-rename`): the command, its lifecycle, and the latch
-                // reset the screen fires once it has acted on a terminal value.
-                onRenameEvent = host::onRenameEvent,
                 renameStatus = renameStatus,
-                onRenameStatusConsumed = host::onRenameStatusConsumed,
+                actions = StatusActions(
+                    onRequestPermission = host::onRequestPermission,
+                    onOpenSettings = host::onOpenSettings,
+                    onLeaveEvent = host::onLeaveEvent,
+                    onShareInvite = host::onShareInvite,
+                    onSendDiagnostics = host.onSendDiagnostics,
+                    onReconfigure = host::onReconfigure,
+                    onCreateEvent = host::onCreateEvent,
+                    onConfirmJoin = host::onConfirmJoin,
+                    onAcknowledgeAccess = host::onAcknowledgeAccess,
+                    onChoosePhotos = host::onChoosePhotos,
+                    onCancelJoin = host::onCancelJoin,
+                    onRetryLoad = host::onRetryLoad,
+                    onRetryJoin = host::onRetryJoin,
+                    onConfirmSwitch = host::onConfirmSwitch,
+                    onCancelSwitch = host::onCancelSwitch,
+                    // The join-time shareable-count preview (capability `join-share-count`): the
+                    // permission-aware, no-network query, plus the live grant as its recompute trigger.
+                    shareableCount = SnapSyncRoot.shareableCount,
+                    // The heading rename (capability `event-rename`): the command, its lifecycle, and the
+                    // latch reset the screen fires once it has acted on a terminal value.
+                    onRenameEvent = host::onRenameEvent,
+                    onRenameStatusConsumed = host::onRenameStatusConsumed,
+                ),
             )
         }
     }

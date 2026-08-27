@@ -21,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -29,6 +28,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
+
+/**
+ * How faint an OFF switch track is. Dark needs the lower value: the same alpha over a near-black
+ * surface reads as a brighter track than it does over near-white, so matching the numbers would make
+ * the two themes disagree about how "off" looks.
+ */
+private const val OFF_TRACK_ALPHA_LIGHT = 0.65f
+private const val OFF_TRACK_ALPHA_DARK = 0.30f
+
 
 /**
  * A **titled on/off section** whose header is a switch and whose body states, in words, the consequence
@@ -149,7 +160,7 @@ private fun SectionSwitch(checked: Boolean) {
     // registers. Light is raised to 65% (~2.8:1 non-text) so the off state reads as a control; it stays a
     // muted neutral, never the brand green, so it cannot be mistaken for "on". Dark already read (the thumb
     // slide plus the green on-fill carry the state) and is left at 30%.
-    val offAlpha = if (appIsDark()) 0.30f else 0.65f
+    val offAlpha = if (appIsDark()) OFF_TRACK_ALPHA_DARK else OFF_TRACK_ALPHA_LIGHT
     Box(
         modifier = Modifier
             .size(width = 51.dp, height = 31.dp)

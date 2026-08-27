@@ -7,6 +7,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.forgeStatusHost
+import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import kotlinx.coroutines.CoroutineScope
@@ -49,35 +50,37 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
 
     CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
         StatusScreen(
-            state,
-            host::onRequestPermission,
-            host::onOpenSettings,
-            onLeaveEvent = host::onLeaveEvent,
-            onShareInvite = host::onShareInvite,
-            onSendDiagnostics = host.onSendDiagnostics,
+            state = state,
             membership = membership,
-            onReconfigure = host::onReconfigure,
             inviteUrl = inviteUrl,
             eventName = eventName,
-            onCreateEvent = host::onCreateEvent,
             transientError = transientError,
-            onConfirmJoin = host::onConfirmJoin,
-            onAcknowledgeAccess = host::onAcknowledgeAccess,
-            onChoosePhotos = host::onChoosePhotos,
-            onCancelJoin = host::onCancelJoin,
-            onRetryLoad = host::onRetryLoad,
-            onRetryJoin = host::onRetryJoin,
-            onConfirmSwitch = host::onConfirmSwitch,
-            onCancelSwitch = host::onCancelSwitch,
             cutoff = cutoffFormatter,
-            shareableCount = { _, _ -> null },
             // A constant, exactly as `ForgeShell` supplied: this is the shareable-count row's recompute
             // trigger, and there is no live grant in this binary to observe. The forged frame's own
             // permission is one of the preset's inputs and reaches the screen through the reduction.
             photoPermission = PermissionStatus.GRANTED,
-            onRenameEvent = host::onRenameEvent,
             renameStatus = renameStatus,
-            onRenameStatusConsumed = host::onRenameStatusConsumed,
+            actions = StatusActions(
+                onRequestPermission = host::onRequestPermission,
+                onOpenSettings = host::onOpenSettings,
+                onLeaveEvent = host::onLeaveEvent,
+                onShareInvite = host::onShareInvite,
+                onSendDiagnostics = host.onSendDiagnostics,
+                onReconfigure = host::onReconfigure,
+                onCreateEvent = host::onCreateEvent,
+                onConfirmJoin = host::onConfirmJoin,
+                onAcknowledgeAccess = host::onAcknowledgeAccess,
+                onChoosePhotos = host::onChoosePhotos,
+                onCancelJoin = host::onCancelJoin,
+                onRetryLoad = host::onRetryLoad,
+                onRetryJoin = host::onRetryJoin,
+                onConfirmSwitch = host::onConfirmSwitch,
+                onCancelSwitch = host::onCancelSwitch,
+                shareableCount = { _, _ -> null },
+                onRenameEvent = host::onRenameEvent,
+                onRenameStatusConsumed = host::onRenameStatusConsumed,
+            ),
         )
     }
 }

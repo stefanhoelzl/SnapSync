@@ -227,7 +227,13 @@ fun registerDetektTier(
         group = "verification"
         setSource(files(sources))
         exclude("**/build/**")
-        config.setFrom(files("config/detekt/$configFile.yml"))
+        // The shared baseline first, then this tier's own file overriding it (detekt layers configs in
+        // order). The tier file is OPTIONAL: its absence means the scope sits at the baseline, which is
+        // what makes the set of files under `config/detekt/` the list of scopes still carrying debt
+        // (capability `complexity-budgets`). `DetektTierCoverageTest` asserts every file present belongs
+        // to a tier — the reverse of what it asserted while every tier was required to have one.
+        val tierConfig = file("config/detekt/$configFile.yml")
+        config.setFrom(files("config/detekt/_base.yml") + if (tierConfig.exists()) files(tierConfig) else files())
         buildUponDefaultConfig = true
         ignoreFailures = false
         reports {

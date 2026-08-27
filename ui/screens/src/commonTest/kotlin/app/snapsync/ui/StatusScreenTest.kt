@@ -130,7 +130,7 @@ class StatusScreenTest {
     @Test
     fun `tapping create submits the typed name`() = runComposeUiTest {
         var created: String? = null
-        setContent { StatusScreen(UiState.CreateEvent(), onCreateEvent = { n, _, _ -> created = n }, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onCreateEvent = { n, _, _ -> created = n })) }
 
         onNode(hasSetTextAction()).performTextInput("My Party")
         onNodeWithText("Create event").performClick()
@@ -156,8 +156,10 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 UiState.CreateEvent(),
-                onCreateEvent = { n, f, u -> createdName = n; createdFrom = f; createdUntil = u },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onCreateEvent = { n, f, u -> createdName = n; createdFrom = f; createdUntil = u },
+                ),
             )
         }
         onNode(hasSetTextAction()).performTextInput("My Party")
@@ -179,8 +181,10 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 UiState.CreateEvent(),
-                onCreateEvent = { _, f, _ -> createdFrom = f },
                 cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
+                actions = StatusActions(
+                    onCreateEvent = { _, f, _ -> createdFrom = f },
+                ),
             )
         }
         onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
@@ -348,7 +352,9 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED)),
-                onRequestPermission = { requests++ },
+                actions = StatusActions(
+                    onRequestPermission = { requests++ },
+                ),
              cutoff = fixedCutoff())
         }
 
@@ -363,7 +369,9 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
-                onOpenSettings = { settingsOpens++ },
+                actions = StatusActions(
+                    onOpenSettings = { settingsOpens++ },
+                ),
              cutoff = fixedCutoff())
         }
 
@@ -404,10 +412,12 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
-                onOpenSettings = { settingsOpens++ },
-                onChoosePhotos = { pickerOpens++ },
-                onRequestPermission = { requests++ },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onOpenSettings = { settingsOpens++ },
+                    onChoosePhotos = { pickerOpens++ },
+                    onRequestPermission = { requests++ },
+                ),
             )
         }
 
@@ -424,9 +434,11 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
-                onOpenSettings = { settingsOpens++ },
-                onChoosePhotos = { pickerOpens++ },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onOpenSettings = { settingsOpens++ },
+                    onChoosePhotos = { pickerOpens++ },
+                ),
             )
         }
 
@@ -483,7 +495,7 @@ class StatusScreenTest {
     @Test
     fun `confirming leave invokes the callback`() = runComposeUiTest {
         var leaves = 0
-        setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff(), actions = StatusActions(onLeaveEvent = { leaves++ })) }
 
         onNodeWithContentDescription("Leave event").performClick()
         onNodeWithText("Leave").performClick()
@@ -493,7 +505,7 @@ class StatusScreenTest {
     @Test
     fun `staying does not invoke leave and dismisses the dialog`() = runComposeUiTest {
         var leaves = 0
-        setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff(), actions = StatusActions(onLeaveEvent = { leaves++ })) }
 
         onNodeWithContentDescription("Leave event").performClick()
         onNodeWithText("Stay").performClick()
@@ -518,7 +530,7 @@ class StatusScreenTest {
     @Test
     fun `activating share invokes the callback`() = runComposeUiTest {
         var shares = 0
-        setContent { StatusScreen(inSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff(), actions = StatusActions(onShareInvite = { shares++ })) }
         onNodeWithContentDescription("Share invite link").performClick()
         assertEquals(1, shares)
     }
@@ -632,8 +644,10 @@ class StatusScreenTest {
                 inSync,
                 membership = MEMBERSHIP,
                 eventName = "Anna's Birthday",
-                onRenameEvent = { id, name -> submitted += id to name },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onRenameEvent = { id, name -> submitted += id to name },
+                ),
             )
         }
         onNodeWithContentDescription("Rename event").performClick()
@@ -689,8 +703,10 @@ class StatusScreenTest {
                 membership = MEMBERSHIP,
                 eventName = "Anna's Birthday",
                 renameStatus = status.value,
-                onRenameStatusConsumed = { consumed++ },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onRenameStatusConsumed = { consumed++ },
+                ),
             )
         }
         onNodeWithContentDescription("Rename event").performClick()
@@ -711,8 +727,10 @@ class StatusScreenTest {
                 inSync,
                 membership = MEMBERSHIP,
                 eventName = "Anna's Birthday",
-                onRenameEvent = { _, _ -> submits++ },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onRenameEvent = { _, _ -> submits++ },
+                ),
             )
         }
         onNodeWithContentDescription("Rename event").performClick()
@@ -862,10 +880,12 @@ class StatusScreenTest {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
-                onReconfigure = { e, d, mn, mx, a ->
-                    savedEventId = e; savedDirection = d; savedMin = mn; savedMax = mx; savedAlbum = a
-                },
                 cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onReconfigure = { e, d, mn, mx, a ->
+                        savedEventId = e; savedDirection = d; savedMin = mn; savedMax = mx; savedAlbum = a
+                    },
+                ),
             )
         }
         onNodeWithContentDescription("Event settings").performClick()

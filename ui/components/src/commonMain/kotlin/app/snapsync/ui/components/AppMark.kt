@@ -22,6 +22,55 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.cos
 import kotlin.math.sin
 
+
+/**
+ * The badge's emerald gradient stops — the app icon's own colorway, mirroring `scripts/appicon.py`'s
+ * `TOP_LEFT`/`BOTTOM_RIGHT`. A shipped brand asset reproduced, deliberately NOT palette tokens: they
+ * must track the icon script rather than `AppTheme`, and moving them there would invite someone to
+ * "unify" them with the brand green and silently restyle the icon.
+ */
+private val BadgeGradientTop = Color(0xFF34DDA2)
+private val BadgeGradientBottom = Color(0xFF0B8A5E)
+
+
+
+/**
+ * The mark is authored on a **100-unit square grid** — the same one `scripts/appicon.py` draws it on —
+ * and every figure below is a coordinate on that grid, scaled to the requested size by `s`. The grid was
+ * implicit until now, which is what made `cardPath(14f, 14f, 11f)` unreadable: those are grid units, not
+ * pixels, dp, or fractions.
+ *
+ * Keeping the numbers as grid units rather than fractions is deliberate: they must stay comparable to
+ * the Python script that produces the shipped app icon, and a divergence between the two is a visible
+ * brand bug.
+ */
+private const val MARK_GRID = 100f
+
+/** Each card is a 48-unit rounded square; the two are offset and counter-tilted about their centres. */
+private const val CARD_SIZE = 48f
+private const val CARD_CORNER_RADIUS = 12f
+private const val CARD_HALF = CARD_SIZE / 2f
+
+/** Card A: the lower-left card, tilted counter-clockwise. */
+private const val CARD_A_ORIGIN = 14f
+private const val CARD_A_TILT = 11f
+
+/** Card B: the upper-right card, tilted the other way, whose overlap with A is knocked out. */
+private const val CARD_B_ORIGIN = 38f
+private const val CARD_B_TILT = -6f
+
+/** The sun disc, whose centre rides with card A's rotation about A's centre. */
+private const val SUN_CENTRE = 30f
+private const val SUN_RADIUS = 6.5f
+
+/** Degrees in a half turn — the radians conversion's denominator. */
+private const val HALF_TURN_DEGREES = 180.0
+
+/** The badge's squircle corner and the glyph's inset within it, as fractions of the badge size. */
+private const val BADGE_CORNER_FRACTION = 0.3f
+private const val BADGE_GLYPH_FRACTION = 0.82f
+
+
 /**
  * The SnapSync mark, drawn — the same geometry as the app icon (`scripts/appicon.py`, the source of
  * truth for these constants): two photo-library cards, splayed (each turning on its own centre),
@@ -39,7 +88,7 @@ import kotlin.math.sin
 @Composable
 fun AppMarkGlyph(size: Dp, color: Color) {
     Canvas(modifier = Modifier.size(size)) {
-        val s = this.size.minDimension / 100f
+        val s = this.size.minDimension / MARK_GRID
 
         fun cardPath(originX: Float, originY: Float, tiltDegrees: Float): Path {
             val path = Path()
@@ -47,14 +96,14 @@ fun AppMarkGlyph(size: Dp, color: Color) {
                 RoundRect(
                     rect = Rect(
                         offset = Offset(originX * s, originY * s),
-                        size = androidx.compose.ui.geometry.Size(48f * s, 48f * s),
+                        size = androidx.compose.ui.geometry.Size(CARD_SIZE * s, CARD_SIZE * s),
                     ),
-                    cornerRadius = CornerRadius(12f * s),
+                    cornerRadius = CornerRadius(CARD_CORNER_RADIUS * s),
                 ),
             )
             val m = Matrix()
-            val cx = (originX + 24f) * s
-            val cy = (originY + 24f) * s
+            val cx = (originX + CARD_HALF) * s
+            val cy = (originY + CARD_HALF) * s
             m.translate(cx, cy)
             m.rotateZ(-tiltDegrees) // PIL CCW → Compose CW
             m.translate(-cx, -cy)
@@ -64,19 +113,19 @@ fun AppMarkGlyph(size: Dp, color: Color) {
 
         // The sun's centre, rotated with card A about A's centre (38, 38) — visually CCW by 11°,
         // which on a y-down canvas is a negative-angle rotation of the point.
-        val angle = (-11.0 * kotlin.math.PI / 180.0).toFloat()
-        val ax = 38f
-        val ay = 38f
-        val sx = 30f - ax
-        val sy = 30f - ay
+        val angle = (-CARD_A_TILT.toDouble() * kotlin.math.PI / HALF_TURN_DEGREES).toFloat()
+        val ax = CARD_B_ORIGIN
+        val ay = CARD_B_ORIGIN
+        val sx = SUN_CENTRE - ax
+        val sy = SUN_CENTRE - ay
         val sunX = (ax + sx * cos(angle) - sy * sin(angle)) * s
         val sunY = (ay + sx * sin(angle) + sy * cos(angle)) * s
 
         val mark = Path().apply {
             fillType = PathFillType.EvenOdd
-            addPath(cardPath(14f, 14f, 11f))
-            addPath(cardPath(38f, 38f, -6f))
-            addOval(Rect(center = Offset(sunX, sunY), radius = 6.5f * s))
+            addPath(cardPath(CARD_A_ORIGIN, CARD_A_ORIGIN, CARD_A_TILT))
+            addPath(cardPath(CARD_B_ORIGIN, CARD_B_ORIGIN, CARD_B_TILT))
+            addOval(Rect(center = Offset(sunX, sunY), radius = SUN_RADIUS * s))
         }
         drawPath(mark, color = color)
     }
@@ -94,12 +143,12 @@ fun AppMarkBadge(size: Dp) {
             .size(size)
             .background(
                 brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFF34DDA2), Color(0xFF0B8A5E)),
+                    colors = listOf(BadgeGradientTop, BadgeGradientBottom),
                 ),
-                shape = RoundedCornerShape(size * 0.3f),
+                shape = RoundedCornerShape(size * BADGE_CORNER_FRACTION),
             ),
         contentAlignment = Alignment.Center,
     ) {
-        AppMarkGlyph(size = size * 0.82f, color = Color.White)
+        AppMarkGlyph(size = size * BADGE_GLYPH_FRACTION, color = Color.White)
     }
 }

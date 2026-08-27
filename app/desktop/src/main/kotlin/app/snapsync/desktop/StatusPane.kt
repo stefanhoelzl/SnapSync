@@ -25,6 +25,7 @@ import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlin.time.Clock
@@ -167,32 +168,34 @@ fun StatusPane(
         // `AppTheme`), so the harness toggle flips the phone pane's skin without touching its own chrome.
         CompositionLocalProvider(LocalDarkThemeOverride provides darkThemeOverride) {
         StatusScreen(
-            state,
-            host::onRequestPermission,
-            host::onOpenSettings,
-            onLeaveEvent = host::onLeaveEvent,
-            onShareInvite = host::onShareInvite,
+            state = state,
             membership = membership,
-            onReconfigure = host::onReconfigure,
             inviteUrl = inviteUrl,
             eventName = eventName,
-            onCreateEvent = host::onCreateEvent,
-            onConfirmJoin = host::onConfirmJoin,
-            onAcknowledgeAccess = host::onAcknowledgeAccess,
-            onChoosePhotos = host::onChoosePhotos,
-            onCancelJoin = host::onCancelJoin,
-            onRetryLoad = host::onRetryLoad,
-            onRetryJoin = host::onRetryJoin,
-            onConfirmSwitch = host::onConfirmSwitch,
-            onCancelSwitch = host::onCancelSwitch,
             cutoff = cutoffFormatter,
-            shareableCount = shareableCount,
             photoPermission = photoPermission,
-            // The heading rename (capability `event-rename`).
-            onRenameEvent = host::onRenameEvent,
             renameStatus = renameStatus,
-            onRenameStatusConsumed = host::onRenameStatusConsumed,
-            onSendDiagnostics = host.onSendDiagnostics,
+            actions = StatusActions(
+                onRequestPermission = host::onRequestPermission,
+                onOpenSettings = host::onOpenSettings,
+                onLeaveEvent = host::onLeaveEvent,
+                onShareInvite = host::onShareInvite,
+                onReconfigure = host::onReconfigure,
+                onCreateEvent = host::onCreateEvent,
+                onConfirmJoin = host::onConfirmJoin,
+                onAcknowledgeAccess = host::onAcknowledgeAccess,
+                onChoosePhotos = host::onChoosePhotos,
+                onCancelJoin = host::onCancelJoin,
+                onRetryLoad = host::onRetryLoad,
+                onRetryJoin = host::onRetryJoin,
+                onConfirmSwitch = host::onConfirmSwitch,
+                onCancelSwitch = host::onCancelSwitch,
+                shareableCount = shareableCount,
+                // The heading rename (capability `event-rename`).
+                onRenameEvent = host::onRenameEvent,
+                onRenameStatusConsumed = host::onRenameStatusConsumed,
+                onSendDiagnostics = host.onSendDiagnostics,
+            ),
         )
         }
     }
