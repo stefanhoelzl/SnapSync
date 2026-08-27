@@ -558,22 +558,23 @@ jobs:
       - name: Run Kotlin/Native unit tests on the iOS simulator
         run: |
           # Boots an iOS simulator (iOS 26 runtime on macos-26) and runs the iosSimulatorArm64 tests
-          # of EVERY module that declares the target — ~600 tests across ~65 classes, i.e. the whole
-          # shared commonTest surface (every :domain:* and :capability:*, plus :test:world and
-          # :test:integration), which is the same logic build.yml runs as JVM bytecode, now compiled to
-          # Native. This is the ONLY place that difference is checked, and it is not theoretical: it
-          # catches Native-only breakage the JVM accepts (e.g. Kotlin/Native rejects a comma in a
-          # backticked test name).
+          # of EVERY module that declares the target — ~140 test classes. That is the whole shared
+          # commonTest surface (:domain, :ui:presentation, :ui:screens, :adapter:generic:app,
+          # :adapter:generic:fake, :test:world, :test:integration), which is the same logic build.yml
+          # runs as JVM bytecode, now compiled to Native. This is the ONLY place that difference is
+          # checked, and it is not theoretical: it catches Native-only breakage the JVM accepts (e.g.
+          # Kotlin/Native rejects a comma in a backticked test name).
           #
-          # Native-only source sets — no JVM equivalent, so this is their only run: :adapter:generic:app's
-          # NativeLedgerStoreTest (the SQLDelight native driver behind the shared LedgerStoreContract,
-          # hosted in :test:world since migration step 10),
-          # :domain:keychain's IosKeychainTest, and :app:ios:extension's PhotoKitSmokeTest
-          # (general PhotoKit is callable on the sim; the cloud-id + upload-job subsystems are
-          # device-only and not exercised here).
+          # It ALSO runs source sets with no JVM equivalent, so this is their only run:
+          # :adapter:ios:ext-safe's and :adapter:ios:app-only's iosTest (Keychain, PhotoKit, logging,
+          # config — incl. IosKeychainTest and PhotoKitSmokeTest: general PhotoKit is callable on the
+          # sim, while the cloud-id + upload-job subsystems are device-only and not exercised here),
+          # plus the native SQLDelight drivers behind the shared storage contracts hosted in
+          # :test:world (:adapter:generic:app's NativeLedgerStoreTest and NativeDownloadStoreTest).
           #
-          # NOT covered here: :domain:ui's Compose tests and the SQLDelight JVM-driver tests (jvmTest
-          # only), and :test:architecture (JVM-only Konsist, by design).
+          # NOT covered here: :ui:components' Compose semantics tests and the SQLDelight JVM-driver
+          # tests (jvmTest only), and :test:architecture (JVM-only Konsist, by design). :ui:screens'
+          # Compose tests ARE covered — they live in commonTest and render through the iOS backend.
           #
           # Kotlin auto-selects a standalone simulator; if a run fails with "no matching device", pin
           # testRuns["test"].deviceId.
