@@ -80,13 +80,10 @@ import androidx.compose.runtime.setValue
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTextPromptSheet(
-    title: String,
+    copy: DialogCopy,
     placeholder: String,
-    confirmLabel: String,
-    cancelLabel: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
-    body: String? = null,
     initialValue: String = "",
     maxLength: Int = Int.MAX_VALUE,
     error: String? = null,
@@ -124,7 +121,7 @@ fun AppTextPromptSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text = title,
+                text = copy.title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = scheme.onSurface,
             )
@@ -136,9 +133,9 @@ fun AppTextPromptSheet(
                 singleLine = false,
                 enabled = !busy,
             )
-            if (body != null) {
+            if (copy.body != null) {
                 Text(
-                    text = body,
+                    text = copy.body,
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
@@ -148,11 +145,11 @@ fun AppTextPromptSheet(
                 AppErrorBanner(text = error)
             }
             PrimaryButton(
-                label = confirmLabel,
+                label = copy.confirmLabel,
                 onClick = { onConfirm(written) },
                 enabled = submittable && !busy,
             )
-            SecondaryButton(label = cancelLabel, onClick = { if (!busy) onDismiss() })
+            SecondaryButton(label = copy.cancelLabel, onClick = { if (!busy) onDismiss() })
         }
     }
 }

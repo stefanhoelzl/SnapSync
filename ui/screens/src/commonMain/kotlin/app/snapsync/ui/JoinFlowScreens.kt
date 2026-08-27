@@ -81,12 +81,7 @@ import app.snapsync.ui.components.RangeChoices
 internal fun JoiningEventScreen(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
-    onConfirm: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit,
-    onAcknowledgeAccess: () -> Unit,
-    onCancel: () -> Unit,
-    onRetryLoad: () -> Unit,
-    onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
+    actions: JoinActions,
     photoPermission: PermissionStatus,
 ) {
     // The member's own picks, owned in one place and surviving the phase changes this screen goes
@@ -97,10 +92,7 @@ internal fun JoiningEventScreen(
             shareOn = true,
             receiveOn = true,
             saveToAlbum = false,
-            fromPreset = FromChoice.EVENT_START,
-            fromCustom = null,
-            untilPreset = UntilChoice.EVENT_END,
-            untilCustom = null,
+            choices = RangeChoices(FromChoice.EVENT_START, null, UntilChoice.EVENT_END, null),
         ),
     )
     // What would be committed if Join were pressed — pure derivation, and a different question from the
@@ -121,38 +113,38 @@ internal fun JoiningEventScreen(
         is JoinPhase.Ready -> ReadyLayout(
             state = readyState(phase, cutoff, selection, participation, photoPermission),
             actions = ReadyActions(
-                participation = participation.actions(shareableCount),
+                participation = participation.actions(actions.shareableCount),
                 onJoin = {
-                    onConfirm(
+                    actions.onConfirm(
                         selection.chosenFrom,
                         selection.chosenUntil,
                         selection.chosenDirection,
                         participation.saveToAlbum,
                     )
                 },
-                onCancel = onCancel,
+                onCancel = actions.onCancel,
             ),
         )
         JoinPhase.Loading -> LoadingPhase()
         is JoinPhase.ExplainAccess -> ExplainAccessPhase(
             name = phase.name,
-            onAcknowledge = onAcknowledgeAccess,
-            onCancel = onCancel,
+            onAcknowledge = actions.onAcknowledgeAccess,
+            onCancel = actions.onCancel,
         )
-        JoinPhase.NotFound -> NotFoundPhase(onCancel = onCancel)
-        JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = onRetryLoad, onCancel = onCancel)
+        JoinPhase.NotFound -> NotFoundPhase(onCancel = actions.onCancel)
+        JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
         is JoinPhase.Committing -> CommittingPhase(name = phase.name)
         is JoinPhase.CommitFailed -> CommitFailedPhase(
             name = phase.name,
             onRetry = {
-                onRetryJoin(
+                actions.onRetryJoin(
                     selection.chosenFrom,
                     selection.chosenUntil,
                     selection.chosenDirection,
                     participation.saveToAlbum,
                 )
             },
-            onCancel = onCancel,
+            onCancel = actions.onCancel,
         )
     }
 }
@@ -374,4 +366,23 @@ private fun readyState(
         // which case the section states the fixed ceiling alone rather than inventing a date.
         deletes = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
     ),
+)
+
+/**
+ * Everything the join gate can ask for: the two ways to commit, the three ways out, and the count query.
+ *
+ * The five callbacks were loose parameters interleaved with the two values the screen renders from, which
+ * is the shape `ReadyLayout` was cured of — a surface's inputs and its outputs read better separated than
+ * alternating.
+ *
+ * [onRetryJoin] is distinct from [onConfirm] because a retry commits WITHOUT passing back through the
+ * loaded phase, and [onCancel] is the one every phase pins.
+ */
+internal class JoinActions(
+    val onConfirm: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit,
+    val onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit,
+    val onAcknowledgeAccess: () -> Unit,
+    val onCancel: () -> Unit,
+    val onRetryLoad: () -> Unit,
+    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
 )

@@ -40,21 +40,14 @@ import androidx.compose.ui.window.DialogProperties
  * not a flag here, since destructiveness is a design-time choice of the call site.
  */
 @Composable
-fun AppConfirmDialog(
-    title: String,
-    confirmLabel: String,
-    cancelLabel: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-    body: String? = null,
-) {
+fun AppConfirmDialog(copy: DialogCopy, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     ConfirmDialogScaffold(
-        title = title,
-        body = body,
+        title = copy.title,
+        body = copy.body,
         onDismiss = onDismiss,
         actions = listOf(
-            DialogAction(confirmLabel, DialogActionKind.Default, onConfirm),
-            DialogAction(cancelLabel, DialogActionKind.Cancel, onDismiss),
+            DialogAction(copy.confirmLabel, DialogActionKind.Default, onConfirm),
+            DialogAction(copy.cancelLabel, DialogActionKind.Cancel, onDismiss),
         ),
     )
 }
@@ -67,21 +60,14 @@ fun AppConfirmDialog(
  * this component (rather than a flag) is how the call site expresses that the confirmation is destructive.
  */
 @Composable
-fun AppDestructiveConfirmDialog(
-    title: String,
-    confirmLabel: String,
-    cancelLabel: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-    body: String? = null,
-) {
+fun AppDestructiveConfirmDialog(copy: DialogCopy, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     ConfirmDialogScaffold(
-        title = title,
-        body = body,
+        title = copy.title,
+        body = copy.body,
         onDismiss = onDismiss,
         actions = listOf(
-            DialogAction(confirmLabel, DialogActionKind.Destructive, onConfirm),
-            DialogAction(cancelLabel, DialogActionKind.Cancel, onDismiss),
+            DialogAction(copy.confirmLabel, DialogActionKind.Destructive, onConfirm),
+            DialogAction(copy.cancelLabel, DialogActionKind.Cancel, onDismiss),
         ),
     )
 }
@@ -187,3 +173,19 @@ private fun DialogActionButton(action: DialogAction) {
         )
     }
 }
+
+/**
+ * The words on a dialog: what it asks, what its two buttons say, and the sentence under the question.
+ *
+ * One holder because all three dialogs in this design system declare the same four — two confirms and a
+ * text prompt — and the quartet always travels together: a dialog with a confirm label and no cancel
+ * label, or a title supplied without its body, is not a thing this system builds.
+ *
+ * [body] is nullable because a question that needs no elaboration should not be padded with one.
+ */
+class DialogCopy(
+    val title: String,
+    val confirmLabel: String,
+    val cancelLabel: String,
+    val body: String? = null,
+)

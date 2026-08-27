@@ -61,9 +61,7 @@ internal fun RangeCalendarGrid(
     visibleMonth: LocalDate,
     rangeStart: LocalDate,
     rangeEnd: LocalDate,
-    today: LocalDate,
-    floor: LocalDate?,
-    ceiling: LocalDate?,
+    bounds: CalendarBounds,
     onPick: (LocalDate) -> Unit,
 ) {
     val firstOfMonth = LocalDate(visibleMonth.year, visibleMonth.month.ordinal.plus(1), 1)
@@ -87,8 +85,8 @@ internal fun RangeCalendarGrid(
                                 isStart = date == rangeStart,
                                 isEnd = date == rangeEnd,
                                 inRange = date > rangeStart && date < rangeEnd,
-                                isToday = date == today,
-                                enabled = (floor == null || date >= floor) && (ceiling == null || date <= ceiling),
+                                isToday = date == bounds.today,
+                                enabled = bounds.allows(date),
                                 onClick = { onPick(date) },
                             )
                         }
@@ -264,9 +262,7 @@ internal fun WeekdayHeader() {
 internal fun CalendarGrid(
     visibleMonth: LocalDate,
     selected: LocalDate,
-    today: LocalDate,
-    floor: LocalDate?,
-    ceiling: LocalDate? = null,
+    bounds: CalendarBounds,
     onPick: (LocalDate) -> Unit,
 ) {
     val firstOfMonth = LocalDate(visibleMonth.year, visibleMonth.month.ordinal.plus(1), 1)
@@ -293,10 +289,10 @@ internal fun CalendarGrid(
                             DayCell(
                                 date = date,
                                 selected = date == selected,
-                                isToday = date == today,
+                                isToday = date == bounds.today,
                                 // A day is selectable only inside the supplied window (either bound may be
-                                // absent): at or after the floor AND at or before the ceiling.
-                                enabled = (floor == null || date >= floor) && (ceiling == null || date <= ceiling),
+                                // absent): at or after the bounds.floor AND at or before the bounds.ceiling.
+                                enabled = bounds.allows(date),
                                 onClick = { onPick(date) },
                             )
                         }
@@ -380,4 +376,26 @@ private fun DayCell(
             )
         }
     }
+}
+
+/**
+ * What a calendar month is bounded by: today (ringed), and the selectable window's ends.
+ *
+ * The three travel together — both grids took all three and neither ever varies one without the others —
+ * and a `floor`/`ceiling` pair separated from the `today` it is compared against is easy to hand over in
+ * the wrong order, since all three are `LocalDate`.
+ *
+ * A null bound means unbounded on that side, not "unknown": the create surface passes no window at all.
+ */
+internal class CalendarBounds(
+    val today: LocalDate,
+    val floor: LocalDate? = null,
+    val ceiling: LocalDate? = null,
+) {
+    /**
+     * Whether a day is selectable. Both grids spelled this comparison out separately, which is two places
+     * to get an inclusive bound wrong; a null bound is unbounded, so it admits.
+     */
+    fun allows(date: LocalDate): Boolean =
+        (floor == null || date >= floor) && (ceiling == null || date <= ceiling)
 }

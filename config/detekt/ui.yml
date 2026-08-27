@@ -18,8 +18,18 @@
 # create, diagnostics — at the cost of `actions.join.onRetryJoin` at every call site, which is a taste
 # judgement and not a complexity argument.
 #
+# THE NUMBER HAS NOT MOVED SINCE, AND THE TIER STILL IMPROVED. A pass over everything BUT `StatusActions`
+# took the site count 23 -> 18 and left the ceiling at 19, because `StatusActions` sets it alone. What it
+# removed was real: three dialogs each declaring the same four copy strings (`DialogCopy` — the two
+# confirms 6 -> 3, the prompt sheet 11 -> 8); two calendar grids each taking the same three bounds and
+# each spelling out the same inclusive-bounds comparison (`CalendarBounds` and its `allows`); a heading
+# passed as three parameters that are one concept (`ScreenHeading`, 8 -> 6); the join gate's five
+# callbacks interleaved with the two values it renders from (`JoinActions`, 9 -> 4); and a
+# `ParticipationSeed` that listed the four range picks separately when `RangeChoices` already named them
+# (7 -> 4). Read the LIST here too — the maximum says nothing about the eighteen sites beneath it.
+#
 # What is NOT reachable is detekt's default of 6. Most of the remaining sites are leaf design-system
-# components at 6-8 parameters, where Compose's own APIs routinely exceed six and a wrapper makes every
+# components at 6-7 parameters, where Compose's own APIs routinely exceed six and a wrapper makes every
 # call site worse. That tail is the reason this file still exists.
 #
 # HOW THE OTHER TWO LEFT, AND WHY IT IS WRITTEN DOWN. `CyclomaticComplexMethod` sat at 19 against a

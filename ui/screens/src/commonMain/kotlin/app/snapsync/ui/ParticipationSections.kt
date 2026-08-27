@@ -232,10 +232,10 @@ internal class Participation(seed: ParticipationSeed) {
     var shareOn by mutableStateOf(seed.shareOn)
     var receiveOn by mutableStateOf(seed.receiveOn)
     var saveToAlbum by mutableStateOf(seed.saveToAlbum)
-    var fromPreset by mutableStateOf(seed.fromPreset)
-    var fromCustom by mutableStateOf(seed.fromCustom)
-    var untilPreset by mutableStateOf(seed.untilPreset)
-    var untilCustom by mutableStateOf(seed.untilCustom)
+    var fromPreset by mutableStateOf(seed.choices.fromPreset)
+    var fromCustom by mutableStateOf(seed.choices.fromCustom)
+    var untilPreset by mutableStateOf(seed.choices.untilPreset)
+    var untilCustom by mutableStateOf(seed.choices.untilCustom)
 
     /** The four range picks in the shape the design system's picker and the resolvers both take. */
     val choices: RangeChoices get() = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom)
@@ -280,10 +280,7 @@ internal class ParticipationSeed(
     val shareOn: Boolean,
     val receiveOn: Boolean,
     val saveToAlbum: Boolean,
-    val fromPreset: FromChoice,
-    val fromCustom: LocalDateTime?,
-    val untilPreset: UntilChoice,
-    val untilCustom: LocalDateTime?,
+    val choices: RangeChoices,
 )
 
 /**

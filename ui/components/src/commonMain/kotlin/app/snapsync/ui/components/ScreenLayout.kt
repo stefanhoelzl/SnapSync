@@ -51,33 +51,10 @@ import androidx.compose.ui.unit.Dp
 @Composable
 fun ScreenLayout(
     title: String,
-    heading: String? = null,
-    bottomActions: (@Composable () -> Unit)? = null,
-    // The content pins its own full-width action cluster to the bottom edge (e.g. the join gate's
-    // Join / Cancel). Native bottom-anchored actions rest ON the home-indicator strip — the strip
-    // IS the breathing room, never a second margin on top of it — so the bottom inset becomes
-    // max(safe-area, 12.dp) instead of safe-area + 24.dp: on a home-indicator device the cluster
-    // sits directly above the strip (34pt), while the 12.dp floor keeps the touch target off the
-    // physical edge where no strip exists (home-button devices, the desktop harness). The inset
-    // values stay owned here — screens only name the arrangement.
-    contentPinsActionCluster: Boolean = false,
-    // The hidden operator affordance (capability `diagnostic-logging`): a double-tap on the app-name
-    // label. `null` — the default, and every build with no reporting channel — wires no gesture at all.
-    //
-    // Deliberately a raw pointer-input gesture rather than `combinedClickable`: that would add click
-    // semantics and a ripple, which is precisely what makes a control look like a control. This one
-    // must be invisible and absent from the accessibility tree, so it is discoverable only to someone
-    // told about it.
-    onTitleDoubleTap: (() -> Unit)? = null,
-    // The heading's edit affordance (capability `event-rename`): a real control beside the event name.
-    // `null` — the default, and every screen that renders no heading — renders nothing at all, leaving
-    // the layout byte-identical to what it was before this parameter existed.
-    //
-    // Deliberately an `IconButton` rather than a raw gesture: unlike `onTitleDoubleTap` above, this one
-    // MUST read as a control and MUST appear in the accessibility tree. The pencil glyph and the flat
-    // treatment are the skin's, contained here.
-    onEditHeading: (() -> Unit)? = null,
-    editHeadingDescription: String = "Rename event",
+    heading: ScreenHeading?,
+    bottomActions: (@Composable () -> Unit)?,
+    contentPinsActionCluster: Boolean,
+    onTitleDoubleTap: (() -> Unit)?,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -100,7 +77,7 @@ fun ScreenLayout(
         ) {
             NavTitle(title, onTitleDoubleTap, bottomPadding = if (heading == null) 12.dp else 4.dp)
             if (heading != null) {
-                Heading(heading, onEditHeading, editHeadingDescription)
+                Heading(heading.text, heading.onEdit, heading.editDescription)
             }
             Column(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -188,3 +165,17 @@ private fun Heading(text: String, onEdit: (() -> Unit)?, editDescription: String
         }
     }
 }
+
+/**
+ * The prominent heading, when a screen has one: the text, and whether it can be edited.
+ *
+ * One object rather than three parameters because they are one concept and were only ever set together —
+ * an [onEdit] with no text has nothing to sit beside, and an [editDescription] means nothing without the
+ * control it describes. Passing the whole thing as null is how a screen says it has no heading, which
+ * previously took a null text plus two arguments nobody would read.
+ */
+class ScreenHeading(
+    val text: String,
+    val onEdit: (() -> Unit)? = null,
+    val editDescription: String = "",
+)
