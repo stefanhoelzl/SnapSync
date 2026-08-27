@@ -124,60 +124,20 @@ fun AppRangePresetChoices(
     var picking by remember { mutableStateOf<RangeHandle?>(null) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        HandleGroup(tag = "from-group", caption = "Share from") {
-            ChoiceRow(
-                tag = "from-event-start",
-                label = "Event start",
-                consequence = "Everything you've taken since the event began.",
-                selected = choices.fromPreset == FromChoice.EVENT_START,
-                enabled = true,
-                onSelect = { actions.onFromPreset(FromChoice.EVENT_START) },
-            )
-            RowDivider()
-            ChoiceRow(
-                tag = "from-now",
-                label = "Now",
-                consequence = if (window.nowAvailable) {
-                    "Only photos you take from here on."
-                } else {
-                    "Same as the event start until the event begins."
-                },
-                selected = choices.fromPreset == FromChoice.NOW,
-                enabled = window.nowAvailable,
-                onSelect = { actions.onFromPreset(FromChoice.NOW) },
-            )
-            RowDivider()
-            ChoiceRow(
-                tag = "from-custom",
-                label = "Custom",
-                // While selected the row states the CONSTRAINT (the floor), never the chosen date, which
-                // the section's value line already carries.
-                consequence = if (choices.fromPreset == FromChoice.CUSTOM) fromFloorNote else "Pick your own start.",
-                selected = choices.fromPreset == FromChoice.CUSTOM,
-                enabled = true,
-                onSelect = { picking = RangeHandle.FROM },
-            )
-        }
+        FromGroup(
+            preset = choices.fromPreset,
+            onPreset = actions.onFromPreset,
+            nowAvailable = window.nowAvailable,
+            floorNote = fromFloorNote,
+            onCustom = { picking = RangeHandle.FROM },
+        )
 
-        HandleGroup(tag = "until-group", caption = "Share until") {
-            ChoiceRow(
-                tag = "until-event-end",
-                label = "Event end",
-                consequence = "Everything up to when the event ends.",
-                selected = choices.untilPreset == UntilChoice.EVENT_END,
-                enabled = true,
-                onSelect = { actions.onUntilPreset(UntilChoice.EVENT_END) },
-            )
-            RowDivider()
-            ChoiceRow(
-                tag = "until-custom",
-                label = "Custom",
-                consequence = if (choices.untilPreset == UntilChoice.CUSTOM) untilCeilingNote else "Pick your own end.",
-                selected = choices.untilPreset == UntilChoice.CUSTOM,
-                enabled = true,
-                onSelect = { picking = RangeHandle.UNTIL },
-            )
-        }
+        UntilGroup(
+            preset = choices.untilPreset,
+            onPreset = actions.onUntilPreset,
+            ceilingNote = untilCeilingNote,
+            onCustom = { picking = RangeHandle.UNTIL },
+        )
     }
 
     picking?.let { handle ->
@@ -307,3 +267,84 @@ private fun ChoiceRow(
 
 /** Which end of the capture range a Custom picker is editing. */
 private enum class RangeHandle { FROM, UNTIL }
+
+/**
+ * The **from** handle: the three ways to name a lower bound, in their own captioned well.
+ *
+ * Its own component because a handle is the unit this surface is made of — one caption, one selection,
+ * one Custom row that opens the picker — and because the two handles differ in exactly the way that made
+ * them worth naming separately: this one has three options and a [nowAvailable] gate, the other has two
+ * and none.
+ */
+@Composable
+private fun FromGroup(
+    preset: FromChoice,
+    onPreset: (FromChoice) -> Unit,
+    nowAvailable: Boolean,
+    floorNote: String,
+    onCustom: () -> Unit,
+) {
+    HandleGroup(tag = "from-group", caption = "Share from") {
+        ChoiceRow(
+            tag = "from-event-start",
+            label = "Event start",
+            consequence = "Everything you've taken since the event began.",
+            selected = preset == FromChoice.EVENT_START,
+            enabled = true,
+            onSelect = { onPreset(FromChoice.EVENT_START) },
+        )
+        RowDivider()
+        ChoiceRow(
+            tag = "from-now",
+            label = "Now",
+            consequence = if (nowAvailable) {
+                "Only photos you take from here on."
+            } else {
+                "Same as the event start until the event begins."
+            },
+            selected = preset == FromChoice.NOW,
+            enabled = nowAvailable,
+            onSelect = { onPreset(FromChoice.NOW) },
+        )
+        RowDivider()
+        ChoiceRow(
+            tag = "from-custom",
+            label = "Custom",
+            // While selected the row states the CONSTRAINT (the floor), never the chosen date, which the
+            // section's value line already carries.
+            consequence = if (preset == FromChoice.CUSTOM) floorNote else "Pick your own start.",
+            selected = preset == FromChoice.CUSTOM,
+            enabled = true,
+            onSelect = onCustom,
+        )
+    }
+}
+
+/** The **until** handle: two ways to name an upper bound. See [FromGroup] for why each handle is its own. */
+@Composable
+private fun UntilGroup(
+    preset: UntilChoice,
+    onPreset: (UntilChoice) -> Unit,
+    ceilingNote: String,
+    onCustom: () -> Unit,
+) {
+    HandleGroup(tag = "until-group", caption = "Share until") {
+        ChoiceRow(
+            tag = "until-event-end",
+            label = "Event end",
+            consequence = "Everything up to when the event ends.",
+            selected = preset == UntilChoice.EVENT_END,
+            enabled = true,
+            onSelect = { onPreset(UntilChoice.EVENT_END) },
+        )
+        RowDivider()
+        ChoiceRow(
+            tag = "until-custom",
+            label = "Custom",
+            consequence = if (preset == UntilChoice.CUSTOM) ceilingNote else "Pick your own end.",
+            selected = preset == UntilChoice.CUSTOM,
+            enabled = true,
+            onSelect = onCustom,
+        )
+    }
+}

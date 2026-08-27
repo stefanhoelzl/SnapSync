@@ -128,6 +128,22 @@ internal fun JoiningEventScreen(
         receiveOn = receiveOn,
     )
 
+    // The member's four picks and the four edits to them, named once — the same pair the reconfigure
+    // surface builds, and the shape `AppRangePresetChoices` takes.
+    val participation = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom)
+    val participationActions = ParticipationActions(
+        choices = RangeChoiceActions(
+            onFromPreset = { fromPreset = it },
+            onFromCustom = { fromCustom = it },
+            onUntilPreset = { untilPreset = it },
+            onUntilCustom = { untilCustom = it },
+        ),
+        onShareOn = { shareOn = it },
+        onReceiveOn = { receiveOn = it },
+        onSaveToAlbum = { chosenSaveToAlbum = it },
+        shareableCount = shareableCount,
+    )
+
     // ONE dispatcher over the phase, and every branch names a composable that renders BOTH that
     // phase's body and the actions it offers. It was two `when`s ninety lines apart plus an early
     // return, so a phase's appearance and its buttons were stated in three different places and
@@ -138,39 +154,12 @@ internal fun JoiningEventScreen(
         // is an ordinary branch here: once the shape is something a phase CHOOSES, a phase that wants
         // a different one simply calls something else, and no early return has to jump the queue.
         is JoinPhase.Ready -> ReadyLayout(
-            state = ReadyState(
-                eventName = phase.name,
-                participation = ParticipationState(
-                    selection = selection,
-                    choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
-                    rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
-                    shareOn = shareOn,
-                    receiveOn = receiveOn,
-                    saveToAlbum = chosenSaveToAlbum,
-                    photoPermission = photoPermission,
-                ),
-                labels = ReadyLabels(
-                    floor = appDateTimeLabel(selection.windowStart),
-                    ceiling = appDateTimeLabel(selection.windowEnd),
-                    // The retention deadline, rendered as a plain date. Absent only if a phase somehow
-                    // lost it, in which case the section states the fixed ceiling alone rather than
-                    // inventing a date.
-                    deletes = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
-                ),
+            state = readyState(
+                phase, cutoff, selection, participation,
+                shareOn, receiveOn, chosenSaveToAlbum, photoPermission,
             ),
             actions = ReadyActions(
-                participation = ParticipationActions(
-                    choices = RangeChoiceActions(
-                        onFromPreset = { fromPreset = it },
-                        onFromCustom = { fromCustom = it },
-                        onUntilPreset = { untilPreset = it },
-                        onUntilCustom = { untilCustom = it },
-                    ),
-                    onShareOn = { shareOn = it },
-                    onReceiveOn = { receiveOn = it },
-                    onSaveToAlbum = { chosenSaveToAlbum = it },
-                    shareableCount = shareableCount,
-                ),
+                participation = participationActions,
                 onJoin = {
                     onConfirm(
                         selection.chosenFrom,
@@ -392,3 +381,42 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
     }
 }
 
+/**
+ * What the Ready surface displays, assembled from the phase and the member's live picks.
+ *
+ * A plain function and not a composable — it reads nothing but its arguments. Pulled out for the reason
+ * `reconfigureNotes` was on the other surface: the assembly is bulk, it answers "what does Ready show"
+ * rather than "what does this screen draw", and burying it in a `when` branch made the dispatcher above
+ * unreadable as a dispatcher.
+ */
+private fun readyState(
+    phase: JoinPhase.Ready,
+    cutoff: CutoffFormatter,
+    selection: RangeSelection,
+    choices: RangeChoices,
+    shareOn: Boolean,
+    receiveOn: Boolean,
+    saveToAlbum: Boolean,
+    photoPermission: PermissionStatus,
+) = ReadyState(
+    eventName = phase.name,
+    participation = ParticipationState(
+        selection = selection,
+        choices = choices,
+        rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
+        // Passed through as themselves, NOT read back off `selection.chosenDirection`: `directionOf`
+        // collapses both-off to `DownloadOnly` as an inert placeholder, so deriving them there would
+        // render the receive switch ON for a member who had turned both off.
+        shareOn = shareOn,
+        receiveOn = receiveOn,
+        saveToAlbum = saveToAlbum,
+        photoPermission = photoPermission,
+    ),
+    labels = ReadyLabels(
+        floor = appDateTimeLabel(selection.windowStart),
+        ceiling = appDateTimeLabel(selection.windowEnd),
+        // The retention deadline, rendered as a plain date. Absent only if a phase somehow lost it, in
+        // which case the section states the fixed ceiling alone rather than inventing a date.
+        deletes = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
+    ),
+)

@@ -40,6 +40,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.LazyListState
 
 
 // The time-of-day wheels: three snapping columns behind a selection band, sharing one row height and
@@ -154,20 +155,9 @@ private fun WheelColumn(
     label: (Int) -> String,
     modifier: Modifier = Modifier,
 ) {
-    val scheme = MaterialTheme.colorScheme
     val reduceMotion = LocalReduceMotion.current
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
-    val density = LocalDensity.current
-    val rowPx = with(density) { WheelRowHeight.toPx() }
-    val padRows = (WHEEL_VISIBLE_ROWS - 1) / 2
-
-    // The row currently on the centre reading line, from the scroll position.
-    val centerIndex by remember {
-        derivedStateOf {
-            val settled = listState.firstVisibleItemScrollOffset / rowPx
-            (listState.firstVisibleItemIndex + settled.roundToInt()).coerceIn(0, count - 1)
-        }
-    }
+    val centerIndex = rememberCenteredRow(listState, count)
 
     LaunchedEffect(centerIndex) { onIndexChange(centerIndex) }
 
@@ -185,43 +175,78 @@ private fun WheelColumn(
     LazyColumn(
         state = listState,
         flingBehavior = if (reduceMotion) decayFling else snapFling,
-        contentPadding = PaddingValues(vertical = WheelRowHeight * padRows),
+        contentPadding = PaddingValues(vertical = WheelRowHeight * ((WHEEL_VISIBLE_ROWS - 1) / 2)),
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.height(WheelRowHeight * WHEEL_VISIBLE_ROWS),
     ) {
         items(count) { i ->
-            val distance = abs(i - centerIndex)
-            val alpha = when (distance) {
-                0 -> WHEEL_SELECTED_ALPHA
-                1 -> WHEEL_NEIGHBOUR_ALPHA
-                else -> WHEEL_DISTANT_ALPHA
-            }
-            Box(
-                modifier = Modifier
-                    .height(WheelRowHeight)
-                    .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        role = Role.Button,
-                    ) {
-                        scope.launch {
-                            if (reduceMotion) listState.scrollToItem(i) else listState.animateScrollToItem(i)
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label(i),
-                    style = if (distance == 0) {
-                        MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    } else {
-                        MaterialTheme.typography.bodyLarge
-                    },
-                    color = scheme.onSurface.copy(alpha = alpha),
-                    maxLines = 1,
-                )
-            }
+            WheelRow(
+                text = label(i),
+                distance = abs(i - centerIndex),
+                onClick = {
+                    scope.launch {
+                        if (reduceMotion) listState.scrollToItem(i) else listState.animateScrollToItem(i)
+                    }
+                },
+            )
         }
+    }
+}
+
+/**
+ * Which row is on the centre reading line, derived from the scroll position.
+ *
+ * Its own function because it is the wheel's one piece of arithmetic — the pixel offset a partially
+ * scrolled list reports, converted to whole rows — and it answers a different question from everything
+ * around it: that code moves the list, this reads where the list came to rest.
+ */
+@Composable
+private fun rememberCenteredRow(listState: LazyListState, count: Int): Int {
+    val rowPx = with(LocalDensity.current) { WheelRowHeight.toPx() }
+    val centerIndex by remember {
+        derivedStateOf {
+            val settled = listState.firstVisibleItemScrollOffset / rowPx
+            (listState.firstVisibleItemIndex + settled.roundToInt()).coerceIn(0, count - 1)
+        }
+    }
+    return centerIndex
+}
+
+/**
+ * One row of a wheel, dimmed and lightened by how far it sits from the reading line.
+ *
+ * Tapping a row scrolls it to the centre rather than selecting it outright, so the wheel has exactly one
+ * way to change value and the row is a shortcut to the same gesture — which is why it carries a button
+ * role but no selected state.
+ */
+@Composable
+private fun WheelRow(text: String, distance: Int, onClick: () -> Unit) {
+    val alpha = when (distance) {
+        0 -> WHEEL_SELECTED_ALPHA
+        1 -> WHEEL_NEIGHBOUR_ALPHA
+        else -> WHEEL_DISTANT_ALPHA
+    }
+    Box(
+        modifier = Modifier
+            .height(WheelRowHeight)
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = if (distance == 0) {
+                MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            } else {
+                MaterialTheme.typography.bodyLarge
+            },
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+            maxLines = 1,
+        )
     }
 }
