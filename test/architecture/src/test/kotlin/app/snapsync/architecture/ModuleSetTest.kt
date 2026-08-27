@@ -7,16 +7,30 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **The module set withholds; packages organize** (spec `module-architecture`; promoted from the
- * migration beacon's module-set row at the finale, per the beacon's own contract: each law at
- * zero becomes a permanent gate). The build's module set SHALL be exactly the target list — a
- * module exists only to withhold a third-party or platform dependency by compile error; anything
- * finer is a package with a derived text gate.
+ * **The module set withholds; packages organize** (spec `module-architecture`; capability
+ * `architecture-guards`, "The migration's laws are permanent gates").
  *
- * This is one of the two lists the guards spec permits ("Gates fail closed on novelty": the
- * end-state module list is loud-when-stale — a new `include` fails HERE, visibly, until the list
- * is consciously amended *with* the withholding argument recorded in a spec delta to
- * `module-architecture`). Deleting a module fails too: the table must shrink in the same commit.
+ * The build's include set SHALL equal what `module-architecture` enumerates — and the expected set
+ * is **derived from that spec at test runtime**, not held here.
+ *
+ * IT USED TO BE HELD HERE, and that is the whole point of this file's shape. The guard compared
+ * `settings.gradle.kts` against an 18-name table three lines below the assertion, and told you a new
+ * module "is a spec delta to module-architecture". It said that twice and got a table edit both
+ * times: `:app:ios:forge` arrived in `3d3947a9` touching only `settings.gradle.kts` and this file,
+ * with no OpenSpec delta, and `:tools:diagrams` arrived in `f096f287` — the commit that WROTE the
+ * spec — and went unaccounted for from its first day. Two archived changes have ever touched the
+ * module-set requirement; neither is those.
+ *
+ * The tether was on the wrong link. A module cannot be added by accident — it takes a directory, a
+ * build file and an `include` line, the most visible change a PR can contain — so guarding
+ * build-vs-a-copy-of-the-build caught nothing that needed catching, while whether the SPEC still
+ * described the set was watched by nothing at all. Deriving from the spec makes the message true:
+ * the build now fails until `module-architecture` accounts for the module, and this file cannot be
+ * edited to make that go away.
+ *
+ * The spec groups modules by the law that justifies each — withholding, containment, support — so
+ * the failure below can name which group a newcomer must join and what that group demands. "Must
+ * withhold a dependency" is the right instruction for only one group of the three.
  */
 class ModuleSetTest {
 
@@ -24,46 +38,134 @@ class ModuleSetTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** The target module set (spec `module-architecture`, "The module set withholds"). */
-    private val targetModules = setOf(
-        ":domain",
-        ":ui:presentation", ":ui:screens", ":ui:components",
-        ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:generic:app", ":adapter:generic:fake",
-        ":app:ios", ":app:ios:extension", ":app:ios:forge", ":app:desktop",
-        ":test:world", ":test:integration", ":test:architecture", ":test:harness-driver", ":test:rig",
-        ":tools:diagrams",
-    )
+    private fun read(relative: String): String {
+        val file = File(repoRoot, relative)
+        assertTrue(file.isFile, "guard is scanning nothing — $relative not found from $repoRoot")
+        return file.readText()
+    }
+
+    /** The one requirement that enumerates the module set. */
+    private val requirement: String = run {
+        val spec = read("openspec/specs/module-architecture/spec.md")
+        Regex(
+            """^### Requirement: The module set withholds; packages organize\n.*?(?=^### Requirement: |^## )""",
+            setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL),
+        ).find(spec)?.value
+            ?: fail(
+                "openspec/specs/module-architecture/spec.md has no `### Requirement: The module set " +
+                    "withholds; packages organize` — the module set's single home is gone or renamed",
+            )
+    }
+
+    /**
+     * The members of one group. A backticked `:`-prefixed token inside a group's bullet IS a
+     * membership claim (the spec says so), which is why prose there names other modules by
+     * description rather than by path — a stray backticked path would silently enrol that module in
+     * a second group, and [`groups are disjoint`] would catch it.
+     */
+    private fun group(label: String): Set<String> {
+        val bullet = Regex(
+            """^- \*\*${Regex.escape(label)}\*\*(.*?)(?=\n\n|\n- \*\*)""",
+            setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL),
+        ).find(requirement)?.groupValues?.get(1)
+            ?: fail(
+                "the module-set requirement has no `- **$label**` group. The gate derives the expected " +
+                    "module set from these group labels; renaming one silently empties it, so the label " +
+                    "is part of the contract. Fix the spec or this guard, in the same commit.",
+            )
+        return Regex("""`(:[a-z][a-z0-9:-]*)`""").findAll(bullet).map { it.groupValues[1] }.toSet()
+    }
+
+    private val withholding get() = group("Withholding modules")
+    private val contained get() = group("Contained modules")
+    private val support get() = group("Support modules")
+    private val specModules get() = withholding + contained + support
+
+    private val includes: Set<String> = Regex("""include\("([^"]+)"\)""")
+        .findAll(read("settings.gradle.kts"))
+        .map { it.groupValues[1] }
+        .toSet()
 
     @Test
-    fun `the settings module set equals the target module set`() {
-        val settings = File(repoRoot, "settings.gradle.kts")
-        val includes = Regex("""include\("([^"]+)"\)""")
-            .findAll(settings.readText())
-            .map { it.groupValues[1] }
-            .toSet()
+    fun `every group scanned a non-empty scope`() {
+        // Non-vacuity twins, PER GROUP. A reworded label empties one group while the other two keep
+        // the suite looking alive, so an overall floor would not catch it. `group()` already fails
+        // loudly on a missing label; these catch a label that matches but yields nothing.
+        assertTrue(withholding.isNotEmpty(), "the Withholding group parsed to zero modules — extraction is broken")
+        assertTrue(contained.isNotEmpty(), "the Contained group parsed to zero modules — extraction is broken")
+        assertTrue(support.isNotEmpty(), "the Support group parsed to zero modules — extraction is broken")
+        assertTrue(specModules.size >= 12, "the spec parsed to only ${specModules.size} modules — extraction is broken")
         assertTrue(includes.isNotEmpty(), "settings.gradle.kts parsed to zero includes — the scan is broken")
-        assertEquals(
-            targetModules,
-            includes,
-            "the module set drifted from the module-architecture target. A NEW module must " +
-                "withhold a third-party/platform dependency by compile error (anything finer is a " +
-                "package with a gate) and is a spec delta to module-architecture; a DELETED module " +
-                "shrinks this table in the same commit.",
+    }
+
+    @Test
+    fun `groups are disjoint`() {
+        val doubled = listOf(
+            "Withholding/Contained" to (withholding intersect contained),
+            "Withholding/Support" to (withholding intersect support),
+            "Contained/Support" to (contained intersect support),
+        ).filter { it.second.isNotEmpty() }
+        if (doubled.isEmpty()) return
+        fail(
+            buildString {
+                appendLine("a module is enumerated in more than one group of the module-set requirement:")
+                doubled.forEach { (pair, both) -> appendLine("  $pair: $both") }
+                appendLine(
+                    "Each module belongs to exactly one group — the law that justifies it. A duplicate is " +
+                        "usually prose naming another module by its backticked path inside a group; name it " +
+                        "by description instead.",
+                )
+            },
+        )
+    }
+
+    @Test
+    fun `the settings module set equals the spec's enumeration`() {
+        val missingFromSpec = includes - specModules
+        val missingFromBuild = specModules - includes
+        if (missingFromSpec.isEmpty() && missingFromBuild.isEmpty()) return
+        fail(
+            buildString {
+                appendLine("the build's module set and openspec/specs/module-architecture/spec.md disagree.")
+                if (missingFromSpec.isNotEmpty()) {
+                    appendLine("  in settings.gradle.kts but in no group: $missingFromSpec")
+                }
+                if (missingFromBuild.isNotEmpty()) {
+                    appendLine("  enumerated by the spec but not included by the build: $missingFromBuild")
+                }
+                appendLine()
+                appendLine("Amend the SPEC, not this guard — it holds no copy of the set. Every module joins")
+                appendLine("exactly one group, and the group is the argument for its existence:")
+                appendLine("  · Withholding — it withholds a third-party/platform dependency by compile error.")
+                appendLine("                  Anything finer than that is a package with a derived text gate.")
+                appendLine("  · Contained   — it exists so something is ABSENT from a production build, linked")
+                appendLine("                  only under a build property (`module-architecture`, \"A build-time-only")
+                appendLine("                  module is contained by compilation, not by a runtime check\").")
+                appendLine("  · Support     — it never links into any shipped-format binary, and is exempt from")
+                appendLine("                  the production-module laws.")
+                appendLine("A module that fits none of the three is a package with a gate, not a module.")
+            },
         )
     }
 
     @Test
     fun `the core declares zero project dependencies`() {
-        // The law's own words (`module-architecture`, "The module set withholds"): `:domain` has
-        // ZERO project() dependencies — that absence is what makes the core platform-free by
-        // compile error. Asserted on the build script text (a declaration always quotes a path,
-        // so the prose mention of project() in comments does not match).
+        // KEPT DELIBERATELY, and not as belt-and-braces — see the note in this change's design.
+        // The platform-free guarantee is a COMPILE error ("`:domain` cannot name a platform API"),
+        // but only because of a precondition the compiler does not check: that `:domain` declares no
+        // project dependencies. Adding `project(":adapter:ios:ext-safe")` to domain/build.gradle.kts
+        // compiles perfectly happily and silently hands the core a platform. Nothing but this
+        // assertion stands between that edit and a green build.
+        //
+        // Asserted on the build script text (a declaration always quotes a path, so the prose
+        // mention of project() in comments does not match).
         val build = File(repoRoot, "domain/build.gradle.kts")
         assertTrue(build.isFile, "domain/build.gradle.kts is missing — the core moved")
         assertTrue(
             !Regex("project\\(\\s*\"").containsMatchIn(build.readText()),
             "domain/build.gradle.kts declares a project(\"...\") dependency — :domain must have ZERO " +
-                "project dependencies (the withholding that keeps the core platform-free)",
+                "project dependencies. That absence is the precondition for the platform-free compile " +
+                "error; with a project edge the core can reach a platform and nothing fails.",
         )
     }
 }
