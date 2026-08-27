@@ -40,6 +40,10 @@ jobs:
       - run: ./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true -Psnapsync.forge=true
 
   spec-validate:
+    # This display name is the status-check context required by .github/rulesets/main.json.
+    # Changing it without updating the ruleset would freeze merges (the required check would never
+    # be posted). Safe to require: build.yml carries no path filter, so it posts on every ref.
+    name: spec-validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -52,13 +56,19 @@ jobs:
       - run: npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict
 
   resolver-test:
+    # This display name is the status-check context required by .github/rulesets/main.json.
+    # Changing it without updating the ruleset would freeze merges (the required check would never
+    # be posted). Safe to require: build.yml carries no path filter, so it posts on every ref.
+    name: resolver-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      # The deployment resolver's own suite (capability `deployment-configuration`). It also runs in
-      # `api-deploy.yml`, but that workflow triggers on PUSH TO MAIN — so until this job existed the
-      # suite could only fail AFTER a merge, blocking the deploy while the PR that broke it went green.
-      # That is not hypothetical: adding two required inventory keys broke 20 of these 30 tests, the PR
-      # merged clean, and the deploy failed on main with production still serving the previous bundle.
-      # A test that can only fail after merge is not a gate.
+      # The deployment resolver's own suite (capability `deployment-configuration`), and the ONLY place
+      # it runs — `api-deploy.yml` shed its copy when the api checks became a gate.
+      # A TEST THAT CAN ONLY FAIL AFTER MERGE IS NOT A GATE. This suite used to run only in
+      # `api-deploy.yml`, whose deploy triggers on PUSH TO MAIN, so it could only fail after a merge:
+      # adding two required inventory keys broke 20 of these 30 tests, the PR merged clean, and the
+      # deploy failed on main with production still serving the previous bundle. This job was added in
+      # response — but as a NON-REQUIRED check, which `/ship`'s auto-merge ignores, so the conclusion
+      # was written down and not applied. It is a required context now, which is what makes it a gate.
       - run: python3 scripts/resolve_deployment_test.py

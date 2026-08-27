@@ -1,0 +1,107 @@
+# The api's check gate (capabilities backend-deployment, deployment-configuration). One job,
+# `api-test`, running the full Deno check set — fmt, lint, type-check, tests — plus the bundle and its
+# commit stamp, on EVERY ref.
+#
+# THIS IS THE THING THAT KEEPS A BROKEN BACKEND OFF `main`, and it is a separate workflow from
+# api-deploy.yml for two reasons that both matter.
+#
+# ① NO PATH FILTER, deliberately. GitHub treats a required status check that is never posted as
+# permanently PENDING, so a path-filtered required check freezes every PR whose diff falls outside the
+# filter — forever, with no error anywhere. api-deploy.yml IS path-filtered (it must be: it deploys),
+# which is precisely why its context could not simply be added to the ruleset and why these steps live
+# here instead. Every required check in this repository comes from an unfiltered job for this reason
+# (see build.yml's and ios.yml's `on:` comments). Do NOT add a `paths:` filter here.
+#
+# ② The check set used to live in api-deploy.yml, ordered before its deploy step, and was required by
+# NOTHING. `/ship` arms auto-merge, and auto-merge waits on REQUIRED checks only, so a PR that broke the
+# backend went red and merged anyway; api-deploy then failed on `main` before its deploy step, leaving
+# `main` broken with production silently serving the previous bundle and nothing watching. A check that
+# can only fail after merge is not a gate. Now it is one — and api-deploy.yml deliberately does not
+# repeat it, because no commit can reach `main` without this having passed.
+#
+# It is isolated from the Gradle/iOS workflows (its own file, coupled to neither) — a standing
+# requirement of capability backend-deployment — and carries its own concurrency group rather than
+# sharing build.yml's, whose `cancel-in-progress` would let a main-branch run be cancelled out from
+# under a deploy that api-deploy.yml (cancel-in-progress: false) runs to completion.
+name: api
+
+on:
+  push:
+    # EVERY branch, NO path filter. See ① above: the absence of a `paths:` key is what makes this
+    # context safe to require. `branches: ["**"]` excludes tags, matching build.yml and ios.yml — a
+    # `vX.Y` tag is a release receipt and triggers nothing.
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-test:
+    # This display name is the status-check context required by .github/rulesets/main.json.
+    # Changing it without updating the ruleset would freeze merges (the required check would never
+    # be posted).
+    name: api-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Resolve the deployment BEFORE anything reads it. Every rendering is generated and none is
+      # committed, so the checks below would hit a missing module without this. `prod` is named
+      # explicitly — there is no default deployment, and an unknown name fails closed. Kept a SEPARATE
+      # invocation so it cannot widen the permissions the suite below runs under.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
+      - name: Format check
+        working-directory: api
+        run: deno fmt --check
+
+      - name: Lint
+        working-directory: api
+        run: deno lint
+
+      # Type-check all source explicitly. `deno test` only checks test-reachable code, so this
+      # covers main.ts/SDK wiring (no test imports it) and any future orphan source file.
+      # Invoked through the deno task (rather than restating the globs) so the set of type-checked
+      # directories is defined in exactly one place — deno.json — and cannot drift from what a
+      # developer runs locally. The task covers src/, src/dev/ (the local backend rig) AND
+      # src/scripts/ (the out-of-bundle programs other workflows invoke).
+      - name: Type check
+        working-directory: api
+        run: deno task check
+
+      # Likewise through the task, which carries --allow-read/--allow-write for the dev filesystem
+      # shim's contract test. --allow-net stays ABSENT: that absence is what guarantees no test can
+      # reach the real bunny zone (a network call fails as a permission error, not a live request).
+      - name: Test
+        working-directory: api
+        run: deno task test
+
+      # Bundling is a check too, not only a deploy step: an import that does not resolve, or a bundle
+      # that outgrows the Edge Scripting 10 MB script limit, fails here rather than on `main`.
+      # api-deploy.yml bundles again for real — artifacts do not cross workflows, and it needs the file
+      # on disk for the deploy action.
+      - name: Bundle
+        working-directory: api
+        run: deno task bundle
+
+      # The stamp is what the post-publish boot probe matches against, so a resolver that stopped
+      # stamping must fail here — at PR time — rather than after a bad script is already live with no
+      # rollback available. `GITHUB_SHA` is set by Actions in every job and is the environment
+      # reference `deployments/components/build.json` declares for the `sha` key, so this needs no
+      # wiring beyond running in CI at all.
+      - name: Verify the bundle carries this commit
+        working-directory: api
+        run: |
+          grep -q "${{ github.sha }}" dist/main.js || {
+            echo "::error::dist/main.js does not carry ${{ github.sha }} — the resolver did not stamp it"
+            exit 1
+          }
