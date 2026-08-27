@@ -155,6 +155,13 @@ class IosUrlSessionUploadPlatform(
             discovery.discover(sinceToken, policy)
         }
 
+    // Shared with the other tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
+    // both are PhotoKit fetches and only the job lifecycle differs between the tiers.
+    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
+        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
+            discovery.resourcesFor(keys)
+        }
+
     // No OS-sponsored free retry on this platform: failures return via fetchAckJobs and are recreated.
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {

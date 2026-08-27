@@ -84,6 +84,23 @@ interface LedgerStore {
     suspend fun promoteUploaded(key: String): Boolean
 
     /**
+     * The rows that **need an upload job**, in a stable key order, at most [limit] of them — the upload
+     * cycle's source of work (capability `sync-ledger`).
+     *
+     * Returns exactly the rows whose state is in [app.snapsync.model.NEEDS_JOB_STATES], interpreting
+     * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set spans
+     * `DISCOVERED` and `FAILED`, which are the same fact to a producer — a key with no live job and no
+     * bytes on the backend — differing only in whether an attempt was already made.
+     *
+     * **Bounded, unlike [uploadedRows].** A first walk on a large library records a row per outstanding
+     * resource, and a cycle that tried to enqueue all of them would stage every one of them to disk. The
+     * bound is the caller's, because only the caller knows how many slots the platform will take.
+     *
+     * Absent rows are excluded: the asset has left the library, so there is nothing to upload from.
+     */
+    suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry>
+
+    /**
      * The `REQUESTED` keys — the candidates for the app-driven tier's stranded reconciliation
      * (`ios-url-session-upload`).
      *

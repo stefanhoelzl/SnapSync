@@ -240,4 +240,11 @@ class IosPhotoKitUploadPlatform(
         log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
             discovery.discover(sinceToken, policy)
         }
+
+    // Shared with the other tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
+    // both are PhotoKit fetches and only the job lifecycle differs between the tiers.
+    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
+        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
+            discovery.resourcesFor(keys)
+        }
 }

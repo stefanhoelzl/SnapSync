@@ -5,6 +5,7 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.DONE_STATES
+import app.snapsync.model.NEEDS_JOB_STATES
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
 
@@ -119,6 +120,19 @@ class SqlDelightLedgerStore(
 
     override suspend fun uploadedRows(): List<LedgerEntry> =
         queries.selectUploaded { key, assetId, state, attempt, eventId, creationDate, role, contentType, filename, absent ->
+            LedgerEntry(
+                key, assetId, state, attempt.toInt(), eventId,
+                creationDate = creationDate,
+                role = roleOrNull(role),
+                contentType = contentType,
+                originalFilename = filename,
+                absent = absent != 0L, // stored as INTEGER, exactly like `get`'s mapper above
+            )
+        }.executeAsList()
+
+    override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> =
+        queries.selectNeedingJob(NEEDS_JOB_STATES, limit.toLong()) {
+                key, assetId, state, attempt, eventId, creationDate, role, contentType, filename, absent ->
             LedgerEntry(
                 key, assetId, state, attempt.toInt(), eventId,
                 creationDate = creationDate,

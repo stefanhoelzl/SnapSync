@@ -40,6 +40,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -88,7 +89,8 @@ class UploadCycleTest {
 
     /** Records what the cycle asked the platform to do; serves canned discovered/returned jobs. */
     private class FakePlatform(
-        val discovered: List<Resource> = emptyList(),
+        /** `var` so a test can model a library that stops reporting changes while work remains. */
+        var discovered: List<Resource> = emptyList(),
         private val retryJobs: List<PlatformUploadJob> = emptyList(),
         // Keys the "platform" finished successfully. Recorded `UPLOADED` into [ledger] when the cycle
         // drains, exactly as both device adapters do — a success no longer crosses this seam at all.
@@ -109,6 +111,16 @@ class UploadCycleTest {
         var drained = false
         var discoverTokenArg: ByteArray? = null
         var discoverPolicyArg: SelectionPolicy? = null
+        /** Keys the cycle asked to resolve — how a test asserts it enqueued from the ledger, not a walk. */
+        val resolvedKeys = mutableSetOf<String>()
+
+        /**
+         * Everything this fixture's "library" has ever held — what [resourcesFor] answers from.
+         *
+         * Deliberately not [discovered]: the change feed reports what CHANGED, and the whole point of
+         * resolving by key is that it works for an asset the feed has stopped mentioning.
+         */
+        private val library = discovered
         private var creates = 0
 
         override suspend fun fetchRetryJobs() = retryJobs
@@ -119,6 +131,21 @@ class UploadCycleTest {
             return ackJobs
         }
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) { retried += job }
+
+        /** Operator lever: the platform's in-flight slots freed, so it will accept jobs again. */
+        fun freeSlots() { creates = 0 }
+
+        /**
+         * Resolves from the same held set [discovered] answers with — the fixture's stand-in for a
+         * library. Deliberately **partial**: a key naming a resource this fixture does not hold resolves
+         * to nothing, which is the port's contract and the case a test needs to be able to construct
+         * (an asset that left the library between the row being written and the cycle enqueueing it).
+         */
+        override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
+            resolvedKeys += keys
+            return library.filter { it.filename in keys }
+        }
+
         override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
             discoverTokenArg = sinceToken
             discoverPolicyArg = policy
@@ -183,7 +210,7 @@ class UploadCycleTest {
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
         reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
-        onDiscovery: suspend (String, SelectionPolicy) -> Unit = { _, _ -> },
+        onDiscovery: suspend (String, SelectionPolicy) -> Boolean = { _, _ -> true },
         onBatchUploaded: suspend (String) -> Unit = {},
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
@@ -237,7 +264,7 @@ class UploadCycleTest {
             backend, platform, store,
             readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
             reconcile = { touched += "reconcile"; true },
-            onDiscovery = { _, _ -> touched += "discovery" },
+            onDiscovery = { _, _ -> touched += "discovery"; true },
             onBatchUploaded = { touched += "notify" },
         ).run()
 
@@ -376,7 +403,7 @@ class UploadCycleTest {
     ): UploadCycle = cycle(
         backend, platform, store,
         policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-        onDiscovery = { _, _ -> order += "discovery" },
+        onDiscovery = { _, _ -> order += "discovery"; true },
         onBatchUploaded = { order += "notify" },
         reconcile = { order += "reconcile"; true },
     )
@@ -530,7 +557,7 @@ class UploadCycleTest {
         gate: suspend () -> Boolean,
     ): UploadCycle = cycle(
         backend, platform, store,
-        onDiscovery = { _, _ -> order += "discovery" },
+        onDiscovery = { _, _ -> order += "discovery"; true },
         reconcile = { order += "reconcile"; gate() },
     )
 
@@ -547,7 +574,7 @@ class UploadCycleTest {
     }
 
     @Test
-    fun a_deferred_reconcile_creates_no_jobs_and_reports_a_clean_completed() = runTest {
+    fun a_deferred_reconcile_creates_no_jobs_but_still_settles() = runTest {
         val store = FakeStore()
         val platform = FakePlatform(
             discovered = listOf(resource("a")),
@@ -560,7 +587,12 @@ class UploadCycleTest {
         assertEquals(CycleResult.COMPLETED, cycle.run())
 
         assertTrue(platform.created.isEmpty(), "a deferred cycle must create no upload jobs")
-        assertTrue(!platform.drained, "a deferred cycle must not settle jobs either")
+        // The obligation is owed to the platform for jobs it has ALREADY presented, and it depends
+        // neither on the direction gate — which has honoured that since the 50008 measurement — nor on
+        // whether the seed succeeded. This assertion used to say the opposite, 75 lines below one saying
+        // an un-acknowledged presented job makes the OS discard the outstanding jobs; no spec ever asked
+        // for it, and `event-rejoin-reconciliation`'s "defers without settling" is about the ledger SEED.
+        assertTrue(platform.drained, "a deferred seed still settles with the platform")
         assertNull(platform.discoverPolicyArg, "a deferred cycle must not even walk the library")
         assertNull(store.saved, "the cursor must not advance on a deferred cycle")
         assertTrue(!store.cleared, "a deferral leaves the cursor untouched so the next cycle retries")
@@ -777,8 +809,14 @@ class UploadCycleTest {
         val result = cycleOver(backend, platform, store).run()
 
         assertEquals(CycleResult.COMPLETED, result) // a create FAILURE is not the cap
-        assertNull(backend.get("a")) // no REQUESTED recorded for a job that was never created
-        assertContentEquals(byteArrayOf(9), store.saved) // cursor still advances (no cap)
+        // Still no REQUESTED — write-after-act is intact, and that is what this test guards.
+        // But the row is no longer ABSENT: the walk recorded it DISCOVERED before any job was
+        // attempted, so a create that failed leaves the resource remembered rather than forgotten.
+        // Before, a failed create left nothing at all, and the resource was found again only by a walk
+        // that re-derived it — which an incremental walk does not do for an asset that has not changed.
+        // Same defect as the never-retried FAILED row, arriving through a different door.
+        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state)
+        assertContentEquals(byteArrayOf(9), store.saved) // cursor advances: the walk was recorded
     }
 
     @Test
@@ -797,7 +835,58 @@ class UploadCycleTest {
     }
 
     @Test
-    fun cap_during_discovery_does_not_advance_the_cursor_and_returns_processing() = runTest {
+    fun bare_rows_are_backfilled_even_when_creation_stops_early() = runTest {
+        val backend = InMemoryLedgerStore()
+        // What a re-join seed leaves behind: COMPLETED rows taken from a filename listing, which carries
+        // no capture date. A bare row is excluded from every projection fail-closed, so until something
+        // fills it this member's photos are missing from the event union.
+        backend.put(LedgerEntry("seeded-a", "seeded-a", LedgerState.COMPLETED, 0, TEST_EVENT))
+        backend.put(LedgerEntry("seeded-b", "seeded-b", LedgerState.COMPLETED, 0, TEST_EVENT))
+        val platform = FakePlatform(
+            // New work FIRST, so creation stops before the walk reaches the seeded rows in the old order.
+            discovered = listOf(resource("new-1"), resource("new-2"), resource("new-3"),
+                                resource("seeded-a"), resource("seeded-b")),
+            limitAfter = 1,
+        )
+
+        val result = cycleOver(backend, platform, FakeStore()).run()
+
+        assertEquals(CycleResult.PROCESSING, result)
+        // BOTH are enriched, including the one the platform's job limit would once have stopped short of.
+        // This is a precondition of advancing the cursor, not a nicety: a capture date lives only in the
+        // library and only the walk reads it, so a bare row the cursor has moved past stays bare — and
+        // invisible — until something forces a full re-enumeration.
+        assertEquals(IN_SCOPE_DATE, backend.get("seeded-a")?.creationDate)
+        assertEquals(IN_SCOPE_DATE, backend.get("seeded-b")?.creationDate)
+    }
+
+    @Test
+    fun a_truncated_cycle_resumes_its_remainder_from_the_ledger_without_re_discovering() = runTest {
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(
+            discovered = listOf(resource("a"), resource("b"), resource("c")),
+            limitAfter = 2,
+        )
+        val store = FakeStore()
+        val cycle = cycleOver(backend, platform, store)
+
+        assertEquals(CycleResult.PROCESSING, cycle.run())
+        assertEquals(listOf("a", "b"), platform.created.map { it.filename })
+
+        // The platform frees its slots, and nothing in the library changes. Under the old design this is
+        // the dead spot: an incremental walk returns nothing, so "c" was found again only by a full
+        // re-enumeration — which is why the cursor was not allowed to advance in the first place.
+        platform.freeSlots()
+        platform.discovered = emptyList() // the change feed reports nothing new
+
+        assertEquals(CycleResult.COMPLETED, cycle.run())
+
+        assertEquals(listOf("a", "b", "c"), platform.created.map { it.filename }, "the remainder resumes")
+        assertTrue("c" in platform.resolvedKeys, "resolved by key from the ledger, not re-derived by a walk")
+    }
+
+    @Test
+    fun cap_during_creation_advances_the_cursor_and_leaves_the_remainder_discovered() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(resource("a"), resource("b"), resource("c")),
@@ -809,7 +898,14 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.PROCESSING, result)
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
-        assertNull(store.saved, "cursor must NOT advance on a cap-truncated cycle")
+        // THE INVERSION (capability `ios-photokit-upload`). The cursor advances because every fact the
+        // walk produced is durable — the un-created remainder holds a DISCOVERED row, so nothing is lost
+        // by moving past it. The old rule waited for "every job was created", which on a device with more
+        // outstanding work than the platform's job limit is never true, so the cursor stood still and
+        // every cycle re-enumerated the whole library.
+        assertContentEquals(byteArrayOf(9), store.saved, "the walk was recorded, so the cursor advances")
+        assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "the remainder is remembered")
+        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state, "what got a job is in flight")
     }
 
     @Test
@@ -882,7 +978,10 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.PROCESSING, result)
         assertEquals(LedgerState.COMPLETED, backend.get("old-photo.jpg")?.state, "no reconcile on a cap-truncated cycle")
-        assertNull(store.saved, "cursor must NOT advance")
+        // Same inversion as `cap_during_creation_advances_the_cursor_…`: a full enumeration whose facts
+        // were all recorded may advance, and the resource the cap stopped short of rests DISCOVERED.
+        assertContentEquals(byteArrayOf(9), store.saved, "a recorded walk advances the cursor")
+        assertEquals(LedgerState.DISCOVERED, backend.get("b-photo.jpg")?.state)
     }
 
     @Test
@@ -918,7 +1017,7 @@ class UploadCycleTest {
     }
 
     @Test
-    fun cap_during_re_create_still_acknowledges_and_returns_processing() = runTest {
+    fun cap_during_re_create_still_walks_publishes_and_returns_processing() = runTest {
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested(resource("a", "a"), attempt = 0, eventId = TEST_EVENT)
         val job = platformJob("a", UploadError.Network)
@@ -927,28 +1026,52 @@ class UploadCycleTest {
 
         val result = cycleOver(backend, platform, store).run()
 
+        // Still PROCESSING: the re-created retry never got a job, so work remains and the pump must
+        // re-arm. What changed is everything else the cycle used to withhold on the way out.
         assertEquals(CycleResult.PROCESSING, result)
-        // Every presented job is acknowledged (else the system errors 50008); rediscovery retries it.
-        assertNull(store.saved, "cursor must NOT advance on a cap-truncated cycle")
+        // It WALKS. This cycle is the one whose remaining backlog most needs accounting for, and once
+        // the walk only records what it finds, running it also keeps the cursor moving.
+        assertNotNull(platform.discoverPolicyArg, "a settle-pass cap hit still enumerates")
+        assertContentEquals(byteArrayOf(9), store.saved, "and its recorded walk advances the cursor")
+        // The retry it could not re-create rests FAILED — which the ledger's work read returns next
+        // cycle, so nothing depends on a later walk re-deriving it.
+        assertEquals(LedgerState.FAILED, backend.get("a")?.state)
     }
 
     // ── Notify hook (capability `upload-completion-notify`) ──────────────────────────────────────────
 
-    /** Build a cycle recording the order its best-effort hooks fire, so the manifest→notify order is asserted. */
+    /**
+     * Build a cycle recording the order its best-effort hooks fire, so the manifest→notify order is
+     * asserted.
+     *
+     * The manifest hook models `DeviceManifestProducer`'s **skip-if-unchanged**, because that answer is
+     * now the notify's whole trigger (capability `upload-completion-notify`). A fixture that always
+     * reported "published" would make every notify test pass for the wrong reason — the thing under test
+     * is precisely *did the projection change*.
+     */
     private suspend fun cycleWithHooks(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         order: MutableList<String>,
         store: DiscoveryStore = FakeStore(),
         notifyThrows: Boolean = false,
-    ): UploadCycle = cycle(
-        backend, platform, store,
-        onDiscovery = { _, _ -> order += "manifest" },
-        onBatchUploaded = {
-            order += "notify"
-            if (notifyThrows) error("notify boom")
-        },
-    )
+    ): UploadCycle {
+        var lastPublished: List<String>? = null
+        return cycle(
+            backend, platform, store,
+            onDiscovery = { _, _ ->
+                order += "manifest"
+                val projection = backend.completedManifestRows().map { it.key }.sorted()
+                val changed = projection != lastPublished
+                if (changed) lastPublished = projection
+                changed
+            },
+            onBatchUploaded = {
+                order += "notify"
+                if (notifyThrows) error("notify boom")
+            },
+        )
+    }
 
     @Test
     fun drained_cycle_with_a_completion_notifies_once_after_the_manifest_write() = runTest {
@@ -966,12 +1089,14 @@ class UploadCycleTest {
     }
 
     @Test
-    fun cap_truncated_cycle_does_not_notify_even_with_a_completion() = runTest {
+    fun cap_truncated_cycle_publishes_and_notifies() = runTest {
         val backend = InMemoryLedgerStore()
-        // A completion in Phase 2, but Phase 3 discovery hits the cap → PROCESSING before the notify point.
+        // A real completion, and then creation hits the platform's job limit → PROCESSING.
+        backend.inFlight("done-primary.jpg", assetId = "done")
         val platform = FakePlatform(
             succeeded = listOf("done-primary.jpg"),
             discovered = listOf(resource("a"), resource("b"), resource("c")),
+            ledger = backend,
             limitAfter = 2,
         )
         val order = mutableListOf<String>()
@@ -979,7 +1104,12 @@ class UploadCycleTest {
         val result = cycleWithHooks(backend, platform, order).run()
 
         assertEquals(CycleResult.PROCESSING, result)
-        assertTrue(order.isEmpty(), "a cap-truncated cycle refreshes no manifest and fires no notify")
+        // THE HEADLINE INVERSION. This assertion used to read `order.isEmpty()` — "a cap-truncated cycle
+        // refreshes no manifest and fires no notify" — and that is the two-hour silence measured in the
+        // field: a device with more outstanding work than the platform's job limit takes this branch on
+        // every cycle, so its successfully-uploaded photos never entered the event union and no member
+        // was ever woken for them. Nothing the manifest needs was missing; only the drain was.
+        assertEquals(listOf("manifest", "notify"), order, "a truncated cycle publishes what it settled")
     }
 
     @Test
@@ -1187,6 +1317,7 @@ class UploadCycleTest {
         onDiscovery = { _, policy ->
             manifestSaw += projectDeviceManifest("D", backend.completedManifestRows(), policy)
                 .assets.map { it.assetId }
+            true
         },
         // The album denylist is a rule in the policy now, not a port the cycle reads.
         policy = admittingWith(albumExcluded = albumExcluded),
@@ -1455,7 +1586,7 @@ class UploadCycleTest {
         val result = cycle(
             InMemoryLedgerStore(), platform,
             reconcile = { false }, // the device file listing failed or timed out
-            onDiscovery = { _, _ -> order += "discovery" },
+            onDiscovery = { _, _ -> order += "discovery"; true },
         ).run()
 
         assertEquals(CycleResult.COMPLETED, result, "a deferral is a no-op, never a failure")
@@ -1474,7 +1605,7 @@ class UploadCycleTest {
             InMemoryLedgerStore(), platform,
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             reconcile = { false },
-            onDiscovery = { _, _ -> order += "discovery" },
+            onDiscovery = { _, _ -> order += "discovery"; true },
         ).run()
 
         assertEquals(CycleResult.SKIPPED, result)
@@ -1498,6 +1629,7 @@ class UploadCycleTest {
                 order += "discovery"
                 listed = projectDeviceManifest("D", backend.completedManifestRows(), policy)
                     .assets.map { it.assetId }
+                true
             },
         ).run()
 

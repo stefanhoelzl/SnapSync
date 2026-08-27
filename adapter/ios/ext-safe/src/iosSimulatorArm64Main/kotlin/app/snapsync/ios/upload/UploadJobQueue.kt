@@ -156,6 +156,13 @@ private class SimulatorUploadJobQueue(
             discovery.discover(sinceToken, policy)
         }
 
+    // Shared with the device tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
+    // both are PhotoKit fetches and only the job lifecycle differs.
+    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
+        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
+            discovery.resourcesFor(keys)
+        }
+
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
             SimulatorUploadJobs.inSet(SimulatorJobAction.RETRY).map { it.asPlatformJob() }
