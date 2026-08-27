@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -35,6 +34,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Arrow
 import kotlinx.datetime.LocalDateTime
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
+
+/** One half-cycle of the in-flight arrow's pulse, in milliseconds. */
+private const val PULSE_MILLIS = 700
+
 
 /**
  * The joined-layer sync health, rendered as the single status line. A sealed semantic value (runtime
@@ -85,26 +91,14 @@ sealed interface AppSyncStatus {
 /** Which permission action the attention line offers: request the initial grant, or open Settings. */
 enum class AccessPrompt { ALLOW, SETTINGS }
 
-// Skin-local semantic colors for the attention line (never seen by screens). Amber is not an M3
-// colorScheme token, so its light/dark split is picked by hand via [appIsDark] — the same rule the scheme
-// itself is chosen by.
-//
-// Light was failing WCAG: #E8820C text on a 0x22 amber pill measured ~2.24:1 (needs 4.5:1 at 16sp), and
-// the pill barely separated from the page (1.13:1). Light now uses a dark amber for text/icons (5.0:1 on
-// the pill) over a stronger 0x3D fill (pill/page ~1.25:1). Dark already passed (5.2–6.0:1) and is kept.
-private val AmberTextLight = Color(0xFF8A4B00)
-private val AmberTextDark = Color(0xFFE8820C)
-private val AmberContainerLight = Color(0x3DE8820C)
-private val AmberContainerDark = Color(0x22E8820C)
-
-@Composable
-private fun amberText(): Color = if (appIsDark()) AmberTextDark else AmberTextLight
-
-@Composable
-private fun amberContainer(): Color = if (appIsDark()) AmberContainerDark else AmberContainerLight
-
+// The attention line's amber lives in the palette ([appAttentionText] / [appAttentionContainer] in
+// AppTheme.kt), with the contrast measurements that chose those values. This component keeps the
+// BEHAVIOUR — which status carries a pill, which is tappable — and holds no colour values of its own,
+// so the design system has exactly one place a colour can be changed.
 private val IconSize = 20.dp
-private val StaticAlpha = 0.38f
+
+// The dimmed opacity a `Static` arrow renders at, and the floor a `Pulsing` one animates from.
+private const val STATIC_ALPHA = 0.38f
 
 /**
  * Renders the one-line sync health. `InSync`/`Syncing`/`Loading`/`NotStarted` are flat text-with-glyph
@@ -180,7 +174,7 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                 //
                 // Sharing the VALUE, not merely the transition, is deliberate. An `InfiniteTransition`
                 // does share one play time, so a second `animateFloat` added later snaps into phase — but
-                // one frame late, rendering once at `StaticAlpha` before it does: a dim flash on the arrow
+                // one frame late, rendering once at `STATIC_ALPHA` before it does: a dim flash on the arrow
                 // that just appeared. One value has no such frame, and no second animation computing an
                 // identical number.
                 //
@@ -191,9 +185,9 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                 val pulseAlpha = if (ongoing && !LocalReduceMotion.current) {
                     val transition = rememberInfiniteTransition(label = "pulse")
                     val a by transition.animateFloat(
-                        initialValue = StaticAlpha,
+                        initialValue = STATIC_ALPHA,
                         targetValue = 1f,
-                        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+                        animationSpec = infiniteRepeatable(tween(PULSE_MILLIS), RepeatMode.Reverse),
                         label = "pulse-alpha",
                     )
                     a
@@ -226,8 +220,8 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
         is AppSyncStatus.NeedsAccess ->
             Surface(
                 onClick = onAttentionClick,
-                color = amberContainer(),
-                contentColor = amberText(),
+                color = appAttentionContainer(),
+                contentColor = appAttentionText(),
                 shape = RoundedCornerShape(999.dp),
                 // The tappable attention line is a button: give assistive tech the role it lacked, and
                 // guarantee the ≥44dp iOS touch target the 9dp padding alone did not reach.
@@ -248,7 +242,11 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
                         },
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(IconSize))
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(IconSize),
+                    )
                 }
             }
 
@@ -256,8 +254,8 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
             // The same attention treatment as NeedsAccess — but NOT tappable, and with no chevron: there
             // is no action the user can take. It clears itself as soon as the device can reach the backend.
             Surface(
-                color = amberContainer(),
-                contentColor = amberText(),
+                color = appAttentionContainer(),
+                contentColor = appAttentionText(),
                 shape = RoundedCornerShape(999.dp),
             ) {
                 Row(

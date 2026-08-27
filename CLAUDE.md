@@ -177,11 +177,26 @@ Two harness facts that are invisible until they bite, and that no amount of loca
 **Complexity ceilings** (capability `complexity-budgets`) gate `build` too, as eight
 `detekt*Tier` tasks — `shell` · `flow` · `compose` · `core` · `ui` · `harness` · `tests` ·
 `buildscripts` — one per scope, because a detekt 1.x rule carries exactly ONE threshold per config.
-Each tier's numbers live in `config/detekt/<tier>.yml`, and **every number there is a ceiling that may
-only fall**: lowering one is ordinary work, raising one needs a stated forcing proof in the PR. Nothing
-enforces that — it is a ratchet carried by the contract at the head of each config, and the configs say
-so. `api/` carries the same measure through `api/src/lint/complexity.ts`, a `deno lint` plugin under the
-`deno lint` gate `api-deploy.yml` already runs (no published Deno rule measures complexity).
+Every tier layers **`config/detekt/_base.yml`** first, then its own file. The two are different things
+and the base says so: `_base.yml` holds **readings** of a rule (what it MEANS, uniform everywhere — a
+named constant has complied with `MagicNumber`; a PascalCase `@Composable` has complied with
+`FunctionNaming`), while a tier file holds **ceilings** (one scope's measurement). A number never
+belongs in the base.
+**A tier's own file is OPTIONAL, and its absence means the scope sits at the baseline** — so the set of
+files under `config/detekt/` is the list of scopes still carrying debt, and creating one is the visible
+act of admitting a regression. `DetektTierCoverageTest` asserts every file belongs to a tier, the
+reverse of what it once asserted.
+**Every number in a tier file is a ceiling that may only fall**: lowering one is ordinary work, raising
+one needs a stated forcing proof in the PR. Nothing enforces that — it is a ratchet carried by the
+contract at the head of each config. `api/` carries the same measure through
+`api/src/lint/complexity.ts`, a `deno lint` plugin under the `deno lint` gate `api-deploy.yml` already
+runs (no published Deno rule measures complexity).
+
+⚠️ **Compose trades these rules against each other, which is why `ui.yml` still holds three.**
+`LongParameterList` is fixed by bundling, and a bundle is a constructor whose fields are counted;
+`LongMethod` is fixed by extracting composables, and each extraction is a new function with a new
+parameter list. Measured: two genuine extractions took `StatusScreen` from 138 statements to 71 while
+the tier's totals ROSE. Do not treat those two numbers as debt to grind down.
 
 ⚠️ **`detektAppShell` is NOT one of these and must never be folded into them.** It is a *proof* —
 threshold 2 asserts the shells hold no decisions — and its value comes from the number being 2. The

@@ -1,0 +1,54 @@
+# The shared baseline every complexity tier layers beneath its own config (capability
+# `complexity-budgets`). Loaded first; a tier's own file overrides it.
+#
+# THIS FILE CARRIES READINGS, NEVER CEILINGS. The two look alike in YAML and are not the same thing:
+#
+#   A CEILING is a number describing ONE scope's measurement — `:ui:*` tolerates cyclomatic 36 because
+#   that is what its worst composable measures. It is seeded from the tree, ratcheted down, and belongs
+#   in that scope's own file beside the contract governing it. A ceiling here would make one scope's
+#   accident every scope's contract.
+#
+#   A READING is an interpretation of what a rule MEANS, and it cannot sensibly differ per scope: if a
+#   named constant has satisfied a rule that exists to force naming, it has satisfied it in `:domain`
+#   exactly as in `:ui:components`. Restating that argument in eight files would invite eight copies to
+#   drift, and a reader who found them disagreeing could not tell which was intended.
+#
+# So: a number does not belong in this file. If you are about to add one, it belongs to the scope it
+# measures.
+#
+# A tier whose own config is ABSENT sits at this baseline — that is what the absence means, and it is
+# why the set of files under `config/detekt/` is the list of scopes still carrying debt. Creating one is
+# the visible act of admitting a scope has left the baseline.
+
+style:
+  MagicNumber:
+    # `MagicNumber` exists to force naming. A named constant has complied — so flagging the declaration
+    # that does the naming inverts the rule: it makes `private val GreenLight = Color(0xFF0E9D6B)` a
+    # violation BECAUSE it is a token, and leaves a naming pass trading findings for findings rather
+    # than resolving them.
+    #
+    # detekt's default is `false`. Measured across the tree when this baseline landed, turning it on
+    # moved `ui` 110 -> 74 and `core` 30 -> 25 with no code changed (the palette's whole
+    # `lightColorScheme(...)` initialiser is one property declaration), and left every other tier
+    # untouched. It only ever relaxes, so no scope can be broken by it.
+    ignorePropertyDeclaration: true
+
+naming:
+  FunctionNaming:
+    # A `@Composable` function that returns Unit is PascalCase by Compose's own documented convention,
+    # and detekt's default `functionPattern` (`[a-z][a-zA-Z0-9]*`) encodes the pre-Compose one. This
+    # states the DIALECT rather than excusing the code: renaming composables to camelCase would break
+    # what every Compose reader, every IDE affordance and every other Compose codebase expects.
+    #
+    # A reading and not a ceiling, by the test at the top of this file: if a PascalCase composable has
+    # satisfied this rule in `:ui:screens`, it has satisfied it in `:app:desktop` and in
+    # `:ui:presentation`'s forge source too, all of which declare composables.
+    ignoreAnnotated: ['Composable']
+
+    # detekt's default excludes every `**/test/**` path from this rule. In THIS repo `test/` is a MODULE
+    # prefix (`:test:world`, `:test:rig`, `:test:architecture`), not a source-set marker, so the default
+    # would silently switch the rule off for production source in those modules — the vacuous pass the
+    # complexity budgets exist to prevent. Scope is decided by which tier scans a file, never by a path
+    # heuristic that means something different here than it does upstream.
+    excludes: []
+

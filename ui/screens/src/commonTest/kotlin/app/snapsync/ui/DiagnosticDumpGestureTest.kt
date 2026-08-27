@@ -51,7 +51,7 @@ class DiagnosticDumpGestureTest {
     @Test
     fun `double-tapping the app name opens the bug-report sheet`() = runComposeUiTest {
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> })
+            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> }))
         }
 
         onNodeWithText(sheetTitle).assertDoesNotExist()
@@ -66,7 +66,7 @@ class DiagnosticDumpGestureTest {
         // message: an invalid submit is unreachable, so nothing needs to explain it.
         var sent = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> sent++ })
+            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
         onNodeWithText(navLabel).performTouchInput { doubleClick() }
@@ -81,7 +81,7 @@ class DiagnosticDumpGestureTest {
     fun `whitespace alone is not a description`() = runComposeUiTest {
         var sent = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> sent++ })
+            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
         onNodeWithText(navLabel).performTouchInput { doubleClick() }
@@ -98,7 +98,9 @@ class DiagnosticDumpGestureTest {
             StatusScreen(
                 UiState.CreateEvent(),
                 cutoff = fixedCutoff(),
-                onSendDiagnostics = { note, screen -> sent += note to screen },
+                actions = StatusActions(
+                    onSendDiagnostics = { note, screen -> sent += note to screen },
+                ),
             )
         }
 
@@ -118,7 +120,7 @@ class DiagnosticDumpGestureTest {
     fun `cancelling sends nothing`() = runComposeUiTest {
         var sent = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> sent++ })
+            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
         onNodeWithText(navLabel).performTouchInput { doubleClick() }
@@ -135,7 +137,7 @@ class DiagnosticDumpGestureTest {
         // not inert: an affordance that exists and silently does nothing is the one outcome forbidden,
         // because it is indistinguishable from a report that failed to send.
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = null)
+            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = null))
         }
 
         onNodeWithText(navLabel).performTouchInput { doubleClick() }
@@ -152,7 +154,9 @@ class DiagnosticDumpGestureTest {
             StatusScreen(
                 UiState.JoiningEvent("11111111-2222-4333-8444-555555555555", JoinPhase.LoadFailed),
                 cutoff = fixedCutoff(),
-                onSendDiagnostics = { _, screen -> sent += screen },
+                actions = StatusActions(
+                    onSendDiagnostics = { _, screen -> sent += screen },
+                ),
             )
         }
 
@@ -169,7 +173,7 @@ class DiagnosticDumpGestureTest {
         // OnClick semantics action and a ripple — which is exactly what makes a control read as a
         // control, and would put the hidden affordance into the accessibility tree.
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> })
+            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> }))
         }
 
         onNodeWithText(navLabel).assert(
@@ -185,8 +189,10 @@ class DiagnosticDumpGestureTest {
             StatusScreen(
                 UiState.Joined(SyncHealth.InSync),
                 cutoff = fixedCutoff(),
-                onSendDiagnostics = { _, _ -> },
                 eventName = "Anna's Birthday",
+                actions = StatusActions(
+                    onSendDiagnostics = { _, _ -> },
+                ),
             )
         }
 

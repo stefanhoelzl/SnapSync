@@ -20,6 +20,13 @@ import kotlin.test.fail
  * It does NOT check that a ceiling only ever falls. Nothing does: that is a ratchet carried by the
  * contract at the head of each tier config and by review, and the capability says so rather than
  * implying a guarantee it does not deliver. What is mechanical is coverage.
+ *
+ * THE SUBPROJECT ASSERTION IS LOAD-BEARING FOR A REASON THAT IS EASY TO MISS. A tier's own config file
+ * is optional, and its absence MEANS the scope sits at the shared baseline (`config/detekt/_base.yml`).
+ * That reading is only safe because [every subproject resolves to exactly one complexity tier] holds
+ * independently: without it, "this scope has no config file because it is at the baseline" and "this
+ * scope is in no tier and is measured by nothing" would look identical from the config directory, and
+ * the quieter of the two is the dangerous one. Do not weaken that test to make this one pass.
  */
 class DetektTierCoverageTest {
 
@@ -28,6 +35,13 @@ class DetektTierCoverageTest {
         ?: fail("could not locate the repository root")
 
     private val rootBuildFile = File(repoRoot, "build.gradle.kts")
+
+    /**
+     * Not a tier's config. `_base.yml` is the shared baseline every tier layers beneath its own file;
+     * `app-shell.yml` belongs to the shell PROOF (capability `architecture-guards`), which is a
+     * different kind of gate and deliberately absent from the tier map.
+     */
+    private val nonTierConfigs = setOf("_base", "app-shell")
 
     /**
      * Tiers that scope by PATH rather than by module, so they appear in no module mapping:
@@ -98,8 +112,18 @@ class DetektTierCoverageTest {
         )
     }
 
+    /**
+     * The assertion runs ONE WAY ONLY: every config file must belong to a tier. The reverse — every
+     * tier must have a config — was true while a tier's numbers were mandatory, and is now false by
+     * design: a scope that deviates from the baseline on nothing has nothing to write down, and its
+     * missing file is the record of that (capability `complexity-budgets`).
+     *
+     * What remains worth catching is a file that governs nothing. It measures no scope while sitting
+     * in the directory looking like it does, so a reader counting files to see which scopes carry debt
+     * would count it — which is exactly the signal the absent-file convention exists to give.
+     */
     @Test
-    fun `every tier has a config and every config has a tier`() {
+    fun `every config file belongs to a tier`() {
         val tiers = tierPairs().map { it.second }.toSet()
         val configDir = File(repoRoot, "config/detekt")
         assertTrue(configDir.isDirectory, "config/detekt is not a directory — this guard is scanning nothing")
@@ -109,16 +133,18 @@ class DetektTierCoverageTest {
             .map { it.nameWithoutExtension }
             .toSet()
         assertTrue(configs.isNotEmpty(), "config/detekt holds no .yml files — the scan is broken")
+        assertTrue(
+            "_base" in configs,
+            "config/detekt/_base.yml is missing — every tier layers it, so without it each tier falls " +
+                "back to detekt's stock defaults and the repo-wide readings silently stop applying",
+        )
 
-        val missing = tiers - configs
-        assertTrue(missing.isEmpty(), "tiers with no config file: ${missing.sorted()}")
-
-        // `app-shell` is the shell PROOF's config, not a tier's — it belongs to capability
-        // `architecture-guards` and is deliberately absent from the tier map.
-        val orphans = configs - tiers - pathScopedTiers - setOf("app-shell")
+        val orphans = configs - tiers - pathScopedTiers - nonTierConfigs
         assertTrue(
             orphans.isEmpty(),
-            "config files that no tier uses — either wire them up or delete them: ${orphans.sorted()}",
+            "config files that no tier uses — either wire them up or delete them: ${orphans.sorted()}. " +
+                "A scope needs a file ONLY where it deviates from the baseline; a file naming no scope " +
+                "measures nothing while appearing to.",
         )
     }
 
