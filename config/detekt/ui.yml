@@ -65,20 +65,29 @@
 
 complexity:
   LongMethod:
-    # `ReconfigureScreen`'s layout body, now that its state and derivation have left it. Down from 169 at
-    # seeding, from 164 when `JoiningEventScreen` (163) stopped being the binding site, and from 143 as
-    # the same screen shed 142 -> 132 — see the second bullet above.
+    # `ReconfigureScreen`'s layout body. Down from 169 at seeding, 164, 143, and 133 — each fall a
+    # different defect, none of them "this function is too long".
     #
-    # THIS NUMBER IS NOT A TARGET, and the clearest evidence is a pass that moved it not at all. Two
-    # picker dialogs were the same dialog written twice (`DateTimePickerDialog` 82, its range variant 111,
-    # sharing a popup card, heading, month header, weekday strip and button row verbatim); `StatusBody`
-    # (112) was a six-branch dispatcher containing two more duplications of its own. Removing all of it
-    # took eleven sites over the default down to nine — two vanished entirely — and left this ceiling at
-    # 133, because the binding site is none of them. What sets the number is the flat declarative layout
-    # the second bullet describes, so the number rewards exactly the extraction that makes the code worse
-    # and is blind to the duplication that made it worse already. Read the LIST, not the maximum.
+    # READ THE LIST, NOT THE MAXIMUM. One pass moved this number by ZERO: two picker dialogs were the same
+    # dialog written twice (`DateTimePickerDialog` 82, its range variant 111, sharing a popup card,
+    # heading, month header, weekday strip and button row verbatim), and `StatusBody` (112) was a
+    # six-branch dispatcher holding two more duplications. Removing all of it took eleven sites over the
+    # default down to nine, two vanishing entirely, and left the ceiling exactly where it was.
+    #
+    # And the fall from 133 came from a duplication this file had twice argued was irreducible layout. The
+    # join gate and the reconfigure surface rendered the SAME participation surface — two toggle sections
+    # in the same order, the same four on/off notes, the same value line, the same range picker, the same
+    # album row, with nine string literals identical character for character. `ReconfigureScreen`'s own
+    # KDoc said the two "reuse the exact join controls … so there is one decision surface", which was true
+    # of the components and false of their arrangement. `ParticipationSections` is now that arrangement,
+    # stated once: `ReadyLayout` 103 -> under the default and off this list, `ReconfigureScreen` 129 -> 98.
+    #
+    # The lesson is that a long composable is not self-evidently Compose being Compose. Twice now the
+    # length WAS the signal, and reading it as "declarative layout, nothing to do here" was the error both
+    # times. The two bullets above still hold for what remains — but they are a conclusion to reach after
+    # looking, not before.
     active: true
-    threshold: 133
+    threshold: 99
 
   LongParameterList:
     # `StatusActions`, the screen-level callback bundle, at 18 fields. Down from 30, where `ReadyLayout`

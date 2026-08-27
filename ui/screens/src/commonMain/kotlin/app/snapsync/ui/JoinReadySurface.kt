@@ -91,109 +91,30 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
                 subtitle = "Everyone's photos, one shared place.",
             )
 
-            // SECTION 1 — Share: the switch header, the origin-exclusions note (kept verbatim), the
-            // resulting cutoff instant in bold, and the cutoff choice rows — ONE card. The cutoff was
-            // briefly its own titled section; that implied a third question where there are only two
-            // ("do I share" and "do I receive"), so the rows folded back into the section whose switch
-            // they refine.
-            AppToggleSection(
-                title = "Share my photos",
-                checked = state.shareOn,
-                onCheckedChange = actions.onShareOn,
-            ) {
-                if (state.shareOn) {
-                    // The origin exclusions (capability `photo-selection-policy`), stated as what is
-                    // SUBTRACTED, never as a guarantee of what gets through: the policy cannot infer
-                    // capture-origin (PhotoKit exposes no camera flag), so it removes only what is
-                    // certainly not a capture and ADMITS ON DOUBT. "Screenshots … are never shared" is
-                    // exactly true; "only photos you took are shared" would not be.
-                    AppSectionNote(
-                        "Screenshots, screen recordings, GIFs and pictures saved from chat apps are " +
-                            "never shared.",
-                    )
-                    // The ONE statement of the RANGE that decides which photos leave the phone, in the
-                    // heaviest type the surface renders. The Custom rows below deliberately never repeat
-                    // it — their pickers feed this line.
-                    AppSectionValue("Sharing ${state.labels.range}")
-                    // The live shareable count (capability `join-share-count`): how many of the member's
-                    // own gallery photos this RANGE would share, recomputed as either bound (or a late
-                    // permission resolve) changes. Omitted when no count is available.
-                    ShareCountRow(
-                        chosenCutoff = state.selection.chosenFrom,
-                        chosenUntil = state.selection.chosenUntil,
-                        shareableCount = actions.shareableCount,
-                        permissionKey = state.photoPermission,
-                    )
-                    // Level 2: the From/Until range presets, each its own captioned sub-list in its own
-                    // recessed well — the component owns those wells, so this section wraps it in none.
-                    // Switch = does this section happen; checkmarks = how.
-                    AppRangePresetChoices(
-                        choices = state.choices,
-                        // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the previous
-                        // choice (and its instant) exactly as it was.
-                        actions = RangeChoiceActions(
-                            onFromPreset = actions.choices.onFromPreset,
-                            onFromCustom = {
-                                actions.choices.onFromCustom(it)
-                                actions.choices.onFromPreset(FromChoice.CUSTOM)
-                            },
-                            onUntilPreset = actions.choices.onUntilPreset,
-                            onUntilCustom = {
-                                actions.choices.onUntilCustom(it)
-                                actions.choices.onUntilPreset(UntilChoice.CUSTOM)
-                            },
-                        ),
-                        // Pre-start (and post-end), "Now" would fall outside the window — offered disabled.
-                        window = state.selection.window,
-                        fromFloorNote = "Can't be earlier than the event started, ${state.labels.floor}.",
-                        untilCeilingNote = "Can't be later than the event ends, ${state.labels.ceiling}.",
-                    )
-                } else {
-                    AppSectionNote("Nothing of yours leaves this phone.")
-                }
-            }
-
-            // SECTION 3 — Receive. The switch header, where photos land, and the album opt-in nested under
-            // it (only while receiving). Titled to name the SOURCE ("everyone's photos"), not "save … to
-            // your library" — the latter reads as backing up YOUR photos, the exact mental model this app
-            // must avoid, and breaks pronoun parity with "Share my photos".
-            AppToggleSection(
-                title = "Receive everyone's photos",
-                checked = state.receiveOn,
-                onCheckedChange = actions.onReceiveOn,
-            ) {
-                if (state.receiveOn) {
-                    AppSectionNote("Photos others share arrive in your library automatically.")
-                } else {
-                    AppSectionNote("You won't receive the event's photos.")
-                }
-            }
-
-            // The album (capability `event-album`) — a MINOR section: second-level checkmark idiom,
-            // standalone. It can nest under neither switch (the spec feeds the album from BOTH the
-            // member's own uploads and foreign downloads, so under Receive it was a false statement),
-            // but a switch section of its own gave a minor preference the same weight as a consent
-            // decision. The note names exactly which feeds apply to the current switches, so it can
-            // never claim a feed the membership doesn't have.
-            AppMinorSection {
-                AppSummaryToggle(
-                    label = "Create an album",
-                    checked = state.saveToAlbum,
-                    onCheckedChange = actions.onSaveToAlbum,
-                    note = when {
-                        !state.saveToAlbum -> "No album is created."
-                        state.shareOn && state.receiveOn ->
-                            "Photos you share and photos you receive are collected in an album " +
-                                "named after the event."
-                        state.shareOn -> "Photos you share are collected in an album named after the event."
-                        state.receiveOn -> "Photos you receive are collected in an album named after the event."
-                        // Both switches off: nothing syncs, so nothing feeds the album. Join is already
-                        // disabled with its own reason; this line keeps the row honest meanwhile.
-                        else -> "Nothing is shared or received, so nothing is collected."
+            ParticipationSections(
+                state = state.participation,
+                actions = actions.participation,
+                notes = ParticipationNotes(
+                    fromFloor = "Can't be earlier than the event started, ${state.labels.floor}.",
+                    untilCeiling = "Can't be later than the event ends, ${state.labels.ceiling}.",
+                    // What WILL be collected, named exactly for the switches currently on, so the row can
+                    // never claim a feed the membership does not have.
+                    album = with(state.participation) {
+                        when {
+                            !saveToAlbum -> "No album is created."
+                            shareOn && receiveOn ->
+                                "Photos you share and photos you receive are collected in an album " +
+                                    "named after the event."
+                            shareOn -> "Photos you share are collected in an album named after the event."
+                            receiveOn ->
+                                "Photos you receive are collected in an album named after the event."
+                            // Both switches off: nothing syncs, so nothing feeds the album. Join is already
+                            // disabled with its own reason; this line keeps the row honest meanwhile.
+                            else -> "Nothing is shared or received, so nothing is collected."
+                        }
                     },
-                    divider = false,
-                )
-            }
+                ),
+            )
 
             // How long the shared photos are kept (capability `event-limits`). This is the ONE place the
             // app states retention — the creator passes through this same gate right after minting, so a
@@ -285,15 +206,12 @@ internal fun ShareCountRow(
  */
 internal class ReadyState(
     val eventName: String,
-    val selection: RangeSelection,
-    val choices: RangeChoices,
+    val participation: ParticipationState,
     val labels: ReadyLabels,
-    val shareOn: Boolean,
-    val receiveOn: Boolean,
-    val saveToAlbum: Boolean,
-    // A recompute trigger for the shareable count, not a rendered value.
-    val photoPermission: PermissionStatus,
-)
+) {
+    /** The join button is enabled on the same rule the surface commits on. */
+    val selection: RangeSelection get() = participation.selection
+}
 
 /**
  * The four pre-formatted strings the surface states, kept together because they are all derived from the
@@ -303,25 +221,18 @@ internal class ReadyState(
  * the fixed ceiling alone rather than inventing a date.
  */
 internal class ReadyLabels(
-    val range: String,
     val floor: String,
     val ceiling: String,
     val deletes: String?,
 )
 
 /**
- * Everything the Ready surface can ask for. Nested rather than flattened: [choices] is the design system's
- * own four-edit holder, so this carries seven fields instead of the ten it would take spread out — which is
- * the point that the old note in `config/detekt/ui.yml` missed. Bundling recurses forever only if each
- * bundle is flat; a bundle of bundles has as many fields as it has GROUPS.
+ * Everything the Ready surface can ask for: the shared participation surface's actions, plus the two this
+ * surface adds. Three fields for eleven callbacks, which is the nesting argument at its limit — bundling
+ * recurses forever only if each bundle is FLAT; a bundle of bundles has as many fields as it has GROUPS.
  */
 internal class ReadyActions(
-    val choices: RangeChoiceActions,
-    val onShareOn: (Boolean) -> Unit,
-    val onReceiveOn: (Boolean) -> Unit,
-    val onSaveToAlbum: (Boolean) -> Unit,
+    val participation: ParticipationActions,
     val onJoin: () -> Unit,
     val onCancel: () -> Unit,
-    // The permission-aware count query over `[from, until]` (capability `join-share-count`).
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
 )

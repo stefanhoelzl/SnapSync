@@ -140,10 +140,16 @@ internal fun JoiningEventScreen(
         is JoinPhase.Ready -> ReadyLayout(
             state = ReadyState(
                 eventName = phase.name,
-                selection = selection,
-                choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
+                participation = ParticipationState(
+                    selection = selection,
+                    choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
+                    rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
+                    shareOn = shareOn,
+                    receiveOn = receiveOn,
+                    saveToAlbum = chosenSaveToAlbum,
+                    photoPermission = photoPermission,
+                ),
                 labels = ReadyLabels(
-                    range = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
                     floor = appDateTimeLabel(selection.windowStart),
                     ceiling = appDateTimeLabel(selection.windowEnd),
                     // The retention deadline, rendered as a plain date. Absent only if a phase somehow
@@ -151,21 +157,20 @@ internal fun JoiningEventScreen(
                     // inventing a date.
                     deletes = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
                 ),
-                shareOn = shareOn,
-                receiveOn = receiveOn,
-                saveToAlbum = chosenSaveToAlbum,
-                photoPermission = photoPermission,
             ),
             actions = ReadyActions(
-                choices = RangeChoiceActions(
-                    onFromPreset = { fromPreset = it },
-                    onFromCustom = { fromCustom = it },
-                    onUntilPreset = { untilPreset = it },
-                    onUntilCustom = { untilCustom = it },
+                participation = ParticipationActions(
+                    choices = RangeChoiceActions(
+                        onFromPreset = { fromPreset = it },
+                        onFromCustom = { fromCustom = it },
+                        onUntilPreset = { untilPreset = it },
+                        onUntilCustom = { untilCustom = it },
+                    ),
+                    onShareOn = { shareOn = it },
+                    onReceiveOn = { receiveOn = it },
+                    onSaveToAlbum = { chosenSaveToAlbum = it },
+                    shareableCount = shareableCount,
                 ),
-                onShareOn = { shareOn = it },
-                onReceiveOn = { receiveOn = it },
-                onSaveToAlbum = { chosenSaveToAlbum = it },
                 onJoin = {
                     onConfirm(
                         selection.chosenFrom,
@@ -175,7 +180,6 @@ internal fun JoiningEventScreen(
                     )
                 },
                 onCancel = onCancel,
-                shareableCount = shareableCount,
             ),
         )
         JoinPhase.Loading -> LoadingPhase()

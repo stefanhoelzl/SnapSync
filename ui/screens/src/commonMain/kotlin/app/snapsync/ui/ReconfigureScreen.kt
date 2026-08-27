@@ -113,85 +113,49 @@ internal fun ReconfigureScreen(
             // Read-only header: which event's settings these are.
             AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
 
-            AppToggleSection(
-                title = "Share my photos",
-                checked = shareOn,
-                onCheckedChange = { shareOn = it },
-            ) {
-                if (shareOn) {
-                    AppSectionNote(
-                        "Screenshots, screen recordings, GIFs and pictures saved from chat apps are " +
-                            "never shared.",
-                    )
-                    AppSectionValue("Sharing $rangeLabel")
-                    // The live count over the resolved RANGE — truthful on both tiers now that a
-                    // range-widening reconfigure re-shares the newly-in-scope photos (capability
-                    // `reconfigure-membership`). An unbounded (legacy) upper bound counts to the present.
-                    ShareCountRow(
-                        chosenCutoff = selection.chosenFrom,
-                        chosenUntil = selection.chosenUntil,
-                        shareableCount = shareableCount,
-                        permissionKey = photoPermission,
-                    )
-                    AppRangePresetChoices(
-                        choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
-                        actions = RangeChoiceActions(
-                            onFromPreset = { fromPreset = it },
-                            onFromCustom = {
-                                fromCustom = it
-                                fromPreset = FromChoice.CUSTOM
-                            },
-                            onUntilPreset = { untilPreset = it },
-                            onUntilCustom = {
-                                untilCustom = it
-                                untilPreset = UntilChoice.CUSTOM
-                            },
-                        ),
-                        window = selection.window,
-                        fromFloorNote = "Can't be earlier than the event started, " +
-                            "${appDateTimeLabel(selection.windowStart)}.",
-                        untilCeilingNote = if (membership.endsAt != null) {
-                            "Can't be later than the event ends, ${appDateTimeLabel(selection.windowEnd)}."
-                        } else {
-                            // A legacy membership whose event `endsAt` has not been backfilled yet:
-                            // the picker still bounds against the member's own ceiling, but naming
-                            // an event end we do not know would be a guess.
-                            "Pick when to stop sharing."
-                        },
-                    )
-                } else {
-                    AppSectionNote("Nothing of yours leaves this phone.")
-                }
-            }
-
-            AppToggleSection(
-                title = "Receive everyone's photos",
-                checked = receiveOn,
-                onCheckedChange = { receiveOn = it },
-            ) {
-                if (receiveOn) {
-                    AppSectionNote("Photos others share arrive in your library automatically.")
-                } else {
-                    AppSectionNote("You won't receive the event's photos.")
-                }
-            }
-
-            AppMinorSection {
-                AppSummaryToggle(
-                    label = "Create an album",
-                    checked = chosenSaveToAlbum,
-                    onCheckedChange = { chosenSaveToAlbum = it },
+            ParticipationSections(
+                state = ParticipationState(
+                    selection = selection,
+                    choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
+                    rangeLabel = rangeLabel,
+                    shareOn = shareOn,
+                    receiveOn = receiveOn,
+                    saveToAlbum = chosenSaveToAlbum,
+                    photoPermission = photoPermission,
+                ),
+                actions = ParticipationActions(
+                    choices = RangeChoiceActions(
+                        onFromPreset = { fromPreset = it },
+                        onFromCustom = { fromCustom = it },
+                        onUntilPreset = { untilPreset = it },
+                        onUntilCustom = { untilCustom = it },
+                    ),
+                    onShareOn = { shareOn = it },
+                    onReceiveOn = { receiveOn = it },
+                    onSaveToAlbum = { chosenSaveToAlbum = it },
+                    shareableCount = shareableCount,
+                ),
+                notes = ParticipationNotes(
+                    fromFloor = "Can't be earlier than the event started, " +
+                        "${appDateTimeLabel(selection.windowStart)}.",
+                    untilCeiling = if (membership.endsAt != null) {
+                        "Can't be later than the event ends, ${appDateTimeLabel(selection.windowEnd)}."
+                    } else {
+                        // A legacy membership whose event `endsAt` has not been backfilled yet: the picker
+                        // still bounds against the member's own ceiling, but naming an event end we do not
+                        // know would be a guess.
+                        "Pick when to stop sharing."
+                    },
                     // Forward-only (capability `reconfigure-membership`): already-synced photos are not
                     // retroactively gathered, so the on-note says so plainly.
-                    note = if (chosenSaveToAlbum) {
+                    album = if (chosenSaveToAlbum) {
                         "Photos are collected in an album named after the event. Only photos synced " +
                             "from now on are added."
                     } else {
                         "No album is created."
                     },
-                    divider = false,
-                )
-            }
+                ),
+            )
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
