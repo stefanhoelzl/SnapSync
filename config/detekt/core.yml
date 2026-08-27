@@ -67,7 +67,6 @@ complexity:
     threshold: 4
   TooManyFunctions:
     active: true
-    excludes: []
     thresholdInFiles: 26
     thresholdInClasses: 26
     thresholdInInterfaces: 26

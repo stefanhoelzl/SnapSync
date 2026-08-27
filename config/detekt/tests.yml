@@ -69,13 +69,15 @@ complexity:
     active: true
     threshold: 5
   TooManyFunctions:
+    # 18, down from 90 — and the fall is the baseline's `@Test` reading, not a code change. The 90 was
+    # the largest test class in the tree; what it measured was how many behaviours that suite pinned.
+    # With test functions no longer counted as surface, the largest real surface here is 17.
     active: true
-    excludes: []
-    thresholdInFiles: 90
-    thresholdInClasses: 90
-    thresholdInInterfaces: 90
-    thresholdInObjects: 90
-    thresholdInEnums: 90
+    thresholdInFiles: 18
+    thresholdInClasses: 18
+    thresholdInInterfaces: 18
+    thresholdInObjects: 18
+    thresholdInEnums: 18
   LargeClass:
     active: true
     threshold: 1300

@@ -52,3 +52,32 @@ naming:
     # heuristic that means something different here than it does upstream.
     excludes: []
 
+
+complexity:
+  TooManyFunctions:
+    # `TooManyFunctions` measures a type's SURFACE — how many things a caller must hold in their head to
+    # use it. A `@Test` function is not surface: nothing calls it, it takes no arguments, and it is
+    # reached only by a runner. Counting them makes the rule measure how many behaviours a suite pins,
+    # which points the ratchet the wrong way — the gate then resists exactly what it should invite.
+    #
+    # Measured: `LedgerStoreContract` (`:test:world`) is 46 functions, 44 of them `@Test` and the other
+    # two private builders. Its real surface is two. It crossed the `harness` ceiling by growing four
+    # test cases, and every future test would have cost another ceiling bump justified by this same
+    # paragraph — a ratchet that has to be re-argued on a schedule is not one.
+    #
+    # A reading and not a ceiling, by the test at the top of this file: if a test case is not surface in
+    # `:test:world`, it is not surface in `:domain`'s `commonTest` either.
+    #
+    # This is NOT detekt's own `**/test/**` path default, which the `FunctionNaming` note above rejects
+    # for this repo and which is rejected here for the same reason: `test/` is a module prefix, so that
+    # default would switch the rule off for the world harness and the control channel — production-shaped
+    # code whose surface this rule is exactly right to measure. The annotation names the test; the path
+    # does not.
+    ignoreAnnotatedFunctions: ['Test']
+
+    # The same path argument the `FunctionNaming` note above makes, and it was standing in all eight
+    # tier files before it stood here: detekt's default excludes `**/test/**`, which in this repo is a
+    # MODULE prefix, so the default hides `:test:world`'s harness and `:test:rig`'s control channel —
+    # production-shaped code — along with every `test/*/build.gradle.kts`. Eight copies of one argument
+    # is exactly the drift this file exists to prevent.
+    excludes: []
