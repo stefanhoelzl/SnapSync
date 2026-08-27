@@ -26,7 +26,9 @@ is what masks it.**
 - **The ledger becomes the source of upload work.** A new `LedgerState.DISCOVERED` records every
   resource the walk admitted and the engine judged to be new work, written before any job is
   created. The producer enqueues from the ledger — `DISCOVERED` and `FAILED` rows alike — instead of
-  from the walk, so a completion-triggered top-up needs no library read at all.
+  from the walk's return value, so a cycle makes progress on work it already knows about whatever its
+  change feed reports. It still consults that feed (the cursor is not a change oracle), but that
+  consultation is now incremental rather than a full enumeration.
 - **The discovery cursor advances on a different condition.** Today: *every job was created*.
   After: *every fact the walk produced is durable* — the `DISCOVERED` rows, the removal marks, and
   the bare-row capture-date backfill. This is the dual of an invariant the codebase already honours
@@ -36,9 +38,11 @@ is what masks it.**
 - **A cap-truncated cycle publishes.** The device manifest, the enumeration audit line, and (under
   the new trigger below) the completion notify all move above the early return. The event album
   placement already ran there.
-- **The notify's trigger changes** from *drained cycle with ≥1 completion* to *the manifest
-  projection actually changed*. The per-cycle completion counter is consumed by truncated cycles
-  that cannot announce it, so a drained cycle can find nothing left to notify about.
+- **The notify's trigger drops the word *drained***: it fires when this cycle promoted at least one
+  row **and** the manifest projection actually changed. A device that never drains never notified —
+  and worse, the promotion pass ran before the short-circuit, so a truncated cycle consumed the signal
+  it could not announce. Promotion and notify now happen in the same stage, so neither can be spent by
+  a cycle that publishes nothing.
 - **A deferred re-join reconciliation settles with the platform.** Today a non-contributing
   membership drains returned jobs and a deferred reconcile does not — an asymmetry whose measured
   consequence (`PHPhotosError 50008`: the OS discards outstanding jobs and defers the extension
@@ -90,10 +94,14 @@ None. Every change modifies the requirements of an existing capability.
   job creation no longer implies stopping everything else.
 - `device-manifest`: the manifest is published on a cap-truncated cycle; the bare-row backfill is
   not gated on the pass draining.
-- `upload-completion-notify`: the notify fires when the projection changed, replacing the
-  drained-plus-completion gate.
+- `upload-completion-notify`: the notify fires when this cycle promoted a row **and** the projection
+  changed, replacing the *drained*-plus-promotion gate.
 - `upload-lifecycle`: a deferred re-join reconciliation still settles returned jobs with the
   platform; the cycle's publication is stated over its outcome rather than over its exit point.
+- `sync-engine`: the resource-changed decision gains `DISCOVERED` → `Upload` and is required to be
+  exhaustive over `LedgerState`. It also corrects a pre-existing omission — the enumeration never
+  gained `UPLOADED` when `fix-lost-upload-acks` added that state, so the spec said a `UPLOADED` entry
+  yields `Work`, which the code has never done.
 - `diagnostic-logging`: the `enumeration:` audit line is emitted by a cap-truncated cycle and states
   the truncation, so the remaining backlog is readable from a device log.
 - `harness-world-model`: the world's fake transfer answers the resolve verb, and its job-limit lever
