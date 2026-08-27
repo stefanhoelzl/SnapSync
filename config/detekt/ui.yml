@@ -1,15 +1,17 @@
 # Tier `ui` — Compose (`:ui:components`, `:ui:screens`)
 #
-# THIS FILE HOLDS THE THREE RULES THIS SCOPE CANNOT REACH, AND NOTHING ELSE. Everything not written
-# here comes from `config/detekt/_base.yml` at detekt's own defaults — the tier arrived there on seven
-# of its ten rules, and each of those left this file as it did.
+# THIS FILE HOLDS THE TWO RULES THIS SCOPE CANNOT REACH, AND NOTHING ELSE. Everything not written here
+# comes from `config/detekt/_base.yml` at detekt's own defaults — the tier arrived there on eight of its
+# ten rules, and each of those left this file as it did. `CyclomaticComplexMethod` was the eighth and the
+# only one of the three that ever looked reachable; the note at the foot of this header records
+# what it took, because "we got there" is worth less than "here is what the road was".
 #
 # Every number below is a ceiling that MAY ONLY FALL. Lowering one is ordinary work; RAISING one
 # requires a stated forcing proof in the change that raises it. Nothing enforces that — it is a ratchet
 # carried by this paragraph and by review (capability `complexity-budgets`).
 #
-# WHY THESE THREE REMAIN. Not effort: each was worked and each is structural. The three trade against
-# one another, which is the finding — the fix for any one of them is the cause of another:
+# WHY THESE TWO REMAIN. Not effort: each was worked and each is structural. They trade against one
+# another, which is the finding — the fix for one is the cause of the other:
 #
 #   * Satisfying `LongParameterList` means bundling parameters, and a bundle is itself a constructor
 #     whose fields detekt counts. `StatusActions` was created by this change to fix exactly this rule
@@ -18,33 +20,54 @@
 #     where Compose's own APIs routinely exceed six and a wrapper makes call sites worse.
 #
 #   * Satisfying `LongMethod` means extracting composables, and each extraction is a new function with a
-#     new parameter list. Measured on `StatusScreen`: two genuine extractions took it from 138
-#     statements to 71, and over the same two steps the TIER's totals rose — `LongMethod` 10 to 11 and
-#     `LongParameterList` 20 to 21. A composable is a long declarative expression; length is what
-#     Compose is.
+#     new parameter list — but WHAT you extract decides whether that trade bites, and the first draft of
+#     this paragraph missed the distinction. Extracting a LAYOUT's sections is expensive, because each
+#     section needs the state around it: measured on `StatusScreen`, two genuine extractions took it from
+#     138 statements to 71 while the TIER's totals ROSE — `LongMethod` 10 to 11, `LongParameterList` 20
+#     to 21. Extracting a DISPATCHER's branches is cheap, because a branch closes over almost nothing:
+#     measured on `JoiningEventScreen`, seven phase composables of nought-to-three parameters each took
+#     it from 163 statements to 77 and cyclomatic 16 to under detekt's default, and the tier's
+#     `LongParameterList` count did not move at all (23 before, 23 after). It moved a THIRD number the
+#     first two bullets do not mention — seven new functions took that file over `TooManyFunctions`'s
+#     default of 11 — and the answer was to split the file, not to open a fourth deviation here. That is
+#     the difference between a trade and a debt: a file holding two surfaces was always two files.
+#     What remains above is the expensive kind. A composable is a long declarative expression; length is
+#     what Compose is.
 #
-#   * Satisfying `CyclomaticComplexMethod` past this point means splitting `when` dispatchers over
-#     sealed UI states. The tractable part was done and it was worth doing — `JoiningEventScreen` 35 to
-#     16, `ReconfigureScreen` 28 to 17, `StatusScreen` 30 to 18 — via four changes that stand on their
-#     own merits: grouping the overlays, naming the joined action cluster, lifting the join gate's pure
-#     derivation out of its rendering, and deduplicating the range-resolution rules the reconfigure
-#     surface had been spelling out a second time. What is left is 1-3 points per screen, and buying
-#     those means inventing functions to hold fragments of a dispatch.
+# HOW THE THIRD RULE LEFT. `CyclomaticComplexMethod` sat here at 19 against detekt's default of 15, and
+# the note that used to occupy this space said what was left was "1-3 points per screen" bought only by
+# "inventing functions to hold fragments of a dispatch". That was wrong about the remedy, and the three
+# screens each needed a DIFFERENT one:
 #
-# So the honest statement is that these three numbers describe Compose, not this codebase's discipline —
-# and unlike a deviation that hides debt, this one is three lines long and says which is which.
+#   * `JoiningEventScreen` (16) ran TWO `when`s over the same seven-case sealed type ninety lines apart —
+#     one for each phase's body, one for its actions — plus an early return handling an eighth case a
+#     third way. Giving each phase one composable that states both halves collapsed them into a single
+#     dispatcher and dissolved the early return with them.
+#
+#   * `ReconfigureScreen` (17) re-derived what the join gate already derived. Both surfaces produce the
+#     same ten values — `minPhotoDate`/`saveEnabled` were `chosenFrom`/`commitEnabled` under other names —
+#     so they now share one type and one resolver, each keeping only the window derivation that genuinely
+#     differs between them.
+#
+#   * `StatusScreen` (18) spelled `joined && !reconfigureActive` out three times and `membership != null`
+#     twice more. Naming that fact once, as a value carrying the membership rather than a flag, also
+#     retired a `!!` whose safety had been argued in a comment.
+#
+# None of the three was a fragment of a dispatch. Each was a real duplication or a real conflation that
+# the number had been pointing at all along — which is the argument for keeping a rule at the default and
+# the reason the two below are stated as structure rather than as debt.
+#
+# So the honest statement is that these two numbers describe Compose, not this codebase's discipline —
+# and unlike a deviation that hides debt, this one is two lines long and says which is which.
 
 complexity:
-  CyclomaticComplexMethod:
-    # `StatusScreen` 18, `ReconfigureScreen` 17, `JoiningEventScreen` 16 — each a dispatcher over a
-    # sealed UI state. Down from 36 when the tier was seeded.
-    active: true
-    threshold: 19
-
   LongMethod:
-    # `JoiningEventScreen`'s layout body. Down from 169 at seeding.
+    # `ReconfigureScreen`'s layout body, now that its state and derivation have left it. Down from 169 at
+    # seeding, from 164 when `JoiningEventScreen` (163) stopped being the binding site, and from 143 as
+    # the same screen shed 142 -> 132 — see the second bullet above.
+
     active: true
-    threshold: 164
+    threshold: 133
 
   LongParameterList:
     # `ReadyLayout`, the join gate's decision surface. Down from 30 at seeding only in what it counts:
