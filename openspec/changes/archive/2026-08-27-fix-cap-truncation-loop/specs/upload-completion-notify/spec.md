@@ -35,9 +35,13 @@ therefore leave `UPLOADED` rows as they are. Those rows stay outstanding until t
 point re-join reconciliation seeds them from the device's stored-file listing
 (`event-rejoin-reconciliation`) — the bytes did land, so the listing reports them.
 
-Duplicate-notify suppression stays **structural**: a terminal outcome re-delivered for a key that is no
-longer `REQUESTED` cannot re-enter `UPLOADED` (the guarded write applies to nothing, per `sync-ledger`),
-so it changes no row, so the projection is unchanged, so no second notify is fired.
+"Promoted" means a row moving out of `UPLOADED` in this cycle's promotion pass. That is what makes
+duplicate-notify suppression **structural** rather than a check: a terminal outcome re-delivered for a
+key that is no longer `REQUESTED` cannot re-enter `UPLOADED` (the guarded write applies to nothing, per
+`sync-ledger`), so it cannot present itself to the promotion pass a second time, so it changes no row,
+so the projection is unchanged. An earlier rule — read the row's state before writing it and count only
+a `false → true` transition — was replaced for a reason that still holds: it was a read-then-write pair
+against a writer that takes no lock.
 
 #### Scenario: A cycle that promoted and changed the projection notifies after the manifest write
 
