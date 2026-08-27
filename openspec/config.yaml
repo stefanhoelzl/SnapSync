@@ -14,7 +14,9 @@ context: |
   touches. A spec's Purpose never defers its meaning outside openspec/.
 
   Tests belong in commonTest so they run on both JVM and
-  iosSimulatorArm64. :app:ios is wiring-only and untested.
+  iosSimulatorArm64. No :app:* module declares a test source set. Both rules,
+  their exceptions, and what each does NOT cover: capability
+  testing-architecture.
 
   ARCHIVING — three gates, all BEFORE reporting success. They live here rather
   than in .claude/ because `openspec update` regenerates that and deletes them

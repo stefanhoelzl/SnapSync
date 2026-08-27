@@ -9,8 +9,8 @@ seam (`start` / `stop`); this capability owns the decision, and it owns it in on
 place.
 
 It exists because the upload lifecycle previously had **no owner**. It was smeared across the two tier
-specs and the iOS composition root — a module the project's own hard rule declares wiring-only and
-untested — so no contract described it and no test could reach it. When a second upload tier arrived, the
+specs and the iOS composition root — a file in `:app:ios`, which the project's own hard rule declares
+wiring-only and untested (capability `testing-architecture`) — so no contract described it and no test could reach it. When a second upload tier arrived, the
 app-driven tier (iOS 18–26.0) inherited a PhotoKit-shaped "disable→enable" re-registration ritual on every
 provision. Its *disable* half resolved to a full leave (cancelling transfers and the `BGProcessingTask`
 heartbeat, wiping the ledger **and** the discovery cursor) while its *enable* half was a no-op below iOS

@@ -480,24 +480,10 @@ with the proxy task above).
 
 ## Testing strategy
 
-Three standing rules:
-
-1. **Every unit test runs on the iOS simulator too.** Put logic tests in `commonTest` so they run
-   on **both** JVM and `iosSimulatorArm64` — JVM is the fast loop, not the only coverage.
-   `jvmTest`/`iosTest` hold only driver/cinterop wiring behind a shared contract (e.g.
-   `LedgerStoreContract` over the JVM-sqlite vs native driver).
-2. **`:app:*` Kotlin is wiring-only and untested** (the shell gates enforce zero unpinned
-   decisions). All logic, shared or iOS-specific, lives in the tested `:domain` zones or the
-   adapter modules.
-3. **Seam ↔ UI-state integration tests** compose the real core — the same `snapSyncApp`/
-   `uploadCore` the device shells call — over `:test:world`'s rigged `:adapter:generic:fake` ports, drive
-   the flows and commands, and assert `UiState` AND world outcomes (objects landed, ledger
-   `COMPLETED`, foreign photos imported). They live in the test-only **`:test:integration`**
-   module (`commonTest` → runs on JVM and simulator).
-
-The edge-URL builder (`:domain` `model/`) is pinned by `commonMain` tests on URL composition,
-filename percent-encoding (deterministic + injective), and the Content-Type-only header set — pure
-string-building, no network or crypto.
+Contract of record: **`openspec/specs/testing-architecture/spec.md`**. Read it before adding a test
+file or deciding where one goes — it states where each kind of test lives and which targets it runs
+on, why the `:test:*` modules exist, why some coverage is measured on hardware rather than asserted,
+and, for each rule, what it does **not** cover.
 
 ## Workflow
 
