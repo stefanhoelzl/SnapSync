@@ -181,11 +181,23 @@ internal class ParticipationState(
     val choices: RangeChoices,
     /** The resolved range as one readable label — the section's single statement of what will be shared. */
     val rangeLabel: String,
+    val switches: Switches,
+    /** A recompute trigger for the shareable count, not a rendered value. */
+    val photoPermission: PermissionStatus,
+) {
+    val shareOn: Boolean get() = switches.shareOn
+    val receiveOn: Boolean get() = switches.receiveOn
+    val saveToAlbum: Boolean get() = switches.saveToAlbum
+}
+
+/**
+ * The three on/off answers a participation surface collects. One value because they are asked together,
+ * rendered together, and read together — the album note varies over all three at once.
+ */
+internal class Switches(
     val shareOn: Boolean,
     val receiveOn: Boolean,
     val saveToAlbum: Boolean,
-    /** A recompute trigger for the shareable count, not a rendered value. */
-    val photoPermission: PermissionStatus,
 )
 
 /** Everything the participation surface can ask for. */
@@ -229,9 +241,9 @@ internal class ParticipationNotes(
  */
 @Stable
 internal class Participation(seed: ParticipationSeed) {
-    var shareOn by mutableStateOf(seed.shareOn)
-    var receiveOn by mutableStateOf(seed.receiveOn)
-    var saveToAlbum by mutableStateOf(seed.saveToAlbum)
+    var shareOn by mutableStateOf(seed.switches.shareOn)
+    var receiveOn by mutableStateOf(seed.switches.receiveOn)
+    var saveToAlbum by mutableStateOf(seed.switches.saveToAlbum)
     var fromPreset by mutableStateOf(seed.choices.fromPreset)
     var fromCustom by mutableStateOf(seed.choices.fromCustom)
     var untilPreset by mutableStateOf(seed.choices.untilPreset)
@@ -265,9 +277,7 @@ internal class Participation(seed: ParticipationSeed) {
         selection = selection,
         choices = choices,
         rangeLabel = rangeLabel,
-        shareOn = shareOn,
-        receiveOn = receiveOn,
-        saveToAlbum = saveToAlbum,
+        switches = Switches(shareOn, receiveOn, saveToAlbum),
         photoPermission = photoPermission,
     )
 }
@@ -277,9 +287,7 @@ internal class Participation(seed: ParticipationSeed) {
  * membership's own values at the reconfigure surface.
  */
 internal class ParticipationSeed(
-    val shareOn: Boolean,
-    val receiveOn: Boolean,
-    val saveToAlbum: Boolean,
+    val switches: Switches,
     val choices: RangeChoices,
 )
 

@@ -32,9 +32,27 @@
 # `ParticipationSeed` that listed the four range picks separately when `RangeChoices` already named them
 # (7 -> 4). Read the LIST here too — the maximum says nothing about the eighteen sites beneath it.
 #
-# What is NOT reachable is detekt's default of 6. Most of the remaining sites are leaf design-system
-# components at 6-7 parameters, where Compose's own APIs routinely exceed six and a wrapper makes every
-# call site worse. That tail is the reason this file still exists.
+# WHAT REMAINS, HONESTLY. Fourteen sites, and they are two populations:
+#
+#   * FIVE with real structure left in them. `StatusScreen` (9) is the screen's public entry point, whose
+#     `membership`/`inviteUrl`/`eventName` are one event seen three ways; `StatusOverlays` (8) takes two
+#     booleans that both come off `StatusChrome`; `CurrentLayer` (8) is a dispatcher hub that needs what
+#     its four branches need. Bundling those was TRIED and reverted: it moved the ceiling by one point
+#     (10 -> 9), changed a public API across three shells and three test files, and required grouping a
+#     create-flow error with a rename lifecycle under one name because they happened to arrive together.
+#     Reducing `CurrentLayer` further needs a context object holding "everything the screen was handed",
+#     which is a grab-bag with a name. The point is not that these cannot fall — it is that the bundle
+#     has to be a concept somebody would name unprompted, and these were not.
+#
+#   * NINE leaf sites at exactly 6-7. `ChoiceRow(tag, label, consequence, selected, enabled, onSelect)`,
+#     `AppSummaryToggle(label, checked, onCheckedChange, note, dimmed, divider)`, `AppTextField` — no two
+#     of their parameters belong together, and Material's own equivalents take as many or more. A bundle
+#     here would exist only to satisfy the rule.
+#
+# So detekt's default of 6 is not out of reach for lack of ideas; the threshold FAILS at 6, so every one
+# of the fourteen would have to reach five, and the last point on each would be bought by inventing a type
+# nobody wanted. An earlier draft of this paragraph said "not reachable" flatly, which was the same error
+# this file has made about `LongMethod` five times — asserting irreducibility instead of measuring it.
 #
 # HOW THE OTHER TWO LEFT, AND WHY IT IS WRITTEN DOWN. `CyclomaticComplexMethod` sat at 19 against a
 # default of 15, and `LongMethod` at 169 against 60. Both are gone, and neither went by grinding.
@@ -86,5 +104,5 @@ complexity:
     # leaf design-system components at 6-8 parameters, where Compose's own APIs routinely exceed six and a
     # wrapper makes every call site worse. Six is not reachable; that tail is the reason.
     active: true
-    functionThreshold: 11
-    constructorThreshold: 11
+    functionThreshold: 10
+    constructorThreshold: 10

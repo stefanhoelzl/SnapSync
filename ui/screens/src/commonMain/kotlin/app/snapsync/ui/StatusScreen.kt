@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.components.ScreenHeading
+import app.snapsync.ui.components.PromptField
 
 
 /**
@@ -290,13 +291,15 @@ private fun RenameSheet(
             confirmLabel = "Save",
             cancelLabel = "Cancel",
         ),
-        placeholder = "Event name",
-        initialValue = membership.name,
-        // The backend's own bound (capability `event-creation`), enforced by the input so an
-        // over-long name is unreachable rather than rejected on a round trip.
-        maxLength = 100,
-        busy = renameStatus == RenameStatus.InFlight,
-        error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
+        field = PromptField(
+            placeholder = "Event name",
+            initialValue = membership.name,
+            // The backend's own bound (capability `event-creation`), enforced by the input so an
+            // over-long name is unreachable rather than rejected on a round trip.
+            maxLength = 100,
+            busy = renameStatus == RenameStatus.InFlight,
+            error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
+        ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
         // rather than renaming a different event.
         onConfirm = { newName -> actions.joined.onRenameEvent(membership.eventId, newName) },
@@ -334,10 +337,12 @@ private fun BugReportSheet(
             confirmLabel = "Send",
             cancelLabel = "Cancel",
         ),
-        placeholder = "What went wrong, and what were you doing?",
-        // The description titles the report in the error-tracking service, so it is bounded to
-        // stay readable in a list of issues (capability `diagnostic-logging`).
-        maxLength = 200,
+        field = PromptField(
+            placeholder = "What went wrong, and what were you doing?",
+            // The description titles the report in the error-tracking service, so it is bounded to
+            // stay readable in a list of issues (capability `diagnostic-logging`).
+            maxLength = 200,
+        ),
         onConfirm = { note ->
             overlays.reportingBug = false
             onSend(note, screen)
@@ -429,9 +434,6 @@ private fun ColumnScope.CurrentLayer(
                 photoPermission = photoPermission,
             )
         is UiState.Joined ->
-            JoinedLayer(
-                state.health, inviteUrl, actions.access.onRequestPermission, actions.access.onOpenSettings,
-                state.canChoosePhotos, actions.access.onChoosePhotos, state.ended, cutoff,
-            )
+            JoinedLayer(state, inviteUrl, actions.access, cutoff)
     }
 }

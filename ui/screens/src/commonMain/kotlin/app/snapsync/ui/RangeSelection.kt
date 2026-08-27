@@ -41,21 +41,32 @@ import app.snapsync.ui.components.RangeChoices
  * rather than merely unlikely.
  */
 internal class RangeSelection(
-    val windowStart: LocalDateTime,
-    val windowEnd: LocalDateTime,
+    /** The event window this range is picked inside, in the shape the design system's picker takes. */
+    val window: RangeWindow,
     val nowLocal: LocalDateTime,
-    /** "Now" is offered only while the present is INSIDE the event window. */
-    val nowAvailable: Boolean,
-    val fromResolved: LocalDateTime,
-    val untilResolved: LocalDateTime,
-    val chosenFrom: CaptureCutoff,
-    val chosenUntil: CaptureCeiling,
+    /** The resolved bounds as wall-clock, for the pickers and the label. */
+    val resolved: LocalRange,
+    /** The same bounds in the canonical `…Z` domain, which is what a commit carries. */
+    val chosen: CaptureRange,
     val chosenDirection: Direction,
     val commitEnabled: Boolean,
 ) {
-    /** The window as the design system wants it — the same three values, in the shape the picker takes. */
-    val window: RangeWindow get() = RangeWindow(windowStart, windowEnd, nowAvailable)
+    val windowStart: LocalDateTime get() = window.start
+    val windowEnd: LocalDateTime get() = window.end
+
+    /** "Now" is offered only while the present is INSIDE the event window. */
+    val nowAvailable: Boolean get() = window.nowAvailable
+    val fromResolved: LocalDateTime get() = resolved.from
+    val untilResolved: LocalDateTime get() = resolved.until
+    val chosenFrom: CaptureCutoff get() = chosen.from
+    val chosenUntil: CaptureCeiling get() = chosen.until
 }
+
+/** A resolved range as wall-clock values. */
+internal class LocalRange(val from: LocalDateTime, val until: LocalDateTime)
+
+/** The same range in the canonical cutoff domain — what a join or a reconfigure actually commits. */
+internal class CaptureRange(val from: CaptureCutoff, val until: CaptureCeiling)
 
 @Composable
 internal fun rememberJoinSelection(
@@ -145,14 +156,13 @@ private fun rangeOver(
         resolveFrom(choices.fromPreset, choices.fromCustom, windowStart, nowLocal, untilResolved)
 
     return RangeSelection(
-        windowStart = windowStart,
-        windowEnd = windowEnd,
+        window = RangeWindow(windowStart, windowEnd, nowAvailable),
         nowLocal = nowLocal,
-        nowAvailable = nowAvailable,
-        fromResolved = fromResolved,
-        untilResolved = untilResolved,
-        chosenFrom = CaptureCutoff(cutoff.toCutoff(fromResolved)),
-        chosenUntil = CaptureCeiling(cutoff.toCutoff(untilResolved)),
+        resolved = LocalRange(fromResolved, untilResolved),
+        chosen = CaptureRange(
+            CaptureCutoff(cutoff.toCutoff(fromResolved)),
+            CaptureCeiling(cutoff.toCutoff(untilResolved)),
+        ),
         // Direction is derived from the switches. The dead (both-off) case never reaches a commit — the
         // commit button is disabled there — so its value is inert.
         chosenDirection = directionOf(participation.shareOn, participation.receiveOn),

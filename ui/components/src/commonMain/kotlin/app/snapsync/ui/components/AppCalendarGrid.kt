@@ -82,10 +82,12 @@ internal fun RangeCalendarGrid(
                             val date = LocalDate(firstOfMonth.year, firstOfMonth.month.ordinal.plus(1), dayNumber)
                             RangeDayCell(
                                 date = date,
-                                isStart = date == rangeStart,
-                                isEnd = date == rangeEnd,
-                                inRange = date > rangeStart && date < rangeEnd,
-                                isToday = date == bounds.today,
+                                position = DayInRange(
+                                    isStart = date == rangeStart,
+                                    isEnd = date == rangeEnd,
+                                    inRange = date > rangeStart && date < rangeEnd,
+                                    isToday = date == bounds.today,
+                                ),
                                 enabled = bounds.allows(date),
                                 onClick = { onPick(date) },
                             )
@@ -106,17 +108,14 @@ internal fun RangeCalendarGrid(
 @Composable
 private fun RangeDayCell(
     date: LocalDate,
-    isStart: Boolean,
-    isEnd: Boolean,
-    inRange: Boolean,
-    isToday: Boolean,
+    position: DayInRange,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val endpoint = isStart || isEnd
+    val endpoint = position.isStart || position.isEnd
     val fill = if (endpoint) scheme.primary else Color.Transparent
-    val ring = if (isToday && !endpoint && !inRange) scheme.primary else Color.Transparent
+    val ring = if (position.isToday && !endpoint && !position.inRange) scheme.primary else Color.Transparent
     val textColor = when {
         endpoint -> scheme.onPrimary
         !enabled -> scheme.onSurfaceVariant.copy(alpha = 0.35f)
@@ -130,14 +129,14 @@ private fun RangeDayCell(
         append(monthName(date.month.ordinal.plus(1)))
         append(' ')
         append(date.year)
-        if (isToday) append(", today")
+        if (position.isToday) append(", today")
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             // The connecting band for strictly-between days spans the full cell width so the range reads as
             // one continuous stripe rather than isolated dots.
-            .background(if (inRange) scheme.primaryContainer else Color.Transparent)
+            .background(if (position.inRange) scheme.primaryContainer else Color.Transparent)
             .selectable(
                 selected = endpoint,
                 enabled = enabled,
@@ -163,7 +162,7 @@ private fun RangeDayCell(
             Text(
                 text = date.day.toString(),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (endpoint || isToday) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (endpoint || position.isToday) FontWeight.Bold else FontWeight.Normal,
                 ),
                 color = textColor,
             )
@@ -399,3 +398,17 @@ internal class CalendarBounds(
     fun allows(date: LocalDate): Boolean =
         (floor == null || date >= floor) && (ceiling == null || date <= ceiling)
 }
+
+/**
+ * Where a day sits relative to the selected span — which is what decides how the cell is drawn: the two
+ * ends get the filled pill, the days between get the connecting band, today gets its ring.
+ *
+ * Four booleans that are only ever computed together from the same span, and passing them as four
+ * adjacent `Boolean`s made their order the only thing keeping them apart.
+ */
+internal class DayInRange(
+    val isStart: Boolean,
+    val isEnd: Boolean,
+    val inRange: Boolean,
+    val isToday: Boolean,
+)

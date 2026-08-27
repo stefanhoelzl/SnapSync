@@ -81,24 +81,20 @@ import androidx.compose.runtime.setValue
 @Composable
 fun AppTextPromptSheet(
     copy: DialogCopy,
-    placeholder: String,
+    field: PromptField,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
-    initialValue: String = "",
-    maxLength: Int = Int.MAX_VALUE,
-    error: String? = null,
-    busy: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
-    var text by remember(initialValue) { mutableStateOf(initialValue) }
+    var text by remember(field.initialValue) { mutableStateOf(field.initialValue) }
     val written = text.trim()
     // A no-op submission is unreachable, not merely rejected. For an empty seed this IS the empty check.
-    val submittable = written.isNotEmpty() && written != initialValue.trim()
+    val submittable = written.isNotEmpty() && written != field.initialValue.trim()
 
     ModalBottomSheet(
         // Busy refuses the scrim and the swipe-down as firmly as it refuses the cancel button: a request
         // in flight has no honest cancellation, so there is one answer for every dismissal route.
-        onDismissRequest = { if (!busy) onDismiss() },
+        onDismissRequest = { if (!field.busy) onDismiss() },
         // Full height, so the content is laid out from the top and the keyboard cannot reach the
         // actions. See the note above: this is the load-bearing half of keyboard avoidance, not a
         // presentation preference.
@@ -128,10 +124,10 @@ fun AppTextPromptSheet(
             AppTextField(
                 value = text,
                 onValueChange = { text = it },
-                placeholder = placeholder,
-                maxLength = maxLength,
+                placeholder = field.placeholder,
+                maxLength = field.maxLength,
                 singleLine = false,
-                enabled = !busy,
+                enabled = !field.busy,
             )
             if (copy.body != null) {
                 Text(
@@ -141,15 +137,33 @@ fun AppTextPromptSheet(
                 )
             }
             // The remote rejection, above the actions and never on the field.
-            if (error != null) {
-                AppErrorBanner(text = error)
+            if (field.error != null) {
+                AppErrorBanner(text = field.error)
             }
             PrimaryButton(
                 label = copy.confirmLabel,
                 onClick = { onConfirm(written) },
-                enabled = submittable && !busy,
+                enabled = submittable && !field.busy,
             )
-            SecondaryButton(label = copy.cancelLabel, onClick = { if (!busy) onDismiss() })
+            SecondaryButton(label = copy.cancelLabel, onClick = { if (!field.busy) onDismiss() })
         }
     }
 }
+
+/**
+ * The input half of a text prompt: what the empty field says, what it starts with, how long it may get,
+ * and the two things that can be true of it while the sheet is open.
+ *
+ * Separated from [DialogCopy] because the two halves change for different reasons — the copy is fixed
+ * when the sheet is written, while [error] and [busy] arrive from a request in flight.
+ *
+ * [error] is a BANNER, never a reddened field: a server saying no must not read as a complaint about the
+ * user's typing.
+ */
+class PromptField(
+    val placeholder: String,
+    val initialValue: String = "",
+    val maxLength: Int = Int.MAX_VALUE,
+    val error: String? = null,
+    val busy: Boolean = false,
+)
