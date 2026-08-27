@@ -25,7 +25,7 @@ That makes the cycle bistable, with `cap` as the basin boundary:
    ┌───────────────────────────────┐        ┌───────────────────────────────┐
    │ CAUGHT UP (stable)            │        │ BEHIND (stable)               │
    │ cursor set → incremental walk │  ───►  │ cursor null → FULL walk       │
-   │ drains, publishes, stays      │  ◄───  │ 6.5 s per ≤4 uploads,         │
+   │ drains, publishes, stays      │  ◄───  │ every cycle, ≤4 uploads each, │
    │                               │ rare   │ never drains, never publishes │
    └───────────────────────────────┘        └───────────────────────────────┘
                      ▲                                    ▲
@@ -38,8 +38,9 @@ At 4, three Live Photos cross the boundary, and nothing crosses back except attr
 "Triglav", 2026-08-14 16:04:22 → 18:09:38 UTC):
 
 - 26 cycles, `PROCESSING` × 26, `COMPLETED` × 0; `createJob` = `CREATED` 69 / `LIMIT_EXCEEDED` 26.
-- Every walk a **full** enumeration (224 candidates, 6.1–7.2 s), because `saveToken` — the only
-  cursor writer in production, at `UploadCycle.kt:384` — never ran.
+- Every walk a **full** enumeration (224 candidates, 6.1–7.2 s **on that device under that load** —
+  see "The walk's cost, measured", where the same operation costs milliseconds on an idle one),
+  because `saveToken` — the only cursor writer in production, at `UploadCycle.kt:384` — never ran.
 - The candidate count grew 99 → 224 across the window while the admitted set stayed at 71: the
   download arm's own imports enter the library, so the walk gets more expensive as the event runs.
 - 65 completions, 53 assets placed in the event album, and **zero** `PUT /events/<id>/devices/<id>`.
@@ -77,10 +78,10 @@ cursor is never settled: **the bug this change removes is what masks it.**
   concurrency cap … (working assumption ~4) — tune on device"* — stays open. This change removes the
   cap's architectural load-bearing role; whether 4 is the right throughput number is a separate,
   measurable question.
-- **The walk's own cost.** That the walk is O(library), synchronous XPC, and stays outstanding
-  across app suspension (760 s and 1 716 s observed) belongs to `suspended-discovery-walk` and
-  `upload-latency`. This change makes the walk happen once per library change instead of once per
-  four uploads; it does not make the walk cheaper.
+- **The walk's own cost.** That the walk is synchronous XPC, stays outstanding across app suspension
+  (760 s and 1 716 s observed), and can cost 200× more per candidate under concurrent import load
+  than idle, belongs to `suspended-discovery-walk` and `upload-latency`. This change makes the walk
+  happen once per library change instead of once per four uploads; it makes no single walk faster.
 - **The status projection.** `DISCOVERED` rows will make the pending count reflect known-but-unstarted
   work for the first time. That consequence is accepted, not designed here.
 - **Damping the notify fan-out.** See Risks.
@@ -91,7 +92,9 @@ cursor is never settled: **the bug this change removes is what masks it.**
 
 A new `LedgerState.DISCOVERED` is written for every resource this cycle's walk admitted and the
 engine judged to be new work, **before** any `createJob`. The producer then enqueues from the
-ledger. A completion-triggered top-up performs no library read.
+ledger's rows rather than from the walk's return value, so a cycle makes progress on work it already
+knows about whatever the change feed reports. It still consults that feed — see Open Questions, the
+cursor is not a change oracle — but it no longer depends on the feed re-deriving work already seen.
 
 The row's payload is not enough to upload — `createJob(request, resource)` needs a live
 `PHAssetResource` and the ledger holds strings — so a port verb resolves ledger keys to uploadable
@@ -316,15 +319,95 @@ is a missing concept rather than a bolt-on.
 - **[More device-manifest PUTs]** → ~25 in the observed window rather than 0, each a small JSON body,
   blunted by `produce()`'s skip-if-unchanged on cycles that completed nothing. On the extension tier
   the write is bounded at 12 s out of a ~3-minute budget, unchanged.
-- **[The battery and latency win is reasoned, not measured]** → Deliberately not load-bearing. Not
-  one incremental walk appears anywhere in the SNAPSYNC-16 log, because the cursor was never set, so
-  its cheapness is inferred from the call shape and from `ios-photokit-upload`'s own language
-  (*"a short-lived wake resumes incrementally instead of re-enumerating the whole library"*). The
-  correctness fixes stand regardless of what a walk costs.
+- **[The battery and latency win is smaller than the field log suggests]** → **Measured, and the
+  framing was wrong** — see "The walk's cost, measured" below. The per-cycle waste is real but its
+  size is situational, not a property of full enumeration. The correctness fixes never depended on
+  it and stand unchanged.
 - **[The status pending count changes meaning]** → It starts reflecting known-but-unstarted work,
   which it structurally cannot today (in the dump: 71 admitted photos, 57 completed, 3 pending —
   eleven photos with no row at all). This is a truthfulness improvement, but it lands in
   `sync-status`'s projection and should be verified against it rather than assumed benign.
+
+## The walk's cost, measured
+
+Measured 2026-08-27 on the connected device — **iPhone12,8 (SE2) / iOS 26.6**, from its own
+`debug.log` covering 2026-08-25 → 08-27, 25 discovery walks:
+
+| walk | candidates | duration | n |
+|---|---|---|---|
+| **incremental, nothing changed** | 0 | **5–17 ms** | 6 |
+| full enumeration | 66 | 59–80 ms | 18 |
+| full enumeration | **1084** | **145 ms** | 1 |
+
+Two conclusions, and the second corrects this document.
+
+**The change buys what it claimed, qualitatively.** An incremental walk that finds nothing costs
+~10× less than the smallest full enumeration on the same device, and the gap widens with library
+size: the incremental walk is bounded by what changed, the full one by what exists. A device that
+never advances its cursor pays the full price on every cycle, forever.
+
+**But a full enumeration is not intrinsically expensive, and this document said it was.** 1084
+candidates in 145 ms is ~0.13 ms per candidate — while SNAPSYNC-16 recorded 224 candidates in
+6.1–7.2 s, ~28 ms per candidate, **200× slower per candidate on a smaller set**. Candidate count
+therefore does not explain the field measurement. What differs is the situation: an older device
+(iPhone11,2 / A12 vs SE2 / A13), and — far more likely to dominate — 104 foreign assets being
+imported concurrently, so every PhotoKit round-trip in the walk was contending with `assetsd` for
+the same XPC service.
+
+So the honest statement of the waste is: **a device that cannot advance its cursor re-walks its
+library on every cycle, and pays whatever that costs on that device under that load — which the
+field shows can be seconds, and this measurement shows is normally milliseconds.** The "6.5 s per
+four uploads" figure is a real observation of one device in one state, not a property of the
+mechanism. It is quoted in Context because it is what the affected member actually experienced.
+
+That the two differ by 200× is itself a finding, and it is **not this change's to explain**: it
+belongs with the walk's own behaviour under load and across suspension, which `upload-latency` and
+`suspended-discovery-walk` own. This change removes the *repetition*; it does not make any one walk
+faster.
+
+⏰ Re-measure at the next iOS major, or on a device whose library is an order of magnitude larger.
+Caveats: one device, one point release, an idle library, and n=1 at the largest size.
+
+## Verified on device
+
+Built with `-Psnapsync.rig=true`, installed on **iPhone12,8 / iOS 26.6**, tier pinned to
+`url_session` (`cap = 4`), 1536-asset library, a freshly-minted event, 20 policy-probe assets seeded
+(10 admitted by the 3 MP floor). 2026-08-27.
+
+The whole mechanism is visible in one pair of consecutive cycles:
+
+```
+07:57:48.885  ← discoverResources = 20 candidate(s) (46ms)        the walk
+07:57:49.014  selection policy admitted 10 of 20 → 10 resource(s)
+              …4 jobs created, then LIMIT_EXCEEDED…
+07:57:49.106  enumeration: 10 seen, 10 new, 0 already-uploaded — TRUNCATED
+07:57:49.107  ← runCycle = PROCESSING (288ms)
+
+07:57:50.148  → platform.resourcesFor(6 key(s))                   ← THE REMAINDER, from the LEDGER
+07:57:50.183  ← platform.resourcesFor = 6 resource(s) (34ms)
+07:57:50.194  ← createJob = CREATED  ×2, then LIMIT_EXCEEDED
+07:57:50.203  enumeration: 0 seen, 0 new, 0 already-uploaded — TRUNCATED   ← the walk found NOTHING
+07:57:50.204  promoted 2 uploaded row(s) to COMPLETED
+07:57:50.448  PUT  /events/<id>/devices/<id>                      ← PUBLISHED on a truncated cycle
+07:57:51.159  POST /events/<id>/notify → 202                      ← NOTIFIED on a truncated cycle
+07:57:51.167  ← runCycle = PROCESSING (1047ms)
+```
+
+Five things this settles that no test could:
+
+1. **`resourcesFor` works against real PhotoKit** — 6 keys resolved in 34 ms, 4 in 27 ms. This was
+   the one piece of new code a simulator or a fake could not validate.
+2. **A truncated cycle publishes.** The `PUT` and the `notify` above both sit inside a cycle that
+   returned `PROCESSING`. In SNAPSYNC-16 that cycle shape occurred 26 times and published nothing.
+3. **A cycle whose walk finds nothing still makes progress.** `enumeration: 0 seen` and two jobs
+   created in the same cycle — the ledger, not the change feed, supplied the work.
+4. **The cursor advances**, so every later walk is incremental: 6–10 ms against a 1536-asset library.
+5. **The audit line exists.** It appears zero times in the SNAPSYNC-16 log and on every cycle here,
+   stating truncation where it happened.
+
+**End to end:** `GET /events/<id>/files` returned **10 assets** — the full admitted set, in the event
+union, published across truncated cycles while the device was still uploading. That is the failure
+this change exists to remove, observed not to happen.
 
 ## Migration Plan
 
@@ -343,10 +426,8 @@ re-upload."*
 
 ## Open Questions
 
-- **What does an incremental walk actually cost on a device?** Unmeasured here, because none
-  occurred in the field log. Cheap to obtain (rig channel, a device already caught up, one cycle).
-  Not blocking — see Risks — but it converts a reasoned claim into a forcing proof. It matters a
-  little more than it looks, because of the next item.
+- ~~**What does an incremental walk actually cost on a device?**~~ **Measured 2026-08-27** — and the
+  answer corrects one of this document's own framings. See "The walk's cost, measured" below.
 
 - **The cursor is not a change oracle, and the design briefly assumed it was.** An early task asked
   the cycle to skip the walk when the cursor reported no change. It cannot: `discoverResources(token)`
