@@ -60,12 +60,7 @@ internal class RangeSelection(
 internal fun rememberJoinSelection(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
-    fromPreset: FromChoice,
-    fromCustom: LocalDateTime?,
-    untilPreset: UntilChoice,
-    untilCustom: LocalDateTime?,
-    shareOn: Boolean,
-    receiveOn: Boolean,
+    participation: Participation,
 ): RangeSelection {
     val startStr = phase.startsAt()
     val endStr = phase.endsAt()
@@ -82,12 +77,7 @@ internal fun rememberJoinSelection(
         windowStart = windowStart,
         windowEnd = windowEnd,
         nowAvailable = nowWithinWindow(cutoff.nowCutoff(), startStr?.at, endStr?.at),
-        fromPreset = fromPreset,
-        fromCustom = fromCustom,
-        untilPreset = untilPreset,
-        untilCustom = untilCustom,
-        shareOn = shareOn,
-        receiveOn = receiveOn,
+        participation = participation,
     )
 }
 
@@ -105,12 +95,7 @@ internal fun rememberJoinSelection(
 internal fun rememberReconfigureSelection(
     membership: EventConfig,
     cutoff: CutoffFormatter,
-    fromPreset: FromChoice,
-    fromCustom: LocalDateTime?,
-    untilPreset: UntilChoice,
-    untilCustom: LocalDateTime?,
-    shareOn: Boolean,
-    receiveOn: Boolean,
+    participation: Participation,
 ): RangeSelection {
     val windowStart: LocalDateTime = cutoff.toLocal(membership.startsAt.at) ?: cutoff.nowLocal()
     val windowEnd: LocalDateTime =
@@ -121,12 +106,7 @@ internal fun rememberReconfigureSelection(
         windowStart = windowStart,
         windowEnd = windowEnd,
         nowAvailable = nowWithinWindow(cutoff.nowCutoff(), membership.startsAt.at, membership.endsAt?.at),
-        fromPreset = fromPreset,
-        fromCustom = fromCustom,
-        untilPreset = untilPreset,
-        untilCustom = untilCustom,
-        shareOn = shareOn,
-        receiveOn = receiveOn,
+        participation = participation,
     )
 }
 
@@ -151,20 +131,17 @@ private fun rangeOver(
     windowStart: LocalDateTime,
     windowEnd: LocalDateTime,
     nowAvailable: Boolean,
-    fromPreset: FromChoice,
-    fromCustom: LocalDateTime?,
-    untilPreset: UntilChoice,
-    untilCustom: LocalDateTime?,
-    shareOn: Boolean,
-    receiveOn: Boolean,
+    participation: Participation,
 ): RangeSelection {
     val nowLocal: LocalDateTime = cutoff.nowLocal()
 
     // Resolve until first (independent of from), then floor `from`'s ceiling to it so the range can never
     // invert. Every bound is coerced into the event window on every composition.
-    val untilResolved: LocalDateTime = resolveUntil(untilPreset, untilCustom, windowStart, windowEnd)
+    val choices = participation.choices
+    val untilResolved: LocalDateTime =
+        resolveUntil(choices.untilPreset, choices.untilCustom, windowStart, windowEnd)
     val fromResolved: LocalDateTime =
-        resolveFrom(fromPreset, fromCustom, windowStart, nowLocal, untilResolved)
+        resolveFrom(choices.fromPreset, choices.fromCustom, windowStart, nowLocal, untilResolved)
 
     return RangeSelection(
         windowStart = windowStart,
@@ -177,8 +154,8 @@ private fun rangeOver(
         chosenUntil = CaptureCeiling(cutoff.toCutoff(untilResolved)),
         // Direction is derived from the switches. The dead (both-off) case never reaches a commit — the
         // commit button is disabled there — so its value is inert.
-        chosenDirection = directionOf(shareOn, receiveOn),
-        commitEnabled = shareOn || receiveOn,
+        chosenDirection = directionOf(participation.shareOn, participation.receiveOn),
+        commitEnabled = participation.shareOn || participation.receiveOn,
     )
 }
 

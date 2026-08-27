@@ -18,6 +18,7 @@ import app.snapsync.ui.components.SettingsButton
 import app.snapsync.ui.components.ShareButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.ColumnScope
 
 
 /**
@@ -123,43 +124,18 @@ fun StatusScreen(
                     null
                 },
         ) {
-            // Non-null exactly while that surface shows, so the invariant the `!!` here used to assert
-            // in a comment is now the compiler's to keep.
-            if (chrome.reconfiguring != null) {
-                ReconfigureScreen(
-                    membership = chrome.reconfiguring,
-                    cutoff = cutoff,
-                    shareableCount = actions.shareableCount,
-                    photoPermission = photoPermission,
-                    onSave = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-                        overlays.reconfiguring = false
-                        actions.onReconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
-                    },
-                    onCancel = { overlays.reconfiguring = false },
-                )
-            } else when (state) {
-                is UiState.CreateEvent ->
-                    CreateEventScreen(state, actions.onCreateEvent, transientError, cutoff)
-                UiState.CreatingEvent ->
-                    CreatingEventScreen()
-                is UiState.JoiningEvent ->
-                    JoiningEventScreen(
-                        state.phase, cutoff, actions.onConfirmJoin, actions.onAcknowledgeAccess,
-                        actions.onCancelJoin, actions.onRetryLoad, actions.onRetryJoin,
-                        actions.shareableCount, photoPermission,
-                    )
-                is UiState.Joined ->
-                    JoinedLayer(
-                        state.health, inviteUrl, actions.onRequestPermission, actions.onOpenSettings,
-                        state.canChoosePhotos, actions.onChoosePhotos, state.ended, cutoff,
-                    )
-            }
+            CurrentLayer(
+                state = state,
+                reconfiguring = chrome.reconfiguring,
+                cutoff = cutoff,
+                photoPermission = photoPermission,
+                inviteUrl = inviteUrl,
+                transientError = transientError,
+                overlays = overlays,
+                actions = actions,
+            )
         }
-
-        // The overlays: confirm-leave, the rename sheet, the bug-report sheet, and the switch
-        // confirmation. Extracted as one composable because they share exactly one thing — they sit ON
-        // TOP of whatever the dispatcher above rendered — and because together they were more than half
-        // of this function's statements.
+        // The overlays sit ON TOP of whatever layer rendered above.
         StatusOverlays(
             state = state,
             membership = membership,
@@ -393,3 +369,54 @@ private fun JoinedBottomActions(
     LeaveButton(description = "Leave event", onClick = { overlays.confirmingLeave = true })
 }
 
+/**
+ * Which layer the app is showing: the reconfigure surface if it is open, else the one the [state] names.
+ *
+ * Its own function because it is the app's ONE navigation decision, and [StatusScreen] around it does
+ * something different — it owns the screen's chrome (heading, bottom cluster, the two title gestures) and
+ * the overlay flags. Reading "what is on screen right now" meant reading past all of that.
+ *
+ * The reconfigure surface takes precedence over the state's own layer rather than sitting beside it: it
+ * is a modal edit of the joined layer, and [reconfiguring] is non-null exactly while it shows.
+ */
+@Composable
+private fun ColumnScope.CurrentLayer(
+    state: UiState,
+    reconfiguring: EventConfig?,
+    cutoff: CutoffFormatter,
+    photoPermission: PermissionStatus,
+    inviteUrl: String?,
+    transientError: String?,
+    overlays: StatusOverlayState,
+    actions: StatusActions,
+) {
+    if (reconfiguring != null) {
+        ReconfigureScreen(
+            membership = reconfiguring,
+            cutoff = cutoff,
+            shareableCount = actions.shareableCount,
+            photoPermission = photoPermission,
+            onSave = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
+                overlays.reconfiguring = false
+                actions.onReconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
+            },
+            onCancel = { overlays.reconfiguring = false },
+        )
+    } else when (state) {
+        is UiState.CreateEvent ->
+            CreateEventScreen(state, actions.onCreateEvent, transientError, cutoff)
+        UiState.CreatingEvent ->
+            CreatingEventScreen()
+        is UiState.JoiningEvent ->
+            JoiningEventScreen(
+                state.phase, cutoff, actions.onConfirmJoin, actions.onAcknowledgeAccess,
+                actions.onCancelJoin, actions.onRetryLoad, actions.onRetryJoin,
+                actions.shareableCount, photoPermission,
+            )
+        is UiState.Joined ->
+            JoinedLayer(
+                state.health, inviteUrl, actions.onRequestPermission, actions.onOpenSettings,
+                state.canChoosePhotos, actions.onChoosePhotos, state.ended, cutoff,
+            )
+    }
+}
