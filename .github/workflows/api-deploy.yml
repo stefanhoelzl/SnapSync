@@ -2,8 +2,25 @@ name: api-deploy
 
 # Deploys the api upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
 # is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to the pull zone fronting
-# the Edge Script. Path-scoped to the api sources, isolated from the Gradle/iOS workflows, and gated
-# on green Deno fmt/lint/check/test. Capabilities: backend-deployment, deployment-configuration.
+# the Edge Script. Path-scoped to the api sources and isolated from the Gradle/iOS workflows.
+# Capabilities: backend-deployment, deployment-configuration.
+#
+# THE CHECK SET IS NOT HERE, AND ITS ABSENCE IS THE POINT. `api.yml`'s `api-test` job runs
+# fmt/lint/type-check/tests on every ref and is a REQUIRED status check (.github/rulesets/main.json),
+# so a commit CANNOT reach `main` unless they passed on the PR that carried it. Re-running them here
+# would be a second copy of a gate that has already fired.
+#
+# It used to be the other way round — the checks ran here, ordered before the deploy step, and were
+# required by nothing. `/ship` arms auto-merge and auto-merge waits on REQUIRED checks only, so a PR
+# that broke the backend merged green and this workflow failed on `main` instead, with the deploy
+# skipped and production silently serving the previous bundle. A check that can only fail after merge
+# is not a gate. Do NOT move the check set back into this file: it is path-scoped (below), and a
+# path-filtered required check never posts on a PR outside its filter, which freezes every such merge.
+#
+# What this leaves uncovered, stated rather than implied: merges are rebase-only, so the commit on
+# `main` is not the commit `api-test` ran against, and nothing re-checks it here. The ruleset admits
+# no bypass actor, so the CONTENT was checked before it was admitted; the boot probe below is what
+# witnesses that what actually shipped boots and serves.
 #
 # This workflow ships CODE ONLY — it configures nothing on the platform. bunny issues no scoped API key
 # (writing an Edge Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage
@@ -43,7 +60,9 @@ on:
       # either must redeploy (capability `deployment-configuration`).
       - "deployments/**"
       - "scripts/resolve-deployment.py"
-      - "scripts/resolve_deployment_test.py"
+      # `scripts/resolve_deployment_test.py` is deliberately NOT here. It was, while this workflow ran
+      # the resolver's suite; that suite is now build.yml's required `resolver-test` job, and a change
+      # to a test cannot alter what ships inside the bundle, so it must not trigger a deploy.
 
 # Serialize deploys. Without this, two merges to `main` in quick succession race and the FIRST run's
 # probe observes the SECOND run's bundle — a false red, and a probe that cries wolf is worse than none.
@@ -64,46 +83,13 @@ jobs:
           deno-version: v2.x
 
       # Resolve the deployment BEFORE anything reads it. Every rendering is generated and none is
-      # committed, so the checks below would hit a missing module without this. `prod` is named
+      # committed, so the bundle below would hit a missing module without this. `prod` is named
       # explicitly — there is no default deployment, and an unknown name fails closed. `GITHUB_SHA` is
       # the one build-scope value here; it becomes the stamp the probe matches against.
-      # (`deno task check` / `test` / `bundle` each chain the resolver too, so this step is what makes
-      # the SHA available to them rather than the `dev` default.)
+      # (`deno task bundle` chains the resolver too, so this step is what makes the SHA available to it
+      # rather than the `dev` default.)
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
-
-      # The resolver decides what ships inside the bundle AND what every other toolchain reads, so its
-      # own suite is a gate like any other. Nothing else runs it: `./gradlew build` does not, and
-      # `deno task test` does not — so without this step a broken resolver reaches main silently. (It
-      # did: a rename left an assertion stale for several commits, caught only by a manual run.)
-      # Stdlib unittest, no install step.
-      - name: Test the deployment resolver
-        run: python3 scripts/resolve_deployment_test.py
-
-      # --- Test gate: deploy runs only if these pass ---
-      - name: Format check
-        working-directory: api
-        run: deno fmt --check
-
-      - name: Lint
-        working-directory: api
-        run: deno lint
-
-      # Type-check all source explicitly. `deno test` only checks test-reachable code, so this
-      # covers main.ts/SDK wiring (no test imports it) and any future orphan source file.
-      # Invoked through the deno task (rather than restating the globs) so the set of type-checked
-      # directories is defined in exactly one place — deno.json — and cannot drift from what a
-      # developer runs locally. The task covers src/ AND src/dev/ (the local backend rig).
-      - name: Type check
-        working-directory: api
-        run: deno task check
-
-      # Likewise through the task, which carries --allow-read/--allow-write for the dev filesystem
-      # shim's contract test. --allow-net stays ABSENT: that absence is what guarantees no test can
-      # reach the real bunny zone (a network call fails as a permission error, not a live request).
-      - name: Test
-        working-directory: api
-        run: deno task test
 
       # Bundle to a single file — the deploy action uploads the file as-is (no bundling). Must stay
       # within the Edge Scripting 10 MB script limit.
@@ -148,8 +134,9 @@ jobs:
           BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
         run: deno run --allow-net --allow-env src/scripts/migrate.ts
 
-      # --- Deploy: main only. Feature-branch pushes run the checks (incl. bundle) but do not ship
-      #     to the single live script. Idempotent: re-deploys overwrite the same script_id. ---
+      # --- Deploy: main only. Feature-branch pushes still bundle and verify the stamp, so a bundling
+      #     failure surfaces on the branch, but do not ship to the single live script. Idempotent:
+      #     re-deploys overwrite the same script_id. ---
       - name: Deploy to bunny Edge Scripting
         if: github.ref == 'refs/heads/main'
         uses: BunnyWay/actions/deploy-script@main

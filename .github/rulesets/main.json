@@ -46,6 +46,18 @@
 						"integration_id": 15368
 					},
 					{
+						"context": "spec-validate",
+						"integration_id": 15368
+					},
+					{
+						"context": "resolver-test",
+						"integration_id": 15368
+					},
+					{
+						"context": "api-test",
+						"integration_id": 15368
+					},
+					{
 						"context": "ios-build",
 						"integration_id": 15368
 					},
