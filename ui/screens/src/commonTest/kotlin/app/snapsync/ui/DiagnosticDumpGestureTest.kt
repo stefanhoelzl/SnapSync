@@ -100,7 +100,7 @@ class DiagnosticDumpGestureTest {
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     onSendDiagnostics = { note, screen -> sent += note to screen },
-                ),
+                )
             )
         }
 
@@ -156,7 +156,7 @@ class DiagnosticDumpGestureTest {
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     onSendDiagnostics = { _, screen -> sent += screen },
-                ),
+                )
             )
         }
 
@@ -192,7 +192,7 @@ class DiagnosticDumpGestureTest {
                 eventName = "Anna's Birthday",
                 actions = StatusActions(
                     onSendDiagnostics = { _, _ -> },
-                ),
+                )
             )
         }
 

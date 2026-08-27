@@ -42,6 +42,8 @@ import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.datetime.TimeZone
+import app.snapsync.ui.JoinGateActions
+import app.snapsync.ui.SwitchActions
 
 /**
  * The **redesigned join gate** with a capture-date RANGE (capabilities `join-event`,
@@ -113,7 +115,7 @@ class JoinScreenTest {
     @Test
     fun `load-failed phase offers Retry`() = runComposeUiTest {
         var retried = 0
-        setScreen { StatusScreen(joining(JoinPhase.LoadFailed), cutoff = fixedCutoff(), actions = StatusActions(onRetryLoad = { retried++ })) }
+        setScreen { StatusScreen(joining(JoinPhase.LoadFailed), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onRetryLoad = { retried++ }))) }
         onNodeWithText("Retry").assertExists()
         onNodeWithText("Retry").performClick()
         assertEquals(1, retried)
@@ -127,8 +129,10 @@ class JoinScreenTest {
                 joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onRetryJoin = { _, _, _, _ -> retried++ },
-                ),
+                    join = JoinGateActions(
+                        onRetryJoin = { _, _, _, _ -> retried++ },
+                    ),
+                )
             )
         }
         onNodeWithText("Couldn't join").assertExists()
@@ -164,7 +168,7 @@ class JoinScreenTest {
     fun `both switches on derives Both`() = runComposeUiTest {
         var direction: Direction? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { _, _, d, _ -> direction = d }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { _, _, d, _ -> direction = d })))
         }
         onNodeWithText("Join").performClick()
         assertEquals(Direction.Both, direction)
@@ -174,7 +178,7 @@ class JoinScreenTest {
     fun `share only derives upload-only`() = runComposeUiTest {
         var direction: Direction? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { _, _, d, _ -> direction = d }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { _, _, d, _ -> direction = d })))
         }
         // The expanded range selector sits between Share and Receive, so Receive is below the offscreen
         // viewport — scroll it into view before the click (Compose's performClick does not auto-scroll).
@@ -187,7 +191,7 @@ class JoinScreenTest {
     fun `receive only derives download-only`() = runComposeUiTest {
         var direction: Direction? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { _, _, d, _ -> direction = d }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { _, _, d, _ -> direction = d })))
         }
         onNodeWithText("Share my photos").performClick() // share off
         onNodeWithText("Join").performClick()
@@ -198,7 +202,7 @@ class JoinScreenTest {
     fun `both switches off disables Join with a stated reason and never auto-flips`() = runComposeUiTest {
         var confirmed = 0
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { _, _, _, _ -> confirmed++ }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { _, _, _, _ -> confirmed++ })))
         }
         onNodeWithText("Share my photos").performClick()
         onNodeWithText("Receive everyone's photos").performClick()
@@ -230,7 +234,7 @@ class JoinScreenTest {
     fun `selecting Now moves the lower bound to the current instant`() = runComposeUiTest {
         var committed: CaptureCutoff? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { c, _, _, _ -> committed = c }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { c, _, _, _ -> committed = c })))
         }
         onNodeWithTag("from-now").performClick()
         onNodeWithTag("from-now").assertIsSelected()
@@ -248,8 +252,10 @@ class JoinScreenTest {
                 joining(ready()),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onConfirmJoin = { c, u, _, _ -> from = c; until = u },
-                ),
+                    join = JoinGateActions(
+                        onConfirmJoin = { c, u, _, _ -> from = c; until = u },
+                    ),
+                )
             )
         }
         onNodeWithText("Join").performClick()
@@ -261,7 +267,7 @@ class JoinScreenTest {
     fun `selecting Event start commits the event start`() = runComposeUiTest {
         var committed: CaptureCutoff? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { c, _, _, _ -> committed = c }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { c, _, _, _ -> committed = c })))
         }
         onNodeWithTag("from-now").performClick()
         onNodeWithTag("from-event-start").performClick()
@@ -289,7 +295,7 @@ class JoinScreenTest {
     fun `tapping the From Custom opens the picker and OK commits a floor-coerced lower bound`() = runComposeUiTest {
         var committed: CaptureCutoff? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { c, _, _, _ -> committed = c }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { c, _, _, _ -> committed = c })))
         }
         onNodeWithText("Date & time").assertDoesNotExist()
 
@@ -308,7 +314,7 @@ class JoinScreenTest {
     fun `tapping the Until Custom opens the picker and OK commits a ceiling-coerced upper bound`() = runComposeUiTest {
         var committedUntil: CaptureCeiling? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { _, u, _, _ -> committedUntil = u }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { _, u, _, _ -> committedUntil = u })))
         }
         onNodeWithTag("until-custom").performClick()
         onNodeWithText("Date & time").assertExists()
@@ -349,7 +355,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     shareableCount = { _, _ -> 34 },
-                ),
+                )
             )
         }
         onNodeWithText("34 photos from your gallery will be shared").assertExists()
@@ -363,7 +369,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     shareableCount = { _, _ -> 0 },
-                ),
+                )
             )
         }
         onNodeWithText("0 photos from your gallery will be shared").assertExists()
@@ -379,7 +385,7 @@ class JoinScreenTest {
                 actions = StatusActions(
                     // null = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
                     shareableCount = { _, _ -> null },
-                ),
+                )
             )
         }
         onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
@@ -394,7 +400,7 @@ class JoinScreenTest {
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     shareableCount = { _, _ -> 34 },
-                ),
+                )
             )
         }
         onNodeWithText("34 photos from your gallery will be shared").assertExists()
@@ -411,7 +417,7 @@ class JoinScreenTest {
                 actions = StatusActions(
                     // A cutoff-dependent count: Now shares just 1 (singular), Event start reaches back to 5.
                     shareableCount = { c, _ -> if (c == NOW) 1 else 5 },
-                ),
+                )
             )
         }
         onNodeWithText("5 photos from your gallery will be shared").assertExists()
@@ -457,7 +463,7 @@ class JoinScreenTest {
     fun `the album opt-in is carried across the confirm callback`() = runComposeUiTest {
         var saveToAlbum: Boolean? = null
         setScreen {
-            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(onConfirmJoin = { _, _, _, s -> saveToAlbum = s }))
+            StatusScreen(joining(ready()), cutoff = fixedCutoff(), actions = StatusActions(join = JoinGateActions(onConfirmJoin = { _, _, _, s -> saveToAlbum = s })))
         }
         // The album row is at the bottom, below the expanded range selector — scroll it into view first.
         onNodeWithText("Create an album").performScrollTo().performClick()
@@ -494,8 +500,10 @@ class JoinScreenTest {
                 joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onAcknowledgeAccess = { acknowledged++ },
-                ),
+                    join = JoinGateActions(
+                        onAcknowledgeAccess = { acknowledged++ },
+                    ),
+                )
             )
         }
         onNodeWithText("I understand").performClick()
@@ -510,8 +518,10 @@ class JoinScreenTest {
                 joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onCancelJoin = { cancelled++ },
-                ),
+                    join = JoinGateActions(
+                        onCancelJoin = { cancelled++ },
+                    ),
+                )
             )
         }
         onNodeWithText("Cancel").performClick()
@@ -550,8 +560,10 @@ class JoinScreenTest {
                 joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onRetryJoin = { c, u, _, _ -> retriedFrom = c; retriedUntil = u },
-                ),
+                    join = JoinGateActions(
+                        onRetryJoin = { c, u, _, _ -> retriedFrom = c; retriedUntil = u },
+                    ),
+                )
             )
         }
         onNodeWithText("Retry").performClick()
@@ -581,9 +593,11 @@ class JoinScreenTest {
                 eventName = "Summer Trip",
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onConfirmSwitch = { confirms++ },
+                    switch = SwitchActions(
+                        onConfirmSwitch = { confirms++ },
+                    ),
                     shareableCount = { _, _ -> 42 },
-                ),
+                )
             )
         }
         onNodeWithText("Switch events?").assertExists()
@@ -611,8 +625,10 @@ class JoinScreenTest {
                 eventName = "Summer Trip",
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onCancelSwitch = { cancelled++ },
-                ),
+                    switch = SwitchActions(
+                        onCancelSwitch = { cancelled++ },
+                    ),
+                )
             )
         }
         onNodeWithText("Cancel").performClick()
@@ -630,8 +646,10 @@ class JoinScreenTest {
                 ),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    onCancelSwitch = { cancelled++ },
-                ),
+                    switch = SwitchActions(
+                        onCancelSwitch = { cancelled++ },
+                    ),
+                )
             )
         }
         onNodeWithText("This invite is invalid or the event no longer exists.").assertExists()

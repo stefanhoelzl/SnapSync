@@ -9,14 +9,18 @@
 # this paragraph and by review (capability `complexity-budgets`).
 #
 # WHY THIS ONE REMAINS. `LongParameterList` is fixed by bundling, and a bundle is itself a constructor
-# whose fields detekt counts. `StatusActions` was created to fix exactly this rule on `StatusScreen`
-# (26 parameters down to 9) and trips it with its own 18 fields — it is what sets the number today.
-# This paragraph used to conclude "the recursion has no base case", which was false, and false in the
-# direction that excused the debt: it recurses forever only if each bundle is FLAT. A bundle of bundles
-# has as many fields as it has GROUPS, so nesting terminates. `ReadyActions` carries three fields for
-# eleven callbacks. `StatusActions` would fall to about six the same way — join, joined, access, switch,
-# create, diagnostics — at the cost of `actions.join.onRetryJoin` at every call site, which is a taste
-# judgement and not a complexity argument.
+# whose fields detekt counts. This paragraph once concluded "the recursion has no base case", which was
+# false, and false in the direction that excused the debt: it recurses forever only if each bundle is
+# FLAT. A bundle of bundles has as many fields as it has GROUPS, so nesting terminates — and the proof is
+# `StatusActions` itself, which was created to fix this rule on `StatusScreen` (26 parameters down to 9),
+# then held eighteen callbacks of its own, and now holds SEVEN fields for those same eighteen: four
+# surface groups (join, joined, access, switch) plus the create callback, the count query and the
+# nullable diagnostics channel. A reader finds a callback by asking which surface owns it. Every field
+# still defaults, at both levels, which is the property that lets each host wire only what it needs.
+#
+# What sets the number now is `RangeSelection` at 10, and it is left flat deliberately: its readability
+# IS its flatness — `selection.chosenFrom` beats `selection.chosen.from` — and it is a value object
+# nobody constructs by hand outside the two resolvers.
 #
 # THE NUMBER HAS NOT MOVED SINCE, AND THE TIER STILL IMPROVED. A pass over everything BUT `StatusActions`
 # took the site count 23 -> 18 and left the ceiling at 19, because `StatusActions` sets it alone. What it
@@ -82,5 +86,5 @@ complexity:
     # leaf design-system components at 6-8 parameters, where Compose's own APIs routinely exceed six and a
     # wrapper makes every call site worse. Six is not reachable; that tail is the reason.
     active: true
-    functionThreshold: 19
-    constructorThreshold: 19
+    functionThreshold: 11
+    constructorThreshold: 11

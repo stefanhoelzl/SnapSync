@@ -34,6 +34,10 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import app.snapsync.ui.JoinGateActions
+import app.snapsync.ui.JoinedActions
+import app.snapsync.ui.AccessActions
+import app.snapsync.ui.SwitchActions
 
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
@@ -176,26 +180,34 @@ fun StatusPane(
             photoPermission = photoPermission,
             renameStatus = renameStatus,
             actions = StatusActions(
-                onRequestPermission = host::onRequestPermission,
-                onOpenSettings = host::onOpenSettings,
-                onLeaveEvent = host::onLeaveEvent,
-                onShareInvite = host::onShareInvite,
-                onReconfigure = host::onReconfigure,
+                join = JoinGateActions(
+                    onConfirmJoin = host::onConfirmJoin,
+                    onAcknowledgeAccess = host::onAcknowledgeAccess,
+                    onCancelJoin = host::onCancelJoin,
+                    onRetryLoad = host::onRetryLoad,
+                    onRetryJoin = host::onRetryJoin,
+                ),
+                joined = JoinedActions(
+                    onLeaveEvent = host::onLeaveEvent,
+                    onShareInvite = host::onShareInvite,
+                    onReconfigure = host::onReconfigure,
+                    // The heading rename (capability `event-rename`).
+                    onRenameEvent = host::onRenameEvent,
+                    onRenameStatusConsumed = host::onRenameStatusConsumed,
+                ),
+                access = AccessActions(
+                    onRequestPermission = host::onRequestPermission,
+                    onOpenSettings = host::onOpenSettings,
+                    onChoosePhotos = host::onChoosePhotos,
+                ),
+                switch = SwitchActions(
+                    onConfirmSwitch = host::onConfirmSwitch,
+                    onCancelSwitch = host::onCancelSwitch,
+                ),
                 onCreateEvent = host::onCreateEvent,
-                onConfirmJoin = host::onConfirmJoin,
-                onAcknowledgeAccess = host::onAcknowledgeAccess,
-                onChoosePhotos = host::onChoosePhotos,
-                onCancelJoin = host::onCancelJoin,
-                onRetryLoad = host::onRetryLoad,
-                onRetryJoin = host::onRetryJoin,
-                onConfirmSwitch = host::onConfirmSwitch,
-                onCancelSwitch = host::onCancelSwitch,
                 shareableCount = shareableCount,
-                // The heading rename (capability `event-rename`).
-                onRenameEvent = host::onRenameEvent,
-                onRenameStatusConsumed = host::onRenameStatusConsumed,
                 onSendDiagnostics = host.onSendDiagnostics,
-            ),
+            )
         )
         }
     }

@@ -18,6 +18,10 @@ import kotlinx.datetime.TimeZone
 import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
 import platform.UIKit.UIViewController
+import app.snapsync.ui.JoinGateActions
+import app.snapsync.ui.JoinedActions
+import app.snapsync.ui.AccessActions
+import app.snapsync.ui.SwitchActions
 
 /**
  * The forge binary's entry point — the whole of it.
@@ -62,25 +66,33 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
             photoPermission = PermissionStatus.GRANTED,
             renameStatus = renameStatus,
             actions = StatusActions(
-                onRequestPermission = host::onRequestPermission,
-                onOpenSettings = host::onOpenSettings,
-                onLeaveEvent = host::onLeaveEvent,
-                onShareInvite = host::onShareInvite,
+                join = JoinGateActions(
+                    onConfirmJoin = host::onConfirmJoin,
+                    onAcknowledgeAccess = host::onAcknowledgeAccess,
+                    onCancelJoin = host::onCancelJoin,
+                    onRetryLoad = host::onRetryLoad,
+                    onRetryJoin = host::onRetryJoin,
+                ),
+                joined = JoinedActions(
+                    onLeaveEvent = host::onLeaveEvent,
+                    onShareInvite = host::onShareInvite,
+                    onReconfigure = host::onReconfigure,
+                    onRenameEvent = host::onRenameEvent,
+                    onRenameStatusConsumed = host::onRenameStatusConsumed,
+                ),
+                access = AccessActions(
+                    onRequestPermission = host::onRequestPermission,
+                    onOpenSettings = host::onOpenSettings,
+                    onChoosePhotos = host::onChoosePhotos,
+                ),
+                switch = SwitchActions(
+                    onConfirmSwitch = host::onConfirmSwitch,
+                    onCancelSwitch = host::onCancelSwitch,
+                ),
                 onSendDiagnostics = host.onSendDiagnostics,
-                onReconfigure = host::onReconfigure,
                 onCreateEvent = host::onCreateEvent,
-                onConfirmJoin = host::onConfirmJoin,
-                onAcknowledgeAccess = host::onAcknowledgeAccess,
-                onChoosePhotos = host::onChoosePhotos,
-                onCancelJoin = host::onCancelJoin,
-                onRetryLoad = host::onRetryLoad,
-                onRetryJoin = host::onRetryJoin,
-                onConfirmSwitch = host::onConfirmSwitch,
-                onCancelSwitch = host::onCancelSwitch,
                 shareableCount = { _, _ -> null },
-                onRenameEvent = host::onRenameEvent,
-                onRenameStatusConsumed = host::onRenameStatusConsumed,
-            ),
+            )
         )
     }
 }
