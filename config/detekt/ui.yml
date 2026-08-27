@@ -65,7 +65,15 @@ complexity:
     # `ReconfigureScreen`'s layout body, now that its state and derivation have left it. Down from 169 at
     # seeding, from 164 when `JoiningEventScreen` (163) stopped being the binding site, and from 143 as
     # the same screen shed 142 -> 132 — see the second bullet above.
-
+    #
+    # THIS NUMBER IS NOT A TARGET, and the clearest evidence is a pass that moved it not at all. Two
+    # picker dialogs were the same dialog written twice (`DateTimePickerDialog` 82, its range variant 111,
+    # sharing a popup card, heading, month header, weekday strip and button row verbatim); `StatusBody`
+    # (112) was a six-branch dispatcher containing two more duplications of its own. Removing all of it
+    # took eleven sites over the default down to nine — two vanished entirely — and left this ceiling at
+    # 133, because the binding site is none of them. What sets the number is the flat declarative layout
+    # the second bullet describes, so the number rewards exactly the extraction that makes the code worse
+    # and is blind to the duplication that made it worse already. Read the LIST, not the maximum.
     active: true
     threshold: 133
 

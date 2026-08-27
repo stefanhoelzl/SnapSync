@@ -36,6 +36,7 @@ import app.snapsync.model.Arrow
 import kotlinx.datetime.LocalDateTime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.ImageVector
 
 
 /** One half-cycle of the in-flight arrow's pulse, in milliseconds. */
@@ -144,147 +145,161 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
             LineText("Syncing…", MaterialTheme.colorScheme.onSurfaceVariant)
 
         AppSyncStatus.InSync ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    Icons.Filled.Check, // a bare checkmark, no filled disc behind it
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(IconSize),
-                )
-                LineText("In sync", MaterialTheme.colorScheme.onSurface)
-            }
+            IconLine(
+                icon = Icons.Filled.Check, // a bare checkmark, no filled disc behind it
+                tint = MaterialTheme.colorScheme.primary,
+                text = "In sync",
+            )
 
-        is AppSyncStatus.Syncing ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // Label tracks live activity: any pulsing (in-flight) arrow reads "ongoing", else "pending".
-                val ongoing = status.upload == Arrow.PULSING || status.download == Arrow.PULSING
-                // ONE phase for BOTH arrows, hoisted here — above either arrow — because an animation's
-                // phase starts when it enters composition, and the two arrows do not enter together. The
-                // upload arm starts at join; the download arm's total is populated only by the later
-                // reconcile, so the download arrow essentially always begins pulsing mid-fade. Owning a
-                // fade each, they settled into opposite halves of it and visibly beat against one another
-                // — reported from a device as "arrows are not pulsing in sync", and measured at ~90% of
-                // full opposition for a 366 ms offset.
-                //
-                // Sharing the VALUE, not merely the transition, is deliberate. An `InfiniteTransition`
-                // does share one play time, so a second `animateFloat` added later snaps into phase — but
-                // one frame late, rendering once at `STATIC_ALPHA` before it does: a dim flash on the arrow
-                // that just appeared. One value has no such frame, and no second animation computing an
-                // identical number.
-                //
-                // Built only while something actually pulses, and never under reduce-motion (which drops
-                // the fade, not the meaning — see `ArrowIcon`). When the last pulse stops the phase ends,
-                // and a later resume starts a fresh one; that is fine, because both arrows resume on it
-                // together, which is the whole of what was wrong.
-                val pulseAlpha = if (ongoing && !LocalReduceMotion.current) {
-                    val transition = rememberInfiniteTransition(label = "pulse")
-                    val a by transition.animateFloat(
-                        initialValue = STATIC_ALPHA,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(tween(PULSE_MILLIS), RepeatMode.Reverse),
-                        label = "pulse-alpha",
-                    )
-                    a
-                } else {
-                    1f
-                }
-                ArrowIcon(Icons.Filled.ArrowUpward, "uploading", status.upload, pulseAlpha)
-                ArrowIcon(Icons.Filled.ArrowDownward, "downloading", status.download, pulseAlpha)
-                val label = if (ongoing) "Synchronization ongoing…" else "Synchronization pending…"
-                LineText(label, MaterialTheme.colorScheme.onSurface)
-            }
+        is AppSyncStatus.Syncing -> SyncingLine(status)
 
         is AppSyncStatus.NotStarted ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    Icons.Filled.Schedule, // a clock: the event exists, it simply has not begun
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(IconSize),
-                )
-                LineText(
-                    "Starts ${formatStartShort(status.startsAt)}",
-                    MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            IconLine(
+                icon = Icons.Filled.Schedule, // a clock: the event exists, it simply has not begun
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "Starts ${formatStartShort(status.startsAt)}",
+            )
 
-        is AppSyncStatus.NeedsAccess ->
-            Surface(
-                onClick = onAttentionClick,
-                color = appAttentionContainer(),
-                contentColor = appAttentionText(),
-                shape = RoundedCornerShape(999.dp),
-                // The tappable attention line is a button: give assistive tech the role it lacked, and
-                // guarantee the ≥44dp iOS touch target the 9dp padding alone did not reach.
-                modifier = Modifier.semantics { role = Role.Button },
-            ) {
-                Row(
-                    modifier = Modifier
-                        .heightIn(min = 44.dp)
-                        .padding(horizontal = 15.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
-                    Text(
-                        text = when (status.prompt) {
-                            AccessPrompt.ALLOW -> "Allow photo access"
-                            AccessPrompt.SETTINGS -> "Turn on full access in Settings"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(IconSize),
-                    )
-                }
-            }
+        is AppSyncStatus.NeedsAccess -> NeedsAccessLine(status.prompt, onAttentionClick)
 
-        AppSyncStatus.CannotVerifyDevice ->
-            // The same attention treatment as NeedsAccess — but NOT tappable, and with no chevron: there
-            // is no action the user can take. It clears itself as soon as the device can reach the backend.
-            Surface(
-                color = appAttentionContainer(),
-                contentColor = appAttentionText(),
-                shape = RoundedCornerShape(999.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
-                    // Headline plus a reassurance — NOT a remedy, because this is the one attention
-                    // state with no action to offer. The detail line used to read "Reopen the app or
-                    // check your connection", which failed twice over: reopening the app is what fired
-                    // the re-verify the member is already waiting on, and "your connection" is one of
-                    // two causes this single state absorbs — a member whose device the backend is
-                    // refusing was being told to check a connection that was fine. One state may
-                    // collapse several causes, but then it may only say what is true of every one of
-                    // them: the app keeps trying, and no photo is lost. (Colour is inherited
-                    // contentColor; no scheme line is touched here.)
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(
-                            text = "Can't verify this device — sharing is paused",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = "Still retrying — your photos aren't lost.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
+        AppSyncStatus.CannotVerifyDevice -> CannotVerifyDeviceLine()
+    }
+}
+
+/**
+ * An icon and a word: the shape **In sync** and **Not started** both are, differing only in which icon,
+ * which tint and which words. They were written out twice.
+ */
+@Composable
+private fun IconLine(icon: ImageVector, tint: Color, text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(IconSize))
+        LineText(text, MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** Two arrows and a label, both arrows fading on ONE shared phase. */
+@Composable
+private fun SyncingLine(status: AppSyncStatus.Syncing) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Label tracks live activity: any pulsing (in-flight) arrow reads "ongoing", else "pending".
+        val ongoing = status.upload == Arrow.PULSING || status.download == Arrow.PULSING
+        // ONE phase for BOTH arrows, hoisted here — above either arrow — because an animation's
+        // phase starts when it enters composition, and the two arrows do not enter together. The
+        // upload arm starts at join; the download arm's total is populated only by the later
+        // reconcile, so the download arrow essentially always begins pulsing mid-fade. Owning a
+        // fade each, they settled into opposite halves of it and visibly beat against one another
+        // — reported from a device as "arrows are not pulsing in sync", and measured at ~90% of
+        // full opposition for a 366 ms offset.
+        //
+        // Sharing the VALUE, not merely the transition, is deliberate. An `InfiniteTransition`
+        // does share one play time, so a second `animateFloat` added later snaps into phase — but
+        // one frame late, rendering once at `STATIC_ALPHA` before it does: a dim flash on the arrow
+        // that just appeared. One value has no such frame, and no second animation computing an
+        // identical number.
+        //
+        // Built only while something actually pulses, and never under reduce-motion (which drops
+        // the fade, not the meaning — see `ArrowIcon`). When the last pulse stops the phase ends,
+        // and a later resume starts a fresh one; that is fine, because both arrows resume on it
+        // together, which is the whole of what was wrong.
+        val pulseAlpha = if (ongoing && !LocalReduceMotion.current) {
+            val transition = rememberInfiniteTransition(label = "pulse")
+            val a by transition.animateFloat(
+                initialValue = STATIC_ALPHA,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(PULSE_MILLIS), RepeatMode.Reverse),
+                label = "pulse-alpha",
+            )
+            a
+        } else {
+            1f
+        }
+        ArrowIcon(Icons.Filled.ArrowUpward, "uploading", status.upload, pulseAlpha)
+        ArrowIcon(Icons.Filled.ArrowDownward, "downloading", status.download, pulseAlpha)
+        val label = if (ongoing) "Synchronization ongoing…" else "Synchronization pending…"
+        LineText(label, MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** The tappable attention pill: something the member can fix, so it carries a chevron and a button role. */
+@Composable
+private fun NeedsAccessLine(prompt: AccessPrompt, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = appAttentionContainer(),
+        contentColor = appAttentionText(),
+        shape = RoundedCornerShape(999.dp),
+        // The tappable attention line is a button: give assistive tech the role it lacked, and
+        // guarantee the ≥44dp iOS touch target the 9dp padding alone did not reach.
+        modifier = Modifier.semantics { role = Role.Button },
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 15.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
+            Text(
+                text = when (prompt) {
+                    AccessPrompt.ALLOW -> "Allow photo access"
+                    AccessPrompt.SETTINGS -> "Turn on full access in Settings"
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(IconSize),
+            )
+        }
+    }
+}
+
+/**
+ * The same attention treatment as [NeedsAccessLine] — but NOT tappable, and with no chevron: there is no
+ * action the user can take. It clears itself as soon as the device can reach the backend.
+ */
+@Composable
+private fun CannotVerifyDeviceLine() {
+    Surface(
+        color = appAttentionContainer(),
+        contentColor = appAttentionText(),
+        shape = RoundedCornerShape(999.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
+            // Headline plus a reassurance — NOT a remedy, because this is the one attention
+            // state with no action to offer. The detail line used to read "Reopen the app or
+            // check your connection", which failed twice over: reopening the app is what fired
+            // the re-verify the member is already waiting on, and "your connection" is one of
+            // two causes this single state absorbs — a member whose device the backend is
+            // refusing was being told to check a connection that was fine. One state may
+            // collapse several causes, but then it may only say what is true of every one of
+            // them: the app keeps trying, and no photo is lost. (Colour is inherited
+            // contentColor; no scheme line is touched here.)
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(
+                    text = "Can't verify this device — sharing is paused",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "Still retrying — your photos aren't lost.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
+        }
     }
 }
 

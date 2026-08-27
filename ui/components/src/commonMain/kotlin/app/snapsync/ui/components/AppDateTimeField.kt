@@ -65,12 +65,8 @@ internal const val WHEEL_DISTANT_ALPHA = 0.25f
  * day before [minimum] greyed and inert. All date arithmetic (month lengths, leap years, first weekday)
  * comes from kotlinx-datetime — never hand-rolled day counting.
  *
- * **Why a `Popup`, not an `AlertDialog`.** An M3 dialog is a *window-centered* overlay: on a real phone the
- * window IS the 390pt screen, so it centers fine, but the multi-pane desktop harness embeds the phone pane
- * in a much wider host window, and a window-centered dialog then overflows the pane's right edge (which is
- * exactly why the old M3 `DatePicker` clipped there). This picker instead renders in-tree as a `Popup`
- * positioned centered **within the pane** — the enclosing full-width anchor gives [PaneCenteredProvider]
- * the pane's own bounds — so the full picker is visible at 390pt on device and in the harness alike.
+ * The popup card, heading, month header and weekday strip come from [PickerDialogShell], which this and
+ * the range variant both fill in — see there for why it is a `Popup` and not an `AlertDialog`.
  *
  * Used by [AppRangePresetChoices]' per-handle Custom rows (each a single instant within the event window);
  * the range span itself is picked by [DateTimeRangePickerDialog]. The dialog stays internal to this module.
@@ -83,18 +79,191 @@ internal fun DateTimePickerDialog(
     minimum: LocalDateTime? = null,
     maximum: LocalDateTime? = null,
 ) {
-    val scheme = MaterialTheme.colorScheme
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
 
     // Seed from the current value, else the floor, else today — never an empty calendar.
     val seed = initial?.date ?: minimum?.date ?: today
     var selectedDate by remember { mutableStateOf(seed) }
-    var visibleMonth by remember { mutableStateOf(LocalDate(seed.year, seed.month.ordinal.plus(1), 1)) }
     var hour by remember { mutableStateOf(initial?.hour ?: 0) }
     var minute by remember { mutableStateOf(initial?.minute ?: 0) }
 
-    val floorDate = minimum?.date
-    val ceilingDate = maximum?.date
+    PickerDialogShell(
+        seedMonth = seed,
+        onDismiss = onDismiss,
+        onConfirm = {
+            onConfirm(
+                LocalDateTime(
+                    selectedDate.year,
+                    selectedDate.month.ordinal.plus(1),
+                    selectedDate.day,
+                    hour,
+                    minute,
+                ),
+            )
+        },
+        calendar = { visibleMonth ->
+            CalendarGrid(
+                visibleMonth = visibleMonth,
+                selected = selectedDate,
+                today = today,
+                floor = minimum?.date,
+                ceiling = maximum?.date,
+                onPick = { selectedDate = it },
+            )
+        },
+        wheels = {
+            TimeWheels(
+                hour = hour,
+                minute = minute,
+                onHour = { hour = it },
+                onMinute = { minute = it },
+            )
+        },
+    )
+}
+
+/**
+ * The **dual-handle range** variant of the one-dialog picker (capability `design-system`): the same
+ * hand-drawn single-month calendar, but the user taps a **start day** then an **end day** to select an
+ * inclusive `[from, until]` span, with **two** time-wheel pairs — a **From time** and an **Until time** —
+ * beneath it. One confirmation commits the whole span.
+ *
+ * Selection is a three-tap cycle: with a complete range showing, the next tap **resets** to a new start
+ * (span cleared); the tap after that sets the end (a same-day range is that same day tapped twice). A tap
+ * **earlier** than the pending start moves the start earlier rather than forming an inverted range — so an
+ * `until` before `from` is unreachable. Tapping a new day span changes **only the dates**; the two wheel
+ * times are preserved (they are independent state).
+ *
+ * The optional `[minimum, maximum]` **window** (either bound absent) greys days outside it and constrains
+ * the picker; the create surface passes **no** window, so any day/time is selectable and only `start < end`
+ * is required (the caller enforces that). A day-grain calendar cannot forbid an out-of-window *hour* on a
+ * boundary day, so the confirmed instants are additionally coerced into the window here.
+ */
+@Composable
+internal fun DateTimeRangePickerDialog(
+    initialFrom: LocalDateTime,
+    initialUntil: LocalDateTime,
+    minimum: LocalDateTime?,
+    maximum: LocalDateTime?,
+    onDismiss: () -> Unit,
+    onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
+) {
+    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
+
+    // The span. `endDate == null` means mid-selection (only the start is placed); it resolves to the start
+    // for both the highlight and the confirmed value, so a single-tap day is a valid same-day range.
+    var startDate by remember { mutableStateOf(initialFrom.date) }
+    var endDate by remember { mutableStateOf<LocalDate?>(initialUntil.date) }
+    var fromHour by remember { mutableStateOf(initialFrom.hour) }
+    var fromMinute by remember { mutableStateOf(initialFrom.minute) }
+    var untilHour by remember { mutableStateOf(initialUntil.hour) }
+    var untilMinute by remember { mutableStateOf(initialUntil.minute) }
+
+    fun onPick(picked: LocalDate) {
+        if (endDate != null) {
+            // A complete range is showing → begin a fresh selection at the tapped day.
+            startDate = picked
+            endDate = null
+        } else if (picked < startDate) {
+            // Mid-selection, tapped before the start → move the start earlier (never an inverted range).
+            startDate = picked
+        } else {
+            // Mid-selection, tapped on/after the start → close the span.
+            endDate = picked
+        }
+    }
+
+    PickerDialogShell(
+        seedMonth = initialFrom.date,
+        onDismiss = onDismiss,
+        onConfirm = {
+            val eDate = endDate ?: startDate
+            var from = LocalDateTime(
+                startDate.year, startDate.month.ordinal.plus(1), startDate.day,
+                fromHour, fromMinute,
+            )
+            var until = LocalDateTime(
+                eDate.year, eDate.month.ordinal.plus(1), eDate.day,
+                untilHour, untilMinute,
+            )
+            // Coerce each bound into the window (the calendar cannot forbid a boundary-day hour outside it).
+            if (minimum != null && from < minimum) from = minimum
+            if (maximum != null && until > maximum) until = maximum
+            onConfirm(from, until)
+        },
+        calendar = { visibleMonth ->
+            RangeCalendarGrid(
+                visibleMonth = visibleMonth,
+                rangeStart = startDate,
+                rangeEnd = endDate ?: startDate,
+                today = today,
+                floor = minimum?.date,
+                ceiling = maximum?.date,
+                onPick = { onPick(it) },
+            )
+        },
+        // From and Until times sit side by side — two captioned wheel pairs sharing the row.
+        wheels = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    WheelCaption("From time")
+                    TimeWheels(
+                        hour = fromHour,
+                        minute = fromMinute,
+                        onHour = { fromHour = it },
+                        onMinute = { fromMinute = it },
+                        hourDescription = "From hour",
+                        minuteDescription = "From minute",
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    WheelCaption("Until time")
+                    TimeWheels(
+                        hour = untilHour,
+                        minute = untilMinute,
+                        onHour = { untilHour = it },
+                        onMinute = { untilMinute = it },
+                        hourDescription = "Until hour",
+                        minuteDescription = "Until minute",
+                    )
+                }
+            }
+        },
+    )
+}
+
+/**
+ * The frame both pickers are: the pane-centred popup card, its heading, the month header and weekday
+ * strip, then the caller's calendar and wheels, then Cancel / OK. Only those two slots ever differed —
+ * everything around them was written out twice, once per dialog, down to the `340.dp` and the `24.dp`
+ * corner.
+ *
+ * [visibleMonth] lives here rather than in either caller because it belongs to the header that scrolls it,
+ * not to what the calendar does with it; both dialogs wired an identical pair of month-stepping lambdas to
+ * reach it. The calendar slot receives it as a parameter, so a caller reads the month without owning it.
+ *
+ * **Why a `Popup`, not an `AlertDialog`.** An M3 dialog is a *window-centered* overlay: on a real phone the
+ * window IS the 390pt screen, so it centers fine, but the multi-pane desktop harness embeds the phone pane
+ * in a much wider host window, and a window-centered dialog then overflows the pane's right edge (which is
+ * exactly why the old M3 `DatePicker` clipped there). This renders in-tree as a `Popup` positioned centred
+ * **within the pane** — the enclosing full-width anchor gives [PaneCenteredProvider] the pane's own bounds
+ * — so the full picker is visible at 390pt on device and in the harness alike.
+ */
+@Composable
+private fun PickerDialogShell(
+    seedMonth: LocalDate,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    calendar: @Composable (visibleMonth: LocalDate) -> Unit,
+    wheels: @Composable () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var visibleMonth by remember {
+        mutableStateOf(LocalDate(seedMonth.year, seedMonth.month.ordinal.plus(1), 1))
+    }
 
     // The full-width anchor: its bounds ARE the pane content width, so the position provider can centre the
     // card within the pane rather than within the (wider, in the harness) host window.
@@ -131,200 +300,14 @@ internal fun DateTimePickerDialog(
                         onNext = { visibleMonth = visibleMonth.plus(1L, DateTimeUnit.MONTH) },
                     )
                     WeekdayHeader()
-                    CalendarGrid(
-                        visibleMonth = visibleMonth,
-                        selected = selectedDate,
-                        today = today,
-                        floor = floorDate,
-                        ceiling = ceilingDate,
-                        onPick = { selectedDate = it },
-                    )
-                    TimeWheels(
-                        hour = hour,
-                        minute = minute,
-                        onHour = { hour = it },
-                        onMinute = { minute = it },
-                    )
+                    calendar(visibleMonth)
+                    wheels()
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Box(Modifier.weight(1f)) { SecondaryButton(label = "Cancel", onClick = onDismiss) }
-                        Box(Modifier.weight(1f)) {
-                            PrimaryButton(
-                                label = "OK",
-                                onClick = {
-                                    onConfirm(
-                                        LocalDateTime(
-                                            selectedDate.year,
-                                            selectedDate.month.ordinal.plus(1),
-                                            selectedDate.day,
-                                            hour,
-                                            minute,
-                                        ),
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The **dual-handle range** variant of the one-dialog picker (capability `design-system`): the same
- * hand-drawn single-month calendar, but the user taps a **start day** then an **end day** to select an
- * inclusive `[from, until]` span, with **two** time-wheel pairs — a **From time** and an **Until time** —
- * beneath it. One confirmation commits the whole span.
- *
- * Selection is a three-tap cycle: with a complete range showing, the next tap **resets** to a new start
- * (span cleared); the tap after that sets the end (a same-day range is that same day tapped twice). A tap
- * **earlier** than the pending start moves the start earlier rather than forming an inverted range — so an
- * `until` before `from` is unreachable. Tapping a new day span changes **only the dates**; the two wheel
- * times are preserved (they are independent state).
- *
- * The optional `[minimum, maximum]` **window** (either bound absent) greys days outside it and constrains
- * the picker; the create surface passes **no** window, so any day/time is selectable and only `start < end`
- * is required (the caller enforces that). A day-grain calendar cannot forbid an out-of-window *hour* on a
- * boundary day, so the confirmed instants are additionally coerced into the window here.
- */
-@Composable
-internal fun DateTimeRangePickerDialog(
-    initialFrom: LocalDateTime,
-    initialUntil: LocalDateTime,
-    minimum: LocalDateTime?,
-    maximum: LocalDateTime?,
-    onDismiss: () -> Unit,
-    onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
-
-    // The span. `endDate == null` means mid-selection (only the start is placed); it resolves to the start
-    // for both the highlight and the confirmed value, so a single-tap day is a valid same-day range.
-    var startDate by remember { mutableStateOf(initialFrom.date) }
-    var endDate by remember { mutableStateOf<LocalDate?>(initialUntil.date) }
-    var visibleMonth by remember {
-        mutableStateOf(LocalDate(initialFrom.date.year, initialFrom.date.month.ordinal.plus(1), 1))
-    }
-    var fromHour by remember { mutableStateOf(initialFrom.hour) }
-    var fromMinute by remember { mutableStateOf(initialFrom.minute) }
-    var untilHour by remember { mutableStateOf(initialUntil.hour) }
-    var untilMinute by remember { mutableStateOf(initialUntil.minute) }
-
-    val floorDate = minimum?.date
-    val ceilingDate = maximum?.date
-
-    fun onPick(picked: LocalDate) {
-        if (endDate != null) {
-            // A complete range is showing → begin a fresh selection at the tapped day.
-            startDate = picked
-            endDate = null
-        } else if (picked < startDate) {
-            // Mid-selection, tapped before the start → move the start earlier (never an inverted range).
-            startDate = picked
-        } else {
-            // Mid-selection, tapped on/after the start → close the span.
-            endDate = picked
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Popup(
-            popupPositionProvider = remember { PaneCenteredProvider() },
-            onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true),
-        ) {
-            Surface(
-                modifier = Modifier.width(340.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = scheme.surface,
-                border = BorderStroke(1.dp, scheme.outlineVariant),
-                shadowElevation = 16.dp,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        text = "Date & time",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = scheme.onSurface,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    MonthHeader(
-                        month = visibleMonth,
-                        onPrev = { visibleMonth = visibleMonth.plus(-1L, DateTimeUnit.MONTH) },
-                        onNext = { visibleMonth = visibleMonth.plus(1L, DateTimeUnit.MONTH) },
-                    )
-                    WeekdayHeader()
-                    RangeCalendarGrid(
-                        visibleMonth = visibleMonth,
-                        rangeStart = startDate,
-                        rangeEnd = endDate ?: startDate,
-                        today = today,
-                        floor = floorDate,
-                        ceiling = ceilingDate,
-                        onPick = { onPick(it) },
-                    )
-                    // From and Until times sit side by side — two captioned wheel pairs sharing the row.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            WheelCaption("From time")
-                            TimeWheels(
-                                hour = fromHour,
-                                minute = fromMinute,
-                                onHour = { fromHour = it },
-                                onMinute = { fromMinute = it },
-                                hourDescription = "From hour",
-                                minuteDescription = "From minute",
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            WheelCaption("Until time")
-                            TimeWheels(
-                                hour = untilHour,
-                                minute = untilMinute,
-                                onHour = { untilHour = it },
-                                onMinute = { untilMinute = it },
-                                hourDescription = "Until hour",
-                                minuteDescription = "Until minute",
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Box(Modifier.weight(1f)) { SecondaryButton(label = "Cancel", onClick = onDismiss) }
-                        Box(Modifier.weight(1f)) {
-                            PrimaryButton(
-                                label = "OK",
-                                onClick = {
-                                    val eDate = endDate ?: startDate
-                                    var from = LocalDateTime(
-                                        startDate.year, startDate.month.ordinal.plus(1), startDate.day,
-                                        fromHour, fromMinute,
-                                    )
-                                    var until = LocalDateTime(
-                                        eDate.year, eDate.month.ordinal.plus(1), eDate.day,
-                                        untilHour, untilMinute,
-                                    )
-                                    // Coerce each bound into the window (the calendar cannot forbid a
-                                    // boundary-day hour outside it).
-                                    if (minimum != null && from < minimum) from = minimum
-                                    if (maximum != null && until > maximum) until = maximum
-                                    onConfirm(from, until)
-                                },
-                            )
-                        }
+                        Box(Modifier.weight(1f)) { PrimaryButton(label = "OK", onClick = onConfirm) }
                     }
                 }
             }
