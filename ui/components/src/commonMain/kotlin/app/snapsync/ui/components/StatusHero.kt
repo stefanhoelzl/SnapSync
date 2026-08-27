@@ -1,6 +1,5 @@
 package app.snapsync.ui.components
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,9 +15,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cancel
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -54,29 +50,14 @@ fun StatusHero(indicator: StatusIndicator, headline: String, detail: String? = n
 
 private val IndicatorSize = 28.dp
 
-// The LED palette: this skin's mapping of the semantic sync states to color. A future
-// (e.g. Cupertino) skin may paint them differently; the screens never see these. The complete
-// state uses the brand primary (accents unified on primary — no standalone green).
-private val LedYellow = Color(0xFFE0A100)
-
 @Composable
 internal fun IndicatorIcon(indicator: StatusIndicator) {
+    // No `else`: the `when` is exhaustive over the enum, so a case added later fails to compile here
+    // rather than falling through to nothing. That is also what made the five removed cases safe to
+    // delete — the compiler, not a reader, confirmed nothing still needed them.
     when (indicator) {
         StatusIndicator.Loading -> CircularProgressIndicator(modifier = Modifier.size(IndicatorSize))
-        StatusIndicator.InProgress -> LedDot(LedYellow)
-        StatusIndicator.Complete -> LedDot(MaterialTheme.colorScheme.primary)
-        StatusIndicator.Success -> Glyph(Icons.Outlined.CheckCircle, MaterialTheme.colorScheme.primary)
         StatusIndicator.Error -> Glyph(Icons.Outlined.Cancel, MaterialTheme.colorScheme.error)
-        StatusIndicator.Waiting -> Glyph(Icons.Outlined.Schedule, MaterialTheme.colorScheme.onSurfaceVariant)
-        StatusIndicator.Photos -> Glyph(Icons.Outlined.Image, MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/** A small filled disc — the status LED. */
-@Composable
-private fun LedDot(color: Color) {
-    Canvas(Modifier.size(IndicatorSize)) {
-        drawCircle(color, radius = size.minDimension * 0.3f)
     }
 }
 
