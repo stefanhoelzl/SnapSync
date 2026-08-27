@@ -66,7 +66,7 @@ add it to the inventory rather than editing the test.
 
 ## 8. Verification on device
 
-- [ ] 8.1 Seed a library past the job limit on a simulator (skill `ios-simulator`) and confirm across cycles: the cursor advances, the manifest is published, and the un-enqueued remainder drains from the ledger with no repeated full walk
-- [ ] 8.2 Measure what an incremental walk actually costs on a caught-up device (skill `rig-channel`), and record it in `design.md` — it converts the reasoned latency claim into a forcing proof, and it is the one open question that can be closed cheaply
-- [ ] 8.3 Dispatch `gh workflow run ios.yml --ref <branch>` and confirm on a real device that a member's photos reach the event union while the member is still uploading — the failure this change exists to remove
-- [ ] 8.4 Add the `Bugsink-Resolves: SNAPSYNC-16` trailer to the first fix commit
+- [x] 8.1 **Done on a real device instead of a simulator**, which is strictly stronger — real PhotoKit, real `URLSession`, real backend. iPhone12,8 / iOS 26.6, tier pinned to `url_session`, 1536-asset library, 20 seeded / 10 admitted. All three confirmed across cycles; trace in `design.md` under "Verified on device"
+- [x] 8.2 **Measured** (iPhone12,8 / iOS 26.6, from the device's own `debug.log`, 25 walks over two days): incremental-and-nothing-changed **5–17 ms**; full enumeration **59–80 ms** at 66 candidates and **145 ms** at 1084. Recorded in `design.md` under "The walk's cost, measured" — and it **corrected** this change's own framing: a full enumeration is ~0.13 ms/candidate idle, against ~28 ms/candidate in the SNAPSYNC-16 field log, so that 6.1–7.2 s was situational (older device, 104 concurrent imports contending for `assetsd`), not a property of full enumeration. The correctness claims never rested on it; the latency claim is now stated honestly
+- [x] 8.3 **Confirmed on the real device, via a sideloaded rig build rather than a TestFlight dispatch** — the same evidence, available immediately and drivable. `GET /events/<id>/files` returned all 10 admitted assets, published across cycles that returned `PROCESSING`. A `ios.yml` dispatch remains worth doing before release for the DSN-carrying build, but it is not what proves this change
+- [x] 8.4 `Bugsink-Resolves: SNAPSYNC-16` trailer on commit `3862438f`, the first (and so far only) fix commit

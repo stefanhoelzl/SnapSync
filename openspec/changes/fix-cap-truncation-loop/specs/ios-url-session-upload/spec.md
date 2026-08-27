@@ -16,7 +16,9 @@ This is what makes the tier's concurrency cap a throughput bound rather than an 
 Before it, the only source of work was the walk's return value, so freeing one slot cost a full library
 enumeration to refill it: measured on device (build 0.3(605), iPhone11,2 / iOS 18.7.9), 6.1–7.2 seconds
 of PhotoKit XPC over 224 candidates to enqueue two to four resources, repeated 26 times in two hours
-without ever draining.
+without ever draining. (That per-walk figure is situational, not intrinsic: the same operation
+measured 145 ms for 1084 candidates on an idle iPhone12,8 / iOS 26.6. What the requirement rests on
+is the **repetition**, not the cost of any one walk.)
 
 #### Scenario: A completion-triggered cycle enqueues from the ledger
 
