@@ -141,8 +141,11 @@ async function member(
         resources: [{ role: "primary", contentType: "image/heic", key: filename, filename }],
       };
     }),
+    // The fixture needs the resource rows too, which only the legacy (v1) publish writes — under v2 the
+    // byte upload is the sole writer of that table. `legacy: true` keeps this a one-call fixture.
+    { legacy: true },
   ));
-  // `publishStatements` re-activates the membership, which a departed fixture must not be.
+  // The legacy publish re-activates the membership, which a departed fixture must not be.
   if (state === "departed") {
     await d.execute(
       `UPDATE memberships SET state = 'departed' WHERE event_id = ? AND device_id = ?`,
@@ -287,15 +290,15 @@ Deno.test("asset phase → referenced kept; unreferenced-below-floor collected; 
 Deno.test("asset phase → a collected byte's ROW is deleted BEFORE the byte", async () => {
   // The order is load-bearing. Row-then-byte leaves, on a crash, an orphan byte that is still
   // unreferenced and still below the floor — so the next run collects it. Byte-then-row would leave a row
-  // asserting `uploaded = 1` for bytes that are gone, which silently suppresses a needed re-upload the
-  // moment anything reads that row for dedup.
+  // still asserting, by its existence, that bytes are stored which are gone — silently suppressing a
+  // needed re-upload the moment anything reads that row for dedup.
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
   await insertEvent(d, event(E, LIVE_STARTS));
   await member(d, E, D, []); // active, so the device has a floor, but references nothing
   await d.execute(
-    `INSERT INTO resources (device_id, key, asset_id, role, content_type, filename, uploaded)
-     VALUES (?, 'old.heic', 'A', 'primary', 'image/heic', 'Capture old.heic', 1)`,
+    `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
+     VALUES (?, 'A', 'primary', 'old.heic', 'image/heic', 'Capture old.heic')`,
     [D],
   );
   const order: string[] = [];

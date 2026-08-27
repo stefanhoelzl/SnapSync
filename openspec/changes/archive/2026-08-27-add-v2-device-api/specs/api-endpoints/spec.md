@@ -1,26 +1,5 @@
-# api-endpoints Specification
+## MODIFIED Requirements
 
-## Purpose
-
-**The whole `/api/v1` surface, in one place.** Every route's method, path, parameters, request body,
-response shape and status codes — and nothing else. This capability owns *what a request looks like and
-what it gets back*; it owns no rule that has a reason behind it.
-
-That division is deliberate and load-bearing. Before this capability the surface was spread across six
-endpoint specs, and every rule with a decision behind it was stated twice — once where it was decided and
-once where it was enforced. The `endsAt` validation rules lived in full in both `event-limits` and
-`event-creation`; the "requires a device token" rule was written **seven** times. Nothing contradicted, but
-nothing prevented it from starting to, and `openspec validate --specs --strict` never compares two specs to
-each other.
-
-So: **this spec cites, it does not restate.** Where a rule is decided elsewhere it names the capability and
-the status code a violation earns, and stops. A reader who wants to know *why* a window is capped at 30
-days is sent to `event-limits`; a reader who wants to know what a client gets for exceeding it reads `400`
-here.
-
-Decision record: `changes/record-uploads-in-database`.
-
-## Requirements
 ### Requirement: The route table is closed
 
 The application SHALL serve exactly the routes below and no others. A request whose method and path match
@@ -94,25 +73,6 @@ a disagreement between these tables and that list SHALL be resolved in favour of
 - **WHEN** a request targets `/api/v2/events/<eventId>/notify`, which exists only in v1's table
 - **THEN** the application responds `404` and dispatches nothing
 
-### Requirement: Path parameters are validated before any upstream request
-
-`eventId` and `deviceId` SHALL each match a canonical UUID pattern. `filename` SHALL be a single non-empty
-path segment containing no path separator — `/`, its encoded form `%2F`, or a literal — and no `..`.
-
-A matched route whose UUID parameter is not a UUID, or whose `filename` is unsafe, SHALL yield `400` and
-SHALL make no upstream request. Validation SHALL happen before authorization is consulted only where the
-route is ungated; on a gated route the token check comes first.
-
-#### Scenario: A non-UUID parameter is rejected
-
-- **WHEN** a matched route's `eventId` or `deviceId` segment is not a canonical UUID
-- **THEN** the application responds `400` and makes no storage or database request
-
-#### Scenario: An unsafe filename is rejected
-
-- **WHEN** the byte route's `filename` segment contains `..` or a separator (`/` or `%2F`)
-- **THEN** the application responds `400` and makes no storage or database request
-
 ### Requirement: Byte upload streams to storage and records that the bytes arrived
 
 A byte upload route SHALL stream the request body to bunny native Storage at a bare key under the device's
@@ -162,67 +122,6 @@ and the response SHALL NOT distinguish a create from an overwrite.
 
 - **WHEN** a byte `PUT` targets a resource that already holds an object
 - **THEN** the object is replaced and the response does not distinguish this from a first write
-
-### Requirement: A v2 byte upload names its resource in the path
-
-`PUT /api/v2/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` SHALL identify the resource by its
-**path segments** — the owning asset and the role it plays — and SHALL carry the capture filename as a
-**required query parameter**.
-
-`role` SHALL be validated against the closed vocabulary the manifest uses; a value outside it SHALL yield
-`400`. `assetId` SHALL be a single path segment. The absence of `filename`, or an empty value, SHALL yield
-`400`.
-
-The filename is a **query parameter rather than a path segment** so that no caller-supplied bytes reach the
-storage key. The rule that a filename segment must contain no separator and no `..` is not relaxed but
-made **unnecessary**: a value that never enters the key cannot traverse it. It also keeps arbitrary bytes
-away from path normalization in the CDN that fronts this application.
-
-The filename SHALL be treated as **metadata only**. It SHALL NOT contribute to the resource's identity, so
-re-uploading the same asset and role with a different filename updates the metadata and overwrites the
-object rather than creating a second resource.
-
-The backend SHALL compose the stored object's name itself, from the identity in the path and the filename.
-The composed name SHALL be **byte-identical to the name v1 composes for the same resource**, so that a
-resource uploaded under either version is the same stored object. Without that, a device moving between
-versions would consider none of its bytes uploaded and re-upload its entire library, and an event with a
-member on each version would need two addressing schemes for one photo.
-
-#### Scenario: Identity comes from the path
-
-- **WHEN** a v2 byte upload names an asset and role in its path
-- **THEN** the recorded resource has that identity, with no parsing of the stored object's name
-
-#### Scenario: An unknown role is refused
-
-- **WHEN** a v2 byte upload names a role outside the closed vocabulary
-- **THEN** the application responds `400` and makes no upstream request
-
-#### Scenario: A missing filename is refused
-
-- **WHEN** a v2 byte upload omits the `filename` parameter or supplies an empty one
-- **THEN** the application responds `400`
-
-#### Scenario: Both versions address one object
-
-- **WHEN** the same asset and role are uploaded under v1 and under v2
-- **THEN** both compose the same stored object name and resolve to the same resource
-
-#### Scenario: A changed filename does not create a second resource
-
-- **WHEN** the same asset and role are re-uploaded with a different filename
-- **THEN** the existing resource's metadata is updated and its object overwritten
-
-### Requirement: OPTIONS preflight falls back to plain PUT
-
-The application SHALL answer an `OPTIONS` request on any path without requiring a token, so that a
-cross-origin preflight the pull zone does not answer itself cannot break the plain-`PUT` upload the iOS
-uploader depends on.
-
-#### Scenario: Preflight is answered ungated
-
-- **WHEN** an `OPTIONS` request arrives on any path, with or without an `Authorization` header
-- **THEN** the application answers it and does not respond `401`
 
 ### Requirement: The device manifest write is one atomic database transaction
 
@@ -383,102 +282,57 @@ The route SHALL be gated on event existence: an event that does not exist SHALL 
 - **WHEN** a union read names an `eventId` with no event
 - **THEN** the application responds `404`
 
-### Requirement: Presigned S3 download URL
+## ADDED Requirements
 
-Every `url` this capability emits SHALL be a presigned S3 `GET` URL for the named object, minted by one
-shared authority so the per-device listing and the union agree by construction. Fetching a `url` SHALL
-return the very object its entry describes.
+### Requirement: A v2 byte upload names its resource in the path
 
-#### Scenario: A listed url fetches its object
+`PUT /api/v2/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` SHALL identify the resource by its
+**path segments** — the owning asset and the role it plays — and SHALL carry the capture filename as a
+**required query parameter**.
 
-- **WHEN** any `url` from a per-device listing or a union entry is fetched
-- **THEN** bunny's S3 endpoint returns the object that entry describes
+`role` SHALL be validated against the closed vocabulary the manifest uses; a value outside it SHALL yield
+`400`. `assetId` SHALL be a single path segment. The absence of `filename`, or an empty value, SHALL yield
+`400`.
 
-### Requirement: Event creation
+The filename is a **query parameter rather than a path segment** so that no caller-supplied bytes reach the
+storage key. The rule that a filename segment must contain no separator and no `..` is not relaxed but
+made **unnecessary**: a value that never enters the key cannot traverse it. It also keeps arbitrary bytes
+away from path normalization in the CDN that fronts this application.
 
-`POST /api/v1/events` SHALL accept a JSON body carrying `name`, `startsAt`, and an optional `endsAt`, and
-on success SHALL respond `201` with the created event.
+The filename SHALL be treated as **metadata only**. It SHALL NOT contribute to the resource's identity, so
+re-uploading the same asset and role with a different filename updates the metadata and overwrites the
+object rather than creating a second resource.
 
-The route SHALL mint the `eventId` itself as a canonical UUID and SHALL ignore any client-supplied id.
+The backend SHALL compose the stored object's name itself, from the identity in the path and the filename.
+The composed name SHALL be **byte-identical to the name v1 composes for the same resource**, so that a
+resource uploaded under either version is the same stored object. Without that, a device moving between
+versions would consider none of its bytes uploaded and re-upload its entire library, and an event with a
+member on each version would need two addressing schemes for one photo.
 
-The route SHALL validate `name`: trim surrounding whitespace, require the trimmed value to be non-empty,
-and require its length to be at most 100 characters. The trimmed value SHALL be the name stored and
-returned. This bound is surface — no other capability reads it.
+#### Scenario: Identity comes from the path
 
-`startsAt` and `endsAt` SHALL be validated against the rules `event-limits` decides, and a body violating
-any of them SHALL yield `400` and write nothing. This spec SHALL NOT restate those rules.
+- **WHEN** a v2 byte upload names an asset and role in its path
+- **THEN** the recorded resource has that identity, with no parsing of the stored object's name
 
-A body that is not valid JSON SHALL yield `400` and write nothing.
+#### Scenario: An unknown role is refused
 
-#### Scenario: A valid create mints an event
+- **WHEN** a v2 byte upload names a role outside the closed vocabulary
+- **THEN** the application responds `400` and makes no upstream request
 
-- **WHEN** a valid `POST /api/v1/events` is processed
-- **THEN** the application responds `201`, the `eventId` is a server-minted canonical UUID, and the event
-  row exists
+#### Scenario: A missing filename is refused
 
-#### Scenario: A client-supplied id is ignored
+- **WHEN** a v2 byte upload omits the `filename` parameter or supplies an empty one
+- **THEN** the application responds `400`
 
-- **WHEN** the body carries an `eventId` or `id` field alongside `name`
-- **THEN** the application ignores it and returns a freshly minted `eventId`
+#### Scenario: Both versions address one object
 
-#### Scenario: An empty or over-long name is rejected
+- **WHEN** the same asset and role are uploaded under v1 and under v2
+- **THEN** both compose the same stored object name and resolve to the same resource
 
-- **WHEN** the body's `name` is absent, empty after trimming, or longer than 100 characters
-- **THEN** the application responds `400` and writes nothing
+#### Scenario: A changed filename does not create a second resource
 
-#### Scenario: A body violating a window rule is rejected
-
-- **WHEN** the body's `startsAt` or `endsAt` violates any rule `event-limits` states
-- **THEN** the application responds `400` and writes nothing
-
-### Requirement: Event metadata and existence
-
-`GET|HEAD /api/v1/events/<eventId>` SHALL respond `200` with the event's stored fields when the event
-exists, and `404` when it does not. A `404` from this route SHALL be a **sealed** answer — a real absence,
-never a transient miss — because no route deletes an event on touch (capability `event-limits`) and
-`leave-event`'s teardown rule depends on it.
-
-A failure to read that is not an absence SHALL yield `502`, never `404`.
-
-#### Scenario: An existing event is described
-
-- **WHEN** the metadata route names an event that exists
-- **THEN** the application responds `200` with that event's stored fields
-
-#### Scenario: A missing event is a sealed 404
-
-- **WHEN** the metadata route names an event that does not exist
-- **THEN** the application responds `404`
-
-#### Scenario: A read failure is not an absence
-
-- **WHEN** the metadata read fails for any reason other than the event being absent
-- **THEN** the application responds `502` and never `404`
-
-### Requirement: Event rename
-
-`PATCH /api/v1/events/<eventId>` SHALL accept a JSON body containing a `name` and on success SHALL respond
-`200` with the same body shape the metadata route serves, carrying the stored (trimmed) name.
-
-The route SHALL validate `name` with the same rule the create route applies. It SHALL resolve the event
-through the same existence gate the metadata route uses — absent yields `404` and writes nothing; a
-non-absence read failure yields `502`.
-
-The route SHALL update **only** the event's `name`. Every other field is immutable after creation
-(capability `event-limits`), and this route SHALL NOT be extended to write any of them.
-
-Concurrent renames SHALL resolve last-write-wins.
-
-#### Scenario: A rename updates only the name
-
-- **WHEN** a valid `PATCH` renames an existing event
-- **THEN** the application responds `200`, the event's `name` is the trimmed value, and no other field of
-  the event has changed
-
-#### Scenario: A rename of a missing event is refused
-
-- **WHEN** a `PATCH` names an event that does not exist
-- **THEN** the application responds `404` and writes nothing
+- **WHEN** the same asset and role are re-uploaded with a different filename
+- **THEN** the existing resource's metadata is updated and its object overwritten
 
 ### Requirement: Joining is an explicit route
 
@@ -521,50 +375,6 @@ decision lived on a route whose purpose was something else entirely.
 
 - **WHEN** a join names an `eventId` with no event
 - **THEN** the application responds `404` and writes nothing
-
-### Requirement: Leave
-
-`DELETE /api/v1/events/<eventId>/devices/<deviceId>` SHALL mark that membership `departed` and SHALL
-respond successfully whether or not the membership was already departed or absent — the route is
-**idempotent**.
-
-The membership's assets and resources SHALL be retained, so the event union keeps serving what the device
-shared before leaving.
-
-Leaving SHALL NOT free an enrollment slot (capability `event-limits`).
-
-#### Scenario: Leaving marks the membership departed
-
-- **WHEN** an active member leaves
-- **THEN** its membership state becomes `departed` and its assets remain in the event union
-
-#### Scenario: Leaving twice is harmless
-
-- **WHEN** a leave is repeated for a membership that is already departed, or names a membership that does
-  not exist
-- **THEN** the application responds successfully and changes nothing
-
-### Requirement: Notify
-
-`POST /api/v1/events/<eventId>/notify` SHALL enumerate the event's **active** memberships, read each
-device's stored push token, and dispatch a silent push to each.
-
-The fan-out SHALL be **best-effort**: the route SHALL respond `202` when it has attempted every member,
-including when some or all dispatches failed or a member had no token. It SHALL NOT report per-member
-failure to the caller.
-
-The route SHALL be gated on event existence: an event that does not exist SHALL yield `404` and dispatch
-nothing.
-
-#### Scenario: Every active member is attempted
-
-- **WHEN** a notify is processed for an event with active and departed members
-- **THEN** a push is attempted for each active member and none for a departed one, and the response is `202`
-
-#### Scenario: A failed dispatch does not fail the request
-
-- **WHEN** some members' pushes fail or a member has no stored token
-- **THEN** the application still responds `202`
 
 ### Requirement: The v2 manifest publish notifies the event's members
 
@@ -621,122 +431,3 @@ A member with no registered token SHALL be excluded by that query rather than by
 
 - **WHEN** an active member has no registered push token
 - **THEN** the recipient set omits it and no separate read is made for it
-
-### Requirement: Device config write
-
-`PUT /api/v1/devices/<deviceId>` SHALL accept the device's config document as its JSON body and record it
-against that device (capability `database`). Writes SHALL be last-write-wins.
-
-The document SHALL carry the device's push token (capability `push-registration`). The config is not a
-member of the device's byte partition and SHALL NOT appear in the per-device file listing or the event
-union.
-
-The route SHALL **update** an existing device record and SHALL NOT create one. A device record exists only
-where a device has attested (capability `device-attestation`), and this route cannot attest on the device's
-behalf.
-
-When the write affects **no row**, the route SHALL respond `401`. It SHALL NOT collapse that outcome into
-success: a `201` for a registration the backend did not record would leave the device believing it is
-reachable while no push can ever reach it, and the device PUTs once per OS-delivered token, so nothing
-would retry. The `401` is what the shipped client already recovers from — it attests afresh, which creates
-the record, and re-sends the registration.
-
-#### Scenario: A config write is recorded
-
-- **WHEN** a valid `PUT /api/v1/devices/<uuid>` arrives with a JSON body for a device that has attested
-- **THEN** the device's record carries that document
-
-#### Scenario: Repeated writes are last-write-wins
-
-- **WHEN** two config writes arrive for the same device
-- **THEN** the later one is the one retained
-
-#### Scenario: A write for a device with no attestation on file is refused
-
-- **WHEN** a valid `PUT /api/v1/devices/<uuid>` arrives bearing a valid token, for a device the backend
-  holds no attestation record for
-- **THEN** the endpoint responds `401` and creates no record
-
-#### Scenario: The refusal does not disturb the attestation columns
-
-- **WHEN** a config write succeeds
-- **THEN** only the push-registration fields are written, and the device's attestation record is unchanged
-
-### Requirement: Faithful outcome — no partial success, no partial list
-
-Every route SHALL propagate its true outcome. A write route SHALL NOT report success for a write that did
-not land, and a read route SHALL NOT return a **partial** collection: when any part of assembling a listing
-or union fails, the route SHALL fail with `502` rather than return a shorter array.
-
-A partial list is indistinguishable, to every client, from a complete one that is genuinely short — which
-is how a photo becomes invisible with no error anywhere.
-
-#### Scenario: A partial assembly fails rather than truncates
-
-- **WHEN** assembling a per-device listing or an event union fails part-way
-- **THEN** the application responds `502` and returns no array
-
-#### Scenario: An upstream failure is propagated, not masked
-
-- **WHEN** an upstream storage or database call fails on a write route
-- **THEN** the application responds with a failure status and does not report success
-
-### Requirement: A maintenance window answers every device-API route with 503
-
-The application SHALL answer **`503`** to every request under the **`/api/` prefix** while the bundle
-serving it carries the maintenance flag (capability `backend-deployment`) — before any other handling, and
-making no storage or database request for it.
-
-The match SHALL be the **prefix**, not an enumeration of routes. A closed list can be omitted from — a
-route added later lands ungated by nobody's decision — whereas a prefix cannot, and a future
-`/api/v2` mount inherits the gate by construction.
-
-`503` is the status HTTP defines for exactly this: a temporary inability to serve due to scheduled
-maintenance. The response SHALL carry `Retry-After`, which HTTP pairs with it, and SHALL carry the
-listings' no-cache directives.
-
-**The no-cache directives are load-bearing, not decoration.** A pull zone fronts every request and caches
-on the origin's directives; a cached `503` would outlive the window and turn a bounded, deliberate outage
-into an unbounded accidental one. The deploy workflow cannot configure the pull zone, so the origin's
-header is the only lever, and its behaviour SHALL be verified **through the pull zone** rather than at the
-origin alone.
-
-The gate SHALL run **before** the device-token gate (capability `device-attestation`), so an unauthenticated
-request during the window is answered `503` rather than `401`. That is both cheaper — no token verification
-— and truthful: the service is unavailable, and the caller's credentials are not what is wrong. Nothing is
-disclosed by answering before authentication that the health route does not already disclose publicly.
-
-Routes served at the **root** — the marketing page, the no-app download page, the site's fingerprinted
-assets, the AASA document, and the health route — SHALL NOT be gated. They read only the public storage
-`site/` prefix or nothing at all, never the relational store, so a schema migration has no bearing on them,
-and the health route is how the deploy learns the window's state.
-
-Downloads are unaffected by construction: presigned S3 URLs are fetched directly from the storage
-provider's S3 endpoint and never reach this application.
-
-#### Scenario: A device-API request during the window is refused
-
-- **WHEN** a request under `/api/` arrives while the serving bundle carries the maintenance flag
-- **THEN** it is answered `503` with `Retry-After` and no-cache directives, and no storage or database
-  request is made
-
-#### Scenario: Maintenance is answered before authentication
-
-- **WHEN** a request under `/api/` arrives during the window carrying no valid device token
-- **THEN** it is answered `503`, not `401`
-
-#### Scenario: A future version prefix is gated without being enumerated
-
-- **WHEN** a request under a device-API version prefix other than `/api/v1` arrives during the window
-- **THEN** it is answered `503`, because the gate matches the `/api/` prefix rather than a list of routes
-
-#### Scenario: Root routes keep serving during the window
-
-- **WHEN** the marketing page, the download page, a fingerprinted site asset, the AASA document, or the
-  health route is requested during the window
-- **THEN** it is served normally
-
-#### Scenario: The window's refusal is not cached past the window
-
-- **WHEN** a device-API route is requested through the pull zone after the window closes
-- **THEN** the response is served by the application, not from a cached `503`

@@ -26,7 +26,7 @@
 // the running process (`serve.ts`), after every static import has been evaluated, and is random per
 // session. No schema can source a value that does not exist yet — which is why it stays a parameter.
 
-import { DEPLOYMENT } from "../config.ts";
+import { DEPLOYMENT, MIN_APP_VERSION } from "../config.ts";
 import type { Config } from "../config.ts";
 import { isFilesystemDeployment } from "../deployment.ts";
 
@@ -110,6 +110,10 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     // here would let a `local` deployment that set the flag produce a rig that refuses every device
     // request, with no pipeline able to lift it.
     maintenance: false,
+    // The local rig serves the same gate as production, so it needs a minimum. It takes the SHIPPED one
+    // rather than a permissive local value: a rig that admitted builds production refuses would hide exactly
+    // the failure the gate exists to surface, and only on device.
+    minAppVersion: MIN_APP_VERSION,
   };
 }
 

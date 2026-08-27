@@ -116,7 +116,27 @@ export type Config = {
    * `GET /health` reports this value and the deploy probe asserts it in both directions.
    */
   maintenance: boolean;
+  /**
+   * The oldest app marketing version `/api/v2` will serve (capability `min-app-version`). Requests below
+   * it are refused `426` with this value in the body, so a client can name the version to install.
+   *
+   * IN SOURCE, and deliberately not in the generated deployment or the store: raising it disables every
+   * older install at once, which makes it the single most consequential value in this configuration. It
+   * should cost a pull request, a review and a deploy — a runtime-mutable value would let the install
+   * base be disabled with none of them. Pinned by a test so a bump shows up in a diff.
+   */
+  minAppVersion: string;
 };
+
+/**
+ * The oldest app marketing version `/api/v2` serves (capability `min-app-version`).
+ *
+ * `0.1` is the marketing-version floor the app has carried since it was seeded, so this refuses NOTHING
+ * that exists today — which is correct while no shipped build speaks v2 at all. It becomes meaningful the
+ * moment a v2 client ships: raise it to the first version that speaks v2 correctly, and every older build
+ * is told, in one answer it can act on, to update.
+ */
+export const MIN_APP_VERSION = "0.1";
 
 /** The commit this bundle was built from, served by `GET /health` so a deploy probe can identify it. */
 export const BUILD_SHA: string = deployment.sha;
@@ -187,6 +207,7 @@ function publicFields(
     eventWindowMaxSeconds: d.eventWindowMaxSeconds,
     eventLifetimeSeconds: d.eventLifetimeSeconds,
     maintenance: d.maintenance,
+    minAppVersion: MIN_APP_VERSION,
   };
 }
 
