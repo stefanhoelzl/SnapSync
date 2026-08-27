@@ -91,8 +91,10 @@ fun AppRangePresetChoices(
     fromFloorNote: String,
     untilCeilingNote: String,
 ) {
-    var showFromPicker by remember { mutableStateOf(false) }
-    var showUntilPicker by remember { mutableStateOf(false) }
+    // WHICH handle's Custom picker is open, if any — one nullable state rather than two booleans. Both
+    // rows open the same dialog against the same window and differ only in seed and callback, and two
+    // booleans made "both open at once" representable, which is not a state this surface has.
+    var picking by remember { mutableStateOf<RangeHandle?>(null) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         HandleGroup(tag = "from-group", caption = "Share from") {
@@ -126,7 +128,7 @@ fun AppRangePresetChoices(
                 consequence = if (fromSelected == FromChoice.CUSTOM) fromFloorNote else "Pick your own start.",
                 selected = fromSelected == FromChoice.CUSTOM,
                 enabled = true,
-                onSelect = { showFromPicker = true },
+                onSelect = { picking = RangeHandle.FROM },
             )
         }
 
@@ -146,35 +148,31 @@ fun AppRangePresetChoices(
                 consequence = if (untilSelected == UntilChoice.CUSTOM) untilCeilingNote else "Pick your own end.",
                 selected = untilSelected == UntilChoice.CUSTOM,
                 enabled = true,
-                onSelect = { showUntilPicker = true },
+                onSelect = { picking = RangeHandle.UNTIL },
             )
         }
     }
 
-    if (showFromPicker) {
+    picking?.let { handle ->
         DateTimePickerDialog(
-            // Seed at the current custom value, else the window start — never an empty calendar.
-            initial = fromCustomValue ?: windowStart,
+            // Seed at the handle's current custom value, else its end of the window — never an empty
+            // calendar.
+            initial = when (handle) {
+                RangeHandle.FROM -> fromCustomValue ?: windowStart
+                RangeHandle.UNTIL -> untilCustomValue ?: windowEnd
+            },
             minimum = windowStart,
             maximum = windowEnd,
-            onDismiss = { showFromPicker = false },
+            onDismiss = { picking = null },
             onConfirm = {
-                showFromPicker = false
+                picking = null
                 // Coerce into the window: the calendar greys days outside it, but the wheels can still land
                 // on a boundary-day hour outside it.
-                onFromCustomPicked(it.coerceIn(windowStart, windowEnd))
-            },
-        )
-    }
-    if (showUntilPicker) {
-        DateTimePickerDialog(
-            initial = untilCustomValue ?: windowEnd,
-            minimum = windowStart,
-            maximum = windowEnd,
-            onDismiss = { showUntilPicker = false },
-            onConfirm = {
-                showUntilPicker = false
-                onUntilCustomPicked(it.coerceIn(windowStart, windowEnd))
+                val picked = it.coerceIn(windowStart, windowEnd)
+                when (handle) {
+                    RangeHandle.FROM -> onFromCustomPicked(picked)
+                    RangeHandle.UNTIL -> onUntilCustomPicked(picked)
+                }
             },
         )
     }
@@ -279,3 +277,6 @@ private fun ChoiceRow(
         }
     }
 }
+
+/** Which end of the capture range a Custom picker is editing. */
+private enum class RangeHandle { FROM, UNTIL }
