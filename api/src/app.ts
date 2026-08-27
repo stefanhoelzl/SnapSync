@@ -145,6 +145,8 @@
 
 import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
+import { identityFromLegacyKey, legacyKeyFor, RESOURCE_ROLES } from "./legacy-v1.ts";
+import { compareVersions, splitVersion } from "./version.ts";
 import {
   canonicalFromMs,
   canonicalPlusSeconds,
@@ -177,18 +179,22 @@ import {
   type Db,
   departMembership,
   deviceFiles,
+  deviceResources,
   enroll,
+  type EnrollOutcome,
   type EventRow,
   insertEvent,
+  isMember,
   type ManifestAssetEntry,
-  markUploaded,
   membersOf,
   publishStatements,
+  pushTokensForEvent,
   putAttestation,
   putDeviceRecord,
   readAttestation,
   readDeviceRecord,
   readEvent,
+  recordResource,
   renameEvent,
   touchTokenExpiry,
   unionRows,
@@ -345,6 +351,11 @@ const MAINTENANCE_RETRY_AFTER_SECONDS = 30;
 // PUBLIC and static — the deliberate inverse of the listings' NO_CACHE. A `public` directive lets the
 // bunny pull zone serve it from the edge, keeping the Edge Script off the request hot path. Still used by
 // the AASA and (until Phase 2) the `/join` page.
+// The v2 fan-out's own bound. Generous next to the work (capacity is 10, and the sends are parallel over
+// one HTTP/2 connection) but well inside the device's 12-second budget for the publish that carries it —
+// so a stalled APNs socket costs a notification, never the write.
+const FANOUT_TIMEOUT_MS = 4000;
+
 const PUBLIC_CACHE = "public, max-age=300";
 
 // Cache policy for the proxied `site/` objects (capability `web-site`). HTML entry points are the
@@ -570,10 +581,28 @@ export function createApp(
     // `uploaded` at 0 while the device believed it had published, and the photo would be invisible to
     // every other member with no error anywhere. Do not edit one of those two rules alone.
     try {
-      // Keyed by the URL's final segment — the bare object name the manifest publish upserts on. A full
-      // path here would create a SECOND row the manifest never touches, so the repair path would silently
-      // stop repairing.
-      await markUploaded(db, deviceId, filename);
+      // `resources` is keyed by IDENTITY now, and this URL carries only the object NAME — so v1 recovers
+      // the identity by parsing it (capability `database`; the parse is v1-only and is deleted with v1).
+      // A name that is not the client's key shape has no identity to be filed under: the route refuses it
+      // rather than inventing one. Every key in the deployed store parses, so this narrowing affects
+      // inputs no shipped client produces.
+      const identity = identityFromLegacyKey(filename);
+      if (identity) {
+        await recordResource(db, {
+          deviceId,
+          assetId: identity.assetId,
+          role: identity.role,
+          key: filename,
+          contentType: c.req.header("content-type") ?? "",
+          // v1's URL does not carry the capture name; the object name is the honest stand-in, and the
+          // manifest publish overwrites it with the real one on the same cycle.
+          filename,
+        });
+      } else {
+        console.error(
+          `upload: unparseable legacy key, not recorded: ${byteKey(deviceId, filename)}`,
+        );
+      }
     } catch (e) {
       console.error(`upload: could not record ${byteKey(deviceId, filename)}: ${e}`);
     }
@@ -628,6 +657,40 @@ export function createApp(
       return await Promise.resolve(c.text("maintenance", 503));
     });
   }
+  // ── THE VERSION GATE (capability `min-app-version`) ─────────────────────────────────────────────
+  //
+  // Registered BEFORE the token gate, and that ordering is deliberate — it inverts `api-endpoints`'
+  // "on a gated route the token check comes first" for three reasons:
+  //
+  //   * it reads NOTHING upstream — no storage, no database, no Apple call — so it cannot grow the bill
+  //     or reach user data, which is the same property that makes an unmatched path's 404 safe ahead of
+  //     authorization;
+  //   * a build below the minimum cannot be helped by a valid token, so verifying one first spends work
+  //     on a request that is refused either way;
+  //   * an old build holding an EXPIRED token would otherwise be told `401` — reporting an
+  //     authentication problem to a user whose actual remedy is to update the app.
+  //
+  // It must be a TOP-LEVEL middleware rather than one mounted on the v2 router: Hono runs a parent's
+  // middleware for mounted sub-apps, so anything registered on the v2 mount would run AFTER the token
+  // gate, which is precisely the order this exists to avoid.
+  //
+  // v1 is exempt. It is spoken by builds that predate this header and cannot be updated to send it, so
+  // requiring it there would refuse the entire install base at once.
+  app.use("*", async (c, next) => {
+    const { version } = splitVersion(new URL(c.req.url).pathname);
+    if (version !== 2) return await next();
+    const declared = c.req.header("x-snapsync-app-version");
+    // ABSENT, UNPARSEABLE and TOO OLD collapse into one answer, deliberately. All three mean the caller
+    // cannot be trusted to speak v2, and the remedy is identical — install a build that can — so no
+    // consequence distinguishes them and nothing is lost by giving them one status.
+    if (declared !== undefined && compareVersions(declared, config.minAppVersion) >= 0) {
+      return await next();
+    }
+    c.header("Cache-Control", NO_CACHE);
+    // The minimum rides in the BODY, which is what makes the refusal actionable rather than merely
+    // legible: the client can name the version to install instead of saying only that something is wrong.
+    return c.json({ error: "app too old", minAppVersion: config.minAppVersion }, 426);
+  });
 
   // ── THE GATE (capability `device-attestation`) ──────────────────────────────────────────────────
   //
@@ -657,11 +720,12 @@ export function createApp(
     // Device-API routes are served under a versioned prefix (`/api/v1`, capability `backend-deployment`),
     // and Hono does NOT strip the mount prefix from the path accessors — so normalize a leading `/api/vN`
     // away HERE, once, before the closed-list checks below, which are written in un-prefixed terms. This is
-    // deliberately version-agnostic (`v\d+`): a future `/api/v2` mount is gated identically with no change
-    // here. `/api/v1` → `/`, `/api/v1/attest/x` → `/attest/x`.
-    const rawPath = new URL(c.req.url).pathname;
-    const stripped = rawPath.replace(/^\/api\/v\d+(?=\/|$)/, "");
-    const path = stripped === "" ? "/" : stripped;
+    // deliberately version-agnostic: a further `/api/vN` mount is gated identically with no change here.
+    // `/api/v1` → `/`, `/api/v2/attest/x` → `/attest/x`. The split is SHARED with the version gate above
+    // (`version.ts`) rather than copied — two copies of "what counts as a version prefix" would drift in
+    // silence, since nothing fails when they disagree; a request simply gets gated by one and not the
+    // other.
+    const { path } = splitVersion(new URL(c.req.url).pathname);
     // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, the public marketing page at
     // EXACTLY `/` (capability `marketing-site`), and the event link's two public routes (capability
     // `event-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
@@ -853,7 +917,12 @@ export function createApp(
   //
   // The gate (`app.use("*")`) runs for the mount (verified: Hono runs parent middleware for mounted
   // sub-apps) and normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under it.
+  // SHARED: routes whose contract is identical under every version. Mounted into each version's router,
+  // so there is one implementation and no possibility of the two drifting apart.
   const deviceApi = new Hono();
+  // v1 ONLY: the routes v2 replaces or drops. Kept on their own router so each version's route table is
+  // CLOSED — a v1-only path under `/api/v2` must be a 404, not an accident of shared mounting.
+  const v1Only = new Hono();
 
   // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes
   // NOTHING — the one route a stranger can call cannot grow the bill this gate exists to protect.
@@ -1139,7 +1208,7 @@ export function createApp(
   // The count is read-then-write without coordination (bunny has no compare-and-set): concurrent first
   // enrollments may transiently overshoot, accepted — what is guaranteed is that a request OBSERVING the
   // event at capacity admits no new device.
-  deviceApi.put("/events/:eventId/devices/:deviceId", async (c) => {
+  v1Only.put("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) {
@@ -1175,7 +1244,7 @@ export function createApp(
     // wholesale, and every listed resource is upserted. A partial replace must never be observable by
     // the union — which is exactly what a half-applied full-state write would produce.
     try {
-      await db.batch(publishStatements(eventId, deviceId, assets));
+      await db.batch(publishStatements(eventId, deviceId, assets, { legacy: true }));
     } catch (e) {
       console.error(`device-manifest: publish failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
@@ -1272,7 +1341,7 @@ export function createApp(
 
       const assets: UnionAsset[] = [];
       for (const { row, resources } of byAsset.values()) {
-        if (resources.length === 0 || resources.some((r) => !r.uploaded)) continue;
+        if (resources.length === 0 || resources.some((r) => !r.present)) continue;
         assets.push({
           deviceId: row.deviceId,
           assetId: row.assetId,
@@ -1305,7 +1374,7 @@ export function createApp(
   // consumer: the rejoin reconcile seeds `COMPLETED` rows from it (capability
   // `event-rejoin-reconciliation`), and seeding from bytes the backend cannot vouch for would suppress
   // an upload that never happened.
-  deviceApi.get("/files/devices/:deviceId", async (c) => {
+  v1Only.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
@@ -1387,7 +1456,7 @@ export function createApp(
   // in its payload to the rest. Per-member read/send failures never fail the request
   // — always a bare 202 once the gate passed and members were enumerated. Server-chosen payload
   // (the path event id), all members, no exclusion; the uploader fires this via `upload-completion-notify`.
-  deviceApi.post("/events/:eventId/notify", async (c) => {
+  v1Only.post("/events/:eventId/notify", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -1425,11 +1494,207 @@ export function createApp(
   });
 
   // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.
-  deviceApi.route("/files/devices/:deviceId/:filename", byteFile);
+  v1Only.route("/files/devices/:deviceId/:filename", byteFile);
 
-  // Mount the device API under the versioned prefix — the one shape it is served at. Gated by the one
-  // `app.use("*")` above, which normalizes the `/api/vN` prefix before its checks, so a future `/api/v2`
-  // is ONE MORE MOUNT LINE here and needs no change to the gate.
-  app.route("/api/v1", deviceApi);
+  /**
+   * The v2 fan-out: wake the event's other active members so they read the union.
+   *
+   * BEST-EFFORT inside a faithful write. The caller's response is its transaction's outcome and is never
+   * changed by a push that failed, was skipped for a member with no token, or timed out — the same split
+   * the byte route already draws for its database write. A failed notification costs one member a delayed
+   * download, which the next foreground read repairs; failing the publish would cost the manifest itself,
+   * and the device's skip-if-unchanged would then not retry it.
+   *
+   * BOUNDED, because bounded member count does not bound a stalled socket. The publish runs synchronously
+   * inside the device's own upload cycle under an OS deadline, so a hung APNs connection here would make
+   * the device time out a write that actually committed — and the next cycle would skip it as unchanged.
+   */
+  async function notifyMembers(eventId: string, publisherId: string): Promise<void> {
+    try {
+      const tokens = await pushTokensForEvent(db, eventId, publisherId);
+      if (tokens.length === 0) return;
+      const outcomes = await Promise.race([
+        apns.sendSilent(tokens, eventId),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("fan-out timed out")), FANOUT_TIMEOUT_MS)
+        ),
+      ]);
+      const sent = outcomes.filter((o) => o.status === "sent").length;
+      console.info(`v2 notify: event ${eventId} — ${tokens.length} recipients, ${sent} pushed`);
+    } catch (e) {
+      console.error(`v2 notify: fan-out failed for ${eventId} (best-effort, publish stands): ${e}`);
+    }
+  }
+
+  // ── THE v2 DEVICE API ───────────────────────────────────────────────────────────────────────────
+  //
+  // v2 exists because v1's shapes are frozen by the shipped install base, and the structural corrections
+  // this backend needs cannot be made additively. What differs is small and deliberate:
+  //
+  //   * the byte upload names its resource by IDENTITY in the path, not by a synthetic object name;
+  //   * the per-device listing answers "what do you hold for me" in those same terms, and mints no url;
+  //   * joining is its OWN route, so `memberships` has one writer;
+  //   * the manifest is a sub-resource that only replaces the asset set — it enrolls nothing and records
+  //     no upload, so `resources` has one writer too;
+  //   * there is no notify route: the fan-out is an effect of the manifest publish, where its ordering
+  //     against the union is guaranteed by construction rather than by a comment.
+  //
+  // Everything else is the SHARED router — one implementation, mounted into both versions.
+  const v2Only = new Hono();
+
+  // Upload one resource's bytes. Identity comes from the PATH (`<assetId>/<role>`) and the capture name
+  // from a REQUIRED query parameter, which is what keeps caller-supplied bytes out of the storage key
+  // entirely: v1 had to validate a filename segment for traversal, and here the value never reaches the
+  // key, so the rule is not relaxed but made unnecessary.
+  v2Only.put("/files/devices/:deviceId/:assetId/:role", async (c) => {
+    const deviceId = c.req.param("deviceId");
+    const assetId = c.req.param("assetId");
+    const role = c.req.param("role");
+    const filename = new URL(c.req.url).searchParams.get("filename");
+    if (!validateUUID(deviceId)) return c.text("invalid device", 400);
+    if (!validateFilename(assetId)) return c.text("invalid asset", 400);
+    // The role vocabulary is CLOSED, and the route validates it rather than storing whatever it is given.
+    // v1 could not — its role arrived inside an opaque object name — which is why an unknown role is a
+    // narrowing v2 gets for free from naming identity in the path.
+    if (!RESOURCE_ROLES.includes(role)) return c.text("invalid role", 400);
+    if (filename === null || filename === "") return c.text("missing filename", 400);
+
+    // The stored object name is composed HERE, and is byte-identical to what v1 composes for the same
+    // resource. That is load-bearing rather than tidy: a device moving from v1 to v2 must find its bytes
+    // where it left them, and an event with a member on each version must address one photo one way —
+    // otherwise the first v2 build re-uploads every library it meets.
+    const key = legacyKeyFor(assetId, role, filename);
+    const contentType = c.req.header("content-type") ?? "application/octet-stream";
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(
+        `https://${config.host}/${config.zone}/${byteKey(deviceId, key)}`,
+        {
+          method: "PUT",
+          headers: { AccessKey: config.accessKey, "Content-Type": contentType },
+          body: c.req.raw.body, // ReadableStream — streamed straight through, never buffered
+          duplex: "half",
+        } as StreamInit,
+      );
+    } catch (e) {
+      console.error(`v2 upload: upstream PUT errored for ${byteKey(deviceId, key)}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (!upstream.ok) {
+      console.error(`v2 upload: bunny returned ${upstream.status} for ${byteKey(deviceId, key)}`);
+      return c.text("upstream rejected", 502);
+    }
+    // NOT best-effort, unlike v1. v1's manifest publish re-creates a missing row on its next cycle, and
+    // that repair is what makes swallowing this failure safe there. v2's manifest writes no resource row
+    // at all, so nothing would repair it: the bytes would be stored, the backend would not know, the
+    // device would be told it succeeded, and the resource would be absent from every union forever. A
+    // visible retry costs one re-upload; the silence costs a photo.
+    try {
+      await recordResource(db, { deviceId, assetId, role, key, contentType, filename });
+    } catch (e) {
+      console.error(`v2 upload: could not record ${byteKey(deviceId, key)}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    return c.body(null, 201);
+  });
+
+  v2Only.options("/files/devices/:deviceId/:assetId/:role", (c) => {
+    c.header("Allow", "PUT, OPTIONS");
+    return c.body(null, 204);
+  });
+
+  // What the backend holds for this device, in the terms v2 addresses resources by. No `url`: this route
+  // answers "what have you recorded", and its consumer fetches no bytes — minting a presigned link would
+  // cost a signature per row for a field nobody follows.
+  v2Only.get("/files/devices/:deviceId", async (c) => {
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(deviceId)) return c.text("invalid device", 400);
+    try {
+      const held = await deviceResources(db, deviceId);
+      c.header("Cache-Control", NO_CACHE);
+      return c.json(held);
+    } catch (e) {
+      console.error(`v2 list: device listing failed for ${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+  });
+
+  // JOIN — the only route that creates or reactivates a membership, and the only one that decides
+  // capacity. In v1 the manifest publish did both, which meant a document describing what a device SHARES
+  // also decided whether it was a member: a departed device rejoined merely by publishing.
+  v2Only.put("/events/:eventId/devices/:deviceId", async (c) => {
+    const eventId = c.req.param("eventId");
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
+    let outcome: EnrollOutcome;
+    try {
+      outcome = await enroll(db, eventId, deviceId, new Date(now()).toISOString());
+    } catch (e) {
+      console.error(`v2 join: enrollment failed for ${eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    // The zero-row outcome has TWO causes and they are told apart rather than collapsed (capability
+    // `database`): at capacity is a `409` the user can act on, absent is a `404` that means something
+    // else entirely.
+    if (outcome === "no-such-event") return c.text("event not found", 404);
+    if (outcome === "full") return c.text("event full", 409);
+    return c.body(null, 200);
+  });
+
+  // The manifest — CONTRIBUTION ONLY. It replaces the membership's asset set and does nothing else: it
+  // enrolls nobody (join owns that) and records no upload (the byte route owns that).
+  v2Only.put("/events/:eventId/devices/:deviceId/manifest", async (c) => {
+    const eventId = c.req.param("eventId");
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
+    let assets: ManifestAssetEntry[] | null;
+    try {
+      assets = parseManifestAssets(await c.req.json());
+    } catch {
+      return c.text("invalid body", 400);
+    }
+    if (assets === null) return c.text("invalid manifest", 400);
+    try {
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
+    } catch (e) {
+      console.error(`v2 manifest: event read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    // A manifest from a NON-MEMBER is refused rather than silently joining — the inverse of v1, where
+    // publishing was enrolling.
+    try {
+      if (!await isMember(db, eventId, deviceId)) return c.text("not a member", 409);
+    } catch (e) {
+      console.error(`v2 manifest: membership read failed for ${eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    try {
+      await db.batch(publishStatements(eventId, deviceId, assets, { legacy: false }));
+    } catch (e) {
+      console.error(`v2 manifest: publish failed for ${eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    // AFTER THE COMMIT, never inside it: a recipient woken before the write is visible would read the
+    // union and find the very state the notification announced to be missing. Best-effort — the response
+    // is the transaction's outcome and is never changed by a push that failed, the same split the byte
+    // route already draws for its database write.
+    await notifyMembers(eventId, deviceId);
+    return c.body(null, 200);
+  });
+
+  // Mount the device API under its versioned prefixes. Each version's table is CLOSED: the shared router
+  // carries what both serve, and each version's own router carries what only it does — so a v1-only path
+  // under `/api/v2` (`…/notify`) and a v2-only path under `/api/v1` (`…/manifest`) are both 404.
+  // Gated by the two `app.use("*")` middlewares above, which resolve the `/api/vN` prefix through one
+  // shared splitter, so a further version needs no change to either.
+  const v1 = new Hono();
+  v1.route("/", deviceApi);
+  v1.route("/", v1Only);
+  const v2 = new Hono();
+  v2.route("/", deviceApi);
+  v2.route("/", v2Only);
+  app.route("/api/v1", v1);
+  app.route("/api/v2", v2);
   return app;
 }

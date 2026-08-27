@@ -93,25 +93,43 @@ export const SCHEMA: readonly string[] = [
      device_id     TEXT NOT NULL,
      asset_id      TEXT NOT NULL,
      creation_date TEXT NOT NULL,
+     -- The roles this asset DECLARES for this event, as a JSON array (e.g. '["primary","live"]').
+     -- The manifest is the only party that knows an asset has two resources, so the expectation has to
+     -- be recorded here: \`resources\` holds only what ARRIVED, and one row proves nothing about whether
+     -- a second is still owed. The union compares the two as SETS (\`json_each\` + NOT EXISTS), never as
+     -- counts — \`resources\` is device-scoped while this is event-scoped, so a device may hold a role
+     -- this event does not declare, and counting would read that asset as incomplete and drop it.
+     -- NOT NULL so no read ever needs a fallback branch for a row written before the column existed.
+     roles         TEXT NOT NULL,
      PRIMARY KEY (event_id, device_id, asset_id),
      FOREIGN KEY (event_id, device_id)
        REFERENCES memberships(event_id, device_id) ON DELETE CASCADE
    ) STRICT`,
   `CREATE TABLE IF NOT EXISTS resources (
      device_id    TEXT NOT NULL,
-     -- The BARE stored object name under the device's byte partition (<assetId>-<role>.<ext>), exactly
-     -- as the device manifest names it and as the byte upload route's final path segment carries it —
-     -- NOT a full files/devices/<id>/… path. The two are one fact reached from two directions, and the
-     -- byte route's record must land on the same row the manifest publish upserts.
-     key          TEXT NOT NULL,
+     -- IDENTITY: which asset this resource belongs to, and which role it plays within it. An asset
+     -- carries AT MOST ONE resource per role — an invariant the client upholds and this backend CANNOT
+     -- verify, because a second same-role upload is indistinguishable from a legitimate re-upload of the
+     -- same resource. Keying on it bounds a violation to an overwrite: no orphan object, and no row that
+     -- disagrees with the bytes it names.
      asset_id     TEXT NOT NULL,
      role         TEXT NOT NULL,
+     -- ADDRESS, not identity: the bare stored object name under the device's byte partition
+     -- (<assetId>-<role>.<ext>). Composed by the BACKEND, and byte-identical across API versions, so a
+     -- device that moves between versions finds its bytes where it left them rather than re-uploading
+     -- its whole library. Kept as a column so the storage layout can change without changing what a
+     -- resource IS, and so two versions can address one row while spelling the name differently.
+     key          TEXT NOT NULL,
      content_type TEXT NOT NULL,
      filename     TEXT NOT NULL,
-     uploaded     INTEGER NOT NULL DEFAULT 0,
-     PRIMARY KEY (device_id, key)
+     PRIMARY KEY (device_id, asset_id, role),
+     -- One stored object, one row. The key encodes identity, so this can never contradict the primary
+     -- key — it earns its place by indexing the sweep's lookup, which addresses a row by object name.
+     UNIQUE (device_id, key)
    ) STRICT`,
-  `CREATE INDEX IF NOT EXISTS resources_by_asset ON resources (device_id, asset_id)`,
+  // `resources_by_asset` is GONE, not forgotten: the primary key is now
+  // `(device_id, asset_id, role)`, whose leftmost prefix is exactly what that index covered. Keeping it
+  // would be a second copy of the same b-tree.
   // ONE ROW PER DEVICE, TWO INDEPENDENTLY-WRITTEN GROUPS.
   //
   // The push token is THREE columns, not a document. It began as one `push_token TEXT` holding the
@@ -326,56 +344,66 @@ export type ManifestAssetEntry = {
 /**
  * The statements a manifest publish applies, in order — to be run as ONE atomic unit.
  *
- * Three effects: the membership becomes `active`; the membership's asset set is REPLACED with exactly
- * what the body lists (a full-state replace — an omitted asset is removed); and each listed resource is
- * upserted.
+ * ALWAYS: the membership's asset set is REPLACED with exactly what the body lists (a full-state replace,
+ * so an omitted asset is removed — a short manifest is a RETRACTION, not an oversight), each row carrying
+ * the roles that asset declares. That declaration is what lets the union tell "this asset is complete"
+ * from "one of its two resources has not arrived": `resources` holds only what arrived, and one row
+ * proves nothing about whether a second is still owed.
  *
- * `uploaded` defaults to TRUE when the entry does not say otherwise, and this is what REPAIRS a byte
- * route whose best-effort record was lost: the device lists only `COMPLETED` resources, so `true` is
- * right by construction (capability `api-endpoints`). `uploaded` is MONOTONE — the upsert raises `0 → 1`
- * via `MAX` and never lowers it, so an out-of-order publish cannot un-say an upload.
+ * ADDITIONALLY, under `legacy` (the v1 route only): the membership becomes `active`, and each listed
+ * resource is upserted. Both are behaviours v2 does not have and v1 keeps unchanged — v1 is spoken by
+ * builds that cannot be updated, so its behaviour is frozen rather than corrected (capability
+ * `database`, "Each table has exactly one writer, on the current API version").
+ *
+ * The legacy resource upsert is what REPAIRS a byte route whose best-effort record was lost: v1's device
+ * lists only COMPLETED resources, so an entry that does not say otherwise means the bytes are stored, and
+ * the row is created when missing. It stays MONOTONE — an entry that explicitly says NOT uploaded emits
+ * no statement at all, so it can never remove a row an earlier publish recorded. Under the old schema
+ * that was `MAX(uploaded, …)`; under row-existence semantics it is simply "never delete", which is the
+ * same guarantee spelled without a column.
  */
 export function publishStatements(
   eventId: string,
   deviceId: string,
   assets: ManifestAssetEntry[],
+  opts: { legacy: boolean },
 ): Statement[] {
-  const out: Statement[] = [
-    {
+  const out: Statement[] = [];
+  if (opts.legacy) {
+    out.push({
       sql: `UPDATE memberships SET state = 'active' WHERE event_id = ? AND device_id = ?`,
       args: [eventId, deviceId],
-    },
-    {
-      sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?`,
-      args: [eventId, deviceId],
-    },
-  ];
+    });
+  }
+  out.push({
+    sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?`,
+    args: [eventId, deviceId],
+  });
   for (const a of assets) {
     out.push({
-      sql: `INSERT INTO event_assets (event_id, device_id, asset_id, creation_date)
-            VALUES (?, ?, ?, ?)`,
-      args: [eventId, deviceId, a.assetId, a.creationDate],
+      sql: `INSERT INTO event_assets (event_id, device_id, asset_id, creation_date, roles)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        eventId,
+        deviceId,
+        a.assetId,
+        a.creationDate,
+        JSON.stringify(a.resources.map((r) => r.role)),
+      ],
     });
+    if (!opts.legacy) continue;
     for (const r of a.resources) {
+      // Monotone by omission: an entry that says the bytes are NOT stored contributes no statement, so
+      // it cannot un-say an upload an earlier publish recorded.
+      if (r.uploaded === false) continue;
       out.push({
-        sql:
-          `INSERT INTO resources (device_id, key, asset_id, role, content_type, filename, uploaded)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT (device_id, key) DO UPDATE SET
-                asset_id     = excluded.asset_id,
-                role         = excluded.role,
+        sql: `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT (device_id, asset_id, role) DO UPDATE SET
+                key          = excluded.key,
                 content_type = excluded.content_type,
-                filename     = excluded.filename,
-                uploaded     = MAX(resources.uploaded, excluded.uploaded)`,
-        args: [
-          deviceId,
-          r.key,
-          a.assetId,
-          r.role,
-          r.contentType,
-          r.filename,
-          (r.uploaded ?? true) ? 1 : 0,
-        ],
+                filename     = excluded.filename`,
+        args: [deviceId, a.assetId, r.role, r.key, r.contentType, r.filename],
       });
     }
   }
@@ -396,21 +424,36 @@ export const MAX_BOUND_PARAMETERS = 32766;
 // ── The byte route's record ───────────────────────────────────────────────────────────────────────
 
 /**
- * Record that a resource's bytes landed. BEST-EFFORT at the call site: the byte route's response is the
- * storage outcome, and a failure here never changes it (capability `api-endpoints`).
+ * Record that a resource's bytes landed. The row's EXISTENCE is the record — there is no upload flag,
+ * because the only writer of this table is the route that watched the bytes arrive (capability
+ * `database`).
  *
- * The row may not exist yet — a device can upload bytes before the manifest naming them is published —
- * so this inserts a placeholder carrying what the URL knows (device, key) and nothing it does not. The
- * placeholder's `asset_id` is empty, which is why the union joins through `event_assets` and cannot
- * surface one: a placeholder belongs to no asset until a manifest says which.
+ * There are no placeholder rows any more. The old shape inserted `asset_id = ''` because v1's URL
+ * carries only the object name, and the manifest filled the identity in later; under a key of
+ * `(device_id, asset_id, role)` a placeholder has no identity to be stored under, and every device's
+ * placeholders would collide on one empty pair. Both routes therefore supply real identity: v2 reads it
+ * from its path, and v1 parses it out of the object name (the parse lives in the v1 adapter, and is
+ * deleted with v1).
+ *
+ * Whether a failure here fails the REQUEST differs by version and is the caller's business: v1 swallows
+ * it, because its manifest publish repairs a missing row; v2 does not, because nothing repairs it there.
  */
-export async function markUploaded(db: Db, deviceId: string, key: string): Promise<void> {
-  // `key` is the URL's final path segment — the same bare object name the manifest publish upserts on.
+export async function recordResource(db: Db, r: {
+  deviceId: string;
+  assetId: string;
+  role: string;
+  key: string;
+  contentType: string;
+  filename: string;
+}): Promise<void> {
   await db.execute(
-    `INSERT INTO resources (device_id, key, asset_id, role, content_type, filename, uploaded)
-     VALUES (?, ?, '', '', '', ?, 1)
-     ON CONFLICT (device_id, key) DO UPDATE SET uploaded = 1`,
-    [deviceId, key, key],
+    `INSERT INTO resources (device_id, asset_id, role, key, content_type, filename)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (device_id, asset_id, role) DO UPDATE SET
+       key          = excluded.key,
+       content_type = excluded.content_type,
+       filename     = excluded.filename`,
+    [r.deviceId, r.assetId, r.role, r.key, r.contentType, r.filename],
   );
 }
 
@@ -425,25 +468,41 @@ export type UnionResourceRow = {
   contentType: string;
   key: string;
   filename: string;
-  uploaded: boolean;
+  /** Whether this declared role's bytes have arrived. False rows are what make an asset incomplete. */
+  present: boolean;
 };
 
 /**
- * Every resource of every asset the event's memberships name — `active` AND `departed`, so a member who
- * has left keeps contributing what it already shared. `uploaded` rides along so the caller can drop an
- * asset that names an unrecorded resource (defense-in-depth, capability `api-endpoints`).
+ * One row per DECLARED role of every asset the event's memberships name — `active` AND `departed`, so a
+ * member who has left keeps contributing what it already shared.
+ *
+ * The row set is driven by `event_assets.roles` (what the manifest says the asset is made of) and the
+ * resource is LEFT-joined onto it, so a declared role whose bytes never arrived still produces a row with
+ * `present = false`. That is what makes completeness a **set** question the caller can answer by
+ * grouping: an asset is complete iff every one of its rows is present.
+ *
+ * Driving from the declaration rather than from `resources` is load-bearing in two directions. An inner
+ * join would make a missing resource *vanish* rather than read as incomplete — the asset would silently
+ * shrink to its uploaded resources and be served as whole. And counting rows instead of comparing sets
+ * would misjudge the reverse case: `resources` is device-scoped while `roles` is event-scoped, so a
+ * device may hold a role this event does not declare, and a count would call that asset incomplete and
+ * drop it from an event it belongs in.
  */
 export async function unionRows(db: Db, eventId: string): Promise<UnionResourceRow[]> {
   const { rows } = await db.execute(
     `SELECT ea.device_id, ea.asset_id, ea.creation_date,
-            r.role, r.content_type, r.key, r.filename, r.uploaded
+            j.value AS role,
+            r.content_type, r.key, r.filename,
+            (r.device_id IS NOT NULL) AS present
      FROM event_assets ea
-     JOIN resources r ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id
+     JOIN json_each(ea.roles) j
+     LEFT JOIN resources r
+       ON r.device_id = ea.device_id AND r.asset_id = ea.asset_id AND r.role = j.value
      WHERE ea.event_id = ?
      -- Deterministic, and PRIMARY first within an asset: no consumer depends on the order, but an
      -- unordered join makes a response diff noise rather than signal. Plain ORDER BY role would put
      -- 'live' ahead of 'primary', which reads as a bug to anyone eyeballing a union.
-     ORDER BY ea.device_id, ea.asset_id, (r.role <> 'primary'), r.role`,
+     ORDER BY ea.device_id, ea.asset_id, (j.value <> 'primary'), j.value`,
     [eventId],
   );
   return rows.map((r) => ({
@@ -451,10 +510,10 @@ export async function unionRows(db: Db, eventId: string): Promise<UnionResourceR
     assetId: String(r.asset_id),
     creationDate: String(r.creation_date),
     role: String(r.role),
-    contentType: String(r.content_type),
-    key: String(r.key),
-    filename: String(r.filename),
-    uploaded: Number(r.uploaded) === 1,
+    contentType: String(r.content_type ?? ""),
+    key: String(r.key ?? ""),
+    filename: String(r.filename ?? ""),
+    present: Number(r.present) === 1,
   }));
 }
 
@@ -468,7 +527,7 @@ export async function unionRows(db: Db, eventId: string): Promise<UnionResourceR
  */
 export async function deviceFiles(db: Db, deviceId: string): Promise<{ key: string }[]> {
   const { rows } = await db.execute(
-    `SELECT key FROM resources WHERE device_id = ? AND uploaded = 1 ORDER BY key`,
+    `SELECT key FROM resources WHERE device_id = ? ORDER BY key`,
     [deviceId],
   );
   return rows.map((r) => ({ key: String(r.key) }));
@@ -742,8 +801,12 @@ export async function collectableDevices(
  * Drop a collected byte's resource row. Called BEFORE the byte object is deleted, and the order is
  * load-bearing (design.md D8): row-then-byte leaves, on a crash, an orphan byte that is still
  * unreferenced and still below the floor, so the next run collects it — self-healing. Byte-then-row
- * would leave a row asserting `uploaded = 1` for bytes that no longer exist, which is inert only until
- * something reads the row for dedup and then silently suppresses a needed re-upload.
+ * would leave a row still asserting, by its existence, that bytes are stored which are gone — inert only
+ * until something reads it for dedup and then silently suppresses a needed re-upload.
+ *
+ * Addressed by object NAME rather than by identity, because that is what the sweep holds: it walks the
+ * byte partition and knows only what it found there. The `UNIQUE (device_id, key)` index is what makes
+ * that lookup exact.
  */
 export async function deleteResource(db: Db, deviceId: string, key: string): Promise<void> {
   await db.execute(`DELETE FROM resources WHERE device_id = ? AND key = ?`, [deviceId, key]);
@@ -761,4 +824,68 @@ export async function countDevices(db: Db): Promise<number> {
  */
 export async function deleteDevice(db: Db, deviceId: string): Promise<void> {
   await db.execute(`DELETE FROM devices WHERE device_id = ?`, [deviceId]);
+}
+
+/** One resource the backend holds for a device, in the terms v2 addresses resources by. */
+export type DeviceResourceRow = { assetId: string; role: string; filename: string };
+
+/**
+ * Everything this device has had recorded as arrived (capability `api-endpoints`, the v2 listing).
+ *
+ * Answers in IDENTITY terms rather than by object name, because that is the question v2 asks: "what do
+ * you hold for me?" A consumer comparing this against what it intends to contribute gets its pending set
+ * as a plain difference — which is why per-resource upload state needs no column, no flag and no second
+ * endpoint. No `url` is minted: this route's consumer fetches no bytes.
+ */
+export async function deviceResources(db: Db, deviceId: string): Promise<DeviceResourceRow[]> {
+  const { rows } = await db.execute(
+    `SELECT asset_id, role, filename FROM resources WHERE device_id = ? ORDER BY asset_id, role`,
+    [deviceId],
+  );
+  return rows.map((r) => ({
+    assetId: String(r.asset_id),
+    role: String(r.role),
+    filename: String(r.filename),
+  }));
+}
+
+/** Whether this device holds a membership in this event, in either state. */
+export async function isMember(db: Db, eventId: string, deviceId: string): Promise<boolean> {
+  const { rows } = await db.execute(
+    `SELECT 1 FROM memberships WHERE event_id = ? AND device_id = ? LIMIT 1`,
+    [eventId, deviceId],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * The push tokens of an event's ACTIVE members, optionally excluding one device — the recipient set of a
+ * silent-push fan-out, resolved in ONE query.
+ *
+ * The shape it replaces — enumerate the members, then read each member's record — is a fossil of the
+ * object store, where one document per device was the only way to ask. Under a relational store it is a
+ * join, and the per-member form cost a round-trip per member on a path that now runs INSIDE a request the
+ * caller times out. A member with no registered token is excluded by the query rather than by a later
+ * filter, so "has no token" and "is not a member" stop being two passes over the same rows.
+ */
+export async function pushTokensForEvent(
+  db: Db,
+  eventId: string,
+  excludeDeviceId?: string,
+): Promise<DevicePushToken[]> {
+  const { rows } = await db.execute(
+    `SELECT dr.push_kind, dr.push_token, dr.push_env
+     FROM memberships m
+     JOIN devices dr ON dr.device_id = m.device_id
+     WHERE m.event_id = ? AND m.state = 'active'
+       AND dr.push_token IS NOT NULL AND dr.push_kind IS NOT NULL AND dr.push_env IS NOT NULL
+       AND m.device_id IS NOT ?
+     ORDER BY m.device_id`,
+    [eventId, excludeDeviceId ?? null],
+  );
+  return rows.map((r) => ({
+    kind: String(r.push_kind),
+    token: String(r.push_token),
+    env: String(r.push_env),
+  }));
 }

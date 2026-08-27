@@ -202,8 +202,114 @@ const V3: Migration = {
   ],
 };
 
+/**
+ * v4 — `resources` is keyed by IDENTITY, and `event_assets` declares the roles each asset is made of
+ * (`changes/add-v2-device-api`).
+ *
+ * WHAT MOVES, AND WHY EACH MOVE CARRIES ITS DATA:
+ *
+ * `event_assets` gains `roles`, a JSON array of the roles that asset declares for that event. Nothing
+ * recorded that before — it existed only in the manifest document, which is not kept — but it is
+ * RECOVERABLE: a v1 manifest lists only completed resources and the publish upserts every listed one, so
+ * the `resources` rows for a `(device_id, asset_id)` ARE what that manifest declared. The backfill reads
+ * them. It runs BEFORE `resources` is rebuilt, while the old shape is still there to read.
+ *
+ * Deriving rather than defaulting matters for one group in particular: DEPARTED members. They keep
+ * contributing to the union until their event dies and they never publish again, so a row left null here
+ * would stay null forever — forcing every union read to carry a fallback branch that is dead for active
+ * members and load-bearing for departed ones.
+ *
+ * `resources` is re-keyed from `(device_id, key)` to `(device_id, asset_id, role)` and loses `uploaded`.
+ * A REBUILD, not an ALTER: SQLite cannot change a primary key in place.
+ *
+ * ⚠️ THE `uploaded = 0` ROWS ARE NOT CARRIED, and that is a TRANSLATION rather than a deletion. The new
+ * schema has no upload flag — a row's EXISTENCE is the record that the bytes arrived — so "declared but
+ * not uploaded" is expressed by the row's ABSENCE. Carrying such a row would assert the opposite of what
+ * it said. (Measured before writing this: the deployed store holds zero of them, so the translation is
+ * presently vacuous — see `PROBE-FINDINGS.md` §3.)
+ *
+ * The object name survives as a column, so no stored byte is stranded: `key` is what the sweep addresses
+ * a row by, and what both API versions compose identically.
+ */
+const V4: Migration = {
+  version: 4,
+  name: "resources keyed by identity; event_assets declares its roles",
+  precondition: async (db) => {
+    // TIGHTENING: `(device_id, asset_id, role)` is narrower than `(device_id, key)`. Two rows sharing an
+    // identity would collide in the rebuild and one would be silently dropped, so refuse instead. This is
+    // also the ONE check that can still invalidate the new key — it was clean across the whole deployed
+    // store when measured, but the store moves, and a device could create a colliding pair at any time.
+    const dupes = await db.execute(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT 1 FROM resources WHERE uploaded = 1 AND asset_id != ''
+         GROUP BY device_id, asset_id, role HAVING COUNT(*) > 1)`,
+    );
+    const n = Number(dupes.rows[0].n);
+    if (n > 0) {
+      throw new Error(
+        `refusing to re-key: ${n} (device_id, asset_id, role) group(s) hold more than one resource. ` +
+          `The new primary key cannot represent them and the rebuild would drop all but one. This means ` +
+          `an asset carried two resources of the same role, which the client is supposed to make ` +
+          `impossible — investigate before migrating.`,
+      );
+    }
+    // PLACEHOLDERS have no identity to be stored under: every one of a device's would collide on the
+    // empty pair. They are transient by design (the manifest fills them in the same cycle), so any that
+    // survive are a signal, not a routine state — refuse rather than drop the record that bytes arrived.
+    const placeholders = await db.execute(
+      `SELECT COUNT(*) AS n FROM resources WHERE uploaded = 1 AND asset_id = ''`,
+    );
+    const p = Number(placeholders.rows[0].n);
+    if (p > 0) {
+      throw new Error(
+        `refusing to re-key: ${p} placeholder row(s) carry no asset identity. Each records that bytes ` +
+          `arrived, and the new key cannot hold them. Publish the manifests naming them, then re-run.`,
+      );
+    }
+  },
+  statements: [
+    // 1. event_assets gains `roles`, derived from the resources the old manifest publish recorded.
+    `CREATE TABLE event_assets_declared (
+       event_id      TEXT NOT NULL,
+       device_id     TEXT NOT NULL,
+       asset_id      TEXT NOT NULL,
+       creation_date TEXT NOT NULL,
+       roles         TEXT NOT NULL,
+       PRIMARY KEY (event_id, device_id, asset_id),
+       FOREIGN KEY (event_id, device_id)
+         REFERENCES memberships(event_id, device_id) ON DELETE CASCADE
+     ) STRICT`,
+    `INSERT INTO event_assets_declared
+       SELECT ea.event_id, ea.device_id, ea.asset_id, ea.creation_date,
+              COALESCE((SELECT json_group_array(r.role) FROM resources r
+                        WHERE r.device_id = ea.device_id AND r.asset_id = ea.asset_id
+                          AND r.uploaded = 1 AND r.role != ''), json_array())
+         FROM event_assets ea`,
+    `DROP TABLE event_assets`,
+    `ALTER TABLE event_assets_declared RENAME TO event_assets`,
+    // 2. resources is re-keyed by identity and sheds the flag whose job row-existence now does.
+    `CREATE TABLE resources_by_identity (
+       device_id    TEXT NOT NULL,
+       asset_id     TEXT NOT NULL,
+       role         TEXT NOT NULL,
+       key          TEXT NOT NULL,
+       content_type TEXT NOT NULL,
+       filename     TEXT NOT NULL,
+       PRIMARY KEY (device_id, asset_id, role),
+       UNIQUE (device_id, key)
+     ) STRICT`,
+    `INSERT INTO resources_by_identity (device_id, asset_id, role, key, content_type, filename)
+       SELECT device_id, asset_id, role, key, content_type, filename
+         FROM resources WHERE uploaded = 1 AND asset_id != ''`,
+    `DROP TABLE resources`,
+    `ALTER TABLE resources_by_identity RENAME TO resources`,
+    // 3. The old index is redundant: the new primary key's leftmost prefix is exactly what it covered.
+    `DROP INDEX IF EXISTS resources_by_asset`,
+  ],
+};
+
 /** Every migration, in the order they must be applied. Append only; never edit one that has shipped. */
-export const MIGRATIONS: readonly Migration[] = [V1, V2, V3];
+export const MIGRATIONS: readonly Migration[] = [V1, V2, V3, V4];
 
 /**
  * Which migrations this store has not applied, in order. Empty when the schema is current.

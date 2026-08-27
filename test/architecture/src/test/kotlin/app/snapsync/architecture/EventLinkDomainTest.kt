@@ -61,8 +61,17 @@ class EventLinkDomainTest {
     @Test
     fun `the backend takes its domain from the resolved deployment, never from a literal`() {
         val backend = read("api/src/config.ts")
+        // THE FINAL LABEL MUST CONTAIN A LETTER, which is what separates a hostname from every other
+        // dotted literal. Without that the pattern reads `= "0.1"` — a two-part app version — as a host
+        // whose TLD is `1`, and refuses a value that could not name a machine: a public suffix is never
+        // all-digits, or an IPv4 address would be ambiguous with one. The looser form failed the first
+        // ordinary decimal anyone put in this file (`MIN_APP_VERSION`, capability `min-app-version`).
+        //
+        // Narrowing here rather than exempting the constant: an exemption would have to be renewed by
+        // every future version, port or ratio, and each renewal is a chance to wave through the literal
+        // this guard exists to catch.
         assertTrue(
-            !Regex("""=\s*"[a-z0-9-]+(\.[a-z0-9-]+)+"""").containsMatchIn(backend),
+            !Regex("""=\s*"[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z][a-z0-9-]*"""").containsMatchIn(backend),
             "api/src/config.ts contains a hostname literal. The domain is supplied by the resolved " +
                 "deployment now; a literal here is a copy nothing checks, which is how " +
                 "BACKGROUND_UPLOAD_URL_BASE went unpinned.",

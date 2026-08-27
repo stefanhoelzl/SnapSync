@@ -58,6 +58,7 @@ const CONFIG: Config = {
   eventWindowMaxSeconds: 30 * 24 * 60 * 60,
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
   maintenance: false,
+  minAppVersion: "0.1",
 };
 
 /** The same config, but claiming the FIXTURE's app — so the real attestation's rpIdHash matches. */
