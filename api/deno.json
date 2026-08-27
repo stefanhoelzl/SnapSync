@@ -9,6 +9,10 @@
     // cannot widen the permissions the suite below runs under.
     "config": "python3 ../scripts/resolve-deployment.py prod --quiet",
     "config:local": "python3 ../scripts/resolve-deployment.py local --quiet",
+    // The MAINTENANCE deployment (capability `backend-deployment`): identical to `prod` in every value
+    // but the window flag, because both extend the same component. `api-deploy.yml` publishes this
+    // bundle, migrates, then republishes the `prod` one.
+    "config:maintenance": "python3 ../scripts/resolve-deployment.py maintenance --quiet",
     // --allow-read/--allow-write are for the dev filesystem shim's contract test, which writes into a
     // temp dir. --allow-net stays ABSENT on purpose: that is the flag whose absence guarantees no test
     // can reach the real bunny zone (a network call fails as a permission error, not a live request).
@@ -24,6 +28,7 @@
     "dev:local": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts",
     "dev:tunnel": "deno task config:local && deno run --allow-net --allow-read --allow-write --allow-run src/dev/serve.ts --tunnel",
     "bundle": "deno task config && deno bundle src/main.ts -o dist/main.js",
+    "bundle:maintenance": "deno task config:maintenance && deno bundle src/main.ts -o dist/main.js",
     "lint": "deno lint",
     "fmt": "deno fmt"
   },

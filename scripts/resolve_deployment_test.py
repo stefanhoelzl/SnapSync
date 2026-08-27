@@ -365,6 +365,57 @@ class RenderingTest(unittest.TestCase):
         self.assertIn("export function isFilesystemDeployment(", types)
 
 
+class MaintenanceKeyTest(unittest.TestCase):
+    """The maintenance flag (capability `backend-deployment`): default off, JSON only, one key apart."""
+
+    def test_a_deployment_that_does_not_set_it_serves_normally(self):
+        # The default is what makes every local resolve and every non-migrating deploy safe: a rendering
+        # nobody thought about must not produce a bundle that refuses the device API.
+        flat = Tree().standard().resolve()
+        self.assertIs(flat["maintenance"], False)
+
+    def test_a_literal_true_reaches_the_bundle(self):
+        flat = Tree().standard(maintenance=True).resolve()
+        self.assertIs(flat["maintenance"], True)
+        body = rd.nest(rd.project(flat, rd.JSON))
+        self.assertIs(body["maintenance"], True)
+
+    def test_the_flag_reaches_only_the_backend_bundle(self):
+        flat = Tree().standard(maintenance=True).resolve()
+        self.assertNotIn("maintenance", json.loads(rd.render_site(flat)))
+        self.assertNotIn("maintenance", plist(flat))
+        self.assertNotIn("maintenance", xcconfig_values(rd.render_xcconfig(flat)))
+
+    def test_it_is_typed_as_a_boolean(self):
+        # `bool` is a subclass of `int`, so a bare numeric test would type this `number` and the emitted
+        # value would not satisfy the emitted type. The compiler is the check; this pins that it can be.
+        types = rd.render_types(Tree().standard(maintenance=True).resolve())
+        self.assertIn("readonly maintenance: boolean;", types)
+
+    def test_two_deployments_over_one_component_differ_by_exactly_this_key(self):
+        # The whole point of the shared component: the domain and every credential reference resolve
+        # identically, so the maintenance bundle cannot drift from the one it stands in for.
+        t = Tree().standard()
+        t.component("core", {"domain": "example.invalid", **SECRETS})
+        shared = ["components/build.json", "components/policy.json", "components/apple.json",
+                  "components/storage.json", "components/core.json"]
+        t.deployment("live", {"extends": shared})
+        t.deployment("window", {"extends": shared, "maintenance": True})
+
+        live = t.resolve("live")
+        window = t.resolve("window")
+        differing = {k for k in set(live) | set(window) if live.get(k) != window.get(k)}
+        self.assertEqual(differing, {"maintenance"})
+
+    def test_a_deployment_may_not_extend_another_deployment(self):
+        # `prod.json` is now a bare `extends` list, which makes `extends: ["prod.json"]` an inviting
+        # mistake. It must fail rather than silently resolve to a partial merge.
+        t = Tree().standard()
+        t.deployment("window", {"extends": ["t.json"], "maintenance": True})
+        with self.assertRaisesRegex(rd.ResolveError, "may not itself declare"):
+            t.resolve("window")
+
+
 class AtomicityTest(unittest.TestCase):
     def test_a_failed_resolution_writes_nothing(self):
         t = Tree().standard(doamin="typo")

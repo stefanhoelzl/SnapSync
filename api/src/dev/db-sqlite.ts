@@ -62,10 +62,6 @@ export function sqliteDb(path = ":memory:"): Db & { close(): void } {
         throw e;
       }
     },
-    foreignKeysEnabled() {
-      const row = handle.prepare("PRAGMA foreign_keys").get() as Record<string, unknown>;
-      return Promise.resolve(Number(Object.values(row)[0]) === 1);
-    },
     close() {
       handle.close();
     },

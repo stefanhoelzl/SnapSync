@@ -17,7 +17,7 @@
 
 import { assertEquals, assertRejects } from "@std/assert";
 import { SCHEMA } from "../src/db.ts";
-import { appliedVersions, migrate, MIGRATIONS } from "../src/migrations.ts";
+import { appliedVersions, migrate, MIGRATIONS, pendingMigrations } from "../src/migrations.ts";
 import { sqliteDb } from "../src/dev/db-sqlite.ts";
 
 /**
@@ -73,6 +73,66 @@ Deno.test("migrate records every version, and re-running applies nothing", async
   assertEquals(applied, []);
   assertEquals(await appliedVersions(db), MIGRATIONS.map((m) => m.version));
 
+  db.close();
+});
+
+// ── The plan comparison (capability `backend-deployment`) ─────────────────────────────────────────
+//
+// What `scripts/migrate.ts --pending` answers, and what `api-deploy.yml` branches a maintenance window
+// on. Wrong in either direction is expensive: a false "none" publishes new code onto an un-migrated
+// store, and a false "pending" imposes an outage window on a deploy that changes no schema.
+
+Deno.test("pending: a fresh store has every migration pending", async () => {
+  const db = sqliteDb(":memory:");
+  assertEquals(
+    (await pendingMigrations(db)).map((m) => m.version),
+    MIGRATIONS.map((m) => m.version),
+  );
+  db.close();
+});
+
+Deno.test("pending: a migrated store has none — the answer that skips the window", async () => {
+  // The common case by a wide margin: most deploys change no schema, and this is what keeps them at one
+  // publish with no outage.
+  const db = sqliteDb(":memory:");
+  await migrate(db);
+  assertEquals(await pendingMigrations(db), []);
+  db.close();
+});
+
+Deno.test("pending: a store behind the list reports exactly what is missing, in order", async () => {
+  const db = sqliteDb(":memory:");
+  await migrate(db);
+  // Rewind the record by one, as a store would sit if the list gained an entry since it last migrated.
+  const last = MIGRATIONS[MIGRATIONS.length - 1];
+  await db.execute(`DELETE FROM schema_migrations WHERE version = ?`, [last.version]);
+  assertEquals((await pendingMigrations(db)).map((m) => m.version), [last.version]);
+  db.close();
+});
+
+Deno.test("pending: asking does not apply, and does not record", async () => {
+  // `--pending` runs BEFORE the window opens, against the live store. If asking the question applied
+  // anything, the check would migrate production outside the window it exists to create.
+  const db = sqliteDb(":memory:");
+  await pendingMigrations(db);
+  assertEquals(await appliedVersions(db), []);
+  // And it stays answerable: creating the version record is the one write it makes, so a second ask on a
+  // store that predates the table answers the same way rather than throwing.
+  assertEquals(
+    (await pendingMigrations(db)).map((m) => m.version),
+    MIGRATIONS.map((m) => m.version),
+  );
+  db.close();
+});
+
+Deno.test("pending and migrate agree, because they are one comparison", async () => {
+  // The pair that must never disagree: one decides whether the window opens, the other decides what runs
+  // inside it. Pinned by construction rather than by two lists happening to match.
+  const db = sqliteDb(":memory:");
+  const planned = (await pendingMigrations(db)).map((m) => m.version);
+  const applied: number[] = [];
+  await migrate(db, (msg) => applied.push(Number(msg.match(/v(\d+)/)![1])));
+  assertEquals(applied, planned);
   db.close();
 });
 

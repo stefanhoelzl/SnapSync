@@ -25,6 +25,7 @@ const CONFIG = {
   host: "storage.invalid",
   accessKey: "k",
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
+  maintenance: false,
 } as unknown as Config;
 
 const D = "11111111-0000-4000-8000-000000000001";
@@ -308,7 +309,6 @@ Deno.test("asset phase → a collected byte's ROW is deleted BEFORE the byte", a
     },
     batch: (st) => d.batch(st),
     transaction: (fn) => d.transaction(fn),
-    foreignKeysEnabled: () => d.foreignKeysEnabled(),
   };
   await runSweep({
     fetch: (url, init) => {

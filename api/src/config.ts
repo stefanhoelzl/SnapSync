@@ -103,6 +103,19 @@ export type Config = {
   eventWindowMaxSeconds: number;
   /** Event lifetime in seconds — stamped onto the marker, measured from `max(createdAt, startsAt)`. */
   eventLifetimeSeconds: number;
+  /**
+   * Whether this bundle serves a MAINTENANCE WINDOW: every route under `/api/` answers `503` while the
+   * root routes keep serving (capability `backend-deployment`).
+   *
+   * Deployment-resolved and therefore BAKED, like every other non-secret — and here that is forced
+   * rather than merely consistent. CI holds only the script-scoped deploy key and cannot write the Edge
+   * Script's environment, so the only lever it has over a running deployment is which code is published.
+   * A migrating deploy publishes this bundle, migrates, then publishes the ordinary one.
+   *
+   * Both publishes carry the SAME commit, so `sha` alone cannot tell them apart — which is why
+   * `GET /health` reports this value and the deploy probe asserts it in both directions.
+   */
+  maintenance: boolean;
 };
 
 /** The commit this bundle was built from, served by `GET /health` so a deploy probe can identify it. */
@@ -173,6 +186,7 @@ function publicFields(
     eventCapacity: d.eventCapacity,
     eventWindowMaxSeconds: d.eventWindowMaxSeconds,
     eventLifetimeSeconds: d.eventLifetimeSeconds,
+    maintenance: d.maintenance,
   };
 }
 
