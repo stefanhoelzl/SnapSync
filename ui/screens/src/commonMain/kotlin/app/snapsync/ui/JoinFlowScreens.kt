@@ -89,9 +89,7 @@ internal fun JoiningEventScreen(
     // Seeded all-on over the full event window: narrow, never widen — the policy admits on doubt.
     val participation = rememberParticipation(
         ParticipationSeed(
-            shareOn = true,
-            receiveOn = true,
-            saveToAlbum = false,
+            switches = Switches(shareOn = true, receiveOn = true, saveToAlbum = false),
             choices = RangeChoices(FromChoice.EVENT_START, null, UntilChoice.EVENT_END, null),
         ),
     )

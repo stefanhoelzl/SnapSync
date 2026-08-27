@@ -19,6 +19,7 @@ import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
+import app.snapsync.presentation.UiState
 
 // The joined membership's own screen (capability `sync-status-screen`): the QR to share, the sync
 // health line, and the actions row.
@@ -30,15 +31,9 @@ import app.snapsync.ui.components.SecondaryButton
  */
 @Composable
 internal fun JoinedLayer(
-    health: SyncHealth,
+    state: UiState.Joined,
     inviteUrl: String?,
-    onRequestPermission: () -> Unit,
-    onOpenSettings: () -> Unit,
-    canChoosePhotos: Boolean,
-    onChoosePhotos: () -> Unit,
-    // The event's declared end has passed (capability `sync-status-screen`): prefix the health line with an
-    // informational "Event ended" marker. Sync continues; the end is enforced only server-side.
-    ended: Boolean,
+    access: AccessActions,
     cutoff: CutoffFormatter,
 ) {
     Column(
@@ -62,15 +57,18 @@ internal fun JoinedLayer(
         // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
         // card under a white QR card read as a second competing surface; the screen's second fixation
         // needs no frame, just position (centered, beneath the code).
+        // Bound locally so the NeedsAccess branch below can smart-cast: `state.health` is a public
+        // property of another module, which Kotlin will not narrow in place.
+        val health = state.health
         AppStatusLine(
             status = health.toAppSyncStatus(cutoff),
-            ended = ended,
+            ended = state.ended,
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) {
                     if (health.permission == PermissionStatus.NOT_DETERMINED) {
-                        onRequestPermission()
+                        access.onRequestPermission()
                     } else {
-                        onOpenSettings()
+                        access.onOpenSettings()
                     }
                 }
             },
@@ -82,10 +80,10 @@ internal fun JoinedLayer(
         // deep-link to Settings — no API re-raises the full-access dialog under a limited grant — and
         // deliberately carries no interstitial consent: the label plus the OS-mediated toggle are the
         // consent, and the widened scope stays bounded by the selection policy like any full grant.
-        if (canChoosePhotos) {
+        if (state.canChoosePhotos) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                SecondaryButton(label = "Choose more photos", onClick = onChoosePhotos)
-                SecondaryButton(label = "Allow full access", onClick = onOpenSettings)
+                SecondaryButton(label = "Choose more photos", onClick = access.onChoosePhotos)
+                SecondaryButton(label = "Allow full access", onClick = access.onOpenSettings)
             }
         }
     }

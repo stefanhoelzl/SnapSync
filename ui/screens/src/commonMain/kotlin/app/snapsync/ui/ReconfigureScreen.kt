@@ -82,9 +82,11 @@ internal fun ReconfigureScreen(
     val seeds = remember(membership) { reconfigureSeeds(membership, cutoff) }
     val participation = rememberParticipation(
         ParticipationSeed(
-            shareOn = membership.direction.includesUpload,
-            receiveOn = membership.direction.includesDownload,
-            saveToAlbum = membership.saveToAlbum,
+            switches = Switches(
+                shareOn = membership.direction.includesUpload,
+                receiveOn = membership.direction.includesDownload,
+                saveToAlbum = membership.saveToAlbum,
+            ),
             choices = seeds,
         ),
     )
