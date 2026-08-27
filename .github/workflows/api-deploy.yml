@@ -44,9 +44,30 @@ name: api-deploy
 # a new platform-side value is only covered if it is declared in a deployment (readable, diffable) or
 # made to fail closed at boot.
 #
-# THE PROBE CANNOT ROLL BACK. Measured on run 32748912239: the script-scoped deploy key returns 401 on
-# both `GET /compute/script/<id>/releases` and `GET /compute/script/<id>`. Release re-publish needs the
-# ACCOUNT key. A red run means a broken script is live and a human fixes it forward.
+# BUNNY'S OWN ROLLBACK IS STILL UNAVAILABLE. Measured on run 32748912239: the script-scoped deploy key
+# returns 401 on both `GET /compute/script/<id>/releases` and `GET /compute/script/<id>`. Release
+# re-publish needs the ACCOUNT key, which CI is forbidden to hold.
+#
+# SO THIS WORKFLOW BRINGS ITS OWN, and it is narrow on purpose. Every green deploy archives its bundle as
+# `bundle-<sha>`; a deploy that opens a maintenance window first reads the LIVE commit from `/health` and
+# proves that commit's archive is retrievable, and on failure republishes it. That covers exactly one
+# failure: a migrating deploy that left the window open. A NON-migrating deploy that goes red still leaves
+# whatever is live, live, and a human fixes it forward — unchanged.
+#
+# ── WHAT A MIGRATING DEPLOY DOES, AND WHY ────────────────────────────────────────────────────────────
+#
+# Migrate-before-publish is correct and stays: a failed migration must not leave new code on an old store.
+# But it leaves an interval — between the migration landing and the new bundle serving, the PREVIOUS
+# bundle answers requests against the MIGRATED store, with statements written for a shape that no longer
+# exists. So when (and only when) a migration is pending, this workflow publishes a maintenance bundle
+# first, waits until it is observed serving, migrates, then publishes the real bundle and waits again.
+#
+# The flag rides INSIDE the bundle because it has to: CI holds only the script-scoped deploy key and
+# cannot write the Edge Script's environment, so which code is published is the only lever it has. The
+# maintenance and real bundles are the same commit resolved from two deployments that differ in one key,
+# which is why `/health` reports the window state and both probes assert it — the sha cannot tell them
+# apart. Capability `backend-deployment`; decision record
+# `openspec/changes/add-deploy-maintenance-mode/design.md`.
 
 on:
   push:
@@ -71,6 +92,13 @@ on:
 concurrency:
   group: api-deploy
   cancel-in-progress: false
+
+# `actions: read` is what lets the capture and rollback steps reach `bundle-<sha>` from EARLIER RUNS via
+# the artifacts API — `actions/download-artifact` addresses only this run's artifacts. Stated explicitly
+# rather than inherited, so the deploy path's token carries exactly these two and nothing else.
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   test-and-deploy:
@@ -109,34 +137,168 @@ jobs:
             exit 1
           }
 
-      # --- Migrate BEFORE publishing. main only, like the deploy itself. ---
+      # ── Does this deploy touch the schema at all? ────────────────────────────────────────────────
+      #
+      # THE ANSWER DECIDES WHETHER THERE IS AN OUTAGE. Most deploys change no schema, and those must cost
+      # exactly what they cost today: one publish, one probe, no window. Only a deploy with an unapplied
+      # migration pays for the maintenance dance below.
+      #
+      # THREE OUTCOMES, NOT TWO. `deno run` exits non-zero on a crash as well, so `0`/`1` would make
+      # "nothing pending" and "the check blew up" the same answer — and a crash read as "nothing pending"
+      # would publish the new bundle onto an un-migrated store, which is the exact failure the window
+      # exists to prevent. So `10` means pending, `0` means none, and ANY other code is fatal here.
+      - name: Is a migration pending?
+        id: plan
+        if: github.ref == 'refs/heads/main'
+        working-directory: api
+        env:
+          BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
+          BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
+        run: |
+          set +e
+          deno run --allow-net --allow-env src/scripts/migrate.ts --pending
+          code=$?
+          set -e
+          case "$code" in
+            0)  echo "pending=false" >> "$GITHUB_OUTPUT" ;;
+            10) echo "pending=true"  >> "$GITHUB_OUTPUT" ;;
+            *)  echo "::error::the pending check failed with exit $code — refusing to guess whether a" \
+                     "migration is pending. Neither answer is safe to assume: 'none' would publish this" \
+                     "bundle onto a possibly un-migrated store."
+                exit 1 ;;
+          esac
+
+      # ── Capture what is live, so the window can always be lifted ─────────────────────────────────
+      #
+      # RUN BEFORE ANYTHING IS PUBLISHED, and fatal if it cannot answer. Opening a maintenance window we
+      # cannot lift is the worst outcome this pipeline can produce — the device API serves 503 with
+      # nothing scheduled to restore it — so the recovery path is proven available BEFORE the window,
+      # never assumed at the moment it is needed.
+      #
+      # The archive is checked too, not just the commit. There is deliberately NO rebuild fallback (the
+      # resolver stamps from GITHUB_SHA, and the failure path is the last place to add moving parts), so
+      # an absent archive means no rollback exists — which must fail here, before the outage, rather than
+      # during it.
+      #
+      # THE ARCHIVE IS SELF-SEEDING, so this is not a hurdle a first migrating deploy has to clear: EVERY
+      # green deploy to `main` archives its bundle, migrating or not. The deploy that introduced this
+      # pipeline was itself non-migrating, so it archived the commit that the next migrating deploy reads
+      # back from `/health`. The check can realistically only fire if a green deploy is older than the
+      # 90-day retention, or if the last deploy went red and never archived.
+      - name: Capture the live bundle, and prove it can be restored
+        id: live
+        if: github.ref == 'refs/heads/main' && steps.plan.outputs.pending == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The origin comes from the RESOLVED deployment, never restated here — a literal in this file
+          # would be a copy no guard inspects.
+          DOMAIN=$(sed -n 's/^domain=//p' build/deployment.properties)
+          BODY=$(curl -fsS --max-time 30 "https://$DOMAIN/health") || {
+            echo "::error::could not read https://$DOMAIN/health — refusing to open a maintenance" \
+                 "window without knowing which bundle to restore if the migration fails"
+            exit 1
+          }
+          LIVE=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
+          if [ -z "$LIVE" ] || [ "$LIVE" = "dev" ]; then
+            echo "::error::the live bundle reports sha '$LIVE', which names no commit to restore"
+            exit 1
+          fi
+          echo "live bundle is $LIVE"
+          COUNT=$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=bundle-$LIVE" \
+                    --jq '[.artifacts[] | select(.expired == false)] | length')
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::no unexpired artifact 'bundle-$LIVE' — the live bundle cannot be restored," \
+                 "so this run will not open a maintenance window it could not lift. Every green deploy" \
+                 "archives its own bundle, so this means the live one predates the archive, is older" \
+                 "than the 90-day retention, or was published by a run that went red. Land any deploy" \
+                 "with NO pending migration first: it archives its bundle, and this check then passes."
+            exit 1
+          fi
+          echo "sha=$LIVE" >> "$GITHUB_OUTPUT"
+
+      # ── Open the window ──────────────────────────────────────────────────────────────────────────
+      #
+      # The SAME commit, resolved from the `maintenance` deployment — which differs from `prod` in exactly
+      # one key, because both extend the same component. Every route under `/api/` answers 503; the site,
+      # the AASA and `/health` keep serving.
+      - name: Bundle the maintenance window
+        if: steps.live.outputs.sha != ''
+        working-directory: api
+        run: |
+          deno task bundle:maintenance
+          grep -q "${{ github.sha }}" dist/main.js || {
+            echo "::error::the maintenance bundle does not carry ${{ github.sha }}"
+            exit 1
+          }
+
+      - name: Publish the maintenance window
+        if: steps.live.outputs.sha != ''
+        uses: BunnyWay/actions/deploy-script@main
+        with:
+          script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
+          deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
+          file: api/dist/main.js
+
+      # GATES THE MIGRATION. Migrating while the previous bundle is still serving is the very interval
+      # this change exists to close, so the migration does not start until the window is observed open.
+      #
+      # ⚠️ ONE OBSERVATION, ~119 POINTS OF PRESENCE. This polls one hostname, which resolves to one PoP,
+      # and no propagation contract is published. Green here means "very likely every PoP is serving the
+      # maintenance bundle", never "certainly" — the residual is stated in `backend-deployment` rather
+      # than papered over with a settle wait that would read as a guarantee it is not.
+      - name: Probe that the window is open
+        if: steps.live.outputs.sha != ''
+        run: |
+          DOMAIN=$(sed -n 's/^domain=//p' build/deployment.properties)
+          cd api
+          deno run --allow-net src/scripts/probe.ts \
+            --origin="https://$DOMAIN" --sha="${{ github.sha }}" --maintenance=true
+
+      # --- Migrate. Inside the window, and only when something is pending. ---
       #
       # The bundle about to ship is written against the schema this step produces, so a bundle must never
-      # be published against a store that has not had it applied. Ordered before the deploy and not
-      # `continue-on-error`: a failed migration fails the run with the previous bundle still live, which
-      # is the recoverable state. The reverse order — publish, then migrate — puts new code on an old
-      # store and has nothing watching.
+      # be published against a store that has not had it applied. A failed migration fails the run with
+      # the previous bundle restored by the rollback step below — which is the recoverable state.
+      #
+      # ⚠️ ATOMIC PER MIGRATION, NOT PER RUN. A run applying several migrations in which a later one fails
+      # leaves the store at an intermediate version that NO bundle is written against — including the one
+      # the rollback restores. That is roll-forward only, repaired by hand, and stated rather than implied
+      # (capability `backend-deployment`). The bound that keeps it rare: ship one migration per deploy.
       #
       # WHY CI HOLDS THESE AND NOT THE STORAGE KEY. `backend-deployment` requires that
       # BUNNY_STORAGE_ACCESS_KEY be an Edge Script environment value and NOT a deploy-workflow secret,
       # because bunny issues no scoped keys and that one also owns the zone holding every user's photos.
       # The database credentials are a third category, admitted deliberately: CI — not the endpoint — is
       # what applies migrations. This widens a compromised deploy path's reach to the relational store
-      # and SHALL NOT be widened further to storage.
-      #
-      # Applying an already-applied migration is a no-op (the version is recorded), so this runs on every
-      # deploy and does nothing on most of them.
+      # and SHALL NOT be widened further to storage. It is also why the bundle archive below lives in
+      # GitHub Actions rather than in the storage zone.
       - name: Migrate the relational store
-        if: github.ref == 'refs/heads/main'
+        if: steps.live.outputs.sha != ''
         working-directory: api
         env:
           BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
           BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
         run: deno run --allow-net --allow-env src/scripts/migrate.ts
 
+      # The maintenance bundle overwrote `dist/main.js`, so rebuild the real one. Re-resolving `prod` is
+      # what puts the flag back to false — the bundle is the only carrier of that value.
+      - name: Re-bundle after the window
+        if: steps.live.outputs.sha != ''
+        working-directory: api
+        run: |
+          deno task bundle
+          grep -q "${{ github.sha }}" dist/main.js || {
+            echo "::error::the re-bundled artifact does not carry ${{ github.sha }}"
+            exit 1
+          }
+
       # --- Deploy: main only. Feature-branch pushes still bundle and verify the stamp, so a bundling
       #     failure surfaces on the branch, but do not ship to the single live script. Idempotent:
-      #     re-deploys overwrite the same script_id. ---
+      #     re-deploys overwrite the same script_id.
+      #
+      #     This is the ONE publish of the real bundle, on both paths: without a pending migration it
+      #     ships the artifact built above, and with one it ships the re-bundle that lifts the window. ---
       - name: Deploy to bunny Edge Scripting
         if: github.ref == 'refs/heads/main'
         uses: BunnyWay/actions/deploy-script@main
@@ -149,6 +311,11 @@ jobs:
       # it serves. It polls the DEVICE-FACING origin — not the script's bunny hostname, which would go
       # green while DNS, the certificate or the pull zone were broken (and which CI cannot discover
       # anyway: 401). It retries only causes time can fix and fails at once on the rest.
+      #
+      # `--maintenance=false` IS LOAD-BEARING, not a restatement of the default. The two bundles a
+      # migrating deploy publishes carry the SAME commit, so the sha alone cannot tell them apart: without
+      # this assertion a run that published the real bundle but never propagated it would report success
+      # with the device API serving 503 to every phone.
       - name: Probe the deployed script
         if: github.ref == 'refs/heads/main'
         run: |
@@ -159,4 +326,103 @@ jobs:
           DOMAIN=$(sed -n 's/^domain=//p' build/deployment.properties)
           cd api
           deno run --allow-net src/scripts/probe.ts \
-            --origin="https://$DOMAIN" --sha="${{ github.sha }}"
+            --origin="https://$DOMAIN" --sha="${{ github.sha }}" --maintenance=false
+
+      # ── The archive that makes the next deploy's rollback possible ───────────────────────────────
+      #
+      # Uploaded only after the probe is green, so the archive holds bundles that DEMONSTRABLY served.
+      # Keyed by commit, which is what `/health` reports and therefore what a later run can ask for.
+      #
+      # NOT IN THE STORAGE ZONE, for two independent reasons. `BUNNY_STORAGE_ACCESS_KEY` is not this
+      # workflow's to hold (above), and a rollback has to work when bunny is the thing misbehaving — an
+      # artifact here is a separate failure domain from the platform being deployed to. Precedent:
+      # `ios-deliver` parks each build's dSYMs the same way.
+      #
+      # KEYED BY COMMIT, NOT A SINGLE `bundle-latest`, and the name is the CHECK rather than a label. The
+      # capture step asserts that the archive for the LIVE commit exists — an identity claim. A single
+      # rolling artifact could only answer "something is archived", and the two drift: a NON-migrating
+      # deploy that publishes and then fails its probe leaves that bundle live with nothing archived for
+      # it (that path deliberately does not roll back). The next migrating deploy would then open a window
+      # believing it could restore what was live, and on failure would silently republish an OLDER bundle
+      # — reverting a shipped change while reporting a successful rollback. Keyed by commit, it refuses to
+      # open the window instead. It also sidesteps an unmeasured platform behaviour: v4 artifacts are
+      # immutable and names are not unique across runs, so a query for a rolling name can return several
+      # and picking one would rest on an ordering nobody here has measured.
+      #
+      # ACCUMULATION IS NOT A COST WORTH TRADING THAT FOR: ~790 KB per deploy in a PUBLIC repository,
+      # where Actions storage is free, beside the 390 MB of `dsyms-*` this repo already parks by design.
+      #
+      # 90 DAYS, WHICH IS THE PLATFORM MAXIMUM and cannot be raised: GitHub caps artifact retention at 90
+      # days for PUBLIC repositories (1–400 applies to private ones only). `dsyms-*` already runs at this
+      # ceiling. Chosen over a shorter window because the storage is free here and the only thing retention
+      # buys is margin: how long `api/**` may sit untouched before the next migrating deploy finds nothing
+      # to restore.
+      #
+      # EXPIRY IS NOT A CORRECTNESS RISK EITHER WAY. The capture step checks the archive BEFORE a window
+      # opens, never at rollback time, so an expired archive costs a refused deploy rather than a stuck
+      # outage — and re-seeding it is one non-migrating deploy.
+      - name: Archive this bundle for a future rollback
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ github.sha }}
+          path: api/dist/main.js
+          retention-days: 90
+          if-no-files-found: error
+
+      # ── Lift the window on failure ───────────────────────────────────────────────────────────────
+      #
+      # Runs when anything after the window opened has failed — a refused migration, a bundling error, a
+      # publish that did not take, a red final probe. It republishes the bundle that was serving before
+      # the window, which the capture step already proved retrievable.
+      #
+      # It is scoped by `steps.live.outputs.sha`, so it cannot fire on a deploy that never opened a window
+      # — a non-migrating deploy that fails leaves whatever is live, live, exactly as before.
+      #
+      # THE MIGRATION MAY HAVE PARTLY APPLIED. Restoring the previous bundle is right when the store is
+      # where it was (the common case: one migration, refused or rolled back atomically). It is NOT right
+      # when a multi-migration run failed halfway — no bundle matches that store — and no automation here
+      # can repair it. The message says so rather than implying the restore made everything well.
+      - name: Lift the window by restoring the previous bundle
+        if: failure() && steps.live.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LIVE='${{ steps.live.outputs.sha }}'
+          echo "::warning::restoring bundle-$LIVE to lift the maintenance window"
+          ID=$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=bundle-$LIVE" \
+                 --jq '[.artifacts[] | select(.expired == false)][0].id')
+          if [ -z "$ID" ] || [ "$ID" = "null" ]; then
+            echo "::error::bundle-$LIVE is gone since it was checked. THE DEVICE API IS SERVING 503." \
+                 "Restore it by hand: check out $LIVE, run 'python3 scripts/resolve-deployment.py prod'" \
+                 "and 'deno task bundle' in api/, then publish api/dist/main.js to the Edge Script."
+            exit 1
+          fi
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ID/zip" > restore.zip
+          mkdir -p restore && unzip -o -q restore.zip -d restore
+          test -s restore/main.js || {
+            echo "::error::bundle-$LIVE contained no main.js. THE DEVICE API IS SERVING 503 — restore" \
+                 "by hand as described above."
+            exit 1
+          }
+          cp restore/main.js api/dist/main.js
+          echo "::warning::the store may have partly migrated. Restoring the previous bundle is correct" \
+               "only if it did not; a run that applied one migration and failed a later one leaves the" \
+               "store at a version NO bundle is written against, and that is repaired by rolling" \
+               "forward, by hand."
+
+      - name: Publish the restored bundle
+        if: failure() && steps.live.outputs.sha != ''
+        uses: BunnyWay/actions/deploy-script@main
+        with:
+          script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
+          deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
+          file: api/dist/main.js
+
+      - name: Probe that the window is lifted
+        if: failure() && steps.live.outputs.sha != ''
+        run: |
+          DOMAIN=$(sed -n 's/^domain=//p' build/deployment.properties)
+          cd api
+          deno run --allow-net src/scripts/probe.ts \
+            --origin="https://$DOMAIN" --sha="${{ steps.live.outputs.sha }}" --maintenance=false

@@ -60,8 +60,6 @@ export interface Db {
   execute(sql: string, args?: unknown[]): Promise<{ rows: Row[]; rowsAffected: number }>;
   batch(statements: Statement[]): Promise<void>;
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>;
-  /** `PRAGMA foreign_keys` as the store reports it. The boot probe asserts this rather than trusting it. */
-  foreignKeysEnabled(): Promise<boolean>;
 }
 
 /**

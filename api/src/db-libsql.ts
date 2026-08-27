@@ -36,11 +36,6 @@ export function libsqlDb(url: string, authToken: string): Db {
       await handle.batch(statements.map((s) => ({ sql: s.sql, args: s.args ?? [] })), "write");
     },
     transaction: onTransaction,
-    async foreignKeysEnabled() {
-      const r = await handle.execute({ sql: "PRAGMA foreign_keys", args: [] });
-      const row = r.rows[0] as Row | undefined;
-      return row !== undefined && Number(Object.values(row)[0]) === 1;
-    },
   });
 
   const runTransaction = async <T>(fn: (tx: Db) => Promise<T>): Promise<T> => {

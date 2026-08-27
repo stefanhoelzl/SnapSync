@@ -62,6 +62,7 @@ const CONFIG = {
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
   databaseUrl: "",
   databaseToken: "",
+  maintenance: false,
 };
 
 const TOKEN = await mintToken(CONFIG, D, NOW);
@@ -207,7 +208,6 @@ Deno.test("byte PUT → a store failure does NOT fail the upload (best-effort re
     execute: () => Promise.reject(new Error("store down")),
     batch: () => Promise.reject(new Error("store down")),
     transaction: () => Promise.reject(new Error("store down")),
-    foreignKeysEnabled: () => Promise.resolve(true),
   };
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, db: broken, fetch: fetchImpl }).request(BYTE_PATH, {
@@ -592,7 +592,6 @@ Deno.test("device list → a store failure → 502, never a partial list", async
     execute: () => Promise.reject(new Error("store down")),
     batch: () => Promise.reject(new Error("store down")),
     transaction: () => Promise.reject(new Error("store down")),
-    foreignKeysEnabled: () => Promise.resolve(true),
   };
   const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
     DEVLIST_PATH,
@@ -715,7 +714,6 @@ Deno.test("POST /events → a store failure → 502 (faithful create)", async ()
     execute: () => Promise.reject(new Error("store down")),
     batch: () => Promise.reject(new Error("store down")),
     transaction: () => Promise.reject(new Error("store down")),
-    foreignKeysEnabled: () => Promise.resolve(true),
   };
   const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
     "/api/v1/events",
@@ -755,7 +753,6 @@ Deno.test("GET /events/:id → a store failure is 502, never 404", async () => {
     execute: () => Promise.reject(new Error("store down")),
     batch: () => Promise.reject(new Error("store down")),
     transaction: () => Promise.reject(new Error("store down")),
-    foreignKeysEnabled: () => Promise.resolve(true),
   };
   const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
     `/api/v1/events/${E}`,
@@ -955,7 +952,6 @@ Deno.test("union → a store failure → 502, never a partial union", async () =
     execute: () => Promise.reject(new Error("store down")),
     batch: () => Promise.reject(new Error("store down")),
     transaction: () => Promise.reject(new Error("store down")),
-    foreignKeysEnabled: () => Promise.resolve(true),
   };
   const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
     UNION_PATH,
@@ -1255,50 +1251,174 @@ Deno.test("deleteByMs → NaN when neither anchor parses", () => {
   assert(Number.isNaN(deleteByMs({ createdAt: "nope", startsAt: "nope", lifetimeSeconds: 60 })));
 });
 
-// ── GET /health (the deploy boot probe's target) ───────────────────────────────────────────────────
+// ── The maintenance window (capability `backend-deployment`) ───────────────────────────────────────
 
-Deno.test("health → reports the bundle's commit and the store's state, uncacheable", async () => {
+/** The same app, built from a bundle that carries the maintenance flag. */
+function windowOpen(deps: Omit<Deps, "config">) {
+  return createRealApp({ ...deps, config: { ...CONFIG, maintenance: true }, now: () => NOW });
+}
+
+Deno.test("window: a device-API request is refused, and touches nothing", async () => {
   const db = await store();
   const { calls, fetchImpl } = recorder();
-  const app = createRealApp({ config: CONFIG, db, fetch: fetchImpl, buildSha: "abc123" });
-  const res = await app.request("/health");
-  assertEquals(res.status, 200);
-  assertEquals(await res.json(), { sha: "abc123", database: "ok" });
+  const res = await windowOpen({ db, fetch: fetchImpl }).request(BYTE_PATH, {
+    method: "PUT",
+    body: "bytes",
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
+  assertEquals(res.status, 503);
+  // A POLL INTERVAL, not a guess at the window's length: every 503 re-issues it, so a caller that
+  // honours it asks again and converges. Under-estimating is the safer error — too high would keep a
+  // caller away after the service is back.
+  assertEquals(res.headers.get("Retry-After"), "30");
+  // Load-bearing: the pull zone caches on this, and a cached 503 would outlive the window — turning a
+  // bounded, deliberate outage into an unbounded accidental one.
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
-  assertEquals(calls.length, 0); // no storage call
+  assertEquals(calls.length, 0);
+  const rows = await db.execute(`SELECT COUNT(*) AS n FROM resources`);
+  assertEquals(Number(rows.rows[0].n), 0);
   db.close();
 });
 
-Deno.test("health → foreign keys OFF is reported, not hidden behind a 200", async () => {
-  // A store serving with constraints silently disabled is a green deploy over a broken invariant. The
-  // route stays total — it REPORTS the state and the probe decides what it means.
-  const off: Db = {
-    execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
-    batch: () => Promise.resolve(),
-    transaction: () => Promise.reject(new Error("unused")),
-    foreignKeysEnabled: () => Promise.resolve(false),
-  };
-  const res = await createRealApp({
-    config: CONFIG,
-    db: off,
-    fetch: recorder().fetchImpl,
-    buildSha: "pinned",
-  }).request("/health");
-  assertEquals(await res.json(), { sha: "pinned", database: "foreign-keys-off" });
+Deno.test("window: it is a PREFIX, so an unshipped /api/v2 is refused too", async () => {
+  // The property a closed list cannot have. `/api/v2` has no routes at all today; the point is that when
+  // it does, it is gated because of where it is mounted, not because someone remembered to list it.
+  const db = await store();
+  const res = await windowOpen({ db, fetch: recorder().fetchImpl }).request(
+    `/api/v2/events/${E}`,
+    { headers: { authorization: `Bearer ${TOKEN}` } },
+  );
+  assertEquals(res.status, 503);
+  db.close();
 });
 
-Deno.test("health → an unreachable store is distinguishable from a misprovisioned one", async () => {
+Deno.test("window: maintenance wins over the token gate", async () => {
+  // Ordering, pinned in both directions. Without the flag this same request is a 401; with it the answer
+  // is the truthful one — the service is down, not the caller unauthorized.
+  const db = await store();
+  const open = await windowOpen({ db, fetch: recorder().fetchImpl }).request(DEVLIST_PATH);
+  assertEquals(open.status, 503);
+  const closed = await createRealApp({ config: CONFIG, db, fetch: recorder().fetchImpl })
+    .request(DEVLIST_PATH);
+  assertEquals(closed.status, 401);
+  db.close();
+});
+
+Deno.test("window: the root routes keep serving", async () => {
+  // They read only the public `site/` prefix or nothing at all, so a schema migration has no bearing on
+  // them — and taking the marketing page down for a database change would be an outage chosen for free.
+  const db = await store();
+  const { fetchImpl } = recorder();
+  const site: FetchLike = (url, init) =>
+    url.includes("/site/")
+      ? Promise.resolve(new Response("<html></html>", { status: 200 }))
+      : fetchImpl(url, init);
+  const app = windowOpen({ db, fetch: site });
+  for (
+    const path of ["/", "/join", "/_astro/app.abc123.js", "/.well-known/apple-app-site-association"]
+  ) {
+    assertEquals((await app.request(path)).status, 200, path);
+  }
+  db.close();
+});
+
+Deno.test("window: /health still answers, and says the window is open", async () => {
+  // Gating this would blind the step that LIFTS the window: the probe reads exactly this to tell the
+  // maintenance publish from the ordinary one, which carry the same commit.
+  const db = await store();
+  const res = await windowOpen({ db, fetch: recorder().fetchImpl, buildSha: "same" })
+    .request("/health");
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { sha: "same", maintenance: true });
+  db.close();
+});
+
+Deno.test("window: with the flag off, the device API is untouched", async () => {
+  // The default every non-migrating deploy ships. If this ever fails, `main` is serving 503s.
+  const db = await store();
+  const { calls, fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
+    method: "PUT",
+    body: "bytes",
+  });
+  assertEquals(res.status, 201);
+  assertEquals(calls.filter((c) => c.init.method === "PUT").length, 1);
+  db.close();
+});
+
+// ── GET /health (the deploy boot probe's target) ───────────────────────────────────────────────────
+
+Deno.test("health → reports the commit, uncacheable", async () => {
+  const db = await store();
+  const { fetchImpl } = recorder();
+  const app = createRealApp({ config: CONFIG, db, fetch: fetchImpl, buildSha: "abc123" });
+  const res = await app.request("/health");
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { sha: "abc123" });
+  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+  db.close();
+});
+
+Deno.test("health → the window field appears only when the window is OPEN", async () => {
+  // Absence means closed, and that collapse is safe because both causes it absorbs are the same answer:
+  // a bundle whose flag is false, and a bundle predating the flag — which was built before maintenance
+  // mode existed, so it is necessarily serving the device API.
+  const db = await store();
+  const open = { ...CONFIG, maintenance: true };
+  const res = await createRealApp({ config: open, db, fetch: recorder().fetchImpl, buildSha: "p" })
+    .request("/health");
+  assertEquals(await res.json(), { sha: "p", maintenance: true });
+  db.close();
+});
+
+Deno.test("health → it reaches BOTH dependencies, not just the store", async () => {
+  // The storage call is the new coverage: a BUNNY_STORAGE_ZONE that is present but names a zone that
+  // does not exist used to boot and probe green.
+  const db = await store();
+  const { calls, fetchImpl } = recorder();
+  await createRealApp({ config: CONFIG, db, fetch: fetchImpl }).request("/health");
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].url, `${ZONE}/`);
+  assertEquals(calls[0].init.method, "GET");
+  db.close();
+});
+
+Deno.test("health → an unreachable store is a bare non-success, not a 200 describing itself", async () => {
   const down: Db = {
     execute: () => Promise.reject(new Error("no route to host")),
     batch: () => Promise.reject(new Error("no route to host")),
     transaction: () => Promise.reject(new Error("no route to host")),
-    foreignKeysEnabled: () => Promise.reject(new Error("no route to host")),
   };
   const res = await createRealApp({ config: CONFIG, db: down, fetch: recorder().fetchImpl })
-    .request(
-      "/health",
-    );
-  assertEquals((await res.json() as Record<string, unknown>).database, "unreachable");
+    .request("/health");
+  assertEquals(res.status, 503);
+  assertEquals(await res.text(), "");
+});
+
+Deno.test("health → an unreachable storage zone is a bare non-success too", async () => {
+  // A wrong zone answers 404 through the native storage API. It must NOT read as an empty zone: that is
+  // exactly the tolerance `storageReachable` refuses to inherit from `listDir`.
+  const db = await store();
+  const res = await createRealApp({
+    config: CONFIG,
+    db,
+    fetch: recorder({ status: 404 }).fetchImpl,
+  })
+    .request("/health");
+  assertEquals(res.status, 503);
+  db.close();
+});
+
+Deno.test("health → a storage call that throws is unreachable, never an exception", async () => {
+  const db = await store();
+  const res = await createRealApp({
+    config: CONFIG,
+    db,
+    fetch: recorder({ throws: true }).fetchImpl,
+  })
+    .request("/health");
+  assertEquals(res.status, 503);
+  db.close();
 });
 
 Deno.test("health → HEAD returns the headers with no body", async () => {
@@ -1309,6 +1429,19 @@ Deno.test("health → HEAD returns the headers with no body", async () => {
   );
   assertEquals(res.status, 200);
   assertEquals(await res.text(), "");
+  db.close();
+});
+
+Deno.test("health → a mutating method is not served by this route", async () => {
+  const db = await store();
+  // Driven WITH a token on purpose. The gate admits `/health` for GET/HEAD only, so an unauthenticated
+  // POST stops at the token check (401) and never reaches routing — which would test the gate, not this
+  // route. Past the gate, the answer is the route table's: no such entry.
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/health",
+    { method: "POST" },
+  );
+  assertEquals(res.status, 404);
   db.close();
 });
 

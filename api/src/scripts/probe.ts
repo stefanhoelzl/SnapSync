@@ -11,9 +11,17 @@
 // database credentials landing next reintroduce exactly that, so the condition has fired.
 //
 // WHAT GREEN PROVES: the script booted (module top-level ran, `readConfig` did not throw), THIS bundle is
-// the one answering, and the whole device-facing chain — DNS, certificate, pull zone, script — is intact.
-// WHAT IT DOES NOT PROVE: that any configured value is CORRECT. A value that is present but wrong boots
-// and probes green. Probe coverage is exactly the set of faults that startup turns into a failure to boot.
+// the one answering, it is the publish of that commit the caller asked for (a migrating deploy publishes
+// the same commit twice — see `expectMaintenance`), both dependencies are reachable, and the whole
+// device-facing chain — DNS, certificate, pull zone, script — is intact.
+// WHAT IT DOES NOT PROVE: that any configured value is CORRECT beyond being addressable. `BUNNY_STORAGE_ZONE`
+// naming a zone that does not exist is now covered — that was the half of the 2026-07 outage nothing
+// watched — but a value that is present, wrong, and still resolves boots and probes green.
+//
+// WHAT IT CANNOT SEE AT ALL: the other ~118 points of presence. This polls ONE hostname, which resolves to
+// ONE PoP, and no propagation contract is published (the vendor's own statements range from seconds to
+// minutes). So a green probe before a migration means "very likely every PoP is serving the maintenance
+// bundle", never "certainly". That residual is stated in `backend-deployment` rather than implied here.
 //
 // WHY THERE IS NO ROLLBACK. Bunny does support re-publishing a previous release — but MEASURED (run
 // 32748912239), the script-scoped deploy key returns 401 on both `GET /compute/script/<id>/releases` and
@@ -35,20 +43,21 @@ export type Cause =
   | "not-found" // 404: an older bundle without the route is still live — retryable
   | "stale-sha" // 200 with a different, well-formed sha: propagating — retryable
   | "unstamped" // 200 with the placeholder sha: CI supplied none — TERMINAL, our bug
-  | "store-unreachable" // this bundle, but it cannot reach its relational store — retryable
-  | "foreign-keys-off" // this bundle, store reachable, constraints DISABLED — TERMINAL
+  | "wrong-maintenance-state" // this bundle, but the OTHER publish of it — propagating — retryable
   | "unparseable"; // 200 that is not our health response: something else is answering — TERMINAL
 
 /** Causes time can fix. Everything else fails at once: retrying a terminal cause only hides it. */
 const RETRYABLE: ReadonlySet<Cause> = new Set<Cause>([
   "unreachable",
+  // `server-error` now covers a dependency the health route could not reach, which used to be its own
+  // `store-unreachable` cell. It stays retryable for the same reason that one was: a store or a zone that
+  // does not answer at this instant may simply be waking.
   "server-error",
   "not-found",
   "stale-sha",
-  // A store that is unreachable at this instant may simply be waking; enforcement being OFF is not, so it
-  // is deliberately NOT here. Retrying a terminal cause until the deadline turns a specific,
-  // one-line-to-fix misprovisioning into an unexplained timeout.
-  "store-unreachable",
+  // The right bundle in the other publish's state is propagation, exactly like `stale-sha` — a migrating
+  // deploy publishes twice from ONE commit, so this is the only cell that can see the difference.
+  "wrong-maintenance-state",
 ]);
 
 /** The sha a build carries when CI supplied none — see the resolver's inventory. */
@@ -67,8 +76,18 @@ export type Verdict = {
  *
  * Robust to bunny behaviour nobody has measured — an HTML error page returned with 200, a stale cached
  * copy, or the previous deployment surviving all land in a red cell, and the two that should be fast are.
+ *
+ * `expectMaintenance` is what the CALLER asked for: a migrating deploy probes twice from one commit — once
+ * expecting the window OPEN (before it migrates) and once expecting it CLOSED (after it publishes the
+ * ordinary bundle). Without it the second probe would pass against the maintenance bundle and a run that
+ * never lifted the window would report success.
  */
-export function classify(status: number, body: string, expectedSha: string): Cause {
+export function classify(
+  status: number,
+  body: string,
+  expectedSha: string,
+  expectMaintenance: boolean,
+): Cause {
   if (status === 404) return "not-found";
   if (status >= 500) return "server-error";
   if (status !== 200) return "unparseable";
@@ -94,22 +113,27 @@ export function classify(status: number, body: string, expectedSha: string): Cau
   if (sha !== expectedSha) return expectedSha === UNSTAMPED ? "unstamped" : "stale-sha";
   if (sha === UNSTAMPED) return "unstamped";
 
-  // This IS the bundle we deployed. Now the second question the probe exists to answer (capability
-  // `backend-deployment`): can it reach its relational store, and are FOREIGN KEYS enforced there? A
-  // deployment serving with constraints silently disabled is a green deploy over a broken invariant,
-  // which is the exact failure shape this probe was added to catch for the bundle identity.
-  let database: unknown;
+  // This IS the commit we deployed — but a migrating deploy publishes that commit TWICE, so identity is
+  // no longer enough. Ask which of the two is answering (capability `backend-deployment`).
+  //
+  // The store and the zone need no cell here any more: the health route reaches both itself and answers a
+  // non-success status when either is unreachable, which lands in `server-error` above. That collapse is
+  // safe because only ONE condition remains and it is retryable — the terminal one (foreign keys off) was
+  // removed with the assertion behind it (capability `database`).
+  let field: unknown;
   try {
-    database = (JSON.parse(body) as { database?: unknown }).database;
+    field = (JSON.parse(body) as { maintenance?: unknown }).maintenance;
   } catch {
     return "unparseable";
   }
-  // An older bundle that predates this field answers without it. Treat that as the sha check already
-  // did — it is not this deployment's health response.
-  if (typeof database !== "string") return "unparseable";
-  if (database === "unreachable") return "store-unreachable";
-  if (database === "foreign-keys-off") return "foreign-keys-off";
-  if (database !== "ok") return "unparseable";
+  // ABSENT MEANS CLOSED, deliberately. The health route omits the field unless the window is open, and
+  // the only other thing that can omit it is a bundle predating the flag — which was built before
+  // maintenance mode existed and is therefore serving the device API. Both causes are the same answer, so
+  // collapsing them loses nothing. A field that is PRESENT but not a boolean is still `unparseable`: that
+  // is not an absence, it is this backend's response shape being wrong.
+  const open = field === undefined ? false : field;
+  if (typeof open !== "boolean") return "unparseable";
+  if (open !== expectMaintenance) return "wrong-maintenance-state";
   return "match";
 }
 
@@ -118,6 +142,8 @@ export type ProbeOptions = {
   /** The device-facing origin, e.g. `https://example.com` — no trailing slash. */
   origin: string;
   expectedSha: string;
+  /** Which of a migrating deploy's two publishes of this commit must be answering. */
+  expectMaintenance: boolean;
   /** Injected so tests pin them; `runProbe` never reads a clock or sleeps on its own. */
   now: () => number;
   sleep: (ms: number) => Promise<void>;
@@ -132,6 +158,7 @@ export async function runProbe(
     fetch,
     origin,
     expectedSha,
+    expectMaintenance,
     now,
     sleep,
     log = () => {},
@@ -150,7 +177,7 @@ export async function runProbe(
     try {
       const res = await fetch(url, { method: "GET" });
       const body = await res.text();
-      cause = classify(res.status, body, expectedSha);
+      cause = classify(res.status, body, expectedSha, expectMaintenance);
       detail = `HTTP ${res.status} ${body.slice(0, 120)}`;
     } catch (e) {
       cause = "unreachable";
@@ -166,8 +193,18 @@ export async function runProbe(
   }
 }
 
-/** `--name=value` / `--name value`. Both arguments are REQUIRED: there is no safe default for either. */
-export function parseArgs(argv: readonly string[]): { origin: string; sha: string } {
+/**
+ * `--name=value` / `--name value`. `--origin` and `--sha` are REQUIRED: there is no safe default for
+ * either.
+ *
+ * `--maintenance` is a flag, defaulting to FALSE — the state every non-migrating deploy expects, and the
+ * one a caller who has not thought about it wants. Only the pre-migration probe of a migrating deploy
+ * passes it. A value other than `true`/`false` is refused rather than coerced: `--maintenance=yes`
+ * silently meaning "closed" would let a run assert the opposite of what it intended.
+ */
+export function parseArgs(
+  argv: readonly string[],
+): { origin: string; sha: string; maintenance: boolean } {
   const values = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -179,9 +216,16 @@ export function parseArgs(argv: readonly string[]): { origin: string; sha: strin
   const origin = values.get("origin") ?? "";
   const sha = values.get("sha") ?? "";
   if (!origin || !sha) {
-    throw new Error("usage: probe.ts --origin=https://<host> --sha=<commit> (both required)");
+    throw new Error(
+      "usage: probe.ts --origin=https://<host> --sha=<commit> [--maintenance=true|false] " +
+        "(origin and sha required)",
+    );
   }
-  return { origin: origin.replace(/\/+$/, ""), sha };
+  const raw = values.has("maintenance") ? (values.get("maintenance") || "true") : "false";
+  if (raw !== "true" && raw !== "false") {
+    throw new Error(`probe.ts: --maintenance must be 'true' or 'false', not '${raw}'`);
+  }
+  return { origin: origin.replace(/\/+$/, ""), sha, maintenance: raw === "true" };
 }
 
 /** What a red run should tell the operator to look at. */
@@ -190,20 +234,22 @@ export function explain(cause: Cause): string {
     case "match":
       return "the deployed bundle is serving";
     case "unreachable":
-    case "server-error":
       return "the script is not serving — it most likely failed to boot (a missing or blank secret " +
         "makes readConfig throw at module top level, before any handler runs)";
-    case "store-unreachable":
-      return "this bundle is serving but cannot reach its relational store — check BUNNY_DATABASE_URL " +
-        "and BUNNY_DATABASE_AUTH_TOKEN on the Edge Script, and that the database still exists";
-    case "foreign-keys-off":
-      return "this bundle is serving and its store answers, but PRAGMA foreign_keys is OFF — every " +
-        "constraint is silently disabled, so a deleted event would leave its memberships and assets " +
-        "behind. Fix the store's provisioning; no amount of waiting turns enforcement on";
+    case "server-error":
+      return "the script did not answer successfully. TWO causes now land here and the script's own " +
+        "log separates them: it failed to boot (a missing or blank secret makes readConfig throw at " +
+        "module top level), or it is serving but a DEPENDENCY is unreachable — check " +
+        "BUNNY_DATABASE_URL / BUNNY_DATABASE_AUTH_TOKEN, and that BUNNY_STORAGE_ZONE names a zone " +
+        "that exists";
     case "not-found":
       return "an older bundle without the health route is still live — the publish did not take";
     case "stale-sha":
       return "a different bundle is serving — this deploy never propagated";
+    case "wrong-maintenance-state":
+      return "this commit is serving, but the other of its two publishes — a migrating deploy publishes " +
+        "the maintenance bundle and then the ordinary one from the SAME commit, so this means the " +
+        "publish being probed has not propagated yet";
     case "unstamped":
       return "THIS run built an unstamped bundle — CI supplied no commit to the resolver. (A `dev` " +
         "reply while a real commit was expected is `stale-sha`, not this: it means a previous " +
@@ -215,17 +261,21 @@ export function explain(cause: Cause): string {
 
 if (import.meta.main) {
   try {
-    const { origin, sha } = parseArgs(Deno.args);
+    const { origin, sha, maintenance } = parseArgs(Deno.args);
     const verdict = await runProbe({
       fetch: (url, init) => fetch(url, init),
       origin,
       expectedSha: sha,
+      expectMaintenance: maintenance,
       now: Date.now,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       log: console.log,
     });
     if (verdict.ok) {
-      console.log(`probe: PASS after ${verdict.attempts} attempt(s) — ${origin} is serving ${sha}`);
+      console.log(
+        `probe: PASS after ${verdict.attempts} attempt(s) — ${origin} is serving ${sha} ` +
+          `(maintenance ${maintenance ? "open" : "closed"})`,
+      );
     } else {
       console.error(
         `probe: FAIL (${verdict.cause}) after ${verdict.attempts} attempt(s) — ${

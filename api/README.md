@@ -203,7 +203,27 @@ GET  /api/v1/events/<eventId>/files                        (event-wide UNION —
     →  200 [ {deviceId, assetId, creationDate, resources:[{role,contentType,key,filename,url}]} ]
        an asset naming an unrecorded resource is dropped (defense in depth); 200 [] for an empty event
        Cache-Control: no-store, no-cache, max-age=0
+
+GET  /health                                               (ROOT-mounted, UNGATED, GET/HEAD only)
+    →  reaches BOTH dependencies: SELECT 1 on the store, and a listing GET on the storage zone root
+    →  200 {sha}  — plus `maintenance: true` ONLY while a deploy window is open
+    →  503 (bare) when either dependency is unreachable — the cause is logged, not served
+       Cache-Control: no-store, no-cache, max-age=0
+       `sha` is the bundle's commit; the window field says which of a migrating deploy's TWO publishes
+       of that commit is answering, which the sha alone cannot. ABSENT MEANS CLOSED: the only other
+       thing that omits it is a bundle predating the flag, which was built before maintenance mode
+       existed and is therefore serving — the same answer, so the collapse loses nothing.
 ```
+
+> **The maintenance window (capability `backend-deployment`).** While the serving bundle carries the
+> flag, **every route under `/api/` answers `503`** with `Retry-After` and the no-cache directives,
+> touching neither storage nor the database — and it is answered **before** the token gate, so an
+> unauthenticated request in the window gets `503`, not `401`. The match is the **`/api/` prefix**,
+> never a list of routes: a list can be omitted from, so a future `/api/v2` would land ungated by
+> nobody's decision. The **root** routes (`/`, `/join`, `/_astro/*`, the AASA, `/health`) keep
+> serving — they read only the public `site/` prefix or nothing, and `/health` is how the deploy
+> learns the window's state. Downloads are untouched by construction: presigned S3 URLs never reach
+> this script.
 
 - `eventId` / `deviceId` — **UUIDs** (Hono route params, validated). The UUID is the capability; the
   event row is consulted for **existence**, never authorization.
@@ -414,7 +434,32 @@ and set `APNS_PRIVATE_KEY` as an Edge Script **secret**. `apnsKeyId` / `teamId` 
 
 CI deploys via `.github/workflows/api-deploy.yml` (path-scoped to `api/**` + `deployments/**`,
 **gated on green `deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. On
-`main` it **migrates the relational store, then publishes, then probes**.
+`main` it takes one of **two paths**, decided by `migrate.ts --pending`:
+
+- **Nothing pending** (most deploys) — publish, probe. One publish, no window, exactly as before.
+- **A migration is pending** — read the live commit from `/health` and prove its archived bundle is
+  retrievable → publish the **maintenance bundle** → probe that the window is **open** → migrate →
+  re-bundle and publish → probe that the window is **closed** → archive `bundle-<sha>`.
+
+> **Why a window at all.** Migrate-before-publish is right and stays — it keeps new code off an old
+> store — but it leaves an interval in which the **previous** bundle answers against the
+> **migrated** store, with statements written for a shape that no longer exists. The window closes
+> that interval.
+
+> **Why the flag ships in the bundle.** CI holds only the script-scoped deploy key and **cannot
+> write the Edge Script's environment**, so _which code is published_ is the only lever it has. The
+> maintenance and real bundles are one commit resolved from two deployments —
+> `deployments/prod.json` and `deployments/maintenance.json`, both extending
+> `components/prod-core.json`, differing in exactly one key. That is also why `/health` reports the
+> window state and both probes assert it.
+
+> **`migrate.ts --pending` has three outcomes, not two**: exit `0` none, `10` pending, anything else
+> **fatal**. `deno run` also exits non-zero on a crash, and a crash read as "none pending" would
+> publish the new bundle onto an un-migrated store — the exact failure the window prevents.
+
+> ⚠️ **Atomic per migration, not per run.** A run applying several migrations where a later one
+> fails leaves the store at a version **no** bundle is written against — including the one the
+> rollback restores. Roll-forward only, by hand. Ship one migration per deploy.
 
 > **The migrate step holds the DATABASE credentials only.** `backend-deployment` requires that
 > `BUNNY_STORAGE_ACCESS_KEY` be an Edge Script environment value and **not** a deploy-workflow
@@ -424,12 +469,28 @@ CI deploys via `.github/workflows/api-deploy.yml` (path-scoped to `api/**` + `de
 
 > **There IS a post-publish boot probe, and it is required.** `POST /code` + `/publish` succeed
 > whether or not the script can boot — that is how the previous runtime stayed fail-closed for two
-> weeks with CI green. The probe polls the DEVICE-FACING origin and matches the bundle's stamped
-> SHA. Be precise about which half it restores: it witnesses that the script BOOTED and that THIS
-> bundle is serving. It does **not** witness that a configured value is CORRECT — a value that is
-> present but wrong boots and probes green, which was the other half of the 2026-07 outage. The
-> probe also **cannot roll back**: the script-scoped deploy key returns `401` on the release
-> endpoints, so a red run means a broken script is live and a human fixes it forward.
+> weeks with CI green. The probe polls the DEVICE-FACING origin, matches the bundle's stamped SHA,
+> and asserts the window state. It witnesses that the script BOOTED, that THIS bundle is serving,
+> which of a migrating deploy's two publishes is answering, and — new — that **both dependencies are
+> reachable**, which closes the half of the 2026-07 outage nothing watched: a `BUNNY_STORAGE_ZONE`
+> that is present but names a zone that does not exist used to boot and probe green. It still does
+> **not** witness that a value is otherwise CORRECT.
+>
+> ⚠️ **One observation, ~119 points of presence.** The probe polls one hostname, which resolves to
+> one PoP, and bunny publishes no propagation contract (its own claims range from seconds to
+> minutes). So a green probe before a migration means _very likely_ every PoP serves the maintenance
+> bundle — never _certainly_. Stated, not papered over with a settle wait that would read as a
+> guarantee.
+
+> **Rollback exists now, and it is narrow.** Bunny's own release re-publish still needs the ACCOUNT
+> key (the deploy key returns `401` on the release endpoints), so this workflow brings its own:
+> every green deploy archives `bundle-<sha>` as a GitHub Actions artifact, and a deploy that opens a
+> window republishes the archived bundle for the commit that was live if anything after the window
+> fails. The archive is **not** in the storage zone — that key is not this workflow's to hold, and a
+> rollback must work when bunny is the thing misbehaving. There is deliberately **no rebuild
+> fallback**: a missing archive fails **loudly** naming the commit, and the capture step refuses to
+> open a window it could not lift rather than discovering it mid-outage. A **non**-migrating deploy
+> that goes red still leaves whatever is live, live, and a human fixes it forward.
 
 > **The browser-facing site is a SEPARATE deploy.** `.github/workflows/site-deploy.yml` builds the
 > Astro `site/` module (under Node) and **mirror-deploys** it to the storage `site/` prefix

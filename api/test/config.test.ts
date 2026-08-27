@@ -53,6 +53,9 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     eventCapacity: D.eventCapacity,
     eventWindowMaxSeconds: D.eventWindowMaxSeconds,
     eventLifetimeSeconds: D.eventLifetimeSeconds,
+    // Deployment-resolved like every other non-secret, and OFF unless a deploy deliberately
+    // publishes the maintenance bundle (capability `backend-deployment`).
+    maintenance: false,
   });
 });
 

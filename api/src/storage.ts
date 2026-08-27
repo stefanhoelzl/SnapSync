@@ -192,6 +192,39 @@ export async function listDir(
 }
 
 /**
+ * Can this deployment reach its storage zone at all? `true` only on a `2xx`; `false` on any other status,
+ * any network error, and any abort. Used by the health route so the deploy probe witnesses the zone
+ * (capability `backend-deployment`).
+ *
+ * IT DELIBERATELY DOES NOT REUSE {@link listDir}, and the reason is the whole point of this function.
+ * `listDir` maps `404` to `[]` — tolerance, so an absent partition reads as "no bytes" — and a zone name
+ * that does not exist is exactly the fault this check exists to catch. Routed through `listDir` it would
+ * come back as an empty listing and the health route would report the zone reachable. That is the
+ * 2026-07 outage's other half: `BUNNY_STORAGE_ZONE` named a zone that did not exist, and everything
+ * booted and probed green.
+ *
+ * So here a `404` IS a signal. That does not reopen `listDir`'s absent-vs-empty rule, which governs the
+ * DATA paths: this asks an operational question about the zone itself, not about what a directory holds.
+ * The zone root of a deployed backend is never empty — it carries `site/` and `files/` — so `404` here
+ * means the address is wrong, not that there is nothing to list.
+ *
+ * NEVER THROWS: the health route's job is to answer, and a thrown error there would be indistinguishable
+ * from the script failing to serve, which is a different diagnosis.
+ */
+export async function storageReachable(fetchImpl: FetchLike, config: Config): Promise<boolean> {
+  try {
+    const res = await fetchImpl(`https://${config.host}/${config.zone}/`, {
+      method: "GET",
+      headers: { AccessKey: config.accessKey, Accept: "application/json" },
+    });
+    await res.body?.cancel();
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Read an event's marker RAW. Returns the stored marker when present (`200`), `null` when absent (`404`),
  * and THROWS on any other status, network error, or abort — so the caller never mistakes a transient
  * read failure for "event absent". Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET`.

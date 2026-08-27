@@ -212,6 +212,27 @@ INVENTORY = [
         substitution (no --define; denoland/deno#35347), so a generated module is the only mechanism.
         Absent means "not a CI build": the probe treats `dev` as a terminal failure, never a retry.
     """),
+    Key("maintenance", [JSON], scope="build", default=False, doc="""
+        Whether this bundle serves a MAINTENANCE WINDOW: every route under `/api/` answers 503, while the
+        root routes (the site, the AASA, the health route) keep serving. Set for exactly one publish in a
+        migrating deploy, so no request meets a bundle whose schema assumptions do not match the store it
+        reaches (capability `backend-deployment`).
+
+        BUILD scope, like `sha`, and for the same forced reason: CI holds only the script-scoped deploy
+        key and CANNOT write the Edge Script's environment (writing one needs the full-access account key,
+        which also owns the storage zone holding every user's photos and our DNS zone). So the only lever
+        CI has over a running deployment is WHICH CODE IS PUBLISHED, and a value CI must control per
+        publish has to ship inside the artifact. Every dynamic alternative was rejected in the decision
+        record: an endpoint cannot HOLD the state (~119 PoPs, per-PoP V8 isolates — a POST reaches one
+        isolate), and every shared store that could hold it costs a round trip on every device request.
+
+        DEFAULT OFF, so a rendering that does not deliberately set it produces a bundle that serves
+        normally — including every local `deno task config` and every non-migrating deploy.
+
+        The two bundles a migrating deploy publishes are built from the SAME COMMIT, so `sha` alone cannot
+        tell them apart; the health route reports this value for that reason, and the probe asserts it in
+        both directions.
+    """),
     Key("channel", [XCCONFIG, PLIST], scope="build", default="dev", doc="""
         Whether this build is DISTRIBUTED. One discriminator, from which the renderers derive
         APS_ENVIRONMENT (the entitlement, xcconfig) and `apnsEnv` / `sentryEnvironment` (the plist) —
@@ -564,7 +585,13 @@ def render_types(flat: dict) -> str:
         if key.env_ref:
             # A runtime reference reaches the artifact as a NAME; the reading program resolves it.
             t = "{ readonly env: string }"
-        elif isinstance(sample, (int, float)) and not isinstance(sample, bool):
+        elif isinstance(sample, bool):
+            # Checked BEFORE the number branch: `bool` is a subclass of `int` in Python, so a bare
+            # numeric test would type `true` as `number` and the emitted value would not satisfy the
+            # emitted type — the exact class of renderer bug this module's docstring says the compiler
+            # is here to catch.
+            t = "boolean"
+        elif isinstance(sample, (int, float)):
             t = "number"
         else:
             t = "string"

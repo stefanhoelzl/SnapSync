@@ -170,7 +170,7 @@ import {
 // Storage primitives — now ONLY the byte store. The attestation record was the last non-byte object this
 // script touched, and it is a row now (capability `database`): storage holds bytes, the database holds
 // facts.
-import { byteKey, type FetchLike } from "./storage.ts";
+import { byteKey, type FetchLike, storageReachable } from "./storage.ts";
 // The relational store (capability `database`) — the authority for events, memberships, assets,
 // resources and device records, shared with the nightly sweep.
 import {
@@ -315,6 +315,32 @@ const PRESIGN_EXPIRY_SECONDS = 604800;
 // suppresses its cache. `no-store` alone would rest the listings' cacheability on undocumented behavior,
 // and a cached listing serves stale, expiring presigned URLs.
 const NO_CACHE = "no-store, no-cache, max-age=0";
+
+// What a maintenance `503` suggests waiting (capability `backend-deployment`). HTTP pairs `Retry-After`
+// with `503`, which is the status it defines for scheduled maintenance (RFC 9110 §15.6.4).
+//
+// IT IS A POLL INTERVAL, NOT AN ESTIMATE OF THE WINDOW, and that distinction is what makes the number
+// defensible rather than invented. Every `503` re-issues this header, so a caller that honours it asks
+// again, gets a fresh hint, and converges — which means the value only has to answer "how long until it
+// is worth asking again", never "how long will this last".
+//
+// That framing is what keeps it robust to a window whose length nobody can predict. The MIGRATION is not
+// the term that sets the duration — v1–v3 are small DDL batches, milliseconds against the remote store.
+// What dominates is TWO publishes and their propagation, which `probe.ts` polls at 5 s intervals with a
+// 120 s deadline apiece. So the window plausibly runs anywhere from ~10 s (propagation instant, each
+// probe satisfied on its first request) to ~250 s (both probes near their deadlines). A single constant
+// cannot name that range; a poll interval does not have to.
+//
+// UNDER-ESTIMATING IS THE SAFER ERROR, which is why this sits below even the fast case. Too low costs a
+// few wasted requests during the window. Too high keeps a caller that honours it away AFTER the service
+// is back — unavailability we would be inflicting ourselves, past the outage we actually chose.
+//
+// Deliberately NOT tied to `probe.ts`'s interval: they answer different questions (how fast may CI ask
+// again vs how fast may a stranger), and coupling them would be false precision. No shipped SnapSync
+// client reads this at all — the upload engine retries forever with no attempt budget, and create/join
+// map any unrecognised status to their existing transient states — so its audience is a human, a proxy,
+// or a curl.
+const MAINTENANCE_RETRY_AFTER_SECONDS = 30;
 
 // PUBLIC and static — the deliberate inverse of the listings' NO_CACHE. A `public` directive lets the
 // bunny pull zone serve it from the edge, keeping the Edge Script off the request hot path. Still used by
@@ -562,6 +588,47 @@ export function createApp(
 
   const app = new Hono();
 
+  // ── THE MAINTENANCE GATE (capability `backend-deployment`) ──────────────────────────────────────
+  //
+  // While this bundle carries the maintenance flag, every route under `/api/` answers `503` and touches
+  // neither storage nor the database. It exists to close the one interval the deploy pipeline could not:
+  // between a migration landing and the bundle written against it serving, the PREVIOUS bundle answers
+  // requests against the MIGRATED store, with statements written for a shape that no longer exists.
+  //
+  // REGISTERED FIRST — ahead of the token gate below — so maintenance wins over `401`. That is cheaper (no
+  // HMAC verification) and truthful: the service is unavailable, and the caller's credentials are not what
+  // is wrong. It discloses nothing `/health` does not already disclose publicly.
+  //
+  // MATCHED AS A PREFIX, NEVER AS A LIST OF ROUTES, and that is the whole design rather than a shortcut.
+  // A closed list can be omitted from — a route added later lands ungated by nobody's decision — whereas
+  // a prefix cannot be, and a future `/api/v2` mount inherits this by construction. It is also why the
+  // gate is here rather than wrapped around the `Db` and storage ports: port decoration would gate by
+  // USAGE, which is the better property on paper, but this file's best-effort `catch` blocks deliberately
+  // swallow (`markUploaded` logs and still answers `201`), so a thrown maintenance error would let a byte
+  // upload stream to storage, silently lose its `resources` row, and report success — after which the
+  // device never retries. Decision record: `changes/add-deploy-maintenance-mode/design.md` D1.
+  //
+  // ROOT ROUTES ARE NOT GATED: `/`, `/join`, `/_astro/*` and the AASA read only the public storage `site/`
+  // prefix or nothing at all, so a schema migration has no bearing on them — and `/health` is how the
+  // deploy learns the window's state, so gating it would blind the step that lifts the window.
+  //
+  // `NO_CACHE` IS LOAD-BEARING HERE, not decoration: the pull zone caches on the origin's directives, and
+  // a cached `503` would outlive the window — turning a bounded, deliberate outage into an unbounded
+  // accidental one. CI cannot configure the pull zone (that needs the account key), so this header is the
+  // only lever, and its behaviour is verified THROUGH the pull zone rather than at the origin.
+  //
+  // Downloads are unaffected by construction: presigned S3 URLs are fetched straight from bunny's S3
+  // endpoint and never reach this script.
+  if (config.maintenance) {
+    // `next` is deliberately never called: this middleware SHORT-CIRCUITS, so no handler runs and no
+    // upstream request is made. `async` because Hono's middleware signature returns a promise.
+    app.use("/api/*", async (c) => {
+      c.header("Cache-Control", NO_CACHE);
+      c.header("Retry-After", String(MAINTENANCE_RETRY_AFTER_SECONDS));
+      return await Promise.resolve(c.text("maintenance", 503));
+    });
+  }
+
   // ── THE GATE (capability `device-attestation`) ──────────────────────────────────────────────────
   //
   // Every route requires a device token, obtainable ONLY by completing App Attest — so the API is
@@ -721,33 +788,59 @@ export function createApp(
   // than that this route answers with an error — a `503` branch here would be dead code. Distinguishing
   // causes is the probe's job, from the combination of status and body.
   //
-  // INERT: no storage read, no cryptography, no external call. `NO_CACHE` because the pull zone must never
-  // answer a probe from the PREVIOUS deploy's copy — which is exactly the false green this exists to
-  // prevent. Root-mounted, never under `/api/v1`: no device calls it, so a future `/api/vN` should neither
-  // duplicate nor strand it.
-  // It also reports the RELATIONAL STORE's state (capability `database`), because two things this
-  // deployment depends on are invisible from a bundle identifier alone: whether the store is reachable at
-  // all, and whether FOREIGN KEYS are enforced. Enforcement measured as on by default — but a provisioning
-  // change that turned it off would disable every constraint SILENTLY: no error, no rejected write, and
-  // two staleness classes the schema is designed to make unstateable quietly reachable again. A
-  // measurement is not a guarantee, so the probe asserts the value rather than trusting it.
+  // `NO_CACHE` because the pull zone must never answer a probe from the PREVIOUS deploy's copy — which is
+  // exactly the false green this exists to prevent. Root-mounted, never under `/api/v1`: no device calls
+  // it, so a future `/api/vN` should neither duplicate nor strand it. It is also NOT gated by the
+  // maintenance middleware above — it is how the deploy learns the window's state, so gating it would
+  // blind the thing that lifts the window.
   //
-  // STILL TOTAL BY CONSTRUCTION: the store's state is REPORTED, never thrown. The route answers `200`
-  // with `database` naming which of three things is true, and the PROBE decides what each means —
-  // `foreign-keys-off` is terminal (no amount of waiting turns them on), `unreachable` is retryable.
-  // Collapsing them into one failure status would make a misprovisioned store indistinguishable from a
-  // store that is merely still starting.
+  // IT REPORTS `maintenance` ONLY WHEN THE WINDOW IS OPEN, and its ABSENCE MEANS CLOSED. The two bundles a
+  // migrating deploy publishes are built from the SAME COMMIT, so `sha` alone cannot tell them apart —
+  // this field is what does, and the probe asserts it in both directions.
+  //
+  // The absence is a DELIBERATE COLLAPSE, and it is safe because both causes it absorbs are the same
+  // answer: a bundle that predates the flag, and a bundle whose flag is false. The first is not merely
+  // *probably* not in maintenance — maintenance mode did not exist when it was built, so it is NECESSARILY
+  // serving the device API. Nothing else can produce the absence: a response from something that is not
+  // this backend fails the `sha` check first, and this commit's own bundle always carries the field when
+  // the window is open.
+  //
+  // IT IS NO LONGER INERT, and that is a deliberate trade. It now reaches BOTH dependencies this
+  // deployment has — the relational store and the storage zone — because a bundle identifier alone cannot
+  // say whether either is addressable. The storage half is new coverage and closes the documented half of
+  // the 2026-07 outage that the probe could not previously see: a `BUNNY_STORAGE_ZONE` that is present but
+  // names a zone that does not exist boots and probes green. Serving this unauthenticated is still the
+  // right call, and the reason has changed: it is no longer "the cheapest route in the backend" but "the
+  // probe carries no credential this backend accepts, so any route it can reach is equally ungated" —
+  // moving the checks behind another path would relocate the exposure, not remove it.
+  //
+  // AN UNREACHABLE DEPENDENCY IS A BARE NON-SUCCESS, not a `200` describing itself. The route used to
+  // report the store's state in the body so the probe could split a TERMINAL cause (foreign keys off) from
+  // a RETRYABLE one (unreachable); with the foreign-key assertion gone (capability `database` — the
+  // measurement is now trusted, and what would falsify it is recorded there) the only condition left is
+  // unreachability, which is retryable, and a non-success status already carries that. The cost, accepted:
+  // a red probe says `server-error` rather than naming which dependency was unreachable — so the causes
+  // are logged here, where a human reading the script's output can still tell them apart.
+  //
+  // BOTH CHECKS RUN, always, even when the first fails: a deploy that has broken both should not need two
+  // rounds to find out.
   app.on(["GET", "HEAD"], "/health", async (c) => {
     c.header("Cache-Control", NO_CACHE);
     c.header("Content-Type", "application/json");
-    let database: "ok" | "foreign-keys-off" | "unreachable";
-    try {
-      database = await db.foreignKeysEnabled() ? "ok" : "foreign-keys-off";
-    } catch (e) {
-      console.error(`health: store unreachable: ${e}`);
-      database = "unreachable";
-    }
-    const body = JSON.stringify({ sha: buildSha, database });
+    const [store, zone] = await Promise.all([
+      db.execute("SELECT 1").then(() => true).catch((e) => {
+        console.error(`health: relational store unreachable: ${e}`);
+        return false;
+      }),
+      storageReachable(fetchImpl, config).then((ok) => {
+        if (!ok) console.error(`health: storage zone '${config.zone}' unreachable`);
+        return ok;
+      }),
+    ]);
+    if (!store || !zone) return c.body(null, 503);
+    const body = JSON.stringify(
+      config.maintenance ? { sha: buildSha, maintenance: true } : { sha: buildSha },
+    );
     return c.req.method === "HEAD" ? c.body(null) : c.body(body);
   });
 

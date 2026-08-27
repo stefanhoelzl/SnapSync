@@ -206,6 +206,25 @@ const V3: Migration = {
 export const MIGRATIONS: readonly Migration[] = [V1, V2, V3];
 
 /**
+ * Which migrations this store has not applied, in order. Empty when the schema is current.
+ *
+ * THE ONE COMPARISON. Both things that ask the question go through it: `migrate` below, deciding what to
+ * run, and `scripts/migrate.ts --pending`, deciding whether `api-deploy.yml` opens a maintenance window
+ * at all (capability `backend-deployment`). A second implementation could disagree with this one, and the
+ * disagreement that matters is silent — a deploy that believed nothing was pending would publish the new
+ * bundle onto an un-migrated store, which is precisely what the window exists to prevent.
+ *
+ * Creating the version record is the only write it makes, and it is the same one `migrate` makes a moment
+ * later. Reading a store that predates the table would otherwise throw rather than answer "all of them".
+ */
+export async function pendingMigrations(db: Db): Promise<readonly Migration[]> {
+  await db.execute(VERSION_TABLE);
+  const { rows } = await db.execute(`SELECT version FROM schema_migrations`);
+  const applied = new Set(rows.map((r) => Number(r.version)));
+  return MIGRATIONS.filter((m) => !applied.has(m.version));
+}
+
+/**
  * Apply every migration this store has not seen, in order, recording each.
  *
  * Idempotent: applying the list to an already-migrated store runs no statement. Each migration's
@@ -214,12 +233,7 @@ export const MIGRATIONS: readonly Migration[] = [V1, V2, V3];
  * in a shape no version describes, which is the one state this runner must never produce.
  */
 export async function migrate(db: Db, log: (msg: string) => void = () => {}): Promise<void> {
-  await db.execute(VERSION_TABLE);
-  const { rows } = await db.execute(`SELECT version FROM schema_migrations`);
-  const applied = new Set(rows.map((r) => Number(r.version)));
-
-  for (const m of MIGRATIONS) {
-    if (applied.has(m.version)) continue;
+  for (const m of await pendingMigrations(db)) {
     // Refused BEFORE anything is written, so a migration that cannot carry its data leaves the store on
     // the previous version rather than half-applied.
     if (m.precondition) await m.precondition(db);

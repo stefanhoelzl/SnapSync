@@ -104,6 +104,12 @@ export function devConfig(publicHost: string, s3Scheme: string): Config {
     eventCapacity: d.eventCapacity,
     eventWindowMaxSeconds: d.eventWindowMaxSeconds,
     eventLifetimeSeconds: d.eventLifetimeSeconds,
+    // Never on, and not read from the deployment. The maintenance window exists to bound the interval
+    // between a migration landing and the bundle written against it serving (capability
+    // `backend-deployment`) — and the rig has no publish, no probe and no such interval. Reading `d`
+    // here would let a `local` deployment that set the flag produce a rig that refuses every device
+    // request, with no pipeline able to lift it.
+    maintenance: false,
   };
 }
 

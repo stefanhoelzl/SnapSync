@@ -57,6 +57,7 @@ const CONFIG: Config = {
   eventCapacity: 10,
   eventWindowMaxSeconds: 30 * 24 * 60 * 60,
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
+  maintenance: false,
 };
 
 /** The same config, but claiming the FIXTURE's app — so the real attestation's rpIdHash matches. */
@@ -80,6 +81,10 @@ function recorder(objects: Record<string, string> = {}) {
     calls.push({ url, init });
     const key = url.split("/snapsync-zone/")[1] ?? "";
     if ((init.method ?? "GET") === "GET") {
+      // The ZONE ROOT is a listing, not an object: it is what the health route GETs to witness that the
+      // zone is addressable at all. A deployed zone always answers it (it holds `site/` and `files/`),
+      // so a 404 here would model a zone that does not exist — the opposite of these tests' premise.
+      if (key === "") return Promise.resolve(new Response("[]", { status: 200 }));
       const body = objects[key];
       return Promise.resolve(
         body === undefined
@@ -264,6 +269,42 @@ Deno.test("gate: the event marker and union reads are served WITHOUT a token", a
   const { app: a } = app(); // no marker → the event does not exist
   assertEquals((await a.request(`/api/v1/events/${E}`)).status, 404); // NOT 401
   assertEquals((await a.request(`/api/v1/events/${E}/files`)).status, 404); // NOT 401
+});
+
+Deno.test("gate: the maintenance window is answered BEFORE this gate", async () => {
+  // Ordering, pinned where the closed list lives — because this gate's contract is "every route needs a
+  // token except these", and a 503 that pre-empts it is a second thing that answers before a handler.
+  // It is not an addition to the ungated set: `/api/*` stays gated, it simply stops earlier while a
+  // deploy window is open (capability `backend-deployment`).
+  const { calls, fetchImpl } = recorder();
+  const open = createApp({
+    config: { ...CONFIG, maintenance: true },
+    db: DB,
+    fetch: fetchImpl,
+    now: () => NOW,
+  });
+
+  // No token: 503, not 401. The service is unavailable; the caller's credentials are not what is wrong.
+  assertEquals((await open.request(`/api/v1/events/${E}`)).status, 503);
+  // A VALID token does not get past it either — this is not an authorization decision.
+  assertEquals(
+    (await open.request(`/api/v1/events`, { method: "POST", headers: bearer, body: "{}" })).status,
+    503,
+  );
+  // Even the token ISSUERS, which are ungated by the closed list below, are inside the window: they
+  // write a `devices` row, so they are exactly what must not run against a migrating store.
+  assertEquals((await open.request("/api/v1/attest/challenge")).status, 503);
+  // And nothing upstream was touched for any of them.
+  assertEquals(calls.length, 0);
+
+  // The same three requests without the flag: the closed list decides, exactly as it does today.
+  const { app: closed } = app();
+  assertEquals((await closed.request(`/api/v1/events/${E}`)).status, 404); // ungated read, no such event
+  assertEquals(
+    (await closed.request(`/api/v1/events`, { method: "POST", body: "{}" })).status,
+    401,
+  ); // gated write, no token
+  assertEquals((await closed.request("/api/v1/attest/challenge")).status, 200); // ungated issuer
 });
 
 Deno.test("gate: /health is served WITHOUT a token, and only at the root", async () => {

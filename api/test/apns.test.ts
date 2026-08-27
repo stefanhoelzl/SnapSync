@@ -24,6 +24,7 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   eventCapacity: 10,
   eventWindowMaxSeconds: 30 * 24 * 60 * 60,
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
+  maintenance: false,
 };
 
 // A real P-256 key so `crypto.subtle.sign` actually produces a valid ES256 JWT in-test.
