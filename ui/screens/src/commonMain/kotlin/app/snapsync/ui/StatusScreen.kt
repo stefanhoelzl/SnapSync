@@ -240,86 +240,14 @@ private fun StatusOverlays(
     actions: StatusActions,
 ) {
     if (overlays.confirmingLeave) {
-        AppDestructiveConfirmDialog(
-            title = "Leave this event?",
-            body = "You'll stop sharing and receiving photos. Photos already in your " +
-                "library stay.",
-            confirmLabel = "Leave",
-            cancelLabel = "Stay",
-            onConfirm = {
-                overlays.confirmingLeave = false
-                actions.onLeaveEvent()
-            },
-            onDismiss = { overlays.confirmingLeave = false },
-        )
+        LeaveConfirmDialog(overlays, actions.onLeaveEvent)
     }
-
-    // The bug-report sheet — the only moment this feature is ever visible, and therefore the only
-    // place the operator learns what leaves the device. It names the payload rather than asking a
-    // bare yes/no, and claims nothing about identifiers being removed (they are not: a report
-    // travels verbatim, capability `diagnostic-logging`). Writing the description IS the
-    // confirmation, so there is no second dialog behind Send. There is deliberately NO feedback
-    // afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim the app
-    // cannot honestly make.
-    // The rename dialog (capability `event-rename`), opened by the pen beside the heading. Pre-filled
-    // with the current name; the field is capped at the backend's own 100-character rule and confirm
-    // is inert while the trimmed value is empty or unchanged, so a no-op rename never reaches the
-    // network. A failure keeps the sheet open with the typed value and an error BANNER — never a
-    // reddened field: a server saying no must not read as a complaint about the host's typing
-    // (`event-creation-ui` makes the same call for the same reason).
     if (overlays.renaming && joined && membership != null) {
-        // Success closes the sheet; either terminal value clears the latch, so the next rename starts
-        // from a clean sequence rather than re-reading this one's outcome.
-        LaunchedEffect(renameStatus) {
-            when (renameStatus) {
-                RenameStatus.Succeeded -> {
-                    overlays.renaming = false
-                    actions.onRenameStatusConsumed()
-                }
-                else -> Unit
-            }
-        }
-        AppTextPromptSheet(
-            title = "Rename event",
-            body = "Everyone in the event sees the new name.",
-            placeholder = "Event name",
-            initialValue = membership.name,
-            // The backend's own bound (capability `event-creation`), enforced by the input so an
-            // over-long name is unreachable rather than rejected on a round trip.
-            maxLength = 100,
-            confirmLabel = "Save",
-            cancelLabel = "Cancel",
-            busy = renameStatus == RenameStatus.InFlight,
-            error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
-            // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
-            // rather than renaming a different event.
-            onConfirm = { newName -> actions.onRenameEvent(membership.eventId, newName) },
-            onDismiss = {
-                overlays.renaming = false
-                actions.onRenameStatusConsumed()
-            },
-        )
+        RenameSheet(membership, renameStatus, overlays, actions)
     }
-
     if (overlays.reportingBug && actions.onSendDiagnostics != null) {
-        AppTextPromptSheet(
-            title = "Report a problem",
-            body = "Sent with the app's recent activity log and sync state to the developer's " +
-                "error-tracking service.",
-            placeholder = "What went wrong, and what were you doing?",
-            // The description titles the report in the error-tracking service, so it is bounded to
-            // stay readable in a list of issues (capability `diagnostic-logging`).
-            maxLength = 200,
-            confirmLabel = "Send",
-            cancelLabel = "Cancel",
-            onConfirm = { note ->
-                overlays.reportingBug = false
-                actions.onSendDiagnostics(note, screenLabel(state, reconfigureActive))
-            },
-            onDismiss = { overlays.reportingBug = false },
-        )
+        BugReportSheet(overlays, actions.onSendDiagnostics, screenLabel(state, reconfigureActive))
     }
-
     // A switch confirmation over the joined screen (scanning a different event while joined).
     (state as? UiState.Joined)?.pendingSwitch?.let { switch ->
         SwitchDialog(
@@ -330,6 +258,109 @@ private fun StatusOverlays(
             onRetryLoad = actions.onRetryLoad,
         )
     }
+}
+
+/** Leaving is destructive and irreversible from here, so it is confirmed rather than merely tapped. */
+@Composable
+private fun LeaveConfirmDialog(overlays: StatusOverlayState, onLeave: () -> Unit) {
+    AppDestructiveConfirmDialog(
+        title = "Leave this event?",
+        body = "You'll stop sharing and receiving photos. Photos already in your " +
+            "library stay.",
+        confirmLabel = "Leave",
+        cancelLabel = "Stay",
+        onConfirm = {
+            overlays.confirmingLeave = false
+            onLeave()
+        },
+        onDismiss = { overlays.confirmingLeave = false },
+    )
+}
+
+/**
+ * The rename dialog (capability `event-rename`), opened by the pen beside the heading.
+ *
+ * Pre-filled with the current name; the field is capped at the backend's own 100-character rule and
+ * confirm is inert while the trimmed value is empty or unchanged, so a no-op rename never reaches the
+ * network. A failure keeps the sheet open with the typed value and an error BANNER — never a reddened
+ * field: a server saying no must not read as a complaint about the host's typing (`event-creation-ui`
+ * makes the same call for the same reason).
+ */
+@Composable
+private fun RenameSheet(
+    membership: EventConfig,
+    renameStatus: RenameStatus,
+    overlays: StatusOverlayState,
+    actions: StatusActions,
+) {
+    // Success closes the sheet; either terminal value clears the latch, so the next rename starts
+    // from a clean sequence rather than re-reading this one's outcome.
+    LaunchedEffect(renameStatus) {
+        when (renameStatus) {
+            RenameStatus.Succeeded -> {
+                overlays.renaming = false
+                actions.onRenameStatusConsumed()
+            }
+            else -> Unit
+        }
+    }
+    AppTextPromptSheet(
+        title = "Rename event",
+        body = "Everyone in the event sees the new name.",
+        placeholder = "Event name",
+        initialValue = membership.name,
+        // The backend's own bound (capability `event-creation`), enforced by the input so an
+        // over-long name is unreachable rather than rejected on a round trip.
+        maxLength = 100,
+        confirmLabel = "Save",
+        cancelLabel = "Cancel",
+        busy = renameStatus == RenameStatus.InFlight,
+        error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
+        // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
+        // rather than renaming a different event.
+        onConfirm = { newName -> actions.onRenameEvent(membership.eventId, newName) },
+        onDismiss = {
+            overlays.renaming = false
+            actions.onRenameStatusConsumed()
+        },
+    )
+}
+
+/**
+ * The bug-report sheet — the only moment this feature is ever visible, and therefore the only place the
+ * operator learns what leaves the device.
+ *
+ * It names the payload rather than asking a bare yes/no, and claims nothing about identifiers being
+ * removed (they are not: a report travels verbatim, capability `diagnostic-logging`). Writing the
+ * description IS the confirmation, so there is no second dialog behind Send. There is deliberately NO
+ * feedback afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim the app
+ * cannot honestly make.
+ *
+ * This prose used to sit above the RENAME block, stranded there by a reordering; giving each overlay its
+ * own function is what makes that misplacement unrepresentable.
+ */
+@Composable
+private fun BugReportSheet(
+    overlays: StatusOverlayState,
+    onSend: (note: String, screen: String) -> Unit,
+    screen: String,
+) {
+    AppTextPromptSheet(
+        title = "Report a problem",
+        body = "Sent with the app's recent activity log and sync state to the developer's " +
+            "error-tracking service.",
+        placeholder = "What went wrong, and what were you doing?",
+        // The description titles the report in the error-tracking service, so it is bounded to
+        // stay readable in a list of issues (capability `diagnostic-logging`).
+        maxLength = 200,
+        confirmLabel = "Send",
+        cancelLabel = "Cancel",
+        onConfirm = { note ->
+            overlays.reportingBug = false
+            onSend(note, screen)
+        },
+        onDismiss = { overlays.reportingBug = false },
+    )
 }
 
         // The joined-layer action cluster: settings · share · leave. Settings needs a known membership;

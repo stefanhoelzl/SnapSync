@@ -36,6 +36,7 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.RowScope
 
 /**
  * A calendar week is seven columns wide. Named because `row * 7 + col` and `(cells + 6) / 7` read as
@@ -208,28 +209,20 @@ internal fun DateTimeRangePickerDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    WheelCaption("From time")
-                    TimeWheels(
-                        hour = fromHour,
-                        minute = fromMinute,
-                        onHour = { fromHour = it },
-                        onMinute = { fromMinute = it },
-                        hourDescription = "From hour",
-                        minuteDescription = "From minute",
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    WheelCaption("Until time")
-                    TimeWheels(
-                        hour = untilHour,
-                        minute = untilMinute,
-                        onHour = { untilHour = it },
-                        onMinute = { untilMinute = it },
-                        hourDescription = "Until hour",
-                        minuteDescription = "Until minute",
-                    )
-                }
+                CaptionedTimeWheels(
+                    caption = "From",
+                    hour = fromHour,
+                    minute = fromMinute,
+                    onHour = { fromHour = it },
+                    onMinute = { fromMinute = it },
+                )
+                CaptionedTimeWheels(
+                    caption = "Until",
+                    hour = untilHour,
+                    minute = untilMinute,
+                    onHour = { untilHour = it },
+                    onMinute = { untilMinute = it },
+                )
             }
         },
     )
@@ -312,6 +305,33 @@ private fun PickerDialogShell(
                 }
             }
         }
+    }
+}
+
+/**
+ * One bound of the range: its caption over its hour/minute wheels, sharing the row with the other.
+ *
+ * The caption names the bound once and the accessibility descriptions derive from it, so "From" and
+ * "Until" are each written in exactly one place rather than three (caption, hour label, minute label).
+ */
+@Composable
+private fun RowScope.CaptionedTimeWheels(
+    caption: String,
+    hour: Int,
+    minute: Int,
+    onHour: (Int) -> Unit,
+    onMinute: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.weight(1f)) {
+        WheelCaption("$caption time")
+        TimeWheels(
+            hour = hour,
+            minute = minute,
+            onHour = onHour,
+            onMinute = onMinute,
+            hourDescription = "$caption hour",
+            minuteDescription = "$caption minute",
+        )
     }
 }
 

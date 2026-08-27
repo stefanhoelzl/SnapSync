@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeChoices
+import androidx.compose.foundation.layout.ColumnScope
 
 // In-place membership reconfigure (capability `reconfigure-membership`) and the switch confirmation
 // that guards a change of event.
@@ -135,64 +136,22 @@ internal fun ReconfigureScreen(
                     onSaveToAlbum = { chosenSaveToAlbum = it },
                     shareableCount = shareableCount,
                 ),
-                notes = ParticipationNotes(
-                    fromFloor = "Can't be earlier than the event started, " +
-                        "${appDateTimeLabel(selection.windowStart)}.",
-                    untilCeiling = if (membership.endsAt != null) {
-                        "Can't be later than the event ends, ${appDateTimeLabel(selection.windowEnd)}."
-                    } else {
-                        // A legacy membership whose event `endsAt` has not been backfilled yet: the picker
-                        // still bounds against the member's own ceiling, but naming an event end we do not
-                        // know would be a guess.
-                        "Pick when to stop sharing."
-                    },
-                    // Forward-only (capability `reconfigure-membership`): already-synced photos are not
-                    // retroactively gathered, so the on-note says so plainly.
-                    album = if (chosenSaveToAlbum) {
-                        "Photos are collected in an album named after the event. Only photos synced " +
-                            "from now on are added."
-                    } else {
-                        "No album is created."
-                    },
-                ),
+                notes = reconfigureNotes(membership, selection, chosenSaveToAlbum),
             )
         }
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // Standing consequence line. It used to say a change "never retracts photos already shared or
-            // received", and half of that became false: narrowing what you share now re-projects the
-            // device manifest, so those photos stop being listed to the event (capability
-            // `reconfigure-membership`).
-            //
-            // What it must NOT imply is deletion. The retraction is partial by nature — SnapSync syncs
-            // gallery-to-gallery, so a member who already downloaded the photo holds it in their own
-            // library and nothing here reaches it. Receiving is unaffected either way.
-            StatusHint(
-                "Sharing less stops listing those photos to the event — anyone who already received " +
-                    "them keeps them. Photos you've received stay.",
-            )
-            if (!selection.commitEnabled) {
-                StatusHint(
-                    "Turn on sharing or receiving — a membership that does neither does nothing.",
+        SaveActions(
+            enabled = selection.commitEnabled,
+            onSave = {
+                onSave(
+                    membership.eventId,
+                    selection.chosenDirection,
+                    selection.chosenFrom,
+                    selection.chosenUntil,
+                    chosenSaveToAlbum,
                 )
-            }
-            PrimaryButton(
-                label = "Save",
-                onClick = {
-                    onSave(
-                        membership.eventId,
-                        selection.chosenDirection,
-                        selection.chosenFrom,
-                        selection.chosenUntil,
-                        chosenSaveToAlbum,
-                    )
-                },
-                enabled = selection.commitEnabled,
-            )
-            SecondaryButton(label = "Cancel", onClick = onCancel)
-        }
+            },
+            onCancel = onCancel,
+        )
     }
 }
 
@@ -285,5 +244,66 @@ internal fun SwitchDialog(
         is JoinPhase.CommitFailed -> Unit
         // Transient — no dialog while the details load or a commit runs.
         JoinPhase.Loading, is JoinPhase.Committing -> Unit
+    }
+}
+
+/**
+ * The three sentences this surface says differently from the join gate, derived from the persisted
+ * membership rather than a phase.
+ *
+ * A plain function and not a composable: it reads nothing but its arguments, which is what makes the two
+ * surfaces' divergence reviewable in one place instead of buried among layout.
+ */
+private fun reconfigureNotes(
+    membership: EventConfig,
+    selection: RangeSelection,
+    saveToAlbum: Boolean,
+) = ParticipationNotes(
+    fromFloor = "Can't be earlier than the event started, ${appDateTimeLabel(selection.windowStart)}.",
+    untilCeiling = if (membership.endsAt != null) {
+        "Can't be later than the event ends, ${appDateTimeLabel(selection.windowEnd)}."
+    } else {
+        // A legacy membership whose event `endsAt` has not been backfilled yet: the picker still bounds
+        // against the member's own ceiling, but naming an event end we do not know would be a guess.
+        "Pick when to stop sharing."
+    },
+    // Forward-only (capability `reconfigure-membership`): already-synced photos are not retroactively
+    // gathered, so the on-note says so plainly.
+    album = if (saveToAlbum) {
+        "Photos are collected in an album named after the event. Only photos synced " +
+            "from now on are added."
+    } else {
+        "No album is created."
+    },
+)
+
+/**
+ * Save and Cancel, over the standing statement of what changing these settings does.
+ *
+ * That line used to say a change "never retracts photos already shared or received", and half of that
+ * became false: narrowing what you share now re-projects the device manifest, so those photos stop being
+ * listed to the event (capability `reconfigure-membership`).
+ *
+ * What it must NOT imply is deletion. The retraction is partial by nature — SnapSync syncs
+ * gallery-to-gallery, so a member who already downloaded the photo holds it in their own library and
+ * nothing here reaches it. Receiving is unaffected either way.
+ */
+@Composable
+private fun ColumnScope.SaveActions(enabled: Boolean, onSave: () -> Unit, onCancel: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusHint(
+            "Sharing less stops listing those photos to the event — anyone who already received " +
+                "them keeps them. Photos you've received stay.",
+        )
+        if (!enabled) {
+            StatusHint(
+                "Turn on sharing or receiving — a membership that does neither does nothing.",
+            )
+        }
+        PrimaryButton(label = "Save", onClick = onSave, enabled = enabled)
+        SecondaryButton(label = "Cancel", onClick = onCancel)
     }
 }

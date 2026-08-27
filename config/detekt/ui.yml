@@ -82,12 +82,24 @@ complexity:
     # of the components and false of their arrangement. `ParticipationSections` is now that arrangement,
     # stated once: `ReadyLayout` 103 -> under the default and off this list, `ReconfigureScreen` 129 -> 98.
     #
-    # The lesson is that a long composable is not self-evidently Compose being Compose. Twice now the
-    # length WAS the signal, and reading it as "declarative layout, nothing to do here" was the error both
-    # times. The two bullets above still hold for what remains — but they are a conclusion to reach after
-    # looking, not before.
+    # And 99 -> 74 came from asking a different question again: not "what is duplicated" but "what in here
+    # is an independent COMPONENT". Four sites left the list outright. `StatusOverlays` (68) held four
+    # overlays belonging to four capabilities, which its own KDoc said had nothing in common — they are
+    # now four functions, which also un-stranded a comment describing the bug-report sheet that had been
+    # sitting above the rename block. `ScreenLayout` (86) held a nav label with a hidden gesture and a
+    # heading with an edit control. `WheelColumn` (65) interleaved scroll arithmetic with row rendering.
+    # `DateTimeRangePickerDialog` (67) wrote its captioned wheel pair out twice. `AppRangePresetChoices`
+    # (75) held one group per range handle. None of these was found by looking for duplication.
+    #
+    # THE LESSON, THREE TIMES OVER. A long composable is not self-evidently Compose being Compose. The
+    # ceiling has gone 169 -> 164 -> 143 -> 133 -> 99 -> 74, and every fall was a named defect: two `when`s
+    # over one sealed type, a duplicated derivation, a repeated conjunction, a dialog written twice, a
+    # decision surface arranged twice, and now five functions holding pieces that stand on their own. Not
+    # once was the answer "invent a function to hold a fragment". The bullets above still describe what
+    # remains — but they are a conclusion to reach after looking, not before, and this file has now been
+    # wrong about that three times.
     active: true
-    threshold: 99
+    threshold: 74
 
   LongParameterList:
     # `StatusActions`, the screen-level callback bundle, at 18 fields. Down from 30, where `ReadyLayout`

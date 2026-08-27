@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 
 /**
  * Owns the screen's convention-bearing structure: edge insets, the small app-name nav label, an
@@ -97,57 +98,9 @@ fun ScreenLayout(
                     bottom = if (contentPinsActionCluster) 0.dp else 24.dp,
                 ),
         ) {
-            // The small app-name nav label — always present, top-anchored (mockup `.navtitle`).
-            Text(
-                text = title.uppercase(),
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp,
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = if (heading == null) 12.dp else 4.dp)
-                    .then(
-                        onTitleDoubleTap?.let { onDoubleTap ->
-                            Modifier.pointerInput(onDoubleTap) {
-                                detectTapGestures(onDoubleTap = { onDoubleTap() })
-                            }
-                        } ?: Modifier,
-                    ),
-            )
-            // The prominent heading (the joined event's name), directly beneath the nav label. With an
-            // edit affordance it becomes a centered row: the name keeps its own centering (it is the
-            // thing being read) and the control sits beside it rather than displacing it.
+            NavTitle(title, onTitleDoubleTap, bottomPadding = if (heading == null) 12.dp else 4.dp)
             if (heading != null) {
-                if (onEditHeading == null) {
-                    Text(
-                        text = heading,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    )
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = heading,
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                            textAlign = TextAlign.Center,
-                        )
-                        IconButton(onClick = onEditHeading, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = editHeadingDescription,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                }
+                Heading(heading, onEditHeading, editHeadingDescription)
             }
             Column(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -164,6 +117,73 @@ fun ScreenLayout(
                         bottomActions()
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The small app-name nav label — always present, top-anchored (mockup `.navtitle`).
+ *
+ * [onDoubleTap] is the hidden operator affordance (capability `diagnostic-logging`), and it is
+ * deliberately a raw pointer-input gesture rather than `combinedClickable`: that would add click
+ * semantics and a role to a label that must stay invisible to assistive tech and to a UI test that has
+ * not been told where to look.
+ */
+@Composable
+private fun NavTitle(title: String, onDoubleTap: (() -> Unit)?, bottomPadding: Dp) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelLarge.copy(
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.4.sp,
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = bottomPadding)
+            .then(
+                onDoubleTap?.let { tap ->
+                    Modifier.pointerInput(tap) {
+                        detectTapGestures(onDoubleTap = { tap() })
+                    }
+                } ?: Modifier,
+            ),
+    )
+}
+
+/**
+ * The prominent heading (the joined event's name), directly beneath the nav label.
+ *
+ * With an [onEdit] affordance it becomes a centered row: the name keeps its own centering (it is the
+ * thing being read) and the control sits beside it rather than displacing it. Unlike [NavTitle]'s hidden
+ * double-tap, this one MUST read as a control and MUST appear in the accessibility tree, which is why it
+ * is an `IconButton` and not a gesture.
+ */
+@Composable
+private fun Heading(text: String, onEdit: (() -> Unit)?, editDescription: String) {
+    val style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+    if (onEdit == null) {
+        Text(
+            text = text,
+            style = style,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        )
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = text, style = style, textAlign = TextAlign.Center)
+            IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = editDescription,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }
