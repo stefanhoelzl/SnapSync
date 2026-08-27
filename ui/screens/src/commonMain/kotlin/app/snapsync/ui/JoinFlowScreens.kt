@@ -89,60 +89,25 @@ internal fun JoiningEventScreen(
     shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
     photoPermission: PermissionStatus,
 ) {
-    // The two participation switches, both default ON. Direction is DERIVED from them, never chosen:
-    // share+receive → Both, share only → UploadOnly, receive only → DownloadOnly. There is deliberately no
-    // "no photos" option in either — "not sharing" IS the share switch off, "not receiving" the receive
-    // switch off. Both off is representable and does nothing; Join is disabled with a stated reason rather
-    // than one switch silently flipping the other.
-    var shareOn by remember { mutableStateOf(true) }
-    var receiveOn by remember { mutableStateOf(true) }
-
-    // The capture-date RANGE is a pair of presets (capability `photo-selection-policy`), defaulting to the
-    // FULL event window `[Event start, Event end]` (narrow, never widen — admits on doubt). What is
-    // REMEMBERED is the presets and (for Custom) the picked wall-clock values, NEVER a default instant — the
-    // instants are derived fresh from the phase on every composition, sidestepping the seeding bug a
-    // `remember`-ed instant had (this screen mounts at `Loading`, before the details fetch, so a
-    // first-composition seed captured `now` and never re-ran).
-    var fromPreset by remember { mutableStateOf(FromChoice.EVENT_START) }
-    var fromCustom by remember { mutableStateOf<LocalDateTime?>(null) }
-    var untilPreset by remember { mutableStateOf(UntilChoice.EVENT_END) }
-    var untilCustom by remember { mutableStateOf<LocalDateTime?>(null) }
-    var chosenSaveToAlbum by remember { mutableStateOf(false) }
-
-    // Range derivation from the phase's window. On Ready the host guarantees both `startsAt` and `endsAt`;
-    // a screen mounted straight into a phase with neither falls back to a now
-    // from-bound and an effectively-unbounded until (the safe direction), which is inert there — those
-    // phases render no range row, and a retry re-sends the range the Ready phase already committed.
-    // What the guest has actually chosen, resolved from the phase's window and the four choice controls
-    // (see [JoinSelection]). Pulled out because it is pure derivation and answers a different question
-    // from everything below it: this decides WHAT would be committed, the `when` further down decides
-    // what is DRAWN.
-    val selection = rememberJoinSelection(
-        phase = phase,
-        cutoff = cutoff,
-        fromPreset = fromPreset,
-        fromCustom = fromCustom,
-        untilPreset = untilPreset,
-        untilCustom = untilCustom,
-        shareOn = shareOn,
-        receiveOn = receiveOn,
-    )
-
-    // The member's four picks and the four edits to them, named once — the same pair the reconfigure
-    // surface builds, and the shape `AppRangePresetChoices` takes.
-    val participation = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom)
-    val participationActions = ParticipationActions(
-        choices = RangeChoiceActions(
-            onFromPreset = { fromPreset = it },
-            onFromCustom = { fromCustom = it },
-            onUntilPreset = { untilPreset = it },
-            onUntilCustom = { untilCustom = it },
+    // The member's own picks, owned in one place and surviving the phase changes this screen goes
+    // through while mounted (Ready -> Committing -> CommitFailed), so a retry reuses what they chose.
+    // Seeded all-on over the full event window: narrow, never widen — the policy admits on doubt.
+    val participation = rememberParticipation(
+        ParticipationSeed(
+            shareOn = true,
+            receiveOn = true,
+            saveToAlbum = false,
+            fromPreset = FromChoice.EVENT_START,
+            fromCustom = null,
+            untilPreset = UntilChoice.EVENT_END,
+            untilCustom = null,
         ),
-        onShareOn = { shareOn = it },
-        onReceiveOn = { receiveOn = it },
-        onSaveToAlbum = { chosenSaveToAlbum = it },
-        shareableCount = shareableCount,
     )
+    // What would be committed if Join were pressed — pure derivation, and a different question from the
+    // `when` below, which decides what is DRAWN.
+    val selection = rememberJoinSelection(phase, cutoff, participation)
+
+
 
     // ONE dispatcher over the phase, and every branch names a composable that renders BOTH that
     // phase's body and the actions it offers. It was two `when`s ninety lines apart plus an early
@@ -154,18 +119,15 @@ internal fun JoiningEventScreen(
         // is an ordinary branch here: once the shape is something a phase CHOOSES, a phase that wants
         // a different one simply calls something else, and no early return has to jump the queue.
         is JoinPhase.Ready -> ReadyLayout(
-            state = readyState(
-                phase, cutoff, selection, participation,
-                shareOn, receiveOn, chosenSaveToAlbum, photoPermission,
-            ),
+            state = readyState(phase, cutoff, selection, participation, photoPermission),
             actions = ReadyActions(
-                participation = participationActions,
+                participation = participation.actions(shareableCount),
                 onJoin = {
                     onConfirm(
                         selection.chosenFrom,
                         selection.chosenUntil,
                         selection.chosenDirection,
-                        chosenSaveToAlbum,
+                        participation.saveToAlbum,
                     )
                 },
                 onCancel = onCancel,
@@ -187,7 +149,7 @@ internal fun JoiningEventScreen(
                     selection.chosenFrom,
                     selection.chosenUntil,
                     selection.chosenDirection,
-                    chosenSaveToAlbum,
+                    participation.saveToAlbum,
                 )
             },
             onCancel = onCancel,
@@ -393,23 +355,16 @@ private fun readyState(
     phase: JoinPhase.Ready,
     cutoff: CutoffFormatter,
     selection: RangeSelection,
-    choices: RangeChoices,
-    shareOn: Boolean,
-    receiveOn: Boolean,
-    saveToAlbum: Boolean,
+    participation: Participation,
     photoPermission: PermissionStatus,
 ) = ReadyState(
     eventName = phase.name,
-    participation = ParticipationState(
+    // The switches come off the HOLDER, never back off `selection.chosenDirection`: `directionOf`
+    // collapses both-off to `DownloadOnly` as an inert placeholder, so deriving them there would render
+    // the receive switch ON for a member who had turned both off.
+    participation = participation.state(
         selection = selection,
-        choices = choices,
         rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
-        // Passed through as themselves, NOT read back off `selection.chosenDirection`: `directionOf`
-        // collapses both-off to `DownloadOnly` as an inert placeholder, so deriving them there would
-        // render the receive switch ON for a member who had turned both off.
-        shareOn = shareOn,
-        receiveOn = receiveOn,
-        saveToAlbum = saveToAlbum,
         photoPermission = photoPermission,
     ),
     labels = ReadyLabels(

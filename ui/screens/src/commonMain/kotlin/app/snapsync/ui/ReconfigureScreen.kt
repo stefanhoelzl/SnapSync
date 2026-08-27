@@ -76,31 +76,22 @@ internal fun ReconfigureScreen(
     onSave: (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
-    // Seeded from the persisted membership, then owned by the controls below. The reconstruction rules
-    // live with the resolution rules they feed (`RangeSelection.kt`).
+    // The member's own picks, owned in one place. Seeded from the persisted membership — the presets
+    // reconstructed from its timestamps, which is lossy by construction (see `reconfigureSeeds`).
     val seeds = remember(membership) { reconfigureSeeds(membership, cutoff) }
-    var shareOn by remember { mutableStateOf(membership.direction.includesUpload) }
-    var receiveOn by remember { mutableStateOf(membership.direction.includesDownload) }
-    var fromPreset by remember { mutableStateOf(seeds.fromPreset) }
-    var fromCustom by remember { mutableStateOf(seeds.fromCustom) }
-    var untilPreset by remember { mutableStateOf(seeds.untilPreset) }
-    var untilCustom by remember { mutableStateOf(seeds.untilCustom) }
-    var chosenSaveToAlbum by remember { mutableStateOf(membership.saveToAlbum) }
-
-    // The SAME derivation the join gate runs, returning the same ten values — these two surfaces choose a
-    // capture range against an event window in exactly the same way, and each used to spell the rules out
-    // separately. A clamping rule that held on one and not the other is a bug nobody would see.
-    val selection = rememberReconfigureSelection(
-        membership = membership,
-        cutoff = cutoff,
-        fromPreset = fromPreset,
-        fromCustom = fromCustom,
-        untilPreset = untilPreset,
-        untilCustom = untilCustom,
-        shareOn = shareOn,
-        receiveOn = receiveOn,
+    val participation = rememberParticipation(
+        ParticipationSeed(
+            shareOn = membership.direction.includesUpload,
+            receiveOn = membership.direction.includesDownload,
+            saveToAlbum = membership.saveToAlbum,
+            fromPreset = seeds.fromPreset,
+            fromCustom = seeds.fromCustom,
+            untilPreset = seeds.untilPreset,
+            untilCustom = seeds.untilCustom,
+        ),
     )
-    val rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved)
+    // The SAME derivation the join gate runs, over the same holder — only the window differs.
+    val selection = rememberReconfigureSelection(membership, cutoff, participation)
 
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -115,28 +106,13 @@ internal fun ReconfigureScreen(
             AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
 
             ParticipationSections(
-                state = ParticipationState(
+                state = participation.state(
                     selection = selection,
-                    choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
-                    rangeLabel = rangeLabel,
-                    shareOn = shareOn,
-                    receiveOn = receiveOn,
-                    saveToAlbum = chosenSaveToAlbum,
+                    rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
                     photoPermission = photoPermission,
                 ),
-                actions = ParticipationActions(
-                    choices = RangeChoiceActions(
-                        onFromPreset = { fromPreset = it },
-                        onFromCustom = { fromCustom = it },
-                        onUntilPreset = { untilPreset = it },
-                        onUntilCustom = { untilCustom = it },
-                    ),
-                    onShareOn = { shareOn = it },
-                    onReceiveOn = { receiveOn = it },
-                    onSaveToAlbum = { chosenSaveToAlbum = it },
-                    shareableCount = shareableCount,
-                ),
-                notes = reconfigureNotes(membership, selection, chosenSaveToAlbum),
+                actions = participation.actions(shareableCount),
+                notes = reconfigureNotes(membership, selection, participation.saveToAlbum),
             )
         }
         SaveActions(
@@ -147,7 +123,7 @@ internal fun ReconfigureScreen(
                     selection.chosenDirection,
                     selection.chosenFrom,
                     selection.chosenUntil,
-                    chosenSaveToAlbum,
+                    participation.saveToAlbum,
                 )
             },
             onCancel = onCancel,
