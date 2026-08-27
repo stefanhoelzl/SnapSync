@@ -39,6 +39,8 @@ import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.ui.components.RangeChoices
 
 // In-place membership reconfigure (capability `reconfigure-membership`) and the switch confirmation
 // that guards a change of event.
@@ -132,23 +134,20 @@ internal fun ReconfigureScreen(
                         permissionKey = photoPermission,
                     )
                     AppRangePresetChoices(
-                        fromSelected = fromPreset,
-                        onFromSelect = { fromPreset = it },
-                        fromCustomValue = fromCustom,
-                        onFromCustomPicked = {
-                            fromCustom = it
-                            fromPreset = FromChoice.CUSTOM
-                        },
-                        untilSelected = untilPreset,
-                        onUntilSelect = { untilPreset = it },
-                        untilCustomValue = untilCustom,
-                        onUntilCustomPicked = {
-                            untilCustom = it
-                            untilPreset = UntilChoice.CUSTOM
-                        },
-                        nowAvailable = selection.nowAvailable,
-                        windowStart = selection.windowStart,
-                        windowEnd = selection.windowEnd,
+                        choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
+                        actions = RangeChoiceActions(
+                            onFromPreset = { fromPreset = it },
+                            onFromCustom = {
+                                fromCustom = it
+                                fromPreset = FromChoice.CUSTOM
+                            },
+                            onUntilPreset = { untilPreset = it },
+                            onUntilCustom = {
+                                untilCustom = it
+                                untilPreset = UntilChoice.CUSTOM
+                            },
+                        ),
+                        window = selection.window,
                         fromFloorNote = "Can't be earlier than the event started, " +
                             "${appDateTimeLabel(selection.windowStart)}.",
                         untilCeilingNote = if (membership.endsAt != null) {

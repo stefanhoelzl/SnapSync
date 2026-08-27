@@ -14,6 +14,7 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.CaptureDate
+import app.snapsync.ui.components.RangeWindow
 
 // The join gate's pure derivation (capability `join-event`): what the guest has chosen, resolved against
 // the event's window. Separated from the screens that render it because it decides WHAT would be
@@ -50,7 +51,10 @@ internal class RangeSelection(
     val chosenUntil: CaptureCeiling,
     val chosenDirection: Direction,
     val commitEnabled: Boolean,
-)
+) {
+    /** The window as the design system wants it — the same three values, in the shape the picker takes. */
+    val window: RangeWindow get() = RangeWindow(windowStart, windowEnd, nowAvailable)
+}
 
 @Composable
 internal fun rememberJoinSelection(

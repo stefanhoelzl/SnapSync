@@ -55,17 +55,14 @@ class AppRangePresetChoicesTest {
             // Snap the wheels instantly so the picker's OK returns the seeded time deterministically.
             CompositionLocalProvider(LocalReduceMotion provides true) {
                 AppRangePresetChoices(
-                    fromSelected = fromSelected,
-                    onFromSelect = onFromSelect,
-                    fromCustomValue = fromCustomValue,
-                    onFromCustomPicked = onFromCustomPicked,
-                    untilSelected = untilSelected,
-                    onUntilSelect = onUntilSelect,
-                    untilCustomValue = untilCustomValue,
-                    onUntilCustomPicked = onUntilCustomPicked,
-                    nowAvailable = nowAvailable,
-                    windowStart = windowStart,
-                    windowEnd = windowEnd,
+                    choices = RangeChoices(fromSelected, fromCustomValue, untilSelected, untilCustomValue),
+                    actions = RangeChoiceActions(
+                        onFromPreset = onFromSelect,
+                        onFromCustom = onFromCustomPicked,
+                        onUntilPreset = onUntilSelect,
+                        onUntilCustom = onUntilCustomPicked,
+                    ),
+                    window = RangeWindow(windowStart, windowEnd, nowAvailable),
                     fromFloorNote = "Can't be earlier than the event started.",
                     untilCeilingNote = "Can't be later than the event ends.",
                 )

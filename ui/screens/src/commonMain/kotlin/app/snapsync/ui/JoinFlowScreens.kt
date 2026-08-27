@@ -54,6 +54,8 @@ import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.ui.components.RangeChoices
 
 // The join gate (capability `join-event`): the full-screen surface a scanned link opens, and the
 // status-plus-actions phases it dispatches over. The Ready decision surface lives in
@@ -136,41 +138,45 @@ internal fun JoiningEventScreen(
         // is an ordinary branch here: once the shape is something a phase CHOOSES, a phase that wants
         // a different one simply calls something else, and no early return has to jump the queue.
         is JoinPhase.Ready -> ReadyLayout(
+            state = ReadyState(
                 eventName = phase.name,
+                selection = selection,
+                choices = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom),
+                labels = ReadyLabels(
+                    range = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
+                    floor = appDateTimeLabel(selection.windowStart),
+                    ceiling = appDateTimeLabel(selection.windowEnd),
+                    // The retention deadline, rendered as a plain date. Absent only if a phase somehow
+                    // lost it, in which case the section states the fixed ceiling alone rather than
+                    // inventing a date.
+                    deletes = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
+                ),
                 shareOn = shareOn,
-                onShareOn = { shareOn = it },
                 receiveOn = receiveOn,
-                onReceiveOn = { receiveOn = it },
-                fromPreset = fromPreset,
-                onFromPreset = { fromPreset = it },
-                fromCustom = fromCustom,
-                onFromCustom = { fromCustom = it },
-                untilPreset = untilPreset,
-                onUntilPreset = { untilPreset = it },
-                untilCustom = untilCustom,
-                onUntilCustom = { untilCustom = it },
-                rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
-                nowAvailable = selection.nowAvailable,
-                windowStart = selection.windowStart,
-                windowEnd = selection.windowEnd,
-                floorLabel = appDateTimeLabel(selection.windowStart),
-                ceilingLabel = appDateTimeLabel(selection.windowEnd),
-                // The retention deadline, rendered as a plain date. Absent only if a phase somehow lost it,
-                // in which case the section states the fixed ceiling alone rather than inventing a date.
-                deletesLabel = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
                 saveToAlbum = chosenSaveToAlbum,
+                photoPermission = photoPermission,
+            ),
+            actions = ReadyActions(
+                choices = RangeChoiceActions(
+                    onFromPreset = { fromPreset = it },
+                    onFromCustom = { fromCustom = it },
+                    onUntilPreset = { untilPreset = it },
+                    onUntilCustom = { untilCustom = it },
+                ),
+                onShareOn = { shareOn = it },
+                onReceiveOn = { receiveOn = it },
                 onSaveToAlbum = { chosenSaveToAlbum = it },
-                joinEnabled = selection.commitEnabled,
                 onJoin = {
                     onConfirm(
-                        selection.chosenFrom, selection.chosenUntil, selection.chosenDirection, chosenSaveToAlbum,
+                        selection.chosenFrom,
+                        selection.chosenUntil,
+                        selection.chosenDirection,
+                        chosenSaveToAlbum,
                     )
                 },
                 onCancel = onCancel,
-                chosenFrom = selection.chosenFrom,
-                chosenUntil = selection.chosenUntil,
                 shareableCount = shareableCount,
-                photoPermission = photoPermission,
+            ),
         )
         JoinPhase.Loading -> LoadingPhase()
         is JoinPhase.ExplainAccess -> ExplainAccessPhase(

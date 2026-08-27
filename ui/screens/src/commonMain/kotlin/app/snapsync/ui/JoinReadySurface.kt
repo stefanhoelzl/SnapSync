@@ -30,6 +30,8 @@ import app.snapsync.ui.components.UntilChoice
 import kotlinx.datetime.LocalDateTime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.ui.components.RangeChoices
 
 // The **Ready** join surface (capability `join-event`): the decision the guest actually makes, and the
 // shareable-count row it shares with the reconfigure screen. Split out of `JoinFlowScreens.kt` because
@@ -73,42 +75,7 @@ import androidx.compose.runtime.setValue
  * absorb that.
  */
 @Composable
-internal fun ReadyLayout(
-    eventName: String,
-    shareOn: Boolean,
-    onShareOn: (Boolean) -> Unit,
-    receiveOn: Boolean,
-    onReceiveOn: (Boolean) -> Unit,
-    fromPreset: FromChoice,
-    onFromPreset: (FromChoice) -> Unit,
-    fromCustom: LocalDateTime?,
-    onFromCustom: (LocalDateTime) -> Unit,
-    untilPreset: UntilChoice,
-    onUntilPreset: (UntilChoice) -> Unit,
-    untilCustom: LocalDateTime?,
-    onUntilCustom: (LocalDateTime) -> Unit,
-    // The resolved range as one readable label — the section's single statement of what will be shared.
-    rangeLabel: String,
-    nowAvailable: Boolean,
-    windowStart: LocalDateTime,
-    windowEnd: LocalDateTime,
-    floorLabel: String,
-    ceilingLabel: String,
-    // When the event's shared photos are deleted (capability `event-limits`), pre-formatted; `null` only
-    // when the phase carries no deadline, in which case only the fixed ceiling is stated.
-    deletesLabel: String?,
-    saveToAlbum: Boolean,
-    onSaveToAlbum: (Boolean) -> Unit,
-    joinEnabled: Boolean,
-    onJoin: () -> Unit,
-    onCancel: () -> Unit,
-    // The UTC `…Z` range bounds the switches+presets currently resolve to, and the permission-aware count
-    // query over `[from, until]` (capability `join-share-count`). [photoPermission] is a recompute trigger only.
-    chosenFrom: CaptureCutoff,
-    chosenUntil: CaptureCeiling,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
-    photoPermission: PermissionStatus,
-) {
+internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -118,7 +85,7 @@ internal fun ReadyLayout(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             AppEventHeaderCompact(
-                title = eventName,
+                title = state.eventName,
                 // The one warm line the surface allows itself — the eyebrow above already says
                 // "you're invited", so this states what the invitation IS.
                 subtitle = "Everyone's photos, one shared place.",
@@ -131,10 +98,10 @@ internal fun ReadyLayout(
             // they refine.
             AppToggleSection(
                 title = "Share my photos",
-                checked = shareOn,
-                onCheckedChange = onShareOn,
+                checked = state.shareOn,
+                onCheckedChange = actions.onShareOn,
             ) {
-                if (shareOn) {
+                if (state.shareOn) {
                     // The origin exclusions (capability `photo-selection-policy`), stated as what is
                     // SUBTRACTED, never as a guarantee of what gets through: the policy cannot infer
                     // capture-origin (PhotoKit exposes no camera flag), so it removes only what is
@@ -147,42 +114,39 @@ internal fun ReadyLayout(
                     // The ONE statement of the RANGE that decides which photos leave the phone, in the
                     // heaviest type the surface renders. The Custom rows below deliberately never repeat
                     // it — their pickers feed this line.
-                    AppSectionValue("Sharing $rangeLabel")
+                    AppSectionValue("Sharing ${state.labels.range}")
                     // The live shareable count (capability `join-share-count`): how many of the member's
                     // own gallery photos this RANGE would share, recomputed as either bound (or a late
                     // permission resolve) changes. Omitted when no count is available.
                     ShareCountRow(
-                        chosenCutoff = chosenFrom,
-                        chosenUntil = chosenUntil,
-                        shareableCount = shareableCount,
-                        permissionKey = photoPermission,
+                        chosenCutoff = state.selection.chosenFrom,
+                        chosenUntil = state.selection.chosenUntil,
+                        shareableCount = actions.shareableCount,
+                        permissionKey = state.photoPermission,
                     )
                     // Level 2: the From/Until range presets, each its own captioned sub-list in its own
                     // recessed well — the component owns those wells, so this section wraps it in none.
                     // Switch = does this section happen; checkmarks = how.
                     AppRangePresetChoices(
-                        fromSelected = fromPreset,
-                        onFromSelect = onFromPreset,
-                        fromCustomValue = fromCustom,
+                        choices = state.choices,
                         // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the previous
                         // choice (and its instant) exactly as it was.
-                        onFromCustomPicked = {
-                            onFromCustom(it)
-                            onFromPreset(FromChoice.CUSTOM)
-                        },
-                        untilSelected = untilPreset,
-                        onUntilSelect = onUntilPreset,
-                        untilCustomValue = untilCustom,
-                        onUntilCustomPicked = {
-                            onUntilCustom(it)
-                            onUntilPreset(UntilChoice.CUSTOM)
-                        },
+                        actions = RangeChoiceActions(
+                            onFromPreset = actions.choices.onFromPreset,
+                            onFromCustom = {
+                                actions.choices.onFromCustom(it)
+                                actions.choices.onFromPreset(FromChoice.CUSTOM)
+                            },
+                            onUntilPreset = actions.choices.onUntilPreset,
+                            onUntilCustom = {
+                                actions.choices.onUntilCustom(it)
+                                actions.choices.onUntilPreset(UntilChoice.CUSTOM)
+                            },
+                        ),
                         // Pre-start (and post-end), "Now" would fall outside the window — offered disabled.
-                        nowAvailable = nowAvailable,
-                        windowStart = windowStart,
-                        windowEnd = windowEnd,
-                        fromFloorNote = "Can't be earlier than the event started, $floorLabel.",
-                        untilCeilingNote = "Can't be later than the event ends, $ceilingLabel.",
+                        window = state.selection.window,
+                        fromFloorNote = "Can't be earlier than the event started, ${state.labels.floor}.",
+                        untilCeilingNote = "Can't be later than the event ends, ${state.labels.ceiling}.",
                     )
                 } else {
                     AppSectionNote("Nothing of yours leaves this phone.")
@@ -195,10 +159,10 @@ internal fun ReadyLayout(
             // must avoid, and breaks pronoun parity with "Share my photos".
             AppToggleSection(
                 title = "Receive everyone's photos",
-                checked = receiveOn,
-                onCheckedChange = onReceiveOn,
+                checked = state.receiveOn,
+                onCheckedChange = actions.onReceiveOn,
             ) {
-                if (receiveOn) {
+                if (state.receiveOn) {
                     AppSectionNote("Photos others share arrive in your library automatically.")
                 } else {
                     AppSectionNote("You won't receive the event's photos.")
@@ -214,15 +178,15 @@ internal fun ReadyLayout(
             AppMinorSection {
                 AppSummaryToggle(
                     label = "Create an album",
-                    checked = saveToAlbum,
-                    onCheckedChange = onSaveToAlbum,
+                    checked = state.saveToAlbum,
+                    onCheckedChange = actions.onSaveToAlbum,
                     note = when {
-                        !saveToAlbum -> "No album is created."
-                        shareOn && receiveOn ->
+                        !state.saveToAlbum -> "No album is created."
+                        state.shareOn && state.receiveOn ->
                             "Photos you share and photos you receive are collected in an album " +
                                 "named after the event."
-                        shareOn -> "Photos you share are collected in an album named after the event."
-                        receiveOn -> "Photos you receive are collected in an album named after the event."
+                        state.shareOn -> "Photos you share are collected in an album named after the event."
+                        state.receiveOn -> "Photos you receive are collected in an album named after the event."
                         // Both switches off: nothing syncs, so nothing feeds the album. Join is already
                         // disabled with its own reason; this line keeps the row honest meanwhile.
                         else -> "Nothing is shared or received, so nothing is collected."
@@ -242,7 +206,7 @@ internal fun ReadyLayout(
             AppMinorSection {
                 AppSectionNote(
                     buildString {
-                        if (deletesLabel != null) append("Shared photos are deleted on $deletesLabel. ")
+                        state.labels.deletes?.let { append("Shared photos are deleted on $it. ") }
                         append("An event's photos are kept for at most 30 days from the day it starts.")
                     },
                 )
@@ -254,13 +218,13 @@ internal fun ReadyLayout(
         ) {
             // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
             // moving a switch the guest didn't touch.
-            if (!joinEnabled) {
+            if (!state.selection.commitEnabled) {
                 StatusHint(
                     "Turn on sharing or receiving — a membership that does neither does nothing.",
                 )
             }
-            PrimaryButton(label = "Join", onClick = onJoin, enabled = joinEnabled)
-            SecondaryButton(label = "Cancel", onClick = onCancel)
+            PrimaryButton(label = "Join", onClick = actions.onJoin, enabled = state.selection.commitEnabled)
+            SecondaryButton(label = "Cancel", onClick = actions.onCancel)
         }
     }
 }
@@ -311,3 +275,53 @@ internal fun ShareCountRow(
         }
     }
 }
+
+/**
+ * What the **Ready** join surface displays. Two parameters replace twenty-nine: the previous signature
+ * interleaved each value with its own callback, pair by pair, which is the shape that grows without bound.
+ *
+ * Most of this is not new state — [selection] is the [RangeSelection] the screen already derived, and
+ * [choices] is the same quartet the design system's picker takes. What was genuinely loose is [labels].
+ */
+internal class ReadyState(
+    val eventName: String,
+    val selection: RangeSelection,
+    val choices: RangeChoices,
+    val labels: ReadyLabels,
+    val shareOn: Boolean,
+    val receiveOn: Boolean,
+    val saveToAlbum: Boolean,
+    // A recompute trigger for the shareable count, not a rendered value.
+    val photoPermission: PermissionStatus,
+)
+
+/**
+ * The four pre-formatted strings the surface states, kept together because they are all derived from the
+ * same window by the caller that owns the formatter.
+ *
+ * [deletes] is `null` only when the phase carries no retention deadline, in which case the section states
+ * the fixed ceiling alone rather than inventing a date.
+ */
+internal class ReadyLabels(
+    val range: String,
+    val floor: String,
+    val ceiling: String,
+    val deletes: String?,
+)
+
+/**
+ * Everything the Ready surface can ask for. Nested rather than flattened: [choices] is the design system's
+ * own four-edit holder, so this carries seven fields instead of the ten it would take spread out — which is
+ * the point that the old note in `config/detekt/ui.yml` missed. Bundling recurses forever only if each
+ * bundle is flat; a bundle of bundles has as many fields as it has GROUPS.
+ */
+internal class ReadyActions(
+    val choices: RangeChoiceActions,
+    val onShareOn: (Boolean) -> Unit,
+    val onReceiveOn: (Boolean) -> Unit,
+    val onSaveToAlbum: (Boolean) -> Unit,
+    val onJoin: () -> Unit,
+    val onCancel: () -> Unit,
+    // The permission-aware count query over `[from, until]` (capability `join-share-count`).
+    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
+)
