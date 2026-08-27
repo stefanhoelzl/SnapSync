@@ -102,6 +102,30 @@ fun Resource.toLedgerRow(state: LedgerState, attempt: Int, eventId: String): Led
 )
 
 enum class LedgerState {
+    /**
+     * The discovery walk found this resource, the membership's policy admitted it, and nothing has been
+     * attempted for it.
+     *
+     * The only state named for the **walk** rather than for an upload attempt, and the reason the ledger
+     * can be the cycle's source of work at all: without it, the sole record of "this needs uploading"
+     * lives in the walk's return value and dies with the cycle, so a cycle that could not enqueue
+     * everything it saw had to re-walk the whole library next time to find the remainder — and could not
+     * advance the change-token cursor, because advancing past a resource nothing records loses it
+     * silently and permanently.
+     *
+     * It is recorded **before** the first `createJob` of a cycle, and it is what licenses that cycle's
+     * cursor advance (capability `ios-photokit-upload`, "In-extension discovery via persistent change
+     * token"). It does not mean a job exists — that is [REQUESTED], and the write-after-act invariant
+     * keeping those distinct is what lets the stranded pass treat a `REQUESTED` row with no live task as
+     * a lost transfer.
+     *
+     * Not a done state ([isDone]) and **does** need a job ([needsJob]), so it counts toward the backlog
+     * everywhere and stays out of the device-manifest projection until its bytes actually land.
+     *
+     * Decision record: `changes/fix-cap-truncation-loop` (D1, D3, D4).
+     */
+    DISCOVERED,
+
     /** Work was answered for this key — a hope; the engine cannot prove it was executed. */
     REQUESTED,
 
@@ -146,11 +170,36 @@ enum class LedgerState {
 val LedgerState.isDone: Boolean
     get() = when (this) {
         LedgerState.COMPLETED -> true
-        LedgerState.UPLOADED, LedgerState.REQUESTED, LedgerState.FAILED -> false
+        LedgerState.DISCOVERED, LedgerState.UPLOADED, LedgerState.REQUESTED, LedgerState.FAILED -> false
     }
 
 /** The settled states, bound into every state-scoped storage read. See [isDone]. */
 val DONE_STATES: List<LedgerState> = LedgerState.entries.filter { it.isDone }
+
+/**
+ * Whether a row in this state **needs an upload job** — nothing is in flight for its key, and its bytes
+ * are not on the backend.
+ *
+ * The second, independent classification alongside [isDone], and the one that makes the ledger the
+ * cycle's source of work: a producer asks for these rows rather than asking the library. The two axes do
+ * not imply each other — [LedgerState.REQUESTED] and [LedgerState.UPLOADED] are neither done nor in need
+ * of a job — so every state is classified on both, and this `when` has no `else` for the same reason
+ * [isDone] has none.
+ *
+ * [LedgerState.DISCOVERED] and [LedgerState.FAILED] are the same fact to a producer, differing only in
+ * whether an attempt was already made. Collapsing them here is what makes the never-retried `FAILED` row
+ * and the never-enqueued remainder one defect with one fix: before this, both were reachable only by a
+ * walk that re-derived their resource, which an incremental walk does not do for an asset that has not
+ * changed.
+ */
+val LedgerState.needsJob: Boolean
+    get() = when (this) {
+        LedgerState.DISCOVERED, LedgerState.FAILED -> true
+        LedgerState.REQUESTED, LedgerState.UPLOADED, LedgerState.COMPLETED -> false
+    }
+
+/** The states needing an upload job, bound into the work-source read. See [needsJob]. */
+val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJob }
 
 /**
  * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not

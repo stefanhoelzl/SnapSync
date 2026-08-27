@@ -93,10 +93,12 @@ class SyncEngine(
         // COMPLETED/UPLOADED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
         // UPLOADED skips for the same reason COMPLETED does — its bytes ARE stored; what it still owes is
         // the album placement and the notify, which the cycle's promotion pass performs, never a re-upload.
-        // FAILED or absent → fresh upload. Only new keys ever upload.
+        // DISCOVERED, FAILED or absent → fresh upload. DISCOVERED is a row the walk wrote for a resource
+        // nothing has attempted, so re-deriving it must answer `Work` exactly as an absent row does —
+        // otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
         return when (entry?.state) {
             LedgerState.COMPLETED, LedgerState.UPLOADED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
-            LedgerState.FAILED, null -> SyncDecision.Upload(mint(resource, attempt = 0))
+            LedgerState.DISCOVERED, LedgerState.FAILED, null -> SyncDecision.Upload(mint(resource, attempt = 0))
         }
     }
 

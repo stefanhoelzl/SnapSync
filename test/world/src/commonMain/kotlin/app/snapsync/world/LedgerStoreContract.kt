@@ -578,4 +578,73 @@ abstract class LedgerStoreContract {
         backend.backfillManifestDetail(other.toLedgerRow(LedgerState.COMPLETED, 0, "E1"))
         assertEquals(CREATION_DATE, backend.get("seeded.heic")!!.creationDate)
     }
+
+    // --- the work-source read (capability `sync-ledger`) --------------------------------------------
+
+    @Test
+    fun `rowsNeedingJob returns DISCOVERED and FAILED rows and nothing else`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
+        backend.put(entry(key = "b.heic", assetId = "B", state = LedgerState.FAILED))
+        backend.put(entry(key = "c.heic", assetId = "C", state = LedgerState.REQUESTED))
+        backend.put(entry(key = "d.heic", assetId = "D", state = LedgerState.UPLOADED))
+        backend.put(entry(key = "e.heic", assetId = "E", state = LedgerState.COMPLETED))
+
+        // DISCOVERED and FAILED are the same fact to a producer: no live job, no bytes on the backend.
+        // REQUESTED has a job, UPLOADED has bytes, COMPLETED is settled — none of them is work.
+        assertEquals(
+            listOf("a.heic", "b.heic"),
+            backend.rowsNeedingJob(limit = 10).map { it.key },
+        )
+    }
+
+    @Test
+    fun `rowsNeedingJob excludes rows whose asset left the library`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "gone.heic", assetId = "G", state = LedgerState.DISCOVERED))
+        backend.markAbsent("G")
+
+        // A departed asset has no bytes left to read, so there is nothing to upload from. This is the one
+        // place the work read and `uploadedRows` disagree, and deliberately: an UPLOADED row still owes a
+        // promotion, which absence does not change.
+        assertEquals(emptyList(), backend.rowsNeedingJob(limit = 10))
+    }
+
+    @Test
+    fun `rowsNeedingJob honours its bound with a stable order`() = runTest {
+        val backend = createBackend()
+        for (k in listOf("c.heic", "a.heic", "d.heic", "b.heic")) {
+            backend.put(entry(key = k, assetId = k, state = LedgerState.DISCOVERED))
+        }
+
+        // Bounded because a first walk on a large library records a row per outstanding resource, and
+        // ordered so the bound takes a deterministic slice rather than whatever the storage returned.
+        assertEquals(listOf("a.heic", "b.heic"), backend.rowsNeedingJob(limit = 2).map { it.key })
+    }
+
+    @Test
+    fun `a DISCOVERED row is backlog but neither manifest nor stranding candidate`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
+
+        // Counted as outstanding everywhere...
+        assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
+        assertEquals(listOf(PendingResource("A", "a.heic")), backend.pendingResources())
+        // ...but it is not in the manifest projection (its bytes are not on the backend)...
+        assertEquals(emptyList(), backend.completedManifestRows())
+        // ...and it is not a stranding candidate: a row that never had a job cannot be a lost transfer,
+        // and surfacing it would write a failure that did not happen.
+        assertEquals(emptySet(), backend.requestedKeys())
+    }
+
+    @Test
+    fun `a guarded terminal write cannot touch a DISCOVERED row`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
+
+        // `markTerminal` is guarded on REQUESTED, which is what lets the walk write a row without racing
+        // the platform's delegate for a key it has never issued a job for.
+        assertFalse(backend.markTerminal("a.heic", LedgerState.UPLOADED))
+        assertEquals(LedgerState.DISCOVERED, backend.get("a.heic")!!.state)
+    }
 }

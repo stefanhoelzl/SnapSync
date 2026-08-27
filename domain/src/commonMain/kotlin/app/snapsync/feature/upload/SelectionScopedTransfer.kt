@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
+import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.Discovery
@@ -27,6 +28,22 @@ class SelectionScopedTransfer(
     private val delegate: BackgroundTransfer,
     private val selectionScope: () -> SelectionScope,
 ) : BackgroundTransfer by delegate {
+
+    /**
+     * The same read discipline applied to the ledger-driven resolve (capability `sync-ledger`): under a
+     * partial grant the selection snapshot IS this membership's own-photo scope, so the keys are answered
+     * **from the snapshot already in hand** and no platform read happens.
+     *
+     * A key the snapshot does not carry resolves to nothing, which is the port's contract and the honest
+     * answer here: under `.limited` a photo outside the user's selection is not this app's to upload, and
+     * that is the same absence as an asset having left the library — the caller stops asking for it either
+     * way.
+     */
+    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
+        when (val scope = selectionScope()) {
+            SelectionScope.Unrestricted -> delegate.resourcesFor(keys)
+            is SelectionScope.Scoped -> scope.resources.filter { it.filename in keys }
+        }
 
     override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
         when (val scope = selectionScope()) {

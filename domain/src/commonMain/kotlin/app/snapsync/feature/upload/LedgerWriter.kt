@@ -21,6 +21,26 @@ class LedgerWriter(
 
     suspend fun entry(key: String): LedgerEntry? = backend.get(key)
 
+    /**
+     * Record that the walk found [resource] and the policy admitted it — **only when the key has no row
+     * yet**; answers whether it applied.
+     *
+     * The guard is the operation's purpose, and it is why this is not just `record(…, DISCOVERED, …)`.
+     * A key the engine answers `Work` for is absent, `DISCOVERED`, or `FAILED`, and the last of those
+     * already needs a job: writing over it would reset an attempt count that a retry chain is counting
+     * on, to say something the row already says.
+     *
+     * The read-then-write is safe here where it would not be on a terminal transition: this cycle is the
+     * ledger's only writer of non-terminal states and the pump is single-flight, and the one writer that
+     * does not take that lock — the platform's delegate, through `markTerminal` — is guarded on
+     * `REQUESTED`, so it cannot touch a key that has no row.
+     */
+    suspend fun recordDiscovered(resource: Resource, eventId: String): Boolean {
+        if (backend.get(resource.filename) != null) return false
+        record(resource, LedgerState.DISCOVERED, attempt = 0, eventId)
+        return true
+    }
+
     suspend fun recordRequested(resource: Resource, attempt: Int, eventId: String) =
         record(resource, LedgerState.REQUESTED, attempt, eventId)
 
@@ -61,6 +81,15 @@ class LedgerWriter(
 
     /** The rows the platform recorded `UPLOADED` — what the cycle's promotion pass consumes. */
     suspend fun uploadedRows(): List<LedgerEntry> = backend.uploadedRows()
+
+    /**
+     * At most [limit] rows that need an upload job — the cycle's **source of work** (capability
+     * `sync-ledger`), spanning `DISCOVERED` and `FAILED`.
+     *
+     * A read on the writer's face, like [completedManifestRows] and [uploadedRows] beside it, because
+     * the cycle that consumes it is the single writer and asks through this one seam.
+     */
+    suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> = backend.rowsNeedingJob(limit)
 
     /**
      * Promote one `UPLOADED` row to `COMPLETED` — the cycle's half of the two-phase completion, run once

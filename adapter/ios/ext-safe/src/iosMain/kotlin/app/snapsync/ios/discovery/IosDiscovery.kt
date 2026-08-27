@@ -2,6 +2,9 @@ package app.snapsync.ios.discovery
 
 import app.snapsync.model.UploadRequest
 import app.snapsync.gallery.PhotoKitCandidateSource
+import app.snapsync.model.Resource
+import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.Discovery
@@ -114,6 +117,33 @@ class IosDiscovery(
                 removedAssetIds = removed.toList(),
             )
         }
+
+    /**
+     * Resolve ledger [keys] to uploadable resources, **by identifier** — the id-scoped read that lets a
+     * producer enqueue from the ledger instead of from a walk (capability `sync-ledger`).
+     *
+     * The same `fetchAssetsWithLocalIdentifiers` + [PhotoKitCandidateSource.candidatesFrom] pair the
+     * incremental branch of [discover] already uses, pointed at a key set rather than a change set. The
+     * cost is one fetch plus the per-asset resource read for exactly the assets asked for; the walk it
+     * replaces is one round-trip per asset in the whole in-scope library.
+     *
+     * Partial by contract: a key whose asset has left the library simply does not come back. The filter
+     * at the end is what makes that true — an asset resolves to all of its resources, and only the keys
+     * asked for are kept, so a Live Photo's paired video is never smuggled in beside a request for its
+     * still.
+     *
+     * On [Dispatchers.Default] for the reason [discover] documents at length: every call below is a
+     * synchronous XPC round-trip into `assetsd`, and this hop keeps them off the composition's serial
+     * lane rather than off the main thread (which the composition already guarantees).
+     */
+    suspend fun resourcesFor(keys: Set<String>): List<Resource> = withContext(Dispatchers.Default) {
+        if (keys.isEmpty()) return@withContext emptyList()
+        val localIds = keys.mapTo(linkedSetOf()) { denormalizeAssetId(assetIdFromUploadKey(it)) }
+        val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIds.toList(), null)
+        source.candidatesFrom(assets)
+            .flatMap { it.resources() }
+            .filter { it.filename in keys }
+    }
 
     /** Build the edge PUT request for [request] — HTTP/3 disabled (see below). Shared by both tiers. */
     fun buildRequest(url: NSURL, request: UploadRequest): NSMutableURLRequest {

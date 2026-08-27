@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.model.LedgerAggregates
+import app.snapsync.model.needsJob
 import app.snapsync.model.isDone
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
@@ -140,6 +141,11 @@ class InMemoryLedgerStore : LedgerStore {
 
     override suspend fun uploadedRows(): List<LedgerEntry> =
         rows.values.filter { it.state == LedgerState.UPLOADED }
+
+    override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> =
+        rows.values.filter { it.state.needsJob && !it.absent }
+            .sortedBy { it.key }
+            .take(limit)
 
     override suspend fun requestedKeys(): Set<String> =
         rows.values.filter { it.state == LedgerState.REQUESTED }.mapTo(mutableSetOf()) { it.key }

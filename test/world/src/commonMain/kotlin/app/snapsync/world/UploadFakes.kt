@@ -1,7 +1,9 @@
 package app.snapsync.world
 
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
+import app.snapsync.model.resourcesFrom
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CandidateSource
@@ -41,6 +43,15 @@ class FakeBackgroundTransfer(
     private val source: CandidateSource,
     /** The same ledger the composed cycle writes — this adapter records terminal outcomes into it. */
     private val ledger: LedgerStore,
+    /**
+     * The gallery's raw contents, unscoped — the world's stand-in for "fetch these assets by identifier".
+     *
+     * A thunk over [WorldGallery.current] rather than the [CandidateSource] beside it, because that seam
+     * takes a policy and there is no policy to supply here: a key exists because a walk already admitted
+     * its resource, and re-admitting it would let a narrowing reconfigure silently drop rows the ledger
+     * still holds (capability `device-manifest` puts scope in the projection, not in the upload).
+     */
+    private val rawAssets: () -> List<RawAsset>,
 ) : BackgroundTransfer {
 
     /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
@@ -58,6 +69,13 @@ class FakeBackgroundTransfer(
 
     /** Inspection: every resource a job was created for (retry chains visible via repeated keys). */
     val created = mutableListOf<Resource>()
+
+    /** Inspection: how many times the discovery feed was consumed — 0 proves a cycle enqueued from the ledger. */
+    var discoverCalls = 0
+        private set
+
+    /** Inspection: every ledger key the cycle asked this fake to resolve. */
+    val resolvedKeys = mutableSetOf<String>()
 
     /**
      * The OS job states this fake models. Private on purpose: the platform-neutral enum moved into the
@@ -118,7 +136,26 @@ class FakeBackgroundTransfer(
         return CreateResult.CREATED
     }
 
+    /**
+     * Resolve ledger keys from the world's gallery — id-scoped, and **observable**: [resolvedKeys] is
+     * how a test asserts that a cycle enqueued from the ledger rather than from the discovery feed
+     * (capability `sync-ledger`).
+     *
+     * Deliberately unscoped by the policy, unlike [discoverResources]. A key exists because a walk
+     * already admitted its resource; re-applying the admission here would let a narrowing reconfigure
+     * silently drop rows the ledger still holds, and scope belongs to the manifest projection, not to
+     * the upload (capability `device-manifest`).
+     *
+     * An asset the operator removed from the gallery resolves to nothing — the port's partial contract,
+     * and the case a test needs in order to construct "the asset left between the row and the send".
+     */
+    override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
+        resolvedKeys += keys
+        return resourcesFrom(rawAssets()).filter { it.filename in keys }
+    }
+
     override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+        discoverCalls++
         // Scoped by the POLICY, exactly as the PhotoKit walk is (capability `photo-selection-policy`);
         // the cycle's own admission still runs over whatever comes back.
         val current = source.candidates(policy)

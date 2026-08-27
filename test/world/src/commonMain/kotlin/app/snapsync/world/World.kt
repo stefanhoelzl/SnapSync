@@ -146,7 +146,7 @@ class World(
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
     // as both device adapters do, so the world exercises the real two-phase completion.
     val platform: FakeBackgroundTransfer =
-        FakeBackgroundTransfer(store, ownDeviceId, enumerator, ledgerBackend)
+        FakeBackgroundTransfer(store, ownDeviceId, enumerator, ledgerBackend, gallery::current)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.

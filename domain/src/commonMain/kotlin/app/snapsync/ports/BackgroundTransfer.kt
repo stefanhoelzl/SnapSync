@@ -54,6 +54,26 @@ interface BackgroundTransfer {
      */
     suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery
 
+    /**
+     * Resolve ledger [keys] to uploadable [Resource]s — **id-scoped, never a walk**.
+     *
+     * This is what lets the ledger be the cycle's source of work (capability `sync-ledger`). A row records
+     * that a resource needs uploading, but it cannot carry the platform handle `createJob` requires, so a
+     * producer enqueueing from the ledger asks for exactly the keys it intends to send. A key is
+     * `<assetId>-<role>.<ext>`, so an implementation has everything it needs to fetch those assets by
+     * identifier and pick the matching resource.
+     *
+     * **Partial-tolerant, and that is the contract, not a convenience.** A key whose asset has left the
+     * library resolves to nothing — the caller learns the asset departed, which is a different fact from
+     * an upload failing, and the two must not be collapsed (`module-architecture`, "Absence is never
+     * silent"). An implementation MUST NOT throw for a missing key and MUST NOT substitute another
+     * resource for it.
+     *
+     * Each returned resource's `filename` is the key it was resolved for, so a caller can pair them back
+     * up without a second lookup.
+     */
+    suspend fun resourcesFor(keys: Set<String>): List<Resource>
+
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
 }

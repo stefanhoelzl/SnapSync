@@ -173,3 +173,25 @@ WHERE key = :key AND state = 'UPLOADED';
 selectRequestedKeys:
 SELECT key FROM ledgerRow
 WHERE state = 'REQUESTED';
+
+-- The rows that need an upload job — the upload cycle's source of work (capability `sync-ledger`).
+--
+-- `:needsJobStates` is bound from Kotlin's `LedgerState.needsJob` rather than written as a literal here,
+-- for the same reason `:doneStates` is: a state added without classifying it would otherwise land
+-- silently on one side of a string comparison, and this query is the one that decides whether the cycle
+-- ever looks at it again.
+--
+-- Filtered by `absent`, unlike `selectUploaded`: a departed asset has no bytes left to read, so there is
+-- nothing to upload from. `selectUploaded` keeps its absent rows because their bytes ARE on the backend
+-- and the row still owes a promotion; a row that needs a job owes an upload, which a departed asset can
+-- no longer supply.
+--
+-- Ordered by key so the bound below takes a deterministic slice rather than whatever the storage engine
+-- happened to return, and LIMITed because a first walk on a large library records a row per outstanding
+-- resource and a cycle that tried to enqueue all of them would stage every one to disk.
+selectNeedingJob:
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
+FROM ledgerRow
+WHERE state IN :needsJobStates AND absent = 0
+ORDER BY key
+LIMIT :limit;
