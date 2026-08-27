@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeChoices
 import androidx.compose.foundation.layout.ColumnScope
+import app.snapsync.ui.components.DialogCopy
 
 // In-place membership reconfigure (capability `reconfigure-membership`) and the switch confirmation
 // that guards a change of event.
@@ -84,10 +85,7 @@ internal fun ReconfigureScreen(
             shareOn = membership.direction.includesUpload,
             receiveOn = membership.direction.includesDownload,
             saveToAlbum = membership.saveToAlbum,
-            fromPreset = seeds.fromPreset,
-            fromCustom = seeds.fromCustom,
-            untilPreset = seeds.untilPreset,
-            untilCustom = seeds.untilCustom,
+            choices = seeds,
         ),
     )
     // The SAME derivation the join gate runs, over the same holder — only the window differs.
@@ -184,33 +182,39 @@ internal fun SwitchDialog(
         is JoinPhase.ExplainAccess -> Unit
         is JoinPhase.Ready ->
             AppDestructiveConfirmDialog(
-                title = "Switch events?",
                 // The names carry the whole weight of the decision, so they are the whole body; the title
                 // is the crisp question. Destructive, because the confirm leaves immediately. It promises
                 // NO participation — the member picks direction, cutoff and album on the join surface that
                 // follows — and shows no shareable count, there being no chosen range to count yet
                 // (capability `join-share-count`).
-                body = "You'll leave \"$current\" and join \"${phase.name}\".",
-                confirmLabel = "Switch",
-                cancelLabel = "Cancel",
+                copy = DialogCopy(
+                    title = "Switch events?",
+                    confirmLabel = "Switch",
+                    cancelLabel = "Cancel",
+                    body = "You'll leave \"$current\" and join \"${phase.name}\".",
+                ),
                 onConfirm = onConfirmSwitch,
                 onDismiss = onCancelSwitch,
             )
         JoinPhase.NotFound ->
             AppConfirmDialog(
-                title = "Invite not found",
-                body = "This invite is invalid or the event no longer exists.",
-                confirmLabel = "OK",
-                cancelLabel = "Cancel",
+                copy = DialogCopy(
+                    title = "Invite not found",
+                    body = "This invite is invalid or the event no longer exists.",
+                    confirmLabel = "OK",
+                    cancelLabel = "Cancel",
+                ),
                 onConfirm = onCancelSwitch,
                 onDismiss = onCancelSwitch,
             )
         JoinPhase.LoadFailed ->
             AppConfirmDialog(
-                title = "Couldn't load the event",
-                body = "Check your connection and try again.",
-                confirmLabel = "Retry",
-                cancelLabel = "Cancel",
+                copy = DialogCopy(
+                    title = "Couldn't load the event",
+                    body = "Check your connection and try again.",
+                    confirmLabel = "Retry",
+                    cancelLabel = "Cancel",
+                ),
                 onConfirm = onRetryLoad,
                 onDismiss = onCancelSwitch,
             )

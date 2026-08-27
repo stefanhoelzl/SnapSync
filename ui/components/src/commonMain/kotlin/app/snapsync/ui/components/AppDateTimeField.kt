@@ -106,9 +106,7 @@ internal fun DateTimePickerDialog(
             CalendarGrid(
                 visibleMonth = visibleMonth,
                 selected = selectedDate,
-                today = today,
-                floor = minimum?.date,
-                ceiling = maximum?.date,
+                bounds = CalendarBounds(today, minimum?.date, maximum?.date),
                 onPick = { selectedDate = it },
             )
         },
@@ -197,9 +195,7 @@ internal fun DateTimeRangePickerDialog(
                 visibleMonth = visibleMonth,
                 rangeStart = startDate,
                 rangeEnd = endDate ?: startDate,
-                today = today,
-                floor = minimum?.date,
-                ceiling = maximum?.date,
+                bounds = CalendarBounds(today, minimum?.date, maximum?.date),
                 onPick = { onPick(it) },
             )
         },

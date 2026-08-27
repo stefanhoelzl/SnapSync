@@ -19,6 +19,8 @@ import app.snapsync.ui.components.ShareButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.ColumnScope
+import app.snapsync.ui.components.DialogCopy
+import app.snapsync.ui.components.ScreenHeading
 
 
 /**
@@ -107,22 +109,21 @@ fun StatusScreen(
         // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
         ScreenLayout(
             title = "SnapSync",
-            heading = if (chrome.showsJoinedChrome) eventName else null,
+            // The rename pen rides with the heading it edits. Unlike the hidden double-tap below, it is a
+            // real control and appears in the accessibility tree. Not suppressed during a pending switch,
+            // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
+            // and suppressing here also hid the pen for the whole of a join's own commit.
+            heading = eventName?.takeIf { chrome.showsJoinedChrome }?.let {
+                ScreenHeading(
+                    text = it,
+                    onEdit = if (chrome.canRename) ({ overlays.renaming = true }) else null,
+                    editDescription = "Rename event",
+                )
+            },
             bottomActions = bottomActions,
             contentPinsActionCluster = chrome.pinsActionCluster,
             // Hidden, and only where there is a channel to send to.
             onTitleDoubleTap = actions.onSendDiagnostics?.let { { overlays.reportingBug = true } },
-            // The rename pen, beside the heading. Unlike the hidden double-tap above, this is a real
-            // control and appears in the accessibility tree. Not suppressed during a pending switch, for
-            // the same reasons the settings gear is not (see the action cluster above): `RenameEvent`
-            // guards the `eventId` itself, and suppressing here also hid the pen for the whole of a join's
-            // own commit.
-            onEditHeading =
-                if (chrome.canRename) {
-                    { overlays.renaming = true }
-                } else {
-                    null
-                },
         ) {
             CurrentLayer(
                 state = state,
@@ -240,11 +241,13 @@ private fun StatusOverlays(
 @Composable
 private fun LeaveConfirmDialog(overlays: StatusOverlayState, onLeave: () -> Unit) {
     AppDestructiveConfirmDialog(
-        title = "Leave this event?",
-        body = "You'll stop sharing and receiving photos. Photos already in your " +
+        copy = DialogCopy(
+            title = "Leave this event?",
+            body = "You'll stop sharing and receiving photos. Photos already in your " +
             "library stay.",
-        confirmLabel = "Leave",
-        cancelLabel = "Stay",
+            confirmLabel = "Leave",
+            cancelLabel = "Stay",
+        ),
         onConfirm = {
             overlays.confirmingLeave = false
             onLeave()
@@ -281,15 +284,17 @@ private fun RenameSheet(
         }
     }
     AppTextPromptSheet(
-        title = "Rename event",
-        body = "Everyone in the event sees the new name.",
+        copy = DialogCopy(
+            title = "Rename event",
+            body = "Everyone in the event sees the new name.",
+            confirmLabel = "Save",
+            cancelLabel = "Cancel",
+        ),
         placeholder = "Event name",
         initialValue = membership.name,
         // The backend's own bound (capability `event-creation`), enforced by the input so an
         // over-long name is unreachable rather than rejected on a round trip.
         maxLength = 100,
-        confirmLabel = "Save",
-        cancelLabel = "Cancel",
         busy = renameStatus == RenameStatus.InFlight,
         error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
@@ -322,15 +327,17 @@ private fun BugReportSheet(
     screen: String,
 ) {
     AppTextPromptSheet(
-        title = "Report a problem",
-        body = "Sent with the app's recent activity log and sync state to the developer's " +
+        copy = DialogCopy(
+            title = "Report a problem",
+            body = "Sent with the app's recent activity log and sync state to the developer's " +
             "error-tracking service.",
+            confirmLabel = "Send",
+            cancelLabel = "Cancel",
+        ),
         placeholder = "What went wrong, and what were you doing?",
         // The description titles the report in the error-tracking service, so it is bounded to
         // stay readable in a list of issues (capability `diagnostic-logging`).
         maxLength = 200,
-        confirmLabel = "Send",
-        cancelLabel = "Cancel",
         onConfirm = { note ->
             overlays.reportingBug = false
             onSend(note, screen)
@@ -409,9 +416,17 @@ private fun ColumnScope.CurrentLayer(
             CreatingEventScreen()
         is UiState.JoiningEvent ->
             JoiningEventScreen(
-                state.phase, cutoff, actions.onConfirmJoin, actions.onAcknowledgeAccess,
-                actions.onCancelJoin, actions.onRetryLoad, actions.onRetryJoin,
-                actions.shareableCount, photoPermission,
+                phase = state.phase,
+                cutoff = cutoff,
+                actions = JoinActions(
+                    onConfirm = actions.onConfirmJoin,
+                    onRetryJoin = actions.onRetryJoin,
+                    onAcknowledgeAccess = actions.onAcknowledgeAccess,
+                    onCancel = actions.onCancelJoin,
+                    onRetryLoad = actions.onRetryLoad,
+                    shareableCount = actions.shareableCount,
+                ),
+                photoPermission = photoPermission,
             )
         is UiState.Joined ->
             JoinedLayer(

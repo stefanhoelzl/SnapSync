@@ -15,6 +15,7 @@ import app.snapsync.model.EventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.CaptureDate
 import app.snapsync.ui.components.RangeWindow
+import app.snapsync.ui.components.RangeChoices
 
 // The join gate's pure derivation (capability `join-event`): what the guest has chosen, resolved against
 // the event's window. Separated from the screens that render it because it decides WHAT would be
@@ -167,17 +168,10 @@ private fun rangeOver(
  * "Now" pick is unrecoverable (design decision "cutoff pre-fill reconstruction"). The same reading applies
  * at the ceiling, where a legacy config carrying no event end counts as at-the-ceiling.
  */
-internal class ReconfigureSeeds(
-    val fromPreset: FromChoice,
-    val fromCustom: LocalDateTime?,
-    val untilPreset: UntilChoice,
-    val untilCustom: LocalDateTime?,
-)
-
-internal fun reconfigureSeeds(membership: EventConfig, cutoff: CutoffFormatter): ReconfigureSeeds {
+internal fun reconfigureSeeds(membership: EventConfig, cutoff: CutoffFormatter): RangeChoices {
     val fromAtFloor = membership.minPhotoDate.at == membership.startsAt.at
     val untilAtCeiling = membership.endsAt == null || membership.maxPhotoDate.at == membership.endsAt?.at
-    return ReconfigureSeeds(
+    return RangeChoices(
         fromPreset = if (fromAtFloor) FromChoice.EVENT_START else FromChoice.CUSTOM,
         fromCustom = if (fromAtFloor) null else cutoff.toLocal(membership.minPhotoDate.at),
         untilPreset = if (untilAtCeiling) UntilChoice.EVENT_END else UntilChoice.CUSTOM,
