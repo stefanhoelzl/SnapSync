@@ -85,12 +85,9 @@ fun StatusScreen(
         // can be a composable of its own without threading four values and four setters through it.
         val overlays = remember { StatusOverlayState() }
 
-        val joined = state is UiState.Joined
-        // The reconfigure surface renders only while joined with a known membership; if the config drops
-        // (a leave lands) the flag is reset so a later rejoin does not reopen it.
-        val reconfigureActive = joined && overlays.reconfiguring && membership != null
-        LaunchedEffect(joined) {
-            if (!joined) {
+        val chrome = statusChrome(state, membership, overlays)
+        LaunchedEffect(chrome.joined) {
+            if (!chrome.joined) {
                 overlays.reconfiguring = false
                 overlays.renaming = false
             }
@@ -99,39 +96,38 @@ fun StatusScreen(
         // The joined-layer action cluster: settings . share . leave (see [JoinedBottomActions] for why
         // each is shown when it is). Null everywhere else, so the create layer and the join gate keep
         // their own bottom edge.
-        val bottomActions: (@Composable () -> Unit)? = if (joined && !reconfigureActive) {
+        val bottomActions: (@Composable () -> Unit)? = if (chrome.showsJoinedChrome) {
             { JoinedBottomActions(membership, inviteUrl, overlays, actions) }
         } else {
             null
         }
 
+
         // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
         ScreenLayout(
             title = "SnapSync",
-            heading = if (joined && !reconfigureActive) eventName else null,
+            heading = if (chrome.showsJoinedChrome) eventName else null,
             bottomActions = bottomActions,
-            // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
-            // reconfigure surface likewise pins its own Save/Cancel — so both take the safe-area-anchored
-            // bottom edge with no jump.
-            contentPinsActionCluster = state is UiState.JoiningEvent || reconfigureActive,
+            contentPinsActionCluster = chrome.pinsActionCluster,
             // Hidden, and only where there is a channel to send to.
             onTitleDoubleTap = actions.onSendDiagnostics?.let { { overlays.reportingBug = true } },
-            // The rename pen, beside the heading — so only where a heading renders, which is the joined
-            // layer outside the reconfigure surface. Unlike the hidden double-tap above, this is a real
+            // The rename pen, beside the heading. Unlike the hidden double-tap above, this is a real
             // control and appears in the accessibility tree. Not suppressed during a pending switch, for
             // the same reasons the settings gear is not (see the action cluster above): `RenameEvent`
             // guards the `eventId` itself, and suppressing here also hid the pen for the whole of a join's
             // own commit.
             onEditHeading =
-                if (joined && !reconfigureActive && membership != null) {
+                if (chrome.canRename) {
                     { overlays.renaming = true }
                 } else {
                     null
                 },
         ) {
-            if (reconfigureActive) {
+            // Non-null exactly while that surface shows, so the invariant the `!!` here used to assert
+            // in a comment is now the compiler's to keep.
+            if (chrome.reconfiguring != null) {
                 ReconfigureScreen(
-                    membership = membership!!,
+                    membership = chrome.reconfiguring,
                     cutoff = cutoff,
                     shareableCount = actions.shareableCount,
                     photoPermission = photoPermission,
@@ -169,13 +165,59 @@ fun StatusScreen(
             membership = membership,
             eventName = eventName,
             renameStatus = renameStatus,
-            reconfigureActive = reconfigureActive,
-            joined = joined,
+            reconfigureActive = chrome.reconfiguring != null,
+            joined = chrome.joined,
             overlays = overlays,
             actions = actions,
         )
     }
 }
+
+/**
+ * What the status screen's own chrome shows, derived once.
+ *
+ * `joined && !reconfigureActive` was written out three separate times — the heading, the bottom action
+ * cluster and the rename pen each re-derived it — and `membership != null` twice more on top. They are
+ * one fact with three consequences: the joined layer is showing its OWN chrome, which the reconfigure
+ * surface replaces wholesale. Three copies of a conjunction is three places to change and two places to
+ * forget, and the failure would be silent — a heading that stays while its pen disappears.
+ *
+ * [reconfiguring] carries the membership rather than a flag, so it is non-null exactly while the
+ * reconfigure surface shows. That turns an invariant the call site used to assert with `!!` and a comment
+ * into one the compiler keeps.
+ */
+private class StatusChrome(
+    val joined: Boolean,
+    val reconfiguring: EventConfig?,
+    val showsJoinedChrome: Boolean,
+    val canRename: Boolean,
+    val pinsActionCluster: Boolean,
+)
+
+/**
+ * The reconfigure surface renders only while joined with a known membership; if the config drops (a leave
+ * lands) the caller resets the flag so a later rejoin does not reopen it.
+ */
+private fun statusChrome(
+    state: UiState,
+    membership: EventConfig?,
+    overlays: StatusOverlayState,
+): StatusChrome {
+    val joined = state is UiState.Joined
+    val reconfiguring = if (joined && overlays.reconfiguring) membership else null
+    val showsJoinedChrome = joined && reconfiguring == null
+    return StatusChrome(
+        joined = joined,
+        reconfiguring = reconfiguring,
+        showsJoinedChrome = showsJoinedChrome,
+        canRename = showsJoinedChrome && membership != null,
+        // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
+        // reconfigure surface likewise pins its own Save/Cancel — so both take the safe-area-anchored
+        // bottom edge with no jump.
+        pinsActionCluster = state is UiState.JoiningEvent || reconfiguring != null,
+    )
+}
+
 
 /**
  * Everything that renders ON TOP of the current screen: the leave confirmation, the rename sheet, the
