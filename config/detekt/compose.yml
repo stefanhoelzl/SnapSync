@@ -69,14 +69,6 @@ complexity:
     active: true
     functionThreshold: 47
     constructorThreshold: 47
-  TooManyFunctions:
-    active: true
-    excludes: []
-    thresholdInFiles: 11
-    thresholdInClasses: 11
-    thresholdInInterfaces: 11
-    thresholdInObjects: 11
-    thresholdInEnums: 11
   LargeClass:
     active: true
     threshold: 600

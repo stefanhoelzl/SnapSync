@@ -72,13 +72,14 @@ complexity:
     active: true
     threshold: 8
   TooManyFunctions:
+    # 42, down from 43 by the same baseline reading — the storage contracts stopped being the largest
+    # measured type once their cases stopped counting. The binding site is now ordinary harness code.
     active: true
-    excludes: []
-    thresholdInFiles: 43
-    thresholdInClasses: 43
-    thresholdInInterfaces: 43
-    thresholdInObjects: 43
-    thresholdInEnums: 43
+    thresholdInFiles: 42
+    thresholdInClasses: 42
+    thresholdInInterfaces: 42
+    thresholdInObjects: 42
+    thresholdInEnums: 42
   LargeClass:
     # Default, consistent with `core`: this tier is documented as regression-detection only, so
     # inventing a size claim here would contradict its own framing.
