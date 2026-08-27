@@ -50,6 +50,41 @@ enum class FromChoice { EVENT_START, NOW, CUSTOM }
 enum class UntilChoice { EVENT_END, CUSTOM }
 
 /**
+ * The two ends of a capture-date range as the member has PICKED them: a preset each, plus the wall-clock
+ * value behind a [FromChoice.CUSTOM] / [UntilChoice.CUSTOM] pick.
+ *
+ * A holder rather than four loose parameters because the four travel together everywhere — the join gate,
+ * the reconfigure surface and this component all carry the same quartet, and interleaving each with its own
+ * callback is what took the two screens' signatures past twenty parameters.
+ */
+class RangeChoices(
+    val fromPreset: FromChoice,
+    val fromCustom: LocalDateTime?,
+    val untilPreset: UntilChoice,
+    val untilCustom: LocalDateTime?,
+)
+
+/** The four edits a member can make to a [RangeChoices]. */
+class RangeChoiceActions(
+    val onFromPreset: (FromChoice) -> Unit,
+    val onFromCustom: (LocalDateTime) -> Unit,
+    val onUntilPreset: (UntilChoice) -> Unit,
+    val onUntilCustom: (LocalDateTime) -> Unit,
+)
+
+/**
+ * The event window a range is picked inside, and whether "now" falls within it.
+ *
+ * [nowAvailable] is `false` when the present is outside `[start, end]`; the **Now** row is then shown
+ * disabled with a note rather than hidden, so the control's shape does not change between events.
+ */
+class RangeWindow(
+    val start: LocalDateTime,
+    val end: LocalDateTime,
+    val nowAvailable: Boolean,
+)
+
+/**
  * The capture-date **range** as two **separate grouped sub-lists** — a **From** group
  * ([FromChoice.EVENT_START] / [FromChoice.NOW] / [FromChoice.CUSTOM]) and an **Until** group
  * ([UntilChoice.EVENT_END] / [UntilChoice.CUSTOM]) — each in its own recessed [AppSubSection] well headed
@@ -77,17 +112,9 @@ enum class UntilChoice { EVENT_END, CUSTOM }
  */
 @Composable
 fun AppRangePresetChoices(
-    fromSelected: FromChoice,
-    onFromSelect: (FromChoice) -> Unit,
-    fromCustomValue: LocalDateTime?,
-    onFromCustomPicked: (LocalDateTime) -> Unit,
-    untilSelected: UntilChoice,
-    onUntilSelect: (UntilChoice) -> Unit,
-    untilCustomValue: LocalDateTime?,
-    onUntilCustomPicked: (LocalDateTime) -> Unit,
-    nowAvailable: Boolean,
-    windowStart: LocalDateTime,
-    windowEnd: LocalDateTime,
+    choices: RangeChoices,
+    actions: RangeChoiceActions,
+    window: RangeWindow,
     fromFloorNote: String,
     untilCeilingNote: String,
 ) {
@@ -102,22 +129,22 @@ fun AppRangePresetChoices(
                 tag = "from-event-start",
                 label = "Event start",
                 consequence = "Everything you've taken since the event began.",
-                selected = fromSelected == FromChoice.EVENT_START,
+                selected = choices.fromPreset == FromChoice.EVENT_START,
                 enabled = true,
-                onSelect = { onFromSelect(FromChoice.EVENT_START) },
+                onSelect = { actions.onFromPreset(FromChoice.EVENT_START) },
             )
             RowDivider()
             ChoiceRow(
                 tag = "from-now",
                 label = "Now",
-                consequence = if (nowAvailable) {
+                consequence = if (window.nowAvailable) {
                     "Only photos you take from here on."
                 } else {
                     "Same as the event start until the event begins."
                 },
-                selected = fromSelected == FromChoice.NOW,
-                enabled = nowAvailable,
-                onSelect = { onFromSelect(FromChoice.NOW) },
+                selected = choices.fromPreset == FromChoice.NOW,
+                enabled = window.nowAvailable,
+                onSelect = { actions.onFromPreset(FromChoice.NOW) },
             )
             RowDivider()
             ChoiceRow(
@@ -125,8 +152,8 @@ fun AppRangePresetChoices(
                 label = "Custom",
                 // While selected the row states the CONSTRAINT (the floor), never the chosen date, which
                 // the section's value line already carries.
-                consequence = if (fromSelected == FromChoice.CUSTOM) fromFloorNote else "Pick your own start.",
-                selected = fromSelected == FromChoice.CUSTOM,
+                consequence = if (choices.fromPreset == FromChoice.CUSTOM) fromFloorNote else "Pick your own start.",
+                selected = choices.fromPreset == FromChoice.CUSTOM,
                 enabled = true,
                 onSelect = { picking = RangeHandle.FROM },
             )
@@ -137,16 +164,16 @@ fun AppRangePresetChoices(
                 tag = "until-event-end",
                 label = "Event end",
                 consequence = "Everything up to when the event ends.",
-                selected = untilSelected == UntilChoice.EVENT_END,
+                selected = choices.untilPreset == UntilChoice.EVENT_END,
                 enabled = true,
-                onSelect = { onUntilSelect(UntilChoice.EVENT_END) },
+                onSelect = { actions.onUntilPreset(UntilChoice.EVENT_END) },
             )
             RowDivider()
             ChoiceRow(
                 tag = "until-custom",
                 label = "Custom",
-                consequence = if (untilSelected == UntilChoice.CUSTOM) untilCeilingNote else "Pick your own end.",
-                selected = untilSelected == UntilChoice.CUSTOM,
+                consequence = if (choices.untilPreset == UntilChoice.CUSTOM) untilCeilingNote else "Pick your own end.",
+                selected = choices.untilPreset == UntilChoice.CUSTOM,
                 enabled = true,
                 onSelect = { picking = RangeHandle.UNTIL },
             )
@@ -158,20 +185,20 @@ fun AppRangePresetChoices(
             // Seed at the handle's current custom value, else its end of the window — never an empty
             // calendar.
             initial = when (handle) {
-                RangeHandle.FROM -> fromCustomValue ?: windowStart
-                RangeHandle.UNTIL -> untilCustomValue ?: windowEnd
+                RangeHandle.FROM -> choices.fromCustom ?: window.start
+                RangeHandle.UNTIL -> choices.untilCustom ?: window.end
             },
-            minimum = windowStart,
-            maximum = windowEnd,
+            minimum = window.start,
+            maximum = window.end,
             onDismiss = { picking = null },
             onConfirm = {
                 picking = null
                 // Coerce into the window: the calendar greys days outside it, but the wheels can still land
                 // on a boundary-day hour outside it.
-                val picked = it.coerceIn(windowStart, windowEnd)
+                val picked = it.coerceIn(window.start, window.end)
                 when (handle) {
-                    RangeHandle.FROM -> onFromCustomPicked(picked)
-                    RangeHandle.UNTIL -> onUntilCustomPicked(picked)
+                    RangeHandle.FROM -> actions.onFromCustom(picked)
+                    RangeHandle.UNTIL -> actions.onUntilCustom(picked)
                 }
             },
         )

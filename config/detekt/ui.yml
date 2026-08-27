@@ -14,10 +14,13 @@
 # another, which is the finding — the fix for one is the cause of the other:
 #
 #   * Satisfying `LongParameterList` means bundling parameters, and a bundle is itself a constructor
-#     whose fields detekt counts. `StatusActions` was created by this change to fix exactly this rule
-#     on `StatusScreen` (26 parameters down to 9) and trips it with its own 18 fields. The recursion has
-#     no base case. Fourteen of the remaining sites are leaf design-system components at 6-8 parameters,
-#     where Compose's own APIs routinely exceed six and a wrapper makes call sites worse.
+#     whose fields detekt counts. `StatusActions` was created to fix exactly this rule on `StatusScreen`
+#     (26 parameters down to 9) and trips it with its own 18 fields. This paragraph used to conclude "the
+#     recursion has no base case", which is false and was false in the direction that excused the debt:
+#     it recurses forever only if each bundle is FLAT. A bundle of bundles has as many fields as it has
+#     GROUPS, so nesting terminates — see the note on the rule below, where that took the ceiling from 30
+#     to 19. What genuinely remains is the tail: most of the sites are leaf design-system components at
+#     6-8 parameters, where Compose's own APIs routinely exceed six and a wrapper makes call sites worse.
 #
 #   * Satisfying `LongMethod` means extracting composables, and each extraction is a new function with a
 #     new parameter list — but WHAT you extract decides whether that trade bites, and the first draft of
@@ -78,8 +81,23 @@ complexity:
     threshold: 133
 
   LongParameterList:
-    # `ReadyLayout`, the join gate's decision surface. Down from 30 at seeding only in what it counts:
-    # `StatusScreen` itself fell from 26 parameters to 9 (see `StatusActions`).
+    # `StatusActions`, the screen-level callback bundle, at 18 fields. Down from 30, where `ReadyLayout`
+    # (29) had sat: that surface interleaved each value with its own callback, pair by pair, and now takes
+    # `(state, actions)` — the ordinary Compose shape it should have had. `AppRangePresetChoices` (13) fell
+    # out with it, onto the same `RangeChoices`/`RangeChoiceActions`/`RangeWindow` holders, so the design
+    # system and both screens now name that quartet once.
+    #
+    # WHICH CORRECTS THIS FILE. The note here used to say bundling "has no base case" — bundle 26
+    # parameters and you get a 26-field constructor, as `StatusActions` demonstrates. That is true only of
+    # FLAT bundling. A bundle of bundles has as many fields as it has GROUPS, so nesting terminates:
+    # `ReadyActions` carries seven fields for ten callbacks because four of them travel inside the design
+    # system's own holder. The claim was wrong, and it was wrong in the direction that excused the debt.
+    #
+    # What remains is genuinely two populations. `StatusActions` (18) is the recursion's real residue and
+    # would fall to about six by the same nesting — join, joined, access, switch, create, diagnostics — if
+    # the call-site noise (`actions.join.onRetryJoin`) is judged worth it. The other twenty-odd sites are
+    # leaf design-system components at 6-8 parameters, where Compose's own APIs routinely exceed six and a
+    # wrapper makes every call site worse. Six is not reachable; that tail is the reason.
     active: true
-    functionThreshold: 30
-    constructorThreshold: 30
+    functionThreshold: 19
+    constructorThreshold: 19
