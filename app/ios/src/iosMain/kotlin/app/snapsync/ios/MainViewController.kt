@@ -13,6 +13,10 @@ import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
 import platform.UIKit.UIColor
 import platform.UIKit.UIViewController
 import platform.UIKit.systemBackgroundColor
+import app.snapsync.ui.JoinGateActions
+import app.snapsync.ui.JoinedActions
+import app.snapsync.ui.AccessActions
+import app.snapsync.ui.SwitchActions
 
 /**
  * The iOS entry point. The Swift app (iosApp/) calls [MainViewController] to obtain the root
@@ -152,29 +156,37 @@ private fun composeScene(): UIViewController =
                 photoPermission = photoPermission,
                 renameStatus = renameStatus,
                 actions = StatusActions(
-                    onRequestPermission = host::onRequestPermission,
-                    onOpenSettings = host::onOpenSettings,
-                    onLeaveEvent = host::onLeaveEvent,
-                    onShareInvite = host::onShareInvite,
+                    join = JoinGateActions(
+                        onConfirmJoin = host::onConfirmJoin,
+                        onAcknowledgeAccess = host::onAcknowledgeAccess,
+                        onCancelJoin = host::onCancelJoin,
+                        onRetryLoad = host::onRetryLoad,
+                        onRetryJoin = host::onRetryJoin,
+                    ),
+                    joined = JoinedActions(
+                        onLeaveEvent = host::onLeaveEvent,
+                        onShareInvite = host::onShareInvite,
+                        onReconfigure = host::onReconfigure,
+                        // The heading rename (capability `event-rename`): the command, its lifecycle, and the
+                        // latch reset the screen fires once it has acted on a terminal value.
+                        onRenameEvent = host::onRenameEvent,
+                        onRenameStatusConsumed = host::onRenameStatusConsumed,
+                    ),
+                    access = AccessActions(
+                        onRequestPermission = host::onRequestPermission,
+                        onOpenSettings = host::onOpenSettings,
+                        onChoosePhotos = host::onChoosePhotos,
+                    ),
+                    switch = SwitchActions(
+                        onConfirmSwitch = host::onConfirmSwitch,
+                        onCancelSwitch = host::onCancelSwitch,
+                    ),
                     onSendDiagnostics = host.onSendDiagnostics,
-                    onReconfigure = host::onReconfigure,
                     onCreateEvent = host::onCreateEvent,
-                    onConfirmJoin = host::onConfirmJoin,
-                    onAcknowledgeAccess = host::onAcknowledgeAccess,
-                    onChoosePhotos = host::onChoosePhotos,
-                    onCancelJoin = host::onCancelJoin,
-                    onRetryLoad = host::onRetryLoad,
-                    onRetryJoin = host::onRetryJoin,
-                    onConfirmSwitch = host::onConfirmSwitch,
-                    onCancelSwitch = host::onCancelSwitch,
                     // The join-time shareable-count preview (capability `join-share-count`): the
                     // permission-aware, no-network query, plus the live grant as its recompute trigger.
                     shareableCount = SnapSyncRoot.shareableCount,
-                    // The heading rename (capability `event-rename`): the command, its lifecycle, and the
-                    // latch reset the screen fires once it has acted on a terminal value.
-                    onRenameEvent = host::onRenameEvent,
-                    onRenameStatusConsumed = host::onRenameStatusConsumed,
-                ),
+                )
             )
         }
     }

@@ -217,7 +217,7 @@ private fun StatusOverlays(
     actions: StatusActions,
 ) {
     if (overlays.confirmingLeave) {
-        LeaveConfirmDialog(overlays, actions.onLeaveEvent)
+        LeaveConfirmDialog(overlays, actions.joined.onLeaveEvent)
     }
     if (overlays.renaming && joined && membership != null) {
         RenameSheet(membership, renameStatus, overlays, actions)
@@ -230,9 +230,9 @@ private fun StatusOverlays(
         SwitchDialog(
             switch = switch,
             currentEventName = eventName,
-            onConfirmSwitch = actions.onConfirmSwitch,
-            onCancelSwitch = actions.onCancelSwitch,
-            onRetryLoad = actions.onRetryLoad,
+            onConfirmSwitch = actions.switch.onConfirmSwitch,
+            onCancelSwitch = actions.switch.onCancelSwitch,
+            onRetryLoad = actions.join.onRetryLoad,
         )
     }
 }
@@ -278,7 +278,7 @@ private fun RenameSheet(
         when (renameStatus) {
             RenameStatus.Succeeded -> {
                 overlays.renaming = false
-                actions.onRenameStatusConsumed()
+                actions.joined.onRenameStatusConsumed()
             }
             else -> Unit
         }
@@ -299,10 +299,10 @@ private fun RenameSheet(
         error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
         // rather than renaming a different event.
-        onConfirm = { newName -> actions.onRenameEvent(membership.eventId, newName) },
+        onConfirm = { newName -> actions.joined.onRenameEvent(membership.eventId, newName) },
         onDismiss = {
             overlays.renaming = false
-            actions.onRenameStatusConsumed()
+            actions.joined.onRenameStatusConsumed()
         },
     )
 }
@@ -371,7 +371,7 @@ private fun JoinedBottomActions(
         SettingsButton(description = "Event settings", onClick = { overlays.reconfiguring = true })
     }
     if (inviteUrl != null) {
-        ShareButton(description = "Share invite link", onClick = actions.onShareInvite)
+        ShareButton(description = "Share invite link", onClick = actions.joined.onShareInvite)
     }
     LeaveButton(description = "Leave event", onClick = { overlays.confirmingLeave = true })
 }
@@ -405,7 +405,7 @@ private fun ColumnScope.CurrentLayer(
             photoPermission = photoPermission,
             onSave = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
                 overlays.reconfiguring = false
-                actions.onReconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
+                actions.joined.onReconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             },
             onCancel = { overlays.reconfiguring = false },
         )
@@ -419,19 +419,19 @@ private fun ColumnScope.CurrentLayer(
                 phase = state.phase,
                 cutoff = cutoff,
                 actions = JoinActions(
-                    onConfirm = actions.onConfirmJoin,
-                    onRetryJoin = actions.onRetryJoin,
-                    onAcknowledgeAccess = actions.onAcknowledgeAccess,
-                    onCancel = actions.onCancelJoin,
-                    onRetryLoad = actions.onRetryLoad,
+                    onConfirm = actions.join.onConfirmJoin,
+                    onRetryJoin = actions.join.onRetryJoin,
+                    onAcknowledgeAccess = actions.join.onAcknowledgeAccess,
+                    onCancel = actions.join.onCancelJoin,
+                    onRetryLoad = actions.join.onRetryLoad,
                     shareableCount = actions.shareableCount,
                 ),
                 photoPermission = photoPermission,
             )
         is UiState.Joined ->
             JoinedLayer(
-                state.health, inviteUrl, actions.onRequestPermission, actions.onOpenSettings,
-                state.canChoosePhotos, actions.onChoosePhotos, state.ended, cutoff,
+                state.health, inviteUrl, actions.access.onRequestPermission, actions.access.onOpenSettings,
+                state.canChoosePhotos, actions.access.onChoosePhotos, state.ended, cutoff,
             )
     }
 }
