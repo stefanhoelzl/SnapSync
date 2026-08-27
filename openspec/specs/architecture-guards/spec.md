@@ -275,13 +275,25 @@ only thing standing between the next reader and re-introducing the bug. The evid
 
 ### Requirement: Gates fail closed on novelty
 
-Every architecture gate SHALL derive its scope from the repository's structure at test runtime —
-directory listings for feature enumeration, package patterns for zones, "everything not
-allowlisted" for purity — never from a hand-maintained inclusion list. The only permitted lists
-are loud-when-stale: the end-state module list (compared against the build's own include set)
-and the per-zone library allowlists. Every gate SHALL keep a non-vacuity twin proving it
-scanned a non-empty scope. Zone gates SHALL match source text (fully-qualified references import
-nothing), not import lists.
+Every architecture gate SHALL derive its **scope** — what it scans — from the repository's structure
+at test runtime: directory listings for feature enumeration, package patterns for zones, "everything
+not allowlisted" for purity. A scope SHALL NOT come from a hand-maintained inclusion list. The only
+permitted scope list is loud-when-stale: the per-zone library allowlists.
+
+A gate MAY pin an **expected value** — the answer its scope must produce — as a literal table, and
+several must: the OS-held literals of `RuntimeIdentityTest`, the Apple-declared enum sets of
+`PlatformVocabularyPinTest`, the shell suppression inventory of `KotlinShellGuardTest`. A pin is what
+a guard asserts, not where it looks, and is therefore not an inclusion list. Every pin SHALL carry
+the reason its value is fixed and what would change it.
+
+The module set is **no longer** a permitted scope list. Its expected value is derived from
+`module-architecture`'s own enumeration at test runtime, so the spec is its single home; a gate
+holding a second copy tethers the build to itself and leaves the spec unwatched.
+
+Every gate SHALL keep a non-vacuity twin proving it scanned a non-empty scope. Where a gate derives
+several groups from one source, it SHALL keep a twin **per group**: a reword that empties one group
+leaves the others making the gate look alive. Zone gates SHALL match source text (fully-qualified
+references import nothing), not import lists.
 
 #### Scenario: New code is born in scope
 - **WHEN** a new feature package, flow file, port, or adapter is added
@@ -290,6 +302,17 @@ nothing), not import lists.
 #### Scenario: A gate's scope silently empties
 - **WHEN** a rename or restructure removes everything a gate scans
 - **THEN** the gate's non-vacuity twin fails rather than the gate passing forever
+
+#### Scenario: One derived group of several empties
+- **WHEN** a heading or label a gate parses is reworded so that one of its derived groups resolves
+  to nothing, while the other groups still resolve
+- **THEN** that group's own non-vacuity twin fails, rather than the gate passing on the strength of
+  the groups that still parse
+
+#### Scenario: A pinned expected value is mistaken for a scope list
+- **WHEN** a guard holds a literal table of the values its scan must produce
+- **THEN** it is a pin, not an inclusion list, and is permitted provided it states why the value is
+  fixed and what would change it
 
 ### Requirement: The zone gates
 
@@ -602,10 +625,12 @@ under `./gradlew build`. (The module-architecture migration is complete; its bea
 detached burn-down module and the non-required `verify` job — measured zero on every law at the
 finale and was deleted, per its own contract.) The promoted gates:
 
-- **Module-set equality**: the `settings.gradle.kts` include set SHALL equal the
-  `module-architecture` target module list exactly (a loud-when-stale list — the one the "Gates
-  fail closed on novelty" requirement permits); adding or deleting a module fails until the list
-  is consciously amended with the withholding argument in a `module-architecture` spec delta.
+- **Module-set equality**: the `settings.gradle.kts` include set SHALL equal the union of the
+  groups `module-architecture` enumerates, **derived from that spec's text at test runtime** — the
+  gate SHALL NOT hold its own copy of the set. Adding or deleting a module fails until the spec is
+  consciously amended with the group the module joins and the argument for that group. The failure
+  SHALL name all three groups and what each requires, because "must withhold a dependency" is the
+  right instruction for only one of them. The gate SHALL keep a non-vacuity twin per group.
 - **Mixed port/impl files**: no file under `adapter/`, `domain/`, or `ui/` SHALL declare an
   `interface` beside a Ktor or SQLDelight import — a port and its technology impl cohabiting is
   the seed of the pre-migration shape.

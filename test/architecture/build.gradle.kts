@@ -63,9 +63,13 @@ tasks.test {
             // UP-TO-DATE and the pin silently stops pinning, which is the failure mode it exists for.
             include("gradle/libs.versions.toml")
             include("api/src/config.ts")
-            // The laws-digest guard's subjects (capability `module-architecture`): CLAUDE.md's digest
-            // must name exactly the spec's requirement set. Without these declared, editing either side
-            // alone leaves the task UP-TO-DATE — the precise staleness the guard exists to catch.
+            // TWO guards read these (capability `module-architecture`), so neither line may be removed
+            // on the strength of one of them:
+            //  · `LawsDigestTest` — CLAUDE.md's digest must name exactly the spec's requirement set.
+            //  · `ModuleSetTest`  — the spec's module enumeration IS the expected value the build's
+            //    include set is compared against; the guard holds no copy of it.
+            // Without these declared, editing either side alone leaves the task UP-TO-DATE — the
+            // precise staleness both guards exist to catch.
             include("CLAUDE.md")
             include("openspec/specs/module-architecture/spec.md")
             // `RunbookSkillsTest`'s subjects (capability `architecture-guards`): CLAUDE.md's runbook
