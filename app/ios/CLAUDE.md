@@ -191,10 +191,23 @@ constructs no writer.
   scheme re-added here would route links the one authoritative codec no longer accepts.
   `CADisableMinimumFrameDurationOnPhone = true` is **mandatory** — Compose MP ≥1.7
   hard-aborts at launch without it. Portrait-only, iPhone-only.
-- **Extension `Info.plist`**: `EXExtensionPointIdentifier = com.apple.photos.background-upload` and
-  `BackgroundUploadURLBase = $(BACKGROUND_UPLOAD_URL_BASE)` — the compile-time host the system
-  permits uploads to (a user-configurable upload host is impossible with this API). It must be an
-  HTTPS endpoint: default ATS (HTTPS-only) applies, no `NSAllowsLocalNetworking` exception.
+- **`BackgroundUploadURLBase` — in BOTH `Info.plist`s, and it is the one deployment value that lives
+  there.** `assetsd` reads it out of a **bundle's own `Info.plist`** to validate the background-upload
+  registration insert; it can see no resource we bundle, so `Deployment.plist` cannot stand in. Absent,
+  `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and **empty**
+  `userInfo`, the OS launches the extension never, and nothing uploads on that tier — which is exactly
+  what shipped in builds 675/687 when a config change moved the key out (measured A/B on device,
+  SE2/26.6, 2026-08-28; Bugsink `SNAPSYNC-37`). The daemon's **matching rule is not established** — do
+  not assert one. ⏰ Re-measure at the next iOS major.
+  Written as `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1`, **composed** rather than carried: an
+  `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an
+  xcconfig line, so the resolver emits a scheme enum and a bare host and the URL is assembled in the
+  plist, where `//` is data. `ios.yml` asserts it equals that bundle's `Deployment.plist` `uploadBase`.
+  It must be an HTTPS endpoint: default ATS (HTTPS-only) applies, no `NSAllowsLocalNetworking`
+  exception. (A user-configurable upload host is impossible with this API.)
+- **Extension `Info.plist`** also declares `EXExtensionPointIdentifier =
+  com.apple.photos.background-upload` (under `EXAppExtensionAttributes`, the ExtensionKit iOS 26
+  model).
 
 ## iOS-version deviation & the two upload tiers
 

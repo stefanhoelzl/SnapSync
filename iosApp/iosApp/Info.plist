@@ -20,13 +20,28 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<!-- NO deployment values here, deliberately (capability deployment-configuration). The upload
-	     host, the APNs environment and the crash-reporting pair live in the GENERATED
-	     Deployment.plist, bundled as a resource into this target and the extension's. They were
-	     moved because an xcconfig build setting is the wrong carrier for a value containing "//":
-	     that opens a comment in the xcconfig grammar, which silently truncated the crash-reporting
-	     DSN to "https:" and shipped four mute TestFlight builds. Their rationale now lives on the
-	     resolver's key inventory, where every toolchain that reads them can see it. -->
+	<!-- ONE deployment value lives here, because its reader is the OS rather than us. assetsd looks
+	     BackgroundUploadURLBase up in a BUNDLE'S OWN Info.plist when it validates the background-upload
+	     registration insert, and can see no resource we ship. The extension carries the same key for
+	     the same reason (its Info.plist explains, and holds the measurement); the app carries it
+	     because the registration call is made by THIS process and which bundle the daemon reads has
+	     not been established — restoring both makes the question moot rather than betting on it.
+	     Capability `ios-photokit-upload`.
+
+	     It is COMPOSED from two build settings the resolver generates (a scheme enum and a bare host),
+	     never carried as one URL-valued setting: an Info.plist substitution can only read a build
+	     setting, and "//" opens a comment anywhere on an xcconfig line. The "//" lands here, where it
+	     is data. ios.yml asserts what this composes to equals this bundle's Deployment.plist
+	     `uploadBase`.
+
+	     EVERY OTHER deployment value stays out of this file (capability deployment-configuration). The
+	     APNs environment and the crash-reporting pair live in the GENERATED Deployment.plist, bundled
+	     as a resource into this target and the extension's. They were moved because an xcconfig build
+	     setting is the wrong carrier for a value containing "//": that silently truncated the
+	     crash-reporting DSN to "https:" and shipped four mute TestFlight builds. Their rationale now
+	     lives on the resolver's key inventory, where every toolchain that reads them can see it. -->
+	<key>BackgroundUploadURLBase</key>
+	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1</string>
 	<!-- No CFBundleURLTypes, deliberately: the `snapsync` custom scheme is retired (capability
 	     `event-link`). An invite is now an HTTPS Universal Link, claimed via the associated-domains
 	     entitlement rather than a scheme — which is what lets a QR scanned by someone who does NOT

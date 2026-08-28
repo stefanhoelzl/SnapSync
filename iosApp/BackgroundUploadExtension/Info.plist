@@ -24,10 +24,29 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<!-- NO deployment values here, deliberately (capability deployment-configuration) — see the
-	     app's Info.plist for why. This process reads its OWN bundle, so the generated
+	<!-- READ BY assetsd, NOT by us — and it reads THIS FILE. When the OS validates the
+	     background-upload registration insert (setUploadJobExtensionEnabled), it looks up
+	     BackgroundUploadURLBase in the bundle's own Info.plist; it cannot see Deployment.plist or any
+	     other resource we ship. Deleting this key was measured on device (SE2, iOS 26.6, 2026-08-28,
+	     A/B five minutes apart with one variable) to fail enable with a bare `PHPhotosErrorDomain -1`
+	     and EMPTY userInfo, and disable with 3201 — after which the OS launches this extension never
+	     and nothing uploads on this tier, with one Error line to show for it. Xcode 26.6's own
+	     Background Resource Upload template declares the option Required. Capability
+	     `ios-photokit-upload`; ⏰ re-measure at the next iOS major.
+
+	     COMPOSED, not carried: an Info.plist substitution can only read a build setting, and `//`
+	     opens a comment anywhere on an xcconfig line with no escape (which truncated the Sentry DSN to
+	     `https:` and shipped four mute builds). So the resolver emits a scheme enum and a bare host —
+	     neither able to contain `//` — and the URL is assembled here, where `//` is data. Both are
+	     generated into Deployment.xcconfig by scripts/resolve-deployment.py; ios.yml asserts the value
+	     built from them equals this bundle's Deployment.plist `uploadBase`.
+
+	     The OTHER deployment values stay out of this file (capability deployment-configuration) — see
+	     the app's Info.plist for why. This process reads its OWN bundle, so the generated
 	     Deployment.plist is copied into the .appex as well as the .app; a copy that reached only one
 	     of them is a reachable state, and the one ios.yml asserts against both. -->
+	<key>BackgroundUploadURLBase</key>
+	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1</string>
 	<key>EXAppExtensionAttributes</key>
 	<dict>
 		<key>EXExtensionPointIdentifier</key>

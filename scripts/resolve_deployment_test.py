@@ -310,6 +310,31 @@ class RenderingTest(unittest.TestCase):
             self.assertEqual(apns, values["apnsEnv"])
             self.assertEqual(sentry, values["sentryEnvironment"])
 
+    def test_the_upload_base_parts_survive_being_read_as_an_xcconfig(self):
+        """The two settings the `Info.plist` composes `BackgroundUploadURLBase` from.
+
+        Read back THROUGH the parser, never asserted as the emitted string. That distinction is the
+        whole lesson of the DSN truncation: the renderer's test asserted the bytes it wrote, which were
+        correct, and the break was entirely downstream in a grammar that reinterprets them. What has to
+        hold is that xcodebuild, applying the comment rule, still sees a bare host and a scheme.
+
+        Recomposed here exactly as the plists do it, because `assetsd` validates the registration
+        against that composed value and a mismatch fails with a bare `PHPhotosErrorDomain -1`
+        (capability `ios-photokit-upload`).
+        """
+        for domain, scheme in (
+            ("example.invalid", "https"),
+            ("127.0.0.1:8080", "http"),
+            ("[::1]:8080", "http"),
+            ("random-words.trycloudflare.com", "https"),
+        ):
+            flat = Tree().standard(domain=domain).resolve()
+            values = xcconfig_values(rd.render_xcconfig(flat))
+            self.assertEqual(domain, values["UPLOAD_HOST"], f"for domain {domain}")
+            self.assertEqual(scheme, values["UPLOAD_SCHEME"], f"for domain {domain}")
+            composed = f"{values['UPLOAD_SCHEME']}://{values['UPLOAD_HOST']}/api/v1"
+            self.assertEqual(plist(flat)["uploadBase"], composed, f"for domain {domain}")
+
     def test_no_xcconfig_value_contains_a_comment_delimiter(self):
         """`//` opens a comment anywhere on an xcconfig line, and the grammar offers no escape."""
         flat = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
