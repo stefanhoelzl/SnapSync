@@ -1,7 +1,6 @@
 package app.snapsync.world
 
 import app.snapsync.compose.AppCore
-import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.snapSyncApp
@@ -9,85 +8,91 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
-import app.snapsync.fake.InMemoryAttestClient
-import app.snapsync.fake.InMemoryAttestKey
-import app.snapsync.fake.InMemoryAttestStore
-import app.snapsync.fake.InMemoryDeviceLogSource
-import app.snapsync.fake.InMemoryDiagnosticsReporter
-import app.snapsync.model.DiagnosticDump
-import app.snapsync.ports.DeviceLogSource
-import app.snapsync.fake.InMemoryPhotoSelectionChangeSource
-import app.snapsync.fake.InMemoryDeviceManifestStore
-import app.snapsync.fake.InMemoryDiscoveryStore
-import app.snapsync.fake.InMemoryDownloadStore
-import app.snapsync.fake.InMemoryJoinedEventMarker
-import app.snapsync.fake.InMemoryStagedBytes
-import app.snapsync.fake.InMemoryLedgerStore
+import app.snapsync.fake.inMemoryAttestClient
+import app.snapsync.fake.inMemoryAttestKey
+import app.snapsync.fake.inMemoryAttestStore
+import app.snapsync.fake.inMemoryDeviceLogSource
+import app.snapsync.fake.inMemoryDeviceManifestStore
+import app.snapsync.fake.inMemoryDiagnosticsReporter
+import app.snapsync.fake.inMemoryDiscoveryStore
+import app.snapsync.fake.inMemoryDownloadStore
+import app.snapsync.fake.inMemoryJoinedEventMarker
+import app.snapsync.fake.inMemoryLedgerStore
+import app.snapsync.fake.inMemoryPhotoSelectionChangeSource
+import app.snapsync.fake.inMemoryStagedBytes
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.creation.MutableCreationStatusSource
-import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
-import app.snapsync.model.normalizeAssetId
-import app.snapsync.model.resourcesFrom
-import app.snapsync.model.Resource
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.EventEnd
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.EventStart
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.noContribution
-import app.snapsync.model.selectionPolicyFor
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.eventStart
-import app.snapsync.model.toFacts
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
 import app.snapsync.model.ManifestResource
+import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
+import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.UserCommands
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.eventStart
+import app.snapsync.model.noContribution
+import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.resourcesFrom
+import app.snapsync.model.selectionPolicyFor
+import app.snapsync.model.toFacts
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
+import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.CycleResult
+import app.snapsync.ports.DeviceLogSource
+import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.ports.DiscoveryStore
+import app.snapsync.ports.JoinedEventMarker
+import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.ports.CandidateSource
+import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.TransferOutcome
-import app.snapsync.model.PermissionStatus
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 
 /**
  * The controllable in-memory **world** (capability `harness-world-model`): the backend object store,
@@ -119,7 +124,7 @@ class World(
      * ledger on is what makes "did this fact survive the process?" an assertable question rather than a
      * device-only one (`changes/fix-lost-upload-acks`).
      */
-    val ledgerBackend: InMemoryLedgerStore = InMemoryLedgerStore(),
+    val ledgerBackend: LedgerStore = inMemoryLedgerStore(),
     /**
      * Whether this world can ATTEST (capability `device-attestation`). **Off by default**, which is the
      * world as it has always been: attestation is composed because `AppPorts` requires the seams, and
@@ -141,8 +146,8 @@ class World(
     val gallery: WorldGallery = WorldGallery()
     /** The one read seam, straight off the world-owned cell — no enumerator composition to stand up. */
     val enumerator: CandidateSource = gallery.source
-    val discoveryStore: InMemoryDiscoveryStore = InMemoryDiscoveryStore()
-    val downloadStore: RecordingDownloadStore = RecordingDownloadStore(InMemoryDownloadStore())
+    val discoveryStore: DiscoveryStore = inMemoryDiscoveryStore()
+    val downloadStore: RecordingDownloadStore = RecordingDownloadStore(inMemoryDownloadStore())
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
     // as both device adapters do, so the world exercises the real two-phase completion.
     val platform: FakeBackgroundTransfer =
@@ -176,14 +181,17 @@ class World(
      * the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and vanish only
      * once the row is settled — rather than merely that a release call happened.
      */
-    val stagedBytes: InMemoryStagedBytes = InMemoryStagedBytes()
-    val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
+    /** The operator's own cell: the rigging owns what it wants to observe and passes it in, rather
+     *  than reading it back off the honest double (capability `architecture-guards`). */
+    val stagedFiles: MutableSet<String> = mutableSetOf()
+    val stagedBytes: StagedBytes = inMemoryStagedBytes(stagedFiles)
+    val marker: JoinedEventMarker = inMemoryJoinedEventMarker()
 
     /** Counts the real `Provision` flow's on-join push re-registration (capability `push-registration`):
      *  the `registerPush` effect below increments it, so a test can assert the join path fired it. */
     var registerPushCount: Int = 0
         private set
-    val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
+    val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
 
     /** Whether the composition started reporting — the `DiagnosticsReporter.start()` observation. */
@@ -200,7 +208,7 @@ class World(
     // a snapshot is a change notification, not a state the composition may re-collect.
     private val selectionChangesCell = MutableSharedFlow<List<Resource>>()
     val albumManager: FakeAlbumManager = FakeAlbumManager()
-    val albumMapStore = app.snapsync.fake.InMemoryAlbumMapStore()
+    val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
 
     /** The one shared mini-edge client injected into every real common-Ktor seam. */
     val client = miniEdgeClient(store)
@@ -356,8 +364,8 @@ class World(
     // What this makes reachable: the CREDENTIAL arm of `AppCore.installPushRegistration` — see
     // `:test:integration`'s `a_new_credential_re_registers_the_push_token_with_no_new_delivery`, which
     // needs a token change to happen at all.
-    private val attestKey: AttestKey = InMemoryAttestKey(supported = attests)
-    private val attestClient: AttestClient = InMemoryAttestClient(mints = attests)
+    private val attestKey: AttestKey = inMemoryAttestKey(supported = attests)
+    private val attestClient: AttestClient = inMemoryAttestClient(mints = attests)
 
     /**
      * The world's wall clock, in epoch millis — an operator **lever**, pinned at the epoch so nothing
@@ -382,19 +390,19 @@ class World(
             // reach. It takes the SAME lane as the composition scope rather than an unconfined default:
             // a lane that means "wherever the caller happened to be" is precisely what this law ends.
             uiLane = scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext,
-            diagnosticsReporter = InMemoryDiagnosticsReporter(
+            diagnosticsReporter = inMemoryDiagnosticsReporter(
                 started = diagnosticsStarted,
                 sent = diagnosticsSent,
                 isConfigured = true,
             ),
             // The device logs a dump reads back (capability `diagnostic-logging`) — empty until an
             // operator seeds them, which is honest: a world has no device writing log files.
-            deviceLogSource = InMemoryDeviceLogSource(deviceLogs),
+            deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
             configSource = configSource,
             configStore = configStore,
             photoAccess = permission,
             photoAccessRequester = requester,
-            selectionChanges = InMemoryPhotoSelectionChangeSource(selectionChangesCell),
+            selectionChanges = inMemoryPhotoSelectionChangeSource(selectionChangesCell),
             // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N; the
             // operator then invokes the cycle by hand, exactly like every other world trigger. That used
             // to be an inert `pumpSelectionChanged = {}` port here; it is now the world mechanism's own
@@ -412,7 +420,7 @@ class World(
             stagedBytes = stagedBytes,
             importer = importer,
             newDownloadTransport = { transportHost ->
-                FakeDownloadTransport(transportHost, stagedBytes.files).also { downloadTransport = it }
+                FakeDownloadTransport(transportHost, stagedFiles).also { downloadTransport = it }
             },
             union = unionSource,
             directory = HttpEventDirectory(client, host),
@@ -422,7 +430,7 @@ class World(
             eventRename = HttpEventRename(client, host),
             attestKey = attestKey,
             attestClient = attestClient,
-            attestStore = InMemoryAttestStore(),
+            attestStore = inMemoryAttestStore(),
             deviceId = { ownDeviceId },
             clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
             // The operator IS the producer: nothing auto-runs; a cycle happens when invoked by hand.
@@ -710,7 +718,7 @@ class World(
         uploadCore(
             scope,
             UploadPorts(
-                diagnosticsReporter = InMemoryDiagnosticsReporter(),
+                diagnosticsReporter = inMemoryDiagnosticsReporter(),
                 config = configReader,
                 deviceId = { ownDeviceId },
                 host = { host },

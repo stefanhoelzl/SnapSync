@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * [Candidate.resources] maps through the shared [resourcesFrom], so the fan-out (role filter, upload-key
  * derivation, id normalization) is driven on the JVM and the simulator exactly as it is on device.
  */
-class InMemoryCandidateSource(private val state: MutableStateFlow<List<RawAsset>>) : CandidateSource {
+internal class InMemoryCandidateSource(private val state: MutableStateFlow<List<RawAsset>>) : CandidateSource {
 
     constructor(initial: List<RawAsset> = emptyList()) : this(MutableStateFlow(initial))
 

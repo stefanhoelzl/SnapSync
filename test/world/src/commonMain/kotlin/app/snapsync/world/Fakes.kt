@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.fake.InMemoryCandidateSource
+import app.snapsync.fake.inMemoryCandidateSource
 import app.snapsync.ports.CandidateSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
@@ -31,7 +31,7 @@ class MutablePhotoAccessStatusSource(
 }
 
 /**
- * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [InMemoryCandidateSource]
+ * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [inMemoryCandidateSource]
  * (spec `architecture-guards`, "The fake-honesty gate": the fake exposes only its port; the settable
  * state cell and the unscoped [current] read live HERE, in the world wrapper). [source] is what the
  * compositions consume; [set]/[current] are what the operator (and [FakePhotoLibraryImporter]) drive.
@@ -40,7 +40,7 @@ class WorldGallery {
     private val state = MutableStateFlow<List<RawAsset>>(emptyList())
 
     /** The honest port impl over the world-owned cell — handed straight to the compositions. */
-    private val honest: InMemoryCandidateSource = InMemoryCandidateSource(state)
+    private val honest: CandidateSource = inMemoryCandidateSource(state)
 
     /**
      * Operator lever: make the next enumeration THROW, as a platform walk can (capability
@@ -71,7 +71,7 @@ class WorldGallery {
 
 /**
  * The world's download store: the recording wrapper around the honest `:adapter:generic:fake`
- * [app.snapsync.fake.InMemoryDownloadStore]. [enqueueRequests] records what the real
+ * [app.snapsync.fake.inMemoryDownloadStore]. [enqueueRequests] records what the real
  * `DownloadController` sent to the OS (it marks each enqueued resource through this port), replacing
  * the pre-step-10 `recordingJobs` interception — the real jobs still do all the work, and the
  * transfer-description codec stays `internal` to `:domain`. Cleared on [pruneNonTerminal] (the

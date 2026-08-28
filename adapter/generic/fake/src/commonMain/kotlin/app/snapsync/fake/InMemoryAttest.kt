@@ -15,7 +15,7 @@ import app.snapsync.ports.AttestKey
  * No call counters: a fake's public surface is its port contract plus a constructor taking initial state
  * (gate: `FakeHonestyTest`). A test that needs to observe calls wraps this, or asserts the outcome.
  */
-class InMemoryAttestKey(
+internal class InMemoryAttestKey(
     private val supported: Boolean = true,
 ) : AttestKey {
 
@@ -47,7 +47,7 @@ class InMemoryAttestKey(
  * or after the nightly sweep collected it — which refuses the renewal and sends the device down a full
  * attestation. A double that renewed happily would exercise the cheap path and never the recovery.
  */
-class InMemoryAttestClient(
+internal class InMemoryAttestClient(
     private val challengeValue: String? = "in-memory-challenge",
     /** Epoch seconds the minted token expires at. The default outlives any test's pinned clock. */
     private val tokenExpiresAtEpochSeconds: Long = 90L * 24 * 60 * 60,

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * A process whose text is absent reads as an unreadable log (`null`), which is the honest model of a
  * device where the extension has never run.
  */
-class InMemoryDeviceLogSource(
+internal class InMemoryDeviceLogSource(
     private val logs: MutableStateFlow<Map<DeviceLogSource.Process, String>>,
 ) : DeviceLogSource {
 

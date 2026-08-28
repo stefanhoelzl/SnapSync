@@ -7,7 +7,7 @@ import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.JoinedEventMarker
 
 /** The honest in-memory [DiscoveryStore] cursor — opaque bytes, cleared on re-join. */
-class InMemoryDiscoveryStore : DiscoveryStore {
+internal class InMemoryDiscoveryStore : DiscoveryStore {
     private var token: ByteArray? = null
     override fun loadToken(): ByteArray? = token
     override fun saveToken(token: ByteArray) {
@@ -19,7 +19,7 @@ class InMemoryDiscoveryStore : DiscoveryStore {
 }
 
 /** An honest in-memory [JoinedEventMarker] for the composed `ExtensionReconciler`. */
-class InMemoryJoinedEventMarker(private var value: String? = null) : JoinedEventMarker {
+internal class InMemoryJoinedEventMarker(private var value: String? = null) : JoinedEventMarker {
     override fun read(): String? = value
     override fun set(eventId: String) {
         value = eventId
@@ -30,7 +30,7 @@ class InMemoryJoinedEventMarker(private var value: String? = null) : JoinedEvent
 }
 
 /** The honest in-memory [DeviceManifestStore] for the composed `DeviceManifestProducer`. */
-class InMemoryDeviceManifestStore : DeviceManifestStore {
+internal class InMemoryDeviceManifestStore : DeviceManifestStore {
     private var lastUploaded: String? = null
 
     override fun loadLastUploaded(): String? = lastUploaded
@@ -43,7 +43,7 @@ class InMemoryDeviceManifestStore : DeviceManifestStore {
 }
 
 /** The honest in-memory [AlbumMapStore] — the leave-surviving `eventId → albumLocalId` map. */
-class InMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()) : AlbumMapStore {
+internal class InMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()) : AlbumMapStore {
     private val map = initial.toMutableMap()
     override fun get(eventId: String): String? = map[eventId]
     override fun put(eventId: String, albumLocalId: String) {

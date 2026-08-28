@@ -17,7 +17,7 @@ import kotlinx.coroutines.sync.withLock
  * it with the SQLDelight store). Holds the same semantics: idempotency by [AssetRef], staged-path per
  * resource, permanent IMPORTED rows.
  */
-class InMemoryDownloadStore : DownloadStore {
+internal class InMemoryDownloadStore : DownloadStore {
 
     private class AssetRow(var state: DownloadState, val creationDate: String, var createdLocalId: String?)
 
