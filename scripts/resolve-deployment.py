@@ -110,15 +110,28 @@ INVENTORY = [
         previous runtime be retired without a TestFlight round.
 
         Reaches the xcconfig as `ASSOCIATED_DOMAIN` (an entitlement substitution, which can only read a
-        build setting) and the plist as `uploadBase`. The upload base carries a scheme, so it must be
-        rendered where `//` is data rather than a comment.
+        build setting), the plist as `uploadBase`, and the xcconfig again as `UPLOAD_SCHEME`/`UPLOAD_HOST`
+        — the two parts both bundles' `Info.plist` compose `BackgroundUploadURLBase` from. The upload base
+        carries a scheme, so it is never rendered as one xcconfig value: it is either rendered where `//`
+        is data (the plist) or composed at its destination out of parts that cannot contain `//`.
 
-        `uploadBase` is COMPILE-TIME and cannot be otherwise: the background-upload subsystem validates
-        every job's destination against the extension bundle's baked value, so a runtime-configurable
-        host is impossible with that API. Both bundles carry it — the app itself never uploads, the
-        extension does, and each reads its own bundle. It MUST be HTTPS: default ATS applies and no
-        `NSAllowsLocalNetworking` exception ships, so a baked `http://` network host fails silently on
-        device (loopback is exempt, which is how a simulator reaches `deno task dev:local`).
+        THE VALUE HAS TWO READERS, and only one of them is ours.
+
+        Ours is `bakedUploadBase()`, which reads `uploadBase` from the process's own `Deployment.plist`
+        and builds every request URL from it. It is COMPILE-TIME and cannot be otherwise, because the
+        other reader is `assetsd`: the background-upload subsystem validates the registration insert
+        against `BackgroundUploadURLBase` in the BUNDLE'S OWN `Info.plist` — that file, by that key, not
+        any resource we bundle beside it. So a runtime-configurable host is impossible with that API, and
+        a `Deployment.plist` cannot stand in for the `Info.plist`: absent the key, the OS refuses
+        registration with a bare `PHPhotosErrorDomain -1` and empty `userInfo`, launches the extension
+        never, and nothing uploads on that tier (measured on device, SE2/26.6, 2026-08-28; the matching
+        rule the daemon applies is NOT established — do not assert one). BOTH bundles carry BOTH forms:
+        each process reads its own bundle for `uploadBase`, and which bundle the daemon reads for its own
+        key has not been established. `ios.yml` asserts the two agree in each bundle after archiving.
+
+        It MUST be HTTPS: default ATS applies and no `NSAllowsLocalNetworking` exception ships, so a
+        baked `http://` network host fails silently on device (loopback is exempt, which is how a
+        simulator reaches `deno task dev:local`).
     """),
     Key("appName", [XCCONFIG], doc="Product name, Xcode only."),
     Key("bundleId", [JSON, XCCONFIG], doc="""
@@ -466,17 +479,27 @@ def render_properties(flat: dict) -> str:
 
 
 def render_xcconfig(flat: dict) -> str:
-    """Xcode BUILD SETTINGS and entitlement substitutions ONLY — see [RAW].
+    """Xcode BUILD SETTINGS, entitlement substitutions and `Info.plist` substitutions ONLY — see [RAW].
 
     Everything the device READS at runtime lives in [render_plist] instead. What is left here is what
     has nowhere else to go: `PRODUCT_NAME`, `PRODUCT_BUNDLE_IDENTIFIER` and `DEVELOPMENT_TEAM` are
-    build settings, and an entitlement's `$(…)` substitution can only read a build setting.
+    build settings, and an entitlement's or an `Info.plist`'s `$(…)` substitution can only read a build
+    setting.
 
     Every value below is therefore a LITERAL from an authored file, or an enum this function chooses.
     That is what removes the comment hazard structurally: `//` still opens a comment here, and there is
     still no escape for it, but no value that could contain one can reach this rendering any more. The
     `$()` guard the upload base used to carry is deliberately GONE rather than generalised — a per-site
     escape is what failed, since it covers what someone remembered.
+
+    `UPLOAD_SCHEME`/`UPLOAD_HOST` are how that survives a value which DOES contain `//`. Both bundles'
+    `Info.plist` must carry `BackgroundUploadURLBase` — `assetsd` reads it there to validate the
+    background-upload registration, and can see no resource we bundle (capability `ios-photokit-upload`)
+    — but an `Info.plist` substitution reads a build setting, and a build setting cannot hold a URL. So
+    the URL is COMPOSED AT ITS DESTINATION, `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1`, out of two parts
+    neither of which can contain `//`: a scheme this function chooses, and a bare host from authored
+    JSON. The `//` lands in the plist, where it is data. Composing at the destination is not the escape
+    that failed; it is the absence of anything to escape.
     """
     p = project(flat, XCCONFIG)
     distributed = p.get("channel") == "release"
@@ -484,12 +507,15 @@ def render_xcconfig(flat: dict) -> str:
     return "\n".join([
         "// GENERATED by scripts/resolve-deployment.py — do not edit, do not commit.",
         "// Included by Config.xcconfig. Every value here derives from the resolved deployment.",
-        "// Build settings and entitlement inputs only — the values the app READS are in Deployment.plist.",
+        "// Build settings, entitlement inputs and Info.plist substitution inputs only — the values the",
+        "// app READS are in Deployment.plist.",
         f"APP_NAME = {p['appName']}",
         f"BUNDLE_ID = {p['bundleId']}",
         f"TEAM_ID = {p['teamId']}",
         f"ASSOCIATED_DOMAIN = applinks:{p['domain']}",
         f"APS_ENVIRONMENT = {aps}",
+        f"UPLOAD_SCHEME = {upload_scheme(p['domain'])}",
+        f"UPLOAD_HOST = {p['domain']}",
         "",
     ])
 

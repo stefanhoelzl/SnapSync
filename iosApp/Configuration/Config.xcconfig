@@ -7,10 +7,23 @@
 //   ASSOCIATED_DOMAIN                      — the device-facing domain, one value shared with the app's
 //                                            LINK_ORIGIN, the AASA the backend serves, and the site
 //   APS_ENVIRONMENT                        — DERIVED from the one `channel` discriminator
+//   UPLOAD_SCHEME  UPLOAD_HOST             — the two parts both Info.plists compose the OS-read
+//                                            BackgroundUploadURLBase from (see below)
 //
-// The fragment carries BUILD SETTINGS and ENTITLEMENT INPUTS ONLY. Every value the app or the extension
-// READS at runtime — the upload base, the APNs environment, and the crash-reporting environment and DSN —
-// lives in the sibling generated `Deployment.plist`, bundled as a resource into BOTH targets.
+// The fragment carries BUILD SETTINGS, ENTITLEMENT INPUTS and INFO.PLIST SUBSTITUTION INPUTS ONLY. Every
+// value the app or the extension READS at runtime — the upload base, the APNs environment, and the
+// crash-reporting environment and DSN — lives in the sibling generated `Deployment.plist`, bundled as a
+// resource into BOTH targets.
+//
+// The one exception is a value WE do not read. `assetsd` validates the background-upload registration
+// insert against `BackgroundUploadURLBase` in a bundle's OWN `Info.plist`, and can see no resource we
+// bundle; without it `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and
+// nothing uploads on that tier (measured on device 2026-08-28; capability `ios-photokit-upload`). An
+// `Info.plist` substitution can only read a build setting, and a build setting cannot hold a URL — hence
+// `UPLOAD_SCHEME` and `UPLOAD_HOST` below: a scheme enum and a bare host, neither able to contain `//`,
+// which the two `Info.plist`s compose into `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1` where `//` is data.
+// That is composition at the destination, NOT the per-line `$()` escape this file used to rely on: there
+// is nothing left to escape. `ios.yml` asserts what it composes to equals that bundle's `uploadBase`.
 //
 // That split is not organisational. `//` opens a comment ANYWHERE on an xcconfig line and the grammar
 // offers no escape, so a value carrying a scheme is truncated silently: the crash-reporting DSN became

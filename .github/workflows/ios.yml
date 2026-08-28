@@ -273,6 +273,18 @@ jobs:
       # silent. The on-device check — sending a diagnostic dump — exercises the APP process only, so it
       # cannot tell a complete success from an extension that reached none of this.
       #
+      # The FIFTH value is read from a different file and compared, not matched against a pattern.
+      # `BackgroundUploadURLBase` lives in each bundle's own `Info.plist` because `assetsd` reads it
+      # there to validate the background-upload registration insert, and can see no resource we ship;
+      # absent, `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and the
+      # OS launches the extension never (measured on device 2026-08-28; capability
+      # `ios-photokit-upload`). It must equal `Deployment.plist`'s `uploadBase` EXACTLY. The comparison
+      # is meaningful because the two carriers compose ONE fact by DIFFERENT routes — the plist from
+      # Python into a grammar that escapes, the Info.plist from `$(UPLOAD_SCHEME)`/`$(UPLOAD_HOST)`
+      # through the xcconfig, which truncates at `//` — so only one of them can be truncated and
+      # equality between them is a differential test of the grammar. A prefix test would NOT do: it
+      # passes on an empty value (every string starts with "") and on a truncated host.
+      #
       # Capability `deployment-configuration`; the four-value contract is `ios-testflight-delivery`.
       - name: Verify the archive baked the resolved deployment
         run: |
@@ -296,9 +308,12 @@ jobs:
             APNS="$(pb "$DEP" apnsEnv)"
             SENV="$(pb "$DEP" sentryEnvironment)"
             ID="$(pb "$BUNDLE_DIR/Info.plist" CFBundleIdentifier)"
-            echo "$NAME: base=$BASE apns=$APNS sentryEnv=$SENV id=$ID"
+            INFOBASE="$(pb "$BUNDLE_DIR/Info.plist" BackgroundUploadURLBase)"
+            echo "$NAME: base=$BASE infoBase=$INFOBASE apns=$APNS sentryEnv=$SENV id=$ID"
 
             [ "$BASE" = "https://$DOMAIN/api/v1" ] || { echo "::error::$NAME upload base '$BASE' is not https://$DOMAIN/api/v1"; exit 1; }
+            [ -n "$INFOBASE" ] || { echo "::error::$NAME Info.plist carries no BackgroundUploadURLBase — assetsd validates the registration insert against this key and refuses with a bare PHPhotosErrorDomain -1 without it"; exit 1; }
+            [ "$INFOBASE" = "$BASE" ] || { echo "::error::$NAME Info.plist BackgroundUploadURLBase '$INFOBASE' does not equal Deployment.plist uploadBase '$BASE'"; exit 1; }
             [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::$NAME apnsEnv is '$APNS', expected '$EXPECT_APNS'"; exit 1; }
             [ "$SENV" = "$EXPECT_ENV" ] || { echo "::error::$NAME sentryEnvironment is '$SENV', expected '$EXPECT_ENV'"; exit 1; }
             [ -n "$ID" ] || { echo "::error::$NAME CFBundleIdentifier is empty — the fragment did not resolve"; exit 1; }
