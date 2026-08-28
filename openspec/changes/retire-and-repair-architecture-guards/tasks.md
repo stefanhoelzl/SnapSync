@@ -70,11 +70,11 @@ touched in step 6 gets its mutation replayed by hand before the change lands.
 - [x] 7.2 Confirm `ExtensionSafetyTest` fails on a framework outside the allowlist that was NOT on the old denylist
 - [x] 7.3 Confirm `MainLaneContainmentTest` now fails on `DispatchQueue.main` in a Swift shell (it passed green before)
 - [x] 7.4 Confirm `SwiftShellGuardTest` now fails on a Swift ternary in an all-zero-pinned shell (it passed green before)
-- [ ] 7.5 (DEFERRED to the tooling migration) Confirm every Konture rule is scoped by module, never by package. No Konture rule exists yet; the guards changed here scope by file path, which is module scoping by construction
+- [x] 7.5 RESOLVED, and the premise did not survive measurement: every Konsist-based guard used only `.path` and `.text`, so no guard needed a Kotlin parser. Konsist is removed and nothing replaces it, so there is no Konture rule to scope. Konture was verified sound first (fails loudly on every staleness path) and stays available if a guard ever needs a resolved model
 - [x] 7.6 `git status` is clean after all mutation checks, and the deployment artefacts still resolve to `prod`
 
 ## 8. Land it
 
-- [ ] 8.1 `./gradlew build` green, `architectureDiagrams` fresh and committed
+- [x] 8.1 `./gradlew build` green, `architectureDiagrams` fresh and committed
 - [ ] 8.2 PR carries exactly one changelog label — `internal`
 - [ ] 8.3 The PR body states the accepted exposures: constructor blocking unguarded; the SNAPSYNC-3 class has no mechanical coverage; Apple literals in `:domain` are a review concern; `:domain`'s `jvm()` target is load-bearing and unguarded; KDoc stacking is unguarded
