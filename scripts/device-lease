@@ -19,6 +19,13 @@
 # lease lasts). Session death releases it too. A SIGKILL cannot run the trap, so a lease whose pid
 # is dead is reclaimed automatically — liveness is checked, never a guessed timeout.
 #
+# The sidebar says who has the phone: the holder carries the `device` tag, a waiter `device-wait`.
+# ADVISORY ONLY — the lock is the mutex and the tag is a picture of it, so every `ch` call is
+# bounded and swallowed: no CodeHydra, no `ch`, no jq, no tag, and never a failed or delayed lease.
+# The claim is where the truth is known, so it RECONCILES rather than patches: it clears `device`
+# off every other workspace of this project, which is what makes a stolen or SIGKILLed holder's tag
+# disappear without either path having to remember to do it.
+#
 # The claim is atomic: the lock is written to a temp file and hard-LINKED into place, so it appears
 # fully formed and exactly one of N racing workspaces wins. The loser exits 1 and waits again; it
 # never blocks here, because waiting lives in --wait alone.
@@ -28,6 +35,13 @@ LOCK="${SNAPSYNC_DEVICE_LOCK:-$HOME/.snapsync-device.lock}"
 PROBE_TIMEOUT=5
 POLL_INTERVAL="${SNAPSYNC_DEVICE_POLL_INTERVAL:-5}"
 STATUS_EVERY="${SNAPSYNC_DEVICE_STATUS_EVERY:-60}"
+CH_TIMEOUT=5
+
+# Tag names are [A-Za-z][A-Za-z0-9-]* — a metadata key, so no emoji and no spaces.
+TAG_HELD=device
+TAG_HELD_COLOR='#00F0A8'
+TAG_WAIT=device-wait
+TAG_WAIT_COLOR='#00806B'
 
 usage() {
   echo "usage: scripts/device-lease --wait                    (background, NOT under ch-bg)" >&2
@@ -44,6 +58,34 @@ esac
 
 ws="${_CH_WORKSPACE_PATH:-$(pwd)}"
 owned=0
+tagged=0
+
+# ---------------------------------------------------------------- the CodeHydra sidebar tag
+# Bounded and silent by construction (see the header): a tag is decoration on a mutex, and it may
+# never delay the phone's release or fail a lease. `--workspace-path` is always explicit — the
+# sweep addresses workspaces that are not this one, so cwd resolution would be a trap.
+ch_tag_set() { # <workspace> <name> <colour>
+  timeout "$CH_TIMEOUT" ch ws tag set "$2" --workspace-path "$1" --color "$3" >/dev/null 2>&1 || true
+}
+
+ch_tag_rm() { # <workspace> <name>
+  timeout "$CH_TIMEOUT" ch ws tag rm "$2" --workspace-path "$1" >/dev/null 2>&1 || true
+}
+
+# Every workspace of THIS project that still shows the holder tag and is not me. Scoped to the
+# project because that is the whole sidebar a reader is looking at; the lock is global, so a stale
+# tag in another project is possible in principle and is left alone deliberately.
+ch_tag_sweep_held() {
+  command -v jq >/dev/null 2>&1 || return 0
+  timeout "$CH_TIMEOUT" ch project list 2>/dev/null \
+    | jq -r --arg me "$ws" --arg tag "tags.$TAG_HELD" '
+        .[] | select(any(.workspaces[]; .path == $me)) | .workspaces[]
+            | select(.path != $me and ((.metadata // {}) | has($tag))) | .path
+      ' 2>/dev/null \
+    | while IFS= read -r stale; do
+        [ -n "$stale" ] && ch_tag_rm "$stale" "$TAG_HELD"
+      done
+}
 
 lock_get() { sed -n "s/^$1=//p" "$LOCK" 2>/dev/null | head -1; }
 
@@ -68,6 +110,17 @@ age_of() {
 # Watches the lock file and NOTHING else: it touches no device, so it needs no phone connected and
 # runs no probe. "Is a phone plugged in?" is answered one call later, by the acquire.
 if [ "$mode" = wait ]; then
+  # The wait tag is this workspace's own, cleared by this workspace alone: a live waiter and a
+  # SIGKILLed one look identical from outside, so nobody else may guess it stale.
+  wait_cleanup() {
+    st=$?
+    ch_tag_rm "$ws" "$TAG_WAIT"
+    trap - EXIT INT TERM HUP
+    exit "$st"
+  }
+  trap wait_cleanup EXIT INT TERM HUP
+  ch_tag_set "$ws" "$TAG_WAIT" "$TAG_WAIT_COLOR"
+
   started=$(date +%s)
   last_status=""
   prev=none
@@ -108,6 +161,13 @@ cleanup() {
   if [ "$owned" = 1 ] && [ -f "$LOCK" ] && [ "$(lock_get pid)" = "$$" ]; then
     rm -f "$LOCK"
     echo "device-lease: released ($reason)"
+  fi
+  # Deliberately NOT under the ownership test above. That test exists so we never delete a lock
+  # that superseded ours — but a tag is per-workspace, so dropping ours can never touch the new
+  # holder's, and after a steal this workspace genuinely no longer has the phone. The lock is
+  # already gone by this line, so a hung `ch` can cost a stale tag but never the mutex.
+  if [ "$tagged" = 1 ]; then
+    ch_tag_rm "$ws" "$TAG_HELD"
   fi
   # Preserve the status we were called with: an `exit 0` here would mask the refusal paths,
   # and a refused acquire that reports success is exactly the silence this guard exists to end.
@@ -181,6 +241,14 @@ if [ "$(lock_get pid)" != "$$" ]; then
   exit 1
 fi
 owned=1
+
+# The sidebar catches up with the lock. This is the one moment the truth is known, so it is stated
+# whole: our own wait tag is spent, any other workspace still showing `device` is a holder that was
+# stolen from or SIGKILLed, and then the tag is ours.
+ch_tag_rm "$ws" "$TAG_WAIT"
+ch_tag_sweep_held
+tagged=1
+ch_tag_set "$ws" "$TAG_HELD" "$TAG_HELD_COLOR"
 
 echo "device-lease: held by '$(basename "$ws")' (pid $$) — \"$reason\""
 echo "device-lease: release by killing this shell."
