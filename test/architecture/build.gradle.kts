@@ -42,7 +42,8 @@ dependencies {
     // "The upload producers are never both started") — the one guard here that executes domain code
     // rather than reading source: the invariant is behavioral (a start-order property), which no text
     // scan can see.
-    testImplementation(project(":domain"))
+    testImplementation(project(":domain:model"))
+    testImplementation(project(":domain:feature"))
     testImplementation(libs.coroutines.test)
 }
 
@@ -79,13 +80,15 @@ tasks.test {
             // UP-TO-DATE and the pin silently stops pinning, which is the failure mode it exists for.
             include("gradle/libs.versions.toml")
             include("api/src/config.ts")
-            // TWO guards read these (capability `module-architecture`), so neither line may be removed
-            // on the strength of one of them:
-            //  · `LawsDigestTest` — CLAUDE.md's digest must name exactly the spec's requirement set.
-            //  · `ModuleSetTest`  — the spec's module enumeration IS the expected value the build's
-            //    include set is compared against; the guard holds no copy of it.
-            // Without these declared, editing either side alone leaves the task UP-TO-DATE — the
-            // precise staleness both guards exist to catch.
+            // `ModuleSetTest` (capability `module-architecture`): the spec's module enumeration IS the
+            // expected value the build's include set is compared against, and the guard holds no copy of
+            // it. Without this declared, amending the spec alone leaves the task UP-TO-DATE — the precise
+            // staleness the guard exists to catch.
+            //
+            // `CLAUDE.md` is declared for `RunbookSkillsTest` (below), which is now its ONLY reader here:
+            // `LawsDigestTest` held CLAUDE.md's laws digest against this spec, and both the digest and
+            // that guard are gone — the duplicate was deleted rather than guarded. Do not remove the
+            // CLAUDE.md line on the strength of that: the runbook pointers still depend on it.
             include("CLAUDE.md")
             include("openspec/specs/module-architecture/spec.md")
             // `RunbookSkillsTest`'s subjects (capability `architecture-guards`): CLAUDE.md's runbook
