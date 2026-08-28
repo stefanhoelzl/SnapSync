@@ -2,18 +2,21 @@
 // The App Store call-to-action, shared across pages (capability web-site). The Apple logo is an inline
 // SVG (no off-origin asset); the href is a navigational link, which the self-containment invariant allows.
 //
-// The href names the /de/ storefront EXPLICITLY because the app is released to Germany only: a
-// country-less apps.apple.com/app/id… resolves to the US storefront, which 404s for us. Drop the /de/
-// only once availability actually widens to the US.
+// The href is RESOLVED, not authored. It used to be the literal below, carrying the /de/ storefront and
+// a comment explaining why — while `GET /join` redirected app-less visitors to a country-less form of
+// the same URL that 404s. Two copies of one fact, and the one nobody looked at was the wrong one. Now
+// both read `appStoreUrl` from the resolved deployment, and the storefront reasoning lives with the
+// value in the resolver's inventory.
 //
 // target=_blank so a tap from /join never discards the page's island state (a desktop click would
 // navigate away mid-zip); on iOS the App Store app claims the link as an app switch anyway. Every
 // off-site link on this site opens this way — see Layout.astro.
+import deployment from "../deployment.json";
 ---
 
 <a
   class="appstore"
-  href="https://apps.apple.com/de/app/id6781692480"
+  href={deployment.appStoreUrl}
   target="_blank"
   rel="noopener noreferrer"
   aria-label="Download SnapSync on the App Store (opens in a new tab)"

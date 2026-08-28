@@ -17,11 +17,9 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
-import app.snapsync.join.HttpEnrollment
+import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
-import app.snapsync.feature.push.EventNotifier
-import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.ports.PushReceiver
 import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.CycleResult
@@ -31,6 +29,7 @@ import app.snapsync.feature.upload.UploadPushReceiver
 import app.snapsync.feature.upload.UploadMechanismRuntime
 import app.snapsync.model.PermissionStatus
 import app.snapsync.logging.IosLogScope
+import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -121,11 +120,6 @@ class UrlSessionUploadController(
     private val discoveryStore = IosDiscoveryStore()
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
 
-    // Fires the event notify after a drained cycle that completed uploads (capability
-    // `upload-completion-notify`; `:domain` feature/push since the migration finale re-homed it).
-    // Root-constructed over this tier's HTTP client; `uploadCore` takes the notify as a stated lambda.
-    private val notifier = EventNotifier(KtorPushHttpClient(httpClient), host)
-
     private val platform = IosUrlSessionUploadPlatform(
         log = log,
         discovery = discovery,
@@ -213,6 +207,7 @@ class UrlSessionUploadController(
         uploadCore(
             scope,
             UploadPorts(
+                appVersion = ::appMarketingVersion,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
@@ -228,17 +223,16 @@ class UrlSessionUploadController(
                 // reinstall re-uploaded the whole post-cutoff library.
                 deviceFiles = HttpDeviceFilesSource(httpClient, host),
                 joinedMarker = IosJoinedEventMarker(),
-                // The device manifest PUT goes through the generic `HttpEnrollment` (the former
+                // The device manifest PUT goes through the generic `HttpManifestPublisher` (the former
                 // app-local `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = IosDeviceManifestStore(),
-                enrollment = HttpEnrollment(httpClient, host),
+                manifestPublisher = HttpManifestPublisher(httpClient, host),
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-selection-policy`), scoped by the
                 // cutoff — the SAME wrapper the own-device status total gets (admit-on-doubt).
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
                 albumCoordinator = albumCoordinator,
                 token = token,
-                onBatchUploaded = { eventId -> notifier.notify(eventId) },
                 log = log,
             ),
         )

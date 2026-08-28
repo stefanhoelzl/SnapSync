@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
+import app.snapsync.model.JoinCommit
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.feature.download.StoreDownloadStatusSource
@@ -226,7 +227,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         until: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
-    ): Boolean =
+    ): JoinCommit =
         world.userCommands
             .commitJoin(eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum)
             .also { afterMutation() }

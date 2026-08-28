@@ -21,22 +21,74 @@ class EdgeUploadRequestProviderTest {
     private fun provider(
         host: String = "https://edge.example",
         token: suspend () -> String? = { "tok-1" },
-    ) = EdgeUploadRequestProvider(host, deviceId, token)
+        appVersion: String = "0.4",
+    ) = EdgeUploadRequestProvider(host, deviceId, token, appVersion)
 
     @Test
-    fun builds_the_edge_url_for_an_unreserved_filename() = runTest {
-        val req = provider().provide(resource("ABC123_DEF-primary.jpg"))
+    fun names_identity_in_the_path_and_the_capture_name_in_the_query() = runTest {
+        val req = provider().provide(
+            Resource(
+                filename = "ABC123_DEF-primary.jpg",
+                assetId = "ABC123_DEF",
+                contentType = "image/jpeg",
+                metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.JPG"),
+                data = ByteArray(0),
+            ),
+        )
         assertEquals(
-            "https://edge.example/files/devices/$deviceId/ABC123_DEF-primary.jpg",
+            "https://edge.example/files/devices/$deviceId/ABC123_DEF/primary?filename=IMG_0001.JPG",
             req.url,
         )
     }
 
     @Test
-    fun percent_encodes_reserved_bytes_and_slash() = runTest {
-        // Space → %20, `/` → %2F, multi-byte UTF-8 (ä = C3 A4) → %C3%A4, all uppercase hex.
-        val req = provider().provide(resource("a b/ä.jpg"))
-        assertTrue(req.url.endsWith("/files/devices/$deviceId/a%20b%2F%C3%A4.jpg"), "was ${req.url}")
+    fun percent_encodes_reserved_bytes_in_every_composed_part() = runTest {
+        // Space → %20, `/` → %2F, multi-byte UTF-8 (ä = C3 A4) → %C3%A4, all uppercase hex. The capture
+        // name is the part that realistically carries them, and it must never reach a path segment.
+        val req = provider().provide(
+            Resource(
+                filename = "a b-primary.jpg",
+                assetId = "a b",
+                contentType = "image/jpeg",
+                metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "a b/ä.jpg"),
+                data = ByteArray(0),
+            ),
+        )
+        assertTrue(
+            req.url.endsWith("/files/devices/$deviceId/a%20b/primary?filename=a%20b%2F%C3%A4.jpg"),
+            "was ${req.url}",
+        )
+    }
+
+    @Test
+    fun a_rebuilt_resource_with_no_metadata_addresses_the_same_object() = runTest {
+        // The retry path rebuilds a `Resource` from the job key alone, with EMPTY metadata. The capture
+        // name then falls back to the KEY — exact, not approximate, because the endpoint consumes only
+        // this value's EXTENSION when composing the stored object name, and the key shares it.
+        val original = provider().provide(
+            Resource(
+                filename = "K-primary.jpg",
+                assetId = "K",
+                contentType = "image/jpeg",
+                metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_9.JPG"),
+                data = ByteArray(0),
+            ),
+        )
+        val rebuilt = provider().provide(
+            Resource("K-primary.jpg", "K", "image/jpeg", emptyMap(), ByteArray(0)),
+        )
+        // Same identity, so the endpoint composes the same object name; only the recorded capture
+        // metadata differs.
+        assertEquals(original.url.substringBefore("?"), rebuilt.url.substringBefore("?"))
+        assertTrue(rebuilt.url.endsWith("?filename=K-primary.jpg"), "was ${rebuilt.url}")
+    }
+
+    @Test
+    fun the_request_declares_the_app_version_because_the_os_performs_it() = runTest {
+        // The shared HTTP client cannot add this: the platform issues this request later, outside any
+        // client this app controls (capability `min-app-version`).
+        val req = provider(appVersion = "0.4").provide(resource("x-primary.jpg"))
+        assertEquals("0.4", req.headers[APP_VERSION_HEADER])
     }
 
     @Test
@@ -46,7 +98,11 @@ class EdgeUploadRequestProviderTest {
         // has metadata (the bunny native Storage API has no metadata headers).
         val req = provider().provide(resource("x.jpg", contentType = "image/heic"))
         assertEquals(
-            mapOf("Content-Type" to "image/heic", "Authorization" to "Bearer tok-1"),
+            mapOf(
+                "Content-Type" to "image/heic",
+                APP_VERSION_HEADER to "0.4",
+                "Authorization" to "Bearer tok-1",
+            ),
             req.headers,
         )
     }
@@ -89,7 +145,7 @@ class EdgeUploadRequestProviderTest {
         // request from this provider on every retry. A provider that captured the token at construction
         // would keep re-sending the dead one forever.
         var current: String? = "stale"
-        val p = EdgeUploadRequestProvider("https://edge.example", deviceId) { current }
+        val p = EdgeUploadRequestProvider("https://edge.example", deviceId, { current }, "0.4")
 
         val before = p.provide(resource("x.jpg"))
         assertEquals("Bearer stale", before.headers["Authorization"])
@@ -107,15 +163,23 @@ class EdgeUploadRequestProviderTest {
         // BUILD one would strand the resource instead. This is the normal state of a device that has not
         // attested yet — and of the extension on a device whose token expired, since it cannot renew.
         val req = provider(token = { null }).provide(resource("x.jpg", contentType = "image/heic"))
-        assertEquals(mapOf("Content-Type" to "image/heic"), req.headers)
+        assertEquals(
+            mapOf("Content-Type" to "image/heic", APP_VERSION_HEADER to "0.4"),
+            req.headers,
+        )
     }
 
     @Test
-    fun url_has_no_query_string() = runTest {
+    fun url_carries_the_capture_name_and_no_credential_parameters() = runTest {
         val req = provider().provide(resource("x.jpg"))
-        // The credential is in the HEADER, never the URL — which is what keeps the URL stable and
-        // expiry-free, so a retry re-derived hours later re-PUTs a byte-identical destination.
-        assertTrue(!req.url.contains("?"), "edge URL must carry no auth query string: ${req.url}")
+        // The query is not free-for-all: it carries the mandatory capture name and NOTHING else. The
+        // credential stays in the HEADER, never the URL — which is what keeps the destination stable and
+        // expiry-free, so a retry re-derived hours later re-PUTs a byte-identical one.
+        assertEquals("filename=x.jpg", req.url.substringAfter("?"))
+        assertTrue(
+            !req.url.contains("signature") && !req.url.contains("expire"),
+            "edge URL must carry no credential parameters: ${req.url}",
+        )
     }
 
     @Test
@@ -136,7 +200,7 @@ class EdgeUploadRequestProviderTest {
     fun trailing_slash_on_host_is_normalized() = runTest {
         val req = provider(host = "https://edge.example/").provide(resource("x.jpg"))
         assertEquals(
-            "https://edge.example/files/devices/$deviceId/x.jpg",
+            "https://edge.example/files/devices/$deviceId/x/primary?filename=x.jpg",
             req.url,
         )
     }

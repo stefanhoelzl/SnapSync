@@ -30,8 +30,10 @@ import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.join.HttpEnrollment
+import app.snapsync.join.HttpEventJoin
+import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.join.HttpEventDirectory
+import app.snapsync.http.withCredentialInterceptor
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.model.AssetFacts
@@ -118,7 +120,12 @@ class World(
      */
     val scope: CoroutineScope,
     val ownDeviceId: String = "00000000-0000-4000-9000-0000000000a1",
-    val host: String = "https://world.edge",
+    /**
+     * The device-facing base every seam composes from — carrying **exactly one** version prefix, as a
+     * real build's baked base does (capability `backend-deployment`). The mini-edge serves both
+     * versions, so pointing this at the other prefix is how a test exercises the other one.
+     */
+    val host: String = "https://world.edge/api/v2",
     /**
      * The ledger this world composes over. Injectable for ONE reason: building a second world over the
      * same backend is how a **process boundary** is expressed here. Everything else a world holds is
@@ -226,12 +233,38 @@ class World(
     val albumManager: FakeAlbumManager = FakeAlbumManager()
     val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
 
-    /** The one shared mini-edge client injected into every real common-Ktor seam. */
-    val client = miniEdgeClient(store)
+    /**
+     * The one shared mini-edge client injected into every real common-Ktor seam — carrying the REAL
+     * cross-cutting interceptor the device installs (`:adapter:generic:app`'s
+     * [withCredentialInterceptor], the same function `darwinHttpClient` applies).
+     *
+     * Applying it here is what makes the version gate reach the screen in this harness rather than
+     * being simulated: a `426` from the mini-edge travels the actual path — interceptor → the core's
+     * `AppVersionGate` → the read-model the container reduces over. Without it the world would have to
+     * write the gate directly, which would assert the harness's own wiring and nothing else.
+     *
+     * The declared version is an operator lever ([appVersion]) so a test can be an old build; the token
+     * is null, because the mini-edge is unauthenticated and the world says so explicitly.
+     */
+    val client = miniEdgeClient(store).withCredentialInterceptor(
+        token = { null },
+        onRejected = {},
+        appVersion = { appVersion },
+        onVersionRefused = { minimum -> core.versionGate.refused(minimum) },
+        onServed = { core.versionGate.served() },
+    )
+
+    /**
+     * The marketing version this world's requests DECLARE (capability `min-app-version`) — an operator
+     * lever, so a test can be a build the backend refuses. High by default, so every test that is not
+     * about the gate is served.
+     */
+    var appVersion: String = "99.0"
 
     /** The `:adapter:generic:app` enrollment PUT over the mini-edge — the ONE `Enrollment` impl (the
      *  world's byte-identical copy died at step 10, closing the deletion ledger's last row). */
-    val manifestUploader: HttpEnrollment = HttpEnrollment(client, host)
+    val manifestPublisher: HttpManifestPublisher = HttpManifestPublisher(client, host)
+    val eventJoin: HttpEventJoin = HttpEventJoin(client, host)
     /**
      * The REAL backend-leave seam (the `:adapter:generic:app` [HttpLeaveNotifier] over the mini-edge),
      * bound to this world's own device — which is what the port means (see
@@ -440,7 +473,7 @@ class World(
             },
             union = unionSource,
             directory = HttpEventDirectory(client, host),
-            enrollment = manifestUploader,
+            eventJoin = eventJoin,
             manifestStore = manifestStore,
             eventCreation = HttpEventCreation(client, host),
             eventRename = HttpEventRename(client, host),
@@ -718,12 +751,6 @@ class World(
             ?: noContribution()
 
     /**
-     * Every event this world's cycles notified (capability `upload-completion-notify`), in order.
-     * The mini-edge has no notify route, so this records the call rather than serving it.
-     */
-    val notified: MutableList<String> = mutableListOf()
-
-    /**
      * The real cycle — assembled by the SAME shared composition the device tiers call ([uploadCore],
      * spec `module-architecture` "One shared composition"), over the world's fakes. Long-lived, as on
      * both tiers: the shared entry gate re-reads the membership on every `run()`, so a provision,
@@ -745,7 +772,7 @@ class World(
                 deviceFiles = deviceFiles,
                 joinedMarker = marker,
                 manifestStore = manifestStore,
-                enrollment = manifestUploader,
+                manifestPublisher = manifestPublisher,
                 suppression = downloadStore,
                 // The SAME policy wrapper the app graph gets (capability `photo-selection-policy`).
                 albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
@@ -753,7 +780,6 @@ class World(
                 albumCoordinator = core.albumCoordinator,
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.
                 token = { null },
-                onBatchUploaded = { eventId -> notified += eventId },
             ),
         )
     }

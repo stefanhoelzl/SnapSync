@@ -133,8 +133,13 @@ console.log(`
   store       ${options.store}/        (reset: rm -rf ${options.store})
   host file   ${HOST_FILE}
 
-  device build — paste onto the ssh-mac xcodebuild archive line:
-    BACKGROUND_UPLOAD_URL_BASE=${origin}/api/v1
+  device build — point the build at this origin by SELECTING it, not by overriding a build setting:
+    1. set  "domain": "${origin.replace(/^https?:\/\//, "")}"  in deployments/local.json
+    2. re-run scripts/resolve-deployment.py, then archive
+
+    There is deliberately no xcodebuild-line override. The base rides in the GENERATED
+    Deployment.plist, bundled as a resource, and a build setting cannot substitute into a resource
+    file — a BACKGROUND_UPLOAD_URL_BASE= on the archive line is accepted and silently does nothing.
 
   presigned downloads are minted at ${origin}/<zone>/... — this origin's own scheme, so a device
   or a simulator can follow one directly, and so can curl.

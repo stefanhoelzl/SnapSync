@@ -8,7 +8,7 @@ package app.snapsync.ports
  *
  * **Named for the need, not the wire.** The adapter is HTTP (`HttpLeaveNotifier`, a `DELETE`), but the
  * need — "announce that this membership has ended" — is what a second platform would have to serve too,
- * and it would serve it the same way. The join-side counterpart is [Enrollment].
+ * and it would serve it the same way. The join-side counterpart is [EventJoin].
  *
  * **This device, always — which is why no `deviceId` crosses the seam.** The identity doing the leaving
  * is a per-process constant the adapter already needs in order to address the route; it is never a

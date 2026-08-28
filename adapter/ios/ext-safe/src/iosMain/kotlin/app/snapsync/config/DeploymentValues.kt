@@ -62,3 +62,20 @@ fun bakedSentryDsn(): String? = deploymentValue("sentryDsn")
  * carries a DSN without an environment reports honestly rather than claiming production.
  */
 fun bakedSentryEnvironment(): String = deploymentValue("sentryEnvironment") ?: "development"
+
+/**
+ * The app's App Store page, or `null` when this build carries none (capability `min-app-version`).
+ *
+ * Read on the ONE screen whose remedy is a download: when the backend refuses this build as too old,
+ * the only thing the user can do is install a newer one, and the link is what makes that possible from
+ * where they are standing.
+ *
+ * **"Couldn't tell" rather than a guessed value**, deliberately, and this is the one absence here that
+ * must not collapse into a literal. Composing a URL from the bundle id would produce the country-less
+ * `apps.apple.com/app/id<id>` form, which is measurably a **404** while availability is limited to one
+ * storefront (2026-08-28) — an offer that looks right and lands nowhere, on the screen the user reaches
+ * precisely because something is already wrong. `null` means the screen states the remedy and offers no
+ * link, which is honest. The value ships in every build the resolver renders, so absence means a
+ * misconfigured build rather than a state the product has.
+ */
+fun bakedAppStoreUrl(): String? = deploymentValue("appStoreUrl")

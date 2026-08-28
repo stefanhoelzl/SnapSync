@@ -48,7 +48,7 @@ State these before writing a scenario against this host, or you will write one t
   curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
        -d '{"finished":[],"jobLimit":100}'
   # → {"processRawValue":1,"result":"processing","queue":"simulated","created":[{"key":"…-primary.png",
-  #    "destination":"http://127.0.0.1:8080/api/v1/file/…","headers":{…}}]}
+  #    "destination":"http://127.0.0.1:8080/api/v2/files/devices/<dev>/<assetId>/<role>?filename=…","headers":{…}}]}
 
   # move one job's bytes for real (or ?fail=network to forge a failure and drive the retry chain)
   curl -sS -X POST "http://127.0.0.1:$PORT/device/upload-jobs/perform" \
@@ -182,7 +182,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
   build
 # NO host override: `BACKGROUND_UPLOAD_URL_BASE=` cannot reach the generated Deployment.plist and is
 # silently ignored, baking the PRODUCTION host. Run `python3 scripts/resolve-deployment.py local`
-# first instead — its 127.0.0.1:8080 host renders `http://127.0.0.1:8080/api/v1`, the scheme derived
+# first instead — its 127.0.0.1:8080 host renders `http://127.0.0.1:8080/api/v2`, the scheme derived
 # from the loopback literal (ATS exempts it; nothing else).
 
 APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
@@ -285,9 +285,9 @@ cd ~/snapsync/api && nohup ~/.deno/bin/deno task dev:local > ~/deno.log 2>&1 &
 ⚠️ **Warm it before you drive the app.** A cold `deno` server takes seconds to load its npm modules on the
 first request, and the app's HTTP client gives up at **5 s** — the create then fails with
 `Couldn't reach the server` while `curl` from the same machine works, which reads like a broken tunnel and
-is not. One `curl` against `/api/v1/events` first is enough.
+is not. One `curl` against `/api/v2/events` first is enough.
 
-The simulator shares the host's loopback, so it reaches `http://127.0.0.1:8080/api/v1` with **no tunnel in
+The simulator shares the host's loopback, so it reaches `http://127.0.0.1:8080/api/v2` with **no tunnel in
 the data path**. ATS exempts loopback, so plain HTTP needs no Info.plist exception. The host is stable, so
 no rebuild per session — unlike a cloudflared quick tunnel, whose hostname is random each time.
 

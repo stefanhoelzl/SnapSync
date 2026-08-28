@@ -193,6 +193,7 @@ private fun statusActions(host: StatusContainerHost, photoPermission: Permission
                     ),
                     onSendDiagnostics = host.onSendDiagnostics,
                     onCreateEvent = host::onCreateEvent,
+                    onOpenLink = { host.onOpenAppStore() },
                     // The join-time shareable-count preview (capability `join-share-count`): the
                     // permission-aware, no-network query, plus the live grant as its recompute trigger.
                     participation = ParticipationActions(

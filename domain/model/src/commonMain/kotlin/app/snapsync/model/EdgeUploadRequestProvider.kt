@@ -4,17 +4,20 @@ package app.snapsync.model
 /**
  * The production [UploadRequestProvider] (specs: sync-engine, bunny-upload-endpoint, device-attestation):
  * a thin **local URL builder** for the bunny edge proxy. It maps a [Resource] to a plain `PUT` against
- * `<host>/files/devices/<deviceId>/<encoded-filename>` — no network, no signing, no crypto — carrying
- * exactly two headers: `Content-Type` and the device token as `Authorization: Bearer`. No `Host`
- * (URL-implied) and **no custom metadata headers** (the bunny native Storage API has none). iOS's
- * background-upload job system performs the actual `PUT`; this only composes the request.
+ * `<host>/files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — no network, no signing, no
+ * crypto — carrying `Content-Type`, the device token as `Authorization: Bearer`, and the calling build's
+ * marketing version. No `Host` (URL-implied) and **no custom metadata headers** (the bunny native Storage
+ * API has none). iOS's background-upload job system performs the actual `PUT`; this only composes the
+ * request.
  *
- * **That the OS carries our `Authorization` header at all was measured, not assumed.** The extension hands
- * the request to the OS, which performs it on its own schedule — and until it was checked on a real device,
- * nothing proved an *arbitrary* header survived that handoff (the only header ever sent was `Content-Type`,
- * which the OS would set anyway). It does survive: the origin observed the header on a real photo `PUT`
- * whose `user-agent` was `assetsd`, the OS's own daemon. Had it not, no header-borne credential could gate
- * the byte route and the token would have had to move into the URL.
+ * **That the OS carries our headers at all was measured, not assumed.** The extension hands the request to
+ * the OS, which performs it on its own schedule. Measured on device (SE2 / iOS 26.6, 2026-08-28): the
+ * origin observed a genuinely bespoke `x-snapsync-*` header on a real photo `PUT` whose `user-agent` was
+ * `assetsd`, the OS's own daemon — and the same header read back out of the job's stored destination on
+ * the acknowledge path. The earlier note claimed this for an *arbitrary* header on the strength of
+ * `Authorization` alone, which is a standard header the OS keeps for its own reasons; it is now measured
+ * for one of ours. Had it not survived, neither a header-borne credential nor the version declaration
+ * could ride here, and both would have had to move into the URL.
  *
  * The credential rides in the **header, never the URL**, which preserves the property the retry path
  * depends on: the URL is **stable with no expiry**, so a retry re-derived hours later re-`PUT`s a
@@ -29,6 +32,10 @@ package app.snapsync.model
  * device that has not attested yet, and of the upload extension on a device whose token expired — the
  * extension cannot renew (App Attest is unavailable in an app extension), so it sends what it has.
  *
+ * The stored object name this destination resolves to is **byte-identical** to the one the previous byte
+ * route composed for the same resource, so a device crossing versions finds its bytes where it left them
+ * and re-uploads nothing.
+ *
  * The byte destination is **event-independent**: a resource is stored once under its device's partition
  * (`/files/devices/<deviceId>/`) and linked into any number of events by reference (the per-event device
  * manifest), so re-joining or switching events re-uploads nothing already stored.
@@ -41,15 +48,39 @@ class EdgeUploadRequestProvider(
     host: String,
     private val deviceId: String,
     private val token: suspend () -> String? = { null },
+    /**
+     * The calling build's marketing version, declared on every v2 request (capability
+     * `min-app-version`).
+     *
+     * Required HERE and not only on the shared HTTP client because **the OS performs this request**: it
+     * is handed to the platform's background-upload subsystem and issued later, outside any client this
+     * app controls, so a header that client adds cannot reach it. Injected as a plain string because the
+     * provider is platform-free and must make no platform call.
+     */
+    private val appVersion: String = "",
 ) : UploadRequestProvider {
 
     // Trim a trailing slash so the baked host (with or without one) never yields `//files`.
     private val base = host.trimEnd('/')
 
     override suspend fun provide(resource: Resource): UploadRequest {
-        val url = "$base/files/devices/$deviceId/${encodeFilenameSegment(resource.filename)}"
+        // Identity in the PATH, capture name in a required QUERY. `assetId` and `role` are derived from
+        // the ledger key through the shared parsers, so the one definition of that layout stays in
+        // `model/` and the destination cannot disagree with the row it belongs to.
+        val assetId = assetIdFromUploadKey(resource.filename)
+        val role = roleFromUploadKey(resource.filename).wire
+        // The capture name falls back to the KEY, and the fallback is exact rather than approximate: the
+        // endpoint consumes only this value's EXTENSION when composing the stored object name, and the
+        // key carries the same extension as the capture name it was built from. That is what lets a
+        // request rebuilt on the retry path — where metadata is empty — address a byte-identical object.
+        val captureName = resource.metadata[RESOURCE_META_ORIGINAL_FILENAME]
+            ?.takeIf { it.isNotBlank() } ?: resource.filename
+        val url = "$base/files/devices/$deviceId/" +
+            "${encodeFilenameSegment(assetId)}/${encodeFilenameSegment(role)}" +
+            "?filename=${encodeFilenameSegment(captureName)}"
         val headers = buildMap {
             put("Content-Type", contentTypeOf(resource))
+            if (appVersion.isNotBlank()) put(APP_VERSION_HEADER, appVersion)
             token()?.let { put("Authorization", "Bearer $it") }
         }
         return UploadRequest(url = url, headers = headers, resource = resource)

@@ -110,9 +110,20 @@ internal fun JoiningEventScreen(
                 onCancel = actions.onCancel,
             )
             JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
-            JoinPhase.Detailed.Step.CommitFailed -> CommitFailedPhase(
+            // The two ways a commit can end badly, on ONE surface distinguished by its copy and by
+            // whether a Retry is offered at all — see [CommitBlockedPhase].
+            JoinPhase.Detailed.Step.CommitFailed -> CommitBlockedPhase(
                 name = phase.event.name,
+                title = "Couldn't join",
+                body = "Something went wrong. Try again.",
                 onRetry = actions.onRetryJoin,
+                onCancel = actions.onCancel,
+            )
+            JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
+                name = phase.event.name,
+                title = "This event is full",
+                body = "It has reached the number of devices it can hold, so there is no room to join.",
+                onRetry = null,
                 onCancel = actions.onCancel,
             )
         }
@@ -264,28 +275,34 @@ private fun CommittingPhase(name: String) = PhaseScaffold(
 )
 
 /**
- * The join failed after the event loaded, so the invitation stays honest above a neutral retryable
- * notice — no teleport back from Committing. The retry re-sends the range the Ready phase committed,
- * which survives Ready -> Committing -> CommitFailed because the screen stays mounted throughout.
+ * A commit that did not land, after the event loaded: the invitation stays honest above a neutral
+ * notice — no teleport back from Committing.
+ *
+ * **[onRetry] is nullable, and that nullability IS the difference between the two states this serves.**
+ * A transient failure gets a Retry, which re-sends the range the Ready phase committed (it survives
+ * Ready → Committing → CommitFailed because the screen stays mounted throughout). A FULL event gets
+ * none: capacity does not heal, so a Retry would fail identically every time and turn a clear answer
+ * into a member pressing a button against a wall. Cancel is the way out of both.
+ *
+ * One surface rather than two because they differ in exactly this — the copy and that one affordance —
+ * and a second near-identical composable would drift from this one the first time either was touched.
  */
 @Composable
-private fun CommitFailedPhase(
+private fun CommitBlockedPhase(
     name: String,
-    onRetry: () -> Unit,
+    title: String,
+    body: String,
+    onRetry: (() -> Unit)?,
     onCancel: () -> Unit,
 ) = PhaseScaffold(
     body = {
         AppEventHeaderCompact(title = name, subtitle = JOIN_HERO_SUBTITLE)
         CenteredBody {
-            AppNoticeCard(
-                icon = JoinNoticeFailed,
-                title = "Couldn't join",
-                body = "Something went wrong. Try again.",
-            )
+            AppNoticeCard(icon = JoinNoticeFailed, title = title, body = body)
         }
     },
     actions = {
-        PrimaryButton(label = "Retry", onClick = onRetry)
+        onRetry?.let { PrimaryButton(label = "Retry", onClick = it) }
         SecondaryButton(label = "Cancel", onClick = onCancel)
     },
 )

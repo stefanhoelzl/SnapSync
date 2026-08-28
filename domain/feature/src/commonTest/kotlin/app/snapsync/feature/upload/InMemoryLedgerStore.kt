@@ -24,6 +24,10 @@ class InMemoryLedgerStore : LedgerStore {
 
     override suspend fun get(key: String): LedgerEntry? = entries[key]
 
+
+    override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
+        entries.values.firstOrNull { it.destinationPath == destinationPath }
+
     override suspend fun put(entry: LedgerEntry) {
         entries[entry.key] = entry
         dings.tryEmit(Unit)

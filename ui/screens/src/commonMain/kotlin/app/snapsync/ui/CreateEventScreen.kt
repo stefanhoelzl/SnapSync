@@ -20,6 +20,7 @@ import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.AppEventHeaderHost
+import app.snapsync.ui.components.AppIdentityHeader
 import app.snapsync.ui.components.AppEventDateRangeSection
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -164,3 +165,51 @@ internal fun CreatingEventScreen() {
 }
 
 
+
+/**
+ * The backend refuses this build as too old (capability `min-app-version`).
+ *
+ * The one screen in the app whose remedy is **outside** it, and it is built to say exactly that and
+ * nothing else. There is no retry, because retrying is what the app has already been doing and every
+ * attempt is refused; there is no way back to another layer, because every other layer would render
+ * something untrue about a device whose every backend call is being turned away.
+ *
+ * [Layer.UpdateRequired.minimumVersion] is named only when the backend sent one — a refusal that
+ * carried no version still shows this screen, without inventing a number. The store button appears only
+ * when this build carries a store URL, for the reason the layer's own doc gives: a composed
+ * country-less URL is measurably a 404 while availability is limited, and a button that lands nowhere
+ * is worse than no button on the screen a member reaches because something is already wrong.
+ */
+@Composable
+internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenLink: (String) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Its OWN eyebrow. Reaching for `AppEventHeaderHost` here put "HOST AN EVENT" above this screen
+        // on a real device — a surface borrowing another's verb, which no state assertion could see.
+        AppIdentityHeader(
+            eyebrow = "UPDATE NEEDED",
+            title = "Update SnapSync",
+            subtitle = "This version can no longer reach the event.",
+        )
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Headline and DETAIL, which is the shape `StatusHero` lays out: the icon sits beside a
+            // short line, with the sentence full-width beneath it. Passing the whole sentence as the
+            // headline instead left the icon floating against its middle line (seen on device).
+            StatusHero(
+                StatusIndicator.Error,
+                "Time to update",
+                layer.minimumVersion
+                    ?.let { "SnapSync $it or newer is needed to keep sharing photos." }
+                    ?: "A newer version of SnapSync is needed to keep sharing photos.",
+            )
+        }
+        layer.storeUrl?.let { url ->
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                PrimaryButton(label = "Open the App Store", onClick = { onOpenLink(url) })
+            }
+        }
+    }
+}

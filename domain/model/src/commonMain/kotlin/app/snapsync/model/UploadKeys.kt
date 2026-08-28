@@ -30,6 +30,14 @@ enum class ResourceRole(val wire: String) {
 // adapter was reporting the raw type *beside* it rather than instead of it.
 
 /**
+ * The header a versioned backend request declares its marketing version in (capability
+ * `min-app-version`). Declared here because BOTH transports must send it — the shared HTTP client and
+ * the byte-upload request the OS performs — and two spellings of one header name is exactly the drift
+ * this vocabulary exists to prevent.
+ */
+const val APP_VERSION_HEADER: String = "x-snapsync-app-version"
+
+/**
  * Normalize a raw PHAsset `localIdentifier` into the `assetId` used in keys and the suppression match:
  * `/`→`_` so the identifier is a single slash-free path segment (the edge endpoint rejects a decoded
  * `/`). This is the **single** definition of that transform on the discovery/enumeration side — the

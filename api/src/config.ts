@@ -131,12 +131,21 @@ export type Config = {
 /**
  * The oldest app marketing version `/api/v2` serves (capability `min-app-version`).
  *
- * `0.1` is the marketing-version floor the app has carried since it was seeded, so this refuses NOTHING
- * that exists today — which is correct while no shipped build speaks v2 at all. It becomes meaningful the
- * moment a v2 client ships: raise it to the first version that speaks v2 correctly, and every older build
- * is told, in one answer it can act on, to update.
+ * `0.4` is the first version whose client speaks v2 — the byte destination, the split join, the manifest
+ * sub-resource and the identity-terms listing all move together, so a build below it cannot be served
+ * correctly by v2 at all. Refusing it with a `426` naming this minimum is the honest answer: the remedy
+ * is "install a newer build", which is exactly what the refusal says.
+ *
+ * It refuses no shipped build, because no shipped build speaks v2 — they all speak v1, which this gate
+ * never touches (`refusedForVersion` returns early for v1, and v1 is frozen for the installed base).
+ *
+ * ⚠️ **It must stay at or below `MARKETING_VERSION` in `iosApp/Configuration/Config.xcconfig`.** That
+ * floor is what every DEV and SIDELOAD build carries — such builds have no release tag to compute a
+ * version from — so a minimum above it locks the developer out of their own backend, on a screen telling
+ * them to visit the App Store. The two moved together, and `api-deploy.yml` asserts the relation rather
+ * than trusting it.
  */
-export const MIN_APP_VERSION = "0.1";
+export const MIN_APP_VERSION = "0.4";
 
 /** The commit this bundle was built from, served by `GET /health` so a deploy probe can identify it. */
 export const BUILD_SHA: string = deployment.sha;

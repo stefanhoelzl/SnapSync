@@ -23,27 +23,43 @@ CREATE TABLE ledgerRow (
     role TEXT NOT NULL DEFAULT '',
     contentType TEXT NOT NULL DEFAULT '',
     originalFilename TEXT NOT NULL DEFAULT '',
-    absent INTEGER NOT NULL DEFAULT 0
+    absent INTEGER NOT NULL DEFAULT 0,
+    -- The destination this row's upload was addressed to, or NULL for a row recorded before the column
+    -- existed. NULLABLE must match 7.sqm exactly (the verify task compares migrated vs created schemas).
+    destinationPath TEXT
 );
 
 CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
+
+-- The ack path resolves a returned upload job to its row through this index; without it every returned
+-- job would scan the table, on a path the OS invokes with a deadline.
+CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
 
 -- Deliberately does NOT filter `absent`: a row for a departed asset still records that its bytes are on
 -- the backend, which is what suppresses re-upload should the asset be restored (iOS keeps deleted photos
 -- recoverable for 30 days - the same order as an event's life).
 get:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
 FROM ledgerRow
 WHERE key = :key;
 
 put:
 INSERT OR REPLACE INTO ledgerRow (
-    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
+    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent,
+    destinationPath
 )
 VALUES (
     :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename,
-    :absent
+    :absent, :destinationPath
 );
+
+-- Resolve a row from the destination its upload was addressed to (capability `ios-photokit-upload`).
+-- A NULL column never matches, which is correct: such a row predates the write and is recovered by the
+-- tier's fallback instead.
+selectByDestinationPath:
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
+FROM ledgerRow
+WHERE destinationPath = :destinationPath;
 
 -- Fill the manifest detail of ONE already-recorded row, without touching its state or attempt.
 -- The sweep for rows a migration could not fill and for rows the re-join reconcile seeded from a
@@ -151,7 +167,7 @@ SELECT changes();
 -- to every other read (they all filter `absent`), and never settled. The album placement it triggers is
 -- best-effort and simply finds no asset to add.
 selectUploaded:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
 FROM ledgerRow
 WHERE state = 'UPLOADED';
 
@@ -190,7 +206,7 @@ WHERE state = 'REQUESTED';
 -- happened to return, and LIMITed because a first walk on a large library records a row per outstanding
 -- resource and a cycle that tried to enqueue all of them would stage every one to disk.
 selectNeedingJob:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
 FROM ledgerRow
 WHERE state IN :needsJobStates AND absent = 0
 ORDER BY key

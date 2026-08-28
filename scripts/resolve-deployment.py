@@ -60,6 +60,20 @@ PLIST = "plist"  # iosApp/Configuration/Deployment.plist — bundled into app + 
 METADATA = "metadata"  # build/metadata/** — the App Store listing
 SITE = "site"  # site/src/deployment.json
 
+DEVICE_API_PREFIX = "/api/v2"
+"""The version prefix every device request is addressed under (capability `api-endpoints`).
+
+Named because it appears in TWO places that must agree and cannot check each other: the `uploadBase`
+this script renders into `Deployment.plist`, and the `BackgroundUploadURLBase` literal authored into
+each bundle's own `Info.plist` — where `assetsd` reads it to validate the background-upload
+registration insert, and where no generated value can reach. A base on one version with the carrier on
+the other may register fine and have every upload refused, with nothing logged. The test pins the two
+against this constant, and `ios.yml` re-checks it against the archived bundles.
+
+Moving it is a device-API version move, not an edit: the byte destinations, the join, the manifest and
+the listing all change shape together (capability-by-capability, `changes/archive/device-speaks-v2`).
+"""
+
 BAKED = {PROPS, XCCONFIG, PLIST, METADATA, SITE}
 """Renderings with no run time in which to resolve an environment reference.
 
@@ -143,7 +157,23 @@ INVENTORY = [
         component. Not a secret (visible in any shipped IPA).
     """),
     Key("apnsKeyId", [JSON], doc="APNs Auth Key id — the provider-JWT `kid`."),
-    Key("appStoreUrl", [JSON], doc="Where GET /join sends someone who opened an event link with no app."),
+    Key("appStoreUrl", [JSON, SITE, PLIST], doc="""
+        The app's App Store page. Read by THREE consumers, which is why it is one value: `GET /join`
+        redirects an app-less visitor here, the site's download button links here, and the device shows
+        it when the backend refuses the build as too old (capability `min-app-version`) — a state whose
+        only remedy is this link.
+
+        ⚠️ **The country segment is load-bearing while availability is limited.** Measured 2026-08-28:
+        the country-less `apps.apple.com/app/id<id>` resolves to the US storefront and answers **404**,
+        because the app is released to Germany only; `apps.apple.com/de/app/id<id>` answers 200. The
+        country-less form was what `GET /join` had been redirecting app-less visitors to — a dead page
+        at the end of every shared link. Drop the `/de/` only when availability actually widens, and note
+        that a US-storefront visitor following a `/de/` link is shown a "not available in your country"
+        page, which is a true statement rather than a 404.
+
+        Stated here because the JSON that holds the value carries no comments, and the site's own
+        hardcoded copy of this URL (which had the correct form) is what the SITE rendering replaces.
+    """),
     Key("appAttestRootCa", [JSON], doc="""
         Apple's App Attest ROOT CA — the trust anchor every attestation chain is verified against. A
         public fact (Apple publishes it), so declaring it exposes nothing, and shipping it in the same
@@ -496,7 +526,7 @@ def render_xcconfig(flat: dict) -> str:
     `Info.plist` must carry `BackgroundUploadURLBase` — `assetsd` reads it there to validate the
     background-upload registration, and can see no resource we bundle (capability `ios-photokit-upload`)
     — but an `Info.plist` substitution reads a build setting, and a build setting cannot hold a URL. So
-    the URL is COMPOSED AT ITS DESTINATION, `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1`, out of two parts
+    the URL is COMPOSED AT ITS DESTINATION, `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2`, out of two parts
     neither of which can contain `//`: a scheme this function chooses, and a bare host from authored
     JSON. The `//` lands in the plist, where it is data. Composing at the destination is not the escape
     that failed; it is the absence of anything to escape.
@@ -527,8 +557,14 @@ def render_plist(flat: dict) -> str:
     JSON and site renderings already are — the `SCREAMING_SNAKE` names it replaces were xcconfig build
     settings, and carrying them here would preserve the shape of the thing being removed.
 
-    A property list ESCAPES, which is the whole reason these four values live here: `uploadBase` and
-    `sentryDsn` both carry `//`, which the xcconfig grammar reads as a comment (see [RAW]).
+    A property list ESCAPES, which is the whole reason these values live here: `uploadBase`,
+    `appStoreUrl` and `sentryDsn` all carry `//`, which the xcconfig grammar reads as a comment
+    (see [RAW]).
+
+    `appStoreUrl` is on the device because the version gate's refusal has exactly one remedy — install a
+    newer build — and a screen that states the remedy without offering the link is a dead end. It is the
+    same value the site links to and `GET /join` redirects to; carrying a fourth copy on the device is
+    how the three would drift.
 
     `apnsEnv` and `sentryEnvironment` are DERIVED from the same `channel` discriminant that gives the
     entitlement its `APS_ENVIRONMENT`, so the three cannot disagree. `sentryDsn` is emitted only for a
@@ -542,7 +578,8 @@ def render_plist(flat: dict) -> str:
     p = project(flat, PLIST)
     distributed = p.get("channel") == "release"
     values = {
-        "uploadBase": f"{upload_scheme(p['domain'])}://{p['domain']}/api/v1",
+        "uploadBase": f"{upload_scheme(p['domain'])}://{p['domain']}{DEVICE_API_PREFIX}",
+        "appStoreUrl": p["appStoreUrl"],
         "apnsEnv": "production" if distributed else "sandbox",
         "sentryEnvironment": "production" if distributed else "development",
     }
@@ -571,7 +608,8 @@ def upload_scheme(domain: str) -> str:
     Default ATS applies to the app and the extension and NO `NSAppTransportSecurity` exception ships, so
     a plaintext host reached over the network fails SILENTLY on device. ATS exempts the loopback IP
     LITERAL, and only that: measured 2026-08-09 from a real bundle on an iOS 26.5 simulator, a build
-    baked with `http://127.0.0.1:8080/api/v1` reached the local rig and got a 201.
+    baked with `http://127.0.0.1:8080/api/v1` reached the local rig and got a 201 (the version prefix
+    has since moved to `/api/v2`; what was measured is the SCHEME, which the prefix does not affect).
 
     `localhost` is deliberately NOT loopback here. It is a NAME, resolved through DNS, and ATS's
     exemption is documented for the address literal — treating it as exempt would produce a build that

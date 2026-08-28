@@ -11,14 +11,14 @@ import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.config.bakedApnsEnv
+import app.snapsync.config.bakedAppStoreUrl
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
-import app.snapsync.join.HttpEnrollment
+import app.snapsync.join.HttpEventJoin
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.CaptureCutoff
@@ -53,6 +53,8 @@ import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.download.IosStagedBytes
 import app.snapsync.download.PhotoKitAssetPresence
+import app.snapsync.link.IosLinkOpener
+import app.snapsync.ports.PlatformHandoff
 import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
@@ -373,7 +375,7 @@ object SnapSyncRoot {
                 photoAccessRequester = permission,
                 // The platform half of the share command: a system sheet over the top view controller
                 // (:adapter:ios:app-only).
-                sharePresenter = IosShareSheet(),
+                handoff = PlatformHandoff(share = IosShareSheet(), links = IosLinkOpener()),
                 candidateSource = candidateSource,
                 // A cutoff-lowering reconfigure invalidates the shared discovery cursor so both tiers
                 // re-enumerate and back-share the newly-in-scope older photos (capability
@@ -415,7 +417,7 @@ object SnapSyncRoot {
                 newDownloadTransport = { host -> IosDownloadTransport(host) },
                 union = HttpEventUnionSource(http, backendHost),
                 directory = detailsSource,
-                enrollment = HttpEnrollment(http, backendHost),
+                eventJoin = HttpEventJoin(http, backendHost),
                 // The App-Group file, so the record this app process invalidates at enroll is the same one
                 // the ≥26.1 tier's producer reads in the EXTENSION process. A per-process record would
                 // leave the extension believing the server still holds a projection the app just replaced.
@@ -491,6 +493,10 @@ object SnapSyncRoot {
                 // from within itself. It carries no OS receipt, so nothing is being falsely reported.
                 scope.launch { refreshAttestation() }
             },
+            // The backend refuses this build as too old (capability `min-app-version`). Reported
+            // straight into the read-model the screen observes; a served response clears it.
+            onVersionRefused = { minimum -> app.versionGate.refused(minimum) },
+            onServed = { app.versionGate.served() },
         )
     }
 
@@ -605,6 +611,8 @@ object SnapSyncRoot {
                 rename = app.renameStatus,
                 download = app.downloadStatusSource,
                 attested = app.attestation.attested,
+                versionRefusal = app.versionGate.refusal,
+                appStoreUrl = bakedAppStoreUrl(),
             ),
             scope = scope,
             cutoffFormatter = cutoffFormatter,

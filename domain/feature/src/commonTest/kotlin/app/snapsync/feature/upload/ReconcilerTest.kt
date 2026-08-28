@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.ports.DeviceFilesSource
+import app.snapsync.ports.DeviceListingShapeException
 import app.snapsync.ports.JoinedEventMarker
 
 import app.snapsync.model.LedgerEntry
@@ -12,6 +13,10 @@ import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.loggerConfigInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,8 +50,18 @@ class ReconcilerTest {
         files: DeviceFilesSource,
         ledger: FakeLedgerStore,
         marker: JoinedEventMarker,
-        onCursorClear: () -> Unit = {},
-    ) = ExtensionReconciler(files, ledger, marker, deviceId, { onCursorClear() })
+        log: Logger = Logger.withTag("ReconcilerTest"),
+        onCursorClear: () -> Unit = {}, // last, so the existing call sites keep their trailing lambda
+    ) = ExtensionReconciler(files, ledger, marker, deviceId, { onCursorClear() }, log)
+
+    /** Records what was logged, so a severity can be asserted rather than a message. */
+    private class Recorder : LogWriter() {
+        val lines = mutableListOf<Pair<Severity, String>>()
+        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+            lines += severity to message
+        }
+        fun logger() = Logger(loggerConfigInit(this), "ReconcilerTest")
+    }
 
     @Test
     fun `marker mismatch reset-seeds every stored file then clears the cursor and sets the marker`() = runTest {
@@ -134,6 +149,50 @@ class ReconcilerTest {
         assertEquals(2, files.calls)
         assertEquals(LedgerState.COMPLETED, ledger.get("A-primary.heic")!!.state)
         assertEquals("E1", marker.read())
+    }
+
+    @Test
+    fun `a listing this build cannot read defers and is reported as a fault`() = runTest {
+        // Same deferral as a transport failure — nothing is seeded, the marker stays unset, the cycle
+        // creates no jobs — but a DIFFERENT telling, because the consequences differ. A transport
+        // failure heals on the next cycle; a shape mismatch means this build cannot read what the
+        // backend answers, so EVERY cycle from here defers and the device silently stops uploading.
+        // That is a fault worth a crash report, not a note (`module-architecture`, "Absence is never
+        // silent"; capability `crash-reporting`).
+        val recorder = Recorder()
+        val files = FakeFiles(Result.failure(DeviceListingShapeException("no assetId")))
+        val ledger = FakeLedgerStore()
+        val marker = FakeMarker(null)
+
+        assertFalse(reconciler(files, ledger, marker, log = recorder.logger()).reconcile("E1"))
+
+        assertNull(marker.read())
+        assertTrue(ledger.rows.isEmpty())
+        assertTrue(
+            recorder.lines.any { it.first >= Severity.Error },
+            "an unreadable listing must reach crash reporting; logged: ${'$'}{recorder.lines}",
+        )
+    }
+
+    @Test
+    fun `a transport failure is not reported as a fault`() = runTest {
+        // The counterpart, and the reason the branch is worth having: a flaky network on a device that
+        // will retry in minutes must not become a crash report, or the signal is worthless.
+        val recorder = Recorder()
+
+        assertFalse(
+            reconciler(
+                FakeFiles(Result.failure(RuntimeException("net"))),
+                FakeLedgerStore(),
+                FakeMarker(null),
+                log = recorder.logger(),
+            ).reconcile("E1"),
+        )
+
+        assertTrue(
+            recorder.lines.none { it.first >= Severity.Error },
+            "a retryable network failure must not become a crash report; logged: ${'$'}{recorder.lines}",
+        )
     }
 
     @Test

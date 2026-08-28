@@ -211,7 +211,6 @@ class UploadCycleTest {
         readGate: (() -> CycleGate)? = null,
         reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
         onDiscovery: suspend (String, SelectionPolicy) -> Boolean = { _, _ -> true },
-        onBatchUploaded: suspend (String) -> Unit = {},
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
     ): UploadCycle {
@@ -230,7 +229,6 @@ class UploadCycleTest {
             store = store,
             reconcile = reconcile,
             onDiscovery = onDiscovery,
-            onBatchUploaded = onBatchUploaded,
             placeInAlbum = placeInAlbum,
             log = log,
         )
@@ -265,7 +263,6 @@ class UploadCycleTest {
             readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
             reconcile = { touched += "reconcile"; true },
             onDiscovery = { _, _ -> touched += "discovery"; true },
-            onBatchUploaded = { touched += "notify" },
         ).run()
 
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
@@ -404,7 +401,6 @@ class UploadCycleTest {
         backend, platform, store,
         policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
         onDiscovery = { _, _ -> order += "discovery"; true },
-        onBatchUploaded = { order += "notify" },
         reconcile = { order += "reconcile"; true },
     )
 
@@ -428,7 +424,6 @@ class UploadCycleTest {
         // has stopped sharing. The projection is empty because the policy admits nothing, so the manifest
         // still cannot offer bytes that were never uploaded.
         assertTrue("discovery" in order, "an empty device manifest is published")
-        assertTrue("notify" !in order, "no event notify is fired — there is no completion to announce")
     }
 
     /**
@@ -449,7 +444,7 @@ class UploadCycleTest {
         // what this membership shares (the manifest, capability `device-manifest`). The terminal-job
         // settlement is deliberately not in `order`: acknowledging a job the OS already presented is not
         // new work, and a declined cycle owes it (capability `upload-lifecycle`).
-        assertEquals(listOf("reconcile", "discovery"), order, "reconcile then manifest; never a notify")
+        assertEquals(listOf("reconcile", "discovery"), order, "reconcile, then the manifest")
         assertNull(platform.discoverPolicyArg, "the library is still never enumerated — that is the cost")
     }
 
@@ -537,7 +532,7 @@ class UploadCycleTest {
         )
         // And it took nothing the gate withholds: the walk and job creation.
         assertTrue(platform.created.isEmpty(), "no upload job is created")
-        assertEquals(listOf("reconcile", "discovery"), order, "reconcile and manifest run; notify does not")
+        assertEquals(listOf("reconcile", "discovery"), order, "reconcile and the manifest both run")
         assertNull(platform.discoverPolicyArg, "the library is never enumerated")
         assertNull(store.saved, "the discovery cursor does not advance")
         assertTrue(!store.cleared, "nor is it cleared")
@@ -1038,58 +1033,74 @@ class UploadCycleTest {
         assertEquals(LedgerState.FAILED, backend.get("a")?.state)
     }
 
-    // ── Notify hook (capability `upload-completion-notify`) ──────────────────────────────────────────
+    // ── The publish (capabilities `device-manifest`, `upload-completion-notify`) ─────────────────────
 
     /**
-     * Build a cycle recording the order its best-effort hooks fire, so the manifest→notify order is
-     * asserted.
+     * Build a cycle that records, at the moment the manifest hook fires, **what the projection held** —
+     * so the promotion→publish order is asserted by its consequence rather than by a call sequence.
      *
-     * The manifest hook models `DeviceManifestProducer`'s **skip-if-unchanged**, because that answer is
-     * now the notify's whole trigger (capability `upload-completion-notify`). A fixture that always
-     * reported "published" would make every notify test pass for the wrong reason — the thing under test
-     * is precisely *did the projection change*.
+     * This fixture used to record a `manifest`→`notify` order, and the tests below asserted the notify's
+     * trigger. The notify is gone (the versioned device API has no notify route; the manifest write IS
+     * the announcement, and the backend fans out from it), so what is left to protect is the ORDER that
+     * used to be implicit: a row promoted after the write would be missing from the projection it
+     * belongs in and would not reach the event union until some later cycle published again.
+     *
+     * The probe is [unpromotedAtPublish]: what still rested UPLOADED at the moment the manifest hook
+     * fired. Empty means the promotion pass had already run. It is deliberately NOT the published
+     * projection — `completedManifestRows()` also excludes rows still missing their manifest detail, so a
+     * projection assertion here would measure these fixtures' bare rows rather than the order.
+     *
+     * The hook still models `DeviceManifestProducer`'s **skip-if-unchanged**, because that is what a real
+     * producer answers and a fixture that always reported "published" would let a cycle look like it
+     * published when it did not.
      */
     private suspend fun cycleWithHooks(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         order: MutableList<String>,
         store: DiscoveryStore = FakeStore(),
-        notifyThrows: Boolean = false,
+        publishThrows: Boolean = false,
+        unpromotedAtPublish: MutableList<List<String>> = mutableListOf(),
     ): UploadCycle {
         var lastPublished: List<String>? = null
         return cycle(
             backend, platform, store,
             onDiscovery = { _, _ ->
                 order += "manifest"
+                unpromotedAtPublish += backend.uploadedRows().map { it.key }.sorted()
+                if (publishThrows) error("manifest boom")
                 val projection = backend.completedManifestRows().map { it.key }.sorted()
                 val changed = projection != lastPublished
                 if (changed) lastPublished = projection
                 changed
             },
-            onBatchUploaded = {
-                order += "notify"
-                if (notifyThrows) error("notify boom")
-            },
         )
     }
 
     @Test
-    fun drained_cycle_with_a_completion_notifies_once_after_the_manifest_write() = runTest {
+    fun a_completion_is_promoted_before_the_manifest_is_published() = runTest {
         val backend = InMemoryLedgerStore()
         // A real completion: the row is in flight, and the platform reports it finished. The guarded
         // write only lands on a REQUESTED row, so an in-flight row is what makes this a completion at all.
         backend.inFlight("a-primary.jpg", assetId = "a")
         val platform = FakePlatform(succeeded = listOf("a-primary.jpg"), ledger = backend)
         val order = mutableListOf<String>()
+        val unpromoted = mutableListOf<List<String>>()
 
-        val result = cycleWithHooks(backend, platform, order).run()
+        val result = cycleWithHooks(backend, platform, order, unpromotedAtPublish = unpromoted).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("manifest", "notify"), order) // fires once, AFTER the device-manifest PUT
+        assertEquals(listOf("manifest"), order, "published exactly once")
+        assertEquals(
+            listOf(emptyList<String>()),
+            unpromoted,
+            "nothing rested UPLOADED when the manifest was published — the promotion pass ran first",
+        )
+        assertEquals(LedgerState.COMPLETED, backend.get("a-primary.jpg")?.state, "and it really promoted")
     }
 
     @Test
-    fun cap_truncated_cycle_publishes_and_notifies() = runTest {
+    fun a_cap_truncated_cycle_still_publishes_what_it_settled() = runTest {
         val backend = InMemoryLedgerStore()
         // A real completion, and then creation hits the platform's job limit → PROCESSING.
         backend.inFlight("done-primary.jpg", assetId = "done")
@@ -1100,20 +1111,23 @@ class UploadCycleTest {
             limitAfter = 2,
         )
         val order = mutableListOf<String>()
+        val unpromoted = mutableListOf<List<String>>()
 
-        val result = cycleWithHooks(backend, platform, order).run()
+        val result = cycleWithHooks(backend, platform, order, unpromotedAtPublish = unpromoted).run()
 
         assertEquals(CycleResult.PROCESSING, result)
         // THE HEADLINE INVERSION. This assertion used to read `order.isEmpty()` — "a cap-truncated cycle
         // refreshes no manifest and fires no notify" — and that is the two-hour silence measured in the
         // field: a device with more outstanding work than the platform's job limit takes this branch on
-        // every cycle, so its successfully-uploaded photos never entered the event union and no member
-        // was ever woken for them. Nothing the manifest needs was missing; only the drain was.
-        assertEquals(listOf("manifest", "notify"), order, "a truncated cycle publishes what it settled")
+        // every cycle, so its successfully-uploaded photos never entered the event union. Nothing the
+        // manifest needs was missing; only the drain was.
+        assertEquals(listOf("manifest"), order, "a truncated cycle publishes what it settled")
+        assertEquals(listOf(emptyList<String>()), unpromoted, "and promotes before publishing, as ever")
+        assertEquals(LedgerState.COMPLETED, backend.get("done-primary.jpg")?.state)
     }
 
     @Test
-    fun drained_cycle_with_no_completion_does_not_notify() = runTest {
+    fun a_cycle_that_settled_nothing_still_publishes() = runTest {
         val backend = InMemoryLedgerStore()
         // New work discovered and created, but nothing COMPLETED this cycle.
         val platform = FakePlatform(discovered = listOf(resource("a")))
@@ -1122,29 +1136,32 @@ class UploadCycleTest {
         val result = cycleWithHooks(backend, platform, order).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("manifest"), order) // manifest PUT ran; notify did not
+        // The publish is unconditional now, and that is a simplification rather than a change of
+        // behaviour: it always ran, and only the notify behind it was gated on having settled something.
+        assertEquals(listOf("manifest"), order)
     }
 
     @Test
-    fun a_throwing_notify_does_not_fail_the_cycle() = runTest {
+    fun a_throwing_publish_does_not_fail_the_cycle() = runTest {
         val backend = InMemoryLedgerStore()
         backend.inFlight("a-primary.jpg", assetId = "a")
         val platform = FakePlatform(succeeded = listOf("a-primary.jpg"), ledger = backend)
         val store = FakeStore()
         val order = mutableListOf<String>()
 
-        val result = cycleWithHooks(backend, platform, order, store, notifyThrows = true).run()
+        val result = cycleWithHooks(backend, platform, order, store, publishThrows = true).run()
 
         assertEquals(CycleResult.COMPLETED, result) // best-effort: the failure is absorbed
-        assertEquals(listOf("manifest", "notify"), order)
-        assertContentEquals(byteArrayOf(9), store.saved) // cursor still advanced despite the notify failure
+        assertEquals(listOf("manifest"), order)
+        assertContentEquals(byteArrayOf(9), store.saved) // cursor still advanced despite the failed publish
     }
 
     @Test
-    fun a_duplicate_succeeded_on_an_already_completed_key_does_not_notify() = runTest {
+    fun a_duplicate_succeeded_on_an_already_completed_key_disturbs_nothing() = runTest {
         val backend = InMemoryLedgerStore()
         // The key is already COMPLETED; the OS re-hands a SUCCEEDED job (at-least-once delivery). This
-        // duplicate is not new work — it must not fire a spurious notify.
+        // duplicate is not new work. It used to be asserted through the notify it must not fire; with the
+        // notify gone, what it must not do is disturb the settled row or the projection built from it.
         LedgerWriter(backend).recordCompleted(resource("a-primary.jpg", "a"), attempt = 0, eventId = TEST_EVENT)
         val platform = FakePlatform(succeeded = listOf("a-primary.jpg"))
         val order = mutableListOf<String>()
@@ -1152,11 +1169,13 @@ class UploadCycleTest {
         val result = cycleWithHooks(backend, platform, order).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("manifest"), order) // manifest re-PUT, but no completion counted → no notify
+        assertEquals(LedgerState.COMPLETED, backend.get("a-primary.jpg")?.state)
+        assertTrue(backend.uploadedRows().isEmpty(), "a duplicate creates no second settlement")
+        assertEquals(listOf("manifest"), order)
     }
 
     @Test
-    fun a_pure_re_ack_failed_job_on_a_completed_key_does_not_notify() = runTest {
+    fun a_pure_re_ack_failed_job_on_a_completed_key_disturbs_nothing() = runTest {
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted(resource("a-primary.jpg", "a"), attempt = 0, eventId = TEST_EVENT)
         // A FAILED job whose key is already COMPLETED → the re-ack arm (no UploadCompleted, no count).
@@ -1168,7 +1187,9 @@ class UploadCycleTest {
         val result = cycleWithHooks(backend, platform, order).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("manifest"), order) // re-ack is not a completion → no notify
+        assertEquals(LedgerState.COMPLETED, backend.get("a-primary.jpg")?.state, "a re-ack never un-settles")
+        assertTrue(backend.uploadedRows().isEmpty(), "and settles nothing new")
+        assertEquals(listOf("manifest"), order)
     }
 
     // ── Capture-date cutoff (capability `photo-selection-policy`) ──────────────────────────────────────────

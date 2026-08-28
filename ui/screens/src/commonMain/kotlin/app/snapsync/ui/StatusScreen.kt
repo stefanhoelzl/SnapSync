@@ -356,6 +356,8 @@ private fun ColumnScope.CurrentLayer(
             onCancel = actions.surfaces.onCancelReconfigure,
         )
     } else when (val layer = state.layer) {
+        is Layer.UpdateRequired ->
+            UpdateRequiredScreen(layer, actions.onOpenLink)
         is Layer.CreateEvent ->
             CreateEventScreen(layer, actions.onCreateEvent, cutoff)
         Layer.CreatingEvent ->

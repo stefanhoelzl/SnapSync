@@ -41,7 +41,7 @@
 	     crash-reporting DSN to "https:" and shipped four mute TestFlight builds. Their rationale now
 	     lives on the resolver's key inventory, where every toolchain that reads them can see it. -->
 	<key>BackgroundUploadURLBase</key>
-	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1</string>
+	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2</string>
 	<!-- No CFBundleURLTypes, deliberately: the `snapsync` custom scheme is retired (capability
 	     `event-link`). An invite is now an HTTPS Universal Link, claimed via the associated-domains
 	     entitlement rather than a scheme — which is what lets a QR scanned by someone who does NOT

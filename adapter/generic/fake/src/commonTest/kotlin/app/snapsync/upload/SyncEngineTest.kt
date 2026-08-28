@@ -5,6 +5,7 @@ import app.snapsync.fake.InMemoryLedgerStore
 
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.destinationPathOf
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.Resource
 import app.snapsync.model.SyncDecision
@@ -59,8 +60,15 @@ class SyncEngineTest {
         assertNull(ledger.entry(resource.filename)) // decide() is a pure query — no write
 
         engine.handle(SyncEvent.UploadStarted(upload.job))
+        // REQUESTED is the one write that carries the destination: it is the moment an upload for this
+        // row exists at the platform, so it is when the address becomes true (capability `sync-ledger`).
         assertEquals(
-            resource.toLedgerRow(LedgerState.REQUESTED, attempt = 0, eventId = eventId),
+            resource.toLedgerRow(
+                LedgerState.REQUESTED,
+                attempt = 0,
+                eventId = eventId,
+                destinationPath = destinationPathOf(upload.job.request.url),
+            ),
             ledger.entry(resource.filename),
         )
     }
@@ -165,7 +173,12 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(retry.job))
         assertEquals(
-            resource.toLedgerRow(LedgerState.REQUESTED, attempt = 1, eventId = eventId),
+            resource.toLedgerRow(
+                LedgerState.REQUESTED,
+                attempt = 1,
+                eventId = eventId,
+                destinationPath = destinationPathOf(retry.job.request.url),
+            ),
             ledger.entry(resource.filename),
         )
     }

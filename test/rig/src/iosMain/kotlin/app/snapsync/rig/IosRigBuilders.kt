@@ -110,6 +110,12 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     "onChoosePhotos" to
         "presents the limited-library picker, a modal only a finger can answer. The selection it produces " +
         "arrives through the selection-change seam, which /device/state reports.",
+    "onOpenAppStore" to
+        "leaves the app for the App Store, backgrounding the process under test — the same reason " +
+        "onOpenSettings is excluded, and worse here: the channel could not drive what it switched to. " +
+        "The state that offers it IS reachable over the channel — /device/state reports the " +
+        "update-required screen and the URL it carries — so what is untestable here is only the " +
+        "hand-off itself.",
     // ---- the range form (capability `photo-selection-policy`) ------------------------------------
     //
     // The channel drives the form through `confirmJoin`/`reconfigure`, which set the values a caller

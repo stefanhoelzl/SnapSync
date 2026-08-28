@@ -24,31 +24,8 @@ import androidx.compose.ui.unit.dp
  * question below the fold and left the answer controls competing for what was left.
  */
 @Composable
-fun AppEventHeaderCompact(title: String, subtitle: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AppMarkBadge(size = 54.dp)
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                text = "YOU'RE INVITED",
-                style = eyebrowTextStyle(),
-                color = appAccentText(),
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
+fun AppEventHeaderCompact(title: String, subtitle: String) =
+    AppIdentityHeader("YOU'RE INVITED", title, subtitle)
 
 /**
  * The **compact host header** for the create-event surface: the SnapSync mark as its app-icon badge,
@@ -65,7 +42,22 @@ fun AppEventHeaderCompact(title: String, subtitle: String) {
  * hierarchy are owned here.
  */
 @Composable
-fun AppEventHeaderHost(title: String, subtitle: String) {
+fun AppEventHeaderHost(title: String, subtitle: String) =
+    AppIdentityHeader("HOST AN EVENT", title, subtitle)
+
+/**
+ * The shape both headers above are, and the one any other surface needing identity-plus-a-statement
+ * uses: the SnapSync mark as an app-icon badge, a small tracked [eyebrow] naming what this surface IS,
+ * the [title] noticeably large beneath it, and one line of [subtitle] under that.
+ *
+ * Extracted because the two headers were byte-identical apart from that one string — their own docs said
+ * "only the eyebrow differs" — and because reaching for the nearest existing header put **"HOST AN
+ * EVENT"** above the update-required screen on a real device. A surface that is not about hosting must
+ * be able to say what it IS without borrowing another surface's verb, and a shared header with the
+ * eyebrow as a parameter is what makes that possible without a third copy of this Row.
+ */
+@Composable
+fun AppIdentityHeader(eyebrow: String, title: String, subtitle: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -74,7 +66,7 @@ fun AppEventHeaderHost(title: String, subtitle: String) {
         AppMarkBadge(size = 54.dp)
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
-                text = "HOST AN EVENT",
+                text = eyebrow,
                 style = eyebrowTextStyle(),
                 color = appAccentText(),
             )

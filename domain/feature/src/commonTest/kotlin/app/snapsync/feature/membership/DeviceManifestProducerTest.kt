@@ -16,7 +16,9 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.Enrollment
+import app.snapsync.ports.EventJoin
+import app.snapsync.ports.JoinResult
+import app.snapsync.ports.ManifestPublisher
 
 import app.snapsync.model.Resource
 import kotlinx.coroutines.test.runTest
@@ -66,11 +68,20 @@ class DeviceManifestProducerTest {
         }
     }
 
-    private class FakeUploader(var ok: Boolean = true) : Enrollment {
+    private class FakeUploader(var ok: Boolean = true) : ManifestPublisher {
         val puts = mutableListOf<Triple<String, String, String>>()
-        override suspend fun put(eventId: String, deviceId: String, json: String): Boolean {
+        override suspend fun publish(eventId: String, deviceId: String, json: String): Boolean {
             puts += Triple(eventId, deviceId, json)
             return ok
+        }
+    }
+
+    /** A join that records its calls and writes nothing — which is the whole contract now. */
+    private class FakeJoin(private val result: JoinResult = JoinResult.JOINED) : EventJoin {
+        val joins = mutableListOf<Pair<String, String>>()
+        override suspend fun join(eventId: String, deviceId: String): JoinResult {
+            joins += eventId to deviceId
+            return result
         }
     }
 
@@ -170,42 +181,36 @@ class DeviceManifestProducerTest {
     }
 
     @Test
-    fun re_joining_an_event_rewrites_the_manifest_the_enrollment_emptied() = runTest {
-        // The bug this pins, end to end at the seam that actually broke. The producer's record is a
-        // belief about the SERVER, and enrollment is a second writer of that same object: re-joining an
-        // event this device has already contributed to PUTs `assets: []` over a real manifest. If the
-        // record survives that, the next cycle projects the identical snapshot, matches, skips — and the
-        // event union hides every photo this device uploaded, forever, with no error anywhere.
+    fun re_joining_leaves_the_contribution_intact_and_still_skips() = runTest {
+        // What this replaces: enrolment used to PUT a register-only EMPTY manifest, so a re-join blanked
+        // this device's asset set until the next cycle republished it — a window in which the event union
+        // listed none of its photos. The repair was to invalidate the producer's skip record, so the next
+        // cycle rewrote the projection over the empty document.
         //
-        // Found on device: a device reset + re-join left the server holding an empty manifest. But
-        // a plain leave → rejoin reaches it too, which is why the fix is at the enroller and not the
-        // reset. Pre-existing — the accumulator-backed producer had the same record and the same enroll.
+        // The join writes no manifest now, so there is nothing to repair: the server still holds the real
+        // projection, the record is still TRUE, and skipping an unchanged projection is CORRECT rather
+        // than the bug it used to be.
         val store = FakeStore()
         val up = FakeUploader()
+        val join = FakeJoin()
         val producer = DeviceManifestProducer(store, up, "dev")
         producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
         assertEquals(1, up.puts.size)
 
-        ManifestDeviceEnroller(up, store).enroll("E", "dev") // the re-join: empty manifest over the real one
+        ManifestDeviceEnroller(join).enroll("E", "dev") // the re-join
+
+        assertEquals(listOf("E" to "dev"), join.joins)
+        assertEquals(1, up.puts.size, "the join must write no manifest")
 
         producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // UNCHANGED projection
-        assertEquals(3, up.puts.size, "the projection must be rewritten over the enrollment's empty manifest")
-        assertEquals(listOf("A"), deviceManifestFromJson(up.puts.last().third).assets.map { it.assetId })
+        assertEquals(1, up.puts.size, "an unchanged projection is correctly skipped after a re-join")
     }
 
     @Test
-    fun a_failed_enrollment_leaves_the_record_and_the_skip_intact() = runTest {
-        // The other half of D3: an unconfirmed PUT changed nothing on the server, so the belief is still
-        // true. Clearing it anyway would buy a redundant PUT every cycle after any flaky enroll.
-        val store = FakeStore()
-        val up = FakeUploader()
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
-        up.ok = false
-        ManifestDeviceEnroller(up, store).enroll("E", "dev")
-        up.ok = true
-
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
-        assertEquals(2, up.puts.size, "one projection + the failed enroll; the unchanged projection still skips")
+    fun a_refused_join_does_not_enrol_and_is_distinguishable() = runTest {
+        // Capacity is a refusal the user can act on; the seam must not flatten it into "something failed".
+        val full = FakeJoin(JoinResult.EVENT_FULL)
+        assertEquals(JoinResult.EVENT_FULL, ManifestDeviceEnroller(full).enroll("E", "dev"))
     }
 
     @Test

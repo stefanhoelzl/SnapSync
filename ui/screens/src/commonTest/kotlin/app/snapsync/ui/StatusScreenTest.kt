@@ -157,6 +157,39 @@ class StatusScreenTest {
 
     // ---- the not-started clock line ----
 
+    // ---- the update-required screen (capability `min-app-version`) ----
+
+    @Test
+    fun `the update screen names the minimum and offers the store`() = runComposeUiTest {
+        var opened: String? = null
+        setContent {
+            StatusScreen(
+                UiState(Layer.UpdateRequired(minimumVersion = "0.4", storeUrl = STORE_URL)),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(onOpenLink = { opened = it }),
+            )
+        }
+        onNodeWithText("UPDATE NEEDED").assertExists() // its own verb, not another surface's
+        onNodeWithText("SnapSync 0.4 or newer is needed to keep sharing photos.").assertExists()
+        onNodeWithText("Open the App Store").performClick()
+        assertEquals(STORE_URL, opened)
+    }
+
+    @Test
+    fun `an unstated minimum is not invented and no url means no button`() = runComposeUiTest {
+        // Both absences are answers, and both must LOOK like answers. A composed store URL would be the
+        // country-less form, which 404s while availability is limited to one storefront — a button that
+        // lands nowhere, on the screen a member reaches because something is already wrong.
+        setContent {
+            StatusScreen(
+                UiState(Layer.UpdateRequired(minimumVersion = null, storeUrl = null)),
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithText("A newer version of SnapSync is needed to keep sharing photos.").assertExists()
+        onNodeWithText("Open the App Store").assertDoesNotExist()
+    }
+
     @Test
     fun `the not-started health renders a clock line naming the start — below the QR`() = runComposeUiTest {
         setContent {
@@ -1070,3 +1103,6 @@ private fun phaseAt(
     endsAt: EventEnd,
     deletesAt: DeletesAt,
 ) = JoinPhase.Detailed(EventDetails(name, startsAt, endsAt, deletesAt), step)
+
+/** The store link a build carries, offered on the update-required screen. */
+private const val STORE_URL = "https://apps.apple.com/de/app/id6781692480"

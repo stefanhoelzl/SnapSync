@@ -1,0 +1,18 @@
+-- v7 -> v8: record the destination a job was addressed to (capability `sync-ledger`).
+--
+-- The OS-driven tier hands a destination request to PhotoKit and the process dies; when the platform
+-- returns the finished job, the destination is the only field reliably present (`resource` is nil for a
+-- succeeded job) and the row must be found from it. Under the v1 byte route the ledger key HAPPENED to be
+-- that destination's last path segment, so recovery was free — an accident of formatting, not a decision,
+-- and one that does not survive a route naming identity in its path.
+--
+-- NULLABLE, and deliberately so: every row written before this column exists on every device that
+-- upgrades, and those rows stay fully usable. The tier that reads them defines the fallback
+-- (`ios-photokit-upload`), which is the v1 last-path-component recovery and is correct for exactly those
+-- rows.
+--
+-- Row-preserving, like 2.sqm through 6.sqm, and for the same load-bearing reason: a surviving COMPLETED
+-- row is what stops the next cycle re-uploading an already-stored resource. `ALTER TABLE ... ADD COLUMN`
+-- is catalog-only, so no row is touched. No DEFAULT, because NULL is the honest resting value — this row
+-- was recorded before the destination was kept, which is a different fact from "sent to no destination".
+ALTER TABLE ledgerRow ADD COLUMN destinationPath TEXT;

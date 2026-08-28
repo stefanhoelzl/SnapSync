@@ -228,7 +228,8 @@ class RenderingTest(unittest.TestCase):
     def test_a_key_reaches_only_its_declared_renderings(self):
         flat = Tree().standard().resolve()
         site = json.loads(rd.render_site(flat))
-        self.assertEqual(list(site), ["domain"])  # the site sees the domain and nothing else
+        # The site sees the domain and the store link, and nothing else.
+        self.assertEqual(sorted(site), ["appStoreUrl", "domain"])
         body = rd.nest(rd.project(flat, rd.JSON)); body.pop("sha", None)
         self.assertNotIn("appName", body)  # xcconfig-only
         self.assertNotIn("channel", body)  # xcconfig-only
@@ -266,10 +267,60 @@ class RenderingTest(unittest.TestCase):
         )
         self.assertEqual(dsn, plist(flat)["sentryDsn"])
 
+    def test_the_device_api_prefix_is_pinned(self):
+        """The ONE literal the rest of these assertions derive from.
+
+        Deriving them all from `rd.DEVICE_API_PREFIX` is what keeps them honest about *composition* —
+        that the plist's `uploadBase` is scheme + host + prefix, for every host shape. But derived
+        assertions cannot notice a wrong prefix, so the prefix itself is pinned once, here.
+
+        Changing this number is a device-API version move: the byte destination, the join, the manifest
+        and the per-device listing all change shape together, and the installed base does not follow. It
+        is never a tidy-up.
+        """
+        self.assertEqual("/api/v2", rd.DEVICE_API_PREFIX)
+
+    def test_both_info_plists_carry_the_same_version_as_the_generated_base(self):
+        """The one drift with no other Linux-runnable guard.
+
+        `assetsd` validates the background-upload registration insert against `BackgroundUploadURLBase`
+        in each bundle's OWN `Info.plist` — a file no generated value can reach, so the version there is
+        AUTHORED and the version in `uploadBase` is RENDERED. Move one without the other and the build
+        is fine, the archive is fine, and the registration may well succeed; the uploads are simply
+        refused, with nothing logged anywhere (capability `ios-photokit-upload`).
+
+        `ios.yml` compares the two for real after archiving, which is the authoritative check — but it
+        needs a Mac and a signed build, so it reports a half-move hours later. This reads the committed
+        literals directly and reports it in seconds. Both Info.plists, because a value present in one
+        bundle and stale in the other is a reachable state.
+        """
+        composed = "$(UPLOAD_SCHEME)://$(UPLOAD_HOST)" + rd.DEVICE_API_PREFIX
+        root = pathlib.Path(__file__).resolve().parent.parent
+        for rel in ("iosApp/iosApp/Info.plist", "iosApp/BackgroundUploadExtension/Info.plist"):
+            with open(root / rel, "rb") as fh:
+                carried = plistlib.load(fh).get("BackgroundUploadURLBase")
+            self.assertEqual(composed, carried, f"{rel} must compose the same base the resolver renders")
+
+    def test_the_store_link_reaches_all_three_of_its_consumers(self):
+        """One value, three consumers, and the drift it ends.
+
+        `GET /join` redirects an app-less visitor here (JSON), the site's download button links here
+        (SITE), and the device offers it when the backend refuses the build as too old (PLIST). Two of
+        those were separate literals until now, and they disagreed: the site carried the `/de/`
+        storefront while `GET /join` carried the country-less form, which 404s while availability is
+        limited to one storefront. Asserting all three come from ONE key is what stops that recurring —
+        the correctness of the VALUE is a fact about Apple's storefronts, recorded with the key.
+        """
+        flat = Tree().standard().resolve()
+        expected = "https://example.invalid/app"
+        self.assertEqual(expected, rd.nest(rd.project(flat, rd.JSON))["appStoreUrl"])
+        self.assertEqual(expected, json.loads(rd.render_site(flat))["appStoreUrl"])
+        self.assertEqual(expected, plist(flat)["appStoreUrl"])
+
     def test_the_upload_base_carries_the_version_prefix(self):
         # Also a `//`-carrying value, and read back through the parser for the same reason.
         flat = Tree().standard().resolve()
-        self.assertEqual("https://example.invalid/api/v1", plist(flat)["uploadBase"])
+        self.assertEqual("https://example.invalid" + rd.DEVICE_API_PREFIX, plist(flat)["uploadBase"])
 
     def test_a_loopback_host_is_plaintext_and_everything_else_is_not(self):
         """The ATS constraint, derived from the host rather than declared beside it.
@@ -280,11 +331,11 @@ class RenderingTest(unittest.TestCase):
         device under default ATS.
         """
         for domain, expected in (
-            ("127.0.0.1:8080", "http://127.0.0.1:8080/api/v1"),
-            ("[::1]:8080", "http://[::1]:8080/api/v1"),      # the only URL-valid IPv6 form
-            ("localhost:8080", "https://localhost:8080/api/v1"),   # a NAME, not the exempt literal
-            ("random-words.trycloudflare.com", "https://random-words.trycloudflare.com/api/v1"),
-            ("example.invalid", "https://example.invalid/api/v1"),
+            ("127.0.0.1:8080", "http://127.0.0.1:8080" + rd.DEVICE_API_PREFIX),
+            ("[::1]:8080", "http://[::1]:8080" + rd.DEVICE_API_PREFIX),      # the only URL-valid IPv6 form
+            ("localhost:8080", "https://localhost:8080" + rd.DEVICE_API_PREFIX),   # a NAME, not the exempt literal
+            ("random-words.trycloudflare.com", "https://random-words.trycloudflare.com" + rd.DEVICE_API_PREFIX),
+            ("example.invalid", "https://example.invalid" + rd.DEVICE_API_PREFIX),
         ):
             flat = Tree().standard(domain=domain).resolve()
             self.assertEqual(expected, plist(flat)["uploadBase"], f"for domain {domain}")
@@ -294,12 +345,17 @@ class RenderingTest(unittest.TestCase):
             env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "release"}
         )
         self.assertEqual(
-            {"uploadBase", "apnsEnv", "sentryEnvironment", "sentryDsn"}, set(plist(release))
+            {"uploadBase", "appStoreUrl", "apnsEnv", "sentryEnvironment", "sentryDsn"},
+            set(plist(release)),
         )
         dev = Tree().standard(sentryDsn={"env": "SENTRY_DSN", "scope": "build"}).resolve(
             env={"SENTRY_DSN": "https://k@example.invalid/1", "SNAPSYNC_CHANNEL": "dev"}
         )
-        self.assertEqual({"uploadBase", "apnsEnv", "sentryEnvironment"}, set(plist(dev)))
+        self.assertEqual(
+            {"uploadBase", "appStoreUrl", "apnsEnv", "sentryEnvironment"}, set(plist(dev))
+        )
+        # Unlike `sentryDsn`, it ships in EVERY channel: the version gate refuses a dev build exactly as
+        # readily as a released one, and the remedy it must offer is the same link.
 
     def test_the_three_channel_derived_settings_cannot_disagree(self):
         for channel, aps, apns, sentry in (("release", "production", "production", "production"),
@@ -332,7 +388,7 @@ class RenderingTest(unittest.TestCase):
             values = xcconfig_values(rd.render_xcconfig(flat))
             self.assertEqual(domain, values["UPLOAD_HOST"], f"for domain {domain}")
             self.assertEqual(scheme, values["UPLOAD_SCHEME"], f"for domain {domain}")
-            composed = f"{values['UPLOAD_SCHEME']}://{values['UPLOAD_HOST']}/api/v1"
+            composed = f"{values['UPLOAD_SCHEME']}://{values['UPLOAD_HOST']}{rd.DEVICE_API_PREFIX}"
             self.assertEqual(plist(flat)["uploadBase"], composed, f"for domain {domain}")
 
     def test_no_xcconfig_value_contains_a_comment_delimiter(self):

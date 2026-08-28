@@ -40,6 +40,11 @@ class MainLaneContainmentTest {
         // Presents the system share sheet over the top view controller; UIKit is main-thread-only.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/share/IosShareSheet.kt" to
             "presents UIActivityViewController",
+        // Leaves the app for a URL — the update-required screen's store button (capability
+        // `min-app-version`). `UIApplication` is main-thread-only, and the adapter names the lane
+        // itself so it is correct for any caller rather than only the command declared on that lane.
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/link/IosLinkOpener.kt" to
+            "UIApplication.openURL",
         // Opens the Settings URL, presents the limited-library picker (`choosePhotos`, absorbed from
         // the former top-level PresentLimitedLibraryPicker.kt), and observes UIApplication
         // notifications; all three are main-thread-only.

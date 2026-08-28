@@ -311,7 +311,7 @@ jobs:
             INFOBASE="$(pb "$BUNDLE_DIR/Info.plist" BackgroundUploadURLBase)"
             echo "$NAME: base=$BASE infoBase=$INFOBASE apns=$APNS sentryEnv=$SENV id=$ID"
 
-            [ "$BASE" = "https://$DOMAIN/api/v1" ] || { echo "::error::$NAME upload base '$BASE' is not https://$DOMAIN/api/v1"; exit 1; }
+            [ "$BASE" = "https://$DOMAIN/api/v2" ] || { echo "::error::$NAME upload base '$BASE' is not https://$DOMAIN/api/v2"; exit 1; }
             [ -n "$INFOBASE" ] || { echo "::error::$NAME Info.plist carries no BackgroundUploadURLBase — assetsd validates the registration insert against this key and refuses with a bare PHPhotosErrorDomain -1 without it"; exit 1; }
             [ "$INFOBASE" = "$BASE" ] || { echo "::error::$NAME Info.plist BackgroundUploadURLBase '$INFOBASE' does not equal Deployment.plist uploadBase '$BASE'"; exit 1; }
             [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::$NAME apnsEnv is '$APNS', expected '$EXPECT_APNS'"; exit 1; }

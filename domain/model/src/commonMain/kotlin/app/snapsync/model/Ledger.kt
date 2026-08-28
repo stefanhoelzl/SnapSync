@@ -50,6 +50,22 @@ class LedgerEntry(
      * irreversible, since those rows are exactly what suppresses re-upload.
      */
     val absent: Boolean = false,
+    /**
+     * The destination this row's upload was addressed to, or `null` for a row recorded before the
+     * ledger kept it.
+     *
+     * It exists so a returned platform upload job can be resolved back to its row from **what the
+     * external system persisted** (`module-architecture`, "State and authority"). The OS-driven tier
+     * hands PhotoKit a destination and the process dies; when the job comes back its `resource` is nil
+     * and the destination is all that is left. Under the v1 byte route the key happened to be that
+     * destination's last path segment — an accident of formatting that a route naming identity in its
+     * path does not preserve.
+     *
+     * The PATH, not the whole URL: it is what the platform must keep in order to perform the request at
+     * all, and it is unaffected by any handling of the query. In practice the two spellings coincide,
+     * because a normalized `assetId` and a role token contain only unreserved characters.
+     */
+    val destinationPath: String? = null,
 ) {
     /** Whether this row still needs the manifest-detail backfill. */
     val needsManifestDetail: Boolean get() = creationDate.isEmpty()
@@ -59,7 +75,7 @@ class LedgerEntry(
         attempt == other.attempt && eventId == other.eventId &&
         creationDate == other.creationDate && role == other.role &&
         contentType == other.contentType && originalFilename == other.originalFilename &&
-        absent == other.absent
+        absent == other.absent && destinationPath == other.destinationPath
 
     /** The same row, recorded as having left the library. Pure: nothing else about the row changes. */
     fun markedAbsent(): LedgerEntry = LedgerEntry(
@@ -73,6 +89,7 @@ class LedgerEntry(
         contentType = contentType,
         originalFilename = originalFilename,
         absent = true,
+        destinationPath = destinationPath,
     )
 
     override fun hashCode(): Int = key.hashCode()
@@ -89,7 +106,12 @@ class LedgerEntry(
  * resource is called or when it was taken. [role] is derived from the upload key rather than stored
  * twice; an unrecognized key yields `null`, which the projection treats as a row it cannot name.
  */
-fun Resource.toLedgerRow(state: LedgerState, attempt: Int, eventId: String): LedgerEntry = LedgerEntry(
+fun Resource.toLedgerRow(
+    state: LedgerState,
+    attempt: Int,
+    eventId: String,
+    destinationPath: String? = null,
+): LedgerEntry = LedgerEntry(
     key = filename,
     assetId = assetId,
     state = state,
@@ -99,6 +121,7 @@ fun Resource.toLedgerRow(state: LedgerState, attempt: Int, eventId: String): Led
     role = roleFromUploadKey(filename),
     contentType = metadata[RESOURCE_META_MIME] ?: contentType,
     originalFilename = metadata[RESOURCE_META_ORIGINAL_FILENAME] ?: "",
+    destinationPath = destinationPath,
 )
 
 enum class LedgerState {

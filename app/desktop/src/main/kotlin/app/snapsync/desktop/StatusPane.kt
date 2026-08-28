@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.Direction
+import app.snapsync.model.JoinCommit
 import app.snapsync.feature.creation.CreationStatusSource
 import app.snapsync.feature.creation.EventCreator
 import app.snapsync.ports.PhotoAccessRequester
@@ -73,7 +74,7 @@ fun StatusPane(
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (
         String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
-    ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
+    ) -> JoinCommit = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
     // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
     // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.

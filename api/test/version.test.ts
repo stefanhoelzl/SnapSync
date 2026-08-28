@@ -70,5 +70,5 @@ Deno.test("compareVersions → an unparseable version sorts as OLDEST", () => {
 Deno.test("MIN_APP_VERSION → pinned, so raising it is visible in a diff", () => {
   // Raising this disables every older install at once. The pin is not ceremony: it is what makes the
   // change appear in review rather than inside a configuration object nobody diffs.
-  assertEquals(MIN_APP_VERSION, "0.1");
+  assertEquals(MIN_APP_VERSION, "0.4");
 });

@@ -276,8 +276,16 @@ which deployment that path targets, without consulting shared state.
 
 The resolver SHALL emit a **property-list rendering** carrying every deployment value the iOS app and the
 background-upload extension read at runtime — the device-facing upload base, the APNs environment, the
-crash-reporting environment, and the crash-reporting DSN. The rendering SHALL use the inventory's own key
+crash-reporting environment, the crash-reporting DSN, and the **App Store URL** the app offers when it must
+tell the user to update (capability `min-app-version`). The rendering SHALL use the inventory's own key
 names, so the artifact is a direct projection of the inventory as the JSON and site renderings already are.
+
+A value read by more than one toolchain SHALL be declared **once** and projected to each rendering that
+needs it, never restated per consumer. The App Store URL is the worked example of why: it was declared for
+the backend alone and hardcoded independently in the marketing site, the two drifted, and the copy nobody
+exercised was the wrong one — so the redirect served to someone who opened an event link without the app
+pointed at a page that does not resolve. Agreement between consumers SHALL be **constructed** by shared
+projection rather than asserted by review.
 
 The generated file SHALL be copied into **both** bundles: the app and the extension each read their own
 bundle, so a value present in one and absent from the other is a real and reachable state.
@@ -287,6 +295,13 @@ comment-truncation hazard **structurally** rather than escaping around it: a pro
 the build-settings grammar opens a comment on `//` anywhere in a line and offers no escape. No hand-rolled comment guard SHALL remain in the build-settings renderer. A value that must reach a grammar with no escape SHALL therefore be **composed at its destination** from settings that cannot carry the offending character, rather than escaped at the emission site: a per-site escape covers what someone remembered.
 
 A resolved value MAY have a reader **outside this repository** — an Apple daemon reading a key out of a bundle's own `Info.plist`. Such a value SHALL be carried in the file that reader opens. No rendering the resolver owns can substitute for it, because the external reader has never been told to look there, and the failure is silent in both directions: the artifact is well-formed, our own readers are satisfied, and only the external one is starved. Where a value has both an internal and an external reader it SHALL be carried in both places, and the archive verification SHALL assert the two agree.
+
+Where the externally-read carrier restates a **version-bearing** portion of a value that also lives in a
+rendering the resolver owns, the two SHALL move together, and the agreement assertion above is what
+enforces it. A device-facing base carrying an API version prefix is exactly that case: the value our code
+composes requests from and the value the external daemon validates against are the same URL, so changing
+one without the other yields a build whose registration succeeds and whose uploads may be refused — with no
+error either carrier can report.
 
 #### Scenario: Both bundles carry the rendering
 
@@ -317,6 +332,23 @@ A resolved value MAY have a reader **outside this repository** — an Apple daem
 - **THEN** the value read from its `Info.plist` is non-empty and exactly equal to the value read from its
   generated property list, so a deletion, an unresolved substitution, a truncated build setting, or a
   rendering that reached only one bundle fails the build
+
+#### Scenario: Moving the API version moves both carriers
+
+- **WHEN** the device-facing base changes the API version it names
+- **THEN** the generated rendering and the externally-read `Info.plist` carrier both change, and the
+  agreement assertion fails the build if only one did
+
+#### Scenario: One declaration reaches every consumer
+
+- **WHEN** a value is read by the backend, the marketing site and the device
+- **THEN** it is declared once and projected to each rendering, and no consumer carries its own copy
+
+#### Scenario: The device can name where to get the update
+
+- **WHEN** the app must tell the user their build is too old
+- **THEN** the App Store URL is available from the bundled rendering, so the refusal offers a destination
+  rather than only a version number
 
 ### Requirement: A key's readers follow it to the rendering that owns it
 

@@ -49,12 +49,16 @@ import platform.Photos.PHPhotoLibrary
  * verified on a real device; a `PHAssetResourceUploadJob` has no public initializer and only ever
  * arrives from a fetch, so no host can drive this loop with synthetic jobs.
  *
- * A returned job's ledger key is read from its **destination URL** (the last path segment) — the only
- * field reliably present for every job state (`resource` is nil for succeeded jobs); the `resource`,
- * when still available, is reused to re-create a retry-spent job. Both are captured as **nullable
- * locals** before use: cinterop declares them non-null and they are nil at runtime, and a null check
- * against a non-null-typed value may be elided (`05435ff9`, `8c8dbe28`). Do not "simplify" those two
- * locals away — see `PhotoKitJobMapping.kt`'s KDoc for the full account.
+ * A returned job is resolved to its ledger row by the **destination path** the ledger recorded when the
+ * job was created (capability `sync-ledger`) — the destination being the only field reliably present for
+ * every job state, since `resource` is nil for succeeded jobs. A job created by a build that predates
+ * that column falls back to the destination's last path segment, which was the key under the
+ * pre-identity byte shape and is null for any other; a job neither route resolves is counted and raised
+ * at `Error`, never drained in silence. The `resource`, when still available, is reused to re-create a
+ * retry-spent job. Both are captured as **nullable locals** before use: cinterop declares them non-null
+ * and they are nil at runtime, and a null check against a non-null-typed value may be elided
+ * (`05435ff9`, `8c8dbe28`). Do not "simplify" those two locals away — see `PhotoKitJobMapping.kt`'s KDoc
+ * for the full account.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoKitUploadPlatform(
@@ -94,6 +98,7 @@ class IosPhotoKitUploadPlatform(
                 options = null,
             )
             val out = ArrayList<PlatformUploadJob>()
+            var unrecoverable = 0
             var index = 0uL
             while (index < jobs.count) {
                 val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
@@ -104,20 +109,26 @@ class IosPhotoKitUploadPlatform(
                 val resource: PHAssetResource? = job.resource
                 when (val classified = classifyPhotoKitJob(destination, job.state, job.error)) {
                     FetchedJob.AcknowledgeToDrain -> {
-                        log.w { "upload job without destination URL — acknowledging to drain" }
+                        unrecoverable++
                     }
                     is FetchedJob.Emit -> {
+                        val key = resolveKey(classified)
+                        if (key == null) {
+                            unrecoverable++
+                            acknowledgeJob(job)
+                            continue
+                        }
                         // The adjudication is `terminalDisposition` (beside the other per-job decisions in
                         // PhotoKitJobMapping.kt, where it is tested); this body supplies only the effect.
                         val disposition = terminalDisposition(classified.state, resourceIsLive = resource != null)
-                        if (!ledger.markTerminal(classified.key, disposition.ledgerState)) {
+                        if (!ledger.markTerminal(key, disposition.ledgerState)) {
                             // Not silent: the row was not REQUESTED — already settled, or pruned.
-                            log.i { "terminal ${classified.key} -> ${disposition.ledgerState} applied to no row" }
+                            log.i { "terminal $key -> ${disposition.ledgerState} applied to no row" }
                         }
                         // Only a retry-spent failure that can still be re-created is the cycle's business.
                         if (disposition.reCreate) {
                             out += PlatformUploadJob(
-                                key = classified.key,
+                                key = key,
                                 contentType = photoKitContentType(destination, resource),
                                 error = classified.error,
                                 data = resource,
@@ -127,12 +138,14 @@ class IosPhotoKitUploadPlatform(
                 }
                 acknowledgeJob(job)
             }
+            reportUnrecoverable(unrecoverable, "drainTerminals")
             out
         }
 
-    private fun fetch(action: PHAssetResourceUploadJobAction): List<PlatformUploadJob> {
+    private suspend fun fetch(action: PHAssetResourceUploadJobAction): List<PlatformUploadJob> {
         val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
         val out = ArrayList<PlatformUploadJob>(jobs.count.toInt())
+        var unrecoverable = 0
         var index = 0uL
         while (index < jobs.count) {
             val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
@@ -145,19 +158,56 @@ class IosPhotoKitUploadPlatform(
                 FetchedJob.AcknowledgeToDrain -> {
                     // Unmappable — but EVERY presented job must be acknowledged or the system reports
                     // `appex failed to acknowledge jobs for processing state` (error 50008).
-                    log.w { "upload job without destination URL — acknowledging to drain" }
+                    unrecoverable++
                     acknowledgeJob(job)
                 }
-                is FetchedJob.Emit -> out += PlatformUploadJob(
-                    key = classified.key,
-                    contentType = photoKitContentType(destination, resource),
-                    error = classified.error,
-                    data = resource,
-                )
+                is FetchedJob.Emit -> {
+                    val key = resolveKey(classified)
+                    if (key == null) {
+                        unrecoverable++
+                        acknowledgeJob(job)
+                    } else {
+                        out += PlatformUploadJob(
+                            key = key,
+                            contentType = photoKitContentType(destination, resource),
+                            error = classified.error,
+                            data = resource,
+                        )
+                    }
+                }
             }
         }
+        reportUnrecoverable(unrecoverable, "fetch")
         // (count is logged by the wrapping `platform.fetch*` invocation's exit line)
         return out
+    }
+
+    /**
+     * The ledger row a returned job belongs to, or null when neither route finds one.
+     *
+     * The destination this job was addressed to is what the ledger recorded when the job was created
+     * (capability `sync-ledger`), so it is the primary route. The fallback is the pre-identity shape's
+     * last path segment, which was the key there — correct for a job created by the outgoing build and
+     * for nothing else, which is why the classifier yields it only for that shape.
+     */
+    private suspend fun resolveKey(emit: FetchedJob.Emit): String? =
+        ledger.entryForDestination(emit.destinationPath)?.key ?: emit.legacyKey
+
+    /**
+     * Report jobs this cycle could not resolve to a row — at `Error`, so it reaches crash reporting.
+     *
+     * An unrecoverable job is an upload whose outcome is being discarded: its row stays `REQUESTED`,
+     * which no routine path clears, so the resource is never promoted, never enters the manifest, and is
+     * never visible to another member — while its bytes sit on the backend. Nothing else reports it
+     * (`module-architecture`, "Absence is never silent"), and a per-job warning would be a breadcrumb
+     * rather than an event, so the count is raised once per cycle and only when it is non-zero.
+     */
+    private fun reportUnrecoverable(count: Int, site: String) {
+        if (count == 0) return
+        log.e {
+            "$site: $count upload job(s) could not be resolved to a ledger row — their outcomes are " +
+                "discarded and those rows stay REQUESTED; nothing else will report this"
+        }
     }
 
     private fun acknowledgeJob(job: PHAssetResourceUploadJob) {
