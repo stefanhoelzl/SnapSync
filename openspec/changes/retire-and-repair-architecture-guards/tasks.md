@@ -76,5 +76,5 @@ touched in step 6 gets its mutation replayed by hand before the change lands.
 ## 8. Land it
 
 - [x] 8.1 `./gradlew build` green, `architectureDiagrams` fresh and committed
-- [ ] 8.2 PR carries exactly one changelog label — `internal`
-- [ ] 8.3 The PR body states the accepted exposures: constructor blocking unguarded; the SNAPSYNC-3 class has no mechanical coverage; Apple literals in `:domain` are a review concern; `:domain`'s `jvm()` target is load-bearing and unguarded; KDoc stacking is unguarded
+- [x] 8.2 PR carries exactly one changelog label — `internal` (applied by `/ship internal`; the change removes and rewrites guards and specs, and no customer sees any of it)
+- [x] 8.3 The PR body states the accepted exposures: constructor blocking unguarded; the SNAPSYNC-3 class has no mechanical coverage; Apple literals in `:domain` are a review concern; `:domain`'s `jvm()` target is load-bearing and unguarded; KDoc stacking is unguarded
