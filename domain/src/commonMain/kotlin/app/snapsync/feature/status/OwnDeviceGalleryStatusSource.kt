@@ -5,6 +5,7 @@ import app.snapsync.model.EventPhotoSet
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.CandidateSource
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +89,13 @@ class OwnDeviceGalleryStatusSource(
      * The cost and shape are **logged** (capability `diagnostic-logging`). Without a line here, whether the
      * capture bound is actually bounding anything is invisible on a real device: a bounded and an
      * unbounded fetch differ only in how many assets they touch.
+     *
+     * **A failed enumeration does not propagate.** It leaves [size] untouched and logs at Error severity;
+     * only cancellation is rethrown. This belongs here rather than at a call site because it is an
+     * invariant about *this source's own state* — the same shape as [ReadingLedgerCountsSource], which
+     * retains its last good counts on a failed read for the same reason. A caller still contains whatever
+     * IT does around the call (deriving the policy costs two port reads); it no longer has to remember to
+     * protect a rule it does not own.
      */
     suspend fun refresh(policy: SelectionPolicy) {
         // The policy arrives COMPLETE (capability `photo-selection-policy`): there is one derivation, and
@@ -99,7 +107,26 @@ class OwnDeviceGalleryStatusSource(
         val started = timeSource.markNow()
         // `count()` reads facts only — no per-asset resource round-trip is issued for a number
         // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*).
-        val size = EventPhotoSet(policy, source::candidates).count()
+        val counted = runCatching { EventPhotoSet(policy, source::candidates).count() }
+        counted.exceptionOrNull()?.let { failure ->
+            // Cancellation is not a failed walk. `runCatching` catches it like anything else, and
+            // swallowing it would break structured concurrency AND post an Error-severity line — which
+            // reaches the crash reporter on production builds (capability `crash-reporting`) — for an
+            // ordinary teardown. `LedgerCountsPoller` separates the two for the same reason.
+            if (failure is CancellationException) throw failure
+            // **The invariant is this source's, so the containment is too.** A walk that blew up must
+            // leave `size` exactly as it was — the previous good count, or the un-counted seed if there
+            // was none — because "could not count" settling the screen as "counted nothing" is the
+            // regression this class exists to prevent (`SNAPSYNC-14`, `SNAPSYNC-16`). It used to be the
+            // caller that wrapped this, which made an invariant about this source's own state depend on
+            // every caller remembering to protect it.
+            //
+            // Error severity: the log line is the ONLY channel that distinguishes "could not count" from
+            // "not counted yet", since both render the same neutral status line.
+            log.e(failure) { "gallery: enumeration failed — N stays ${_size.value ?: "un-counted"}" }
+            return
+        }
+        val size = counted.getOrThrow()
         _size.value = size
         val elapsed = started.elapsedNow()
         log.i { "gallery: N=$size own admitted asset(s) in ${elapsed.inWholeMilliseconds}ms" }

@@ -742,15 +742,14 @@ class AppCore internal constructor(
                 // reconcile, the staged-byte reclaim, the membership refresh — none of which have
                 // anything to do with enumerating a library.
                 //
-                // The consequence is named rather than hidden (law "Absence is never silent"): `N`
-                // stays `null`, *not counted*, so the joined screen holds its neutral "Syncing…" line
-                // instead of settling. That is the honest answer for a total we could not take — and it
-                // is deliberately NOT collapsed back into a `0`, which would read as "everything
-                // shared". The log line is the only channel that distinguishes "could not count" from
-                // "not counted yet", which is why it is Error-severity: it reaches Bugsink on
-                // production builds (capability `crash-reporting`).
-                runCatching { gallery.refresh(selectionPolicyForMembership(cfg)) }
-                    .onFailure { ports.log.e(it) { "gallery: enumeration failed — N stays unknown" } }
+                // NARROWED to the POLICY derivation. What the walk itself does on failure is the
+                // source's own invariant now — it leaves `N` untouched and logs at Error severity
+                // (capability `gallery-status`), so there is nothing left here to catch on its behalf.
+                // What remains is this step's two port reads (echo suppression, the album denylist),
+                // whose failure is a sibling-cancellation risk and nobody else's rule.
+                runCatching { selectionPolicyForMembership(cfg) }
+                    .onFailure { ports.log.e(it) { "gallery: policy read failed — N not refreshed" } }
+                    .onSuccess { policy -> gallery.refresh(policy) }
             }
         }
     }

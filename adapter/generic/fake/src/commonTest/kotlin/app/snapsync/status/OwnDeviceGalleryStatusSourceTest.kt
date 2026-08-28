@@ -12,11 +12,12 @@ import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.ports.CandidateSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 
@@ -56,6 +57,18 @@ private class ResourceCandidates(private val cell: MutableStateFlow<List<Resourc
 
 class OwnDeviceGalleryStatusSourceTest {
 
+    /** A walk that always blows up, standing in for a platform enumeration that failed. */
+    private class Blowing : CandidateSource {
+        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+            error("the library walk blew up")
+    }
+
+    /** A walk whose behaviour can be swapped mid-test, so one source can succeed and then fail. */
+    private class Switchable(var delegate: CandidateSource) : CandidateSource {
+        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+            delegate.candidates(policy)
+    }
+
     /** Records whether the walk happened at all — "counted 0" and "never looked" are different claims. */
     private class RecordingEnumerator(private val delegate: CandidateSource) : CandidateSource {
         var walks = 0
@@ -87,18 +100,46 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `a failed enumeration leaves the total un-counted rather than zero`() = runTest {
-        val source = OwnDeviceGalleryStatusSource(
-            object : CandidateSource {
-                override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
-                    error("the library walk blew up")
-            },
-        )
+        val source = OwnDeviceGalleryStatusSource(Blowing())
 
-        assertFails { source.refresh(admitting()) }
+        // Does NOT propagate: the invariant is this source's, so the containment is too, and a caller
+        // no longer has to remember to protect a rule it does not own.
+        source.refresh(admitting())
 
         // The distinction the law demands: "could not count" must not collapse into "counted nothing",
         // because the second settles the screen and the first must not.
         assertNull(source.size.value, "a failed walk publishes no count")
+    }
+
+    @Test
+    fun `a failed enumeration retains the last good count`() = runTest {
+        val walk = Switchable(ResourceCandidates(listOf(resource("A-primary.jpg", "A"))))
+        val source = OwnDeviceGalleryStatusSource(walk)
+
+        source.refresh(admitting())
+        assertEquals(1, source.size.value)
+
+        walk.delegate = Blowing()
+        source.refresh(admitting())
+
+        // Not regressed to `null` either: a transient walk failure must not un-count a total that WAS
+        // counted, or the screen drops out of "In sync" on a device that has changed nothing — the same
+        // rule `ReadingLedgerCountsSource` keeps for the ledger counts beside it.
+        assertEquals(1, source.size.value, "a failed walk leaves the previous count standing")
+    }
+
+    @Test
+    fun `cancellation is rethrown rather than logged as a failed walk`() = runTest {
+        val source = OwnDeviceGalleryStatusSource(
+            object : CandidateSource {
+                override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+                    throw CancellationException("the scope was torn down")
+            },
+        )
+
+        // Swallowing this would break structured concurrency and post an Error-severity line — which
+        // reaches the crash reporter on production builds — for an ordinary teardown.
+        assertFailsWith<CancellationException> { source.refresh(admitting()) }
     }
 
     @Test
