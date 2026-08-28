@@ -23,7 +23,8 @@ them offline, so that no backend fault can destroy every membership at once. Tha
 collapsed into the generic failure and given no user-facing meaning, because a surfaced meaning invites a
 future change to act on it.
 
-Decision record: `changes/archive/2026-08-04-add-event-rename`.
+Decision record: `changes/archive/2026-08-04-add-event-rename`,
+`changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the failure copy is formatted in the reduction).
 
 ## Requirements
 
@@ -134,8 +135,9 @@ landing after a switch or a leave), the use-case SHALL persist nothing.
 
 ### Requirement: The rename lifecycle is its own status seam with a success value
 
-The capability SHALL expose a `RenameStatus` seam (a `StateFlow` the presentation reduction consumes as a
-screen-level value, not a `UiState` family) with exactly four shapes:
+The capability SHALL expose a `RenameStatus` seam (a `StateFlow` the presentation reduction consumes and
+carries as a **field of the joined state**, not as a `UiState` family and not as a health rung) with
+exactly four shapes:
 
 - `Idle` — no rename in flight.
 - `InFlight` — the request is running.
@@ -152,6 +154,12 @@ from a return to `Idle`.
 The capability SHALL provide a command that resets the seam to `Idle`, which the screen fires after
 consuming `Succeeded` or dismissing a `Failed`.
 
+The seam SHALL keep reporting a **reason**; turning that reason into words SHALL happen in the
+presentation reduction, not in the screen. The joined state therefore carries the dialog's condition with
+its failure **copy already formatted**, exactly as the create layer's twin does (capability
+`event-creation-ui`) — having one of a matched pair formatted in the reduction and the other in a
+composable was an inconsistency, not a design.
+
 #### Scenario: A successful rename is observable as a success
 - **WHEN** a rename completes successfully
 - **THEN** the seam emits `InFlight` and then `Succeeded`, and the screen has an explicit success to
@@ -164,6 +172,16 @@ consuming `Succeeded` or dismissing a `Failed`.
 #### Scenario: Reset returns the seam to Idle
 - **WHEN** the screen consumes a terminal status and fires the reset command
 - **THEN** the seam emits `Idle` and a subsequent rename starts from a clean sequence
+
+#### Scenario: The rename status travels with the state
+- **WHEN** a rename is in flight and the joined state is inspected
+- **THEN** the state carries the in-flight condition, and the screen receives it through that state rather
+  than as a separate parameter
+
+#### Scenario: The failure copy is formatted where the create layer's is
+- **WHEN** a rename fails with either reason
+- **THEN** the joined state carries the message the dialog shows, and the screen renders it verbatim —
+  the reason itself never reaches the screen
 
 ### Requirement: The rename affordance opens a pre-filled text-prompt dialog
 

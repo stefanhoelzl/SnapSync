@@ -16,7 +16,8 @@ the backend. The dangerous default the required-cutoff exists to prevent is unch
 floor still clamps any cutoff, and the origin exclusions still filter — so the worst a member can do is
 widen their own contribution above the event's start, visibly and on purpose.
 
-Decision record: `changes/archive/2026-07-21-add-reconfigure-membership`.
+Decision record: `changes/archive/2026-07-21-add-reconfigure-membership`,
+`changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the settings surface reads reduced state).
 ## Requirements
 ### Requirement: A joined member changes participation settings in place, without leaving
 
@@ -53,10 +54,19 @@ controls the join surface uses — the Share-section switch header with its cuto
 (capability `design-system`) and the album opt-in toggle — **pre-filled** with the membership's current
 `direction`, `minPhotoDate`, and `saveToAlbum`, above a **read-only** event-name header for context.
 Edits SHALL be committed **atomically** on a **Save** action (exactly one `ConfigStore.save`) and
-**discarded** on **Cancel**. Opening and closing the surface SHALL be **client-side navigation** that
-touches no port until Save, mirroring the joined layer's local leave-confirm state; it SHALL NOT introduce
-a new `UiState` family. The current values SHALL be read from the presentation container's existing
-config source (the same source the invite URL derives from), not from reduced state.
+**discarded** on **Cancel**.
+
+Opening and closing the surface SHALL be **client-side navigation** that touches no port until Save, and
+SHALL NOT introduce a new `UiState` family. Which surface the joined layer is showing SHALL be expressed
+as a selection **within** the joined state, so that the state describes what is on screen while opening
+and closing remain container-local acts reaching no use case and no command — the property that made a
+family the wrong shape is preserved, and the joined layer's health, pending switch and membership are not
+duplicated to model a surface that is still the joined layer.
+
+The pre-filled values SHALL be seeded and resolved by the presentation container from the persisted
+membership — the same config source the invite URL derives from — and carried as reduced state, so the
+surface renders from the state rather than from values the screen holds. Cancel SHALL return them to that
+seed.
 
 #### Scenario: The surface opens pre-filled with current settings
 - **WHEN** a `Both` membership with `saveToAlbum = true` opens the reconfigure surface
@@ -70,6 +80,16 @@ config source (the same source the invite URL derives from), not from reduced st
 #### Scenario: Save commits once
 - **WHEN** the member changes two controls and taps Save
 - **THEN** a single whole-object `EventConfig` save is performed carrying both changes
+
+#### Scenario: Opening the surface touches no port
+- **WHEN** the member taps the settings action
+- **THEN** the joined state's surface selection changes and no port is called, no command is dispatched,
+  and no config is read from storage anew
+
+#### Scenario: The state says which surface is showing
+- **WHEN** the reconfigure surface is open
+- **THEN** the joined state says so, and a consumer rendering from that state alone shows the reconfigure
+  surface rather than the status surface
 
 ### Requirement: The cutoff pre-fill is reconstructed from the persisted value and re-clamped to the floor
 

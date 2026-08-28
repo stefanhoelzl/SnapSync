@@ -73,7 +73,12 @@ None.
 - `join-share-count`: the count is reduced into `UiState` from a form-keyed query; the spec's
   direction-parameterised query and its "counts zero" scenario are corrected to the render-site gate
   that actually exists.
-- `event-rename`: the rename status is reduced state rather than a screen-level value.
+- `event-rename`: the rename status is reduced state rather than a screen-level value, and its failure
+  copy is formatted by the reduction rather than by a composable.
+- `architecture-guards`: two guards are added — the screen-state gate that makes the rule above
+  mechanical, and the event-name limit gate that holds the client's cap against the backend's.
+- `desktop-test-harness`: the forge panel gains a rejected-event-link action, so the invalid-link message
+  is reviewable at all — it previously was not, in either harness.
 
 ## Impact
 

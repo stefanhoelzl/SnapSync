@@ -103,9 +103,8 @@
 
 ## 7. Specs and records
 
-- [ ] 7.1 Sync the six delta specs into `openspec/specs/`. **Deliberately NOT done by apply**: syncing is
-      its own phase and the user's call (CLAUDE.md — "after the tasks land, wait before `sync`/`archive`").
-      The deltas are written and validate; they are waiting for the word.
+- [x] 7.1 Sync the six delta specs into `openspec/specs/`. Done at archive time: 3 requirements
+      added, 7 modified, across six capabilities. `validate --specs --strict` 59/59.
 - [x] 7.2 Confirm the restored clause in `sync-status-screen` reads as the 2026-06-10 original intended —
       the no-event-history rule bounds how the snapshot stream is read, not whether a remembered current
       value may be reduced.
