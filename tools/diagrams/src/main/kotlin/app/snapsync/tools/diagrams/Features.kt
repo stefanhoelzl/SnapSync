@@ -11,7 +11,7 @@ import java.io.File
  * updates the card automatically.
  */
 fun featuresMarkdown(root: File, sources: List<KtSource>): String {
-    val featureRoot = "domain/src/commonMain/kotlin/app/snapsync/feature"
+    val featureRoot = "domain/feature/src/commonMain/kotlin/app/snapsync/feature"
 
     data class Card(val name: String, val files: List<String>, val types: List<String>)
 

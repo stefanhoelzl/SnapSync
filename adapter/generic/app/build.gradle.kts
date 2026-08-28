@@ -41,7 +41,8 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
             api(libs.coroutines.core)
             // HttpClient appears in every Ktor adapter's public constructor — consumers construct
             // their own engine (Darwin on device, MockEngine in the world/harness), so the type is API.

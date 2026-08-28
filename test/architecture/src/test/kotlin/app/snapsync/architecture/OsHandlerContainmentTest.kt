@@ -166,6 +166,6 @@ class OsHandlerContainmentTest {
     }
 
     private companion object {
-        const val OWNER = "/domain/src/commonMain/kotlin/app/snapsync/ports/BackgroundEventsReceipts.kt"
+        const val OWNER = "/domain/ports/src/commonMain/kotlin/app/snapsync/ports/BackgroundEventsReceipts.kt"
     }
 }

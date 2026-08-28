@@ -38,7 +38,7 @@ class BackgroundTeardownTest {
 
     @Test
     fun `background trigger flows never reference the membership teardown`() {
-        val flowDir = File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync/flow")
+        val flowDir = File(ZoneGates.domainSrc, "flow/src/commonMain/kotlin/app/snapsync/flow")
         if (!flowDir.isDirectory) return // zone not present — the zone gates own that case
         val present = backgroundFlows.mapNotNull { name ->
             File(flowDir, name).takeIf { it.isFile }

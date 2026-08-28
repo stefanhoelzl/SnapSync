@@ -44,7 +44,7 @@ kotlin {
             // `:domain` for the model vocabulary the screen speaks, and the two UI modules. Deliberately
             // NOT `:app:ios`, and not the adapter modules: the whole point is that this binary cannot
             // reach a port implementation, so it cannot touch the network, the Keychain, or the ledger.
-            api(project(":domain"))
+            api(project(":domain:model"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:presentation"))
             implementation(libs.coroutines.core)

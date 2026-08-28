@@ -72,7 +72,9 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
+            api(project(":domain:feature"))
             // The SQLDelight stores these drivers open (SqlDelightLedgerStore/SqlDelightDownloadStore)
             // and the Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic:app"))

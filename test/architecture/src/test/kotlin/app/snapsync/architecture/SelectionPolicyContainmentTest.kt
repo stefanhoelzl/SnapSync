@@ -57,13 +57,10 @@ class SelectionPolicyContainmentTest {
 
     @Test
     fun `no consumer compares a capture date outside the single admission`() {
-        val roots = listOf(
-            File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync"),
-        ).filter { it.isDirectory }
-        assertTrue(roots.isNotEmpty(), "no :domain source found — has the module moved?")
+        val sources = ZoneGates.domainMainFiles()
+        assertTrue(sources.isNotEmpty(), "no :domain source found — has the core moved?")
 
-        val violations = roots
-            .flatMap { it.walkTopDown().filter { f -> f.isFile && f.extension == "kt" } }
+        val violations = sources
             .filter { it.name != admissionSite && it.name !in carriers }
             .flatMap { file ->
                 file.readLines().withIndex().mapNotNull { (i, line) ->
@@ -88,7 +85,7 @@ class SelectionPolicyContainmentTest {
     /** The guard is only worth anything if the admission is actually where the comparison lives. */
     @Test
     fun `the single admission does compare the capture date`() {
-        val file = File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync/model/$admissionSite")
+        val file = File(ZoneGates.domainSrc, "model/src/commonMain/kotlin/app/snapsync/model/$admissionSite")
         assertTrue(file.isFile, "$admissionSite not found at $file — has the admission moved?")
         assertTrue(
             comparison.containsMatchIn(file.readText()),

@@ -9,7 +9,11 @@ module :app:desktop
 module :app:ios
 module :app:ios:extension
 module :app:ios:forge
-module :domain
+module :domain:compose
+module :domain:feature
+module :domain:flow
+module :domain:model
+module :domain:ports
 module :test:architecture
 module :test:harness-driver
 module :test:integration
@@ -19,15 +23,24 @@ module :tools:diagrams
 module :ui:components
 module :ui:presentation
 module :ui:screens
-edge :adapter:generic:app :domain
+edge :adapter:generic:app :domain:model
+edge :adapter:generic:app :domain:ports
 edge :adapter:generic:app :test:world
-edge :adapter:generic:fake :domain
+edge :adapter:generic:fake :domain:feature
+edge :adapter:generic:fake :domain:flow
+edge :adapter:generic:fake :domain:model
+edge :adapter:generic:fake :domain:ports
 edge :adapter:ios:app-only :adapter:ios:ext-safe
-edge :adapter:ios:app-only :domain
+edge :adapter:ios:app-only :domain:model
+edge :adapter:ios:app-only :domain:ports
 edge :adapter:ios:ext-safe :adapter:generic:app
-edge :adapter:ios:ext-safe :domain
+edge :adapter:ios:ext-safe :domain:feature
+edge :adapter:ios:ext-safe :domain:model
+edge :adapter:ios:ext-safe :domain:ports
 edge :app:desktop :adapter:generic:app
-edge :app:desktop :domain
+edge :app:desktop :domain:feature
+edge :app:desktop :domain:model
+edge :app:desktop :domain:ports
 edge :app:desktop :test:world
 edge :app:desktop :ui:components
 edge :app:desktop :ui:presentation
@@ -35,30 +48,56 @@ edge :app:desktop :ui:screens
 edge :app:ios :adapter:generic:app
 edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
-edge :app:ios :domain
+edge :app:ios :domain:compose
+edge :app:ios :domain:feature
+edge :app:ios :domain:model
+edge :app:ios :domain:ports
 edge :app:ios :ui:presentation
 edge :app:ios :ui:screens
 edge :app:ios:extension :adapter:generic:app
 edge :app:ios:extension :adapter:ios:ext-safe
-edge :app:ios:extension :domain
-edge :app:ios:forge :domain
+edge :app:ios:extension :domain:compose
+edge :app:ios:extension :domain:feature
+edge :app:ios:extension :domain:model
+edge :app:ios:extension :domain:ports
+edge :app:ios:forge :domain:model
 edge :app:ios:forge :ui:presentation
 edge :app:ios:forge :ui:screens
-edge :test:architecture :domain
+edge :domain:compose :domain:feature
+edge :domain:compose :domain:flow
+edge :domain:compose :domain:model
+edge :domain:compose :domain:ports
+edge :domain:feature :domain:model
+edge :domain:feature :domain:ports
+edge :domain:flow :domain:feature
+edge :domain:flow :domain:model
+edge :domain:ports :domain:model
+edge :test:architecture :domain:feature
+edge :test:architecture :domain:model
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic:app
-edge :test:integration :domain
+edge :test:integration :domain:feature
+edge :test:integration :domain:flow
+edge :test:integration :domain:model
+edge :test:integration :domain:ports
 edge :test:integration :test:world
 edge :test:integration :ui:presentation
 edge :test:rig :adapter:ios:app-only
 edge :test:rig :adapter:ios:ext-safe
-edge :test:rig :domain
+edge :test:rig :domain:compose
+edge :test:rig :domain:model
+edge :test:rig :domain:ports
 edge :test:rig :ui:presentation
 edge :test:world :adapter:generic:app
 edge :test:world :adapter:generic:fake
-edge :test:world :domain
-edge :ui:components :domain
-edge :ui:presentation :domain
-edge :ui:screens :domain
+edge :test:world :domain:compose
+edge :test:world :domain:feature
+edge :test:world :domain:model
+edge :test:world :domain:ports
+edge :ui:components :domain:model
+edge :ui:presentation :domain:feature
+edge :ui:presentation :domain:model
+edge :ui:screens :domain:feature
+edge :ui:screens :domain:model
 edge :ui:screens :ui:components
 edge :ui:screens :ui:presentation

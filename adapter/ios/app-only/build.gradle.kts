@@ -30,7 +30,8 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
             // The shared PhotoKit discovery walk (IosDiscovery) the URLSession tier reuses.
             api(project(":adapter:ios:ext-safe"))
             implementation(libs.coroutines.core)

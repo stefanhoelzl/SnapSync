@@ -38,11 +38,10 @@ class PhotoKitAbiContainmentTest {
 
     @Test
     fun `domain source names no PhotoKit media ABI`() {
-        val root = File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync")
-        assertTrue(root.isDirectory, "no :domain source found at $root — has the module moved?")
+        val sources = ZoneGates.domainMainFiles()
+        assertTrue(sources.isNotEmpty(), "no :domain source found — has the core moved?")
 
-        val violations = root.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
+        val violations = sources.asSequence()
             .flatMap { file ->
                 file.readLines().withIndex().mapNotNull { (i, line) ->
                     val code = line.substringBefore("//")

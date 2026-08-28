@@ -47,11 +47,10 @@ class EventPhotoSetSourceTest {
 
     @Test
     fun `production EventPhotoSet constructions take a real source`() {
-        val root = File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync")
-        assertTrue(root.isDirectory, "no :domain production source found at $root — has the module moved?")
+        val sources = ZoneGates.domainMainFiles()
+        assertTrue(sources.isNotEmpty(), "no :domain production source found — has the core moved?")
 
-        val violations = root.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
+        val violations = sources.asSequence()
             .flatMap { file ->
                 file.readLines().withIndex().mapNotNull { (i, line) ->
                     val code = line.substringBefore("//")
@@ -74,9 +73,8 @@ class EventPhotoSetSourceTest {
      */
     @Test
     fun `every allowlisted site still constructs one`() {
-        val root = File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync")
-        val building = root.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" && lambdaConstruction.containsMatchIn(it.readText()) }
+        val building = ZoneGates.domainMainFiles().asSequence()
+            .filter { lambdaConstruction.containsMatchIn(it.readText()) }
             .mapTo(mutableSetOf()) { it.name }
 
         val stale = allowed.keys - building
@@ -86,7 +84,7 @@ class EventPhotoSetSourceTest {
     /** The seam itself must still take the policy, or the guard above is checking a shape that is gone. */
     @Test
     fun `the candidate seam still takes the policy`() {
-        val file = File(ZoneGates.domainSrc, "commonMain/kotlin/app/snapsync/ports/CandidateSource.kt")
+        val file = File(ZoneGates.domainSrc, "ports/src/commonMain/kotlin/app/snapsync/ports/CandidateSource.kt")
         assertTrue(file.isFile, "ports/CandidateSource.kt not found — has the read seam moved?")
         assertTrue(
             file.readText().contains("candidates(policy: SelectionPolicy)"),

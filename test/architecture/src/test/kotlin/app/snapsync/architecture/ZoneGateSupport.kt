@@ -29,50 +29,53 @@ internal object ZoneGates {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    val domainSrc = File(repoRoot, "domain/src")
+    /** The core's five zones, each now its own Gradle module. */
+    val zoneTokens = listOf("model", "ports", "feature", "flow", "compose")
 
-    private val zoneTokens = setOf("model", "ports", "feature", "flow", "compose")
-
-    private fun File.isInMainSourceSet(): Boolean {
-        val segments = path.replace('\\', '/').split('/')
-        val srcIdx = segments.lastIndexOf("src")
-        if (srcIdx == -1 || srcIdx + 1 >= segments.size) return false
-        val sourceSet = segments[srcIdx + 1]
-        return sourceSet == "main" || sourceSet.endsWith("Main")
-    }
+    /** The core's tree root. Each zone is its own module beneath it: `domain/<zone>/`. */
+    val domainSrc = File(repoRoot, "domain")
 
     /**
-     * The `.kt` files of a zone under [root], or `null` when the zone's directory does not exist
-     * yet (the pending state). A file's zone is the FIRST zone-named path segment, so a
-     * sub-package inside a feature that reuses a zone name does not double-count.
+     * A zone's production sources — `domain/<zone>/src/commonMain/kotlin/app/snapsync/<zone>`.
+     *
+     * The zone edges themselves are no longer text-gated: each zone is a Gradle module declaring only
+     * the zone dependency its law permits, so a forbidden reference does not resolve (spec
+     * `module-architecture`). What remains here serves the two properties the module graph cannot
+     * express — feature mutual blindness, and a flow's inability to outlive its run.
      */
     fun zoneFiles(root: File, zone: String): List<File>? {
-        if (!root.isDirectory) return null
-        val zoneDirs = root.walkTopDown()
+        val dir = File(root, "$zone/src/commonMain/kotlin/app/snapsync/$zone")
+        if (!dir.isDirectory) return null
+        return dir.walkTopDown()
             .onEnter { it.name != "build" }
-            .filter { it.isDirectory && it.name == zone && firstZoneSegment(it) == zone }
+            .filter { it.isFile && it.extension == "kt" }
             .toList()
-        if (zoneDirs.isEmpty()) return null
-        return zoneDirs.flatMap { dir ->
-            dir.walkTopDown().filter { it.isFile && it.extension == "kt" && it.isInMainSourceSet() }
-        }
     }
 
-    private fun firstZoneSegment(dir: File): String? =
-        dir.toRelativeString(repoRoot).replace('\\', '/').split('/').firstOrNull { it in zoneTokens }
+    /** Every zone's production sources, for the gates that scan the core as a whole. */
+    fun domainMainFiles(): List<File> =
+        zoneTokens.flatMap { zoneFiles(domainSrc, it).orEmpty() }
 
-    /** PENDING print + true when the zone does not exist yet; non-vacuity failure on an empty scan. */
-    fun pendingOrEmpty(gate: String, root: File, files: List<File>?): Boolean {
-        if (files == null) {
-            println("$gate gate: PENDING — no ${root.toRelativeString(repoRoot)} zone yet; arms on its first file")
-            return true
-        }
+    /**
+     * A zone's sources, or a FAILURE — never a pass.
+     *
+     * This replaced a `pendingOrEmpty` helper that printed "PENDING" and returned green when a zone
+     * directory was absent. That was for the migration, which is finished; afterwards it was purely a
+     * way for a gate to fail open, because renaming a zone directory disarmed its gate silently.
+     */
+    fun requireZone(gate: String, zone: String): List<File> {
+        val files = zoneFiles(domainSrc, zone)
         assertTrue(
-            files.isNotEmpty(),
-            "$gate gate: the zone directory exists but the scan matched no sources — layout changed; " +
+            files != null,
+            "$gate gate: no `$zone` zone at domain/$zone/src/commonMain — the core's layout moved; " +
+                "re-point the scan rather than letting this gate pass on an absent scope",
+        )
+        assertTrue(
+            files!!.isNotEmpty(),
+            "$gate gate: the `$zone` zone exists but the scan matched no sources — layout changed; " +
                 "fix the scan or this gate fails open forever",
         )
-        return false
+        return files
     }
 
     /**
@@ -149,7 +152,11 @@ internal object ZoneGates {
 
     /** The feature a reference or path names: the segment after the first `feature` segment. */
     fun featureOf(segments: List<String>): String? {
-        val idx = segments.indexOf("feature")
+        // LAST occurrence, not the first: since the split, a feature file's path carries `feature`
+        // twice — once as the Gradle module (`domain/feature/`) and once as the package
+        // (`app/snapsync/feature/<name>/`). Taking the first yielded `src` as the feature name, so
+        // every feature looked like a sibling of every other.
+        val idx = segments.lastIndexOf("feature")
         return if (idx != -1 && idx + 1 < segments.size) segments[idx + 1] else null
     }
 

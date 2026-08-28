@@ -52,7 +52,8 @@ kotlin {
             commonTest { kotlin.srcDir("src/forgeTest/kotlin") }
         }
         commonMain.dependencies {
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:feature"))
             // The container consumes the config seam + decoder (onOpenUrl), and ConfigSource/
             // ConfigStore appear in its constructor — so they surface in this module's API.
             // The create-event seams (CreationStatusSource/EventCreator) folded into the reduction and

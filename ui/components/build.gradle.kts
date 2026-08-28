@@ -43,7 +43,7 @@ kotlin {
         commonMain.dependencies {
             // Shared sync vocabulary in App* signatures (`model/`'s Arrow — the step-9 Arrow/ArrowLevel
             // unification): the ONE enum both presentation's reduction and this skin render from.
-            api(project(":domain"))
+            api(project(":domain:model"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             // The ONLY module allowed to depend on Material 3 (spec: design-system).

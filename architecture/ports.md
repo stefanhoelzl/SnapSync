@@ -8,3 +8,91 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
+| `AlbumManager` | `:domain:ports` | `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
+| `AlbumMapSource` | `:domain:feature` | `:domain:feature` Current, Migrate, Retry | no |
+| `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:adapter:ios:ext-safe` IosAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore | yes |
+| `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
+| `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
+| `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
+| `BackgroundScheduler` | `:domain:ports` | `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler | yes |
+| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedTransfer; `:test:world` FakeBackgroundTransfer | yes |
+| `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
+| `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource | yes |
+| `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:ui:presentation` MovableClock; `:ui:screens` MovableClock | no |
+| `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
+| `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
+| `ConfigFileRead` | `:domain:ports` | `:domain:ports` Content, Failed, Missing | no |
+| `ConfigRead` | `:domain:ports` | `:domain:ports` Joined, None, Unavailable | no |
+| `ConfigReader` | `:domain:ports` | `:adapter:ios:ext-safe` FileBackedConfigStore | no |
+| `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigSource | yes |
+| `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigStore | yes |
+| `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, Transient | no |
+| `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
+| `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
+| `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Run, Skip | no |
+| `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, SeedDeferred, Truncated, Unreadable | no |
+| `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
+| `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
+| `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
+| `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:adapter:ios:ext-safe` IosDeviceLogSource | yes |
+| `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore, RecordingStore | yes |
+| `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
+| `DiscoveryStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiscoveryStore; `:adapter:ios:ext-safe` IosDiscoveryStore; `:domain:feature` FakeStore, RecordingCursor | yes |
+| `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
+| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` InMemoryDownloadStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
+| `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
+| `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
+| `DownloadTransportHost` | `:domain:ports` | — | no |
+| `Enrollment` | `:domain:ports` | `:adapter:generic:app` HttpEnrollment; `:domain:feature` CapturingUploader, FakeUploader | yes |
+| `EventCreation` | `:domain:ports` | `:adapter:generic:app` HttpEventCreation; `:domain:feature` FakeClient | yes |
+| `EventCreator` | `:domain:feature` | `:domain:feature` CreateEvent, NoOpEventCreator; `:ui:presentation` SpyCreator | no |
+| `EventDetails` | `:domain:ports` | `:domain:ports` Failed, Found, NotFound | no |
+| `EventDirectory` | `:domain:ports` | `:adapter:generic:app` HttpEventDirectory; `:domain:feature` FakeDetails | yes |
+| `EventLinkDelivery` | `:domain:model` | `:domain:model` Forwarded, NoWebpageUrl, NotBrowsingWeb | no |
+| `EventRename` | `:domain:ports` | `:adapter:generic:app` HttpEventRename; `:domain:feature` FakeRename | yes |
+| `EventRenamer` | `:domain:feature` | `:domain:feature` NoOpEventRenamer, RenameEvent | no |
+| `EventUnionSource` | `:domain:ports` | `:adapter:generic:app` HttpEventUnionSource; `:adapter:generic:fake` EmptyUnion, FakeUnion, RecordingUnion | yes |
+| `GalleryStatusSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryGalleryStatusSource; `:domain:feature` OwnDeviceGalleryStatusSource | yes |
+| `ImportResult` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
+| `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:adapter:ios:app-only` PhotoKitAssetPresence; `:domain:compose` PermissionAwareAssetPresence; `:test:world` WorldAssetPresence | yes |
+| `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
+| `JoinedEventMarker` | `:domain:ports` | `:adapter:generic:fake` InMemoryJoinedEventMarker; `:adapter:ios:ext-safe` IosJoinedEventMarker; `:domain:feature` FakeMarker | yes |
+| `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
+| `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource | no |
+| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore, RequestedRowsLedger | yes |
+| `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope; `:domain:ports` NoOp | no |
+| `PhotoAccessRequester` | `:domain:ports` | `:adapter:ios:app-only` PhotoLibraryPermission | no |
+| `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
+| `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
+| `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
+| `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
+| `PushHttpClient` | `:domain:ports` | `:adapter:generic:app` KtorPushHttpClient; `:domain:feature` FakePushHttpClient, RecordingClient | yes |
+| `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver, UploadPushReceiver | no |
+| `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable | no |
+| `RenameOutcome` | `:domain:ports` | `:domain:ports` InvalidName, Renamed, Transient | no |
+| `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
+| `RenameStatusSource` | `:domain:feature` | `:domain:feature` MutableRenameStatusSource | no |
+| `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
+| `SceneMode` | `:domain:model` | `:domain:model` Deferred, Live | no |
+| `SecureStore` | `:domain:ports` | `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosKeychain, NoSuchStore, StubSecureStore; `:domain:ports` FakeSecureStore | yes |
+| `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
+| `SecureStoreResolution` | `:domain:ports` | `:domain:ports` Adopted, Found, Minted | no |
+| `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
+| `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unrestricted | no |
+| `Settled` | `:domain:feature` | `:domain:feature` Proceeding, Short | no |
+| `SharePresenter` | `:domain:ports` | `:adapter:ios:app-only` IosShareSheet | no |
+| `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes; `:adapter:ios:app-only` IosStagedBytes | yes |
+| `SuppressionSource` | `:domain:ports` | — | no |
+| `SwitchDecision` | `:domain:feature` | `:domain:feature` LeavePrevious, Stay | no |
+| `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
+| `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadCompleted, UploadFailed, UploadStarted | no |
+| `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
+| `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSyncStatusSource | yes |
+| `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
+| `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
+| `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
+| `UploadMechanismRuntime` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |
+| `UploadProducer` | `:domain:feature` | — | no |
+| `UploadRequestProvider` | `:domain:model` | `:domain:feature` FakeProvider, StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider; `:test:world` RecordingUploadRequestProvider | yes |
+| `UploadTriggers` | `:domain:feature` | — | no |
+| `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |

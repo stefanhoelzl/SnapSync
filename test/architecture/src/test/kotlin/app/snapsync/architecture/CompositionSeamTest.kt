@@ -53,8 +53,8 @@ class CompositionSeamTest {
 
     /** The composition bundles (law "One shared composition") → the `compose/` file declaring each. */
     private val bundles = mapOf(
-        "AppPorts" to "domain/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
-        "UploadPorts" to "domain/src/commonMain/kotlin/app/snapsync/compose/UploadCore.kt",
+        "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
+        "UploadPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadCore.kt",
     )
 
     /**
@@ -182,8 +182,7 @@ class CompositionSeamTest {
 
     /** Every `class <Name>Ports(` declared in `compose/` — the bundle set itself, pinned below. */
     private fun declaredBundles(): Set<String> {
-        val files = ZoneGates.zoneFiles(ZoneGates.domainSrc, "compose")
-            ?: error("composition seam gate: no `compose` zone under domain/src — the scan is stale, fix it")
+        val files = ZoneGates.requireZone("composition-seam", "compose")
         return files.flatMap { file ->
             Regex("""\bclass\s+(\w*Ports)\s*\(""").findAll(ZoneGates.stripComments(file.readText()))
                 .map { it.groupValues[1] }

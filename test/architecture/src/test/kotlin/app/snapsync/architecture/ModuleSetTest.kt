@@ -149,23 +149,45 @@ class ModuleSetTest {
     }
 
     @Test
-    fun `the core declares zero project dependencies`() {
-        // KEPT DELIBERATELY, and not as belt-and-braces — see the note in this change's design.
-        // The platform-free guarantee is a COMPILE error ("`:domain` cannot name a platform API"),
-        // but only because of a precondition the compiler does not check: that `:domain` declares no
-        // project dependencies. Adding `project(":adapter:ios:ext-safe")` to domain/build.gradle.kts
-        // compiles perfectly happily and silently hands the core a platform. Nothing but this
-        // assertion stands between that edit and a green build.
+    fun `the core declares only permitted zone edges`() {
+        // KEPT DELIBERATELY, and not as belt-and-braces. The platform-free guarantee is a COMPILE error
+        // ("a core zone cannot name a platform API"), but only because of a precondition the compiler
+        // does not check: that no core module declares a project dependency reaching OUT of the core.
+        // Adding `project(":adapter:ios:ext-safe")` to a zone build file compiles perfectly happily and
+        // silently hands the core a platform. Nothing but this assertion stands between that edit and a
+        // green build.
         //
-        // Asserted on the build script text (a declaration always quotes a path, so the prose
-        // mention of project() in comments does not match).
-        val build = File(repoRoot, "domain/build.gradle.kts")
-        assertTrue(build.isFile, "domain/build.gradle.kts is missing — the core moved")
-        assertTrue(
-            !Regex("project\\(\\s*\"").containsMatchIn(build.readText()),
-            "domain/build.gradle.kts declares a project(\"...\") dependency — :domain must have ZERO " +
-                "project dependencies. That absence is the precondition for the platform-free compile " +
-                "error; with a project edge the core can reach a platform and nothing fails.",
+        // Since the split it asserts two further things the module graph cannot state about itself: that
+        // each zone declares only the edge its law permits (so `ports` cannot reach `feature`), and that
+        // it declares it with `implementation()` — an `api()` edge would republish the zone to every
+        // downstream consumer, dissolving the boundary the split exists to create.
+        val permitted = mapOf(
+            "model" to emptySet<String>(),
+            "ports" to setOf(":domain:model"),
+            "feature" to setOf(":domain:model", ":domain:ports"),
+            "flow" to setOf(":domain:model", ":domain:feature"),
+            "compose" to setOf(":domain:model", ":domain:ports", ":domain:feature", ":domain:flow"),
         )
+        val problems = permitted.flatMap { (zone, allowed) ->
+            val build = File(repoRoot, "domain/$zone/build.gradle.kts")
+            assertTrue(build.isFile, "domain/$zone/build.gradle.kts is missing — the core moved")
+            val text = build.readText()
+            Regex("""(\w+)\(project\(\s*"([^"]+)"\s*\)\)""").findAll(text).mapNotNull { m ->
+                val (configuration, target) = m.destructured
+                when {
+                    target !in allowed ->
+                        ":domain:$zone declares project(\"$target\"), which is not a permitted zone edge. " +
+                            "A core module may depend only on ${allowed.ifEmpty { "nothing" }} — an edge out " +
+                            "of the core hands it a platform, and the platform-free compile error " +
+                            "silently stops holding."
+                    configuration != "implementation" ->
+                        ":domain:$zone declares $configuration(project(\"$target\")) — zone edges SHALL use " +
+                            "implementation(), or the zone is republished to every downstream consumer and " +
+                            "the boundary dissolves transitively."
+                    else -> null
+                }
+            }
+        }
+        assertTrue(problems.isEmpty(), "core zone dependency violations:\n  " + problems.joinToString("\n  "))
     }
 }

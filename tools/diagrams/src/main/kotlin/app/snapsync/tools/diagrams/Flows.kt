@@ -27,7 +27,7 @@ package app.snapsync.tools.diagrams
  */
 
 /** The flow zone — the transcriber's derived scope. */
-private const val FLOW_DIR = "domain/src/commonMain/kotlin/app/snapsync/flow"
+private const val FLOW_DIR = "domain/flow/src/commonMain/kotlin/app/snapsync/flow"
 
 /** rel-path (under `architecture/flows/`) → rendered markdown, one file per flow. */
 fun flowsMarkdown(sources: List<KtSource>): Map<String, String> {

@@ -24,7 +24,10 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
+            api(project(":domain:feature"))
+            api(project(":domain:flow"))
             api(libs.coroutines.core)
         }
         // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
