@@ -97,6 +97,9 @@ before assuming otherwise, since this is an image property and Apple may move ag
   ⚠️ On a **fresh** runner the exclusion means the file is not there at all, so the documented append
   CREATES it holding only that one line — and the build dies on `Cannot query the value of Gradle
   property 'snapsync.deployment'`. `scp` your copy over once, then append. (Measured 2026-08-25.)
+  ⚠️ That same property is what selects the **backend host** every build bakes, and it is read by Gradle
+  on every configuration — so `snapsync.rig=true` is not the only line this file owes you. See *Pointing
+  a build at a local backend*; setting the host anywhere else is overwritten in silence.
 - **`iosApp/Configuration/Deployment.xcconfig`** — GENERATED and gitignored, so `git status` shows a
   clean tree while the file holds whatever deployment was last resolved locally. If you ran
   `deno task dev:tunnel`, that is the **local** deployment. On a fresh runner, generate it there
@@ -285,10 +288,27 @@ device-facing values moved out of the xcconfig into that bundled resource (capab
 override is **accepted and ignored**, and the build silently bakes the *production* host instead, which
 is the exact silent-misdirection failure that move existed to remove. Do not reach for it.
 
-Retarget by **selecting the deployment**: write the rig's host into `deployments/local.json` and re-run
-the resolver. That runs *after* cloudflared has minted the tunnel hostname, which is what the old
-override was working around. The scheme is derived from the host — `http` for a loopback literal,
-`https` for a tunnel — so you never state it.
+Retarget by **selecting the deployment**: write the rig's host into `deployments/local.json`, point
+`snapsync.deployment` at it, and re-run the resolver. That runs *after* cloudflared has minted the tunnel
+hostname, which is what the old override was working around. The scheme is derived from the host —
+`http` for a loopback literal, `https` for a tunnel — so you never state it.
+
+⚠️ **`resolve-deployment.py local` ALONE DOES NOT STICK, and its failure is silent.** `domain/build.gradle.kts`
+reads the `snapsync.deployment` Gradle property at **configuration** time and re-runs the resolver itself
+(it has to: `LINK_ORIGIN` is generated into a source set). Every `xcodebuild` triggers that through the
+`embedAndSignAppleFrameworkForXcode` run-script phase — so a manual render is **overwritten by the build
+that follows it**, and with the property still at its default the bundle bakes the **production** host.
+
+The symptom names nothing. The app installs, launches, and the rig answers; then every `create`/`join`
+fails with *"Couldn't reach the server"* while `curl` against your backend from the same machine answers
+in milliseconds. That reads like a cold-`deno` timeout or a dead tunnel and is neither. Measured
+2026-08-28 on a simulator: one wasted build cycle before `/device/state` was consulted.
+
+**Set the property AND run the resolver, naming the same deployment.** Both are needed and for different
+reasons: the property is what Gradle's re-resolve obeys, and the manual run is what puts
+`Deployment.xcconfig` on disk before `xcodebuild` evaluates it (step 6 excludes that file from rsync).
+If the two ever name different deployments you get an xcconfig from one and a `Deployment.plist` from the
+other — the same split, one layer down.
 
 ```bash
 H=$(cat api/.localdev/host)      # e.g. random-words.trycloudflare.com  (no scheme)
@@ -298,13 +318,27 @@ p = pathlib.Path("deployments/local.json"); d = json.loads(p.read_text())
 d["domain"] = sys.argv[1].replace("https://", "").replace("http://", "").rstrip("/")
 p.write_text(json.dumps(d, indent=2) + "\n")
 EOF
-python3 scripts/resolve-deployment.py local     # renders Deployment.plist with that host
+# On the RUNNER, in its own gradle.properties (the rsync-excluded, runner-owned copy — the same file
+# you appended `snapsync.rig=true` to). BSD sed on macOS needs the empty -i argument.
+sshmac "cd snapsync && sed -i '' 's/^snapsync.deployment=.*/snapsync.deployment=local/' gradle.properties \
+          && grep '^snapsync.deployment' gradle.properties \
+          && python3 scripts/resolve-deployment.py local --quiet"
 sshmac "cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
           -configuration Debug -destination 'generic/platform=iOS' \
           -archivePath \"\$HOME/artifacts/SnapSync.xcarchive\" \
           CODE_SIGNING_ALLOWED=NO archive"
 # then the unchanged 6b re-sign + install steps above
 ```
+
+**Verify the bundle before you drive it** — one command, and it turns the silent misdirection above into
+an answer you can read:
+
+```bash
+sshmac 'plutil -p "$HOME/artifacts/SnapSync.xcarchive/Products/Applications/SnapSync.app/Deployment.plist"'
+# → "uploadBase" => "http://127.0.0.1:8080/api/v1"   ← your host, not snapsync.stho.net
+```
+
+On a running app the same fact is `GET /device/state` → `build.uploadBase` (load `rig-channel`).
 
 ⚠️ `deployments/local.json` is COMMITTED — the edit above is a working-tree change. Revert it
 (`git checkout deployments/local.json`) before you commit anything, or a session's tunnel hostname
