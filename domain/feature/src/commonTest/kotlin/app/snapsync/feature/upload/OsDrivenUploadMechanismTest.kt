@@ -62,7 +62,7 @@ class OsDrivenUploadMechanismTest {
      * that silently answered a call this class was not supposed to make would hide exactly the regression
      * worth catching.
      */
-    private class RequestedRowsLedger : LedgerStore {
+    private class RequestedRowsLedger : UnreachedLedgerStore() {
         private val rows = mutableMapOf<String, LedgerEntry>()
 
         fun requested(key: String) {
@@ -81,12 +81,24 @@ class OsDrivenUploadMechanismTest {
 
         override suspend fun get(key: String): LedgerEntry? = rows[key]
         override suspend fun put(entry: LedgerEntry) { rows[entry.key] = entry }
+    }
+
+    /**
+     * Every member this mechanism must never reach, refusing loudly.
+     *
+     * Split out of [RequestedRowsLedger] rather than defaulted into it: the discipline above — no quiet
+     * answers — is the point, and it is cheaper to keep when the refusals live in one place that a
+     * subclass overrides only what it genuinely uses. A port that grows then costs one line here instead
+     * of one line in every double.
+     */
+    private abstract class UnreachedLedgerStore : LedgerStore {
+        override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
+            TODO("not reached by this mechanism")
         override suspend fun pendingResources(): List<PendingResource> = TODO("not reached by this mechanism")
         override fun markTerminal(key: String, state: LedgerState): Boolean = TODO("not reached by this mechanism")
         override suspend fun uploadedRows(): List<LedgerEntry> = TODO("not reached by this mechanism")
         override suspend fun promoteUploaded(key: String): Boolean = TODO("not reached by this mechanism")
         override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> = TODO()
-
         override suspend fun requestedKeys(): Set<String> = TODO("not reached by this mechanism")
         override suspend fun completedManifestRows(): List<LedgerEntry> = TODO("not reached by this mechanism")
         override suspend fun backfillManifestDetail(entry: LedgerEntry) = TODO("not reached by this mechanism")

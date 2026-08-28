@@ -42,23 +42,40 @@ class SqlDelightLedgerStore(
     override val changes: Flow<Unit> = dings
 
     override suspend fun get(key: String): LedgerEntry? =
-        queries.get(key) { _, assetId, state, attempt, eventId, creationDate, role, contentType, filename,
-                           absent ->
-            LedgerEntry(
-                key, assetId, state, attempt.toInt(), eventId,
-                creationDate = creationDate,
-                role = roleOrNull(role),
-                contentType = contentType,
-                originalFilename = filename,
-                absent = absent != 0L,
-            )
-        }.executeAsOneOrNull()
+        queries.get(key, ::toEntry).executeAsOneOrNull()
+
+    override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
+        queries.selectByDestinationPath(destinationPath, ::toEntry).executeAsOneOrNull()
+
+    /** The one full-row projection mapper, so a column added to the row is added in one place. */
+    @Suppress("LongParameterList")
+    private fun toEntry(
+        key: String,
+        assetId: String,
+        state: LedgerState,
+        attempt: Long,
+        eventId: String,
+        creationDate: String,
+        role: String,
+        contentType: String,
+        filename: String,
+        absent: Long,
+        destinationPath: String?,
+    ) = LedgerEntry(
+        key, assetId, state, attempt.toInt(), eventId,
+        creationDate = creationDate,
+        role = roleOrNull(role),
+        contentType = contentType,
+        originalFilename = filename,
+        absent = absent != 0L,
+        destinationPath = destinationPath,
+    )
 
     override suspend fun put(entry: LedgerEntry) {
         queries.put(
             entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
             entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
-            if (entry.absent) 1L else 0L,
+            if (entry.absent) 1L else 0L, entry.destinationPath,
         )
         dings.tryEmit(Unit)
     }
@@ -119,29 +136,10 @@ class SqlDelightLedgerStore(
     }
 
     override suspend fun uploadedRows(): List<LedgerEntry> =
-        queries.selectUploaded { key, assetId, state, attempt, eventId, creationDate, role, contentType, filename, absent ->
-            LedgerEntry(
-                key, assetId, state, attempt.toInt(), eventId,
-                creationDate = creationDate,
-                role = roleOrNull(role),
-                contentType = contentType,
-                originalFilename = filename,
-                absent = absent != 0L, // stored as INTEGER, exactly like `get`'s mapper above
-            )
-        }.executeAsList()
+        queries.selectUploaded(::toEntry).executeAsList()
 
     override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> =
-        queries.selectNeedingJob(NEEDS_JOB_STATES, limit.toLong()) {
-                key, assetId, state, attempt, eventId, creationDate, role, contentType, filename, absent ->
-            LedgerEntry(
-                key, assetId, state, attempt.toInt(), eventId,
-                creationDate = creationDate,
-                role = roleOrNull(role),
-                contentType = contentType,
-                originalFilename = filename,
-                absent = absent != 0L, // stored as INTEGER, exactly like `get`'s mapper above
-            )
-        }.executeAsList()
+        queries.selectNeedingJob(NEEDS_JOB_STATES, limit.toLong(), ::toEntry).executeAsList()
 
     override suspend fun promoteUploaded(key: String): Boolean {
         val applied = queries.transactionWithResult {
@@ -175,7 +173,7 @@ class SqlDelightLedgerStore(
                 queries.put(
                     it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId,
                     it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
-                    if (it.absent) 1L else 0L,
+                    if (it.absent) 1L else 0L, it.destinationPath,
                 )
             }
         }

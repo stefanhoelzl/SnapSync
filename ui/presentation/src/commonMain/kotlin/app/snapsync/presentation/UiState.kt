@@ -75,6 +75,37 @@ internal fun Overlays.maskedFor(layer: Layer): Overlays =
 @Serializable
 sealed interface Layer {
     /**
+     * The backend refuses this build as too old (capability `min-app-version`), and nothing else the
+     * app can show is true.
+     *
+     * The TOP rung of the reduction, above config-absent, because it is not a mood of some other screen
+     * — every metadata call is refused, so a joined member is not syncing, a create cannot succeed, and
+     * a join cannot commit. Rendering the joined layer under a refusal would show a healthy-looking
+     * event that is doing nothing, which is the exact failure this state exists to make legible.
+     *
+     * It is also the only screen in the app whose remedy is outside the app, which is why it carries the
+     * link rather than composing one: see [storeUrl].
+     */
+    @Serializable
+    data class UpdateRequired(
+        /**
+         * The oldest version the backend serves, when it named one. `null` when the refusal carried no
+         * version — the screen then states that an update is needed without naming one, which is true,
+         * rather than showing a number nobody sent (`module-architecture`, "Absence is never silent").
+         */
+        val minimumVersion: String? = null,
+        /**
+         * The App Store page, or `null` when this build carries none.
+         *
+         * Carried rather than composed, and null rather than derived from the bundle id, because the
+         * country-less form of that URL is measurably a **404** while availability is limited to one
+         * storefront — an offer that looks right and lands nowhere, on the one screen the user reaches
+         * because something is already wrong. `null` renders no button.
+         */
+        val storeUrl: String? = null,
+    ) : Layer
+
+    /**
      * The create-event landing layer (event-creation-ui), shown while no event is connected
      * (`config == null`) and no create is in flight. Carries an optional pre-formatted inline
      * [error] — the last create failure's copy (sticky until the next attempt) or a transient
@@ -307,12 +338,19 @@ sealed interface JoinPhase {
          *   none of the event's dates — it carries them only because the step it advances to needs them.
          * - [Ready] — the confirm (Join/Switch) is offered.
          * - [Committing] — the confirm was taken; enroll + provision are in flight.
-         * - [CommitFailed] — enrollment/commit failed (or a switch's join failed after leaving); a Retry
-         *   re-runs the join. The retry commits **without** passing back through [Ready], which is why
-         *   the details live on [Detailed] rather than on the loaded step alone.
+         * - [CommitFailed] — the commit failed for a reason that may not hold next time (the network,
+         *   the backend, the moment), or a switch's join failed after leaving; a Retry re-runs the join.
+         *   The retry commits **without** passing back through [Ready], which is why the details live on
+         *   [Detailed] rather than on the loaded step alone.
+         * - [EventFull] — the event is at capacity (capability `join-event`). A SEPARATE step from
+         *   [CommitFailed], and the difference is the whole reason it exists: capacity does not heal, so
+         *   this step offers **no Retry**. It used to be collapsed into [CommitFailed], which pinned a
+         *   Retry button on a wall — the member could press it forever, and nothing on the screen said
+         *   what the wall was. Cancel is the only action, and it is a real one: it discards the pending
+         *   join and returns to the front door.
          */
         @Serializable
-        enum class Step { ExplainAccess, Ready, Committing, CommitFailed }
+        enum class Step { ExplainAccess, Ready, Committing, CommitFailed, EventFull }
     }
 }
 

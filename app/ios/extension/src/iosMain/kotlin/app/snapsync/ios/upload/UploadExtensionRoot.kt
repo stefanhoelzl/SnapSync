@@ -17,7 +17,7 @@ import app.snapsync.ports.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
-import app.snapsync.join.HttpEnrollment
+import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.processingResultRawValue
@@ -27,8 +27,6 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
-import app.snapsync.feature.push.EventNotifier
-import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
@@ -37,6 +35,7 @@ import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
 import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
+import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -191,14 +190,6 @@ object UploadExtensionRoot {
         )
     }
 
-    // Event-notify sender (capability `upload-completion-notify`; `:domain` feature/push since the
-    // migration finale re-homed it): fired after a drained cycle that completed uploads, so
-    // co-contributors are woken to download. Same compile-time host as the manifest. Root-constructed
-    // over this process's shared HTTP client; `uploadCore` takes the notify as a stated lambda.
-    private val notifier: EventNotifier by lazy {
-        EventNotifier(KtorPushHttpClient(httpClient), bakedUploadBase())
-    }
-
     // The extension's process scope, handed to the shared composition per its contract (`module-
     // architecture`, "the composition functions SHALL receive a CoroutineScope"). The upload subset
     // consumes no scope until step 8 installs the port-state-transition subscriptions in compose/;
@@ -219,6 +210,7 @@ object UploadExtensionRoot {
         uploadCore(
             scope,
             UploadPorts(
+                appVersion = ::appMarketingVersion,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
@@ -235,10 +227,10 @@ object UploadExtensionRoot {
                 deviceFiles = HttpDeviceFilesSource(httpClient, bakedUploadBase()),
                 joinedMarker = IosJoinedEventMarker(),
                 // The per-event device manifest (capability `device-manifest`): the extension is its
-                // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpEnrollment`
+                // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpManifestPublisher`
                 // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = IosDeviceManifestStore(),
-                enrollment = HttpEnrollment(httpClient, bakedUploadBase()),
+                manifestPublisher = HttpManifestPublisher(httpClient, bakedUploadBase()),
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-selection-policy`): this tier's
                 // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on
@@ -246,7 +238,6 @@ object UploadExtensionRoot {
                 albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
                 albumCoordinator = albumCoordinator,
                 token = { attestToken() },
-                onBatchUploaded = { eventId -> notifier.notify(eventId) },
                 log = log,
             ),
         )

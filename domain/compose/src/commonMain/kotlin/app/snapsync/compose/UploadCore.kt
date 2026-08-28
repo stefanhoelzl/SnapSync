@@ -24,7 +24,7 @@ import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.DiscoveryStore
-import app.snapsync.ports.Enrollment
+import app.snapsync.ports.ManifestPublisher
 import app.snapsync.ports.JoinedEventMarker
 import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.LedgerStore
@@ -68,8 +68,8 @@ class UploadPorts(
     val deviceFiles: DeviceFilesSource,
     val joinedMarker: JoinedEventMarker,
     val manifestStore: DeviceManifestStore,
-    /** The device-manifest uploader — production passes `:adapter:generic:app`'s `HttpEnrollment`. */
-    val enrollment: Enrollment,
+    /** The device-manifest publisher — production passes `:adapter:generic:app`'s `HttpManifestPublisher`. */
+    val manifestPublisher: ManifestPublisher,
     /** Echo-suppression (capability `photo-download`): required, no default (`upload-lifecycle`). */
     val suppression: SuppressionSource,
     /**
@@ -83,8 +83,13 @@ class UploadPorts(
     val albumCoordinator: AlbumCoordinator,
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
     val token: suspend () -> String?,
-    /** Completion-notify hook (capability `upload-completion-notify`): required, no default. */
-    val onBatchUploaded: suspend (eventId: String) -> Unit,
+    /**
+     * The calling build's marketing version, declared on the byte upload (capability `min-app-version`).
+     *
+     * A thunk for the same reason [host] is one: the extension reads its own bundle, and reading it at
+     * composition time would bind the app process's answer into the extension's graph.
+     */
+    val appVersion: () -> String = { "" },
     val log: Logger = Logger.withTag("UploadCycle"),
 )
 
@@ -121,7 +126,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
     val manifestProducer by lazy {
         DeviceManifestProducer(
             store = ports.manifestStore,
-            uploader = ports.enrollment,
+            publisher = ports.manifestPublisher,
             deviceId = ports.deviceId(),
         )
     }
@@ -132,7 +137,16 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         engineFor = { config ->
             // The engine records under this cycle's joined event (ledger provenance, `sync-ledger`);
             // like the host, the eventId arrives with the gate's config, not at composition time.
-            SyncEngine(EdgeUploadRequestProvider(config.host, ports.deviceId(), ports.token), ledger, config.eventId)
+            SyncEngine(
+                EdgeUploadRequestProvider(
+                    config.host,
+                    ports.deviceId(),
+                    ports.token,
+                    ports.appVersion(),
+                ),
+                ledger,
+                config.eventId,
+            )
         },
         ledger = ledger,
         // The read-discipline gate (capability `limited-photo-access`): the ONE shared assembly wraps
@@ -153,7 +167,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
                 rows = ledger.completedManifestRows(),
             )
         },
-        onBatchUploaded = ports.onBatchUploaded,
         // The cycle applies the membership's opt-in (it arrived with the gate); this translation
         // only reverses the normalized `assetId` (`_`→`/`) — previously copied identically at all
         // three call sites.

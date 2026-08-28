@@ -70,8 +70,8 @@ fun WorldInspector(
             OutlinedButton(onClick = { controller.expireToken() }) { Text("Expire change token") }
         }
 
-        // ---- Enrollment -------------------------------------------------------------------------
-        Header("Enrollment")
+        // ---- Membership -------------------------------------------------------------------------
+        Header("Membership")
         Text("Permission")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { controller.setPermission(PermissionStatus.NOT_DETERMINED) }) { Text("Not determined") }

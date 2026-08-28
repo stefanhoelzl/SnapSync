@@ -63,8 +63,21 @@ enum class PhotoKitJobState { SUCCEEDED, FAILED, CANCELLED, PENDING, REGISTERED 
 /** The disposition of one fetched system job, before the loop attaches what cannot leave it. */
 sealed interface FetchedJob {
 
-    /** The job maps to a ledger key and should be surfaced to the cycle. */
-    data class Emit(val key: String, val state: PhotoKitJobState, val error: UploadError?) : FetchedJob
+    /**
+     * The job carries a destination this cycle can work from.
+     *
+     * [destinationPath] is what the ledger recorded when the job was created, and is the primary way back
+     * to the row. [legacyKey] is the destination's last path segment, and is a ledger key **only** when
+     * the destination has the pre-identity byte shape — one segment after the device partition. Under a
+     * route that names identity in its path that segment is the resource's ROLE, which is why it is null
+     * there rather than a key that would collapse every job onto `primary`.
+     */
+    data class Emit(
+        val destinationPath: String,
+        val legacyKey: String?,
+        val state: PhotoKitJobState,
+        val error: UploadError?,
+    ) : FetchedJob
 
     /**
      * The job carries no recoverable ledger key. It is **still acknowledged**: every presented job must
@@ -77,9 +90,14 @@ sealed interface FetchedJob {
 /**
  * Classify one fetched system upload job.
  *
- * The ledger key is the destination URL's **last path segment** — the only field reliably present for
- * every job state, since `resource` is nil once a job has succeeded (capability `ios-photokit-upload`,
- * "Completion and retry adjudication"). [destination] is nullable on purpose; see this file's KDoc.
+ * The destination is the only field reliably present for every job state, since `resource` is nil once a
+ * job has succeeded (capability `ios-photokit-upload`, "Completion and retry adjudication"). What it
+ * yields is the destination's **path**, which the ledger recorded at creation — plus, when the
+ * destination has the pre-identity shape, the last path segment, which was the ledger key there.
+ *
+ * Deciding the shape here rather than at the call site is what makes it testable: a job object cannot be
+ * constructed, so the loop that consumes this is verified only on a device. [destination] is nullable on
+ * purpose; see this file's KDoc.
  */
 @OptIn(ExperimentalForeignApi::class)
 fun classifyPhotoKitJob(
@@ -87,12 +105,30 @@ fun classifyPhotoKitJob(
     state: PHAssetResourceUploadJobState,
     error: NSError?,
 ): FetchedJob {
-    val key = destination?.URL?.lastPathComponent ?: return FetchedJob.AcknowledgeToDrain
+    val path = destination?.URL?.path ?: return FetchedJob.AcknowledgeToDrain
     return FetchedJob.Emit(
-        key = key,
+        destinationPath = path,
+        legacyKey = legacyKeyOf(path),
         state = photoKitJobState(state),
         error = error?.let { photoKitUploadError(it) },
     )
+}
+
+/**
+ * The ledger key a **pre-identity** byte destination carries in its last path segment, or null when the
+ * destination does not have that shape.
+ *
+ * The old shape ends `/files/devices/<deviceId>/<key>` — exactly one segment after the device — and the
+ * key was recoverable for free because it happened to be that segment. The identity-in-path shape ends
+ * `/files/devices/<deviceId>/<assetId>/<role>`, whose last segment is the role: reading it as a key would
+ * collapse every job in a cycle onto `primary`, silently. So the shape decides, and anything else yields
+ * null rather than a guess.
+ */
+internal fun legacyKeyOf(path: String): String? {
+    val segments = path.split('/').filter { it.isNotEmpty() }
+    val devices = segments.indexOf("devices")
+    if (devices < 0) return null
+    return segments.getOrNull(devices + 2)?.takeIf { segments.size == devices + 3 }
 }
 
 /**

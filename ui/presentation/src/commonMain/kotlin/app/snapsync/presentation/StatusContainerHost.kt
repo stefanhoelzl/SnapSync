@@ -11,7 +11,9 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.Arrow
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.Direction
+import app.snapsync.feature.version.AppVersionGate
 import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinCommit
 import app.snapsync.model.FromChoice
 import app.snapsync.model.UntilChoice
 import app.snapsync.model.EventLinkPayload
@@ -101,6 +103,9 @@ class StatusContainerHost(
     private val downloadSource = sources.download
     private val attested = sources.attested
     private val pending = sources.pending
+    private val versionRefusal = sources.versionRefusal
+    private val appStoreUrl = sources.appStoreUrl
+
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
 
@@ -215,6 +220,7 @@ class StatusContainerHost(
                 transientErrorState.value,
                 formState.value,
                 reconfiguringState.value,
+                updateLayerFor(versionRefusal.value, appStoreUrl),
                 ::resolveRange,
             ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer)) },
             // The container SURVIVES a throwing intent (spec `sync-status-screen`) — and this handler is the
@@ -256,6 +262,7 @@ class StatusContainerHost(
                     overlaysState,
                     formState,
                     reconfiguringState,
+                    versionRefusal,
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
                     reduceFrom(
@@ -271,6 +278,7 @@ class StatusContainerHost(
                         values[9] as String?,
                         values[11] as RangeForm,
                         values[12] as Boolean,
+                        updateLayerFor(values[13] as AppVersionGate.Refusal?, appStoreUrl),
                         ::resolveRange,
                     ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer)) }
                 }
@@ -364,6 +372,18 @@ class StatusContainerHost(
     // The invite URL is read off the state the reduction already derived, so the shared link is
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
     fun onShareInvite() = intent { (state.layer as? Layer.Joined)?.let { commands.share(it.inviteUrl) } }
+
+    /**
+     * Open the App Store page from the update-required screen (capability `min-app-version`).
+     *
+     * The URL is read from the CURRENT state rather than taken from the caller, exactly as
+     * [onShareInvite] reads the invite URL: the screen's contract is that a build carrying no store URL
+     * renders no button, and reading it here means the container cannot be asked to open one the state
+     * does not hold.
+     */
+    fun onOpenAppStore() = intent {
+        (state.layer as? Layer.UpdateRequired)?.storeUrl?.let { commands.openLink(it) }
+    }
 
     /**
      * Opening and closing what is drawn over — or instead of — the current layer.
@@ -758,7 +778,7 @@ class StatusContainerHost(
         if (detailed.step != JoinPhase.Detailed.Step.Ready && detailed.step != JoinPhase.Detailed.Step.CommitFailed) return
         val (name, startsAt, endsAt, deletesAt) = detailed.event
         pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.Committing)))
-        val committed = try {
+        val commit = try {
             commands.commitJoin(
                 p.eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum,
             )
@@ -789,11 +809,18 @@ class StatusContainerHost(
             // Orbit's re-throw would cancel the intent job and take every later command with it.
             throw t
         }
-        if (committed) {
+        if (commit == JoinCommit.Committed) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.state.value?.eventId == p.eventId) pending.set(null)
         } else if (pending.state.value?.eventId == p.eventId) {
-            pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.CommitFailed)))
+            // The two failures land on DIFFERENT steps, because one is retryable and one is not
+            // (capability `join-event`). A full event given the CommitFailed surface would offer a Retry
+            // that fails identically every time, with nothing saying why.
+            val step = when (commit) {
+                JoinCommit.Full -> JoinPhase.Detailed.Step.EventFull
+                else -> JoinPhase.Detailed.Step.CommitFailed
+            }
+            pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, step)))
         }
     }
 
@@ -837,12 +864,15 @@ class StatusContainerHost(
         // The album choice defaults to off, unless the event link supplied an explicit dev/test override
         // (capability `event-album`).
         val saveToAlbum = explicitSaveToAlbum ?: false
-        if (!commands.commitJoin(
-                eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction,
-                saveToAlbum,
-            )
-        ) {
-            log("autoJoin aborted: enrollment failed for $eventId")
+        val commit = commands.commitJoin(
+            eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction,
+            saveToAlbum,
+        )
+        // The headless path has no surface to park on, so it names the reason in the log instead — the
+        // one channel it has. `full` and `failed` are as different here as on the screen: a run that
+        // aborts because the event is full will abort identically on every retry.
+        if (commit != JoinCommit.Committed) {
+            log("autoJoin aborted: join ${commit.name.lowercase()} for $eventId")
         }
     }
 }
@@ -868,6 +898,56 @@ private fun JoinPhase.name(): String? = details?.name
 // ALWAYS the joined layer (name · QR · share · leave) — permission and sync activity are moods of the
 // one-line status, never a hero-replacing gate. There is no join-status rung: reconciliation runs in
 // the extension and status is read from the completeness listing.
+/**
+ * The refusal and the remedy, joined into the layer that states both — or `null` while this build is
+ * being served (capability `min-app-version`).
+ *
+ * Joined HERE rather than inside [reduceFrom] because the reduction's job is to RANK layers, while these
+ * two inputs meet nowhere else: the refusal is observed and the store URL is a build constant. It also
+ * keeps [reduceFrom] under the tier's parameter ceiling, which may only fall (`complexity-budgets`) — a
+ * budget respected by grouping what belongs together rather than by raising a number.
+ */
+private fun updateLayerFor(refusal: AppVersionGate.Refusal?, appStoreUrl: String?): Layer.UpdateRequired? =
+    refusal?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, storeUrl = appStoreUrl) }
+
+/**
+ * What is shown while NO event is configured: the interactive join confirmation, or the create surface.
+ *
+ * Its own function for the reason [joinedLayer] is — it answers a different question from the
+ * precedence table. `reduceFrom` decides WHICH of the three worlds the app is in (refused · unjoined ·
+ * joined); this one decides what the unjoined world looks like, and nothing in it consults the health,
+ * the permission or the clock.
+ */
+private fun unjoinedLayer(
+    pending: PendingJoin?,
+    creation: CreationStatus,
+    transient: String?,
+    form: RangeForm,
+    resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
+): Layer {
+    // A pending interactive join outranks the create layer (a switch whose leave already ran also
+    // lands here — a transient no-event, shown full-screen with a Retry).
+    if (pending != null) {
+        val event = pending.phase.details
+        return Layer.JoiningEvent(
+            eventId = pending.eventId,
+            phase = pending.phase,
+            form = form,
+            // Resolved only where there IS a window: the three detail-less phases render no range row,
+            // so an absent resolution is the honest answer rather than one invented from `now`.
+            range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt, null, it.deletesAt) },
+        )
+    }
+    // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
+    // until the next attempt, so a link scanned in between would otherwise be silently outranked by
+    // an older complaint. When it self-clears, the sticky failure shows again.
+    return when (creation) {
+        CreationStatus.InFlight -> Layer.CreatingEvent
+        is CreationStatus.Failed -> Layer.CreateEvent(error = transient ?: creation.reason.message())
+        CreationStatus.Idle -> Layer.CreateEvent(error = transient)
+    }
+}
+
 private fun reduceFrom(
     config: EventConfig?,
     permission: PermissionStatus,
@@ -886,31 +966,17 @@ private fun reduceFrom(
     // resolve them: the window comes off the loaded phase (join gate) or the membership (reconfigure).
     form: RangeForm,
     reconfiguring: Boolean,
+    // The backend's refusal of this build (capability `min-app-version`), already carrying its remedy,
+    // or null while this build is served. Arrives composed — see `updateLayerFor`.
+    updateRequired: Layer.UpdateRequired?,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
 ): Layer {
-    if (config == null) {
-        // A pending interactive join outranks the create layer (a switch whose leave already ran also
-        // lands here — a transient no-event, shown full-screen with a Retry).
-        if (pending != null) {
-            val event = pending.phase.details
-            return Layer.JoiningEvent(
-                eventId = pending.eventId,
-                phase = pending.phase,
-                form = form,
-                // Resolved only where there IS a window: the three detail-less phases render no range row,
-                // so an absent resolution is the honest answer rather than one invented from `now`.
-                range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt, null, it.deletesAt) },
-            )
-        }
-        // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
-        // until the next attempt, so a link scanned in between would otherwise be silently outranked by
-        // an older complaint. When it self-clears, the sticky failure shows again.
-        return when (creation) {
-            CreationStatus.InFlight -> Layer.CreatingEvent
-            is CreationStatus.Failed -> Layer.CreateEvent(error = transient ?: creation.reason.message())
-            CreationStatus.Idle -> Layer.CreateEvent(error = transient)
-        }
-    }
+    // ABOVE config-absent, and above everything else. A refused build makes no successful metadata call
+    // at all, so every layer below would render something untrue: a joined event that is not syncing, a
+    // create that cannot succeed, a join that cannot commit. There is exactly one thing to say and one
+    // thing to do.
+    if (updateRequired != null) return updateRequired
+    if (config == null) return unjoinedLayer(pending, creation, transient, form, resolveAgainst)
     val health = when {
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it

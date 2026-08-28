@@ -33,8 +33,8 @@ on drift; regenerate instead.
 
 ## `feature/push`
 
-- files: `EventNotifier.kt`, `PushRegistration.kt`
-- top-level types: `ApnsPushToken (class)`, `DeviceConfigDto (class)`, `EventNotifier (class)`, `PushRegistration (class)`, `PushTokenDto (class)`
+- files: `PushRegistration.kt`
+- top-level types: `ApnsPushToken (class)`, `DeviceConfigDto (class)`, `PushRegistration (class)`, `PushTokenDto (class)`
 
 ## `feature/status`
 
@@ -50,6 +50,11 @@ on drift; regenerate instead.
 
 - files: `BackgroundUploadPump.kt`, `ClearRequested.kt`, `LedgerWriter.kt`, `OsDrivenUploadMechanism.kt`, `Reconciler.kt`, `RelinquishThenRun.kt`, `SelectionScopedTransfer.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadMechanismTable.kt`, `UploadPushReceiver.kt`
 - top-level types: `BackgroundUploadPump (class)`, `CycleGate (interface)`, `ExtensionReconciler (class)`, `IdleUploadMechanism (object)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenUploadMechanism (class)`, `RelinquishThenRun (class)`, `SelectionScopedTransfer (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadMechanismRuntime (interface)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`, `UploadTriggers (interface)`
+
+## `feature/version`
+
+- files: `AppVersionGate.kt`
+- top-level types: `AppVersionGate (class)`
 
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 

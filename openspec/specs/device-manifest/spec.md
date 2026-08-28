@@ -2,21 +2,28 @@
 
 ## Purpose
 
-The per-event device manifest: one mutable JSON object per (event, device) at
-published to `PUT /api/v1/events/<eventId>/devices/<deviceId>` that projects all of a device's uploaded, not-deleted
-resources — original-only, each typed by a generic `role` — into a single full-state snapshot. It
-supersedes the per-asset manifest: the upload extension is its sole writer, PUTting it synchronously
-in-cycle as a per-event projection of the upload ledger's `COMPLETED` rows (capability `sync-ledger`),
-admitted by the membership's one selection policy. Write-only in v1 (no in-app consumer reads it), it
-exists as forward-preparation for restore and event-wide union.
+The per-event device manifest: one mutable JSON document per (event, device), published to
+`PUT /api/v2/events/<eventId>/devices/<deviceId>/manifest`, that projects all of a device's uploaded,
+not-deleted resources — original-only, each typed by a generic `role` — into a single full-state
+snapshot. The publish is **contribution only**: it replaces the membership's asset set and enrols nobody,
+which is what the manifest sub-resource makes structural rather than conventional (capability
+`join-event`). The upload extension is its sole writer, publishing synchronously in-cycle as a per-event
+projection of the upload ledger's `COMPLETED` rows (capability `sync-ledger`), admitted by the
+membership's one selection policy. No in-app consumer reads it; it is read by the event-wide union, and
+the publish is also what wakes the other members (capability `upload-completion-notify`).
 ## Requirements
 
 ### Requirement: Per-event device manifest document
 
 For each (event, device) pair it backs up, the producer SHALL publish exactly one device manifest **as the
-request body** of `PUT /api/v1/events/<eventId>/devices/<deviceId>` (capability `api-endpoints`). The
-manifest is a **wire format**, not a stored object: the backend records it relationally (capability
+request body** of `PUT /api/v2/events/<eventId>/devices/<deviceId>/manifest` (capability `api-endpoints`).
+The manifest is a **wire format**, not a stored object: the backend records it relationally (capability
 `database`) and writes no manifest object to storage.
+
+The publish is **contribution only**. It replaces the membership's asset set and does nothing else — it
+enrolls nobody (the join request owns that, capability `join-event`) and records no upload (the byte route
+owns that). A publish from a device that holds no membership SHALL be refused rather than silently creating
+one.
 
 The manifest SHALL be a UTF-8 JSON object carrying `deviceId` (the stable per-install device id) and
 `assets` (an array). Each `assets` element SHALL carry `assetId` (the device-local asset identity),
@@ -29,11 +36,21 @@ the event-wide union read, so the union projects them unchanged.
 The document shape is **unchanged by the move to a database**. That is deliberate: it is what lets the
 backend flip its storage without a client change, and be rolled back against a shipped app.
 
+It is **unchanged by the move to v2** as well, and for a second reason worth stating separately: it is what
+makes this a transport move rather than a format change, and what lets the manifest later declare intent
+rather than completion without any wire change at all. Two storage moves and a version move have now left
+this document alone; that is the property, not a coincidence.
+
 #### Scenario: One manifest per event and device
 
 - **WHEN** a device backs up assets for event `E`
-- **THEN** it publishes exactly one manifest for `(E, deviceId)` via the manifest route, carrying
+- **THEN** it publishes exactly one manifest for `(E, deviceId)` via the manifest sub-resource, carrying
   `deviceId` and an `assets` array, and no manifest object is written to storage
+
+#### Scenario: The publish enrolls nobody
+
+- **WHEN** a device that holds no membership for `E` publishes a manifest for it
+- **THEN** the publish is refused, and no membership is created as a side effect
 
 #### Scenario: Fields present on each entry
 
@@ -187,18 +204,19 @@ The extension MAY skip the publish when the projected snapshot is unchanged sinc
 write. A kill mid-publish SHALL be tolerated: the write is atomic at the backend (capability `database`),
 so a killed cycle leaves the previous state intact and the projection is recomputed next cycle.
 
-**The word "successful" is load-bearing beyond this capability.** The byte upload route records
-`uploaded = 1` best-effort and relies on the next manifest publish to repair a lost record (capability
-`api-endpoints`). If an unchanged projection could be skipped after a *failed* publish, a doubly-failed
-write would strand `uploaded` at `0` while the device believed it had published — an uploaded photo
-invisible to every other member, with no error anywhere. These two requirements SHALL NOT be edited
-independently.
+**The word "successful" remains load-bearing**, for a reason that survives the move to v2 even though its
+original justification does not. Under v1 it protected the byte route's best-effort upload record, which
+the next manifest publish repaired. v2's byte route records the resource itself and is **not** best-effort,
+and the manifest writes no resource row at all — so there is nothing left to repair. What remains is the
+union: skipping a publish after a *failed* one would leave the backend holding an older asset set while the
+device believed it had published, so photos already uploaded would stay absent from the event union with no
+error anywhere. The rule is unchanged; only its reason is.
 
-Enrollment (capability `join-event`) writes a **register-only empty** manifest, so the skip-if-unchanged
-record is a belief about the server that a second writer can falsify. Any successful register-only write
-SHALL therefore **invalidate** that record, so the next cycle re-publishes the projection rather than
-skipping it. A **failed** register-only write SHALL leave the record intact — the server was not changed,
-so the belief is still true.
+The manifest producer is now the **only** writer of this document. Enrollment no longer writes a
+register-only empty manifest (capability `join-event`), so the skip-if-unchanged record has no second
+writer that can falsify it, and joining SHALL NOT invalidate it. A rejoin therefore leaves the membership's
+existing asset set intact and correctly skips a republish of an unchanged projection — the union continues
+to list this device's photos with no blank window between the join and the next cycle.
 
 #### Scenario: Synchronous publish with skip-if-unchanged
 
@@ -211,17 +229,18 @@ so the belief is still true.
 - **WHEN** a manifest publish fails and the next cycle's projection is unchanged
 - **THEN** the next cycle publishes again rather than skipping, because the last write was not successful
 
-#### Scenario: Re-joining an event does not empty this device's manifest
+#### Scenario: Re-joining an event never empties this device's manifest
 
 - **WHEN** the device re-enrolls in an event it has already contributed to — after a leave, a durable
   state reset, or a reinstall — and the projected snapshot is unchanged from before
-- **THEN** the enrollment's empty manifest is overwritten by the projection on the next cycle, so the
-  event union still lists this device's uploaded photos
+- **THEN** the join writes no manifest, the membership's asset set is untouched, the unchanged projection
+  is correctly skipped, and the event union lists this device's uploaded photos throughout
 
-#### Scenario: A failed enrollment does not force a redundant publish
+#### Scenario: The producer is the only writer
 
-- **WHEN** a register-only enrollment write is not confirmed by the backend
-- **THEN** the skip-if-unchanged record is unchanged, and an unchanged projection still skips its publish
+- **WHEN** any join, re-join, provision or reconfigure occurs
+- **THEN** no manifest is written by it, and the skip-if-unchanged record continues to describe the last
+  projection this producer successfully published
 
 #### Scenario: Kill mid-publish leaves the previous state intact
 

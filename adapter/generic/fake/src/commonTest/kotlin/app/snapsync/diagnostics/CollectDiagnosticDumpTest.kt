@@ -130,14 +130,14 @@ class CollectDiagnosticDumpTest {
                 osVersion = "iOS 26.5",
                 deviceModel = "iPhone12,8",
                 uploadTier = "photokit",
-                uploadBase = "https://snapsync.stho.net/api/v1",
+                uploadBase = "https://snapsync.stho.net/api/v2",
                 reporterEnvironment = "production",
             ),
         ).collect(NOTE, SCREEN)
 
         assertEquals("512", dump.state["build"])
         assertEquals("photokit", dump.state["upload_tier"])
-        assertEquals("https://snapsync.stho.net/api/v1", dump.state["upload_base"])
+        assertEquals("https://snapsync.stho.net/api/v2", dump.state["upload_base"])
         assertEquals("LIMITED", dump.state["photo_permission"])
         assertEquals("true", dump.state["joined"])
         assertEquals("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e", dump.state["event_id"])

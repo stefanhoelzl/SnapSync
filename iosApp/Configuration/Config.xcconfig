@@ -62,9 +62,9 @@
 
 // Public version (CFBundleShortVersionString), inherited by BOTH the app and the background-upload
 // extension targets (this is the project-level base config; neither target pins a target-level
-// MARKETING_VERSION any more). This value is the version FLOOR, two-part `X.Y`, seeded at 0.1. It is
-// what a plain/local build carries, and the seed a main/internal build carries before any release tag
-// exists. ios.yml COMPUTES the version each main build actually carries as
+// MARKETING_VERSION any more). This value is the version FLOOR, two-part `X.Y`. It is what a plain,
+// LOCAL or SIDELOAD build carries — those have no release tag to compute a version from — and the seed a
+// main/internal build carries before any release tag exists. ios.yml COMPUTES the version each main build actually carries as
 //   MARKETING_VERSION = max(this floor, latest vX.Y tag with its minor incremented by 1)
 // (integer minor bump — 0.9→0.10, never a decimal carry to 1.0 — compared as (major,minor) tuples),
 // so builds auto-advance off the last release tag. The floor is normally left alone; bump it here (via
@@ -73,12 +73,20 @@
 // channel (ios-appstore-release / .github/workflows/ios-appstore-promote.yml) PROMOTES an existing build
 // and derives the store version FROM it — it never overrides MARKETING_VERSION and never builds.
 //
+// ⚠️ THE FLOOR MUST STAY AT OR ABOVE `MIN_APP_VERSION` in `api/src/config.ts`. The backend refuses any
+// build declaring less than that minimum with a `426`, and the version a dev build declares IS this
+// floor. Raise the minimum without raising the floor and every developer, every sideload and every
+// simulator is locked out of the backend by a screen telling them to install from the App Store — while
+// TestFlight and release builds, which compute a version off the release tag, are entirely fine. That
+// asymmetry is why it is invisible until someone tries to work. `api-deploy.yml` asserts the relation
+// (it parses this line), so a half-move fails the run rather than the dev loop.
+//
 // DELIBERATELY NOT in the generated fragment: the floor is RELEASE POLICY, not a deployment fact and not
 // a build-channel fact. Every deployment ships the same floor, and moving it into the resolver would put
 // release policy behind a generator for no gain.
 // ⚠️ Do NOT set the Version field in Xcode's target → General tab: Xcode would write a target-level
 // MARKETING_VERSION back into project.pbxproj, shadowing this value again.
-MARKETING_VERSION = 0.1
+MARKETING_VERSION = 0.4
 
 // Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (event-link), the App
 // Group group.app.snapsync (the background-upload extension's shared ledger container), and the

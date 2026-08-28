@@ -14,7 +14,7 @@ import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.membership.JoinEvent
-import app.snapsync.feature.membership.JoinOutcome
+import app.snapsync.feature.membership.toCommit
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.MutableRenameStatusSource
@@ -30,6 +30,7 @@ import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
+import app.snapsync.feature.version.AppVersionGate
 import app.snapsync.feature.upload.UploadMechanismRuntime
 import app.snapsync.feature.upload.requireConsistent
 import app.snapsync.feature.upload.uploadMechanismTable
@@ -55,6 +56,7 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
+import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.Clock
@@ -77,7 +79,7 @@ import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.Enrollment
+import app.snapsync.ports.EventJoin
 import app.snapsync.ports.LeaveNotifier
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
@@ -85,7 +87,7 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
-import app.snapsync.ports.SharePresenter
+import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
@@ -124,10 +126,10 @@ class AppPorts(
      *  `presentPhotoPicker: () -> Unit` field until this port absorbed it: it is the same need — hand the
      *  user back to the system to widen what this app may see — answered through the same read-models. */
     val photoAccessRequester: PhotoAccessRequester,
-    /** The platform share surface for the invite URL — the platform half of the [UserCommands.share]
-     *  command, and a port rather than the `(String) -> Unit` the shell used to fill with a UIKit
-     *  presenter. [SharePresenter.None] keeps it inert off-device, where there is no surface to reach. */
-    val sharePresenter: SharePresenter = SharePresenter.None,
+    /** The two ways this app hands something to the platform and stops being involved — the share sheet
+     *  for the invite URL and the URL opener for the store link (see [PlatformHandoff]). Both inert
+     *  off-device, so a composition with no platform to reach writes nothing about either. */
+    val handoff: PlatformHandoff = PlatformHandoff(),
     /**
      * The **main lane** (spec `module-architecture`, law "Dispatcher lanes are fixed by the
      * composition"): the dispatcher platform-UI commands run on — `share`, `requestAccess`,
@@ -169,8 +171,8 @@ class AppPorts(
     val newDownloadTransport: (DownloadTransportHost) -> DownloadTransport,
     val union: EventUnionSource,
     val directory: EventDirectory,
-    /** The enrollment PUT — production passes `:adapter:generic:app`'s `HttpEnrollment`. */
-    val enrollment: Enrollment,
+    /** The join request — production passes `:adapter:generic:app`'s `HttpEventJoin`. */
+    val eventJoin: EventJoin,
     /**
      * The **same** manifest record the upload tier's producer keeps (`UploadPorts.manifestStore`).
      * Enrolling overwrites the server's manifest with an empty one, so it must invalidate that record or
@@ -294,6 +296,13 @@ class AppCore internal constructor(
         // only this process's bundle config — safe on a locked background launch.
         ports.diagnosticsReporter.start()
     }
+
+    /**
+     * Whether the backend is refusing this build as too old (capability `min-app-version`). NOT lazy:
+     * its writer is the shell's HTTP interceptor, built before this graph is touched, and a lazy cell
+     * would be created by its first reader — possibly after the refusal it exists to record.
+     */
+    val versionGate: AppVersionGate = AppVersionGate()
 
     /**
      * Device attestation (capability `device-attestation`) — the bearer token EVERY backend call
@@ -566,7 +575,7 @@ class AppCore internal constructor(
             configSource = ports.configSource,
             deviceId = ports.deviceId,
             details = ports.directory,
-            enroller = ManifestDeviceEnroller(ports.enrollment, ports.manifestStore),
+            enroller = ManifestDeviceEnroller(ports.eventJoin),
             provision = ports.provision,
         )
     }
@@ -940,8 +949,10 @@ class AppCore internal constructor(
                     eventCreator.create(name, startsAt.at.iso, endsAt.at.iso)
                 }
             },
-            // The join gate's commit (capability `join-event`): enroll (register-only empty manifest)
-            // then provision. `true` unless enrollment failed (the same-event no-op is a success).
+            // The join gate's commit (capability `join-event`): join (no body, no manifest) then
+            // provision. The outcome is NAMED rather than reduced to a Boolean, because capacity and a
+            // transient failure need different screens: one offers a Retry that may work, the other must
+            // not offer one at all. The same-event no-op is a success.
             commitJoin = {
                 eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
                 saveToAlbum,
@@ -949,18 +960,21 @@ class AppCore internal constructor(
                 awaitingOnCoreLane(
                     "tap.commitJoin",
                     params = "eventId=$eventId",
-                    result = { joined: Boolean -> "joined=$joined" },
+                    result = { commit: JoinCommit -> "commit=$commit" },
                 ) {
                     joinEvent.join(
-                        eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
-                        saveToAlbum,
-                    ) != JoinOutcome.EnrollFailed
+                        eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate,
+                        direction, saveToAlbum,
+                    ).toCommit()
                 }
             },
             // Share is pure platform (a system sheet over the top view controller). Decorated like the
             // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
             // instrumentation exists to eliminate.
-            share = { url -> onUiLane("tap.share") { ports.sharePresenter.share(url) } },
+            share = { url -> onUiLane("tap.share") { ports.handoff.share.share(url) } },
+            // Leaving the app for the store page (capability `min-app-version`) — UI lane and
+            // instrumented, like every other platform-surface command.
+            openLink = { url -> onUiLane("tap.openLink") { ports.handoff.links.open(url) } },
             // The permission user-taps (capability `permission-gate`), bound to the requester port here
             // so presentation never names it (migration step 9). `requestAccess` returns nothing and
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.

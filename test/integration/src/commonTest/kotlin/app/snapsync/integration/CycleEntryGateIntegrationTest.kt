@@ -63,13 +63,17 @@ class CycleEntryGateIntegrationTest {
         w.provision("E")
         w.addOwnAsset("A")
         w.membershipUnreadable = true
+        val before = w.store.publishesOf("E", w.ownDeviceId)
 
         w.runUploadCycle()
 
         assertEquals(emptyList(), w.platform.created.map { it.filename }, "no upload job")
         assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "no object landed")
         assertNull(w.ledgerBackend.get("A-primary.jpg"), "no ledger row")
-        assertEquals(emptyList(), w.notified, "no notify")
+        // The publish is what announces a device's asset set now (there is no notify route on the
+        // versioned device API), so "touched no storage" has to mean the cycle published nothing — not
+        // merely that the resulting manifest looks unchanged, which a republish would satisfy too.
+        assertEquals(before, w.store.publishesOf("E", w.ownDeviceId), "no manifest published")
     }
 
     // The other half of the gate: the fix must not turn a REAL leave into a skip. A leave that stopped

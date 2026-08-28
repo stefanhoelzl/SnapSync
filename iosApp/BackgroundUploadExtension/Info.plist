@@ -46,7 +46,7 @@
 	     Deployment.plist is copied into the .appex as well as the .app; a copy that reached only one
 	     of them is a reachable state, and the one ios.yml asserts against both. -->
 	<key>BackgroundUploadURLBase</key>
-	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v1</string>
+	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2</string>
 	<key>EXAppExtensionAttributes</key>
 	<dict>
 		<key>EXExtensionPointIdentifier</key>

@@ -2,12 +2,14 @@
 
 ## Purpose
 
-The on-device, network-free `UploadRequestProvider` that builds the bunny edge upload URL
-(`/files/devices/<deviceId>/<encoded-filename>`) using only string-building — no crypto, no signing,
-no network I/O. It sets `Content-Type` and, when one is available, the device token's
-`Authorization: Bearer` header (capability `device-attestation`) — reading that token is the provider's
-only side effect, and it still mints nothing. It carries the deterministic, injective
-filename→destination mapping that anchors upload idempotency. Lives in `:domain`'s `model/` zone
+The on-device, network-free `UploadRequestProvider` that builds the byte upload URL
+(`/files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>`) using only string-building — no
+crypto, no signing, no network I/O. It sets `Content-Type`, the calling build's marketing version
+(capability `min-app-version`), and, when one is available, the device token's `Authorization: Bearer`
+header (capability `device-attestation`) — reading that token is the provider's only side effect, and it
+still mints nothing. It carries the deterministic, injective resource→destination mapping that anchors
+upload idempotency, and the destination it composes resolves to the **same stored object name** the
+previous URL shape did, which is what makes crossing versions cost no re-upload. Lives in `:domain`'s `model/` zone
 (seated by migration step 3a).
 ## Requirements
 ### Requirement: Pure URL-building provider
@@ -32,42 +34,79 @@ instance** supplied and SHALL NOT read `Resource.data`. The provider SHALL live 
 ### Requirement: Edge URL composition with injective filename encoding
 
 The provider SHALL map a `Resource` to the URL
-`<host>/files/devices/<deviceId>/<encoded-filename>`, where `host` is the injected compile-time
-base, and `<deviceId>` is injected verbatim (already a canonical UUID, not re-encoded). The byte
-destination is **event-independent**: it carries no `eventId` and is partitioned only by
-`deviceId`, so the same resource maps to the same byte destination regardless of which event it is
-uploaded for (this is what makes bytes reusable across events). `<encoded-filename>` SHALL be the
-percent-encoding of `resource.filename`'s UTF-8 bytes, escaping every byte outside `[A-Za-z0-9._-]`
-as `%XX` with **uppercase** hex. The `filename → destination` mapping SHALL be **deterministic and
-injective** (distinct filenames never collide) — the contract where upload idempotency lives. The
-encoded filename SHALL be a single path segment: any `/` in the filename SHALL be escaped to `%2F`
-so the edge endpoint decodes it back to one slash-free segment.
+`<host>/files/devices/<deviceId>/<assetId>/<role>?filename=<encoded-capture-name>`, where `host` is the
+injected compile-time base (carrying exactly one `/api/vN` prefix) and `<deviceId>` is injected verbatim
+(already a canonical UUID, not re-encoded). The byte destination is **event-independent**: it carries no
+`eventId` and is partitioned only by `deviceId`, so the same resource maps to the same byte destination
+regardless of which event it is uploaded for (this is what makes bytes reusable across events).
 
-#### Scenario: Unreserved filename passes through
-- **WHEN** the filename contains only `[A-Za-z0-9._-]`
-- **THEN** the URL path ends `/files/devices/<deviceId>/<filename>` unchanged
+`<assetId>` and `<role>` SHALL be derived from `resource.filename` — the ledger key, shaped
+`<assetId>-<role>.<ext>` — through the shared `assetIdFromUploadKey` / `roleFromUploadKey` parsers, so the
+one definition of that layout stays in `model/`. Each SHALL be emitted as a single path segment,
+percent-encoding every byte outside `[A-Za-z0-9._-]` as `%XX` with **uppercase** hex; any `/` SHALL be
+escaped to `%2F` so the endpoint decodes it back to one slash-free segment.
+
+`<encoded-capture-name>` SHALL be the same percent-encoding applied to the resource's capture filename,
+taken from `resource.metadata`'s `RESOURCE_META_ORIGINAL_FILENAME` entry, treating a blank value as absent
+and **falling back to `resource.filename`** (the key itself). The fallback is exact rather than
+approximate: the endpoint consumes only the value's **extension** when composing the stored object name,
+and the key carries the same extension as the capture name it was built from — so a request built on the
+retry path, where metadata is empty, addresses a byte-identical object. It is required because the query
+parameter is mandatory and an empty value is refused.
+
+The `resource → destination` mapping SHALL remain **deterministic and injective** (distinct resources never
+collide) — the contract where upload idempotency lives — and the stored object name it resolves to SHALL be
+byte-identical to the one v1 composed for the same resource, so a device crossing versions finds its bytes
+where it left them and re-uploads nothing.
+
+#### Scenario: Identity is named in the path
+- **WHEN** `provide` is called for a resource whose key is `<assetId>-<role>.<ext>`
+- **THEN** the URL path ends `/files/devices/<deviceId>/<assetId>/<role>`, with no synthetic object name in
+  any segment
+
+#### Scenario: The capture name travels as a required query parameter
+- **WHEN** the resource carries `RESOURCE_META_ORIGINAL_FILENAME`
+- **THEN** the URL carries `?filename=` with that value percent-encoded, and the value never appears in any
+  path segment
+
+#### Scenario: A rebuilt resource with no metadata still addresses the same object
+- **WHEN** `provide` is called for a `Resource` rebuilt from a job key alone, so its metadata is empty
+- **THEN** the query carries the key as the capture name, and the object name the endpoint composes is
+  byte-identical to the one the original request resolved to
 
 #### Scenario: Reserved bytes percent-encode
-- **WHEN** the filename contains bytes outside `[A-Za-z0-9._-]` (including multi-byte UTF-8 or `/`)
-- **THEN** each such byte is emitted as uppercase `%XX` in the final path segment
+- **WHEN** an `assetId`, `role` or capture name contains bytes outside `[A-Za-z0-9._-]` (including
+  multi-byte UTF-8 or `/`)
+- **THEN** each such byte is emitted as uppercase `%XX`
 
-#### Scenario: Distinct filenames never collide
-- **WHEN** two different filenames are built
+#### Scenario: Distinct resources never collide
+- **WHEN** two different resources are built
 - **THEN** the resulting URLs differ
 
 #### Scenario: Destination is event-independent
 - **WHEN** the same `resource` is built for the same `(host, deviceId)`
-- **THEN** the URL is the same byte destination with no `eventId` anywhere in the path
+- **THEN** the URL is the same byte destination with no `eventId` anywhere in it
+
+#### Scenario: The object name is unchanged across versions
+- **WHEN** the same asset and role are uploaded under the v1 destination and the v2 destination
+- **THEN** both resolve to the same stored object name
 
 ### Requirement: Returned request shape — Content-Type and Authorization, no metadata
 
-`UploadRequest.headers` SHALL contain exactly `Content-Type` and
-`Authorization` (`Bearer <token>`, the device token of capability `device-attestation`) — and nothing
-else: **no** `Host` (URL-implied) and **no** custom metadata headers (the bunny native Storage API has
-none; `resource.metadata` SHALL NOT be emitted as headers). `UploadRequest.url` SHALL be the complete
-edge URL `<host>/files/devices/<deviceId>/<encoded-filename>` with no query string (no signature, no
-expiry parameters) — the credential rides in the header, never in the URL, so the URL stays **stable
-with no expiry** and a retry re-derives a byte-identical destination.
+`UploadRequest.headers` SHALL contain exactly `Content-Type`, `Authorization` (`Bearer <token>`, the device
+token of capability `device-attestation`) and the **app-version header** carrying the calling build's
+marketing version (capability `min-app-version`) — and nothing else: **no** `Host` (URL-implied) and **no**
+custom metadata headers (the bunny native Storage API has none; `resource.metadata` SHALL NOT be emitted as
+headers).
+
+The app-version header is required here and not only on the shared HTTP client because **the OS performs
+this request**: it is handed to the platform's background-upload subsystem and issued later, outside any
+client this app controls, so a header the client adds cannot reach it. A v2 request that does not declare
+the version is refused `426`.
+
+`UploadRequest.url` SHALL be the complete edge URL described above, carrying the mandatory `filename` query
+and **no credential parameters** (no signature, no expiry) — the credential rides in the header, never in
+the URL, so the URL stays **stable with no expiry** and a retry re-derives a byte-identical destination.
 
 `Content-Type` SHALL be the resource's **MIME type**, taken from `resource.metadata`'s
 `RESOURCE_META_MIME` entry (resolved platform-side — on iOS by `UTType.preferredMIMEType`), treating a
@@ -95,11 +134,16 @@ When no token is available, `provide` SHALL still return a request (omitting the
 failing. The resulting `401` is a retryable failure like any other; refusing to build a request would
 strand the resource instead.
 
-#### Scenario: Content-Type and Authorization are carried
+#### Scenario: Content-Type, Authorization and the app version are carried
 
 - **WHEN** `provide` returns and a token is available
-- **THEN** `headers` contains exactly `Content-Type` and `Authorization: Bearer <token>` — no `Host` and
-  no `x-*-meta-*` entries, even when `resource.metadata` is non-empty
+- **THEN** `headers` contains exactly `Content-Type`, `Authorization: Bearer <token>` and the app-version
+  header — no `Host` and no `x-*-meta-*` entries, even when `resource.metadata` is non-empty
+
+#### Scenario: The version rides on the OS-performed request
+
+- **WHEN** the composed request is handed to the platform's background-upload subsystem and issued later
+- **THEN** it declares the app version itself, because no client this app controls issues it
 
 #### Scenario: Content-Type is the MIME type, not the platform UTI
 
@@ -116,7 +160,7 @@ strand the resource instead.
 #### Scenario: URL carries no auth query string
 
 - **WHEN** `provide` returns
-- **THEN** `url` is `<host>/files/devices/<deviceId>/<encoded-filename>` with no `?`-query parameters
+- **THEN** `url` carries the mandatory `filename` parameter and no signature or expiry parameters
 
 #### Scenario: A retry picks up a refreshed token
 
@@ -127,8 +171,8 @@ strand the resource instead.
 #### Scenario: A missing token still yields a request
 
 - **WHEN** `provide` is called and no token is present in the shared Keychain
-- **THEN** a request is returned with `Content-Type` and no `Authorization` header, and the upload is
-  allowed to fail and be retried rather than being abandoned
+- **THEN** a request is returned with `Content-Type` and the app-version header but no `Authorization`
+  header, and the upload is allowed to fail and be retried rather than being abandoned
 
 ### Requirement: Plain-string configuration contract
 
@@ -154,4 +198,3 @@ re-derived much later re-PUTs the exact same destination (nothing to re-mint or 
 #### Scenario: Rebuild is byte-identical
 - **WHEN** `provide` is called twice for the same resource with the same configuration
 - **THEN** both calls produce byte-identical URLs and headers
-

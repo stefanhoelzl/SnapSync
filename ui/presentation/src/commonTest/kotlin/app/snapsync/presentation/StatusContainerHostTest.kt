@@ -15,6 +15,7 @@ import app.snapsync.model.Arrow
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinCommit
 import app.snapsync.feature.membership.RenameStatus
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.decodeEventUrl
@@ -34,6 +35,8 @@ import app.snapsync.feature.status.SyncStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
@@ -259,7 +262,7 @@ private fun host(
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (
         String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
-    ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
+    ) -> JoinCommit = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
     leave: suspend () -> Unit = {},
     attested: MutableStateFlow<Boolean> = MutableStateFlow(true),
     onIntentError: (Throwable) -> Unit = {},
@@ -282,7 +285,7 @@ private fun TestScope.firstJoinGate(
     configFake: FakeConfig = FakeConfig(null),
     commitJoin: suspend (
         String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
-    ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
+    ) -> JoinCommit = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
     // Counts details fetches — a switch's post-leave derivation must re-use the load, never re-run it.
     onLoad: () -> Unit = {},
     leave: suspend () -> Unit = {},
@@ -598,7 +601,7 @@ class StatusContainerHostTest {
             commands = UserCommands(
                 commitJoin = { id, name, startsAt, _, _, cutoff, _, direction, _ ->
                     config.save(EventConfig(id, name, minPhotoDate = cutoff, maxPhotoDate = CEILING, startsAt = startsAt, direction = direction))
-                    true
+                    JoinCommit.Committed
                 },
             ),
             loadJoinDetails = { JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT) },
@@ -857,7 +860,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, cutoff, _, _, _ ->
-                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); true
+                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); JoinCommit.Committed
             },
         ).test(this) {
             runOnCreate()
@@ -886,7 +889,7 @@ class StatusContainerHostTest {
                 seenStartsAt = startsAt
                 seenCutoff = cutoff
                 configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING))
-                true
+                JoinCommit.Committed
             },
         ).test(this) {
             runOnCreate()
@@ -911,7 +914,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-06T14:32:11Z"), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, cutoff, _, _, _ ->
-                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); true
+                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); JoinCommit.Committed
             },
         ).test(this) {
             runOnCreate()
@@ -932,7 +935,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { id, name, _, _, _, _, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); true },
+            commitJoin = { id, name, _, _, _, _, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); JoinCommit.Committed },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -951,7 +954,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.NotFound },
-            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Committed },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -982,12 +985,32 @@ class StatusContainerHostTest {
     }
 
     @Test
+    fun `a full event lands on its own step rather than the retryable one`() = runTest {
+        // Capacity does not heal, and the two failures reach DIFFERENT screens because of it: the
+        // retryable one pins a Retry, this one offers only Cancel (capability `join-event`). Collapsed
+        // into one step, a member at a full event could press Retry forever with nothing saying why.
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Full },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            containerHost.confirmJoinAs()
+            assertJoining(awaitState(), EVENT_ID, phaseAt(JoinPhase.Detailed.Step.EventFull, "Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
     fun `a failed enrollment leaves a retryable commit-failed state and does not join`() = runTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, _, _ -> false },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -1112,7 +1135,7 @@ class StatusContainerHostTest {
             commitJoin = { id, name, _, _, _, _, _, _, _ ->
                 joins++
                 configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING))
-                true
+                JoinCommit.Committed
             },
         ).test(this) {
             runOnCreate()
@@ -1140,7 +1163,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { id, name, _, _, _, _, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); true },
+            commitJoin = { id, name, _, _, _, _, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); JoinCommit.Committed },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
@@ -1174,7 +1197,7 @@ class StatusContainerHostTest {
                 joinedDirection = direction
                 joinedAlbum = album
                 configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING))
-                true
+                JoinCommit.Committed
             },
             leave = { configFake.clear() },
         ).test(this) {
@@ -1207,7 +1230,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Committed },
             leave = { /* the clear failed: config stays present, as LeaveEvent's swallow leaves it */ },
         ).test(this) {
             runOnCreate()
@@ -1231,7 +1254,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Committed },
             leave = { configFake.clear() },
         ).test(this) {
             runOnCreate()
@@ -1255,7 +1278,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { id, name, _, _, _, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); true },
+            commitJoin = { id, name, _, _, _, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); JoinCommit.Committed },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -1327,7 +1350,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, _, _, direction, _ ->
-                committedDirection = direction; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING, direction = direction)); true
+                committedDirection = direction; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING, direction = direction)); JoinCommit.Committed
             },
         ).test(this) {
             runOnCreate()
@@ -1349,7 +1372,13 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF, maxPhotoDate = CEILING)); true },
+            commitJoin = { _, _, _, _, _, _, _, direction, _ ->
+                committedDirection = direction
+                configFake.save(
+                    EventConfig(EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF, maxPhotoDate = CEILING),
+                )
+                JoinCommit.Committed
+            },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -1367,7 +1396,13 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF, maxPhotoDate = CEILING)); true },
+            commitJoin = { _, _, _, _, _, _, _, direction, _ ->
+                committedDirection = direction
+                configFake.save(
+                    EventConfig(EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF, maxPhotoDate = CEILING),
+                )
+                JoinCommit.Committed
+            },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(
@@ -1735,7 +1770,7 @@ class StatusContainerHostTest {
         var commits = 0
         firstJoinGate(
             PermissionStatus.NOT_DETERMINED, requester, configFake = configFake,
-            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; JoinCommit.Committed },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))

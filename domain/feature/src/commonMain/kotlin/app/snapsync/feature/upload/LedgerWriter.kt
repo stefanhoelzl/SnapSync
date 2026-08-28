@@ -41,8 +41,17 @@ class LedgerWriter(
         return true
     }
 
-    suspend fun recordRequested(resource: Resource, attempt: Int, eventId: String) =
-        record(resource, LedgerState.REQUESTED, attempt, eventId)
+    /**
+     * [destinationPath] rides THIS write and no other: it is the one transition that means "an upload for
+     * this row now exists at the platform", so it is the moment the address becomes true. Recording it
+     * separately would open a window in which a job exists whose destination the ledger does not know.
+     */
+    suspend fun recordRequested(
+        resource: Resource,
+        attempt: Int,
+        eventId: String,
+        destinationPath: String? = null,
+    ) = record(resource, LedgerState.REQUESTED, attempt, eventId, destinationPath)
 
     suspend fun recordCompleted(resource: Resource, attempt: Int, eventId: String) =
         record(resource, LedgerState.COMPLETED, attempt, eventId)
@@ -117,8 +126,14 @@ class LedgerWriter(
      * was first recorded from a real discovered resource, and a later state change has nothing new to
      * say about it.
      */
-    private suspend fun record(resource: Resource, state: LedgerState, attempt: Int, eventId: String) {
-        val row = resource.toLedgerRow(state, attempt, eventId)
+    private suspend fun record(
+        resource: Resource,
+        state: LedgerState,
+        attempt: Int,
+        eventId: String,
+        destinationPath: String? = null,
+    ) {
+        val row = resource.toLedgerRow(state, attempt, eventId, destinationPath)
         val prior = if (row.needsManifestDetail) backend.get(row.key) else null
         backend.put(
             if (prior == null || prior.needsManifestDetail) {
@@ -134,6 +149,10 @@ class LedgerWriter(
                     role = prior.role,
                     contentType = prior.contentType,
                     originalFilename = prior.originalFilename,
+                    // Preserved on the same terms as the manifest detail: a later transition has nothing
+                    // new to say about where the upload was addressed, and blanking it would strand the
+                    // row exactly when the platform hands its job back.
+                    destinationPath = destinationPath ?: prior.destinationPath,
                 )
             },
         )

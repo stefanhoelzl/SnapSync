@@ -44,12 +44,14 @@ abstract class LedgerStoreContract {
         state: LedgerState = LedgerState.REQUESTED,
         attempt: Int = 0,
         eventId: String = "",
+        destinationPath: String? = null,
     ) = LedgerEntry(
         key, assetId, state, attempt, eventId,
         creationDate = CREATION_DATE,
         role = ResourceRole.PRIMARY,
         contentType = "image/heic",
         originalFilename = "IMG_0001.HEIC",
+        destinationPath = destinationPath,
     )
 
     /** The resource whose recording produces [entry] — the writer takes resources now, not bare keys. */
@@ -73,6 +75,35 @@ abstract class LedgerStoreContract {
         backend.put(entry)
 
         assertEquals(entry, backend.get(entry.key))
+    }
+
+    @Test
+    fun `a row is resolvable by the destination its upload was addressed to`() = runTest {
+        val backend = createBackend()
+        val path = "/api/v2/files/devices/D/cloud-1/primary"
+
+        backend.put(entry(destinationPath = path))
+
+        assertEquals(entry().key, backend.entryForDestination(path)?.key)
+    }
+
+    @Test
+    fun `a row recorded without a destination is never matched and stays usable`() = runTest {
+        val backend = createBackend()
+
+        // A row written before the ledger kept a destination — the state every device carries after an
+        // upgrade. It must read back normally and simply not answer a destination lookup, because the
+        // tier that reads it falls back to the older recovery for exactly these rows.
+        backend.put(entry())
+
+        assertNull(backend.entryForDestination("/api/v2/files/devices/D/cloud-1/primary"))
+        assertEquals(entry(), backend.get(entry().key))
+    }
+
+    @Test
+    fun `an unknown destination resolves to nothing`() = runTest {
+        val backend = createBackend()
+        assertNull(backend.entryForDestination("/api/v2/files/devices/D/never/primary"))
     }
 
     @Test

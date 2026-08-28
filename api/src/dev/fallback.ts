@@ -18,13 +18,18 @@
 /** How long a rig-supplied enrolment claims its token lives. Long enough never to expire mid-session. */
 export const DEV_ATTEST_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
-const CONFIG_ROUTE = /^\/api\/v1\/devices\/([0-9a-fA-F-]{36})$/;
+// Version-BLIND on purpose. This matcher decides whether the dev rig enrols a device before serving
+// its push registration, and a device that is not enrolled gets a permanent `401` — with the rig
+// answering normally, so the failure looks like a bad token rather than a stale regex. Pinning it to
+// one version means the next version bump strands every local build silently, which is what `/api/v1`
+// did until the device moved to `/api/v2`.
+const CONFIG_ROUTE = /^\/api\/v\d+\/devices\/([0-9a-fA-F-]{36})$/;
 
 /**
  * The device id to enrol before serving this request, or `null` when the request needs no enrolment.
  *
  * Scoped to the ONE route that reads the row. It deliberately does not match
- * `/api/v1/files/devices/<id>/…` or `/api/v1/events/<id>/devices/<id>`, which name a device but read no
+ * `/api/vN/files/devices/<id>/…` or `/api/vN/events/<id>/devices/<id>`, which name a device but read no
  * `devices` row — enrolling on those would be harmless and would also make this matcher untestable as a
  * statement of which route actually needs it.
  */

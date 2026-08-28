@@ -24,6 +24,18 @@ interface LedgerStore {
      * caller treat null as a fact about the ledger instead of a fact about the storage.
      */
     suspend fun get(key: String): LedgerEntry?
+
+    /**
+     * The row whose upload was addressed to [destinationPath], or null when no row records it.
+     *
+     * This is how a returned platform upload job is resolved back to its row: the destination is the only
+     * field a succeeded job reliably carries, and under a byte route that names identity in its path the
+     * ledger key is no longer recoverable from it (capability `ios-photokit-upload`).
+     *
+     * A row recorded before the ledger kept a destination carries null and is never matched here, which
+     * is correct rather than lossy — such a row is recovered by the tier's own fallback.
+     */
+    suspend fun entryForDestination(destinationPath: String): LedgerEntry?
     suspend fun put(entry: LedgerEntry)
     suspend fun aggregates(): LedgerAggregates
 

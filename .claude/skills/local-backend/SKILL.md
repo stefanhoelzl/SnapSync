@@ -25,8 +25,9 @@ of it can ship.
 
 1. **Start the rig** — `cd api && deno task dev:local` (curl loop, `127.0.0.1:8080`) or
    `deno task dev:tunnel` (adds a cloudflared quick tunnel so a real device can reach it). Both print
-   the origin and the store path, and write the origin to `api/.localdev/host`. (Any
-   `BACKGROUND_UPLOAD_URL_BASE=…` line it still prints is **dead** — see step 2.) It is a long-lived server rather than the work itself, so wrap it
+   the origin and the store path, and write the origin to `api/.localdev/host`. (It no longer prints a
+   `BACKGROUND_UPLOAD_URL_BASE=…` line — that override was dead, and the hint now names the two steps in
+   step 2 instead.) It is a long-lived server rather than the work itself, so wrap it
    in **`ch-bg`** (CLAUDE.md, *Agent harness limits*) to keep the workspace able to go idle:
    `ch-bg deno task dev:tunnel`. Contract and detail: `api/README.md`.
 2. **Rebuild the IPA against it** — the upload host is **compile-time** (PhotoKit forces it), so this

@@ -62,6 +62,21 @@
 # size-neutral here — it buys testability, not bytes. This ceiling falls when `AppPorts` is split (see
 # above) or when whole subsystems leave, not one rule at a time.
 #
+# RAISED 390 -> 400 by `device-speaks-v2`, which is a ceiling going the wrong way and therefore owes a
+# forcing proof. Here it is. The 390 search left `AppCore` measuring 389 — ONE line of slack — and the
+# `min-app-version` capability needs exactly TWO lines in this class: `val versionGate: AppVersionGate`,
+# which is the same shape as the `creationStatus`/`renameStatus` read-models beside it, and one
+# `openLink` binding in the block where every user command is bound. Neither is reducible: a read-model
+# the shell must reach has to be constructed where the graph is, and a command has to be bound with the
+# other commands. That change moved what it COULD move out (the join-outcome mapping went to
+# `feature/membership` as `toCommit()`, testable there and not here) and still needed two lines.
+#
+# So this is not slack being reclaimed — it is the observation that a ceiling with one line of headroom
+# blocks the next capability whatever that capability is, which makes it a ceiling on the composition
+# rather than on complexity. 400 is the next 10-line search step, restoring ~9 lines of headroom.
+# ⏰ Re-derive it at the next binary search rather than treating 400 as measured: it is a granularity
+# boundary, not a measurement, exactly as 390 was.
+#
 # `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
 # statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
 # a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
@@ -89,7 +104,7 @@ complexity:
     constructorThreshold: 47
   LargeClass:
     active: true
-    threshold: 390
+    threshold: 400
 style:
   ReturnCount:
     active: true

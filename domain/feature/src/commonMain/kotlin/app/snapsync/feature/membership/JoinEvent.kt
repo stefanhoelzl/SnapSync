@@ -2,6 +2,7 @@ package app.snapsync.feature.membership
 
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
+import app.snapsync.ports.JoinResult
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.CaptureCeiling
@@ -11,6 +12,7 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventEnd
 import app.snapsync.model.EventStart
 import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinCommit
 import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
 
@@ -19,9 +21,26 @@ import app.snapsync.model.clampToFloor
  * - [Committed]: enrolled and provisioned — the device is now joined.
  * - [AlreadyJoined]: the target is the currently-configured event — a no-op that does **not** re-enroll
  *   (protects a real asset manifest from the empty-manifest clobber; see the join-event spec).
- * - [EnrollFailed]: the enrollment PUT failed — nothing was persisted and no producer enabled.
+ * - [EventFull]: the event already holds its maximum number of devices — a refusal the USER can act on,
+ *   kept apart from [EnrollFailed] because the two have different remedies and a screen must be able to
+ *   say which (`module-architecture`, "Absence is never silent"). Nothing is persisted either way.
+ * - [EnrollFailed]: the join request failed or the event is gone — nothing persisted, no producer enabled.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EnrollFailed }
+enum class JoinOutcome { Committed, AlreadyJoined, EventFull, EnrollFailed }
+
+/**
+ * What the join surface should show for this outcome (capability `join-event`).
+ *
+ * A pure mapping, here rather than in `compose/`, because deciding that capacity and a transient
+ * failure reach DIFFERENT screens — one offering a Retry, one deliberately not — is a rule, and a rule
+ * in the wiring is a rule no test can reach. `AlreadyJoined` folds into [JoinCommit.Committed]: a
+ * member who is already in the event is in the event, and re-confirming is a no-op, not a failure.
+ */
+fun JoinOutcome.toCommit(): JoinCommit = when (this) {
+    JoinOutcome.Committed, JoinOutcome.AlreadyJoined -> JoinCommit.Committed
+    JoinOutcome.EventFull -> JoinCommit.Full
+    JoinOutcome.EnrollFailed -> JoinCommit.Failed
+}
 
 /**
  * The app-side join use-case: the details fetch, the register-only enrollment, and the commit. Pure
@@ -81,7 +100,11 @@ class JoinEvent(
         saveToAlbum: Boolean,
     ): JoinOutcome {
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
-        if (!enroller.enroll(eventId, deviceId())) return JoinOutcome.EnrollFailed
+        when (enroller.enroll(eventId, deviceId())) {
+            JoinResult.JOINED -> Unit
+            JoinResult.EVENT_FULL -> return JoinOutcome.EventFull
+            JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed
+        }
         provision(
             EventConfig(
                 eventId = eventId,

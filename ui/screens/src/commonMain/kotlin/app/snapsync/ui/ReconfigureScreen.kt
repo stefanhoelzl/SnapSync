@@ -134,6 +134,7 @@ internal fun screenLabel(state: UiState): String {
             ?: "Joined"
         is Layer.CreateEvent -> "CreateEvent"
         Layer.CreatingEvent -> "CreatingEvent"
+        is Layer.UpdateRequired -> "UpdateRequired"
     }
 }
 

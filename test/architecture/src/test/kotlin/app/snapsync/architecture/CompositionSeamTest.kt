@@ -169,10 +169,14 @@ class CompositionSeamTest {
                 "the attestation bearer, read per request from the AttestStore port (extension) or the " +
                 "core's own DeviceAttestation (app) — a call because a renewal must be picked up without " +
                 "rebuilding the cycle",
-            "onBatchUploaded" to
-                "the completion notify (capability `upload-completion-notify`) — the core's EventNotifier " +
-                "over the PushHttpClient port; the lambda is how the extension's cycle reaches a feature " +
-                "this bundle does not otherwise carry",
+            "appVersion" to
+                "JUDGEMENT CALL, and the SAME judgement as `host` directly above: the marketing version " +
+                "baked into THIS binary's own bundle — a build constant of the running process, not " +
+                "another system's state, and it cannot change while it runs. A thunk because the " +
+                "extension re-reads its own bundle and must declare ITS version on the byte upload the " +
+                "OS performs (capability `min-app-version`), which no shared client can reach. EXPIRY: " +
+                "if the declared version ever becomes runtime-resolved, it is a port — the same expiry " +
+                "`host` carries, for the same reason",
         ),
     )
 

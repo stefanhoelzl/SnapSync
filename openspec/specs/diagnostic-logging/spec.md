@@ -204,6 +204,14 @@ accepted for a dev-only diagnostic log.
 Each process SHALL write a boot banner on start naming the process and the build version, and SHALL
 write a teardown line where a clean shutdown path exists.
 
+The **build version** in that banner is the version the build DECLARES — and on a dev, local or
+sideload build that is the `MARKETING_VERSION` floor verbatim, because such a build has no release tag
+to compute a version from. A reader SHALL NOT infer recency from it: a dev build of today's `main`
+reports a version BELOW every build that has been released, and the two numbers are answering different
+questions. The declared version is also what the backend's version gate reads (capability
+`min-app-version`), so the banner is the one place a `426` refusal can be attributed from the log alone
+— which is why it names the declared version rather than something more flattering.
+
 Each process SHALL additionally write, at boot, the **baked upload base** — the compile-time backend
 host that build targets. It names the one fact that makes an otherwise-invisible failure legible: a
 build pointed at a different backend that has not had its durable sync state voided (capability
@@ -225,6 +233,11 @@ the per-cycle enumeration summary already carries.
 #### Scenario: Boot banner on start
 - **WHEN** the app or extension process starts and installs logging
 - **THEN** a banner line naming the process and build version is written before other log lines of that run
+
+#### Scenario: A dev build's banner version trails released builds
+- **WHEN** a dev, local or sideload build writes its boot banner
+- **THEN** the version it names is the `MARKETING_VERSION` floor, which is at or below every released
+  version, and is NOT evidence that the build is old
 
 #### Scenario: Boot banner names the backend this build targets
 - **WHEN** the app or extension process starts and installs logging

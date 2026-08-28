@@ -51,6 +51,12 @@ class StatusActions(
     // Top-level rather than in a group of one: the create layer asks for exactly this and nothing else.
     val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
     /**
+     * Open a URL outside the app. Its ONE caller is the update-required screen's store button
+     * (capability `min-app-version`). Top-level rather than in a group, like [onCreateEvent]: it
+     * belongs to no escalation and shares its question with nothing.
+     */
+    val onOpenLink: (String) -> Unit = {},
+    /**
      * The member's edits to the capture-range form, bound to the container's intents. Both decision
      * surfaces ask for the same seven, so they are one bundle rather than two identical sets.
      */

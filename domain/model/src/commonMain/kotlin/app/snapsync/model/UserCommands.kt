@@ -24,13 +24,18 @@ package app.snapsync.model
  * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`), then
  *   route it into the join gate (capability `event-creation-ui`). Fire-and-forget; outcomes arrive via
  *   `CreationStatusSource`.
- * - [commitJoin] — enroll (register-only empty manifest) then provision the membership's capture-date
- *   **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window `startsAt`..`endsAt`),
- *   returning `true` when joined (incl. the already-joined no-op) and `false` on a failed enrollment
- *   (capability `join-event`).
+ * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
+ *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window
+ *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), at
+ *   capacity, or failed (capability `join-event`).
  * - [share] — hand the invite URL to the platform share surface (fire-and-forget, `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog (capability `permission-gate`): returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
+ * - [openLink] — hand a URL to the platform to open outside the app. Its ONE caller is the
+ *   update-required screen's App Store button (capability `min-app-version`), whose remedy is by
+ *   definition not in this app. The URL is passed in rather than known here, because the screen's
+ *   contract is that a build carrying no store URL renders no button — a command that knew the URL
+ *   could not express that.
  * - [openSettings] — open the app's system Settings page (the `DENIED` affordance). Distinct from
  *   [reconfigure], which edits this *membership's* settings, not the iOS system settings page.
  * - [choosePhotos] — present the platform's limited-library picker (capability
@@ -60,6 +65,27 @@ package app.snapsync.model
  *   affordance suggesting it can. An inert lambda would not express that: the affordance would exist
  *   and silently do nothing, which is the one outcome the contract forbids.
  */
+/**
+ * What a join commit did (capability `join-event`).
+ *
+ * A named outcome rather than a Boolean, because the two ways to fail need DIFFERENT screens and a
+ * Boolean cannot carry the difference. [Failed] is transient — the network, the backend, the moment —
+ * and the surface it produces offers a Retry that genuinely may work. [Full] is not: the event is at
+ * capacity, retrying fails identically, and a Retry button there is an invitation to press it forever.
+ * Collapsing them left a member tapping Retry against a wall with nothing telling them what the wall
+ * was.
+ */
+enum class JoinCommit {
+    /** The membership is committed (a re-join of the same event counts — it is already committed). */
+    Committed,
+
+    /** The event is at capacity; no retry can change that. */
+    Full,
+
+    /** The commit did not land, for a reason that may not hold next time. */
+    Failed,
+}
+
 class UserCommands(
     val leave: suspend () -> Unit = {},
     val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit = { _, _, _ -> },
@@ -73,10 +99,11 @@ class UserCommands(
         maxPhotoDate: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
-    ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
+    ) -> JoinCommit = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
     val share: (String) -> Unit = {},
     val requestAccess: () -> Unit = {},
     val openSettings: () -> Unit = {},
+    val openLink: (url: String) -> Unit = {},
     val choosePhotos: () -> Unit = {},
     val reconfigure: suspend (
         eventId: String,

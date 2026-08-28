@@ -2,6 +2,7 @@ package app.snapsync.feature.membership
 
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
+import app.snapsync.ports.JoinResult
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.CaptureCutoff
@@ -16,6 +17,7 @@ import app.snapsync.model.EventConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
+import app.snapsync.model.JoinCommit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -58,9 +60,9 @@ private class FakeConfigSource(initial: EventConfig?) : ConfigSource {
     override val config: StateFlow<EventConfig?> = state
 }
 
-private class FakeEnroller(private val result: Boolean) : DeviceEnroller {
+private class FakeEnroller(private val result: JoinResult = JoinResult.JOINED) : DeviceEnroller {
     val calls = mutableListOf<Pair<String, String>>()
-    override suspend fun enroll(eventId: String, deviceId: String): Boolean {
+    override suspend fun enroll(eventId: String, deviceId: String): JoinResult {
         calls += eventId to deviceId
         return result
     }
@@ -72,7 +74,7 @@ private class FakeDetails(private val result: EventDetails) : EventDirectory {
 
 private fun joinEvent(
     config: EventConfig?,
-    enrollResult: Boolean = true,
+    enrollResult: JoinResult = JoinResult.JOINED,
     details: EventDetails = EventDetails.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT),
     provisioned: MutableList<EventConfig> = mutableListOf(),
     enroller: FakeEnroller = FakeEnroller(enrollResult),
@@ -87,9 +89,22 @@ private fun joinEvent(
 class JoinEventTest {
 
     @Test
+    fun the_outcome_maps_to_what_the_join_surface_shows() {
+        // The mapping lives HERE rather than in `compose/` because it is a rule, not wiring: capacity and
+        // a transient failure reach different screens, and only one of them offers a Retry. In the
+        // composition no test could reach it (capability `join-event`).
+        assertEquals(JoinCommit.Committed, JoinOutcome.Committed.toCommit())
+        // Already a member IS a member — re-confirming is a no-op, never a failure.
+        assertEquals(JoinCommit.Committed, JoinOutcome.AlreadyJoined.toCommit())
+        assertEquals(JoinCommit.Full, JoinOutcome.EventFull.toCommit())
+        assertEquals(JoinCommit.Failed, JoinOutcome.EnrollFailed.toCommit())
+    }
+
+
+    @Test
     fun `join enrolls then provisions on success`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
-    val enroller = FakeEnroller(result = true)
+    val enroller = FakeEnroller(result = JoinResult.JOINED)
     val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
         .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
 
@@ -104,7 +119,7 @@ class JoinEventTest {
 @Test
 fun `a failed enrollment commits nothing`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
-    val outcome = joinEvent(config = null, enrollResult = false, provisioned = provisioned)
+    val outcome = joinEvent(config = null, enrollResult = JoinResult.FAILED, provisioned = provisioned)
         .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
 
     assertEquals(JoinOutcome.EnrollFailed, outcome)
@@ -114,7 +129,7 @@ fun `a failed enrollment commits nothing`() = runTest {
 @Test
 fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
-    val enroller = FakeEnroller(result = true)
+    val enroller = FakeEnroller(result = JoinResult.JOINED)
     val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, maxPhotoDate = FIXTURE_CEILING), enroller = enroller, provisioned = provisioned)
         .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
 
@@ -125,7 +140,7 @@ fun `re-joining the current event is a no-op that skips enrollment`() = runTest 
 
 @Test
 fun `switching to a different event enrolls`() = runTest {
-    val enroller = FakeEnroller(result = true)
+    val enroller = FakeEnroller(result = JoinResult.JOINED)
     val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF, maxPhotoDate = FIXTURE_CEILING), enroller = enroller)
         .join(EVENT_B, "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
 
@@ -149,6 +164,19 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
         joinEvent(config = null, provisioned = provisioned).join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
         assertEquals("Anna's Wedding", provisioned.single().name)
     }
+
+@Test
+fun `a full event is reported apart from a failure`() = runTest {
+    // Capacity is a refusal the user can act on — "this event is full" — while a transport failure is
+    // not. The previous seam answered both as `false`, so the join surface could only say that something
+    // went wrong (capability `join-event`).
+    val provisioned = mutableListOf<EventConfig>()
+    val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_FULL, provisioned = provisioned)
+        .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
+
+    assertEquals(JoinOutcome.EventFull, outcome)
+    assertTrue(provisioned.isEmpty(), "no config should be provisioned when the event is full")
+}
 
     @Test
     fun `join persists the chosen saveToAlbum`() = runTest {
@@ -243,7 +271,7 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
     @Test
     fun `a download-only join still enrolls the device`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val enroller = FakeEnroller(result = true)
+        val enroller = FakeEnroller(result = JoinResult.JOINED)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
             .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.DownloadOnly, false)
 

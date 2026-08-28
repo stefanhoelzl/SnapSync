@@ -2,7 +2,9 @@ package app.snapsync.world
 
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.model.roleFromUploadKey
 import kotlinx.serialization.Serializable
 
 /**
@@ -15,6 +17,24 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 class FileEntryDto(val filename: String, val url: String)
+
+/**
+ * One entry of the **v2** per-device listing — `{assetId, role, filename}`, and no `url`.
+ *
+ * The field named `filename` carries a different thing in each version: the storage KEY under v1, the
+ * CAPTURE name under v2. That collision is the reason this world serves both shapes rather than one — a
+ * client that misreads the field decodes either cleanly and seeds nonsense, and only a harness that can
+ * answer both can catch it.
+ *
+ * The world does not model a capture name distinct from the key and answers with the key. That is exact
+ * for every consumer: the key is recomposed from `assetId`/`role` plus this value's EXTENSION, which the
+ * two spellings share.
+ */
+@Serializable
+class DeviceResourceDto(val assetId: String, val role: String, val filename: String)
+
+/** The outcome of a v2 join, mirroring the backend's own three answers. */
+enum class JoinOutcome { ENROLLED, NO_SUCH_EVENT, FULL }
 
 /** One resource of a union asset (`GET /events/<id>/files`). */
 @Serializable
@@ -100,6 +120,18 @@ class BackendStore {
     /** Failure lever: when true, the per-device listing and event-union routes fail (mini-edge `502`). */
     var offline: Boolean = false
 
+    /**
+     * Operator lever: the minimum app version the **v2** routes demand, or `null` for a gate that is OFF.
+     *
+     * Off by default and armed deliberately. A gate that refused by default would fail every seam that
+     * does not yet declare a version — which is all of them until the client half ships — so the default
+     * has to be the permissive one (capability `min-app-version`).
+     */
+    var minAppVersion: String? = null
+
+    /** Devices ever enrolled per event (capability `event-limits`); the v2 join is the only route that refuses on it. */
+    var capacity: Int = 10
+
     // ---- mutations ------------------------------------------------------------------------------
 
     /** Deposit one stored object into a device's byte partition (store-direct byte transfer). */
@@ -178,6 +210,59 @@ class BackendStore {
         memberships[eventId to deviceId] = Membership(state = MemberState.ACTIVE, manifest = manifest)
     }
 
+    /**
+     * The **v2 join** (`PUT /events/<id>/devices/<id>`, no body): create or reactivate the membership,
+     * writing no manifest.
+     *
+     * An existing membership keeps its asset set — which is the whole point of splitting join from
+     * publish. Under v1 a rejoin wrote an empty manifest and blanked the device's contribution until the
+     * next cycle republished it; here there is no window at all.
+     */
+    fun join(eventId: String, deviceId: String): JoinOutcome {
+        if (eventId !in events) return JoinOutcome.NO_SUCH_EVENT
+        val existing = memberships[eventId to deviceId]
+        if (existing != null) {
+            memberships[eventId to deviceId] = existing.copy(state = MemberState.ACTIVE)
+            return JoinOutcome.ENROLLED
+        }
+        // Capacity counts every membership ever enrolled, active or departed — leaving frees no slot.
+        if (memberships.keys.count { it.first == eventId } >= capacity) return JoinOutcome.FULL
+        memberships[eventId to deviceId] =
+            Membership(state = MemberState.ACTIVE, manifest = DeviceManifest(deviceId, emptyList()))
+        return JoinOutcome.ENROLLED
+    }
+
+    /**
+     * The **v2 manifest publish** — contribution only. Replaces the membership's asset set and touches
+     * nothing else: it enrolls nobody and does **not** reactivate a departed member.
+     *
+     * Answers `false` for a device holding no membership, which the mini-edge turns into the backend's
+     * refusal. Modelling that as a create is the one divergence this world exists to prevent: it would let
+     * a device pass here and fail against the real backend.
+     */
+    fun putManifestV2Json(eventId: String, deviceId: String, json: String): Boolean {
+        val existing = memberships[eventId to deviceId] ?: return false
+        memberships[eventId to deviceId] = existing.copy(manifest = deviceManifestFromJson(json))
+        publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
+        return true
+    }
+
+    private val publishes = mutableMapOf<Pair<String, String>, Int>()
+
+    /**
+     * How many times a device has PUBLISHED its asset set for an event over the manifest route —
+     * inspectable outcome.
+     *
+     * A count rather than a value, because the publish IS the announcement now (the versioned device API
+     * has no notify route, and the backend fans out from the write): asserting the resulting manifest
+     * cannot distinguish "published the same set again" from "did not publish", and those are exactly
+     * the two answers a test about whether a cycle touched the backend needs to tell apart.
+     *
+     * Counts the route only. `putManifest` is the foreign-device injection helper, not a request, and is
+     * deliberately not counted.
+     */
+    fun publishesOf(eventId: String, deviceId: String): Int = publishes[eventId to deviceId] ?: 0
+
     /** Store a device's config doc (the `PUT /devices/<id>` effect — push-token registration). */
     fun putDeviceConfig(deviceId: String, json: String) {
         deviceConfigs[deviceId] = json
@@ -221,6 +306,21 @@ class BackendStore {
     fun deviceListing(deviceId: String): List<FileEntryDto> =
         byteStore[deviceId].orEmpty().map { filename ->
             FileEntryDto(filename = filename, url = syntheticUrl(deviceId, filename))
+        }
+
+    /**
+     * The **v2** per-device listing — identity terms, and no minted URL.
+     *
+     * Identity is recovered from the stored key through the same shared parsers the client uses, so the
+     * world cannot answer with an identity the client would not have composed.
+     */
+    fun deviceListingV2(deviceId: String): List<DeviceResourceDto> =
+        byteStore[deviceId].orEmpty().map { key ->
+            DeviceResourceDto(
+                assetId = assetIdFromUploadKey(key),
+                role = roleFromUploadKey(key).wire,
+                filename = key,
+            )
         }
 
     /**

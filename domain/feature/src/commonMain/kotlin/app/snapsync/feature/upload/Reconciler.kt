@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.ports.DeviceFilesSource
+import app.snapsync.ports.DeviceListingShapeException
 import app.snapsync.ports.JoinedEventMarker
 
 import app.snapsync.ports.LedgerStore
@@ -48,7 +49,9 @@ private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
  *   resource uploads idempotently. The reset makes the ledger exactly the device's stored files on
  *   every re-join — restoring dedup after a reinstall and clearing any phantom in-flight rows.
  * - the listing fetch fails → create no jobs this cycle and leave the marker **unset** (the ledger and
- *   cursor are untouched), so the next cycle retries. There is no user-facing join-failure state.
+ *   cursor are untouched), so the next cycle retries. There is no user-facing join-failure state. A
+ *   listing this build cannot *read* defers the same way but is reported at `Error`, because unlike a
+ *   transport failure it will not heal on the next cycle.
  * - no event configured but a marker remains (a leave) → clear the marker only and upload nothing; the
  *   ledger (global, valid across events) is left intact so a later re-join dedups against it.
  */
@@ -87,8 +90,18 @@ class ExtensionReconciler(
             log.w { "device listing timed out — deferring uploads this cycle" }
             return false
         }
-        val filenames = listing.getOrElse {
-            log.w(it) { "device listing fetch failed — deferring uploads this cycle" }
+        val filenames = listing.getOrElse { cause ->
+            // Two failures, two severities, because their consequences differ (`module-architecture`,
+            // "Absence is never silent"). A transport failure is transient and heals on the next cycle,
+            // so it stays a warning. A SHAPE failure never heals: this build cannot read what the
+            // backend answers, and every cycle from here defers — a device that has silently stopped
+            // uploading. That is a report, not a note, so it rides at `Error` and reaches crash
+            // reporting (capability `crash-reporting`). Both defer identically; only the telling differs.
+            if (cause is DeviceListingShapeException) {
+                log.e(cause) { "device listing was not understood — deferring uploads, and this will not heal" }
+            } else {
+                log.w(cause) { "device listing fetch failed — deferring uploads this cycle" }
+            }
             return false
         }
         // A SUCCESSFUL listing is AUTHORITATIVE — empty, partial, or full — so we reset to exactly what

@@ -36,7 +36,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:adapter:ios:ext-safe` IosDeviceLogSource | yes |
-| `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore, RecordingStore | yes |
+| `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
 | `DiscoveryStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiscoveryStore; `:adapter:ios:ext-safe` IosDiscoveryStore; `:domain:feature` FakeStore, RecordingCursor | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
@@ -44,11 +44,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
 | `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
 | `DownloadTransportHost` | `:domain:ports` | — | no |
-| `Enrollment` | `:domain:ports` | `:adapter:generic:app` HttpEnrollment; `:domain:feature` CapturingUploader, FakeUploader | yes |
 | `EventCreation` | `:domain:ports` | `:adapter:generic:app` HttpEventCreation; `:domain:feature` FakeClient | yes |
 | `EventCreator` | `:domain:feature` | `:domain:feature` CreateEvent, NoOpEventCreator; `:ui:presentation` SpyCreator | no |
 | `EventDetails` | `:domain:ports` | `:domain:ports` Failed, Found, NotFound | no |
 | `EventDirectory` | `:domain:ports` | `:adapter:generic:app` HttpEventDirectory; `:domain:feature` FakeDetails | yes |
+| `EventJoin` | `:domain:ports` | `:adapter:generic:app` HttpEventJoin; `:domain:feature` CapturingJoin, FakeJoin | yes |
 | `EventLinkDelivery` | `:domain:model` | `:domain:model` Forwarded, NoWebpageUrl, NotBrowsingWeb | no |
 | `EventRename` | `:domain:ports` | `:adapter:generic:app` HttpEventRename; `:domain:feature` FakeRename | yes |
 | `EventRenamer` | `:domain:feature` | `:domain:feature` NoOpEventRenamer, RenameEvent | no |
@@ -60,14 +60,16 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinedEventMarker` | `:domain:ports` | `:adapter:generic:fake` InMemoryJoinedEventMarker; `:adapter:ios:ext-safe` IosJoinedEventMarker; `:domain:feature` FakeMarker | yes |
 | `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts | no |
-| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore, RequestedRowsLedger | yes |
+| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore, UnreachedLedgerStore | yes |
+| `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
 | `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope; `:domain:ports` NoOp, RecordingScope | no |
+| `ManifestPublisher` | `:domain:ports` | `:adapter:generic:app` HttpManifestPublisher; `:domain:feature` FakeUploader | yes |
 | `PhotoAccessRequester` | `:domain:ports` | `:adapter:ios:app-only` PhotoLibraryPermission | no |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
 | `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
 | `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
-| `PushHttpClient` | `:domain:ports` | `:adapter:generic:app` KtorPushHttpClient; `:domain:feature` FakePushHttpClient, RecordingClient | yes |
+| `PushHttpClient` | `:domain:ports` | `:adapter:generic:app` KtorPushHttpClient; `:domain:feature` FakePushHttpClient | yes |
 | `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver, UploadPushReceiver | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable | no |
 | `RenameOutcome` | `:domain:ports` | `:domain:ports` InvalidName, Renamed, Transient | no |

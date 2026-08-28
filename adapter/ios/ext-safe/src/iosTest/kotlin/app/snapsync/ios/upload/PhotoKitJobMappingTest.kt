@@ -19,6 +19,7 @@ import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorLimitExceeded
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertIs
 
 /**
@@ -74,14 +75,16 @@ class PhotoKitJobMappingTest {
     // ---- classifyPhotoKitJob ---------------------------------------------------------------------
 
     @Test
-    fun `the ledger key is the destination URL's last path segment`() {
+    fun `the destination path is what the row is resolved by`() {
         val classified = classifyPhotoKitJob(
-            destination = request("https://edge.example/api/v1/e/d/file/ABC-123-primary.heic"),
+            destination = request(
+                "https://edge.example/api/v2/files/devices/D/ABC-123/primary?filename=IMG_1.HEIC",
+            ),
             state = PHAssetResourceUploadJobStateSucceeded,
             error = null,
         )
         val emit = assertIs<FetchedJob.Emit>(classified)
-        assertEquals("ABC-123-primary.heic", emit.key)
+        assertEquals("/api/v2/files/devices/D/ABC-123/primary", emit.destinationPath)
         assertEquals(PhotoKitJobState.SUCCEEDED, emit.state)
         assertEquals(null, emit.error)
     }
@@ -109,7 +112,7 @@ class PhotoKitJobMappingTest {
     @Test
     fun `a failed job carries its error through to the cycle`() {
         val classified = classifyPhotoKitJob(
-            destination = request("https://edge.example/api/v1/e/d/file/k-primary.heic"),
+            destination = request("https://edge.example/api/v2/files/devices/D/k/primary"),
             state = PHAssetResourceUploadJobStateFailed,
             error = nsError("PHPhotosErrorDomain", 3164L),
         )
@@ -239,4 +242,46 @@ class PhotoKitJobMappingTest {
         }
     }
 
+
+    // ---- which shape a destination has, and therefore whether it carries a key --------------------
+
+    @Test
+    fun `an identity-in-path destination yields no legacy key`() {
+        // Its last segment is the ROLE. Reading that as a key would collapse every job in a cycle onto
+        // `primary` — silently, with each row left REQUESTED forever.
+        val emit = assertIs<FetchedJob.Emit>(
+            classifyPhotoKitJob(
+                destination = request("https://edge.example/api/v2/files/devices/D/ABC-123/primary"),
+                state = PHAssetResourceUploadJobStateSucceeded,
+                error = null,
+            ),
+        )
+        assertNull(emit.legacyKey)
+    }
+
+    @Test
+    fun `a pre-identity destination still carries its key in the last segment`() {
+        // The shape a job created by the outgoing build has; the fallback exists for exactly these.
+        val emit = assertIs<FetchedJob.Emit>(
+            classifyPhotoKitJob(
+                destination = request("https://edge.example/api/v1/files/devices/D/ABC-123-primary.heic"),
+                state = PHAssetResourceUploadJobStateSucceeded,
+                error = null,
+            ),
+        )
+        assertEquals("ABC-123-primary.heic", emit.legacyKey)
+        assertEquals("/api/v1/files/devices/D/ABC-123-primary.heic", emit.destinationPath)
+    }
+
+    @Test
+    fun `a destination naming no device partition carries no key`() {
+        val emit = assertIs<FetchedJob.Emit>(
+            classifyPhotoKitJob(
+                destination = request("https://edge.example/something/else"),
+                state = PHAssetResourceUploadJobStateSucceeded,
+                error = null,
+            ),
+        )
+        assertNull(emit.legacyKey)
+    }
 }

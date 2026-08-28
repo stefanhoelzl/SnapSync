@@ -106,16 +106,6 @@ class UploadCycle(
     // `{ emptySet() }` re-uploads every downloaded foreign photo back into the event, or uploads the
     // member's WhatsApp album into a stranger's. A tier without an album source states that at its call
     // site, where a reviewer can see it.
-    // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
-    // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
-    // event union reflects the just-completed assets, so recipients woken by the fan-out find them.
-    // Bounded and `runCatching`ed here, like `onDiscovery`.
-    //
-    // Required, with **no default**. This is the weakest of the four — a missing notify degrades (other
-    // members reconcile on their next foreground) rather than corrupts. It is required anyway because it is
-    // the port the harness silently omitted, which is why `upload-completion-notify` had no integration
-    // coverage at all.
-    private val onBatchUploaded: suspend (eventId: String) -> Unit,
     // Event-album placement (capability `event-album`): fired with the `assetId`s (normalized) that
     // GENUINELY completed this cycle, so the running process adds those own photos to the event album.
     // Runs in whichever process runs the cycle (extension on ≥26.1, app on 18–26.0). Best-effort —
@@ -129,7 +119,6 @@ class UploadCycle(
     // overruns gets the worker force-killed with error 50001); the app tier's is prudence. Same number,
     // different reasons — and now stated once instead of copied.
     private val deviceManifestTimeoutMs: Long = 12_000L,
-    private val notifyTimeoutMs: Long = 8_000L,
     // How many rows one cycle RESOLVES from the ledger. Defaulted, like the budgets above, because there
     // is a safe value: it bounds a platform round-trip, never a durable write. What is CREATED is bounded
     // by the platform itself — which is the only thing that knows how many transfers it will take, and on
@@ -502,12 +491,12 @@ class UploadCycle(
             // the declined branch below has always written one without any walk at all.
             is CycleOutcome.Truncated -> {
                 logEnumeration(audit)
-                publishManifestAndNotify(ready, promoted = promoteUploaded(ready), seedSucceeded = true)
+                promoteThenPublishManifest(ready, seedSucceeded = true)
             }
 
             is CycleOutcome.Drained -> {
                 logEnumeration(audit)
-                publishManifestAndNotify(ready, promoted = promoteUploaded(ready), seedSucceeded = true)
+                promoteThenPublishManifest(ready, seedSucceeded = true)
             }
         }
         return result
@@ -532,33 +521,29 @@ class UploadCycle(
     }
 
     /**
-     * The device manifest (capability `device-manifest`) and then — only if it actually changed — the
-     * completion notify (capability `upload-completion-notify`).
+     * Promote this cycle's uploaded rows, then write the device manifest (capability `device-manifest`).
      *
-     * The manifest is a PROJECTION of the ledger's settled rows, so nothing is handed over but the event
-     * and the admission: every row this cycle recorded or backfilled is already durable, and the
-     * projection reads them. Bounded and best-effort inside [writeDeviceManifest], so a hung host cannot
-     * stall a cycle and no root has to remember to bound it.
+     * **The order is the contract, not a coincidence.** The manifest is a PROJECTION of the ledger's
+     * settled rows, so a row promoted after the write would be absent from the projection it belongs in
+     * and would not reach the event union until some later cycle happened to publish again. Nothing else
+     * is handed over but the event and the admission: every row this cycle recorded or backfilled is
+     * already durable, and the projection reads them. The write is bounded and best-effort inside
+     * [writeDeviceManifest], so a hung host cannot stall a cycle and no root has to remember to bound it.
      *
-     * The notify needs BOTH halves, and each rules out a different wasted wake. [promoted] > 0 means
-     * this cycle actually settled something — without it, the first manifest of an event (an empty
-     * projection, which is genuinely a change from nothing) would wake every member to fetch nothing.
-     * The manifest having changed means the union now states something it did not — without it, a cycle
-     * that promoted a row the projection excludes, or that could not confirm its write, would wake
-     * members to a union they have already seen.
-     *
-     * The old trigger was "this cycle DRAINED and promoted at least one row", and the word that was wrong
-     * is *drained*: a device with more outstanding work than the platform's job limit never drains, so it
-     * never notified — while the promotion pass ran anyway, before the short-circuit, CONSUMING the
-     * signal it could not announce and leaving a later cycle that did drain with nothing to report.
-     * Promoting and notifying now happen here, together, on every outcome that publishes at all, so
-     * neither can be spent by a cycle that cannot act on it.
+     * There is no completion notify any more, and it is worth saying what it was and why it can go. The
+     * device used to `POST` "I have uploaded" so the backend would wake the other members. On the
+     * versioned device API that route does not exist: the manifest write IS the announcement, because
+     * publishing a device's asset set is the only thing that changes what the event union states, and the
+     * backend fans out from it. Deleting the second call removes a whole class of disagreement — a cycle
+     * whose manifest wrote but whose notify failed used to leave members looking at a union nobody told
+     * them about — and it removes the gate that decided when to send: [promoteUploaded]'s count and the
+     * write's confirmation existed ONLY to answer "is this worth a wake", a question with no asker left.
+     * Members still converge without it: each reconciles on its next foreground, and the backend's own
+     * fan-out is driven by the publish (capability `upload-completion-notify`).
      */
-    private suspend fun publishManifestAndNotify(ready: Ready, promoted: Int, seedSucceeded: Boolean) {
-        val published = writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded)
-        if (promoted == 0 || !published) return
-        runCatching { withTimeout(notifyTimeoutMs) { onBatchUploaded(ready.eventId) } }
-            .onFailure { log.w(it) { "event notify failed/timed out this cycle" } }
+    private suspend fun promoteThenPublishManifest(ready: Ready, seedSucceeded: Boolean) {
+        promoteUploaded(ready)
+        writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded)
     }
 
     // --- the stage vocabulary --------------------------------------------------------------------

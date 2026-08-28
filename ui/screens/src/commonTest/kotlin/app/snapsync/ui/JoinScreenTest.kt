@@ -225,6 +225,25 @@ class JoinScreenTest {
         assertEquals(1, retried)
     }
 
+    @Test
+    fun `the full-event step names the wall and offers NO retry`() = runComposeUiTest {
+        // The whole reason this step exists separately from CommitFailed. Capacity does not heal, so a
+        // Retry here would fail identically every time — the member would press it forever with nothing
+        // saying what the wall was (capability `join-event`).
+        var retried = 0
+        setScreen {
+            StatusScreen(
+                joining(phaseAt(JoinPhase.Detailed.Step.EventFull, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(join = JoinGateActions(onRetryJoin = { retried++ })),
+            )
+        }
+        onNodeWithText("This event is full").assertExists()
+        onNodeWithText("Retry").assertDoesNotExist()
+        onNodeWithText("Cancel").assertExists()
+        assertEquals(0, retried)
+    }
+
     // ---- the two participation switches (capability `join-event`) --------------------------------------
 
     @Test

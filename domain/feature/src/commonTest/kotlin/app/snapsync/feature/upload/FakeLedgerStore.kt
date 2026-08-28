@@ -18,6 +18,9 @@ class FakeLedgerStore : LedgerStore {
 
     override val changes: Flow<Unit> = dings
     override suspend fun get(key: String): LedgerEntry? = rows[key]
+
+    override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
+        rows.values.firstOrNull { it.destinationPath == destinationPath }
     override suspend fun put(entry: LedgerEntry) { rows[entry.key] = entry; dings.tryEmit(Unit) }
     override suspend fun clear() { rows.clear(); dings.tryEmit(Unit) }
     override suspend fun clearRequested() { rows.values.removeAll { it.state == LedgerState.REQUESTED }; dings.tryEmit(Unit) }

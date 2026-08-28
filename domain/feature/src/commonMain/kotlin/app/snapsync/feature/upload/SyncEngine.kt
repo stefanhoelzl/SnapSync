@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
+import app.snapsync.model.destinationPathOf
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadJob
@@ -120,7 +121,7 @@ class SyncEngine(
     /** The sole site that records REQUESTED: the platform created/retried the job (write-after-act). */
     private suspend fun started(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordRequested(resource, job.attempt, eventId)
+        ledger.recordRequested(resource, job.attempt, eventId, destinationPathOf(job.request.url))
         return SyncDecision.AlreadyUploaded
     }
 

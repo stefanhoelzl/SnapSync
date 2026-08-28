@@ -10,6 +10,7 @@ import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
+import app.snapsync.feature.version.AppVersionGate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -76,6 +77,21 @@ class StatusSources(
      * default and let the gate drive it.
      */
     val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
+    /**
+     * Whether the backend is refusing this build as too old, and the version it named (capability
+     * `min-app-version`) — `AppVersionGate.refusal`, written by the shared HTTP client's interceptor.
+     *
+     * An OBSERVATION, like every field here, so it does not cross `flow/` (`module-architecture`,
+     * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —
+     * the forge, and every test that does not exercise it — constructs unchanged.
+     */
+    val versionRefusal: StateFlow<AppVersionGate.Refusal?> = MutableStateFlow(null),
+    /**
+     * This build's App Store page, or `null` when it carries none. A build constant supplied by the
+     * composition root, not a source — it is here because the ONE screen that needs it is the refusal
+     * above, and pairing them is what stops a host wiring the state without the remedy.
+     */
+    val appStoreUrl: String? = null,
 )
 
 /**

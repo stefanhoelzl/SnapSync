@@ -101,10 +101,12 @@ kotlin {
 // rename dialog, the leave confirmation, the diagnostic sheet and the reconfigure form - were the
 // untested half of that, and covering them moved it 68 -> 77.
 //
-// Of what is left, ~340 instructions are `kotlinx.serialization`'s generated `$Companion`/serializer
-// accessors on `UiState`'s sealed tree, which nothing here serializes and no test can reach; most of
-// the rest is the default-filling in the state classes' own constructors. So the remaining honest
-// debt is smaller than 1448 missed instructions suggests - grep before writing a test for one.
+// The note here used to say those generated serializer accessors on `UiState`'s sealed tree were
+// unreachable by any test. They were not: `UiState` is `@Serializable` because the control channel
+// serves it as `/device/state`, so a round-trip reaches them, and `UiStateSerializationTest` now does.
+// What is left is mostly the default-filling in the state classes' own constructors - so the remaining
+// honest debt is still smaller than the missed-instruction count suggests; grep before writing a test
+// for one, and check whether the thing you are told is unreachable actually is.
 kover {
     reports {
         total {

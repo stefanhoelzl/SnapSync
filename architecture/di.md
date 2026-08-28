@@ -24,17 +24,17 @@ Roots found:
 | `BackgroundEventsReceipts` | | | x |
 | `BackgroundUploadPump` | | | x |
 | `CutoffFormatter` | x | | |
-| `EventNotifier` | | x | x |
 | `FileBackedConfigStore` | x | x | |
 | `FileLogWriter` | x | x | |
 | `HttpAttestClient` | x | | |
 | `HttpDeviceFilesSource` | | x | x |
-| `HttpEnrollment` | x | x | x |
 | `HttpEventCreation` | x | | |
 | `HttpEventDirectory` | x | | |
+| `HttpEventJoin` | x | | |
 | `HttpEventRename` | x | | |
 | `HttpEventUnionSource` | x | | |
 | `HttpLeaveNotifier` | x | | |
+| `HttpManifestPublisher` | | x | x |
 | `IosAlbumManager` | x | x | |
 | `IosAlbumMapStore` | x | x | |
 | `IosAttestKey` | x | | |
@@ -45,19 +45,21 @@ Roots found:
 | `IosDiscoveryStore` | x | x | x |
 | `IosDownloadTransport` | x | | |
 | `IosJoinedEventMarker` | | x | x |
+| `IosLinkOpener` | x | | |
 | `IosPhotoLibraryImporter` | x | | |
 | `IosShareSheet` | x | | |
 | `IosStagedBytes` | x | | |
 | `IosUrlSessionUploadPlatform` | | | x |
 | `KeychainAttestStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
-| `KtorPushHttpClient` | x | x | x |
+| `KtorPushHttpClient` | x | | |
 | `OsDrivenUploadMechanism` | x | | |
 | `OsReceipt` | x | | |
 | `PhotoKitAssetPresence` | x | | |
 | `PhotoKitCandidateSource` | x | x | x |
 | `PhotoLibraryPermission` | x | | |
 | `PhotoSelectionSnapshotSource` | x | | |
+| `PlatformHandoff` | x | | |
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
 | `PushTokenSource` | x | | |

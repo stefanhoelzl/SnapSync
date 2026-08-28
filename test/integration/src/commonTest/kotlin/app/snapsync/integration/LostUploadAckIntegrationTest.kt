@@ -160,7 +160,16 @@ class LostUploadAckIntegrationTest {
                     w.albumManager.added.flatMap { it.second },
                     "placed in the event album exactly once",
                 )
-                assertEquals(listOf(EVENT), w.notified, "and one notify, after the manifest write")
+                // And the announcement, which IS the manifest write: on the versioned device API
+                // there is no notify route, so publishing the device's asset set is the only thing that
+                // tells the event anything happened. Asserting the published set — rather than a
+                // recorded notify call — also asserts the ORDER that used to be implicit, because the
+                // promoted row could not appear here had it been promoted after the write.
+                assertEquals(
+                    listOf(normalizeAssetId("A")),
+                    w.store.manifestOf(EVENT, w.ownDeviceId)?.assets?.map { it.assetId },
+                    "the promoted row reached the published manifest",
+                )
             } finally {
                 scope.cancel()
             }

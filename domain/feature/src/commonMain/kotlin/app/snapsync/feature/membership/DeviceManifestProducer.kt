@@ -5,7 +5,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.Enrollment
+import app.snapsync.ports.ManifestPublisher
 
 /**
  * Writes the per-event device manifest each cycle (capability `device-manifest`). The **sole** writer of
@@ -37,7 +37,7 @@ import app.snapsync.ports.Enrollment
  */
 class DeviceManifestProducer(
     private val store: DeviceManifestStore,
-    private val uploader: Enrollment,
+    private val publisher: ManifestPublisher,
     private val deviceId: String,
 ) {
     /**
@@ -61,7 +61,7 @@ class DeviceManifestProducer(
         // equal to the prior event's upload and skip writing the new event's (still-absent) device.json.
         val marker = "$eventId $json"
         if (marker == store.loadLastUploaded()) return false
-        if (!uploader.put(eventId, deviceId, json)) return false
+        if (!publisher.publish(eventId, deviceId, json)) return false
         store.saveLastUploaded(marker)
         return true
     }

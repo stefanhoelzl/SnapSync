@@ -9,9 +9,10 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * The Ktor adapter behind the `PushHttpClient` port (its policy consumers — `PushRegistration`,
- * `EventNotifier` — live in `:domain`'s `feature/push` and are tested there over a fake port; the
- * status-code mapping is this adapter's own contract).
+ * The Ktor adapter behind the `PushHttpClient` port (its one policy consumer, `PushRegistration`,
+ * lives in `:domain`'s `feature/push` and is tested there over a fake port; the status-code mapping is
+ * this adapter's own contract). `EventNotifier` was the second consumer until the versioned device API
+ * dropped the notify route — the manifest write is the announcement now.
  */
 class KtorPushHttpClientTest {
 

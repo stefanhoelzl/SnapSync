@@ -1,5 +1,6 @@
 package app.snapsync.membership
 
+import app.snapsync.ports.DeviceListingShapeException
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -18,12 +19,19 @@ import kotlinx.coroutines.test.runTest
  * seeds `COMPLETED` from. Bytes are device-partitioned and event-independent, so this listing is what
  * restores a reinstall's empty ledger and what preserves dedup across an event switch.
  *
- * Two contracts of its own. **It reads only `filename`**: the route's entries also carry `size` and
- * `url`, and treating either as required would turn a backend field addition into a device that
- * re-uploads everything it already stored. And **every failure is a failed [Result], never a throw**,
- * so the reconciler can defer the cycle rather than crash — but the message names the status, because
- * "could not list" and "listed nothing" are opposite answers here (an empty success seeds no dedup at
- * all, which is correct only when the device genuinely stored nothing).
+ * Two contracts of its own. **The identity fields are REQUIRED and the key is recomposed from them**:
+ * the backend answers `assetId`, `role` and the resource's capture `filename`, and this seam rebuilds
+ * the storage key through the shared `uploadKey`. That strictness replaced a lenient read of a field
+ * called `filename`, which the frozen v1 shape also carries and means the STORAGE KEY by — so a lenient
+ * decode pointed at the wrong version seeds capture names as ledger keys and re-uploads the library,
+ * with no failed request anywhere. Unknown fields are still ignored, because a backend ADDING one must
+ * not cost a device its dedup set.
+ *
+ * And **every failure is a failed [Result], never a throw**, so the reconciler can defer the cycle
+ * rather than crash — but a SHAPE failure is a distinguishable type, because unlike a transport failure
+ * it will never heal, and the message names the status, because "could not list" and "listed nothing"
+ * are opposite answers here (an empty success seeds no dedup at all, which is correct only when the
+ * device genuinely stored nothing).
  */
 class HttpDeviceFilesSourceTest {
 
@@ -39,16 +47,21 @@ class HttpDeviceFilesSourceTest {
     )
 
     @Test
-    fun `200 GETs the device byte-store route and yields the filenames in order`() = runTest {
+    fun `200 GETs the device byte-store route and recomposes the keys in order`() = runTest {
         var requested: String? = null
         var method: String? = null
         val engine = MockEngine { request ->
             requested = request.url.toString()
             method = request.method.value
-            json("""[{"filename":"a.heic"},{"filename":"b.heic"}]""", HttpStatusCode.OK)
+            json(
+                """[{"assetId":"a","role":"primary","filename":"IMG_1.HEIC"},
+                    {"assetId":"b","role":"live","filename":"IMG_2.MOV"}]""",
+                HttpStatusCode.OK,
+            )
         }
 
-        assertEquals(listOf("a.heic", "b.heic"), source(engine).list(deviceId).getOrThrow())
+        // The KEY, not the capture name: `<assetId>-<role>.<ext>`, exactly what the producer uploaded under.
+        assertEquals(listOf("a-primary.heic", "b-live.mov"), source(engine).list(deviceId).getOrThrow())
         assertEquals("https://edge.example/files/devices/$deviceId", requested)
         assertEquals("GET", method)
     }
@@ -58,11 +71,11 @@ class HttpDeviceFilesSourceTest {
         // Load-bearing: a backend that adds a field must not cost this device its whole dedup set.
         val engine = MockEngine {
             json(
-                """[{"filename":"a.heic","size":1234,"url":"https://cdn/x","added":"2026-07-14"}]""",
+                """[{"assetId":"a","role":"primary","filename":"IMG_1.HEIC","size":1234,"url":"https://cdn/x"}]""",
                 HttpStatusCode.OK,
             )
         }
-        assertEquals(listOf("a.heic"), source(engine).list(deviceId).getOrThrow())
+        assertEquals(listOf("a-primary.heic"), source(engine).list(deviceId).getOrThrow())
     }
 
     @Test
@@ -98,6 +111,28 @@ class HttpDeviceFilesSourceTest {
         assertTrue(source(objectBody).list(deviceId).isFailure)
         val missingField = MockEngine { json("""[{"size":1}]""", HttpStatusCode.OK) }
         assertTrue(source(missingField).list(deviceId).isFailure)
+    }
+
+    @Test
+    fun `the frozen v1 shape is refused distinguishably rather than read as capture names`() = runTest {
+        // THE trap. Both shapes carry a field called `filename` and mean opposite things by it, so this
+        // body decodes cleanly under a lenient reader and seeds nonsense. The type matters as much as the
+        // failure: the reconciler reports a shape failure at `Error` and a transport failure as a retry.
+        val v1 = MockEngine {
+            json("""[{"filename":"a-primary.heic","url":"https://cdn/x"}]""", HttpStatusCode.OK)
+        }
+        val failure = source(v1).list(deviceId).exceptionOrNull()
+        assertTrue(failure is DeviceListingShapeException, "was ${'$'}failure")
+    }
+
+    @Test
+    fun `an unknown role is refused rather than defaulted`() = runTest {
+        // `role` decodes against the closed vocabulary, not as an opaque string: a role this build cannot
+        // name would compose a key that matches nothing stored.
+        val unknown = MockEngine {
+            json("""[{"assetId":"a","role":"thumbnail","filename":"IMG_1.HEIC"}]""", HttpStatusCode.OK)
+        }
+        assertTrue(source(unknown).list(deviceId).exceptionOrNull() is DeviceListingShapeException)
     }
 
     @Test
