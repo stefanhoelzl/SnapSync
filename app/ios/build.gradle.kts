@@ -61,7 +61,10 @@ kotlin {
             // dependency folds it into `SnapSyncKit` instead — settled by a compile
             // (`linkDebugFrameworkIosSimulatorArm64`), not by reasoning.
             if (rigEnabled) implementation(project(":app:ios:extension"))
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
+            api(project(":domain:feature"))
+            api(project(":domain:compose"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:presentation"))
             // The technology adapters, placed by linkage (migration step 4): the Ktor/SQLDelight

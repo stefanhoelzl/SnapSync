@@ -20,7 +20,9 @@ kotlin {
 //    plugin models exactly one `application {}` main class per module.
 dependencies {
     implementation(libs.ktor.client.core)
-    api(project(":domain"))
+    api(project(":domain:model"))
+    api(project(":domain:ports"))
+    api(project(":domain:feature"))
     // The forge `PanelController` constructs its stand-in cells from `:ui:presentation`'s forge
     // seams (MutableAttestedSource, MutablePendingJoinSource); `StatusPane` names the host.
     implementation(project(":ui:presentation"))

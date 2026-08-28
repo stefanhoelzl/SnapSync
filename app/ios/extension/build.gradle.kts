@@ -28,7 +28,10 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
+            api(project(":domain:feature"))
+            api(project(":domain:compose"))
             // The relocated, JVM-covered upload orchestration (UploadCycle + the BackgroundTransfer seam
             // + UploadConfig). The extension-safe iOS adapters implement its seams and
             // UploadExtensionRoot composes its UploadCycle.

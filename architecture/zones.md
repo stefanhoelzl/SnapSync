@@ -14,7 +14,11 @@ flowchart LR
     adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   end
   subgraph domain
-    domain[":domain"]
+    domain_compose[":domain:compose"]
+    domain_feature[":domain:feature"]
+    domain_flow[":domain:flow"]
+    domain_model[":domain:model"]
+    domain_ports[":domain:ports"]
   end
   subgraph test
     test_world[":test:world"]
@@ -24,16 +28,34 @@ flowchart LR
     ui_presentation[":ui:presentation"]
     ui_screens[":ui:screens"]
   end
-  adapter_generic_app --> domain
+  adapter_generic_app --> domain_model
+  adapter_generic_app --> domain_ports
   adapter_generic_app --> test_world
-  adapter_generic_fake --> domain
+  adapter_generic_fake --> domain_feature
+  adapter_generic_fake --> domain_flow
+  adapter_generic_fake --> domain_model
+  adapter_generic_fake --> domain_ports
   adapter_ios_app_only --> adapter_ios_ext_safe
-  adapter_ios_app_only --> domain
+  adapter_ios_app_only --> domain_model
+  adapter_ios_app_only --> domain_ports
   adapter_ios_ext_safe --> adapter_generic_app
-  adapter_ios_ext_safe --> domain
-  ui_components --> domain
-  ui_presentation --> domain
-  ui_screens --> domain
+  adapter_ios_ext_safe --> domain_feature
+  adapter_ios_ext_safe --> domain_model
+  adapter_ios_ext_safe --> domain_ports
+  domain_compose --> domain_feature
+  domain_compose --> domain_flow
+  domain_compose --> domain_model
+  domain_compose --> domain_ports
+  domain_feature --> domain_model
+  domain_feature --> domain_ports
+  domain_flow --> domain_feature
+  domain_flow --> domain_model
+  domain_ports --> domain_model
+  ui_components --> domain_model
+  ui_presentation --> domain_feature
+  ui_presentation --> domain_model
+  ui_screens --> domain_feature
+  ui_screens --> domain_model
   ui_screens --> ui_components
   ui_screens --> ui_presentation
 ```

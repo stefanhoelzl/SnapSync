@@ -34,9 +34,8 @@ class ZoneFlowLifetimeTest {
 
     @Test
     fun `flows declare no CoroutineScope`() {
-        val files = ZoneGates.zoneFiles(ZoneGates.domainSrc, "flow")
-        if (ZoneGates.pendingOrEmpty("flow-lifetime", ZoneGates.domainSrc, files)) return
-        val violations = files!!.flatMap { file ->
+        val files = ZoneGates.requireZone("flow-lifetime", "flow")
+        val violations = files.flatMap { file ->
             file.readLines().withIndex()
                 .filter { (_, line) -> Regex("""\bCoroutineScope\b""").containsMatchIn(line) }
                 .map { (i, line) ->
@@ -53,9 +52,8 @@ class ZoneFlowLifetimeTest {
 
     @Test
     fun `every Unit-returning lambda a flow accepts is suspend`() {
-        val files = ZoneGates.zoneFiles(ZoneGates.domainSrc, "flow")
-        if (ZoneGates.pendingOrEmpty("flow-lifetime", ZoneGates.domainSrc, files)) return
-        val violations = files!!.flatMap { file ->
+        val files = ZoneGates.requireZone("flow-lifetime", "flow")
+        val violations = files.flatMap { file ->
             val text = file.readText()
             unitLambdaParam.findAll(text).mapNotNull { m ->
                 // `suspend (…) -> Unit` is the compliant form; the regex above matches only the

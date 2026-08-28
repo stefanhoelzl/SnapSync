@@ -3,13 +3,6 @@ import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
-// The `:domain` core (spec `module-architecture`): one module, ZERO project() dependencies, no
-// `iosMain` source directory (the targets exist so iosMain elsewhere can compile against it; the
-// module itself is platform-free). Zones live as packages under src/*/kotlin — `model/` and
-// `ports/` born in migration step 3a; `feature/`, `flow/`, `compose/` follow in later steps. The
-// zone import laws are enforced by the self-arming gates in `:test:architecture`
-// (capability `architecture-guards`).
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
@@ -42,14 +35,20 @@ kover {
 
 
 // Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
-// "AssertionError at null:-1" with no expected/actual, which is useless for diagnosing
-// platform-specific test failures.
+// "AssertionError at null:-1" with no expected/actual.
 tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     testLogging {
         exceptionFormat = TestExceptionFormat.FULL
         showStandardStreams = true
     }
 }
+
+// The core'"'"'s `model` zone (spec `module-architecture`, "The module set withholds; packages organize").
+// The vocabulary, pure codecs and domain services. References nothing project-internal.
+//
+// Zone edges are declared with `implementation()`, never `api()`: a zone must not leak to a downstream
+// consumer transitively. A consumer that needs another zone declares it.
+// NO iosMain source directory, ever — the targets exist so iosMain elsewhere can compile against this.
 
 // The event link's origin, generated from the RESOLVED DEPLOYMENT (capability
 // `deployment-configuration`) so the app, the backend, the xcconfig and the site all derive it from one
@@ -134,8 +133,6 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
         }
-        // NO iosMain block, ever: `:domain` has no iosMain source directory (spec
-        // `module-architecture`; guard: the zone gates' D6 scope + `compileIosMainKotlinMetadata`).
     }
 }
 

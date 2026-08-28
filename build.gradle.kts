@@ -211,7 +211,11 @@ val detektTierOf: Map<String, String> = mapOf(
     // The tested core and its adapters. `:ui:presentation` belongs here and not in `ui`: it is
     // Compose-free by the presentation-imports gate, so none of Compose's structural inflation
     // applies to it.
-    ":domain" to "core",
+    ":domain:model" to "core",
+    ":domain:ports" to "core",
+    ":domain:feature" to "core",
+    ":domain:flow" to "core",
+    ":domain:compose" to "core",
     ":adapter:generic:app" to "core",
     ":adapter:generic:fake" to "core",
     ":adapter:ios:app-only" to "core",

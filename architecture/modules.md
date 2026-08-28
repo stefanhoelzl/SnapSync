@@ -17,7 +17,11 @@ flowchart LR
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
   app_ios_forge[":app:ios:forge"]
-  domain[":domain"]
+  domain_compose[":domain:compose"]
+  domain_feature[":domain:feature"]
+  domain_flow[":domain:flow"]
+  domain_model[":domain:model"]
+  domain_ports[":domain:ports"]
   test_architecture[":test:architecture"]
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
@@ -27,15 +31,24 @@ flowchart LR
   ui_components[":ui:components"]
   ui_presentation[":ui:presentation"]
   ui_screens[":ui:screens"]
-  adapter_generic_app --> domain
+  adapter_generic_app --> domain_model
+  adapter_generic_app --> domain_ports
   adapter_generic_app --> test_world
-  adapter_generic_fake --> domain
+  adapter_generic_fake --> domain_feature
+  adapter_generic_fake --> domain_flow
+  adapter_generic_fake --> domain_model
+  adapter_generic_fake --> domain_ports
   adapter_ios_app_only --> adapter_ios_ext_safe
-  adapter_ios_app_only --> domain
+  adapter_ios_app_only --> domain_model
+  adapter_ios_app_only --> domain_ports
   adapter_ios_ext_safe --> adapter_generic_app
-  adapter_ios_ext_safe --> domain
+  adapter_ios_ext_safe --> domain_feature
+  adapter_ios_ext_safe --> domain_model
+  adapter_ios_ext_safe --> domain_ports
   app_desktop --> adapter_generic_app
-  app_desktop --> domain
+  app_desktop --> domain_feature
+  app_desktop --> domain_model
+  app_desktop --> domain_ports
   app_desktop --> test_world
   app_desktop --> ui_components
   app_desktop --> ui_presentation
@@ -43,31 +56,57 @@ flowchart LR
   app_ios --> adapter_generic_app
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
-  app_ios --> domain
+  app_ios --> domain_compose
+  app_ios --> domain_feature
+  app_ios --> domain_model
+  app_ios --> domain_ports
   app_ios --> ui_presentation
   app_ios --> ui_screens
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_ios_ext_safe
-  app_ios_extension --> domain
-  app_ios_forge --> domain
+  app_ios_extension --> domain_compose
+  app_ios_extension --> domain_feature
+  app_ios_extension --> domain_model
+  app_ios_extension --> domain_ports
+  app_ios_forge --> domain_model
   app_ios_forge --> ui_presentation
   app_ios_forge --> ui_screens
-  test_architecture --> domain
+  domain_compose --> domain_feature
+  domain_compose --> domain_flow
+  domain_compose --> domain_model
+  domain_compose --> domain_ports
+  domain_feature --> domain_model
+  domain_feature --> domain_ports
+  domain_flow --> domain_feature
+  domain_flow --> domain_model
+  domain_ports --> domain_model
+  test_architecture --> domain_feature
+  test_architecture --> domain_model
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic_app
-  test_integration --> domain
+  test_integration --> domain_feature
+  test_integration --> domain_flow
+  test_integration --> domain_model
+  test_integration --> domain_ports
   test_integration --> test_world
   test_integration --> ui_presentation
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
-  test_rig --> domain
+  test_rig --> domain_compose
+  test_rig --> domain_model
+  test_rig --> domain_ports
   test_rig --> ui_presentation
   test_world --> adapter_generic_app
   test_world --> adapter_generic_fake
-  test_world --> domain
-  ui_components --> domain
-  ui_presentation --> domain
-  ui_screens --> domain
+  test_world --> domain_compose
+  test_world --> domain_feature
+  test_world --> domain_model
+  test_world --> domain_ports
+  ui_components --> domain_model
+  ui_presentation --> domain_feature
+  ui_presentation --> domain_model
+  ui_screens --> domain_feature
+  ui_screens --> domain_model
   ui_screens --> ui_components
   ui_screens --> ui_presentation
 ```

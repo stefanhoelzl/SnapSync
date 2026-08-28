@@ -29,7 +29,10 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonTest.dependencies {
-            implementation(project(":domain"))
+            implementation(project(":domain:model"))
+            implementation(project(":domain:ports"))
+            implementation(project(":domain:feature"))
+            implementation(project(":domain:flow"))
             implementation(project(":test:world"))
             implementation(project(":ui:presentation"))
             // The real Ktor clients some tests drive (HttpEventDirectory, KtorPushHttpClient) moved

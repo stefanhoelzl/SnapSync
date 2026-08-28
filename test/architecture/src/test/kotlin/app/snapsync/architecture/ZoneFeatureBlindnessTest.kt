@@ -15,9 +15,8 @@ class ZoneFeatureBlindnessTest {
 
     @Test
     fun `no feature references a sibling feature`() {
-        val files = ZoneGates.zoneFiles(ZoneGates.domainSrc, "feature")
-        if (ZoneGates.pendingOrEmpty("feature-blindness", ZoneGates.domainSrc, files)) return
-        val violations = files!!.flatMap { file ->
+        val files = ZoneGates.requireZone("feature-blindness", "feature")
+        val violations = files.flatMap { file ->
             val own = ZoneGates.featureOfFile(file)
             ZoneGates.projectRefs(file).mapNotNull { (line, ref) ->
                 when (ZoneGates.zoneOf(ref)) {

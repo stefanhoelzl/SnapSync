@@ -39,13 +39,13 @@ class CommandLaneTest {
     /** The bundle's declared commands — `val <name>: <type>` in the `model/` type. */
     private fun declaredCommands(): List<String> =
         Regex("""^\s{4}val (\w+):""", RegexOption.MULTILINE)
-            .findAll(file("/domain/src/commonMain/kotlin/app/snapsync/model/UserCommands.kt").text)
+            .findAll(file("/domain/model/src/commonMain/kotlin/app/snapsync/model/UserCommands.kt").text)
             .map { it.groupValues[1] }
             .toList()
 
     /** The `UserCommands(...)` argument block in the one place commands are built. */
     private fun builtBundle(): String {
-        val text = file("/domain/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt").text
+        val text = file("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt").text
         val start = text.indexOf("UserCommands(")
         assertTrue(start >= 0, "compose/ no longer builds a UserCommands bundle — this gate is stale")
         var depth = 0

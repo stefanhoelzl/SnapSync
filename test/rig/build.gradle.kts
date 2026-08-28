@@ -54,7 +54,9 @@ kotlin {
             // the presentation read-model it serializes. Platform-bound verbs arrive as injected lambdas
             // the host shell builds — the same shape `flow/` uses for port touches — so this module names
             // no platform API and an Android target would be a build-file edit, not a rewrite.
-            api(project(":domain"))
+            api(project(":domain:model"))
+            api(project(":domain:ports"))
+            api(project(":domain:compose"))
             implementation(project(":ui:presentation"))
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
