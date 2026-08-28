@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.SceneMode
+import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.model.PermissionStatus
 import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
@@ -16,7 +18,10 @@ import platform.UIKit.systemBackgroundColor
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
 import app.snapsync.ui.AccessActions
+import app.snapsync.ui.SurfaceActions
 import app.snapsync.ui.SwitchActions
+import app.snapsync.ui.ParticipationActions
+import app.snapsync.ui.components.RangeChoiceActions
 
 /**
  * The iOS entry point. The Swift app (iosApp/) calls [MainViewController] to obtain the root
@@ -122,18 +127,6 @@ private fun composeScene(): UIViewController =
     ComposeUIViewController {
         val host = SnapSyncRoot.renderHost
         val state by host.container.stateFlow.collectAsState()
-        // The event's invite link (null until an event is configured) — rendered as the join QR in the
-        // joined layer and handed to the share sheet.
-        val inviteUrl by host.inviteUrl.collectAsState()
-        // The joined event's name for the screen title (fetched by id; null until fetched).
-        val eventName by host.eventName.collectAsState()
-        // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
-        val membership by host.membership.collectAsState()
-        // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
-        val renameStatus by host.renameStatus.collectAsState()
-
-        // The transient invalid-link error — presentation-owned, self-clearing (see the host).
-        val transientError by host.transientError.collectAsState()
 
         // The photo grant — the shareable-count row's recompute trigger (a late first-join resolve makes the
         // count appear); capability `join-share-count`.
@@ -146,16 +139,23 @@ private fun composeScene(): UIViewController =
         CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
             StatusScreen(
                 state = state,
-                membership = membership,
-                inviteUrl = inviteUrl,
-                eventName = eventName,
-                transientError = transientError,
                 // The root's one system-bound formatter (migration step 9: the screen's default died with
                 // the through-ports repayment; forge and live share this same instance).
                 cutoff = SnapSyncRoot.cutoffFormatter,
-                photoPermission = photoPermission,
-                renameStatus = renameStatus,
-                actions = StatusActions(
+                actions = statusActions(host, photoPermission)
+            )
+        }
+    }
+
+/**
+ * The wiring table from the container's intents to what the screen asks for.
+ *
+ * Its own function because it decides nothing — it is the shell's whole job, and keeping it out of the
+ * entry point keeps that entry point readable as what it is (spec `module-architecture`, "Shells are
+ * wiring only").
+ */
+private fun statusActions(host: StatusContainerHost, photoPermission: PermissionStatus) =
+    StatusActions(
                     join = JoinGateActions(
                         onConfirmJoin = host::onConfirmJoin,
                         onAcknowledgeAccess = host::onAcknowledgeAccess,
@@ -173,11 +173,21 @@ private fun composeScene(): UIViewController =
                         onRenameStatusConsumed = host::onRenameStatusConsumed,
                     ),
                     access = AccessActions(
-                        onRequestPermission = host::onRequestPermission,
-                        onOpenSettings = host::onOpenSettings,
-                        onChoosePhotos = host::onChoosePhotos,
+                        onRequestPermission = host.access::onRequestPermission,
+                        onOpenSettings = host.access::onOpenSettings,
+                        onChoosePhotos = host.access::onChoosePhotos,
                     ),
-                    switch = SwitchActions(
+                    surfaces = SurfaceActions(
+                    onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
+                    onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
+                    onRenameOpen = host.surfaces::onRenameOpen,
+                    onRenameDismiss = host.surfaces::onRenameDismiss,
+                    onOpenReconfigure = host.surfaces::onOpenReconfigure,
+                    onCancelReconfigure = host.surfaces::onCancelReconfigure,
+                    onReportBugOpen = host.surfaces::onReportBugOpen,
+                    onReportBugDismiss = host.surfaces::onReportBugDismiss,
+                ),
+                switch = SwitchActions(
                         onConfirmSwitch = host::onConfirmSwitch,
                         onCancelSwitch = host::onCancelSwitch,
                     ),
@@ -185,8 +195,17 @@ private fun composeScene(): UIViewController =
                     onCreateEvent = host::onCreateEvent,
                     // The join-time shareable-count preview (capability `join-share-count`): the
                     // permission-aware, no-network query, plus the live grant as its recompute trigger.
+                    participation = ParticipationActions(
+                    choices = RangeChoiceActions(
+                        onFromPreset = host.form::onFromPreset,
+                        onFromCustom = host.form::onFromCustom,
+                        onUntilPreset = host.form::onUntilPreset,
+                        onUntilCustom = host.form::onUntilCustom,
+                    ),
+                    onShareOn = host.form::onShareOn,
+                    onReceiveOn = host.form::onReceiveOn,
+                    onSaveToAlbum = host.form::onSaveToAlbum,
                     shareableCount = SnapSyncRoot.shareableCount,
-                )
+                    photoPermission = photoPermission,
+                ),
             )
-        }
-    }

@@ -1,8 +1,11 @@
 package app.snapsync.integration
 
 import app.snapsync.model.Direction
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
@@ -56,7 +59,7 @@ class UnreadStatusIntegrationTest {
             // nothing to be settled about. Before the fix the projection minted a snapshot from three
             // placeholder zeros and this read `Joined(InSync)` within a dispatch.
             host.neverSettlesWithin()
-            assertEquals(UiState.Joined(SyncHealth.Loading), host.container.stateFlow.value)
+            assertEquals(SyncHealth.Loading, (host.container.stateFlow.value).health())
 
             // Still neutral after work happens — because work is not a READ.
             w.runUploadCycle()
@@ -107,7 +110,7 @@ class UnreadStatusIntegrationTest {
 
             val host = statusHost(w, scope)
             host.neverSettlesWithin()
-            assertEquals(UiState.Joined(SyncHealth.Loading), host.container.stateFlow.value)
+            assertEquals(SyncHealth.Loading, (host.container.stateFlow.value).health())
 
             // Reading it settles the screen — the arm was empty all along, but that had to be READ.
             // The transition also proves the projection was live during the wait above.
@@ -154,17 +157,19 @@ class UnreadStatusIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------
 
     private fun statusHost(w: World, scope: CoroutineScope) = StatusContainerHost(
-        syncSource = w.syncStatusSource,
-        permission = w.permission.permission,
-        config = w.configSource.config,
+        StatusSources(
+            sync = w.syncStatusSource,
+            permission = w.permission.permission,
+            config = w.configSource.config,
+            // The REAL store-backed download projection, as the iOS shell injects it — not the host's
+            // read-empty default, which would settle the download arm for free and defeat the third test.
+            download = w.downloadStatusSource,
+        ),
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
-        // The REAL store-backed download projection, as the iOS shell injects it — not the host's
-        // read-empty default, which would settle the download arm for free and defeat the third test.
-        downloadSource = w.downloadStatusSource,
     )
 
-    private fun UiState.health(): SyncHealth? = (this as? UiState.Joined)?.health
+    private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =
         withTimeout(5_000) { container.stateFlow.first(predicate) }

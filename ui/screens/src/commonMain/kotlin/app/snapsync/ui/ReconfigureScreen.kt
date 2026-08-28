@@ -9,13 +9,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
+import app.snapsync.presentation.JoinedSurface
+import app.snapsync.presentation.ResolvedRange
+import app.snapsync.ui.components.appRangeLabel
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
@@ -25,8 +28,8 @@ import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import app.snapsync.ui.components.AppRangePresetChoices
-import app.snapsync.ui.components.FromChoice
-import app.snapsync.ui.components.UntilChoice
+import app.snapsync.model.FromChoice
+import app.snapsync.model.UntilChoice
 import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppMinorSection
@@ -71,28 +74,17 @@ import app.snapsync.ui.components.DialogCopy
 @Composable
 internal fun ReconfigureScreen(
     membership: EventConfig,
-    cutoff: CutoffFormatter,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
+    surface: JoinedSurface.Reconfigure,
+    participation: ParticipationActions,
     photoPermission: PermissionStatus,
-    onSave: (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit,
+    onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    // The member's own picks, owned in one place. Seeded from the persisted membership — the presets
-    // reconstructed from its timestamps, which is lossy by construction (see `reconfigureSeeds`).
-    val seeds = remember(membership) { reconfigureSeeds(membership, cutoff) }
-    val participation = rememberParticipation(
-        ParticipationSeed(
-            switches = Switches(
-                shareOn = membership.direction.includesUpload,
-                receiveOn = membership.direction.includesDownload,
-                saveToAlbum = membership.saveToAlbum,
-            ),
-            choices = seeds,
-        ),
-    )
-    // The SAME derivation the join gate runs, over the same holder — only the window differs.
-    val selection = rememberReconfigureSelection(membership, cutoff, participation)
-
+    // No local state: the member's picks and what they resolve to are both reduced (capability
+    // `sync-status-screen`). Seeding — lossy by construction, reconstructed from the persisted
+    // timestamps — happens where the surface is opened, so a foreground refresh landing mid-edit updates
+    // the heading and not the controls in the member's hand.
+    val range = surface.range
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -106,28 +98,17 @@ internal fun ReconfigureScreen(
             AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
 
             ParticipationSections(
-                state = participation.state(
-                    selection = selection,
-                    rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
+                state = ParticipationState(
+                    form = surface.form,
+                    range = range,
+                    rangeLabel = appRangeLabel(range.from, range.until),
                     photoPermission = photoPermission,
                 ),
-                actions = participation.actions(shareableCount),
-                notes = reconfigureNotes(membership, selection, participation.saveToAlbum),
+                actions = participation,
+                notes = reconfigureNotes(membership, range, surface.form.saveToAlbum),
             )
         }
-        SaveActions(
-            enabled = selection.commitEnabled,
-            onSave = {
-                onSave(
-                    membership.eventId,
-                    selection.chosenDirection,
-                    selection.chosenFrom,
-                    selection.chosenUntil,
-                    participation.saveToAlbum,
-                )
-            },
-            onCancel = onCancel,
-        )
+        SaveActions(enabled = range.commitEnabled, onSave = onSave, onCancel = onCancel)
     }
 }
 
@@ -143,16 +124,16 @@ internal fun ReconfigureScreen(
  * `LoadFailed` is a different report from one parked on `Ready`). It carries no event id or user data —
  * those are already in the state section, in a field that says what they are.
  */
-internal fun screenLabel(state: UiState, reconfigureActive: Boolean): String {
-    if (reconfigureActive) return "Reconfigure"
-    return when (state) {
-        is UiState.JoiningEvent -> "JoiningEvent:${state.phase::class.simpleName}"
-        is UiState.Joined -> state.pendingSwitch
+internal fun screenLabel(state: UiState): String {
+    val layer = state.layer
+    if (layer is Layer.Joined && layer.surface is JoinedSurface.Reconfigure) return "Reconfigure"
+    return when (layer) {
+        is Layer.JoiningEvent -> "JoiningEvent:${layer.phase::class.simpleName}"
+        is Layer.Joined -> layer.pendingSwitch
             ?.let { "Switch:${it.phase::class.simpleName}" }
             ?: "Joined"
-        is UiState.CreateEvent -> "CreateEvent"
-        UiState.CreatingEvent -> "CreatingEvent"
-        else -> state::class.simpleName ?: "unknown"
+        is Layer.CreateEvent -> "CreateEvent"
+        Layer.CreatingEvent -> "CreatingEvent"
     }
 }
 
@@ -177,12 +158,17 @@ internal fun SwitchDialog(
 ) {
     val current = currentEventName ?: "this event"
     when (val phase = switch.phase) {
-        // Unreachable, and required for exhaustiveness. The explainer is chosen by the gate's loaded-phase
-        // derivation only when NO event is configured — and while this dialog is up the previous event
-        // still is. A switch does reach the explainer, but only AFTER its leave, by which point the state
-        // is a full-screen `JoiningEvent` and not this overlay at all (capability `join-event`).
-        is JoinPhase.ExplainAccess -> Unit
-        is JoinPhase.Ready ->
+        // Only the Ready step opens a confirmation here. The others are unreachable in this overlay and
+        // are collapsed deliberately below, each with the reason it cannot occur.
+        is JoinPhase.Detailed -> if (phase.step != JoinPhase.Detailed.Step.Ready) {
+            // ExplainAccess is chosen by the gate's loaded-phase derivation only when NO event is
+            // configured — and while this dialog is up the previous event still is. A switch does reach
+            // the explainer, but only AFTER its leave, by which point the state is a full-screen
+            // `JoiningEvent` and not this overlay (capability `join-event`). CommitFailed cannot occur
+            // either: this dialog's confirm runs only the leave, so no commit can fail while the previous
+            // event is still configured. Committing is transient — no dialog while a commit runs.
+            Unit
+        } else {
             AppDestructiveConfirmDialog(
                 // The names carry the whole weight of the decision, so they are the whole body; the title
                 // is the crisp question. Destructive, because the confirm leaves immediately. It promises
@@ -193,11 +179,12 @@ internal fun SwitchDialog(
                     title = "Switch events?",
                     confirmLabel = "Switch",
                     cancelLabel = "Cancel",
-                    body = "You'll leave \"$current\" and join \"${phase.name}\".",
+                    body = "You'll leave \"$current\" and join \"${phase.event.name}\".",
                 ),
                 onConfirm = onConfirmSwitch,
                 onDismiss = onCancelSwitch,
             )
+        }
         JoinPhase.NotFound ->
             AppConfirmDialog(
                 copy = DialogCopy(
@@ -220,12 +207,8 @@ internal fun SwitchDialog(
                 onConfirm = onRetryLoad,
                 onDismiss = onCancelSwitch,
             )
-        // Unreachable alongside `ExplainAccess`, and required for exhaustiveness: this dialog's confirm
-        // runs only the leave, so no commit can fail while the previous event is still configured. A
-        // post-leave commit failure is the full-screen surface's own retryable phase.
-        is JoinPhase.CommitFailed -> Unit
-        // Transient — no dialog while the details load or a commit runs.
-        JoinPhase.Loading, is JoinPhase.Committing -> Unit
+        // Transient — no dialog while the details load.
+        JoinPhase.Loading -> Unit
     }
 }
 
@@ -238,12 +221,12 @@ internal fun SwitchDialog(
  */
 private fun reconfigureNotes(
     membership: EventConfig,
-    selection: RangeSelection,
+    range: ResolvedRange,
     saveToAlbum: Boolean,
 ) = ParticipationNotes(
-    fromFloor = "Can't be earlier than the event started, ${appDateTimeLabel(selection.windowStart)}.",
+    fromFloor = "Can't be earlier than the event started, ${appDateTimeLabel(range.windowStart)}.",
     untilCeiling = if (membership.endsAt != null) {
-        "Can't be later than the event ends, ${appDateTimeLabel(selection.windowEnd)}."
+        "Can't be later than the event ends, ${appDateTimeLabel(range.windowEnd)}."
     } else {
         // A legacy membership whose event `endsAt` has not been backfilled yet: the picker still bounds
         // against the member's own ceiling, but naming an event end we do not know would be a guess.

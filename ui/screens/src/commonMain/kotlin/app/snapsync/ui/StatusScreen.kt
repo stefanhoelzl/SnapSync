@@ -2,12 +2,14 @@ package app.snapsync.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
+import app.snapsync.presentation.JoinedSurface
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.feature.membership.RenameStatus
+import app.snapsync.presentation.RenameState
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
@@ -47,61 +49,32 @@ internal const val NO_CEILING_YEARS = 100
  * A holder rather than four separate `var`s because the overlays that read them are a composable of
  * their own: four flags would otherwise cross that boundary as four values and four setters.
  */
-private class StatusOverlayState {
-    var confirmingLeave by mutableStateOf(false)
-    var reportingBug by mutableStateOf(false)
-    var reconfiguring by mutableStateOf(false)
-
-    /** The typed name lives inside the sheet; the screen learns it only on confirm. */
-    var renaming by mutableStateOf(false)
-}
 
 @Composable
 fun StatusScreen(
+    // Everything this screen renders. The membership, the invite URL, the inline create error and the
+    // rename status all travel INSIDE it (capability `sync-status-screen`): a value the screen shows is a
+    // value the state carries, so no call site can supply the state and silently omit a rendered value.
     state: UiState,
-    // The joined membership's current settings, for the in-place reconfigure surface (capability
-    // `reconfigure-membership`); null when no event is configured. The settings gear opens a full-screen
-    // surface pre-filled from this, and Save fires [onReconfigure]. A screen param like [inviteUrl] —
-    // opening/closing the surface is screen-local navigation, so no external "open" callback is threaded.
-    membership: EventConfig? = null,
-    inviteUrl: String? = null,
-    // The joined event's name (fetched by id), shown as the heading; null until fetched.
-    eventName: String? = null,
-    transientError: String? = null,
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
     // system-reading default (migration step 9): the host binds the `Clock`/`TimeZoneSource` ports
     // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
     cutoff: CutoffFormatter,
-    // The current photo-access grant, threaded purely as a recompute trigger for the count: a late resolve
-    // (the first-join dialog is answered a beat after Ready renders) must make the count appear.
-    photoPermission: PermissionStatus = PermissionStatus.GRANTED,
-    // The rename lifecycle. `InFlight` makes the dialog busy, `Succeeded` closes it, `Failed` keeps it
-    // open with an error banner. A screen param like [eventName] — it is NOT part of UiState.
-    renameStatus: RenameStatus = RenameStatus.Idle,
     // The eighteen things this screen can ask for, bundled (see [StatusActions]). Defaulted, so a host
     // that wires none of them — the forge reviewing a forged state — constructs nothing.
     actions: StatusActions = StatusActions(),
 ) {
     AppTheme {
-        // The screen's own visibility flags, held together (see [StatusOverlayState]). Screen-local
-        // navigation: none of these enters UiState or the reduction, because opening a dialog is not a
-        // state of the sync. Grouped rather than left as four separate `var`s so the overlay block below
-        // can be a composable of its own without threading four values and four setters through it.
-        val overlays = remember { StatusOverlayState() }
-
-        val chrome = statusChrome(state, membership, overlays)
-        LaunchedEffect(chrome.joined) {
-            if (!chrome.joined) {
-                overlays.reconfiguring = false
-                overlays.renaming = false
-            }
-        }
+        // Derived once from the state. There is no screen-held visibility left to reset when the layer
+        // changes: the container clears the overlays where a membership actually ends, and the reduction
+        // masks a joined-only overlay against a layer that is not joined.
+        val chrome = statusChrome(state)
 
         // The joined-layer action cluster: settings . share . leave (see [JoinedBottomActions] for why
         // each is shown when it is). Null everywhere else, so the create layer and the join gate keep
         // their own bottom edge.
         val bottomActions: (@Composable () -> Unit)? = if (chrome.showsJoinedChrome) {
-            { JoinedBottomActions(membership, inviteUrl, overlays, actions) }
+            { JoinedBottomActions(actions) }
         } else {
             null
         }
@@ -114,40 +87,23 @@ fun StatusScreen(
             // real control and appears in the accessibility tree. Not suppressed during a pending switch,
             // for the same reasons the settings gear is not: `RenameEvent` guards the `eventId` itself,
             // and suppressing here also hid the pen for the whole of a join's own commit.
-            heading = eventName?.takeIf { chrome.showsJoinedChrome }?.let {
+            heading = (state.layer as? Layer.Joined)?.membership?.name
+                ?.takeIf { chrome.showsJoinedChrome }?.let {
                 ScreenHeading(
                     text = it,
-                    onEdit = if (chrome.canRename) ({ overlays.renaming = true }) else null,
+                    onEdit = if (chrome.canRename) actions.surfaces.onRenameOpen else null,
                     editDescription = "Rename event",
                 )
             },
             bottomActions = bottomActions,
             contentPinsActionCluster = chrome.pinsActionCluster,
             // Hidden, and only where there is a channel to send to.
-            onTitleDoubleTap = actions.onSendDiagnostics?.let { { overlays.reportingBug = true } },
+            onTitleDoubleTap = actions.onSendDiagnostics?.let { actions.surfaces.onReportBugOpen },
         ) {
-            CurrentLayer(
-                state = state,
-                reconfiguring = chrome.reconfiguring,
-                cutoff = cutoff,
-                photoPermission = photoPermission,
-                inviteUrl = inviteUrl,
-                transientError = transientError,
-                overlays = overlays,
-                actions = actions,
-            )
+            CurrentLayer(state = state, chrome = chrome, cutoff = cutoff, actions = actions)
         }
         // The overlays sit ON TOP of whatever layer rendered above.
-        StatusOverlays(
-            state = state,
-            membership = membership,
-            eventName = eventName,
-            renameStatus = renameStatus,
-            reconfigureActive = chrome.reconfiguring != null,
-            joined = chrome.joined,
-            overlays = overlays,
-            actions = actions,
-        )
+        StatusOverlays(state = state, actions = actions)
     }
 }
 
@@ -166,7 +122,8 @@ fun StatusScreen(
  */
 private class StatusChrome(
     val joined: Boolean,
-    val reconfiguring: EventConfig?,
+    val reconfiguring: JoinedSurface.Reconfigure?,
+    val membership: EventConfig?,
     val showsJoinedChrome: Boolean,
     val canRename: Boolean,
     val pinsActionCluster: Boolean,
@@ -176,23 +133,24 @@ private class StatusChrome(
  * The reconfigure surface renders only while joined with a known membership; if the config drops (a leave
  * lands) the caller resets the flag so a later rejoin does not reopen it.
  */
-private fun statusChrome(
-    state: UiState,
-    membership: EventConfig?,
-    overlays: StatusOverlayState,
-): StatusChrome {
-    val joined = state is UiState.Joined
-    val reconfiguring = if (joined && overlays.reconfiguring) membership else null
+private fun statusChrome(state: UiState): StatusChrome {
+    // The membership comes off the state, which carries it non-null exactly when joined — so the
+    // `membership != null` conjunctions this function used to carry have no expression left.
+    val joinedLayer = state.layer as? Layer.Joined
+    val membership = joinedLayer?.membership
+    val joined = membership != null
+    val reconfiguring = joinedLayer?.surface as? JoinedSurface.Reconfigure
     val showsJoinedChrome = joined && reconfiguring == null
     return StatusChrome(
         joined = joined,
         reconfiguring = reconfiguring,
+        membership = membership,
         showsJoinedChrome = showsJoinedChrome,
-        canRename = showsJoinedChrome && membership != null,
+        canRename = showsJoinedChrome,
         // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
         // reconfigure surface likewise pins its own Save/Cancel — so both take the safe-area-anchored
         // bottom edge with no jump.
-        pinsActionCluster = state is UiState.JoiningEvent || reconfiguring != null,
+        pinsActionCluster = state.layer is Layer.JoiningEvent || reconfiguring != null,
     )
 }
 
@@ -207,30 +165,23 @@ private fun statusChrome(
  * [StatusScreen] readable as what it is, a dispatcher: state in, one surface out.
  */
 @Composable
-private fun StatusOverlays(
-    state: UiState,
-    membership: EventConfig?,
-    eventName: String?,
-    renameStatus: RenameStatus,
-    reconfigureActive: Boolean,
-    joined: Boolean,
-    overlays: StatusOverlayState,
-    actions: StatusActions,
-) {
+private fun StatusOverlays(state: UiState, actions: StatusActions) {
+    val joined = state.layer as? Layer.Joined
+    val overlays = state.overlays
     if (overlays.confirmingLeave) {
-        LeaveConfirmDialog(overlays, actions.joined.onLeaveEvent)
+        LeaveConfirmDialog(actions)
     }
-    if (overlays.renaming && joined && membership != null) {
-        RenameSheet(membership, renameStatus, overlays, actions)
+    if (overlays.renaming && joined != null) {
+        RenameSheet(joined.membership, joined.renameState, actions)
     }
     if (overlays.reportingBug && actions.onSendDiagnostics != null) {
-        BugReportSheet(overlays, actions.onSendDiagnostics, screenLabel(state, reconfigureActive))
+        BugReportSheet(actions, actions.onSendDiagnostics, screenLabel(state))
     }
     // A switch confirmation over the joined screen (scanning a different event while joined).
-    (state as? UiState.Joined)?.pendingSwitch?.let { switch ->
+    joined?.pendingSwitch?.let { switch ->
         SwitchDialog(
             switch = switch,
-            currentEventName = eventName,
+            currentEventName = joined.membership.name,
             onConfirmSwitch = actions.switch.onConfirmSwitch,
             onCancelSwitch = actions.switch.onCancelSwitch,
             onRetryLoad = actions.join.onRetryLoad,
@@ -240,7 +191,7 @@ private fun StatusOverlays(
 
 /** Leaving is destructive and irreversible from here, so it is confirmed rather than merely tapped. */
 @Composable
-private fun LeaveConfirmDialog(overlays: StatusOverlayState, onLeave: () -> Unit) {
+private fun LeaveConfirmDialog(actions: StatusActions) {
     AppDestructiveConfirmDialog(
         copy = DialogCopy(
             title = "Leave this event?",
@@ -249,11 +200,8 @@ private fun LeaveConfirmDialog(overlays: StatusOverlayState, onLeave: () -> Unit
             confirmLabel = "Leave",
             cancelLabel = "Stay",
         ),
-        onConfirm = {
-            overlays.confirmingLeave = false
-            onLeave()
-        },
-        onDismiss = { overlays.confirmingLeave = false },
+        onConfirm = actions.joined.onLeaveEvent,
+        onDismiss = actions.surfaces.onConfirmLeaveDismiss,
     )
 }
 
@@ -269,16 +217,15 @@ private fun LeaveConfirmDialog(overlays: StatusOverlayState, onLeave: () -> Unit
 @Composable
 private fun RenameSheet(
     membership: EventConfig,
-    renameStatus: RenameStatus,
-    overlays: StatusOverlayState,
+    renameState: RenameState,
     actions: StatusActions,
 ) {
     // Success closes the sheet; either terminal value clears the latch, so the next rename starts
     // from a clean sequence rather than re-reading this one's outcome.
-    LaunchedEffect(renameStatus) {
-        when (renameStatus) {
-            RenameStatus.Succeeded -> {
-                overlays.renaming = false
+    LaunchedEffect(renameState) {
+        when (renameState) {
+            RenameState.Succeeded -> {
+                actions.surfaces.onRenameDismiss()
                 actions.joined.onRenameStatusConsumed()
             }
             else -> Unit
@@ -295,16 +242,19 @@ private fun RenameSheet(
             placeholder = "Event name",
             initialValue = membership.name,
             // The backend's own bound (capability `event-creation`), enforced by the input so an
-            // over-long name is unreachable rather than rejected on a round trip.
-            maxLength = 100,
-            busy = renameStatus == RenameStatus.InFlight,
-            error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
+            // over-long name is unreachable rather than rejected on a round trip. The SAME constant the
+            // create form caps at — it was a bare literal here, which is how the two could have drifted.
+            maxLength = EVENT_NAME_MAX_LENGTH,
+            busy = renameState == RenameState.InFlight,
+            // The copy arrives already formatted: turning a failure REASON into words is the reduction's
+            // job, exactly as it is for the create layer's twin (capability `event-rename`).
+            error = (renameState as? RenameState.Failed)?.message,
         ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
         // rather than renaming a different event.
         onConfirm = { newName -> actions.joined.onRenameEvent(membership.eventId, newName) },
         onDismiss = {
-            overlays.renaming = false
+            actions.surfaces.onRenameDismiss()
             actions.joined.onRenameStatusConsumed()
         },
     )
@@ -325,7 +275,7 @@ private fun RenameSheet(
  */
 @Composable
 private fun BugReportSheet(
-    overlays: StatusOverlayState,
+    actions: StatusActions,
     onSend: (note: String, screen: String) -> Unit,
     screen: String,
 ) {
@@ -344,10 +294,10 @@ private fun BugReportSheet(
             maxLength = 200,
         ),
         onConfirm = { note ->
-            overlays.reportingBug = false
+            actions.surfaces.onReportBugDismiss()
             onSend(note, screen)
         },
-        onDismiss = { overlays.reportingBug = false },
+        onDismiss = actions.surfaces.onReportBugDismiss,
     )
 }
 
@@ -366,19 +316,13 @@ private fun BugReportSheet(
         // joined, which is not a switch), so this gear vanished from the joined screen for as long as
         // provisioning took: the reported symptom in `SNAPSYNC-26`.
 @Composable
-private fun JoinedBottomActions(
-    membership: EventConfig?,
-    inviteUrl: String?,
-    overlays: StatusOverlayState,
-    actions: StatusActions,
-) {
-    if (membership != null) {
-        SettingsButton(description = "Event settings", onClick = { overlays.reconfiguring = true })
-    }
-    if (inviteUrl != null) {
-        ShareButton(description = "Share invite link", onClick = actions.joined.onShareInvite)
-    }
-    LeaveButton(description = "Leave event", onClick = { overlays.confirmingLeave = true })
+private fun JoinedBottomActions(actions: StatusActions) {
+    // Settings and share used to be guarded on a nullable membership and a nullable invite URL. The
+    // joined state carries both non-null, so the guards have nothing left to test: reaching this cluster
+    // IS having a membership, and the invite URL is derived from it.
+    SettingsButton(description = "Event settings", onClick = actions.surfaces.onOpenReconfigure)
+    ShareButton(description = "Share invite link", onClick = actions.joined.onShareInvite)
+    LeaveButton(description = "Leave event", onClick = actions.surfaces.onConfirmLeaveOpen)
 }
 
 /**
@@ -394,46 +338,42 @@ private fun JoinedBottomActions(
 @Composable
 private fun ColumnScope.CurrentLayer(
     state: UiState,
-    reconfiguring: EventConfig?,
+    chrome: StatusChrome,
+    // Still needed by the CREATE form (its own local name/date state, which this change does not lift)
+    // and by the joined layer's clock line. The RANGE form no longer needs it: its bounds arrive
+    // resolved (capability `sync-status-screen`).
     cutoff: CutoffFormatter,
-    photoPermission: PermissionStatus,
-    inviteUrl: String?,
-    transientError: String?,
-    overlays: StatusOverlayState,
     actions: StatusActions,
 ) {
-    if (reconfiguring != null) {
+    val reconfiguring = chrome.reconfiguring
+    if (reconfiguring != null && chrome.membership != null) {
         ReconfigureScreen(
-            membership = reconfiguring,
-            cutoff = cutoff,
-            shareableCount = actions.shareableCount,
-            photoPermission = photoPermission,
-            onSave = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-                overlays.reconfiguring = false
-                actions.joined.onReconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
-            },
-            onCancel = { overlays.reconfiguring = false },
+            membership = chrome.membership,
+            surface = reconfiguring,
+            participation = actions.participation,
+            photoPermission = actions.participation.photoPermission,
+            onSave = actions.joined.onReconfigure,
+            onCancel = actions.surfaces.onCancelReconfigure,
         )
-    } else when (state) {
-        is UiState.CreateEvent ->
-            CreateEventScreen(state, actions.onCreateEvent, transientError, cutoff)
-        UiState.CreatingEvent ->
+    } else when (val layer = state.layer) {
+        is Layer.CreateEvent ->
+            CreateEventScreen(layer, actions.onCreateEvent, cutoff)
+        Layer.CreatingEvent ->
             CreatingEventScreen()
-        is UiState.JoiningEvent ->
+        is Layer.JoiningEvent ->
             JoiningEventScreen(
-                phase = state.phase,
-                cutoff = cutoff,
+                layer = layer,
                 actions = JoinActions(
                     onConfirm = actions.join.onConfirmJoin,
                     onRetryJoin = actions.join.onRetryJoin,
                     onAcknowledgeAccess = actions.join.onAcknowledgeAccess,
                     onCancel = actions.join.onCancelJoin,
                     onRetryLoad = actions.join.onRetryLoad,
-                    shareableCount = actions.shareableCount,
+                    participation = actions.participation,
                 ),
-                photoPermission = photoPermission,
+                photoPermission = actions.participation.photoPermission,
             )
-        is UiState.Joined ->
-            JoinedLayer(state, inviteUrl, actions.access, cutoff)
+        is Layer.Joined ->
+            JoinedLayer(layer, actions.access, cutoff)
     }
 }

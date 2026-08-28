@@ -27,27 +27,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.FromChoice
+import app.snapsync.model.UntilChoice
 import kotlinx.datetime.LocalDateTime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-
-/**
- * The lower bound of a joining member's capture-date **range** (capability `photo-selection-policy`). A
- * semantic value — the caller maps it to an actual instant against the event window, so the design system
- * stays decoupled from the config capability.
- *
- * [EVENT_START] shares everything back to the event's start; [NOW] starts the contribution at the present
- * instant (offered only while the present is inside the event window — see [AppRangePresetChoices]); [CUSTOM]
- * lets a guest who arrived partway through pick their own start, bounded to the window.
- */
-enum class FromChoice { EVENT_START, NOW, CUSTOM }
-
-/**
- * The upper bound of a joining member's capture-date **range** (capability `photo-selection-policy`).
- * [EVENT_END] shares up to when the event ends (the default — narrow, never widen); [CUSTOM] lets a guest
- * stop contributing earlier, bounded to the window.
- */
-enum class UntilChoice { EVENT_END, CUSTOM }
 
 /**
  * The two ends of a capture-date range as the member has PICKED them: a preset each, plus the wall-clock
@@ -66,10 +50,10 @@ class RangeChoices(
 
 /** The four edits a member can make to a [RangeChoices]. */
 class RangeChoiceActions(
-    val onFromPreset: (FromChoice) -> Unit,
-    val onFromCustom: (LocalDateTime) -> Unit,
-    val onUntilPreset: (UntilChoice) -> Unit,
-    val onUntilCustom: (LocalDateTime) -> Unit,
+    val onFromPreset: (FromChoice) -> Unit = {},
+    val onFromCustom: (LocalDateTime) -> Unit = {},
+    val onUntilPreset: (UntilChoice) -> Unit = {},
+    val onUntilCustom: (LocalDateTime) -> Unit = {},
 )
 
 /**

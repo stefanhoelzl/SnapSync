@@ -51,6 +51,7 @@ fun ForgeHarnessRoot() {
                 // The shared left pane (in :app:desktop): the real StatusScreen in a phone frame,
                 // driven by the forge cells the PanelController exposes.
                 StatusPane(
+                    onHostReady = { controller.host = it },
                     syncSource = controller.syncSource,
                     permissionSource = controller.permissionSource,
                     requester = controller.requester,

@@ -34,6 +34,8 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.feature.push.ApnsPushToken
@@ -594,9 +596,18 @@ object SnapSyncRoot {
         // presentation names no ports — the Keychain/PhotoKit adapters stay behind their flows).
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(
-            syncSource, permission.permission, config.config, scope,
-            creationStatusSource = app.creationStatus,
-            renameStatusSource = app.renameStatus,
+            // Every read-model the reduction observes, in one bundle (`StatusSources`).
+            StatusSources(
+                sync = syncSource,
+                permission = permission.permission,
+                config = config.config,
+                creation = app.creationStatus,
+                rename = app.renameStatus,
+                download = app.downloadStatusSource,
+                attested = app.attestation.attested,
+            ),
+            scope = scope,
+            cutoffFormatter = cutoffFormatter,
             // The user-tap command bundle (leave / create / commitJoin / share / requestAccess /
             // openSettings), built and decorated only in `compose/` (`AppCore.userCommands`) —
             // presentation fires commands solely through it (spec `module-architecture`, "Commands
@@ -605,16 +616,16 @@ object SnapSyncRoot {
             // The join gate's details READ (capability `join-event`): a scanned QR opens the
             // confirmation; details are fetched (GET) and mapped by feature/membership's [toJoinLoad].
             loadJoinDetails = { eventId -> app.joinEvent.loadDetails(eventId).toJoinLoad() },
-            cutoffFormatter = cutoffFormatter,
-            log = { message -> log.i { message } },
-            // The container's error seam (capability `sync-status-screen`): a throwable escaping a user
-            // command lands here instead of propagating. `Error` severity deliberately — that is the
-            // threshold at which a Kermit line becomes a crash-reporting EVENT rather than a breadcrumb
-            // (capability `crash-reporting`), and a command that failed outright is exactly what should
-            // reach the operator. It also keeps the line in `debug.log`, the un-redacted channel.
-            onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
-            downloadSource = app.downloadStatusSource,
-            attested = app.attestation.attested,
+            diagnostics = StatusDiagnostics(
+                log = { message -> log.i { message } },
+                // The container's error seam (capability `sync-status-screen`): a throwable escaping a
+                // user command lands here instead of propagating. `Error` severity deliberately — that
+                // is the threshold at which a Kermit line becomes a crash-reporting EVENT rather than a
+                // breadcrumb (capability `crash-reporting`), and a command that failed outright is
+                // exactly what should reach the operator. It also keeps the line in `debug.log`, the
+                // un-redacted channel.
+                onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
+            ),
         )
     }
 

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * An in-progress interactive join/switch confirmation (capability `join-event`): the event being
  * joined and the [phase] of its confirmation surface. The reducer maps a non-null value to
- * `UiState.JoiningEvent` (config absent) or `Joined.pendingSwitch` (config present); `null` means no
+ * `Layer.JoiningEvent` (config absent) or `Joined.pendingSwitch` (config present); `null` means no
  * confirmation is open.
  */
 data class PendingJoin(val eventId: String, val phase: JoinPhase)

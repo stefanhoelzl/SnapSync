@@ -7,6 +7,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.forgeStatusHost
+import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
@@ -21,7 +22,10 @@ import platform.UIKit.UIViewController
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
 import app.snapsync.ui.AccessActions
+import app.snapsync.ui.SurfaceActions
 import app.snapsync.ui.SwitchActions
+import app.snapsync.ui.ParticipationActions
+import app.snapsync.ui.components.RangeChoiceActions
 
 /**
  * The forge binary's entry point — the whole of it.
@@ -46,53 +50,12 @@ import app.snapsync.ui.SwitchActions
 fun MainViewController(): UIViewController = ComposeUIViewController {
     val host = forgeHost
     val state by host.container.stateFlow.collectAsState()
-    val inviteUrl by host.inviteUrl.collectAsState()
-    val eventName by host.eventName.collectAsState()
-    val membership by host.membership.collectAsState()
-    val renameStatus by host.renameStatus.collectAsState()
-    val transientError by host.transientError.collectAsState()
 
     CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
         StatusScreen(
             state = state,
-            membership = membership,
-            inviteUrl = inviteUrl,
-            eventName = eventName,
-            transientError = transientError,
             cutoff = cutoffFormatter,
-            // A constant, exactly as `ForgeShell` supplied: this is the shareable-count row's recompute
-            // trigger, and there is no live grant in this binary to observe. The forged frame's own
-            // permission is one of the preset's inputs and reaches the screen through the reduction.
-            photoPermission = PermissionStatus.GRANTED,
-            renameStatus = renameStatus,
-            actions = StatusActions(
-                join = JoinGateActions(
-                    onConfirmJoin = host::onConfirmJoin,
-                    onAcknowledgeAccess = host::onAcknowledgeAccess,
-                    onCancelJoin = host::onCancelJoin,
-                    onRetryLoad = host::onRetryLoad,
-                    onRetryJoin = host::onRetryJoin,
-                ),
-                joined = JoinedActions(
-                    onLeaveEvent = host::onLeaveEvent,
-                    onShareInvite = host::onShareInvite,
-                    onReconfigure = host::onReconfigure,
-                    onRenameEvent = host::onRenameEvent,
-                    onRenameStatusConsumed = host::onRenameStatusConsumed,
-                ),
-                access = AccessActions(
-                    onRequestPermission = host::onRequestPermission,
-                    onOpenSettings = host::onOpenSettings,
-                    onChoosePhotos = host::onChoosePhotos,
-                ),
-                switch = SwitchActions(
-                    onConfirmSwitch = host::onConfirmSwitch,
-                    onCancelSwitch = host::onCancelSwitch,
-                ),
-                onSendDiagnostics = host.onSendDiagnostics,
-                onCreateEvent = host::onCreateEvent,
-                shareableCount = { _, _ -> null },
-            )
+            actions = statusActions(host, photoPermission)
         )
     }
 }
@@ -137,3 +100,62 @@ private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
  * CI regions for no reason a reader could see.
  */
 private val cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC)
+
+/**
+ * The wiring table from the container's intents to what the screen asks for.
+ *
+ * Its own function because it decides nothing — it is the shell's whole job, and keeping it out of the
+ * entry point keeps that entry point readable as what it is (spec `module-architecture`, "Shells are
+ * wiring only").
+ */
+private fun statusActions(host: StatusContainerHost, photoPermission: PermissionStatus) =
+    StatusActions(
+                join = JoinGateActions(
+                    onConfirmJoin = host::onConfirmJoin,
+                    onAcknowledgeAccess = host::onAcknowledgeAccess,
+                    onCancelJoin = host::onCancelJoin,
+                    onRetryLoad = host::onRetryLoad,
+                    onRetryJoin = host::onRetryJoin,
+                ),
+                joined = JoinedActions(
+                    onLeaveEvent = host::onLeaveEvent,
+                    onShareInvite = host::onShareInvite,
+                    onReconfigure = host::onReconfigure,
+                    onRenameEvent = host::onRenameEvent,
+                    onRenameStatusConsumed = host::onRenameStatusConsumed,
+                ),
+                access = AccessActions(
+                    onRequestPermission = host.access::onRequestPermission,
+                    onOpenSettings = host.access::onOpenSettings,
+                    onChoosePhotos = host.access::onChoosePhotos,
+                ),
+                surfaces = SurfaceActions(
+                    onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
+                    onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
+                    onRenameOpen = host.surfaces::onRenameOpen,
+                    onRenameDismiss = host.surfaces::onRenameDismiss,
+                    onOpenReconfigure = host.surfaces::onOpenReconfigure,
+                    onCancelReconfigure = host.surfaces::onCancelReconfigure,
+                    onReportBugOpen = host.surfaces::onReportBugOpen,
+                    onReportBugDismiss = host.surfaces::onReportBugDismiss,
+                ),
+                switch = SwitchActions(
+                    onConfirmSwitch = host::onConfirmSwitch,
+                    onCancelSwitch = host::onCancelSwitch,
+                ),
+                onSendDiagnostics = host.onSendDiagnostics,
+                onCreateEvent = host::onCreateEvent,
+                participation = ParticipationActions(
+                    choices = RangeChoiceActions(
+                        onFromPreset = host.form::onFromPreset,
+                        onFromCustom = host.form::onFromCustom,
+                        onUntilPreset = host.form::onUntilPreset,
+                        onUntilCustom = host.form::onUntilCustom,
+                    ),
+                    onShareOn = host.form::onShareOn,
+                    onReceiveOn = host.form::onReceiveOn,
+                    onSaveToAlbum = host.form::onSaveToAlbum,
+                    shareableCount = { _, _ -> null },
+                    photoPermission = photoPermission,
+                ),
+            )

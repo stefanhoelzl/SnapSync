@@ -14,9 +14,17 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.model.UserCommands
 import app.snapsync.feature.membership.toJoinLoad
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.EventDetails
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
 import app.snapsync.presentation.JoinPhase
+import app.snapsync.presentation.step
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
 import app.snapsync.world.foreignManifest
@@ -69,15 +77,16 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(deeplink(EVENT_E))
-            val phase = (host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
-                as UiState.JoiningEvent).phase as JoinPhase.Ready
+            val phase = ((host.await {
+                ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready
+            }.layer as Layer.JoiningEvent).phase as JoinPhase.Detailed).event
 
             assertEquals(eventStart("2026-01-01T00:00:00Z"), phase.startsAt, "a synthesized millisecond startsAt is truncated")
             assertTrue(!phase.startsAt.at.iso.contains('.'), "a cutoff never carries fractional seconds")
 
             // Confirm with exactly what the surface showed — the round-trip through the real screen.
-            host.onConfirmJoin(CaptureCutoff(phase.startsAt.at), CaptureCeiling(phase.endsAt.at), Direction.Both, false)
-            host.await { it is UiState.Joined }
+            host.confirmJoinAs()
+            host.await { it.layer is Layer.Joined }
 
             assertEquals(
                 CaptureCutoff(phase.startsAt.at),
@@ -103,20 +112,28 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(deeplink(EVENT_E))
+            // The event and the phase the gate reached — not the whole state: a loaded phase also carries
+            // the range the reduction resolved, and restating that here would assert the resolution rules
+            // a second time. `RangeResolutionTest` owns those.
+            val gate = host.await {
+                ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready
+            }.layer as Layer.JoiningEvent
+            assertEquals(EVENT_E, gate.eventId)
             assertEquals(
-                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready(
-                        "Anna's Wedding",
-                        eventStart("2026-01-01T00:00:00Z"),
-                        eventEnd("2026-01-31T00:00:00Z"),
-                        // The world edge derives it exactly as the real one does:
-                        // `max(createdAt, startsAt) + 30d` (capability `event-limits`).
-                        deletesAt("2026-01-31T00:00:00Z"),
-                    )),
-                host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
+                phaseAt(
+                    JoinPhase.Detailed.Step.Ready,
+                    "Anna's Wedding",
+                    eventStart("2026-01-01T00:00:00Z"),
+                    eventEnd("2026-01-31T00:00:00Z"),
+                    // The world edge derives it exactly as the real one does:
+                    // `max(createdAt, startsAt) + 30d` (capability `event-limits`).
+                    deletesAt("2026-01-31T00:00:00Z"),
+                ),
+                gate.phase,
             )
 
-            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
-            host.await { it is UiState.Joined } // config flipped present → joined layer
+            host.confirmJoinAs()
+            host.await { it.layer is Layer.Joined } // config flipped present → joined layer
 
             // World outcomes: config provisioned + a register-only EMPTY manifest deposited (membership).
             assertEquals(EVENT_E, w.configSource.config.value?.eventId)
@@ -135,7 +152,7 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(deeplink(EVENT_E))
-            host.await { (it as? UiState.JoiningEvent)?.phase == JoinPhase.NotFound }
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase == JoinPhase.NotFound }
 
             assertNull(w.configSource.config.value)
             assertNull(w.store.manifestOf(EVENT_E, w.ownDeviceId))
@@ -154,11 +171,11 @@ class JoinGateIntegrationTest {
 
             w.backendOffline = true
             host.onOpenUrl(deeplink(EVENT_E))
-            host.await { (it as? UiState.JoiningEvent)?.phase == JoinPhase.LoadFailed }
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase == JoinPhase.LoadFailed }
 
             w.backendOffline = false
             host.onRetryLoad()
-            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready }
         } finally {
             scope.cancel()
         }
@@ -173,11 +190,11 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(deeplink(EVENT_E))
-            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready }
 
             w.backendOffline = true // enrollment PUT now fails
-            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
-            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.CommitFailed }
+            host.confirmJoinAs()
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.CommitFailed }
 
             assertNull(w.configSource.config.value) // not joined
         } finally {
@@ -202,15 +219,15 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(deeplink(EVENT_F))
-            host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
+            host.await { ((it as UiState).layer as? Layer.Joined)?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
 
             // Confirm = the leave alone. E is gone and the SAME pending join is now the full-screen
             // surface for F, where the choices are made.
             host.onConfirmSwitch()
-            host.await { it is UiState.JoiningEvent && w.configSource.config.value == null }
+            host.await { it.layer is Layer.JoiningEvent && w.configSource.config.value == null }
 
-            host.onConfirmJoin(CUTOFF, ENDS, Direction.DownloadOnly, saveToAlbum = true)
-            host.await { it is UiState.Joined && w.configSource.config.value?.eventId == EVENT_F }
+            host.confirmJoinAs(Direction.DownloadOnly, saveToAlbum = true)
+            host.await { it.layer is Layer.Joined && w.configSource.config.value?.eventId == EVENT_F }
 
             val cfg = w.configSource.config.value
             assertEquals(EVENT_F, cfg?.eventId)                            // switched
@@ -243,16 +260,16 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope, leave = { leaveEvent.leave() })
 
             host.onOpenUrl(deeplink(EVENT_F))
-            host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
+            host.await { ((it as UiState).layer as? Layer.Joined)?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
 
             host.onConfirmSwitch()
             // The join surface appears even though E's DELETE is still pending: the leave's local teardown
             // never waits on the departed event's fire-and-forget backend notify.
-            host.await { it is UiState.JoiningEvent && w.configSource.config.value == null }
+            host.await { it.layer is Layer.JoiningEvent && w.configSource.config.value == null }
 
-            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, saveToAlbum = false)
+            host.confirmJoinAs()
             // …and the new event's join completes with E's DELETE still hanging.
-            host.await { it is UiState.Joined && w.configSource.config.value?.eventId == EVENT_F }
+            host.await { it.layer is Layer.Joined && w.configSource.config.value?.eventId == EVENT_F }
             assertTrue(w.store.manifestOf(EVENT_F, w.ownDeviceId) != null) // enrolled in the new event
             assertFalse(deleteGate.isCompleted)                            // E's DELETE never gated either step
         } finally {
@@ -278,12 +295,12 @@ class JoinGateIntegrationTest {
             val link = encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true))
 
             host.onOpenUrl(link)
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
             // A real manifest, as a prior upload cycle would have written it.
             w.store.putManifest(EVENT_E, w.ownDeviceId, foreignManifest(w.ownDeviceId, listOf(World.foreignAsset("A"))))
 
             host.onOpenUrl(link) // the duplicate delivery
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
 
             // Joined once, to that event — and the second delivery re-enrolled nothing: a second
             // provision republishes an EMPTY manifest, so a surviving non-empty one is the oracle.
@@ -304,7 +321,7 @@ class JoinGateIntegrationTest {
             // A real (non-empty) manifest already written by a prior upload cycle.
             w.store.putManifest(EVENT_E, w.ownDeviceId, foreignManifest(w.ownDeviceId, listOf(World.foreignAsset("A"))))
             val host = joinHost(w, scope)
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
 
             host.onOpenUrl(deeplink(EVENT_E)) // same event → no-op, no enrollment PUT
 
@@ -326,7 +343,7 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true)))
-            host.await { it is UiState.Joined } // straight to joined, no confirm tap
+            host.await { it.layer is Layer.Joined } // straight to joined, no confirm tap
 
             assertEquals(EVENT_E, w.configSource.config.value?.eventId)
             assertTrue(w.store.manifestOf(EVENT_E, w.ownDeviceId) != null)
@@ -350,7 +367,7 @@ class JoinGateIntegrationTest {
 
             val cutoff = "2026-06-15T00:00:00Z"
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = cutoff)))
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
 
             assertEquals(captureCutoff(cutoff), w.configSource.config.value?.minPhotoDate, "the cutoff must be persisted in config")
         } finally {
@@ -381,7 +398,7 @@ class JoinGateIntegrationTest {
                     EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"),
                 ),
             )
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
 
             val config = w.configSource.config.value
             assertEquals(captureCutoff(startsAt), config?.minPhotoDate, "the 2001 cutoff must not survive the clamp")
@@ -413,9 +430,9 @@ class JoinGateIntegrationTest {
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
             host.onOpenUrl(deeplink(EVENT_E))
-            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
-            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
-            host.await { it is UiState.Joined }
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready }
+            host.confirmJoinAs()
+            host.await { it.layer is Layer.Joined }
             assertEquals(EVENT_E, w.configSource.config.value?.eventId)
 
             // The nightly sweep deletes the event out from under a still-active member, and time moves
@@ -424,7 +441,7 @@ class JoinGateIntegrationTest {
             w.nowMillis = Instant.parse("2027-01-01T00:00:00Z").toEpochMilliseconds()
 
             w.core.foregroundFlow.run()
-            host.await { it is UiState.CreateEvent }
+            host.await { it.layer is Layer.CreateEvent }
             assertNull(
                 w.configSource.config.value,
                 "the membership is torn down and the device is back at the setup gate",
@@ -442,9 +459,9 @@ class JoinGateIntegrationTest {
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
             host.onOpenUrl(deeplink(EVENT_E))
-            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
-            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
-            host.await { it is UiState.Joined }
+            host.await { ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready }
+            host.confirmJoinAs()
+            host.await { it.layer is Layer.Joined }
             val joined = w.configSource.config.value
 
             // The event is very much alive; the backend just cannot be reached. Past the deadline too, so
@@ -474,9 +491,11 @@ class JoinGateIntegrationTest {
         // `AppCore`'s — the same use-case + bundle command the iOS shell wires — over the world's
         // mini-edge; only the leave edge stays injectable (the switch test gates it).
         StatusContainerHost(
-            syncSource = w.syncStatusSource,
-            permission = w.permission.permission,
-            config = w.configSource.config,
+            StatusSources(
+                sync = w.syncStatusSource,
+                permission = w.permission.permission,
+                config = w.configSource.config,
+            ),
             scope = scope,
             loadJoinDetails = { id -> w.joinEvent.loadDetails(id).toJoinLoad() },
             commands = UserCommands(
@@ -495,3 +514,31 @@ private fun fixedCutoffFormatter() = CutoffFormatter(
     now = { Instant.parse("2026-07-09T12:00:00Z") },
     zone = TimeZone.UTC,
 )
+
+/**
+ * A loaded join phase at [step]. The four event facts are stated ONCE on the phase now (capability
+ * `join-event`), so a test builds the details and says which step is showing.
+ */
+private fun phaseAt(
+    step: JoinPhase.Detailed.Step,
+    name: String,
+    startsAt: EventStart,
+    endsAt: EventEnd,
+    deletesAt: DeletesAt,
+) = JoinPhase.Detailed(EventDetails(name, startsAt, endsAt, deletesAt), step)
+
+/**
+ * Choose a participation, then confirm — what the surface does.
+ *
+ * The commit carries nothing now: it commits what the reduction resolved from the form (capability
+ * `sync-status-screen`). The RANGE is left at its defaults, which resolve to the full event window.
+ */
+private fun StatusContainerHost.confirmJoinAs(
+    direction: Direction = Direction.Both,
+    saveToAlbum: Boolean = false,
+) {
+    form.onShareOn(direction.includesUpload)
+    form.onReceiveOn(direction.includesDownload)
+    form.onSaveToAlbum(saveToAlbum)
+    onConfirmJoin()
+}

@@ -7,8 +7,11 @@ import app.snapsync.model.LedgerState
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.model.Arrow
 import app.snapsync.model.UserCommands
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.normalizeAssetId
@@ -60,10 +63,7 @@ class FullStackIntegrationTest {
             w.refreshStatus()
 
             val host = statusHost(w, scope)
-            assertEquals(
-                UiState.Joined(SyncHealth.NotStarted(eventStart(future))),
-                host.await { it.health() is SyncHealth.NotStarted },
-            )
+            assertEquals(SyncHealth.NotStarted(eventStart(future)), (host.await { it.health() is SyncHealth.NotStarted }).health())
 
             // Run a cycle anyway: the real stack, the real upload cycle, no special-casing.
             w.runUploadCycle()
@@ -72,10 +72,7 @@ class FullStackIntegrationTest {
             // World outcomes, not UiState alone: nothing was admitted, nothing was queued, nothing landed.
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "no object may land before the event starts")
             assertNull(w.ledgerBackend.get("A-primary.jpg"), "the asset never even reached the ledger")
-            assertEquals(
-                UiState.Joined(SyncHealth.NotStarted(eventStart(future))),
-                host.await { it.health() is SyncHealth.NotStarted },
-            )
+            assertEquals(SyncHealth.NotStarted(eventStart(future)), (host.await { it.health() is SyncHealth.NotStarted }).health())
         } finally {
             scope.cancel()
         }
@@ -101,7 +98,7 @@ class FullStackIntegrationTest {
             w.refreshStatus()
 
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
-            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
+            assertEquals(SyncHealth.InSync, (host.await { it.health() is SyncHealth.InSync }).health())
         } finally {
             scope.cancel()
         }
@@ -118,10 +115,7 @@ class FullStackIntegrationTest {
 
             val host = statusHost(w, scope)
             // total = 1, nothing uploaded yet, no job created → Syncing with a static up arrow.
-            assertEquals(
-                UiState.Joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN)),
-                host.await { it.health() is SyncHealth.Syncing },
-            )
+            assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), (host.await { it.health() is SyncHealth.Syncing }).health())
 
             // Run one cycle: the job is created → a REQUESTED (in-flight) ledger row → the up arrow pulses.
             w.runUploadCycle()
@@ -132,7 +126,7 @@ class FullStackIntegrationTest {
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
             w.refreshStatus()
-            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
+            assertEquals(SyncHealth.InSync, (host.await { it.health() is SyncHealth.InSync }).health())
 
             // World outcomes (not UiState alone):
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
@@ -148,17 +142,19 @@ class FullStackIntegrationTest {
         try {
             val w = World(this) // no config → the create layer
             val host = StatusContainerHost(
-                syncSource = w.syncStatusSource,
-                permission = w.permission.permission,
-                config = w.configSource.config,
+                StatusSources(
+                    sync = w.syncStatusSource,
+                    permission = w.permission.permission,
+                    config = w.configSource.config,
+                    creation = w.creationStatus,
+                ),
                 scope = scope,
                 cutoffFormatter = fixedCutoffFormatter(),
-                creationStatusSource = w.creationStatus,
                 // The COMPOSED user-tap bundle (migration step 10): create routes through the real
                 // `AppCore.eventCreator`; the world's default `onEventMinted` provisions directly.
                 commands = w.userCommands,
             )
-            assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
+            assertEquals(UiState(Layer.CreateEvent()), host.container.stateFlow.value)
 
             host.onCreateEvent("Party", LocalDateTime(2026, 1, 1, 0, 0), LocalDateTime(2026, 1, 8, 0, 0)) // POST /events → provision → gate lifts
             // The gate lifts first; the counts are read separately. `refreshStatus` runs AFTER the
@@ -168,7 +164,7 @@ class FullStackIntegrationTest {
             // (This used to be called before the create and still passed, because the total was SEEDED
             // `0` and this membership's real total is also `0` — the un-counted state was
             // indistinguishable from the counted one. It no longer is.)
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
             w.refreshStatus()
             // Await the SETTLED health, not merely "left the create layer": the snapshot's first read is
             // itself asynchronous (`LedgerBackedSyncStatusSource` seeds `Loading` and reaches `Ready`
@@ -176,7 +172,7 @@ class FullStackIntegrationTest {
             // legitimate state between the gate lifting and the counts landing. A predicate that
             // accepts it races the first read and asserts against a frame that is not settled yet.
             val after = host.await { it.health() is SyncHealth.InSync }
-            assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled
+            assertEquals(SyncHealth.InSync, after.health()) // no photos in the library → settled
             assertTrue(w.configSource.config.value != null) // world outcome: config provisioned
         } finally {
             scope.cancel()
@@ -291,10 +287,9 @@ class FullStackIntegrationTest {
 
             val host = statusHost(w, scope)
             // The joined layer under LIMITED carries the choose-more-photos resting affordance.
-            assertEquals(
-                UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
-                host.await { it.health() is SyncHealth.InSync },
-            )
+            val settled = host.await { it.health() is SyncHealth.InSync }.layer as Layer.Joined
+            assertEquals(SyncHealth.InSync, settled.health)
+            assertTrue(settled.canChoosePhotos)
         } finally {
             scope.cancel()
         }
@@ -414,20 +409,22 @@ class FullStackIntegrationTest {
             // production ordering — cancel downloads, stop the producer, clear config, then notify
             // the backend FIRE-AND-FORGET on the composition scope.
             val host = StatusContainerHost(
-                syncSource = w.syncStatusSource,
-                permission = w.permission.permission,
-                config = w.configSource.config,
+                StatusSources(
+                    sync = w.syncStatusSource,
+                    permission = w.permission.permission,
+                    config = w.configSource.config,
+                    creation = w.creationStatus,
+                ),
                 scope = scope,
                 cutoffFormatter = fixedCutoffFormatter(),
-                creationStatusSource = w.creationStatus,
                 commands = w.userCommands,
             )
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
 
             host.onLeaveEvent()
 
             // UiState reduces to the setup gate the instant the config clears...
-            assertEquals(UiState.CreateEvent(), host.await { it is UiState.CreateEvent })
+            assertEquals(UiState(Layer.CreateEvent()), host.await { it.layer is Layer.CreateEvent })
             assertEquals(null, w.configSource.config.value)
             // ...and the backend outcome lands when the fire-and-forget DELETE does (awaited, not assumed
             // synchronous — the flip deliberately never waits on the network). Leaving is RENAME-ONLY now
@@ -562,20 +559,22 @@ class FullStackIntegrationTest {
                 scope = scope,
             )
             val host = StatusContainerHost(
-                syncSource = w.syncStatusSource,
-                permission = w.permission.permission,
-                config = w.configSource.config,
+                StatusSources(
+                    sync = w.syncStatusSource,
+                    permission = w.permission.permission,
+                    config = w.configSource.config,
+                    creation = w.creationStatus,
+                ),
                 scope = scope,
                 cutoffFormatter = fixedCutoffFormatter(),
-                creationStatusSource = w.creationStatus,
                 commands = UserCommands(leave = { leaveEvent.leave() }),
             )
-            host.await { it is UiState.Joined }
+            host.await { it.layer is Layer.Joined }
 
             host.onLeaveEvent()
 
             // The screen leaves the joined layer immediately — even though the DELETE is still pending.
-            assertEquals(UiState.CreateEvent(), host.await { it is UiState.CreateEvent })
+            assertEquals(UiState(Layer.CreateEvent()), host.await { it.layer is Layer.CreateEvent })
             assertEquals(null, w.configSource.config.value)
             // The notify WAS dispatched (with the snapshotted eventId) — but the flip did not wait on it.
             assertEquals("E", withTimeout(5_000) { notifyStarted.await() })
@@ -588,14 +587,16 @@ class FullStackIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------
 
     private fun statusHost(w: World, scope: CoroutineScope) = StatusContainerHost(
-        syncSource = w.syncStatusSource,
-        permission = w.permission.permission,
-        config = w.configSource.config,
+        StatusSources(
+            sync = w.syncStatusSource,
+            permission = w.permission.permission,
+            config = w.configSource.config,
+        ),
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
     )
 
-    private fun UiState.health(): SyncHealth? = (this as? UiState.Joined)?.health
+    private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =
         withTimeout(5_000) { container.stateFlow.first(predicate) }

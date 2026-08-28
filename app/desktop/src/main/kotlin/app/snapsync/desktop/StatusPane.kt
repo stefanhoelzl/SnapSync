@@ -23,6 +23,8 @@ import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.ui.StatusActions
@@ -37,7 +39,10 @@ import kotlinx.coroutines.flow.StateFlow
 import app.snapsync.ui.JoinGateActions
 import app.snapsync.ui.JoinedActions
 import app.snapsync.ui.AccessActions
+import app.snapsync.ui.SurfaceActions
 import app.snapsync.ui.SwitchActions
+import app.snapsync.ui.ParticipationActions
+import app.snapsync.ui.components.RangeChoiceActions
 
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
@@ -116,12 +121,18 @@ fun StatusPane(
 ) {
     val host = remember {
         StatusContainerHost(
-            syncSource,
-            permissionSource.permission,
-            configSource.config,
-            scope,
-            creationStatusSource = creationStatusSource,
-            renameStatusSource = renameStatusSource,
+            // Every read-model the reduction observes, in one bundle (`StatusSources`).
+            StatusSources(
+                sync = syncSource,
+                permission = permissionSource.permission,
+                config = configSource.config,
+                creation = creationStatusSource,
+                rename = renameStatusSource,
+                download = downloadSource,
+                attested = attested,
+                pending = pending,
+            ),
+            scope = scope,
             // The user-tap command bundle (spec `module-architecture`, "Commands cross one door"),
             // assembled from this pane's injected harness edges — the harness's stand-in for the
             // `compose/`-built production bundle (the world adopts `snapSyncApp` at step 10). The
@@ -146,21 +157,14 @@ fun StatusPane(
             ),
             loadJoinDetails = loadJoinDetails,
             cutoffFormatter = cutoffFormatter,
-            downloadSource = downloadSource,
-            attested = attested,
-            pending = pending,
         ).also(onHostReady)
     }
     val state by host.container.stateFlow.collectAsState()
     // The photo grant — the shareable-count row's recompute trigger (capability `join-share-count`).
     val photoPermission by permissionSource.permission.collectAsState()
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
-    val inviteUrl by host.inviteUrl.collectAsState()
-    val eventName by host.eventName.collectAsState()
     // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
-    val membership by host.membership.collectAsState()
     // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
-    val renameStatus by host.renameStatus.collectAsState()
 
     PhoneFrame {
         // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
@@ -173,12 +177,7 @@ fun StatusPane(
         CompositionLocalProvider(LocalDarkThemeOverride provides darkThemeOverride) {
         StatusScreen(
             state = state,
-            membership = membership,
-            inviteUrl = inviteUrl,
-            eventName = eventName,
             cutoff = cutoffFormatter,
-            photoPermission = photoPermission,
-            renameStatus = renameStatus,
             actions = StatusActions(
                 join = JoinGateActions(
                     onConfirmJoin = host::onConfirmJoin,
@@ -196,16 +195,38 @@ fun StatusPane(
                     onRenameStatusConsumed = host::onRenameStatusConsumed,
                 ),
                 access = AccessActions(
-                    onRequestPermission = host::onRequestPermission,
-                    onOpenSettings = host::onOpenSettings,
-                    onChoosePhotos = host::onChoosePhotos,
+                    onRequestPermission = host.access::onRequestPermission,
+                    onOpenSettings = host.access::onOpenSettings,
+                    onChoosePhotos = host.access::onChoosePhotos,
+                ),
+                surfaces = SurfaceActions(
+                    onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
+                    onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
+                    onRenameOpen = host.surfaces::onRenameOpen,
+                    onRenameDismiss = host.surfaces::onRenameDismiss,
+                    onOpenReconfigure = host.surfaces::onOpenReconfigure,
+                    onCancelReconfigure = host.surfaces::onCancelReconfigure,
+                    onReportBugOpen = host.surfaces::onReportBugOpen,
+                    onReportBugDismiss = host.surfaces::onReportBugDismiss,
                 ),
                 switch = SwitchActions(
                     onConfirmSwitch = host::onConfirmSwitch,
                     onCancelSwitch = host::onCancelSwitch,
                 ),
                 onCreateEvent = host::onCreateEvent,
-                shareableCount = shareableCount,
+                participation = ParticipationActions(
+                    choices = RangeChoiceActions(
+                        onFromPreset = host.form::onFromPreset,
+                        onFromCustom = host.form::onFromCustom,
+                        onUntilPreset = host.form::onUntilPreset,
+                        onUntilCustom = host.form::onUntilCustom,
+                    ),
+                    onShareOn = host.form::onShareOn,
+                    onReceiveOn = host.form::onReceiveOn,
+                    onSaveToAlbum = host.form::onSaveToAlbum,
+                    shareableCount = shareableCount,
+                    photoPermission = photoPermission,
+                ),
                 onSendDiagnostics = host.onSendDiagnostics,
             )
         )
