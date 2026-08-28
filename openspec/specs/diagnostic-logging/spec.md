@@ -131,9 +131,8 @@ silent"). Recording only successful paths is what made a reported defect undiagn
 link that never reached the join gate was indistinguishable from one iOS never delivered, because
 the filter that discarded it wrote nothing.
 
-The set of platform entry points SHALL be **derived, never hand-enumerated** (spec
-`module-architecture`, "Commands cross one door"), by rules over the source rather than by a
-maintained list:
+An entry point is a declaration the **platform** calls, and the set is identified by these rules rather
+than by a maintained list:
 
 1. every member of a composition-root object invoked from outside that root's own file — which
    covers both Swift→Kotlin doors (the app delegate and scene delegate, and the Compose entry the
@@ -145,44 +144,26 @@ A declaration reached only from our own Kotlin is **not** an entry point; what d
 that the platform is on the other side of the call. Read-model members that presentation polls are
 therefore excluded, while the platform's request for the root view is not.
 
+**This obligation is maintained by review, not by a build gate.** The guard that derived the entry-point
+set and asserted each was marked and logged has been retired (capability `architecture-guards`): it
+enforced diagnosability rather than behaviour, and an unlogged entry point ships correct behaviour. The
+consequence is stated rather than left implicit — a new entry point that decides and returns without
+logging will not fail any build, and a defect of the shape described above will again be undiagnosable
+from a device log.
+
 **User taps SHALL be instrumented as entry points too**, decorated where the command bundle is
 built (spec `module-architecture`, "Commands cross one door": instances are decorated only in
-`compose/`), so that every line in the device log traces to a named trigger — a platform callback or
-a tap — and an unattributed line is itself a signal.
+`compose/`), so that every line in the device log traces to a named trigger.
 
-Severity SHALL be chosen so the trail survives its own volume: entry points that fire once per
-platform event log at `Info`; entry points that fire once per item — per-asset library-change
-callbacks, per-task transfer callbacks — log at `Debug`, so a single large import cannot flush the
-crash reporter's bounded breadcrumb window (capability `crash-reporting`) or roll the size-bounded
-log before it is read.
+#### Scenario: An entry point declines to act
+- **WHEN** a platform entry point receives a delivery and a filter discards it
+- **THEN** the log carries both the enter line with the raw platform inputs and an exit line naming the
+  outcome, so "discarded" is distinguishable from "never delivered"
 
-#### Scenario: Enter and exit are logged
-- **WHEN** an instrumented entry point runs to completion
-- **THEN** an enter line records the entry-point name and parameters, and an exit line records the result and the elapsed duration in milliseconds
-
-#### Scenario: Failure is logged with duration
-- **WHEN** an instrumented entry point throws
-- **THEN** an exit line records the error and the elapsed duration
-
-#### Scenario: The entry is recorded before the decision
-- **WHEN** a platform entry point receives an input it will immediately filter out
-- **THEN** the enter line — carrying the raw inputs the filter tests — is already written, and the
-  exit line names the outcome that discarded it
-
-#### Scenario: An absent entry line is unambiguous
-- **WHEN** a device log shows no entry line for a platform callback the user believes occurred
-- **THEN** that absence means the platform did not call the app, rather than being ambiguous
-  between non-delivery and a silent discard
-
-#### Scenario: A per-item callback does not flood the trail
-- **WHEN** an import creates many assets and the platform's change observer fires once per mutation
-- **THEN** those entries are recorded at `Debug`, leaving the `Info` trail one line per platform
-  event
-
-#### Scenario: A user tap is attributable
-- **WHEN** a user tap drives durable work
-- **THEN** its lines carry a tap-scoped entry-point context, so the log distinguishes work the user
-  initiated from work the platform initiated without reading the source
+#### Scenario: A new Swift-to-Kotlin door is added
+- **WHEN** a new delegate method forwards to a new composition-root member
+- **THEN** that member is instrumented with the enter/exit convention as part of the change, and its
+  absence is caught in review rather than by a build failure
 
 ### Requirement: Ambient entry-point context prefix
 

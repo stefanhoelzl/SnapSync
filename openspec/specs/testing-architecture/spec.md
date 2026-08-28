@@ -160,9 +160,12 @@ same constraint that puts the shared storage contracts in `:test:world`'s `commo
 local doubles.
 
 Two consequences SHALL be stated rather than discovered: a feature's tests may be split across two
-modules, so a reader looking for them must look in both; and `:adapter:generic:fake`'s `commonTest`
-is a **test host**, outside the fake-honesty surface — that gate scans main source sets only
-(`architecture-guards`, "The fake-honesty gate").
+modules, so a reader looking for them must look in both; and `:adapter:generic:fake`'s `commonTest` is a
+**test host** that legitimately sees more than any other consumer. The fakes are `internal`, exported
+through factories returning the port type, so no other module can name an implementation or reach a
+member the port does not declare — but `internal` is module-scoped and a module's own test source set is
+inside it. That is what makes the fake module the only place these tests can live, and it is a property
+of the module boundary rather than of a gate that reads source.
 
 #### Scenario: A feature test needs a fake
 

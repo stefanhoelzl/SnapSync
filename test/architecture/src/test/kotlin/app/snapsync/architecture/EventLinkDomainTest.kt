@@ -83,32 +83,18 @@ class EventLinkDomainTest {
         )
     }
 
-    @Test
-    fun `the generated xcconfig fragment matches the deployment it derives from`() {
-        val fragment = read("iosApp/Configuration/Deployment.xcconfig")
-        val associated = Regex("""^ASSOCIATED_DOMAIN = (.+)$""", RegexOption.MULTILINE)
-            .find(fragment)?.groupValues?.get(1)?.trim()
-            ?: fail("Deployment.xcconfig declares no `ASSOCIATED_DOMAIN` — the app claims no domain")
-        assertEquals(
-            "applinks:$domain",
-            associated,
-            "the generated fragment is STALE: it claims `$associated` while the resolved deployment " +
-                "says `$domain`. Re-run the resolver. Nothing else will raise — iOS simply stops " +
-                "matching the link and every invite opens a browser instead of the app.",
-        )
-
-        // The device-facing upload host was the copy NO guard inspected before the resolver landed. It
-        // now rides in the plist rendering, because it carries a scheme the xcconfig grammar would
-        // truncate at its `//` — the fault that shipped four mute TestFlight builds.
-        val uploadBase = Regex("""<key>uploadBase</key>\s*<string>(.*?)</string>""")
-            .find(read("iosApp/Configuration/Deployment.plist"))?.groupValues?.get(1)?.trim()
-            ?: fail("Deployment.plist declares no `uploadBase` — the app has no backend")
-        assertTrue(
-            uploadBase.contains(domain),
-            "the baked upload host `$uploadBase` does not name the resolved domain `$domain`. Uploads " +
-                "would target a backend nothing else agrees with.",
-        )
-    }
+    // REMOVED: `the generated xcconfig fragment matches the deployment it derives from`.
+    //
+    // It could not fail. `domain/model/build.gradle.kts` runs `scripts/resolve-deployment.py` during the
+    // build, regenerating `Deployment.xcconfig` and `Deployment.plist` from the resolved deployment
+    // immediately BEFORE this guard reads them — so the artifact and the deployment were re-derived from
+    // one source moments earlier and staleness had already been eliminated. Measured: editing
+    // ASSOCIATED_DOMAIN by hand and re-running left the guard green, because the edit was overwritten.
+    //
+    // Both of its assertions (the xcconfig's ASSOCIATED_DOMAIN, the plist's uploadBase) compared
+    // generated against generated. A check that cannot fail is not a guard, and stating it as one
+    // overstates what the build proves. The seven assertions that remain inspect COMMITTED artifacts —
+    // literals, the entitlement's build-setting reference, the retired URL scheme — where drift is real.
 
     @Test
     fun `the committed xcconfig holds no value the fragment owns`() {

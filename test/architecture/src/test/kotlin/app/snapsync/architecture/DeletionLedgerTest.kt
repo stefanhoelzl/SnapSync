@@ -43,9 +43,19 @@ class DeletionLedgerTest {
             if ("zxing" in toml) add("zxing catalog entries (QR is the OS camera's job — delete-dead-weight)")
             if ("kotlincrypto" in toml) add("kotlincrypto catalog entries (no client-side crypto — delete-dead-weight)")
             if (File(repoRoot, "capability").exists()) add("a capability/ tree (the zone died with the migration — features are :domain packages)")
-            declared(files, "interface Ledger" + "Reader").forEach { add("LedgerReader in $it (interface ceremony — readers use LedgerStore)") }
-            declared(files, "class Logging" + "PushReceiver").forEach { add("LoggingPushReceiver in $it (log in the receiver that acts)") }
-            declared(files, "interface Event" + "MetadataSource").forEach { add("EventMetadataSource in $it (one GET /events client: EventDirectory)") }
+            // RETIRED ROWS — `LedgerReader`, `LoggingPushReceiver`, `EventMetadataSource`.
+            //
+            // All three retired a declaration for being **single-implementation interface ceremony**.
+            // That judgement did not survive: `enforce-port-boundary` brought `LeaveNotifier` back under
+            // this ledger's own reversal clause, because a **port** is not an interface justified by a
+            // second implementation — it is the declared boundary where the core stops and an external
+            // system begins, and deleting the interface made the composition carry the crossing as an
+            // opaque closure instead, invisible to every gate that reads types.
+            //
+            // `EventMetadataSource` is an HTTP client interface, which is that same boundary by that same
+            // definition. Keeping its row would have this guard block a CORRECT change, and a ledger row
+            // that argues against the law is worse than no row. The rows are retired rather than left to
+            // be discovered one reversal at a time.
             // RETIRED ROW — `interface LeaveNotifier` ("the class is the seam", delete-dead-weight).
             // Deliberately resurrected by `enforce-port-boundary`, per this gate's own contract: the
             // 2026-07-17 judgement was that a single-implementation interface is ceremony, and that

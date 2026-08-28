@@ -39,20 +39,48 @@ class SwiftShellGuardTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    private val keywords = listOf("if", "guard", "switch", "??")
+    /**
+     * Every decision form, with the pattern that recognises it.
+     *
+     * The list was `if`/`guard`/`switch`/`??` and missed Swift's ternary entirely: measured 2026-08-28,
+     * `let v = flag ? 1 : 2` in an all-zero-pinned shell passed GREEN. A remembered denylist is wrong by
+     * default, which is the same disease that made `ConstructorBlockingTest` inert; these are the forms a
+     * transcriber shell could plausibly grow.
+     *
+     * Patterns, not bare words, because Swift's syntax overloads its punctuation:
+     *  · the ternary is `\s?\s` — a bare `?` is an optional type (`String?`), optional chaining (`a?.b`),
+     *    `try?` or `as?`, none of which is a ternary, and `??` has no space between its marks;
+     *  · `for` must be a LOOP — `\bfor\b` alone matches Swift's argument labels, and duly did:
+     *    `publisher(for:)` in `ContentView.swift` is not a decision.
+     */
+    private val decisionForms: Map<String, Regex> = mapOf(
+        "if" to Regex("""\bif\b"""),
+        "guard" to Regex("""\bguard\b"""),
+        "switch" to Regex("""\bswitch\b"""),
+        "??" to Regex("""\?\?"""),
+        "ternary" to Regex("""\s\?\s"""),
+        "as?" to Regex("""\bas\?"""),
+        "try?" to Regex("""\btry\?"""),
+        "while" to Regex("""\bwhile\b"""),
+        "for-in" to Regex("""\bfor\s+\w+\s+in\b"""),
+    )
+
+    /** Every form at zero, with the named exceptions applied — a shell decides nothing by default. */
+    private fun allZero(vararg except: Pair<String, Int>): Map<String, Int> =
+        decisionForms.keys.associateWith { 0 } + except
 
     /** file (relative) → keyword → pinned count. Exact match, both directions. */
     private val pins: Map<String, Map<String, Int>> = mapOf(
-        "iosApp/iosApp/iOSApp.swift" to mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
-        "iosApp/iosApp/ContentView.swift" to mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
+        "iosApp/iosApp/iOSApp.swift" to allZero(),
+        "iosApp/iosApp/ContentView.swift" to allZero(),
         "iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift" to
-            mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 1),
+            allZero("??" to 1),
         // The marketing-screenshot binary's shell. All zeros, and it should stay that way: this target
         // exists to render one screen, and every OS callback the app's shell transcribes is one this
         // binary has no entitlement to receive. A decision appearing here would mean forge has grown a
         // second way to be driven.
         "iosApp/SnapSyncForge/ForgeApp.swift" to
-            mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
+            allZero(),
     )
 
     private fun swiftFiles(): List<File> = File(repoRoot, "iosApp").walkTopDown()
@@ -63,10 +91,7 @@ class SwiftShellGuardTest {
         val code = file.readText().lineSequence()
             .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
             .joinToString("\n")
-        return keywords.associateWith { kw ->
-            val pattern = if (kw == "??") Regex("""\?\?""") else Regex("""\b$kw\b""")
-            pattern.findAll(code).count()
-        }
+        return decisionForms.mapValues { (_, pattern) -> pattern.findAll(code).count() }
     }
 
     @Test

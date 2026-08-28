@@ -105,53 +105,50 @@ while presenting as a security improvement.
 
 ### Requirement: The event-link domain agrees across the app and the backend
 
-
 The event link's domain SHALL be **single-sourced from one resolved deployment** (capability
 `deployment-configuration`) in every place it appears: the app's `applinks:` associated-domains
 entitlement, the app's `LINK_ORIGIN` constant, the Apple App Site Association document the backend serves,
 the compile-time device-facing upload host, and the browser-facing site's canonical URLs.
 
-This supersedes the previous position that the backend's copy **cannot** be single-sourced. That reasoning
-held only while `api/` was reachable by nothing but a code-only deploy pipeline: with the domain resolved
-from a deployment that every toolchain reads, generating each copy no longer couples two pipelines — it
-gives them one shared input. The guard's own purpose said as much, that single-sourcing is preferable and
-the guard existed only for the seam it could not close.
+Agreement is **constructed rather than asserted**: each copy is generated from the one resolution, so a
+copy cannot drift. The guarantee reaches copies no hand-written pin ever inspected — the compile-time
+upload host and the site's canonical URLs were both unpinned before the resolver landed.
 
-Two consequences follow. Agreement is no longer *asserted* across hand-written literals but *constructed*,
-so a copy cannot drift. And the guarantee now reaches copies the previous guard never inspected — the
-compile-time upload host and the site's canonical URLs were both unpinned.
+A test-only JVM guard SHALL remain, and SHALL assert the properties that generation does **not** already
+make true:
 
-A test-only JVM guard SHALL remain, reduced to a **staleness check**: it SHALL assert that each generated
-artifact matches the deployment it derives from, and SHALL fail loudly rather than vacuously — if a file it
-inspects has moved, been renamed, or no longer contains the marker it expects, it SHALL fail rather than
-silently scanning nothing.
+- no artifact the app or backend reads declares the domain as a **hand-written host literal** rather than
+  deriving it from the resolved deployment;
+- the app entitlement references the build setting rather than hard-coding a host;
+- the extension claims no associated domain, and the retired custom URL scheme stays retired;
+- the guard fails **loudly rather than vacuously** — if a file it inspects has moved, been renamed, or no
+  longer contains the marker it expects, it SHALL fail rather than silently scanning nothing.
+
+The guard SHALL NOT assert that a generated artifact matches the deployment it derives from. That
+assertion cannot fail: the build runs the deployment resolver before the guard reads its output, so the
+artifact is regenerated from the same resolution moments earlier and staleness is eliminated before the
+check. A check that cannot fail is not a guard, and stating it as one overstates what the build proves.
 
 The guard exists because drift here is **silent**. A stale entitlement or a mismatched AASA does not
 raise, log, or fail a build: iOS simply declines to match the link, and every event link opens a browser
 instead of the app — indistinguishable, from the outside, from a user who has not installed SnapSync.
 
-Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe` (the guard shrinks to a
-staleness check once every copy is generated).
-
-#### Scenario: A stale generated artifact fails the build
-
-- **WHEN** a generated artifact carrying the domain no longer matches the deployment it derives from
-- **THEN** the guard test fails, naming the artifact and the disagreeing values
+#### Scenario: A hand-written host literal reappears
+- **WHEN** any inspected artifact declares the domain as a literal rather than deriving it from the
+  resolved deployment
+- **THEN** the guard fails, naming the artifact and the literal
 
 #### Scenario: Every copy is constructed, not restated
-
 - **WHEN** the entitlement's `applinks:` domain, the app's `LINK_ORIGIN`, the served AASA's domain, the
   compile-time upload host, and the site's canonical URLs are inspected
 - **THEN** each is derived from the resolved deployment, and none is a hand-written host literal
 
 #### Scenario: The guard is not vacuous
-
 - **WHEN** a file the guard inspects is absent, renamed, or no longer contains the marker it expects
 - **THEN** the guard fails, rather than passing while inspecting nothing
 
 #### Scenario: Agreeing artifacts pass
-
-- **WHEN** every generated artifact matches the resolved deployment
+- **WHEN** no inspected artifact carries a host literal and every marker is present
 - **THEN** the guard passes
 
 ### Requirement: The Swift shell keeps the event link's delivery seam
@@ -316,34 +313,89 @@ references import nothing), not import lists.
 
 ### Requirement: The zone gates
 
-The build SHALL enforce, over source text with derived scopes: `model/` references nothing
-project-internal outside `model/`; `ports/` references only `model/`; features reference only
-`model/` and `ports/` and never a sibling feature (pairwise, features enumerated from the
-directory); `flow/` references only `model/` and `feature/`; `flow/` declares no `CoroutineScope`
-and accepts no non-suspend effect lambda (law *A trigger flow never outlives its own run* — both
-doors, because removing the scope alone leaves the lambda one open); `:ui:presentation` references
-only the injected flow command bundle, feature read-model types, and `model/`; `:domain` and `:ui`
-zones import only their per-zone allowlisted libraries; `:domain` has no `iosMain` source
-directory and declares no `project()` dependency.
+The zone boundaries inside the core SHALL be enforced by the **module graph** wherever a module can
+withhold them, and by a derived text gate only where it cannot.
 
-#### Scenario: A fully-qualified sidestep
-- **WHEN** a file references a forbidden declaration by fully-qualified name without an import
-- **THEN** the text gate fails exactly as it would for an import
+`:domain` SHALL be split into per-zone modules — `:domain:model` ← `:domain:ports` ← `:domain:feature` ←
+`:domain:flow` ← `:domain:compose` — each declaring only the zone dependencies its law permits, so a
+reference across a forbidden edge does not resolve. Compilation therefore enforces: `model/` references
+nothing project-internal outside `model/`; `ports/` references only `model/`; `flow/` references only
+`model/` and `feature/`; and `:ui:presentation` references only `model/`, feature read-model types, and
+the injected flow command bundle. These four properties SHALL NOT also be asserted by a text gate: a
+module boundary is unresolvable rather than merely forbidden, and unlike a text scan it covers generated
+source and typealias re-exports.
+
+Zone modules SHALL depend on one another with `implementation()` rather than `api()`, so a zone cannot
+leak transitively to a downstream consumer.
+
+Two properties remain outside what the module graph can express at acceptable cost, and SHALL remain
+derived text gates:
+
+- **features are mutually blind** — a feature references only `model/` and `ports/`, never a sibling
+  feature (pairwise, features enumerated from the directory listing). Nine features cannot be nine
+  modules;
+- **`flow/` declares no `CoroutineScope` and accepts no non-suspend effect lambda** (law *A trigger flow
+  never outlives its own run* — both doors, because removing the scope alone leaves the lambda one open).
+
+A text gate SHALL NOT pass when its scope is absent: a missing or renamed zone directory SHALL fail the
+build, never report itself pending. A gate that reports "pending" when its subject has moved is a gate
+that fails open.
+
+The `:domain` tree SHALL have no `iosMain` source directory, and `:domain` and `:ui` zones SHALL import
+only their per-zone allowlisted libraries.
+
+#### Scenario: A forbidden zone reference does not compile
+- **WHEN** a file in a zone module references a declaration from a zone its module does not depend on,
+  by import, fully-qualified name, or typealias
+- **THEN** the reference does not resolve and the build fails at compilation, in that module
+
+#### Scenario: A feature reaches a sibling
+- **WHEN** a file under `feature/<a>/` references `feature/<b>/`
+- **THEN** the feature-blindness gate fails, naming the file and both features
 
 #### Scenario: A flow reacquires a way to detach
 - **WHEN** a `flow/` class gains a `CoroutineScope` parameter or a non-suspend effect lambda
 - **THEN** the gate fails, naming the file, before any device build
 
+#### Scenario: A zone directory is renamed
+- **WHEN** a scanned zone directory no longer exists under the path a text gate scans
+- **THEN** the gate fails naming the absent scope, and does not report itself pending
+
 ### Requirement: The extension-safety text gate
 
-Because Kotlin/Native does not enforce `NS_EXTENSION_UNAVAILABLE`, the build SHALL fail when any
-source under `:adapter:ios:ext-safe` or `:app:ios:extension` references `platform.UIKit` or
-`platform.BackgroundTasks`. The module split prevents cross-module leaks; this gate covers
-in-module ones.
+The build SHALL fail when extension-linked Kotlin references any `platform.*` framework outside an
+**allowlist of permitted frameworks**. The gate SHALL be expressed as that allowlist rather than as a
+denylist of forbidden frameworks, and the allowlist SHALL name each permitted framework and SHALL be
+small enough to read.
+
+Inversion is required because `NS_EXTENSION_UNAVAILABLE` cannot be enumerated: cinterop drops the
+attribute entirely, so it is absent from the platform klibs and from every artifact available to the
+build. A denylist therefore covers only the frameworks someone remembered, while an allowlist covers
+every framework — including ones Apple has not shipped yet — and fails closed on novelty.
+
+The gate SHALL match **imports and fully-qualified references**, never raw text: `platform` is also a
+local variable name in this codebase, so a text match yields false positives on ordinary member access.
+
+The scanned scope SHALL be **derived from the extension binary's project-dependency closure**, not from a
+maintained list of roots, so a module newly linked into the extension is covered without a gate edit. The
+gate SHALL fail if its derived scope is empty.
+
+Expiry trigger: Kotlin/Native gaining extension-availability modelling, at which point the compiler
+supersedes this gate.
 
 #### Scenario: App-only API inside extension-linked code
-- **WHEN** an ext-safe adapter gains a `platform.UIKit` reference
-- **THEN** the gate fails before any device build, naming the file
+- **WHEN** extension-linked source references a `platform.*` framework outside the allowlist
+- **THEN** the gate fails before any device build, naming the file and the framework
+
+#### Scenario: A framework Apple adds later
+- **WHEN** extension-linked source references a platform framework nobody anticipated
+- **THEN** the gate fails, because the framework is not on the allowlist, without any gate edit having
+  been required to anticipate it
+
+#### Scenario: A module joins the extension's link set
+- **WHEN** the extension binary gains a dependency on a module the gate has never scanned
+- **THEN** that module's source is in scope automatically, because the scope is derived from the
+  dependency closure
 
 ### Requirement: The shell gates
 
@@ -411,16 +463,6 @@ handler.
 - **WHEN** a scope outside the shells needs a complexity ceiling
 - **THEN** it is given one under capability `complexity-budgets`, and the shell gate's threshold is
   left at the decision-free value rather than raised to accommodate it
-
-### Requirement: The fake-honesty gate
-
-Every public type in `:adapter:generic:fake` SHALL expose only members of the port interfaces it
-implements plus a constructor taking initial state — no public mutable properties, no non-port
-public functions. Operator rigging lives in `:test:world` wrappers, never in fakes.
-
-#### Scenario: A lever lands in a fake
-- **WHEN** a fake gains a public `var` or a public function outside its port contract
-- **THEN** the gate fails; the lever moves to a world wrapper
 
 ### Requirement: Runtime identity is pinned
 
@@ -571,53 +613,6 @@ files.
   id no longer agree
 - **THEN** the pin guard fails, naming both values
 
-### Requirement: The zone gates exist before their zones, pending and self-arming
-
-
-The five zone gates SHALL exist in `:test:architecture` **before** the zones they guard exist —
-the gates of requirement "The zone gates": model-purity, ports→model, feature-blindness,
-flow-no-ports, presentation-imports — following the fake-honesty gate's self-arming pattern:
-
-- While a gate's scope directory does not exist, the gate SHALL report itself pending — visibly
-  (a printed PENDING line naming the scope), never vacuously green-by-silence.
-- Once the scope directory exists, the gate SHALL fail if it scans zero sources (the non-vacuity
-  twin), and SHALL enforce its import law with **zero gate edits** — migration steps arm gates by
-  creating code, never by writing gates mid-move.
-- The scan scopes are pinned now, as named assumptions in each gate:
-  `domain/src/*/kotlin/**/model/`, `…/ports/`, `…/feature/`, `…/flow/`, `…/compose/` (the
-  `:domain` module roots at `domain/`, its `src/` beside the legacy submodule directories until
-  they empty), and `ui/presentation/src/**` for the presentation gate.
-- The presentation gate SHALL enforce the import-level approximation of its law:
-  `ui/presentation` sources never reference the `ports/` or `flow/` packages (imported or
-  fully-qualified); the finer no-feature-command-invocation rule remains a review concern until
-  it has a mechanical form. The gate's scope is **every** `.kt` under `ui/presentation/src` —
-  test sources included, deliberately: presentation's tests are presentation sources, so a test
-  that assembles a port-typed stub reintroduces exactly the coupling the gate exists to sever
-  (honored at migration step 9, where the two tests assembling the real create use-case over a
-  stubbed `EventCreation` port were re-seated as bundle-level choreography, their feature half
-  owned by `CreateEventTest` and `:test:integration`).
-
-As of migration step 9 all five pinned scopes exist (`model/`+`ports/` at 3a, `feature/` at 5–6,
-`compose/` at 7, `flow/` at 8, `ui/presentation/src` at 9) and every zone gate is **armed** — the
-pending state is historical; the self-arming contract stands for any future scope move.
-
-#### Scenario: A gate whose zone does not exist yet
-
-- **WHEN** the guards run while `domain/src` (or `ui/presentation/src`) does not exist
-- **THEN** the gate prints a PENDING line naming its absent scope and passes, rather than
-  failing or passing silently
-
-#### Scenario: A zone is born and the gate arms itself
-
-- **WHEN** a migration step creates the first file under a gate's pinned scope
-- **THEN** the gate enforces its import law on that file with zero edits to the gate
-
-#### Scenario: A scope exists but the scan is empty
-
-- **WHEN** a gate's scope directory exists but the gate's file walk matches nothing
-- **THEN** the gate fails — a layout drift must surface as red, not as a gate that passes
-  forever
-
 ### Requirement: The migration's laws are permanent gates
 
 Every law the migration beacon measured SHALL be enforced permanently in `:test:architecture`
@@ -631,23 +626,27 @@ finale and was deleted, per its own contract.) The promoted gates:
   consciously amended with the group the module joins and the argument for that group. The failure
   SHALL name all three groups and what each requires, because "must withhold a dependency" is the
   right instruction for only one of them. The gate SHALL keep a non-vacuity twin per group.
-- **Mixed port/impl files**: no file under `adapter/`, `domain/`, or `ui/` SHALL declare an
-  `interface` beside a Ktor or SQLDelight import — a port and its technology impl cohabiting is
-  the seed of the pre-migration shape.
 - **Deletion ledger**: the migration's retired dead weight SHALL stay dead — the zxing and
-  kotlincrypto catalog entries, the `capability/` tree, `LedgerReader`, `LoggingPushReceiver`,
-  `EventMetadataSource`, the Arrow/ArrowLevel duplicate
-  enum, and any second `*Enrollment` uploader. Resurrection is not forbidden forever; it is
-  forbidden **silently** — bringing an item back means deleting its guard row in the same commit,
-  with the argument in the PR. The guard SHALL assemble its patterns so its own source never
-  matches them (the beacon's self-match lesson).
-  The `LeaveNotifier` interface, retired as single-implementation ceremony ("the class is the
-  seam"), has been brought back under exactly that clause and its row deleted: a **port** is not an
-  interface justified by a second implementation, it is the declared boundary where the core stops
-  and an external system begins, and with the interface gone the composition carried the crossing as
-  an opaque closure instead — invisible to every gate that reads types.
+  kotlincrypto catalog entries, the `capability/` tree, the device-manifest accumulator, the
+  Arrow/ArrowLevel duplicate enum, and any second `*Enrollment` uploader. Resurrection is not
+  forbidden forever; it is forbidden **silently** — bringing an item back means deleting its guard row
+  in the same commit, with the argument in the PR. The guard SHALL assemble its patterns so its own
+  source never matches them (the beacon's self-match lesson).
+
+  The ledger SHALL NOT carry rows that retire a declaration for being **single-implementation
+  interface ceremony**. That judgement was overturned when `LeaveNotifier` was brought back: a
+  **port** is not an interface justified by a second implementation, it is the declared boundary
+  where the core stops and an external system begins, and with the interface gone the composition
+  carried the crossing as an opaque closure instead — invisible to every gate that reads types. Rows
+  resting on the overturned judgement (`LedgerReader`, `LoggingPushReceiver`, `EventMetadataSource`)
+  are retired from the ledger, because a ledger row that would block a correct change is worse than
+  no row.
 - **Shells** and **zones** are gated by their own standing requirements (the shell gates; the zone
   gates), now all armed and gating.
+
+The mixed port/impl file rule is retired as a standing gate: with `ports/` a module that withholds Ktor
+and SQLDelight, a port interface declared beside a technology import does not compile, and an interface
+declared inside an adapter beside its own implementation is ordinary Kotlin rather than a defect.
 
 The flow-transcriber generation failure (capability `architecture-diagrams`) SHALL likewise be a
 hard gate: an untranscribable flow fails `architectureDiagrams` and the freshness test under the
@@ -668,6 +667,10 @@ canonical build.
   overturned
 - **THEN** its ledger row is deleted in the same commit and the reversal is argued in the change's
   decision record, so the resurrection is loud rather than silent
+
+#### Scenario: A port interface is written beside its technology implementation
+- **WHEN** an interface is declared in `:domain:ports` alongside a Ktor or SQLDelight import
+- **THEN** the import does not resolve, because the module withholds those dependencies
 
 ### Requirement: Dead-edge analysis is scoped honestly
 
@@ -715,76 +718,6 @@ none. The guard follows the risk rather than the original wording.
 - **WHEN** an orchestrator change makes a resolution change start the incoming producer before the
   outgoing producer's stop completes
 - **THEN** the guard fails the build
-
-### Requirement: Platform entry points are derived and logged before deciding
-
-
-A test-only JVM guard SHALL assert that every platform entry point is instrumented before it
-decides anything (capability `diagnostic-logging`; spec `module-architecture`, "Absence is never
-silent").
-
-The guard SHALL **derive** the entry-point population from the source rather than compare against a
-maintained list, because hand-enumeration is the failure mode being fixed — an enumeration attempted
-during this change's design was wrong in both directions, including a function the platform never
-calls and misclassifying two that it does. The derivation rules are:
-
-1. every member of a composition-root object invoked from outside that root's own file (covering
-   both Swift→Kotlin doors: the app/scene delegate shell and the Compose entry the Swift view calls);
-2. every overridden member of a class conforming to a platform callback protocol;
-3. every observer body registered with a platform notification or change-observer centre.
-
-For each derived entry point the guard SHALL assert that it carries the entry-point marker and that
-its body opens with the instrumentation wrapper, so a decision cannot precede the enter line. A
-declaration reached only from our own Kotlin SHALL NOT be treated as an entry point.
-
-The guard SHALL fail loudly rather than vacuously: if the sources it derives from are missing,
-renamed, or yield an empty population, it SHALL fail rather than pass while scanning nothing, and
-the guarded sources SHALL be declared as inputs of its test task.
-
-The rules do not describe every conceivable callback shape (a C function pointer, a KVO observation,
-a dispatch-source handler). That residue SHALL be **named in the guard's failure message**, so the
-next reader extends the derivation rules rather than adding a pinned exception — the pinned-list
-outcome this requirement exists to avoid.
-
-#### Scenario: A new entry point is added without instrumentation
-- **WHEN** a new platform callback is added and its body does not open with the instrumentation wrapper
-- **THEN** the guard fails, naming the entry point and why a decision must not precede its enter line
-
-#### Scenario: A new entry point in a previously unscanned file
-- **WHEN** a new class conforming to a platform callback protocol is added anywhere in the iOS sources
-- **THEN** the derivation picks it up without any list being edited, and it is held to the same rule
-
-#### Scenario: The guard is not vacuous
-- **WHEN** the sources the guard derives from are absent, renamed, or produce an empty entry-point set
-- **THEN** the guard fails rather than passing while scanning nothing
-
-#### Scenario: A non-entry-point is not flagged
-- **WHEN** a function on a composition root is reached only from our own Kotlin
-- **THEN** the guard does not require it to be an entry point
-
-### Requirement: Nullable port seams carry a stated consequence
-
-
-A test-only JVM guard SHALL assert that every nullable-returning member of the `ports/` boundary has
-a recorded verdict naming the consequence that makes its collapse safe, or is expressed as a
-distinguishing result type instead (spec `module-architecture`, "Absence is never silent").
-
-The **population SHALL be derived** from the `ports/` sources; only the **verdicts** are authored.
-A new nullable port seam therefore fails the build until someone states its consequence — the guard
-demands a reason, it does not maintain a list. A verdict that is present but wrong is a review
-concern, not a mechanical one, and this requirement makes no claim to catch it.
-
-This is the mechanically enforceable half of an otherwise-prose law: `ports/` is a small, bounded
-directory, which is what makes derivation cheap and non-vacuous there while a tree-wide equivalent
-would be neither.
-
-#### Scenario: A new nullable port seam has no verdict
-- **WHEN** a nullable-returning member is added to a port interface without a recorded consequence
-- **THEN** the guard fails until the consequence is stated or the seam returns a distinguishing type
-
-#### Scenario: A retired seam leaves a stale verdict
-- **WHEN** a nullable port member is removed or made non-nullable while its verdict remains
-- **THEN** the guard fails, so the verdict inventory cannot outlive the seams it describes
 
 ### Requirement: The main lane is contained to platform UI
 
@@ -836,28 +769,6 @@ this project.
 - **WHEN** a reviewer checks whether platform-UI commands stay on the main lane
 - **THEN** every command's lane is readable in the single file where the bundle is built
 
-### Requirement: Adapter constructors perform no blocking work
-
-
-A gate SHALL fail the build when a blocking platform call appears in a property initialiser or `init`
-block of an iOS adapter. Construction happens during graph assembly, which runs on whichever thread
-touches the graph first — so constructor I/O is a race between the launch path and the first render, and a
-race is why such a defect is never observed in testing.
-
-The gate SHALL carry a named grandfather list rather than blocking on a redesign. The one existing
-instance is the file-backed config store, whose constructor read exists because the status container's
-first state is built from seams that hold their current truth synchronously; removing it requires either
-a placeholder first frame or a launch/render reordering across the shell boundary. The entry SHALL record
-that reason, so the exemption is a decision rather than an oversight.
-
-#### Scenario: A new adapter reads in its constructor
-- **WHEN** an adapter gains a property initialiser or `init` block that performs a blocking platform call
-- **THEN** the gate fails, and the class of defect cannot grow
-
-#### Scenario: The grandfathered instance is inspected
-- **WHEN** a reader asks why the config store is exempt
-- **THEN** the allowlist entry states the constraint that makes fixing it a separate change
-
 ### Requirement: The composition seam gate
 
 The build SHALL fail when the function-typed field inventory of `AppPorts` or `UploadPorts` differs
@@ -893,98 +804,6 @@ by the platform, not accessing it, and is out of scope.
 - **WHEN** a new `*Ports` bundle is declared in `compose/`
 - **THEN** the gate fails until that bundle is listed with its file, because a bundle it does not
   know about is a third place the composition can hand the core a lambda unseen
-
-### Requirement: The platform-identifier gate
-
-The build SHALL fail when an Apple identifier appears in the **code** of `:domain`'s `model/`,
-`ports/` or `feature/` zones. Comments and KDoc are **exempt**, and that exemption is what gives the
-gate its signal: measured when the gate was introduced, scanning those zones including comments
-flagged 48 files while scanning with comments stripped flagged 5 — and all 5 were genuine. Four
-have since been paid off (below), leaving a baseline of 1. Every remaining site SHALL be
-pinned, exactly in both directions, and every pin SHALL state its reason.
-
-The pinned baseline is **not zero**, and the pins SHALL be split into two kinds, because reading them
-as one launders debt into design:
-
-- **accepted** — a judgement the owner stands behind, with no expiry. the upload **mechanism kind**'s
-  members (`PHOTOKIT`, `URL_SESSION`) are the only entry: they name upload mechanisms the pure resolver
-  yields, not platform APIs the core calls, and a third mechanism is a new member rather than a new
-  coupling. (These members were `UploadTier`'s until mechanism resolution absorbed `resolveComposition`;
-  the pin follows them to the kind — the judgement is unchanged, only the type carrying it.)
-- **deferred** — a real violation of the port law, left standing deliberately, which SHALL carry an
-  expiry trigger. Today there are **none**. The list being empty is a state to hold, not a gap to
-  fill: a deferred pin is a receipt with an expiry, and it stops being one once the expiry is
-  fiction.
-
-The discharged entries went by three different routes, and recording which is the point of the split:
-
-- `ports/ConfigPorts.kt` was discharged **incidentally** — the Stage-2 change deleted
-  `configReadFrom`, the file's only `KeychainRead`-typed function, with the legacy fallback it
-  served (capability `event-rejoin-reconciliation`), well before the family's reshape.
-- `ports/Keychain.kt` and `feature/album/AlbumMapMigration.kt` were discharged **by the expiry
-  trigger they were filed under**: the port was renamed for its need (`SecureStore`), its `OSStatus`
-  and accessibility-class vocabulary moved into the iOS adapter, and the feature took the neutral
-  read type.
-
-- `ports/OsReceipt.kt`'s `ReceiptDeadlines.URL_SESSION_EVENTS` was discharged because its expiry
-  trigger was **invalidated rather than reached**. It was filed to expire "with the iOS 18–26.0
-  app-driven tier"; giving the download session the same handler budget put the constant in service of
-  a session that exists on every iOS version, so the debt would have outlived the tier it was charged
-  against. It was renamed for its need (`BACKGROUND_EVENTS`) instead of re-filed under a weaker expiry.
-
-A deferred pin may therefore be discharged by whatever removes the code; the expiry trigger is a
-floor, not a schedule. A pin whose expiry has become false SHALL be repaid or re-argued, never
-silently re-filed — an expiry that cannot arrive makes the pin permanent while still reading as debt.
-
-The scanned vocabulary SHALL keep the `Keychain` token even though no pin now names it. Its original
-purpose is served — because the pin list is exact in both directions, retaining the token is what
-made the reshape unable to land without deleting those pins, and what made the `ConfigPorts`
-discharge visible the moment the code went. Its remaining purpose is ordinary: a port or feature that
-reintroduces the token SHALL fail the gate rather than arrive unpinned.
-
-**What it does not cover, stated so a green run is not over-read:** the gate is lexical. A decoder
-over another system's values written in bare integers — a `when` over `0L`, `1L`, `2L` that is in
-fact a `UIApplicationState` table — is indistinguishable from arithmetic and SHALL NOT be assumed
-caught. The gate's hits are therefore not ranked by risk: it fires on named constants, which are the
-safer kind, and is silent on unnamespaced integer tables, which are the kind that can return a wrong
-answer to a second platform rather than a safe default. It is likewise blind to a platform encoding
-carried in a neutral type — an `Int` that is really an `OSStatus`, or a `String` that is really an
-accessibility class — which is how `ports/Keychain.kt`'s pin understated what that file actually
-owed.
-
-#### Scenario: An Apple constant is introduced into a platform-free zone
-- **WHEN** an `NS*`, `PH*`, `kSec*`, `UI*`, `AV*` identifier or an Apple product name appears
-  outside a comment in `model/`, `ports/` or `feature/`
-- **THEN** the gate fails, naming the file and the token
-
-#### Scenario: A documented binding note is written
-- **WHEN** a KDoc records how a neutral type is bound on iOS (for example, that an opaque payload is
-  a `PHAssetResource` there, or that a legacy item physically lived in the Keychain)
-- **THEN** the gate does not fire, because comments are exempt by design
-
-#### Scenario: A pinned exception is removed from the code
-- **WHEN** a pinned Apple identifier is deleted or moved into an adapter
-- **THEN** the gate fails until its pin is removed, so the pin list cannot describe absent code
-
-#### Scenario: A deferred pin's code is deleted before its expiry trigger fires
-- **WHEN** unrelated work removes the code a deferred pin describes — as the Stage-2 fallback
-  deletion removed `ports/ConfigPorts.kt`'s `KeychainRead` use ahead of the port family's reshape
-- **THEN** the gate fails on the stale pin, and the pin is deleted with that work rather than
-  waiting for the trigger it was filed under
-
-#### Scenario: A deferred pin's expiry trigger fires
-- **WHEN** the reshape a deferred pin named as its expiry lands, and the token leaves the code
-- **THEN** the gate fails on every pin that reshape cleared, and each is deleted in the same commit,
-  so the receipt and the debt end together
-
-#### Scenario: A retired token is reintroduced
-- **WHEN** a platform token that no pin names any more reappears in the code of a scanned zone
-- **THEN** the gate fails, because the vocabulary is not narrowed when a pin is discharged
-
-#### Scenario: Deferred debt is filed as accepted
-- **WHEN** a pin is added for an identifier the owner intends to remove later
-- **THEN** it belongs in the deferred list with an expiry trigger, not in the accepted list, so the
-  pin inventory never reads as if the law had no outstanding violations
 
 ### Requirement: Every runbook pointer resolves to a skill that exists
 
@@ -1060,8 +879,10 @@ This is the inward mirror of "Runtime identity is pinned": that requirement pins
 which the OS also holds, so we cannot strand devices in the field; this one pins literals **Apple**
 holds which we encode, so Apple cannot widen a vocabulary we decode without saying so. It is also the
 first guard whose input is the toolchain's platform metadata rather than this repository's own source,
-and it is aimed squarely at the blindness "The platform-identifier gate" already declares: that a
-lexical scan cannot see a decoder over another system's values, and SHALL NOT be assumed to catch one.
+and it is aimed squarely at a blindness no lexical scan can cover: a decoder over another system's
+values carries no import and no distinctive token, so scanning source cannot see one and SHALL NOT be
+assumed to catch it. (That blindness was previously stated by "The platform-identifier gate", retired in
+this change once the JVM target was measured to reject Apple type references outright.)
 
 A fallback arm is unavoidable in the decoders themselves — cinterop renders `NS_ENUM` as a type alias
 over `NSInteger` plus loose constants, never a Kotlin `enum class`, so a `when` over one can never be
@@ -1136,111 +957,6 @@ failure mode these gates exist to remove.
   a comment
 - **THEN** that is a defect: the exclusion SHALL be removed by listing the directory, or the directory
   SHALL not be contributed into a shell at all
-
-### Requirement: The control channel's trigger coverage is derived, never hand-enumerated
-
-Where a dev/test control surface exposes platform entry points, the set it exposes SHALL be **derived**
-from the same entry-point population the entry-point guard derives, and every member SHALL be either
-wired to a trigger or named in an exclusion list carrying its reason. A guard SHALL assert that the
-derived population equals the wired set plus the excluded set, exactly, in both directions.
-
-A hand-picked trigger list rots invisibly: a new OS callback simply cannot be driven, and the only symptom
-is a test nobody wrote. Deriving it means adding an entry point fails the build until its disposition is
-stated, which is the same bargain the entry-point guard already imposes.
-
-An exclusion SHALL name the consequence that makes it safe. Re-invoking an entry point that registers
-process-lifetime observers, or one that reads a process environment fixed for the life of the process, is
-a defect rather than an omission, and the reason distinguishes the two.
-
-Where the control surface reaches **more than one composition root**, the derivation SHALL be **grouped by
-root**: each root's entry-point population is compared against the wired-plus-excluded set of that root's
-own group, and the trigger namespace SHALL name the root it addresses. Comparing one flat set across roots
-is not sufficient and SHALL NOT be used — two roots may legitimately declare an entry point of the same
-name, and a set comparison silently deduplicates the pair, dropping one entry point from the inventory
-while the guard still passes. Grouping makes that collision unrepresentable instead of asserted about, and
-it keeps a route leaf equal to the member name it invokes without either root having to rename a member for
-disambiguation.
-
-The scope of the derivation SHALL be stated as a consequence of what the surface can reach, not as a
-convenience. A scoping reason that has been falsified by the surface growing SHALL be replaced rather than
-reworded: the surface previously reached only the app's root, and the exclusion of the extension root's
-entry points rested on their being unreachable from it, which ceased to be true when the control channel
-began invoking that root.
-
-#### Scenario: A new entry point is added without a trigger disposition
-- **WHEN** a new platform entry point is added to a composition root
-- **THEN** the coverage guard fails until the entry point is either wired to a trigger or excluded with a
-  stated reason
-
-#### Scenario: An exclusion is recorded without a reason
-- **WHEN** an entry point is listed as excluded with no reason
-- **THEN** the guard fails, because an unreasoned exclusion is indistinguishable from an oversight
-
-#### Scenario: A wired trigger is removed
-- **WHEN** a trigger is deleted but its entry point still exists
-- **THEN** the guard fails until the entry point moves to the exclusion list with its reason
-
-#### Scenario: An entry point of a second root is unaccounted for
-- **WHEN** the control surface reaches a second composition root and one of that root's entry points is
-  neither wired nor excluded within that root's group
-- **THEN** the guard fails, naming the root and the entry point
-
-#### Scenario: Two roots declare the same entry-point name
-- **WHEN** two composition roots each declare an entry point of the same name and both are wired
-- **THEN** the guard accounts for both, because each is compared within its own root's group, and neither
-  is absorbed by the other
-
-### Requirement: A dev/test control channel binds the loopback address only
-
-A control channel served from inside the app SHALL bind the loopback address and no other. A guard SHALL
-assert that the channel's source names no bind address but the loopback constant.
-
-The channel forces OS callbacks and exposes event state, and the device it runs on is a phone attached to
-whatever network it happens to be on. Widening the bind address is a one-token edit that reads as fixing a
-connectivity problem, and nothing about the change would look like a security decision to the person
-making it.
-
-#### Scenario: A widened bind address fails the build
-- **WHEN** the channel's source names any bind address other than the loopback constant
-- **THEN** the guard fails, naming that the channel is reachable only through a host-side port forward
-
-#### Scenario: The channel cannot bind
-- **WHEN** the channel's bind fails — for example because a previous instance of the app is still alive
-  and holding the port
-- **THEN** the app SHALL continue to run unaffected, and the failure SHALL be logged at `Error` severity
-  naming the address, the port, and that the channel is not listening — because a refused connection is
-  otherwise indistinguishable from an app that is not running or a port forward that was never set up
-
-### Requirement: The OS-receipt expiry line is pinned
-
-The diagnostic line emitted when an OS-handler receipt is released on its deadline SHALL be pinned by a
-guard, in the same manner as other cross-boundary literals.
-
-The line is emitted on deadline-expiry paths and on no others, which makes its presence the only
-authoritative answer to whether the app released a handler because its work finished or because the bound
-fired. Any consumer reading it therefore treats **absence** as "the work finished" — so rewording the line
-turns every consumer green while hiding exactly the class of defect it was watching for. The failure is
-silent and in the dangerous direction.
-
-**The pin SHALL cover the SET of emitters, derived from the source and compared in both directions**, not
-one named file. More than one receipt type may bound a hold — a receipt that bounds work in flight, and one
-that bounds a wait for a signal that may never arrive — and each reports a genuine expiry. Pinning a single
-file leaves every other emitter rewordable with the guard still green, which is the same silent failure one
-level down. Each declared emitter SHALL state which expiry it reports, and SHALL emit the line exactly once.
-
-#### Scenario: The expiry line is reworded
-- **WHEN** the text of any declared emitter's deadline-expiry log line changes
-- **THEN** the pin guard fails, naming the consumers that read it as ground truth
-
-#### Scenario: An undeclared emitter appears
-- **WHEN** production source emits the pinned line from a file the inventory does not name
-- **THEN** the guard fails until that emitter is declared with the expiry it reports, because an emitter
-  nobody pinned can be reworded without any guard noticing
-
-#### Scenario: The expiry line is emitted on a non-expiry path
-- **WHEN** a code path that is not a deadline expiry emits the same line
-- **THEN** that is a defect: absence of the line must remain equivalent to "the handler was released
-  because the work completed"
 
 ### Requirement: OS completion handlers are held in one type
 
@@ -1355,56 +1071,6 @@ condition, and a scan that resolves zero Kotlin files SHALL fail rather than pas
 
 - **WHEN** the scanned roots are absent, renamed, or resolve to zero Kotlin files
 - **THEN** the guard fails rather than passing while inspecting nothing
-
-### Requirement: A KDoc block is never silently dropped
-
-
-A `:test:architecture` guard SHALL fail the build when two KDoc blocks appear consecutively with only
-blank lines between them and a declaration already appears earlier in the file.
-
-The defect this pins is **invisible in review and invisible at runtime**. Kotlin binds only the *last*
-KDoc block preceding a declaration; an earlier one is neither an error nor a warning, and the text
-simply stops being that declaration's documentation. It arises the same way every time: someone adds a
-revised rationale or an "Absence:" note as a *second* block rather than merging into the existing one,
-and the block they meant to keep is the one that disappears. Eleven sites accumulated this way, and what
-was dropped was load-bearing — the one-line summaries of what `AttestStore.token()` and `keyId()`
-return, and the only statement of why the upload lifecycle lives in tested `:domain` rather than the
-untested iOS composition root.
-
-The **file-header convention is exempt by construction**, not by an exception list. A file-level KDoc
-documenting the file as a whole can only be the first block in the file, so requiring that a declaration
-already appear earlier excludes every such header without naming one. A list of permitted sites would
-itself be a duplicate that goes stale, which is the failure this capability exists to prevent.
-
-The guard SHALL scan **every** `.kt` source in the repository, test sources included: a dropped block
-costs the next reader the same either way, and scoping to production would be a boundary to maintain
-for no gain.
-
-The guard SHALL carry **non-vacuity assertions** in the manner of `LawsDigestTest` — a change that
-empties its extraction SHALL fail here rather than pass silently, because a guard that scans nothing
-reports the same green as a guard that finds nothing.
-
-This guard pins a **documentation** invariant rather than a structural one, which is deliberate and
-narrow: it is admissible because the rule is mechanical and total — the compiler's own binding rule,
-not a style preference — and because the failure is silent. It SHALL NOT be widened into a general
-prose or content check; whether documentation is *correct* remains unguarded, and no green build is
-evidence that it is.
-
-#### Scenario: A second KDoc block silently drops the first
-
-- **WHEN** a declaration is preceded by two consecutive KDoc blocks, so Kotlin binds only the last
-- **THEN** the guard fails the build, naming the file and the line the dropped block opens on
-
-#### Scenario: A file-level header above a documented declaration passes
-
-- **WHEN** a file opens with a KDoc block documenting the file, immediately followed by the KDoc of the
-  file's first declaration
-- **THEN** the guard passes, because no declaration precedes the header
-
-#### Scenario: A broken extraction fails rather than passing empty
-
-- **WHEN** a change makes the guard's source scan match nothing
-- **THEN** the guard fails, rather than reporting success over an empty set
 
 ### Requirement: No reader is left behind on a moved deployment key
 
