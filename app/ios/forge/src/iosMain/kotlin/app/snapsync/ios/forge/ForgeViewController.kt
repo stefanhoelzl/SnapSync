@@ -55,7 +55,10 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         StatusScreen(
             state = state,
             cutoff = cutoffFormatter,
-            actions = statusActions(host, photoPermission)
+            // A constant, exactly as `ForgeShell` supplied: this is the shareable-count row's recompute
+            // trigger, and there is no live grant in this binary to observe. The forged frame's own
+            // permission is one of the preset's inputs and reaches the screen through the reduction.
+            actions = statusActions(host, photoPermission = PermissionStatus.GRANTED),
         )
     }
 }
@@ -110,52 +113,52 @@ private val cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone
  */
 private fun statusActions(host: StatusContainerHost, photoPermission: PermissionStatus) =
     StatusActions(
-                join = JoinGateActions(
-                    onConfirmJoin = host::onConfirmJoin,
-                    onAcknowledgeAccess = host::onAcknowledgeAccess,
-                    onCancelJoin = host::onCancelJoin,
-                    onRetryLoad = host::onRetryLoad,
-                    onRetryJoin = host::onRetryJoin,
-                ),
-                joined = JoinedActions(
-                    onLeaveEvent = host::onLeaveEvent,
-                    onShareInvite = host::onShareInvite,
-                    onReconfigure = host::onReconfigure,
-                    onRenameEvent = host::onRenameEvent,
-                    onRenameStatusConsumed = host::onRenameStatusConsumed,
-                ),
-                access = AccessActions(
-                    onRequestPermission = host.access::onRequestPermission,
-                    onOpenSettings = host.access::onOpenSettings,
-                    onChoosePhotos = host.access::onChoosePhotos,
-                ),
-                surfaces = SurfaceActions(
-                    onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
-                    onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
-                    onRenameOpen = host.surfaces::onRenameOpen,
-                    onRenameDismiss = host.surfaces::onRenameDismiss,
-                    onOpenReconfigure = host.surfaces::onOpenReconfigure,
-                    onCancelReconfigure = host.surfaces::onCancelReconfigure,
-                    onReportBugOpen = host.surfaces::onReportBugOpen,
-                    onReportBugDismiss = host.surfaces::onReportBugDismiss,
-                ),
-                switch = SwitchActions(
-                    onConfirmSwitch = host::onConfirmSwitch,
-                    onCancelSwitch = host::onCancelSwitch,
-                ),
-                onSendDiagnostics = host.onSendDiagnostics,
-                onCreateEvent = host::onCreateEvent,
-                participation = ParticipationActions(
-                    choices = RangeChoiceActions(
-                        onFromPreset = host.form::onFromPreset,
-                        onFromCustom = host.form::onFromCustom,
-                        onUntilPreset = host.form::onUntilPreset,
-                        onUntilCustom = host.form::onUntilCustom,
-                    ),
-                    onShareOn = host.form::onShareOn,
-                    onReceiveOn = host.form::onReceiveOn,
-                    onSaveToAlbum = host.form::onSaveToAlbum,
-                    shareableCount = { _, _ -> null },
-                    photoPermission = photoPermission,
-                ),
-            )
+        join = JoinGateActions(
+            onConfirmJoin = host::onConfirmJoin,
+            onAcknowledgeAccess = host::onAcknowledgeAccess,
+            onCancelJoin = host::onCancelJoin,
+            onRetryLoad = host::onRetryLoad,
+            onRetryJoin = host::onRetryJoin,
+        ),
+        joined = JoinedActions(
+            onLeaveEvent = host::onLeaveEvent,
+            onShareInvite = host::onShareInvite,
+            onReconfigure = host::onReconfigure,
+            onRenameEvent = host::onRenameEvent,
+            onRenameStatusConsumed = host::onRenameStatusConsumed,
+        ),
+        access = AccessActions(
+            onRequestPermission = host.access::onRequestPermission,
+            onOpenSettings = host.access::onOpenSettings,
+            onChoosePhotos = host.access::onChoosePhotos,
+        ),
+        surfaces = SurfaceActions(
+            onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
+            onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
+            onRenameOpen = host.surfaces::onRenameOpen,
+            onRenameDismiss = host.surfaces::onRenameDismiss,
+            onOpenReconfigure = host.surfaces::onOpenReconfigure,
+            onCancelReconfigure = host.surfaces::onCancelReconfigure,
+            onReportBugOpen = host.surfaces::onReportBugOpen,
+            onReportBugDismiss = host.surfaces::onReportBugDismiss,
+        ),
+        switch = SwitchActions(
+            onConfirmSwitch = host::onConfirmSwitch,
+            onCancelSwitch = host::onCancelSwitch,
+        ),
+        onSendDiagnostics = host.onSendDiagnostics,
+        onCreateEvent = host::onCreateEvent,
+        participation = ParticipationActions(
+            choices = RangeChoiceActions(
+                onFromPreset = host.form::onFromPreset,
+                onFromCustom = host.form::onFromCustom,
+                onUntilPreset = host.form::onUntilPreset,
+                onUntilCustom = host.form::onUntilCustom,
+            ),
+            onShareOn = host.form::onShareOn,
+            onReceiveOn = host.form::onReceiveOn,
+            onSaveToAlbum = host.form::onSaveToAlbum,
+            shareableCount = { _, _ -> null },
+            photoPermission = photoPermission,
+        ),
+    )
