@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * [configured] models the build's reporting configuration: `false` is every dev/sideload build, where
  * the port is inert and the dump affordance must not exist at all.
  */
-class InMemoryDiagnosticsReporter(
+internal class InMemoryDiagnosticsReporter(
     private val started: MutableStateFlow<Boolean>,
     private val sent: MutableStateFlow<List<DiagnosticDump>>,
     override val isConfigured: Boolean,

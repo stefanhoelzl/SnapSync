@@ -53,13 +53,13 @@ class StagedByteReclaimIntegrationTest {
         downloadStore.markStaged(ref, primaryKey, paths[0])
         downloadStore.markStaged(ref, liveKey, paths[1])
         downloadStore.markImported(ref, "LOCAL-${ref.sourceAssetId}")
-        stagedBytes.files += paths
+        stagedFiles += paths
         return paths.toSet()
     }
 
     /** The precondition every test here needs: the backlog is genuinely present before the trigger runs. */
     private suspend fun World.assertBacklogPresent(paths: Set<String>) {
-        assertTrue(stagedBytes.files.containsAll(paths), "precondition: the files are on the disk")
+        assertTrue(stagedFiles.containsAll(paths), "precondition: the files are on the disk")
         assertEquals(
             paths,
             downloadStore.stagedPathsOfImportedAssets().toSet(),
@@ -78,7 +78,7 @@ class StagedByteReclaimIntegrationTest {
         w.core.foregroundFlow.run()
 
         assertTrue(
-            w.stagedBytes.files.none { it in paths },
+            w.stagedFiles.none { it in paths },
             "foreground entry freed the redundant bytes",
         )
         assertTrue(w.downloadStore.isSettled(ref), "while the asset row stays terminal")
@@ -122,16 +122,16 @@ class StagedByteReclaimIntegrationTest {
             ),
         )
         w.downloadStore.markStaged(partial, stagedKey, partialPath)
-        w.stagedBytes.files += partialPath
+        w.stagedFiles += partialPath
 
         w.core.foregroundFlow.run()
 
         assertTrue(w.downloadStore.stagedPathsOfImportedAssets().isEmpty(), "the second pass found nothing")
         assertTrue(
-            partialPath in w.stagedBytes.files,
+            partialPath in w.stagedFiles,
             "an unsettled row keeps its bytes — releasing them does not cost a retry, it loses the photo",
         )
-        assertTrue(w.stagedBytes.files.none { it in paths }, "and the settled backlog stays gone")
+        assertTrue(w.stagedFiles.none { it in paths }, "and the settled backlog stays gone")
     }
 
     /**
@@ -150,7 +150,7 @@ class StagedByteReclaimIntegrationTest {
 
         w.core.foregroundFlow.run()
 
-        assertTrue(w.stagedBytes.files.none { it in paths }, "no membership is needed to free the disk")
+        assertTrue(w.stagedFiles.none { it in paths }, "no membership is needed to free the disk")
     }
 
     @Test
@@ -163,7 +163,7 @@ class StagedByteReclaimIntegrationTest {
         w.core.foregroundFlow.run()
 
         assertTrue(
-            w.stagedBytes.files.none { it in paths },
+            w.stagedFiles.none { it in paths },
             "the direction gate stops the reconcile — it must not stop the reclaim",
         )
     }

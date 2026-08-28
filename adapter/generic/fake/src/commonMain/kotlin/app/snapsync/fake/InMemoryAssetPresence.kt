@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * State arrives by constructor, per the fake-honesty rule; the cells are mutable so a test can move the
  * library under a running subject. Levers and inspection belong in `:test:world` wrappers, not here.
  */
-class InMemoryAssetPresence(
+internal class InMemoryAssetPresence(
     private val present: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet()),
     private val readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
 ) : ImportedAssetPresence {

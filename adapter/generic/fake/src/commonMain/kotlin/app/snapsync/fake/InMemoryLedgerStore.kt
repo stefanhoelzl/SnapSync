@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  * `WorldLedgerStore` copy at migration step 10, when this class moved out of `:domain:engine`'s
  * `commonTest` — a test source set no other module could depend on).
  */
-class InMemoryLedgerStore : LedgerStore {
+internal class InMemoryLedgerStore : LedgerStore {
 
     private val rows = mutableMapOf<String, LedgerEntry>()
 

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  * the port's [snapshots]. Operator rigging (emitting a selection change on demand) lives in
  * `:test:world`'s wrapper, which holds the cell — never here (`FakeHonestyTest`).
  */
-class InMemoryPhotoSelectionChangeSource(
+internal class InMemoryPhotoSelectionChangeSource(
     cell: MutableSharedFlow<List<Resource>>,
 ) : PhotoSelectionChangeSource {
 

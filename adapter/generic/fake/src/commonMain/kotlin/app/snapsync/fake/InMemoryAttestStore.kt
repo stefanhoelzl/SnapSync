@@ -3,7 +3,7 @@ package app.snapsync.fake
 import app.snapsync.ports.AttestStore
 
 /** The honest in-memory [AttestStore] for tests and the world harness (no platform Keychain). */
-class InMemoryAttestStore(
+internal class InMemoryAttestStore(
     private var token: String? = null,
     private var keyId: String? = null,
 ) : AttestStore {

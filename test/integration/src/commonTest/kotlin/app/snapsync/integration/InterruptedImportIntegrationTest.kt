@@ -109,15 +109,15 @@ class InterruptedImportIntegrationTest {
         val w = World(this)
         w.stageWithAbandonedImport("E")
 
-        val staged = w.stagedBytes.files.toSet()
+        val staged = w.stagedFiles.toSet()
         assertTrue(staged.isNotEmpty(), "the transfer staged bytes")
-        assertEquals(staged, w.stagedBytes.files, "unconfirmed → the bytes stay; the retry needs them")
+        assertEquals(staged, w.stagedFiles, "unconfirmed → the bytes stay; the retry needs them")
 
         w.downloadController.sweepInterruptedImports() // adjudicates → PRESENT → settles the row
 
         assertTrue(w.downloadStore.isSettled(ref))
         assertTrue(
-            w.stagedBytes.files.none { it in staged },
+            w.stagedFiles.none { it in staged },
             "confirmed → the bytes are redundant and released, so a received photo is not stored twice forever",
         )
     }
@@ -131,7 +131,7 @@ class InterruptedImportIntegrationTest {
         w.downloadController.reconcile("E")
         w.stageAllDownloads()
 
-        assertTrue(w.stagedBytes.files.isNotEmpty(), "a failed import must not take its bytes with it")
+        assertTrue(w.stagedFiles.isNotEmpty(), "a failed import must not take its bytes with it")
         assertTrue(!w.downloadStore.isSettled(ref))
 
         // The retry now succeeds off those same bytes.

@@ -15,8 +15,8 @@ import app.snapsync.ports.StagedBytes
  * container, and the staged paths a test reads out of [files] are built from it, so the two sides of
  * this port answer consistently here exactly as they must on device.
  */
-class InMemoryStagedBytes(
-    val files: MutableSet<String> = mutableSetOf(),
+internal class InMemoryStagedBytes(
+    private val files: MutableSet<String> = mutableSetOf(),
     private val root: String = "staged:/",
 ) : StagedBytes {
 
