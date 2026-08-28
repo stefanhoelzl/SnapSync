@@ -28,8 +28,8 @@ import kotlin.test.fail
  * the gate needs widening deliberately; if it does not, it is corrupting the record and should read the
  * mode some other way.
  *
- * Text matching rather than Konsist symbol resolution, for the same reason [KeychainContainmentTest] uses
- * source text: `iosMain` is not on the JVM test classpath, so there is no resolved model to query.
+ * Text matching rather than symbol resolution, for the same reason [KeychainContainmentTest] gives:
+ * `iosMain` is not on the JVM test classpath, so there is no resolved model to query.
  */
 class SceneRecordCompletenessTest {
 

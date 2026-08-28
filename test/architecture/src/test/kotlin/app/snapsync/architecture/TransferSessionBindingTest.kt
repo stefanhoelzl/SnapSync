@@ -19,10 +19,10 @@ import kotlin.test.fail
  * murmur. Reading the source is the only mechanism left, which is the same reason
  * [KeychainContainmentTest] is a text guard.
  *
- * Plain file reads rather than Konsist: the property is about which *source set directory* a call appears
- * in, and Konsist's scope is the whole project — asking it "is this token in this one file" costs a
- * full-project parse to answer what `File.readText()` answers directly. `RigControlChannelTest` reads
- * files the same way and for the same reason.
+ * Plain file reads: the property is about which *source set directory* a call appears in, which
+ * `File.readText()` answers directly. Every guard in this module now reads source the same way — the one
+ * Kotlin-parsing dependency was removed once it turned out no guard used anything but a file's path and
+ * its text (see [SourceScan]).
  *
  * **What this does NOT establish**, stated so nobody reads it as more than it is: that the device actual
  * *names* the background factory, never that the resulting session behaves. Whether a background

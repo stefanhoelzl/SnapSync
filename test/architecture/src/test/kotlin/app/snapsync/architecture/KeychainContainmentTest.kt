@@ -1,7 +1,5 @@
 package app.snapsync.architecture
 
-import com.lemonappdev.konsist.api.Konsist
-import com.lemonappdev.konsist.api.verify.assertTrue
 import kotlin.test.Test
 import kotlin.test.assertTrue as kotlinAssertTrue
 
@@ -19,10 +17,11 @@ import kotlin.test.assertTrue as kotlinAssertTrue
  * library**, ambient in every `iosMain` source set, with no dependency to withhold. So the invariant is
  * enforced by reading the source.
  *
- * Why Konsist and not a linter: the rule must catch a **fully-qualified** call —
+ * Why source text and not a linter: the rule must catch a **fully-qualified** call —
  * `platform.Security.SecItemAdd(query, null)` imports nothing — and detekt's `ForbiddenImport` sees only
  * imports, while `ForbiddenMethodCall` needs type resolution, which detekt does not have for
- * Kotlin/Native source sets. Konsist parses source (PSI), so it reads `iosMain` from a JVM test.
+ * Kotlin/Native source sets. Reading the file reaches `iosMain` from a JVM test because it compiles
+ * nothing; a PSI parser bought no more than that here (see [SourceScan]).
  */
 class KeychainContainmentTest {
 
@@ -42,25 +41,26 @@ class KeychainContainmentTest {
         "SecItemDelete(",
     )
 
-    private fun productionFiles() = Konsist
-        .scopeFromProject()
-        .files
-        .filterNot { it.path.contains("/build/") }
+    private fun productionFiles() = SourceScan.kotlinFiles()
         .filterNot { it.path.contains("/test/architecture/") } // this file names the forbidden tokens
 
     @Test
     fun `keychain access appears only in domain-keychain`() {
-        productionFiles()
+        val offenders = productionFiles()
             .filterNot { it.path.contains(owningModule) }
-            .assertTrue(testName = "no SecItem access outside :adapter:ios:ext-safe") { file ->
-                forbidden.none { token -> file.text.contains(token) }
-            }
+            .flatMap { file -> forbidden.filter { it in file.text }.map { "${file.path} names $it" } }
+        kotlinAssertTrue(
+            offenders.isEmpty(),
+            "no SecItem access outside $owningModule — every Keychain item the app persists must be " +
+                "readable by background work on a locked device, which is provable only if every call " +
+                "site is in the one module whose tests assert the accessibility class:\n  " +
+                offenders.sorted().joinToString("\n  "),
+        )
     }
 
     /**
-     * A guard that scans nothing passes vacuously. Konsist embeds a Kotlin **2.0** PSI parser while this
-     * repo is on Kotlin **2.4** — the same version lag that disqualified detekt 1.x — so a future language
-     * feature could in principle make files fail to parse and drop silently out of scope. Assert the scope
+     * A guard that scans nothing passes vacuously. The scan is now plain file reads, so no parser
+     * version can drop a file silently out of scope — but a moved directory still can. Assert the scope
      * is real: if this fails, the guard above is not guarding, and that must break the build loudly rather
      * than report success.
      */

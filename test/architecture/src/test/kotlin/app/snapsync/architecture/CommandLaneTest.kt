@@ -1,6 +1,5 @@
 package app.snapsync.architecture
 
-import com.lemonappdev.konsist.api.Konsist
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -29,10 +28,7 @@ class CommandLaneTest {
 
     private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane", "onUiLane")
 
-    private fun file(nameEnd: String) = Konsist
-        .scopeFromProject()
-        .files
-        .filterNot { it.path.contains("/build/") }
+    private fun file(nameEnd: String) = SourceScan.kotlinFiles()
         .firstOrNull { it.path.endsWith(nameEnd) }
         ?: fail("expected to find $nameEnd")
 
