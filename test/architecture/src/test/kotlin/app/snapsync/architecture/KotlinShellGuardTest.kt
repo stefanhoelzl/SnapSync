@@ -58,8 +58,43 @@ class KotlinShellGuardTest {
      * from the Gradle model instead of mirroring a list. This gate keeps the list because one of its
      * roots (`test/rig/src/hook`) is not a module and the project model cannot express it.
      */
-    private val shellSourceRoots =
-        listOf("app/ios/src", "app/ios/extension/src", "app/ios/forge/src", "test/rig/src/hook")
+    /**
+     * DERIVED from `appShellSources` in the root build file — the same list the `detektAppShell` task
+     * scans — rather than a second copy of it.
+     *
+     * It used to be a copy, and the duplication had already failed once: `build.gradle.kts` records that
+     * `app/ios/forge/src` was absent from BOTH this list and `appShellSources` until the
+     * complexity-budgets change measured the tree. Its own comment draws the conclusion — "a
+     * hand-maintained list of roots stops being true the moment a module is added, and nothing tells
+     * you" — so the fix is to stop maintaining a second one. `DetektTierCoverageTest` reads
+     * `detektTierOf` out of this same file for the same reason.
+     *
+     * Parsed from the build script text because `:test:architecture` deliberately depends on no project
+     * modules and so has no access to the Gradle model.
+     */
+    private val shellSourceRoots: List<String> = run {
+        val build = File(repoRoot, "build.gradle.kts").readText()
+        // Comments are stripped BEFORE the block is delimited. A `[^)]*` match truncated at the first
+        // `)` inside a comment — "(it constructs and forwards, it decides nothing)" — silently dropping
+        // every root declared after it, `app/ios/forge/src` included. The declaration ends at the first
+        // line that is a lone `)`.
+        val code = build.lines().joinToString("\n") { it.substringBefore("//") }
+        val block = code.substringAfter("val appShellSources = files(", missingDelimiterValue = "")
+            .substringBefore("\n)")
+            .takeIf { it.isNotBlank() }
+            ?: fail(
+                "the root build file no longer declares `val appShellSources = files(...)` — the shell " +
+                    "gate's scope has moved, and this guard is now deriving from nothing. Re-point it " +
+                    "rather than restoring a hand-written copy.",
+            )
+        val roots = Regex(""""([^"]+)"""").findAll(block).map { it.groupValues[1] }.toList()
+        assertTrue(
+            roots.isNotEmpty(),
+            "parsed zero roots out of `appShellSources` — the declaration's shape changed and this " +
+                "guard would scan nothing",
+        )
+        roots
+    }
 
     /** file (relative) → pinned `@Suppress("CyclomaticComplexMethod")` count. Exact, both directions. */
     private val pins: Map<String, Int> = mapOf(
@@ -79,6 +114,43 @@ class KotlinShellGuardTest {
                     .any { "/$it/" in p }
             }
             .toList()
+    }
+
+    /**
+     * The floor deriving cannot provide: that `appShellSources` COVERS every iOS shell module.
+     *
+     * Deriving this guard's roots from the build file removes drift between the two lists, but it cannot
+     * notice that the one remaining list is incomplete — if a shell module is missing from
+     * `appShellSources`, the guard now agrees with it and both are silently wrong. That is precisely the
+     * failure on record: `app/ios/forge/src` was absent from both until the tree was measured.
+     *
+     * So the expected set is derived from a THIRD place neither list controls — the build's own include
+     * set. Every `:app:ios*` module SHALL have its source root scanned. `:app:desktop` is excluded
+     * deliberately and by name: it is test equipment hosting two harness applications, measured as
+     * harness under capability `complexity-budgets`, and has never been in this gate's scope.
+     */
+    @Test
+    fun `every iOS shell module is scanned by the shell gate`() {
+        val includes = Regex("""include\("(:[^"]+)"\)""")
+            .findAll(File(repoRoot, "settings.gradle.kts").readText())
+            .map { it.groupValues[1] }
+            .toList()
+        assertTrue(includes.isNotEmpty(), "settings.gradle.kts parsed to zero includes — the scan is broken")
+
+        val shellModules = includes.filter { it == ":app:ios" || it.startsWith(":app:ios:") }
+        assertTrue(shellModules.isNotEmpty(), "no :app:ios* modules found — the shells have moved")
+
+        val unscanned = shellModules.filterNot { module ->
+            val path = module.removePrefix(":").replace(':', '/') + "/src"
+            shellSourceRoots.any { it == path }
+        }
+        assertTrue(
+            unscanned.isEmpty(),
+            "iOS shell modules the shell gate does not scan: $unscanned. Add each one's `src` to " +
+                "`appShellSources` in the root build file. A shell absent from that list is never " +
+                "measured for decisions, and nothing else would tell you \u2014 which is exactly how " +
+                "`:app:ios:forge` went unscanned until the tree was measured.",
+        )
     }
 
     @Test

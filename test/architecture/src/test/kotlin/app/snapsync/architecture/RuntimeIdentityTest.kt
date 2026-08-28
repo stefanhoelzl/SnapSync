@@ -178,6 +178,63 @@ class RuntimeIdentityTest {
         )
     }
 
+    /**
+     * **Every pinned identity is documented in the spec that owns the inventory.**
+     *
+     * This guard's own doc says "the pin inventory is the spec's (`openspec/specs/architecture-guards/`)
+     * — adding, removing, or re-valuing a pin is a spec delta, deliberately". It said that while holding
+     * its own private copy and never reading the spec, which is the shape `ModuleSetTest` was rebuilt to
+     * escape: that guard compared the module set against a table three lines below the assertion, told
+     * you twice that a new module "is a spec delta", and got a table edit both times.
+     *
+     * The drift here is **asymmetric**, which is why this direction is worth having on its own. A pin
+     * with a WRONG value already fails loudly — it is asserted against production Kotlin, and a literal
+     * that is not there is not found. What drifts silently is a pin that exists in one place and not the
+     * other. This closes the guard→spec half: a pin added here without a spec delta fails.
+     *
+     * ⚠️ The spec→guard half — an identity the SPEC names that this guard does not assert — is NOT
+     * closed, and that is the half matching the `:tools:diagrams` failure mode. Closing it needs the
+     * spec's inventory to be machine-readable; today it is prose whose backticks carry values
+     * (`ledger.db`) and terms (`NSUserDefaults`, `TEAM_ID`) indistinguishably, and a parser guessing
+     * between them would under-extract silently — the exact defect class this capability exists to
+     * prevent. That restructuring belongs with the `architecture-guards` spec delta.
+     */
+    @Test
+    fun `every pinned identity is documented in the spec that owns the inventory`() {
+        val spec = File(repoRoot, "openspec/specs/architecture-guards/spec.md")
+        assertTrue(spec.isFile, "the architecture-guards spec is missing — this guard's inventory has no owner")
+        val text = spec.readText()
+        val start = text.indexOf("### Requirement: Runtime identity is pinned")
+        assertTrue(start >= 0, "the spec no longer declares `Runtime identity is pinned` — re-point this guard")
+        val section = text.substring(start).let { body ->
+            val next = body.indexOf("### Requirement:", 10)
+            if (next == -1) body else body.substring(0, next)
+        }
+        val documented = Regex("`([^`]+)`").findAll(section).map { it.groupValues[1] }.toSet()
+        assertTrue(documented.isNotEmpty(), "parsed zero backticked values out of the pin requirement")
+
+        val pinned = buildSet {
+            addAll(kotlinLiterals)
+            addAll(bgTaskIds)
+            addAll(baseNames)
+            keychainPairs.forEach { (service, account) -> add(service); add(account) }
+            unscopedKeychainSeats.forEach { (service, account) -> add(service); add(account) }
+        }
+        // The shared Keychain access group is named by the spec as a concept but not as a value, and
+        // deliberately: the value composes the Apple TEAM_ID, which is declared in `Config.xcconfig` and
+        // has no business being restated in a spec. Its agreement across Kotlin, TEAM_ID and both
+        // entitlements is asserted by its own test below, which is the stronger check anyway.
+        val documentedElsewhere = setOf(SHARED_ACCESS_GROUP)
+        val undocumented = (pinned - documented - documentedElsewhere).sorted()
+        assertTrue(
+            undocumented.isEmpty(),
+            "these identities are pinned by the guard but named nowhere in the spec's inventory: " +
+                "$undocumented. The spec owns the inventory; a pin that exists only in the guard is a " +
+                "runtime identity nobody agreed to, and changing it later looks like a test edit rather " +
+                "than the field-breaking change it is.",
+        )
+    }
+
     @Test
     fun `every runtime-identity literal appears exactly once in production Kotlin`() {
         val sources = productionKotlin()

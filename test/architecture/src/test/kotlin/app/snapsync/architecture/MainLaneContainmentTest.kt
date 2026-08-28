@@ -2,7 +2,10 @@ package app.snapsync.architecture
 
 import com.lemonappdev.konsist.api.Konsist
 import com.lemonappdev.konsist.api.verify.assertTrue
+import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertTrue as assertTrueKt
+import kotlin.test.fail
 
 /**
  * **The main lane is contained to platform UI** (capability `architecture-guards`; law:
@@ -100,4 +103,51 @@ class MainLaneContainmentTest {
                 runBlockingCallForms.none { form -> file.text.contains(form) }
             }
     }
+    /**
+     * The Swift half — and it did not exist until it was measured.
+     *
+     * This guard's rule has always named both languages, and its own documentation said "a gate watching
+     * only the Kotlin forms would have missed the Swift shell". It was watching only the Kotlin forms:
+     * the scan runs over `Konsist.scopeFromProject().files`, which is KOTLIN files, so `DispatchQueue.main`
+     * in `iosApp/**/*.swift` was never read. Measured 2026-08-28 — appending `DispatchQueue.main.async {}`
+     * to `iosApp/iosApp/iOSApp.swift` and forcing a rerun left the build GREEN, while the same rule in
+     * Kotlin correctly failed.
+     *
+     * Plain file reads rather than Konsist, for the reason `SwiftShellGuardTest` uses them: nothing in the
+     * Kotlin toolchain parses Swift. The build file already declares `iosApp/**/*.swift` as a task input,
+     * so this re-runs when a shell changes.
+     */
+    @Test
+    fun `the main lane is not named in the Swift shells`() {
+        val repoRoot = generateSequence(File(".").absoluteFile) { it.parentFile }
+            .firstOrNull { File(it, "settings.gradle.kts").isFile }
+            ?: fail("could not locate the repository root")
+        val swift = File(repoRoot, "iosApp").walkTopDown()
+            .filter { it.isFile && it.extension == "swift" }
+            .toList()
+        assertTrueKt(
+            swift.isNotEmpty(),
+            "the Swift half of the main-lane gate scanned nothing — iosApp/ has moved, and this gate " +
+                "would pass forever without reading a line",
+        )
+        val offenders = swift.flatMap { file ->
+            file.readLines().withIndex().mapNotNull { (i, line) ->
+                val code = line.substringBefore("//")
+                if (SWIFT_MAIN_LANE !in code) null
+                else "${file.toRelativeString(repoRoot)}:${i + 1} names $SWIFT_MAIN_LANE"
+            }
+        }
+        assertTrueKt(
+            offenders.isEmpty(),
+            "a Swift shell names the main lane. The shells are transcribers: they forward the OS's raw " +
+                "input to Kotlin and decide nothing, so dispatching work there puts it on a lane the " +
+                "composition cannot govern:\n  " + offenders.joinToString("\n  "),
+        )
+    }
+
+    private companion object {
+        /** Swift's form of the main lane. The Kotlin forms are in [mainLaneForms]. */
+        const val SWIFT_MAIN_LANE = "DispatchQueue.main"
+    }
+
 }
