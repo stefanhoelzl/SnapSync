@@ -18,7 +18,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedTransfer; `:test:world` FakeBackgroundTransfer | yes |
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
-| `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates, Switchable; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, UnreadableSource | yes |
+| `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates, Switchable; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource | yes |
 | `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:ui:presentation` MovableClock; `:ui:screens` MovableClock | no |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |

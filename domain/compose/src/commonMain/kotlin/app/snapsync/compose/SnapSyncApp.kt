@@ -27,6 +27,7 @@ import app.snapsync.feature.status.LedgerCountsPoller
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
+import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.upload.UploadMechanismRuntime
@@ -722,39 +723,36 @@ class AppCore internal constructor(
             emptySet()
         }
 
-    suspend fun refreshStatusSources() {
-        // CHEAP LOCAL READS FIRST, the ~6 s library walk last (capability `sync-status`). Both counts
-        // gate the screen out of its neutral first frame, and the walk is orders of magnitude slower
-        // than the two SQLite reads — so doing the walk first published a counted total beside counts
-        // nobody had read yet, and the screen briefly reported "0 of N".
-        ledgerCounts.refresh()
-        downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
-        ports.configSource.config.value?.let { cfg ->
-            // NO GRANT CHECK. `candidates` is a `PermissionAwareCandidateSource`, and it answers both
-            // halves of the question: where candidates come from AND whether an admitted set can be
-            // stated at all (`CandidateRead`). A gate here restated the second half — and restated it
-            // wrongly, because `grantsPhotoAccess` is true under LIMITED, so it let through the one case
-            // that actually reaches members: a partial grant whose selection snapshot has not landed,
-            // counted as a zero and settling the screen at "In sync" (capability `gallery-status`).
-            //
-            // Calling through under an unreadable library is deliberate. `refresh` writes no count and
-            // logs why, so a device log can separate "refused" from "never refreshed" — which this used
-            // to leave silent (law "Absence is never silent": an entry point that declines to act
-            // records the reason).
-            //
-            // NARROWED to the POLICY derivation. What the walk itself does on failure is the
-            // source's own invariant now — it leaves `N` untouched and logs at Error severity
-            // (capability `gallery-status`), and it does the same when the library is not readable at
-            // all, so there is nothing left here to catch on its behalf. What remains is this step's
-            // two port reads (echo suppression, the album denylist), whose failure is a
-            // sibling-cancellation risk and nobody else's rule — this runs as one child of the
-            // Foreground flow's `coroutineScope`, so an escaping failure would cancel the download
-            // reconcile, the staged-byte reclaim and the membership refresh alongside it.
-            runCatching { selectionPolicyForMembership(cfg) }
-                .onFailure { ports.log.e(it) { "gallery: policy read failed — N not refreshed" } }
-                .onSuccess { policy -> gallery.refresh(policy) }
-        }
+    /**
+     * The status-refresh **rule** (capability `sync-status`): cheap local reads before the library
+     * enumeration, and no count at all without a membership. Seated in `feature/status` because it has
+     * three callers — the `Foreground` and `Provision` flows and `ReconfigureEvent`, which is a feature
+     * and cannot hold a flow's ordering — so it is a rule rather than one flow's order (law "Rules in
+     * features, order in flows", which offers exactly this alternative).
+     *
+     * The two port touches it cannot make are built here: the config read, and the one policy
+     * derivation.
+     */
+    private val statusRefresh: StatusRefresh by lazy {
+        StatusRefresh(
+            ledgerCounts = ledgerCounts,
+            gallery = gallery,
+            // The sibling feature, reached through a lambda so `feature/status` stays blind to it.
+            refreshDownloadLine = { downloadStatusSource.refresh() },
+            activeConfig = { ports.configSource.config.value },
+            policyFor = ::selectionPolicyForMembership,
+            log = ports.log,
+        )
     }
+
+    /**
+     * Re-read the own-device total, the ledger counts and the foreign-download line, in that order.
+     *
+     * A forwarding call: the order and the no-membership rule are [StatusRefresh]'s, and both are
+     * asserted there. Kept as a method because the world harness and the desktop world inspector drive
+     * this exact entry point — it IS what the shell's foreground entry pulls.
+     */
+    suspend fun refreshStatusSources() = statusRefresh.run()
 
     // ── The OS-callback trigger flows (spec `module-architecture`, "Rules in features, order in
     // flows"; migration step 8). Each is built here — features referenced directly, port/platform
