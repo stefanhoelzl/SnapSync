@@ -92,7 +92,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
-| `UploadMechanismRuntime` | `:domain:feature` | `:adapter:generic:fake` RecordingMechanism; `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |
+| `UploadMechanismRuntime` | `:domain:feature` | `:adapter:generic:fake` RecordingMechanism; `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, Recording, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |
 | `UploadProducer` | `:domain:feature` | — | no |
 | `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` FakeProvider, StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | yes |
 | `UploadTriggers` | `:domain:feature` | — | no |
