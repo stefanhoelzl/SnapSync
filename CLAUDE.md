@@ -362,64 +362,19 @@ job measured zero at the finale and was deleted with its module, per its own con
 records under `openspec/changes/archive/` (the migration's steps are archived changes like any
 other).
 
-## The laws (digest)
+## The laws
 
-Authority: `openspec/specs/module-architecture/spec.md` — this digest is the in-context copy, one
-line per law; a `:test:architecture` guard keeps the two in sync. Every law is mechanically
-gated in `./gradlew build`; a violation is a red build, not a review note.
+Authority — and the **only** copy: `openspec/specs/module-architecture/spec.md`. Read it before moving
+code, changing a boundary, or arguing that something is allowed. Every law there is mechanically gated in
+`./gradlew build`; a violation is a red build, not a review note.
 
-- **The module set withholds; packages organize** — a module exists only to withhold a
-  third-party/platform dep by compile error (platform-free `:domain`, M3 in `:ui:components`,
-  extension-safety adapter split); everything finer is a package with a derived text gate.
-- **A build-time-only module is contained by compilation, not by a runtime check** — a test-only
-  module may link into a shipped-format binary only under a build property; without it the build
-  contains NO source of that module (no stub, no inert branch), and it contributes its own call
-  site rather than making a shell carry a permanent seam.
-- **Zones inside the core** — `:domain` is `model/` ← `ports/` ← `feature/` ← `flow/` ←
-  `compose/`; features never reference a sibling feature; `flow/` never references `ports/`.
-- **Ports are the I/O boundary named for the need** — anything touching an external system (time,
-  files, network, env included) goes through a port interface in `ports/`, named for the need
-  (must survive a second platform); adapters implement, named for technology, placed by linkage.
-- **State and authority** — no global mutable state in `:domain`, ever; instance state only as
-  derived caches or coordination primitives; authority behind ports (kill-test: after
-  kill+relaunch, every fact recoverable via ports, keyed by identifiers the external system
-  persisted — and that binds **port implementations too**, which otherwise satisfy it vacuously). An
-  entry point receiving a delivery the platform makes **once** persists it **before returning**, and
-  cites the proof that it is once-only. Which thread a port call runs on is NOT the impl's concern — see the lane law below.
-- **Dispatcher lanes are fixed by the composition** — three lanes, each with a purpose: **main** is
-  reserved for platform UI and carries nothing else; **`Dispatchers.Default`** carries presentation-state
-  reduction; the **composition lane** — a dispatcher of the composition's own, one dedicated thread —
-  carries the live core's scope, so a blocked platform call cannot eat the pool the UI reduces state on.
-  The live core's scope is never UI-bound in ANY binary that composes it (device shell or harness), and
-  is **serial**, because the main thread it replaced was single-threaded and core code relies on that for
-  mutual exclusion. User commands declare their lane where they are built (the container launches intents
-  unconfined, so the scope does not govern them) and no decorator supplies a default. An adapter's
-  dispatcher hop now buys **concurrency**, never safety. In the **extension** process there is no UI and
-  no main lane: `process()` is synchronous by the OS's contract and runs under `runBlocking` on the
-  OS-invoked thread. Gated by `MainLaneContainmentTest`, `CommandLaneTest`, `ConstructorBlockingTest`.
-- **Rules in features, order in flows** — flows coordinate, never decide; features are mutually
-  blind and coordinate via one-writer durable state behind shared ports, written whole; no field
-  encodes a request to another feature.
-- **A trigger flow never outlives its own run** — a `flow/` class declares no `CoroutineScope` and
-  every `Unit`-returning lambda it accepts is `suspend`; `run()` is `suspend` and returns only when
-  the work it coordinates has finished, so a shell can report completion to the OS truthfully.
-- **Commands cross one door** — user taps, OS callbacks, and port-state transitions all enter
-  through `flow/` commands (built/decorated only in `compose/`, injected into presentation);
-  reads do NOT cross flow — presentation observes feature read-model StateFlows directly.
-- **One shared composition** — every live-core binary and the world harness call
-  `snapSyncApp`/`uploadCore`; platform-mechanism selection is a pure, tested TOTAL function of OS facts and runtime state, re-evaluated when an input changes rather than once per process; the
-  wiring graph itself is smoke-tested, never unit-tested; DI is manual (decision D6).
-- **Shells are wiring only** — zero conditionals in `:app:*` Kotlin (detekt-gated); Swift is a
-  transcriber (forwards raw ObjC-visible inputs whole, decides nothing; pinned exceptions only).
-- **A platform-capability claim is settled by a compile, not by a symbol table** — an artifact records
-  what ships, not what is callable. `Dispatchers.IO` is in the Kotlin/Native coroutines klib and is
-  `internal`; a design built on the symbol table's evidence was withdrawn at the first compile. State
-  absence precisely too — a *public* API, a target, a version — so a reader can tell what would falsify it.
-- **Necessity claims carry forcing proofs** — "the platform forces X" cites an API contract, a
-  measurement, or a vendor doc — never the current code — and names its expiry trigger.
-- **Absence is never silent** — "nothing" and "couldn't tell" are different answers wherever their
-  consequences differ; a deliberate collapse names the consequence that makes it safe for EVERY
-  cause it absorbs; and an entry point never collapses into silence.
+There is deliberately **no digest here**. This file used to carry a one-line-per-law copy kept honest by a
+guard that failed the build when the two drifted. Guarding a duplicate is worse than not having one: the
+guard could only ever prove the copy matched, never that either was right, and it cost a build gate to say
+so. The copy is gone and the guard with it — so nothing can drift, because there is nothing to drift from.
+
+Do not reintroduce a digest, here or anywhere else (a copy in `openspec/config.yaml` would be the same
+duplicate in a quieter place, with no guard at all). If the laws are needed in context, open the spec.
 
 Still true and not a law: because iOS targets are present, `commonMain` is limited to the common
 stdlib + each zone's allowlisted libraries — JVM-only APIs there break the iOS compile (verify
