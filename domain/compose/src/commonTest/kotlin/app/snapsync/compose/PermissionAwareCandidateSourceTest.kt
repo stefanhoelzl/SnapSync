@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -12,7 +13,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.ports.CandidateSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertIs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 
@@ -41,16 +42,22 @@ class PermissionAwareCandidateSourceTest {
     /** Counts walks, because "counted from the snapshot" and "did not look" are different claims. */
     private class RecordingWalk(private val ids: List<String>) : CandidateSource {
         var walks = 0
-        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
+        override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
             walks++
-            return ids.map { id ->
-                object : Candidate {
-                    override val facts = AssetFacts(id, CaptureDate("2026-06-01T00:00:00Z"))
-                    override suspend fun resources(): List<Resource> = emptyList()
-                }
-            }
+            return CandidateRead.Readable(
+                ids.map { id ->
+                    object : Candidate {
+                        override val facts = AssetFacts(id, CaptureDate("2026-06-01T00:00:00Z"))
+                        override suspend fun resources(): List<Resource> = emptyList()
+                    }
+                },
+            )
         }
     }
+
+    /** The candidates of a read expected to be readable — the assertion is part of each case's claim. */
+    private suspend fun CandidateSource.readable(policy: SelectionPolicy): List<Candidate> =
+        assertIs<CandidateRead.Readable>(candidates(policy), "expected a readable library").candidates
 
     private fun snapshotOf(vararg ids: String) = ids.map {
         Resource(
@@ -75,7 +82,7 @@ class PermissionAwareCandidateSourceTest {
     @Test
     fun `GRANTED walks the library`() = runTest {
         val (walk, source) = source(PermissionStatus.GRANTED)
-        assertEquals(listOf("W"), source.candidates(policy()).map { it.facts.assetId })
+        assertEquals(listOf("W"), source.readable(policy()).map { it.facts.assetId })
         assertEquals(1, walk.walks)
     }
 
@@ -86,24 +93,36 @@ class PermissionAwareCandidateSourceTest {
         // wrong universe — it could surface photos the member never chose to share. (Not an alert
         // argument: iOS's limited-access alert is armed per out-of-scope library change, not per read.)
         val (walk, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1", "S2"))
-        assertEquals(listOf("S1", "S2"), source.candidates(policy()).map { it.facts.assetId })
+        assertEquals(listOf("S1", "S2"), source.readable(policy()).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
     }
 
     @Test
-    fun `LIMITED before the first snapshot yields nothing rather than walking`() = runTest {
-        // The honest state between a grant turning partial and the first observer emission: there is
-        // nothing selected that we know of, and we may not go looking for it.
+    fun `LIMITED before the first snapshot is NOT READABLE and still never walks`() = runTest {
+        // Between a grant turning partial and the first observer emission there is nothing selected that
+        // we know of, and we may not go looking for it. That is not an empty selection: an empty one is a
+        // counted zero that settles the screen at "In sync", which on a member who HAS photos selected is
+        // a frame the projection can never take back (capability `sync-status`). This case is the whole
+        // reason the seam answers with a sealed type rather than a list.
         val (walk, source) = source(PermissionStatus.LIMITED, snapshot = null)
-        assertTrue(source.candidates(policy()).isEmpty())
+        assertEquals(CandidateRead.NotReadable, source.candidates(policy()))
+        assertEquals(0, walk.walks, "and it still may not go looking")
+    }
+
+    @Test
+    fun `an EMPTY snapshot is readable — a counted zero rather than an absence`() = runTest {
+        // The other half of the pair above, and the reason it cannot simply be `.orEmpty()`: a member who
+        // selected nothing is receive-only, which is a valid resting state, and their screen SHOULD settle.
+        val (walk, source) = source(PermissionStatus.LIMITED, snapshot = emptyList())
+        assertEquals(CandidateRead.Readable(emptyList()), source.candidates(policy()))
         assertEquals(0, walk.walks)
     }
 
     @Test
-    fun `an unusable grant yields nothing and never walks`() = runTest {
+    fun `an unusable grant is NOT READABLE and never walks`() = runTest {
         for (status in listOf(PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED)) {
             val (walk, source) = source(status, snapshot = snapshotOf("S"))
-            assertTrue(source.candidates(policy()).isEmpty(), "$status yields no candidates")
+            assertEquals(CandidateRead.NotReadable, source.candidates(policy()), "$status has no answer")
             assertEquals(0, walk.walks, "$status never walks")
         }
     }
@@ -114,7 +133,7 @@ class PermissionAwareCandidateSourceTest {
         // candidate for them must therefore issue nothing: a deferred read here would have to reach the
         // assets again later, off-flow, which is the measured storm (capability `limited-photo-access`).
         val (_, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
-        val resources = source.candidates(policy()).single().resources()
+        val resources = source.readable(policy()).single().resources()
         assertEquals(listOf("S1-primary.jpg"), resources.map { it.filename })
     }
 }

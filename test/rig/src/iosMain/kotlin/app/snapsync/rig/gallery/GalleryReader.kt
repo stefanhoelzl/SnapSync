@@ -1,5 +1,6 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.SelectionPolicy
@@ -77,7 +78,14 @@ class GalleryReader(
                 albumExcludedAssetIds = { emptySet() },
         )
         val mark = TimeSource.Monotonic.markNow()
-        val found = candidates.candidates(policy)
+        // This route asks the app's OWN seam, so it reports what the app would see — including "there is
+        // nothing to report". Answering that with an empty asset list would tell an operator the library
+        // is empty when the truth is that nobody could look (capability `gallery-status`).
+        val found = when (val read = candidates.candidates(policy)) {
+            is CandidateRead.Readable -> read.candidates
+            CandidateRead.NotReadable ->
+                return GalleryView(census = census, grant = grant(), policy = null, notReadable = true)
+        }
         val rules = policy.rules
         val assets = found.map { candidate ->
             val facts = candidate.facts

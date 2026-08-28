@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -34,18 +35,28 @@ internal class InMemoryCandidateSource(private val state: MutableStateFlow<List<
 
     constructor(initial: List<RawAsset> = emptyList()) : this(MutableStateFlow(initial))
 
-    override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
+    /**
+     * Always [CandidateRead.Readable]: this reads a cell it was handed, so it always has an answer. The
+     * un-readable case belongs where the grant and the selection snapshot are known — the composition —
+     * and a fake that could invent it would let a test reach a state no in-memory source produces.
+     */
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
         // Stands in for a platform's NARROWED fetch, so it translates the policy's rules the way a real
         // translator does (capability `photo-selection-policy`) rather than reading a bound off the policy
         // — which is no longer a thing a policy offers. Only the two narrowings that are REQUIRED are
         // modelled; every other rule is left to the caller's authoritative admission, exactly as an
         // untranslatable rule is on device.
-        if (policy.rules.any { it.deniesEverything }) return emptyList()
+        //
+        // A deny-everything narrowing returns a READ library holding nothing admissible — a counted zero,
+        // never "no answer".
+        if (policy.rules.any { it.deniesEverything }) return CandidateRead.Readable(emptyList())
         val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>()
             .maxOfOrNull { it.cutoff.at.iso }
-        return state.value
-            .filter { floor == null || it.creationDate >= floor }
-            .map(::InMemoryCandidate)
+        return CandidateRead.Readable(
+            state.value
+                .filter { floor == null || it.creationDate >= floor }
+                .map(::InMemoryCandidate),
+        )
     }
 }
 

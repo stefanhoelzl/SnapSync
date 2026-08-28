@@ -2,6 +2,8 @@ package app.snapsync.gallery
 
 import app.snapsync.fake.InMemoryCandidateSource
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.RESOURCE_META_IS_EDITED
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
@@ -25,6 +27,7 @@ import app.snapsync.model.resourcesFrom
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -38,7 +41,15 @@ private suspend fun admitting(cutoff: String) =
 
 /** The resources a source yields for [cutoff] — walk composed with the per-candidate mapping. */
 private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =
-    candidates(admitting(cutoff)).flatMap { it.resources() }.map { it.filename }
+    readCandidates(admitting(cutoff)).flatMap { it.resources() }.map { it.filename }
+
+/**
+ * The candidates of a read this fake always answers: it reads a cell, so it is always `Readable`
+ * (capability `gallery-status`). Asserting that here keeps every case below about the MAPPING rather
+ * than about a branch none of them exercises.
+ */
+private suspend fun InMemoryCandidateSource.readCandidates(policy: SelectionPolicy): List<Candidate> =
+    assertIs<CandidateRead.Readable>(candidates(policy), "the in-memory source always reads").candidates
 
 class RawAssetMappingTest {
 
@@ -135,7 +146,7 @@ class RawAssetMappingTest {
         val source = InMemoryCandidateSource(listOf(screenshot))
         val policy = admitting("2026-01-01T00:00:00Z")
 
-        val candidates = source.candidates(policy)
+        val candidates = source.readCandidates(policy)
         assertEquals(1, candidates.size, "the walk emits the screenshot as a candidate — it does not drop it")
         assertTrue(EventPhotoSet(policy) { candidates }.assets().isEmpty(), "…and the policy is what excludes it")
     }
@@ -193,7 +204,7 @@ class RawAssetMappingTest {
             ),
         )
 
-        val candidates = source.candidates(admitting(CUTOFF))
+        val candidates = source.readCandidates(admitting(CUTOFF))
         assertEquals(listOf("NEW"), candidates.map { it.facts.assetId }, "the walk is bounded by the floor")
         assertEquals(listOf("NEW-primary.jpg"), candidates.single().resources().map { it.filename })
     }

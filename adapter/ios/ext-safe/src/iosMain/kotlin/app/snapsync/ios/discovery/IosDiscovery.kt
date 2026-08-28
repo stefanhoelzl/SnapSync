@@ -2,6 +2,7 @@ package app.snapsync.ios.discovery
 
 import app.snapsync.model.UploadRequest
 import app.snapsync.gallery.PhotoKitCandidateSource
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.Resource
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.denormalizeAssetId
@@ -86,11 +87,26 @@ class IosDiscovery(
                 // against. No change feed, so no incremental removals. The policy narrows the fetch so the
                 // walk does not touch every library asset; the cycle's own admission stays authoritative
                 // over what comes back.
-                return@withContext Discovery(
-                    candidates = source.candidates(policy),
-                    nextToken = archiveToken(library.currentChangeToken),
-                    fullEnumeration = true,
-                )
+                // `PhotoKitCandidateSource` always reports a readable library — it is the raw walk, and
+                // whether a read is permitted at all is decided above it (capability `gallery-status`).
+                // The other branch is therefore unreachable today, and it still states the right answer
+                // rather than a convenient one: **keep the cursor**. Advancing it over assets nobody
+                // enumerated would step the change feed permanently past them, and no later incremental
+                // walk would return them (capability `limited-photo-access`, "The read discipline is
+                // enforced at the mechanism…"). An un-enumerated cycle must cost an idle pass, never a
+                // photo.
+                return@withContext when (val read = source.candidates(policy)) {
+                    is CandidateRead.Readable -> Discovery(
+                        candidates = read.candidates,
+                        nextToken = archiveToken(library.currentChangeToken),
+                        fullEnumeration = true,
+                    )
+                    CandidateRead.NotReadable -> Discovery(
+                        candidates = emptyList(),
+                        nextToken = sinceToken ?: ByteArray(0),
+                        fullEnumeration = false,
+                    )
+                }
             }
             // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
             // are normalized `/`→`_` so they match the `<localId>-…` key scheme.

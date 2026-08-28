@@ -1,6 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
@@ -27,10 +27,30 @@ import kotlinx.coroutines.flow.StateFlow
  *   surfaced by the next read, so read count does not move it — `limited-photo-access`. The reason that
  *   stands is that under a partial grant the selection *is* the scope, and this is fewer round-trips.)
  *   `candidatesFromResources` is therefore the honest adapter here — the resources genuinely are in hand.
- * - **`DENIED` / `NOT_DETERMINED`** → no candidates. Note this answers *"nothing is readable"*, not
- *   *"nothing qualifies"*; a consumer that must distinguish "no photos" from "no answer available" — the
- *   join preview renders no row rather than a zero — keeps its own grant check. That is a different
- *   question from the one this source answers.
+ * - **`DENIED` / `NOT_DETERMINED`** → [CandidateRead.NotReadable]. Nothing is readable, which is a
+ *   different answer from *nothing qualifies* — and it is this source's to give, not the consumer's to
+ *   re-derive. Both consumers used to keep a grant check for exactly this, which is the restatement that
+ *   lets two paths drift.
+ *
+ * ## The snapshot that has not arrived
+ *
+ * `LIMITED` has **two** states, and collapsing them is what made this source's own bug. Between the grant
+ * turning partial and the first sanctioned read landing, [selection] is `null`: the app holds no selection
+ * and may not go looking. That is *not* an empty selection — an empty selection is a counted zero that
+ * legitimately settles the screen for a receive-only member, while an un-arrived one settles it for a
+ * member who has photos selected and simply has not been told which yet. Because the status projection
+ * publishes only `Ready` (capability `sync-status`), that frame cannot be retracted, and the honest count
+ * that follows reads as the screen going backwards — `SNAPSYNC-14` / `SNAPSYNC-16`, one grant over from
+ * where they were fixed.
+ *
+ * On a cold launch the race is not close: the baseline read is a PhotoKit fetch plus an eager per-asset
+ * resource read (~110 ms each), while the foreground status refresh is two SQLite reads and an in-memory
+ * count. The refresh wins, every time.
+ *
+ * The sibling collapse in `AppCore.selectionScope()` — the same cell, the same `?: emptyList()` — is
+ * **kept**, and deliberately: a scoped discovery preserves its walk cursor and prunes nothing, so its
+ * empty answer costs one idle cycle that the next emission re-runs. Its answer is retryable; a settled
+ * screen is not.
  *
  * Seated in `compose/` because choosing between two ports by a third port's state is composition, and
  * because `AppPorts` is where both halves are already available.
@@ -41,12 +61,12 @@ class PermissionAwareCandidateSource(
     private val selection: StateFlow<List<Resource>?>,
 ) : CandidateSource {
 
-    override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
         when (permission.value) {
             PermissionStatus.GRANTED -> walk.candidates(policy)
-            // A null snapshot is the honest state between a grant turning partial and the first observer
-            // emission arriving: there is nothing selected that we know of, and we may not go looking.
-            PermissionStatus.LIMITED -> candidatesFromResources(selection.value.orEmpty())
-            PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED -> emptyList()
+            PermissionStatus.LIMITED -> selection.value
+                ?.let { CandidateRead.Readable(candidatesFromResources(it)) }
+                ?: CandidateRead.NotReadable
+            PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED -> CandidateRead.NotReadable
         }
 }

@@ -43,6 +43,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * what members reported as a status going backwards across launches — a settled frame that was never
  * true, followed by the first honest one (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `gallery-status`).
  *
+ * That fix held here and leaked underneath. The read seam still answered an unreadable library with an
+ * empty list, so a `0` arrived through the ordinary path and this source published it in good faith —
+ * the same defect, one layer down, and reachable in ordinary use under a partial grant whose selection
+ * snapshot had not yet landed. The seam now says which it means ([app.snapsync.model.CandidateRead]),
+ * and [refresh] declines to publish anything when it cannot count.
+ *
  * A **counted** zero is a real answer and still settles the screen: a non-contributing membership
  * carries `DenyAll`, admits nothing, and publishes `0` through the ordinary path below.
  *
@@ -107,7 +113,11 @@ class OwnDeviceGalleryStatusSource(
         val started = timeSource.markNow()
         // `count()` reads facts only — no per-asset resource round-trip is issued for a number
         // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*).
-        val counted = runCatching { EventPhotoSet(policy, source::candidates).count() }
+        // ONE call, TWO answers this source must keep apart, and a third the walk can throw:
+        //   • a count            → publish it
+        //   • NOT READABLE       → publish nothing (below)
+        //   • a thrown walk      → publish nothing (the `runCatching` arm)
+        val counted = runCatching { EventPhotoSet.readable(policy, source::candidates)?.count() }
         counted.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed walk. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which
@@ -126,7 +136,19 @@ class OwnDeviceGalleryStatusSource(
             log.e(failure) { "gallery: enumeration failed — N stays ${_size.value ?: "un-counted"}" }
             return
         }
-        val size = counted.getOrThrow()
+        // NOT READABLE — no grant, an unresolved grant, or a partial grant whose selection snapshot has
+        // not arrived (capability `gallery-status`). The SAME rule the arm above keeps, reached without
+        // a failure: **never publish a count we did not compute, and never withdraw one we did.** A
+        // refusal must not be more destructive than a failure.
+        //
+        // `Warn`, not `Error`: a member who withheld photo access is not a defect, and `Error` reaches
+        // Bugsink. The line exists so a device log can separate "refused" from "never refreshed" — this
+        // used to produce no `gallery:` line at all (law "Absence is never silent": an entry point that
+        // declines to act records the reason).
+        val size = counted.getOrThrow() ?: run {
+            log.w { "gallery: library not readable — N stays ${_size.value ?: "un-counted"}" }
+            return
+        }
         _size.value = size
         val elapsed = started.elapsedNow()
         log.i { "gallery: N=$size own admitted asset(s) in ${elapsed.inWholeMilliseconds}ms" }

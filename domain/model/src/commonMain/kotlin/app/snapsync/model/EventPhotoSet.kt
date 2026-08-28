@@ -55,6 +55,54 @@ class EventPhotoSet(
     private val candidates: suspend (SelectionPolicy) -> List<Candidate>,
 ) {
 
+    /**
+     * Over candidates a policy-taking read has **already** produced.
+     *
+     * `private` on purpose, and that visibility is the whole point: it is the one construction whose
+     * lambda ignores its parameter legitimately, and no consumer can reach it to build one eagerly. The
+     * text guard (`EventPhotoSetSourceTest`) polices *consumers* by shape; this says the same thing to
+     * the compiler, on every target, so the guard needs no exemption and its allowlist keeps meaning
+     * what it says. An `internal` or public version of this would dodge the guard's regex **everywhere**
+     * — including at the nine call sites it exists to remember — while turning the check green.
+     */
+    private constructor(policy: SelectionPolicy, held: List<Candidate>) : this(policy, { held })
+
+    companion object {
+
+        /**
+         * The admitted set for [policy], or `null` when the library could not be read at all
+         * ([CandidateRead.NotReadable]).
+         *
+         * **The one place `CandidateRead` is unwrapped.** Both count consumers — the status total and
+         * the join preview — reach the seam through here, passing `source::candidates` as a method
+         * reference, so the policy still arrives at the platform that can narrow on it.
+         *
+         * Returning a nullable one line after a sealed type is not a retreat from it. The law's test is
+         * *consequence asymmetry, not nullability*: this `null` has exactly one cause, one producer, and
+         * two consumers that each map it to their own stated absence. The sealed type earns its keep at
+         * the `ports/` boundary, where three causes converge and where the absence law is mechanically
+         * enforced.
+         *
+         * Absence: `null` means **and only means** the read answered [CandidateRead.NotReadable] — there
+         * is no admitted set to speak of. It never means "the membership admits nothing"; that is a
+         * non-null set whose `count()` is `0`, and the two are kept apart precisely because a zero
+         * settles the status screen as "everything shared" and this must not. Every cause the sealed
+         * case absorbs (no grant, an unresolved grant, a partial grant whose selection snapshot has not
+         * arrived) shares one consequence here, and both callers honour it: the status total publishes
+         * no count and withdraws none (`OwnDeviceGalleryStatusSource.refresh`), and the join preview
+         * returns `null` so the surface renders no row rather than a zero (`ShareableCountSource`). A
+         * caller that treated this `null` as an empty set would re-create the defect the sealed type
+         * exists to prevent.
+         */
+        suspend fun readable(
+            policy: SelectionPolicy,
+            read: suspend (SelectionPolicy) -> CandidateRead,
+        ): EventPhotoSet? = when (val result = read(policy)) {
+            CandidateRead.NotReadable -> null
+            is CandidateRead.Readable -> EventPhotoSet(policy, result.candidates)
+        }
+    }
+
     /** How many of this device's assets the membership admits. Reads no resources. */
     suspend fun count(): Int = admitted().size
 
