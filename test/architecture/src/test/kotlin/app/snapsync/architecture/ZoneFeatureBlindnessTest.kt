@@ -8,8 +8,8 @@ import kotlin.test.Test
  * `model/`, `ports/`, and itself — never a sibling feature (features coordinate via one-writer
  * durable state behind shared ports, not via each other), never `flow/` or `compose/`, never
  * legacy code. Features are enumerated from the directory listing, so a new feature is born in
- * scope with zero gate edits. Pending until migration step 5 creates `domain/src/…/feature/`;
- * see [ZoneGates] for the arming contract and the D6 scope assumption.
+ * scope with zero gate edits. Features live at `domain/feature/src/commonMain/…/feature/<name>/`; a
+ * missing scope FAILS rather than reporting itself pending (see [ZoneGates]).
  */
 class ZoneFeatureBlindnessTest {
 

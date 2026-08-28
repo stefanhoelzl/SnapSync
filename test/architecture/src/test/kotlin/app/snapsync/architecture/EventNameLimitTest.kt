@@ -29,7 +29,7 @@ class EventNameLimitTest {
 
     @Test
     fun `the Kotlin name cap equals the backend's`() {
-        val kotlinSource = File(repoRoot, "domain/src/commonMain/kotlin/app/snapsync/model/EventName.kt")
+        val kotlinSource = File(repoRoot, "domain/model/src/commonMain/kotlin/app/snapsync/model/EventName.kt")
         val tsSource = File(repoRoot, "api/src/validators.ts")
 
         val kotlinLimit = Regex("""const val EVENT_NAME_MAX_LENGTH = (\d+)""")
