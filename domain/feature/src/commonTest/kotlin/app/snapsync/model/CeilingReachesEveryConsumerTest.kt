@@ -100,13 +100,13 @@ class CeilingReachesEveryConsumerTest {
             AssetFacts(it.assetId, CaptureDate(it.metadata[RESOURCE_META_CREATION_DATE]!!), pixelArea = 12_000_000)
         }
         val source = object : CandidateSource {
-            override suspend fun candidates(policy: SelectionPolicy) = candidatesFromFacts(facts)
+            override suspend fun candidates(policy: SelectionPolicy) =
+                CandidateRead.Readable(candidatesFromFacts(facts))
         }
         val count = ShareableCountSource(source).count(
             includesUpload = true,
             cutoff = cutoff,
             ceiling = ceiling,
-            permission = PermissionStatus.GRANTED,
         )
         assertEquals(1, count)
     }

@@ -66,6 +66,8 @@ import app.snapsync.model.uploadKey
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
+import app.snapsync.model.CandidateRead
+import app.snapsync.model.Candidate
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
@@ -146,6 +148,20 @@ class World(
     val gallery: WorldGallery = WorldGallery()
     /** The one read seam, straight off the world-owned cell — no enumerator composition to stand up. */
     val enumerator: CandidateSource = gallery.source
+
+    /**
+     * Operator read: the seam's candidates for [policy].
+     *
+     * [enumerator] is the **raw** world gallery, not the permission-aware wrapper the app's consumers
+     * hold, so it always reports a readable library — a grant it cannot see cannot make it unreadable,
+     * and the operator's failure lever throws instead. The empty branch is therefore unreachable rather
+     * than a default, and it is spelled out so a reader does not mistake it for one.
+     */
+    suspend fun readCandidates(policy: SelectionPolicy): List<Candidate> =
+        when (val read = enumerator.candidates(policy)) {
+            is CandidateRead.Readable -> read.candidates
+            CandidateRead.NotReadable -> emptyList()
+        }
     val discoveryStore: DiscoveryStore = inMemoryDiscoveryStore()
     val downloadStore: RecordingDownloadStore = RecordingDownloadStore(inMemoryDownloadStore())
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly

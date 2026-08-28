@@ -11,6 +11,7 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
+import app.snapsync.model.CandidateRead
 import app.snapsync.ports.CandidateSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,28 +52,28 @@ private const val IN_SCOPE = "2026-07-10T00:00:00Z"
 private class ResourceCandidates(private val cell: MutableStateFlow<List<Resource>>) : CandidateSource {
     constructor(resources: List<Resource>) : this(MutableStateFlow(resources))
 
-    override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
-        candidatesFromResources(cell.value)
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
+        CandidateRead.Readable(candidatesFromResources(cell.value))
 }
 
 class OwnDeviceGalleryStatusSourceTest {
 
     /** A walk that always blows up, standing in for a platform enumeration that failed. */
     private class Blowing : CandidateSource {
-        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+        override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
             error("the library walk blew up")
     }
 
     /** A walk whose behaviour can be swapped mid-test, so one source can succeed and then fail. */
     private class Switchable(var delegate: CandidateSource) : CandidateSource {
-        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+        override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
             delegate.candidates(policy)
     }
 
     /** Records whether the walk happened at all — "counted 0" and "never looked" are different claims. */
     private class RecordingEnumerator(private val delegate: CandidateSource) : CandidateSource {
         var walks = 0
-        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
+        override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
             walks++
             return delegate.candidates(policy)
         }
@@ -132,7 +133,7 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `cancellation is rethrown rather than logged as a failed walk`() = runTest {
         val source = OwnDeviceGalleryStatusSource(
             object : CandidateSource {
-                override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+                override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
                     throw CancellationException("the scope was torn down")
             },
         )
@@ -140,6 +141,37 @@ class OwnDeviceGalleryStatusSourceTest {
         // Swallowing this would break structured concurrency and post an Error-severity line — which
         // reaches the crash reporter on production builds — for an ordinary teardown.
         assertFailsWith<CancellationException> { source.refresh(admitting()) }
+    }
+
+    @Test
+    fun `an unreadable library publishes no count and withdraws none`() = runTest {
+        val cell = MutableStateFlow(listOf(resource("A-primary.jpg", "A")))
+        var readable = true
+        val source = OwnDeviceGalleryStatusSource(
+            object : CandidateSource {
+                override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
+                    if (readable) CandidateRead.Readable(candidatesFromResources(cell.value))
+                    else CandidateRead.NotReadable
+            },
+        )
+
+        // Never counted, and unreadable: still `null`. Not `0` — a zero here settles the screen at
+        // "In sync" on a device that has not looked (`SNAPSYNC-14`, `SNAPSYNC-16`).
+        readable = false
+        source.refresh(admitting())
+        assertNull(source.size.value, "an unreadable library publishes no count")
+
+        // Counted, THEN unreadable: the count stands. One rule covers this and the thrown walk above —
+        // never publish a count we did not compute, never withdraw one we did. A refusal must not be
+        // more destructive than a failure, which `gallery-status` already requires to leave the previous
+        // value in place.
+        readable = true
+        source.refresh(admitting())
+        assertEquals(1, source.size.value)
+
+        readable = false
+        source.refresh(admitting())
+        assertEquals(1, source.size.value, "a refusal withdraws no count it did not take")
     }
 
     @Test

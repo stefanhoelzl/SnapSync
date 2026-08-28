@@ -196,10 +196,33 @@ gallery-derived counts only through the `feature/status` read-models.
 ### Requirement: Library resource enumeration seam
 
 The gallery domain SHALL define, in `:domain`'s `ports/` zone, a **single** library-read seam
-(`CandidateSource`) that takes the membership's **selection policy** and returns the library's candidate
-assets. It SHALL be the only seam through which the photo library is read for admission; there SHALL NOT be
-a second enumeration port layered over or beneath it, and no read seam SHALL accept a flattened capture-date
-bound in place of the policy.
+(`CandidateSource`) that takes the membership's **selection policy** and returns either the library's
+candidate assets or the statement that they cannot be determined. It SHALL be the only seam through which
+the photo library is read for admission; there SHALL NOT be a second enumeration port layered over or
+beneath it, and no read seam SHALL accept a flattened capture-date bound in place of the policy.
+
+The seam's return SHALL **distinguish an unreadable library from an empty admitted set**, as a sealed
+result — one case carrying the candidates, one stating that the admitted set cannot be determined — and
+never by an empty collection standing in for both (spec `module-architecture`, "Absence is never silent").
+Every implementation SHALL state its answer; none may reach the not-determinable case by defaulting.
+
+The distinction is load-bearing rather than decorative, and for the same reason `null` and `0` are
+distinguished in the count above: an empty candidate list is an admitted set of size zero, the status
+projection settles when the synced count reaches the total, and a zero standing in for a library nobody
+could read renders as **"everything shared"** on a device that has read nothing. Because the projection
+publishes only a ready state, that frame cannot be retracted (capability `sync-status`).
+
+The not-determinable case SHALL be named for its **consequence** — the admitted set cannot be stated right
+now — and not for any single cause, so that every cause with that consequence reaches it. It SHALL absorb
+at least: no photo-access grant, an unresolved grant, and a partial grant whose selection snapshot has not
+yet been captured (capability `limited-photo-access`). Collapsing those causes into one answer is permitted
+because no consumer distinguishes them — the status total goes un-counted and the join preview renders no
+row for all of them — and that shared consequence is what this requirement states. A cause MAY be carried
+for a device log as an opaque diagnostic, which no consumer may branch on.
+
+A consumer SHALL NOT compensate for the collapse by consulting the photo-access grant itself before or
+after calling the seam. Where candidates come from, and whether they can be produced at all, are both the
+seam's answers.
 
 Each candidate SHALL carry the asset's **neutral facts** (capability `photo-selection-policy` — the inputs
 every rule decides on) and a means of obtaining that asset's **resources on demand**. Facts SHALL be
@@ -235,7 +258,9 @@ filter, key derivation, or normalization of its own. The MIME content type SHALL
 The iOS implementation SHALL be PhotoKit-backed; `:adapter:generic:fake` SHALL provide the honest in-memory
 implementation (state cell constructor-injected) so the mapping is driven on the JVM and the iOS simulator
 without PhotoKit. An opaque platform handle SHALL cross `commonMain` uninterpreted (a JVM stand-in is
-valid), exactly as `Resource.data` does.
+valid), exactly as `Resource.data` does. Both of those implementations read what they are given and always
+have an answer, so both SHALL report the readable case; the not-determinable case arises where the grant and
+the selection snapshot are known, which is the composition.
 
 The PhotoKit implementation SHALL derive its `PHFetchOptions` predicate by **translating the policy's rules**
 (capability `photo-selection-policy`), not from a caller-supplied bound. The predicate is an **optimization
@@ -266,6 +291,25 @@ out-of-scope asset **before** reading its resources, using only the asset's own 
 - **WHEN** any consumer reads the library for admission
 - **THEN** it calls the single candidate source with the membership's selection policy — no consumer
   flattens the policy to a capture-date bound, and no second enumeration port exists
+
+#### Scenario: An unreadable library is not an empty admitted set
+
+- **WHEN** the photo library cannot be read for admission — no grant, an unresolved grant, or a partial
+  grant whose selection snapshot has not been captured
+- **THEN** the seam reports the not-determinable case, and a consumer can distinguish it from a membership
+  whose policy admits none of the assets it did read
+
+#### Scenario: An empty admitted set is still an answer
+
+- **WHEN** the library is readable and the policy admits none of its assets
+- **THEN** the seam reports the readable case carrying no candidates, and the consumer treats it as a
+  counted zero
+
+#### Scenario: No consumer re-asks the grant
+
+- **WHEN** the status total or the join preview resolves its answer
+- **THEN** it reads the seam's result alone, and consults no photo-access grant of its own to decide
+  whether an answer was available
 
 #### Scenario: A count pays no resource read
 

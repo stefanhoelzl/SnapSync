@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.fake.inMemoryCandidateSource
+import app.snapsync.model.CandidateRead
 import app.snapsync.ports.CandidateSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
@@ -50,9 +51,16 @@ class WorldGallery {
      */
     var failNextEnumeration: Boolean = false
 
-    /** The seam the compositions consume: the honest fake, plus the operator's failure lever. */
+    /**
+     * The seam the compositions consume: the honest fake, plus the operator's failure lever.
+     *
+     * The lever THROWS rather than answering `NotReadable`, and the distinction is the point: a platform
+     * walk that fails is a failure, caught by whoever owns the count, while `NotReadable` is a
+     * successful read with no answer to give (capability `gallery-status`). Modelling the failure as an
+     * absence here would collapse the two states the world exists to keep apart.
+     */
     val source: CandidateSource = object : CandidateSource {
-        override suspend fun candidates(policy: SelectionPolicy) =
+        override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
             if (failNextEnumeration) {
                 failNextEnumeration = false
                 error("the operator forced this enumeration to fail")

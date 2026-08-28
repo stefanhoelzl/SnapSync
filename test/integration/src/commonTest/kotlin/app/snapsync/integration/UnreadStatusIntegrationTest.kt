@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.model.Direction
+import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
@@ -149,6 +150,87 @@ class UnreadStatusIntegrationTest {
             w.refreshStatus()
             assertEquals(1, w.ownGallery.size.value)
             assertIs<SyncHealth.Syncing>(host.await { it.health() is SyncHealth.Syncing }.health())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `a limited grant whose selection has not arrived never reads in sync`() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            // A partial grant, a joined membership, photos in the library — and NO selection snapshot
+            // yet. On device that window is the cold launch: the snapshot source's baseline read is a
+            // PhotoKit fetch plus an eager per-asset resource read (~110 ms each), while the foreground
+            // status refresh is two SQLite reads and an in-memory count. The refresh wins.
+            //
+            // The subscriptions are deliberately NOT installed, which is what models the baseline read
+            // being still in flight: `latestSelectionSnapshot` is null and nothing has fed it.
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addOwnAsset("A")
+
+            w.refreshStatus()
+
+            // "We hold no selection" is not "the selection is empty". Collapsing them counts a zero,
+            // and a counted zero SETTLES — on a member who has photos selected and simply has not been
+            // told which yet (capability `limited-photo-access`; the `SNAPSYNC-14` / `SNAPSYNC-16`
+            // shape, one grant over from where it was fixed).
+            assertNull(w.ownGallery.size.value)
+            val host = statusHost(w, scope)
+            host.neverSettlesWithin()
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `the arriving selection is what counts — and it counts a real total`() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addOwnAsset("A")
+            // The composition's collector, which is what a snapshot emission reaches.
+            w.core.installPermissionSubscriptions()
+
+            w.refreshStatus()
+            assertNull(w.ownGallery.size.value)
+
+            // The sanctioned read lands. This is the ONLY thing that turns the un-answerable window
+            // into an answer — and it proves the test above measured the window rather than a fixture
+            // that could never count at all.
+            w.changeSelection("A")
+
+            val host = statusHost(w, scope)
+            assertIs<SyncHealth.Syncing>(host.await { it.health() is SyncHealth.Syncing }.health())
+            assertEquals(1, w.ownGallery.size.value)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `an empty selection under a limited grant is still a counted zero`() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addOwnAsset("A") // in the library, but not selected — outside this membership's scope
+            w.core.installPermissionSubscriptions()
+
+            // A snapshot DID arrive and it is empty. Receive-only under a partial grant is a valid
+            // resting state (capability `limited-photo-access`), so this must still settle — the fix
+            // must not turn every limited member's screen into a permanent "Syncing…".
+            w.changeSelection()
+            w.refreshStatus()
+
+            val host = statusHost(w, scope)
+            assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
+            assertEquals(0, w.ownGallery.size.value)
         } finally {
             scope.cancel()
         }

@@ -7,6 +7,7 @@ import app.snapsync.model.resourcesFrom
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CandidateSource
+import app.snapsync.model.CandidateRead
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
@@ -158,7 +159,17 @@ class FakeBackgroundTransfer(
         discoverCalls++
         // Scoped by the POLICY, exactly as the PhotoKit walk is (capability `photo-selection-policy`);
         // the cycle's own admission still runs over whatever comes back.
-        val current = source.candidates(policy)
+        // The world's source is the honest in-memory fake, which always has an answer; `NotReadable`
+        // would mean the operator's failure lever fired, and the same rule the device holds applies —
+        // enumerate nothing and KEEP the cursor, so an un-read cycle costs an idle pass, not a photo.
+        val current = when (val read = source.candidates(policy)) {
+            is CandidateRead.Readable -> read.candidates
+            CandidateRead.NotReadable -> return Discovery(
+                candidates = emptyList(),
+                nextToken = sinceToken ?: ByteArray(0),
+                fullEnumeration = false,
+            )
+        }
         val currentAssetIds = current.mapTo(mutableSetOf()) { it.facts.assetId }
         val full = forceFull || sinceToken == null
         forceFull = false

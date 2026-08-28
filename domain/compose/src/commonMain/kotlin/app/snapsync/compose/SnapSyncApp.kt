@@ -368,7 +368,9 @@ class AppCore internal constructor(
         ShareableCountSource(
             source = candidates,
             suppressedLocalIds = { ports.downloadStore.suppressedLocalIds() },
-            albumExcludedAssetIds = ports.albumExcludedAssetIds,
+            // The same grant-gated reader the status total uses — the preview runs on the JOIN surface,
+            // where an unresolved grant is the normal state, so an ungated read would prompt there too.
+            albumExcludedAssetIds = ::albumExclusionsWhenReadable,
         )
     }
 
@@ -378,12 +380,7 @@ class AppCore internal constructor(
      * admits, or `null` when the grant permits no count. Purely local — no backend LIST.
      */
     suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
-        shareableCountSource.count(
-            includesUpload = true,
-            cutoff = cutoff,
-            ceiling = until,
-            permission = ports.photoAccess.permission.value,
-        )
+        shareableCountSource.count(includesUpload = true, cutoff = cutoff, ceiling = until)
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<PermissionStatus> get() = ports.photoAccess.permission
@@ -710,8 +707,38 @@ class AppCore internal constructor(
         selectionPolicyFor(
             config = config,
             suppressedAssetIds = { ports.downloadStore.suppressedLocalIds() },
-            albumExcludedAssetIds = ports.albumExcludedAssetIds,
+            albumExcludedAssetIds = ::albumExclusionsWhenReadable,
         )
+
+    /**
+     * The denylisted-album reader, **asked only when the library can be read** — the third
+     * permission-aware seam in this file, and the same shape as [PermissionAwareCandidateSource] and
+     * [PermissionAwareAssetPresence]: choosing behaviour by a port's state is composition.
+     *
+     * **Measured, not assumed** (simulator, iOS 26.4, 2026-08-28). A `PHAssetCollection` fetch under
+     * `NOT_DETERMINED` issues a non-preflight TCC request and iOS **presents the photo-permission
+     * dialog** — `tccd` logs one `AUTHREQ_PROMPTING` for the app. The A/B that pins it: a joined
+     * `UploadOnly` membership at `NOT_DETERMINED` produced exactly one prompt, while `DownloadOnly` —
+     * identical in every other respect, but resolving to `DenyAll` before either exclusion reader is
+     * called — produced none.
+     *
+     * That matters because the consumers stopped gating on the grant (capability `gallery-status`): the
+     * policy must now be derived **before** the read seam can answer that it has nothing to say, and
+     * `selectionRulesFor` reads its exclusion sets eagerly. Without this the status refresh would raise
+     * an unrequested system dialog on every foreground of a joined device whose grant is undetermined —
+     * a state a member reaches by resetting privacy settings, and one the app must never answer with a
+     * prompt it did not ask for. `AlbumCoordinator` already gates its own writes this way.
+     *
+     * The empty set is the **honest** answer rather than a fallback: the denylist is a subtraction and
+     * the policy admits on doubt, so "no denylisted assets" is what an unreadable album structure means
+     * anyway — which is why `limited-photo-access` records the denylist as inert under a partial grant.
+     */
+    private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<String> =
+        if (ports.photoAccess.permission.value.grantsPhotoAccess) {
+            ports.albumExcludedAssetIds(cutoff)
+        } else {
+            emptySet()
+        }
 
     suspend fun refreshStatusSources() {
         // CHEAP LOCAL READS FIRST, the ~6 s library walk last (capability `sync-status`). Both counts
@@ -721,36 +748,29 @@ class AppCore internal constructor(
         ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
         ports.configSource.config.value?.let { cfg ->
-            // USABLE ACCESS, not GRANTED exactly. `candidates` is a `PermissionAwareCandidateSource`, so
-            // where candidates come from is already its decision: GRANTED walks the library, LIMITED
-            // filters the in-memory selection snapshot and issues NO library read at all. The read
-            // discipline (`limited-photo-access`) is therefore intact either way — and re-stating the
-            // grant here is exactly the consumer-side branch that source exists to remove.
+            // NO GRANT CHECK. `candidates` is a `PermissionAwareCandidateSource`, and it answers both
+            // halves of the question: where candidates come from AND whether an admitted set can be
+            // stated at all (`CandidateRead`). A gate here restated the second half — and restated it
+            // wrongly, because `grantsPhotoAccess` is true under LIMITED, so it let through the one case
+            // that actually reaches members: a partial grant whose selection snapshot has not landed,
+            // counted as a zero and settling the screen at "In sync" (capability `gallery-status`).
             //
-            // It also stopped being inert. While the total was seeded `0`, skipping the refresh under
-            // LIMITED merely left a zero that happened to be right whenever the selection was empty. Now
-            // that "not counted" is its own value, skipping leaves `N` UN-COUNTED for the whole session,
-            // and a partial-grant member's screen would sit at "Syncing…" forever with nothing to say
-            // why. Counting the selection — empty or not — is the honest answer and costs no round-trip.
+            // Calling through under an unreadable library is deliberate. `refresh` writes no count and
+            // logs why, so a device log can separate "refused" from "never refreshed" — which this used
+            // to leave silent (law "Absence is never silent": an entry point that declines to act
+            // records the reason).
             //
-            // DENIED / NOT_DETERMINED still do not refresh: "nothing is readable" is not "nothing
-            // qualifies" (see `PermissionAwareCandidateSource`), and the health is `NeedsAccess` there
-            // regardless, which outranks every snapshot-derived value.
-            if (ports.photoAccess.permission.value.grantsPhotoAccess) {
-                // Bounded here, not thrown: this runs as one child of the Foreground flow's
-                // `coroutineScope`, so an escaping failure would cancel its SIBLINGS — the download
-                // reconcile, the staged-byte reclaim, the membership refresh — none of which have
-                // anything to do with enumerating a library.
-                //
-                // NARROWED to the POLICY derivation. What the walk itself does on failure is the
-                // source's own invariant now — it leaves `N` untouched and logs at Error severity
-                // (capability `gallery-status`), so there is nothing left here to catch on its behalf.
-                // What remains is this step's two port reads (echo suppression, the album denylist),
-                // whose failure is a sibling-cancellation risk and nobody else's rule.
-                runCatching { selectionPolicyForMembership(cfg) }
-                    .onFailure { ports.log.e(it) { "gallery: policy read failed — N not refreshed" } }
-                    .onSuccess { policy -> gallery.refresh(policy) }
-            }
+            // NARROWED to the POLICY derivation. What the walk itself does on failure is the
+            // source's own invariant now — it leaves `N` untouched and logs at Error severity
+            // (capability `gallery-status`), and it does the same when the library is not readable at
+            // all, so there is nothing left here to catch on its behalf. What remains is this step's
+            // two port reads (echo suppression, the album denylist), whose failure is a
+            // sibling-cancellation risk and nobody else's rule — this runs as one child of the
+            // Foreground flow's `coroutineScope`, so an escaping failure would cancel the download
+            // reconcile, the staged-byte reclaim and the membership refresh alongside it.
+            runCatching { selectionPolicyForMembership(cfg) }
+                .onFailure { ports.log.e(it) { "gallery: policy read failed — N not refreshed" } }
+                .onSuccess { policy -> gallery.refresh(policy) }
         }
     }
 

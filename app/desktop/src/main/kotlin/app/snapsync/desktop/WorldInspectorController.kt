@@ -387,7 +387,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
         // keys (uploadKey) so the completeness check matches — don't reconstruct the key by hand.
         addOwnAsset("own-a1")
-        enumerator.candidates(selectionPolicy())
+        readCandidates(selectionPolicy())
             .flatMap { it.resources() }
             .forEach { store.deposit(ownDeviceId, it.filename) }
         provision(EVENT)
@@ -464,7 +464,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             }
             // Unjoined: nothing to contribute, said the way every non-contributor says it.
             ?: noContribution()
-        val candidates = world.enumerator.candidates(policy)
+        val candidates = world.readCandidates(policy)
         val admitted = EventPhotoSet(policy) { candidates }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
         val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted

@@ -226,10 +226,21 @@ class FullStackIntegrationTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World(this)
+            // The test plays the HOST: the selection subscription is host-assembly wiring, and on a real
+            // device it is what delivers the cold-launch baseline read.
+            w.core.installPermissionSubscriptions()
             w.permission.set(PermissionStatus.LIMITED)
             w.provision("E")
             w.addOwnAsset("A") // present in the library — must NOT be enumerated or uploaded
             w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
+
+            // The baseline snapshot lands, and it is EMPTY — the member selected nothing. A real
+            // `.limited` device always emits one when observation begins, empty or not, and that
+            // emission is what turns "we hold no selection" into "the selection is empty". Only the
+            // second is a counted zero, and only a counted zero may settle the screen: without this the
+            // total stays un-counted, which is the correct answer to a question nobody has answered yet
+            // (capability `gallery-status`).
+            w.changeSelection()
 
             w.downloadController.reconcile("E")
             w.stageAllDownloads()

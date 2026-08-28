@@ -2,8 +2,8 @@ package app.snapsync.feature.status
 
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCeiling
@@ -47,15 +47,22 @@ private class FactsSource(private val facts: List<AssetFacts>) : CandidateSource
     var consulted = 0
         private set
 
-    override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
         consulted++
-        return facts.map { f ->
-            object : Candidate {
-                override val facts = f
-                override suspend fun resources(): List<Resource> = error("a count must not read resources")
-            }
-        }
+        return CandidateRead.Readable(
+            facts.map { f ->
+                object : Candidate {
+                    override val facts = f
+                    override suspend fun resources(): List<Resource> = error("a count must not read resources")
+                }
+            },
+        )
     }
+}
+
+/** A source that cannot answer at all — no grant, or a partial grant with no snapshot yet. */
+private object UnreadableSource : CandidateSource {
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead = CandidateRead.NotReadable
 }
 
 private fun countSource(
@@ -74,8 +81,7 @@ class ShareableCountTest {
         cutoff: app.snapsync.model.CaptureCutoff = CUTOFF,
         ceiling: app.snapsync.model.CaptureCeiling? = null,
         includesUpload: Boolean = true,
-        permission: PermissionStatus = PermissionStatus.GRANTED,
-    ) = count(includesUpload, cutoff, ceiling, permission)
+    ) = count(includesUpload, cutoff, ceiling)
 
     @Test
     fun `counts distinct admitted assets at or after the cutoff`() = runTest {
@@ -144,14 +150,18 @@ class ShareableCountTest {
     }
 
     @Test
-    fun `DENIED and unresolved grants yield no count rather than a zero`() = runTest {
+    fun `an unreadable library yields no count rather than a zero`() = runTest {
         // The distinction the surface depends on: no count renders NO ROW, while a zero renders "0
-        // photos". This is the one grant question the consumer keeps — where candidates come from is the
-        // source's business, whether an answer exists at all is not.
-        val source = FactsSource(listOf(asset("A")))
-        val s = countSource(source)
-        assertNull(s.countFor(permission = PermissionStatus.DENIED))
-        assertNull(s.countFor(permission = PermissionStatus.NOT_DETERMINED))
-        assertEquals(0, source.consulted, "an unusable grant is answered without reading anything")
+        // photos". The preview no longer asks the grant to find that out — the seam says so, which is
+        // what makes this cover a partial grant with no snapshot as well as a denied one. Keeping the
+        // check here covered only the grant, and `grantsPhotoAccess` is TRUE under LIMITED.
+        assertNull(countSource(UnreadableSource).countFor())
+    }
+
+    @Test
+    fun `a readable library holding nothing admitted still counts zero`() = runTest {
+        // The other side of the pair: an empty answer that WAS read is a count, and the surface renders
+        // "0 photos" rather than omitting the row.
+        assertEquals(0, countSource(FactsSource(emptyList())).countFor())
     }
 }

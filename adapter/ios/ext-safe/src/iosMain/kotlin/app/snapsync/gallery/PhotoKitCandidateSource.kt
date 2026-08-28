@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateRead
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
@@ -74,12 +75,21 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
      */
     private var resourceReads = 0
 
-    override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+    /**
+     * Always [CandidateRead.Readable]: a walk that reaches here has a grant that permits it, so what
+     * comes back is what the library holds — possibly nothing, which is a counted zero and not an
+     * absence. Whether a read is possible at all is decided one layer up, where the grant and the
+     * selection snapshot are known (`PermissionAwareCandidateSource`); a fetch that *throws* is a
+     * failure, not this answer, and is caught by the consumer that owns the count.
+     */
+    override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
         withContext(Dispatchers.Default) {
             if (resourceReads > 0) log.i { "gallery: $resourceReads resource read(s) since the last walk" }
             resourceReads = 0
             val fetched = PHAsset.fetchAssetsWithOptions(fetchOptions(policy))
-            candidatesFrom(fetched).also { log.i { "gallery: fetched ${it.size} candidate(s)" } }
+            CandidateRead.Readable(
+                candidatesFrom(fetched).also { log.i { "gallery: fetched ${it.size} candidate(s)" } },
+            )
         }
 
     /**
