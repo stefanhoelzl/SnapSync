@@ -1,6 +1,5 @@
 package app.snapsync.architecture
 
-import com.lemonappdev.konsist.api.Konsist
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -74,10 +73,7 @@ class OsHandlerContainmentTest {
      * `Test.kt` drops test classes inside product modules' `commonTest` source sets, which the path filter
      * does not reach.
      */
-    private fun productionFiles() = Konsist
-        .scopeFromProject()
-        .files
-        .filterNot { it.path.contains("/build/") }
+    private fun productionFiles() = SourceScan.kotlinFiles()
         .filterNot { it.path.contains("/test/") }
         .filterNot { it.path.endsWith("Test.kt") }
 
@@ -88,7 +84,7 @@ class OsHandlerContainmentTest {
      * [MainLaneContainmentTest] makes the same point about `DispatchQueue.main`: a gate watching one
      * language misses the shell.
      *
-     * Read with `File`, not Konsist, which parses Kotlin.
+     * Read as plain text: Swift is outside every Kotlin tool's reach.
      */
     private fun swiftShellFiles(): List<File> {
         val root = generateSequence(File(".").absoluteFile) { it.parentFile }

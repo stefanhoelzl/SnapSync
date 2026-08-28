@@ -1,7 +1,5 @@
 package app.snapsync.architecture
 
-import com.lemonappdev.konsist.api.Konsist
-import com.lemonappdev.konsist.api.verify.assertTrue
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue as assertTrueKt
@@ -26,9 +24,10 @@ import kotlin.test.fail
  * `MainScope()`, `dispatch_get_main_queue` or `NSOperationQueue.mainQueue`; Swift as
  * `DispatchQueue.main`. A gate watching only the Kotlin forms would have missed the Swift shell.
  *
- * Konsist rather than detekt for the same reason [KeychainContainmentTest] uses it: the forms include
+ * Source text rather than detekt for the same reason [KeychainContainmentTest] gives: the forms include
  * fully-qualified references that import nothing, and detekt has no type resolution for Kotlin/Native
- * source sets. Konsist reads source, so `iosMain` and the Swift files are both reachable from a JVM test.
+ * source sets. Reading files reaches `iosMain` and the Swift shells alike from a JVM test (see
+ * [SourceScan]).
  */
 class MainLaneContainmentTest {
 
@@ -76,46 +75,50 @@ class MainLaneContainmentTest {
     private val runBlockingAllowed =
         "/app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt"
 
-    private fun productionFiles() = Konsist
-        .scopeFromProject()
-        .files
-        .filterNot { it.path.contains("/build/") }
+    private fun productionFiles() = SourceScan.kotlinFiles()
         .filterNot { it.path.contains("/test/") } // test source sets, incl. this file, name the forms
         .filterNot { it.path.contains("Test.kt") }
 
     @Test
     fun `the main lane is named only by platform-UI adapters and the shell that injects it`() {
-        productionFiles()
+        val offenders = productionFiles()
             .filterNot { file -> allowed.keys.any { file.path.endsWith(it) } }
-            .assertTrue(testName = "no main-thread dispatcher outside the platform-UI allowlist") { file ->
-                mainLaneForms.none { form -> file.text.contains(form) }
-            }
+            .flatMap { file -> mainLaneForms.filter { it in file.text }.map { "${file.path} names $it" } }
+        assertTrueKt(
+            offenders.isEmpty(),
+            "a main-thread dispatcher is named outside the platform-UI allowlist. The lane is " +
+                "unreachable by default and reachable only by an allowlist edit a reviewer sees:\n  " +
+                offenders.sorted().joinToString("\n  "),
+        )
     }
 
     @Test
     fun `runBlocking appears only in the extension composition root`() {
-        productionFiles()
+        // Code forms only. The bare word is legitimate in prose — `Reconciler` and `UploadCycle` both
+        // explain the extension's OS-imposed `runBlocking` cap — and a gate that policed comments would
+        // be answered by rewording rather than by fixing anything.
+        val offenders = productionFiles()
             .filterNot { it.path.endsWith(runBlockingAllowed) }
-            .assertTrue(testName = "no runBlocking in production source") { file ->
-                // Code forms only. The bare word is legitimate in prose — `Reconciler` and `UploadCycle`
-                // both explain the extension's OS-imposed `runBlocking` cap — and a gate that policed
-                // comments would be answered by rewording rather than by fixing anything.
-                runBlockingCallForms.none { form -> file.text.contains(form) }
-            }
+            .flatMap { file -> runBlockingCallForms.filter { it in file.text }.map { "${file.path} calls $it" } }
+        assertTrueKt(
+            offenders.isEmpty(),
+            "`runBlocking` blocks whichever thread it is called on, defeating the lane its caller was " +
+                "placed on:\n  " + offenders.sorted().joinToString("\n  "),
+        )
     }
     /**
      * The Swift half — and it did not exist until it was measured.
      *
      * This guard's rule has always named both languages, and its own documentation said "a gate watching
      * only the Kotlin forms would have missed the Swift shell". It was watching only the Kotlin forms:
-     * the scan runs over `Konsist.scopeFromProject().files`, which is KOTLIN files, so `DispatchQueue.main`
+     * the scan covered KOTLIN files only, so `DispatchQueue.main`
      * in `iosApp/**/*.swift` was never read. Measured 2026-08-28 — appending `DispatchQueue.main.async {}`
      * to `iosApp/iosApp/iOSApp.swift` and forcing a rerun left the build GREEN, while the same rule in
      * Kotlin correctly failed.
      *
-     * Plain file reads rather than Konsist, for the reason `SwiftShellGuardTest` uses them: nothing in the
-     * Kotlin toolchain parses Swift. The build file already declares `iosApp/**/*.swift` as a task input,
-     * so this re-runs when a shell changes.
+     * Read as plain text, for the reason `SwiftShellGuardTest` gives: nothing in the Kotlin toolchain
+     * parses Swift at all. The build file already declares `iosApp/**/*.swift` as a task input, so this
+     * re-runs when a shell changes.
      */
     @Test
     fun `the main lane is not named in the Swift shells`() {

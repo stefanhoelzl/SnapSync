@@ -7,7 +7,6 @@ orbit = "10.0.0"
 coroutines = "1.10.2"
 sqldelight = "2.3.2"
 kermit = "2.0.6"
-konsist = "0.17.3"
 detekt = "1.23.8"
 dependencyAnalysis = "3.17.0"
 kover = "0.9.9"
@@ -30,7 +29,6 @@ sqldelight-driver-sqlite = { module = "app.cash.sqldelight:sqlite-driver", versi
 sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-dialect-sqlite = { module = "app.cash.sqldelight:sqlite-3-35-dialect", version.ref = "sqldelight" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
-konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }

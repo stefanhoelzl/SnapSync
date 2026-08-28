@@ -23,11 +23,16 @@ kover {
 // Test-only ARCHITECTURE GUARDS (capability `architecture-guards`): structural invariants the compiler
 // cannot express, enforced as ordinary tests so they run under `./gradlew build` — the canonical check.
 //
-// JVM-only on purpose. Konsist parses Kotlin **source** (the compiler's PSI), so it inspects `iosMain`
-// — Kotlin/Native code that has no JVM bytecode and cannot even be compiled on Linux — from a plain JVM
-// test. That is precisely why a linter could not do this job: detekt has no type resolution for
-// Kotlin/Native source sets, so on the one source set where every `SecItem` call lives it degrades to
-// import-checking, and a fully-qualified `platform.Security.SecItemAdd(…)` call would sail past it.
+// JVM-only on purpose. The guards read the repository's SOURCE TEXT, which reaches `iosMain` — Kotlin/Native
+// code that has no JVM bytecode and cannot even be compiled on Linux — from a plain JVM test. That is
+// precisely why a linter could not do this job: detekt has no type resolution for Kotlin/Native source
+// sets, so on the one source set where every `SecItem` call lives it degrades to import-checking, and a
+// fully-qualified `platform.Security.SecItemAdd(…)` call would sail past it.
+//
+// This module deliberately depends on NO Kotlin-parsing library either. Five guards used to obtain their
+// file list from Konsist while using nothing but `.path` and `.text` from it — a PSI parser doing the work
+// of `File.walkTopDown()`, and not for free: Konsist 0.17.3 (December 2024) embeds a Kotlin 2.0.21 compiler
+// while this project builds with 2.4.0. See `SourceScan`.
 //
 // This module deliberately depends on NO project modules: it reads the repository's source and
 // entitlements files, so a guard can never be defeated by a dependency edge.
@@ -37,7 +42,6 @@ kotlin {
 
 dependencies {
     testImplementation(kotlin("test"))
-    testImplementation(libs.konsist)
     // ProducerExclusivityTest drives the REAL UploadArm over fakes (capability `architecture-guards`,
     // "The upload producers are never both started") — the one guard here that executes domain code
     // rather than reading source: the invariant is behavioral (a start-order property), which no text

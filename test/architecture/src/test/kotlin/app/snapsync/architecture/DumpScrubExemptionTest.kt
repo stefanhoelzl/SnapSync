@@ -1,6 +1,5 @@
 package app.snapsync.architecture
 
-import com.lemonappdev.konsist.api.Konsist
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -28,17 +27,14 @@ import kotlin.test.fail
  *
  * Why a source guard and not a unit test: `scrubbedEvent` lives in an `iosMain` source set, whose
  * tests run only on macOS CI. The predicate's *logic* is unit-tested in `commonTest` (`RedactionTest`,
- * on JVM and simulator); what cannot be reached from Linux is the *wiring*, and a Konsist scan catches
+ * on JVM and simulator); what cannot be reached from Linux is the *wiring*, and a source scan catches
  * that in the canonical `./gradlew build` the moment it is written.
  */
 class DumpScrubExemptionTest {
 
     private val scrubFile = "SentryDiagnosticsReporter.kt"
 
-    private fun scrubSource(): String = Konsist
-        .scopeFromProject()
-        .files
-        .filterNot { it.path.contains("/build/") }
+    private fun scrubSource(): String = SourceScan.kotlinFiles()
         .firstOrNull { it.path.endsWith("/$scrubFile") }
         ?.text
         ?: fail("$scrubFile not found — it moved; re-point this guard rather than deleting it")
