@@ -8,7 +8,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AlbumManager` | `:domain:ports` | `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
+| `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
 | `AlbumMapSource` | `:domain:feature` | `:domain:feature` Current, Migrate, Retry | no |
 | `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:adapter:ios:ext-safe` IosAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore | yes |
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
@@ -40,7 +40,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
 | `DiscoveryStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiscoveryStore; `:adapter:ios:ext-safe` IosDiscoveryStore; `:domain:feature` FakeStore, RecordingCursor | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
-| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` InMemoryDownloadStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
+| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` DrainSpyStore, InMemoryDownloadStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
 | `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
 | `DownloadTransportHost` | `:domain:ports` | — | no |
@@ -59,9 +59,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `JoinedEventMarker` | `:domain:ports` | `:adapter:generic:fake` InMemoryJoinedEventMarker; `:adapter:ios:ext-safe` IosJoinedEventMarker; `:domain:feature` FakeMarker | yes |
 | `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
-| `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource | no |
+| `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts | no |
 | `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore, RequestedRowsLedger | yes |
-| `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope; `:domain:ports` NoOp | no |
+| `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope; `:domain:ports` NoOp, RecordingScope | no |
 | `PhotoAccessRequester` | `:domain:ports` | `:adapter:ios:app-only` PhotoLibraryPermission | no |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
@@ -82,18 +82,18 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Proceeding, Short | no |
 | `SharePresenter` | `:domain:ports` | `:adapter:ios:app-only` IosShareSheet | no |
-| `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes; `:adapter:ios:app-only` IosStagedBytes | yes |
+| `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes, RecordingStagedBytes; `:adapter:ios:app-only` IosStagedBytes | yes |
 | `SuppressionSource` | `:domain:ports` | — | no |
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` LeavePrevious, Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadCompleted, UploadFailed, UploadStarted | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
-| `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSyncStatusSource | yes |
+| `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource | yes |
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
-| `UploadMechanismRuntime` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |
+| `UploadMechanismRuntime` | `:domain:feature` | `:adapter:generic:fake` RecordingMechanism; `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |
 | `UploadProducer` | `:domain:feature` | — | no |
-| `UploadRequestProvider` | `:domain:model` | `:domain:feature` FakeProvider, StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider; `:test:world` RecordingUploadRequestProvider | yes |
+| `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` FakeProvider, StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | yes |
 | `UploadTriggers` | `:domain:feature` | — | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |

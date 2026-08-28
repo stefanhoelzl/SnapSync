@@ -94,4 +94,45 @@ class SelectionScopedTransferTest {
         assertTrue(discovery.candidates.isEmpty())
         assertContentEquals(ByteArray(0), discovery.nextToken)
     }
+
+    // ---- the ledger-driven resolve, under the same discipline (capability `sync-ledger`) ------------
+
+    @Test
+    fun unrestricted_resolve_delegates_to_the_platform() = runTest {
+        val delegate = RecordingDelegate()
+        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Unrestricted }
+
+        transfer.resourcesFor(setOf("A"))
+
+        assertEquals(1, delegate.resolveCalls)
+    }
+
+    @Test
+    fun scoped_resolve_answers_from_the_snapshot_without_any_platform_read() = runTest {
+        // The snapshot is already in hand, so resolving a key from it costs nothing — and asking the
+        // platform under a partial grant is exactly the read the discipline exists to avoid.
+        val delegate = RecordingDelegate()
+        val snapshot = listOf(resource("A"), resource("B"), resource("C"))
+        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(snapshot) }
+
+        val resolved = transfer.resourcesFor(setOf("A", "C"))
+
+        assertEquals(0, delegate.resolveCalls)
+        assertEquals(listOf("A", "C"), resolved.map { it.filename })
+    }
+
+    @Test
+    fun scoped_resolve_answers_nothing_for_a_key_outside_the_selection() = runTest {
+        // The port's contract, and the honest answer: under `.limited` a photo outside the user's
+        // selection is not this app's to upload, which is the SAME absence as an asset having left the
+        // library — the caller stops asking for it either way. Resolving it from the platform instead
+        // would upload a photo the user did not hand over.
+        val delegate = RecordingDelegate()
+        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(listOf(resource("A"))) }
+
+        val resolved = transfer.resourcesFor(setOf("A", "NOT-SELECTED"))
+
+        assertEquals(0, delegate.resolveCalls, "an unselected key must not fall through to a platform read")
+        assertEquals(listOf("A"), resolved.map { it.filename })
+    }
 }

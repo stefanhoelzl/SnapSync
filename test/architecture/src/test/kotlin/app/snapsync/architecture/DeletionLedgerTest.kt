@@ -78,7 +78,12 @@ class DeletionLedgerTest {
             declared(files, "fun load" + "Accumulator").forEach {
                 add("the device-manifest accumulator in $it (the manifest projects from the ledger)")
             }
-            val enrollments = declared(files, """class \w*""" + "Enrollment")
+            // PRODUCTION uploaders only. The retired item was a second *uploader*; the repo names a
+            // test after its subject (`HttpEnrollmentTest`), so `class \w*Enrollment` matches the test
+            // of the surviving uploader as surely as a resurrected one. Narrowed rather than the row
+            // deleted: a real second uploader in production source still trips this.
+            val enrollments =
+                declared(files.filterNot { it.name.endsWith("Test.kt") }, """class \w*""" + "Enrollment")
             if (enrollments.size > 1) {
                 add("Enrollment ×${enrollments.size} (exactly one uploader serves all): ${enrollments.sorted()}")
             }

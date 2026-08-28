@@ -356,6 +356,7 @@ class BackgroundUploadPumpTest {
         assertEquals(0, scheduledAfter { onSilentPush() })
         assertEquals(0, scheduledAfter { onSessionEvents() })
         assertEquals(0, scheduledAfter { onUploadCompleted() })
+        assertEquals(0, scheduledAfter { onSelectionChanged() })
     }
 
     /** A declined cycle still *runs* once — the cycle is what decides, so the pump must call it to find out. */
@@ -428,5 +429,25 @@ class BackgroundUploadPumpTest {
 
         assertEquals(2, runs) // one trailing re-run, not two concurrent cycles
         assertTrue(pushReturned)
+    }
+
+    // ---- the selection change: the partial grant's only "new photos exist" ------------------------
+
+    /**
+     * Under a partial grant the library walk is not available, so a selection change is the ONE trigger
+     * that carries new discoverable work (capability `limited-photo-access`). It drains and arms like
+     * [BackgroundUploadPump.onForeground]: the user has just acted, the device is awake, and the
+     * heartbeat chain may be severed — this may be the first trigger since a force-quit.
+     */
+    @Test
+    fun onSelectionChanged_drains_and_arms() = runTest {
+        val scheduler = FakeScheduler()
+        var runs = 0
+        val pump = BackgroundUploadPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
+
+        pump.onSelectionChanged()
+
+        assertEquals(1, runs)
+        assertEquals(1, scheduler.scheduled)
     }
 }

@@ -1,4 +1,4 @@
-package app.snapsync.world
+package app.snapsync.upload
 
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadRequest

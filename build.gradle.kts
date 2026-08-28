@@ -77,8 +77,17 @@ subprojects {
 // every build script under `adapter/`, `domain/` and `ui/` as TEXT — so a locally declared edge
 // renders in `architecture/zones.md` pointing the wrong way. Centralising them also puts the whole
 // coverage-crediting picture in one place.
+// ⚠️ `:domain` is NOT a consumer here any more. `include(":domain:model")` makes Gradle create an
+// empty container project at `:domain`, which applies no plugin and holds no class - so an edge from
+// it is never wired and a report filtered to it measures NOTHING. That is not hypothetical: after the
+// zone split this list still said `":domain"`, `:domain:model`'s filter still said `projects.add(":domain")`,
+// and `:domain:model:koverVerify` passed with `minValue = 100` over an empty report. Name the leaf
+// modules, never the container.
 listOf(
-    ":domain" to ":adapter:generic:fake",
+    ":domain:model" to ":adapter:generic:fake",
+    ":domain:ports" to ":adapter:generic:fake",
+    ":domain:feature" to ":adapter:generic:fake",
+    ":domain:flow" to ":adapter:generic:fake",
     ":ui:components" to ":ui:screens",
     ":ui:presentation" to ":ui:screens",
 ).forEach { (consumer, producer) ->

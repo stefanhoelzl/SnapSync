@@ -1,5 +1,4 @@
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
-import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
@@ -18,16 +17,7 @@ kover {
     reports {
         filters {
             includes {
-                projects.add(":domain")
-            }
-            // The composition root is OUTSIDE the measurable set (capability `coverage-bounds`,
-            // "A composition root is outside the measurable set"). `module-architecture`'s
-            // "One shared composition" says the wiring graph shall not be unit-tested, and that law
-            // is the written form of a fact: a composition root is reachable only by composing it,
-            // and any test that composes the whole graph is not a unit test. Measured at 1.13% here.
-            // Excluded by ZONE, not by module, so `:domain`'s other eleven packages stay bounded.
-            excludes {
-                packages("app.snapsync.compose")
+                projects.add(":domain:model")
             }
         }
     }
@@ -158,31 +148,34 @@ kotlin {
 //
 // Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
 //
-// The package floor names `flow/` at 57%: `SilentPush` and `Foreground` have unit tests,
-// `Provision`, `DownloadBackstop` and `Background` do not - and the last two are executed by no
-// test in the repository on any tier. That is the next debt to pay here.
+// ONE package now, so there is no floor rule here: the aggregate IS the floor. The old
+// `:domain package floor` measured eleven packages inside a single `:domain` module; the zone split
+// turned each of those zones into a module with an aggregate of its own, which is the same check
+// expressed by the module graph instead of by a grouping rule. `:domain:compose` is the one zone with
+// no bound at all - a composition root is outside the measurable set (capability `coverage-bounds`),
+// and leaving the module uninstrumented states that better than the package exclude that used to.
+//
+// What remains uncovered is largely NOT a testing gap: data-class `equals`/`hashCode`/`toString` and
+// enum `<clinit>` make up the bulk - 72 of `LedgerEntry`'s 86 missed instructions are `equals` alone -
+// and no test reaches them meaningfully.
+//
+// A zero on a method can mean MISPLACED rather than untested. `SyncEngine.complete` read zero while
+// `SyncEngineTest` covered it from `:test:world`, whose instrumentation is off and which credits
+// nothing. Before writing a test for an uncovered method, grep for one - a duplicate written to move a
+// number is worse than the gap it closes.
 kover {
     reports {
         total {
             verify {
                 onCheck = true
-                rule(":domain aggregate") {
+                rule(":domain:model aggregate") {
                     bound {
-                        minValue = 91
+                        minValue = 85
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     bound {
-                        minValue = 81
+                        minValue = 80
                         coverageUnits = CoverageUnit.BRANCH
-                    }
-                }
-                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
-                // tree, where a single uncovered arm moves the number by 17 points.
-                rule(":domain package floor") {
-                    groupBy = GroupingEntityType.PACKAGE
-                    bound {
-                        minValue = 57
-                        coverageUnits = CoverageUnit.INSTRUCTION
                     }
                 }
             }

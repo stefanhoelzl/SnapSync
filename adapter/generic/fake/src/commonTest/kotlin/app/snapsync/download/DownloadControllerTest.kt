@@ -4,6 +4,7 @@ import app.snapsync.feature.download.DownloadController
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.ImportResult
+import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.UnionAsset
@@ -13,6 +14,7 @@ import app.snapsync.model.AssetPresence
 import app.snapsync.ports.AssetRef
 import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
+import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.StagedResource
 import kotlin.test.Test
@@ -139,13 +141,15 @@ class DownloadControllerTest {
 
     private fun controller(
         union: EventUnionSource,
-        store: InMemoryDownloadStore = InMemoryDownloadStore(),
+        store: DownloadStore = InMemoryDownloadStore(),
         jobs: RecordingJobs = RecordingJobs(),
         importer: FakeImporter = FakeImporter(),
         presence: ImportedAssetPresence = InMemoryAssetPresence(),
         downloadEnabled: () -> Boolean? = { true },
+        stagedBytes: StagedBytes = StagedBytes.None,
     ) = DownloadController(
         union, store, jobs, importer, presence,
+        stagedBytes = stagedBytes,
         // Named from here on: this constructor has grown twice mid-change, and positional
         // arguments silently re-bind when it does.
         myDeviceId = myDevice, downloadEnabled = downloadEnabled,
@@ -889,5 +893,156 @@ class DownloadControllerTest {
 
         assertEquals(1, store.assetCount(), "the unimportable one is no longer counted as outstanding")
         assertEquals(0, store.importedCount(), "and it is emphatically not counted as arrived")
+    }
+
+    // ---- the durable-state reset (capability `ios-app-shell`, `POST /device/reset`) -----------------
+
+    @Test
+    fun reset_prunes_non_terminal_rows() = runTest {
+        val store = InMemoryDownloadStore()
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store)
+        c.reconcile("event")
+
+        c.onDurableStateReset()
+
+        assertTrue(store.pendingDownloads().isEmpty(), "the reset left non-terminal rows behind")
+    }
+
+    /**
+     * A reset must NOT delete the row of an import already claimed — the whole reason this half of the
+     * reset lives on the controller and holds its mutex.
+     *
+     * The claimed row's change block has not run. Delete it and its marker write lands on nothing, so the
+     * created asset drops out of the suppression set and this device uploads back into the event a photo it
+     * had just downloaded — which every other member then receives again as new. Reading the claimed set as
+     * a snapshot and pruning afterwards leaves exactly that window, and the reset suspends between its
+     * steps, so the window is wide.
+     *
+     * Written to FAIL rather than hang: if the prune is ever moved back under a lock the stalled import
+     * holds, the `withTimeoutOrNull` reports a named failure instead of a stuck suite.
+     */
+    @Test
+    fun reset_spares_a_claimed_import_while_pruning_the_rest() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().also { it.hangFor += "Q" }
+        val claimed = AssetRef("DEVICE-A", "Q")
+        val unclaimed = AssetRef("DEVICE-B", "R")
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-B", "R"))),
+            store = store, importer = importer,
+        )
+        c.reconcile("event")
+        // Q is staged WHOLE, so it becomes importable and the drain claims it; R is staged in part, so it
+        // stays non-terminal and unclaimed — which is exactly the row a reset is meant to drop.
+        store.markStaged(claimed, "Q-primary.heic", "/p")
+        store.markStaged(claimed, "Q-live.mov", "/l")
+        store.markStaged(unclaimed, "R-primary.heic", "/rp")
+
+        val stalled = launch { c.importReady() }
+        importer.hanging.await() // Q's transaction is open and its claim is held.
+
+        withTimeoutOrNull(5.seconds) { c.onDurableStateReset() }
+            ?: fail("the reset queued behind the stalled import — the prune is back under the platform call")
+
+        assertEquals(
+            listOf(claimed),
+            store.importableAssets().map { it.ref },
+            "the claimed row was pruned — its marker write would land on nothing",
+        )
+        assertTrue(
+            store.pendingDownloads().none { it.ref == unclaimed },
+            "the unclaimed non-terminal row survived the reset",
+        )
+        stalled.cancel()
+    }
+
+    // ---- the staged-byte backlog reclaim (capability `download-store`) ------------------------------
+
+    /**
+     * A [StagedBytes] that is its own inspection: [remaining] is the "disk" and [released] records the
+     * calls. Test-local rather than the honest fake, whose own state is private to it — inspection is
+     * the operator's rigging, not part of a port contract.
+     */
+    private class RecordingStagedBytes(
+        val remaining: MutableSet<String> = mutableSetOf(),
+        private val failWith: (() -> Nothing)? = null,
+    ) : StagedBytes {
+        val released = mutableListOf<String>()
+        override fun stagingRoot(): String = "staged:/"
+        override suspend fun release(paths: List<String>) {
+            failWith?.invoke()
+            released += paths
+            remaining.removeAll(paths.toSet())
+        }
+    }
+
+    @Test
+    fun reclaim_frees_the_files_of_imported_assets_and_extinguishes_itself() = runTest {
+        // The backlog every install accumulated before bytes were released per asset: the row is
+        // IMPORTED and its resources still record a stagedPath, so the photo is stored twice — once in
+        // the library and once in staging — forever.
+        val store = InMemoryDownloadStore()
+        val staged = RecordingStagedBytes(mutableSetOf("/p", "/l"))
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, stagedBytes = staged)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        store.markImported(ref, "LOCAL-Q")
+
+        c.releaseSettledBytes()
+        assertTrue(staged.remaining.isEmpty(), "the settled asset's staged files were left on disk")
+
+        // Self-extinguishing: releasing drops the very rows that made the work findable, so the second
+        // pass is one store query answering nothing — no flag, no migration marker, no run-once state.
+        val afterFirst = staged.released.size
+        c.releaseSettledBytes()
+        assertEquals(afterFirst, staged.released.size, "a second pass released files it no longer owned")
+    }
+
+    @Test
+    fun reclaim_that_cannot_read_the_backlog_does_nothing_rather_than_throwing() = runTest {
+        // It runs unconditionally on every foreground entry, so an escaping error here would take down
+        // work that has nothing to do with reclaiming disk.
+        val staged = RecordingStagedBytes(mutableSetOf("/p"))
+        val store = object : DownloadStore by InMemoryDownloadStore() {
+            override suspend fun stagedPathsOfImportedAssets(): List<String> = error("store unreadable")
+        }
+        val c = controller(FakeUnion(emptyList()), store = store, stagedBytes = staged)
+
+        c.releaseSettledBytes() // must not throw
+
+        assertTrue(staged.released.isEmpty(), "nothing may be released on an answer we never got")
+    }
+
+    @Test
+    fun a_failed_release_keeps_the_rows_so_a_later_pass_can_retry() = runTest {
+        // ORDER, and it is load-bearing. Release first, drop second: if the drop ran first and the
+        // release then failed, the files would be orphaned with no row referencing them —
+        // unreclaimably, and across launches. Failing this way round costs one retry.
+        val inner = InMemoryDownloadStore()
+        var dropped = false
+        val store = object : DownloadStore by inner {
+            override suspend fun dropResourcesOfImportedAssets() {
+                dropped = true
+                inner.dropResourcesOfImportedAssets()
+            }
+        }
+        val failing = RecordingStagedBytes(failWith = { error("disk is busy") })
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, stagedBytes = failing)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        store.markImported(ref, "LOCAL-Q")
+
+        c.releaseSettledBytes() // must not throw
+
+        assertFalse(dropped, "the rows were dropped after a release that failed — the files are orphaned")
+        assertEquals(
+            listOf("/p", "/l"),
+            store.stagedPathsOfImportedAssets(),
+            "the backlog must still be findable for the next pass",
+        )
     }
 }
