@@ -1,7 +1,23 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kover)
 }
+// NOT INSTRUMENTED (capability `coverage-bounds`, "Coverage is measured over unit tests only"):
+// the tier `testing-architecture` calls "The world hosts feature tests over the real stack" -
+// real features driven against a composed world, which is integration by any reading.
+//
+// `disabledForAll` - note the spelling, not `disableForAll` - means this module is not instrumented,
+// its coverage data is omitted from every report, and its test tasks are not triggered by report
+// generation.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForAll = true
+        }
+    }
+}
+
 
 // Shared test-infra: a controllable in-memory "world" the REAL app graph runs against — since
 // migration step 10 composed through the SAME `snapSyncApp`/`uploadCore` the device shells call,

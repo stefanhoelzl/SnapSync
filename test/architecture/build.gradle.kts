@@ -2,7 +2,23 @@ import org.gradle.api.tasks.PathSensitivity
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kover)
 }
+// NOT INSTRUMENTED (capability `coverage-bounds`, "Coverage is measured over unit tests only"):
+// structural guards over the repository's own text. A guard passing is not evidence that the
+// code it inspects is tested - measured, it adds zero incremental coverage anywhere.
+//
+// `disabledForAll` - note the spelling, not `disableForAll` - means this module is not instrumented,
+// its coverage data is omitted from every report, and its test tasks are not triggered by report
+// generation.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForAll = true
+        }
+    }
+}
+
 
 // Test-only ARCHITECTURE GUARDS (capability `architecture-guards`): structural invariants the compiler
 // cannot express, enforced as ordinary tests so they run under `./gradlew build` — the canonical check.

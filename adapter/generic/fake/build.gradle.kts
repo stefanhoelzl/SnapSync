@@ -13,6 +13,9 @@
 // framework, so there is no `iosArm64` to pay for.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // `subprojects {}` block so the instrumented set is readable per module.
+    alias(libs.plugins.kover)
 }
 
 kotlin {

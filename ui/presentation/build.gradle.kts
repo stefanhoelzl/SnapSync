@@ -1,3 +1,6 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // `UiState` is `@Serializable` so the dev/test control channel can serve the REAL reduced state
@@ -6,7 +9,26 @@ plugins {
     // which is what lets the rig hold no tests. A rig-side DTO was the alternative and was rejected
     // for exactly that reason.
     alias(libs.plugins.kotlin.serialization)
+    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // `subprojects {}` block so the instrumented set is readable per module.
+    alias(libs.plugins.kover)
 }
+// Coverage (capability `coverage-bounds`). `:ui:screens`' tests drive the container host
+// that lives here.
+//
+// The report is filtered back to this module's OWN classes. The crediting edge itself is
+// declared in the ROOT build file: these build scripts are read as TEXT by the zone-diagram
+// generator, which would render the edge backwards.
+kover {
+    reports {
+        filters {
+            includes {
+                projects.add(":ui:presentation")
+            }
+        }
+    }
+}
+
 
 // The FORGE preset table (`ForgeStatusHost.kt`) is compiled in ONLY under `-Psnapsync.forge=true`.
 //
@@ -47,6 +69,60 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.orbit.test)
             implementation(libs.coroutines.test)
+        }
+    }
+}
+
+// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+//
+// A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
+// permitted to move in one direction only: UP. The destination is full coverage, and these numbers
+// are the distance still to travel.
+//
+// RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
+// stated forcing proof in that change's description, naming what makes the loss of coverage
+// unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
+// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// polarity - a ceiling that may only fall.
+//
+// TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
+// every package above the floor; the PACKAGE FLOOR - "no package here is worse than this" - catches
+// one package rotting behind well-tested neighbours, which is the shape an untested class has.
+//
+// ENGINE: Kover's default, not JaCoCo. The two disagree by up to 26% on a single package's
+// denominator, so every number below is engine-specific and switching engines means re-seeding all
+// of them in that same change.
+//
+// Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
+//
+// This module seeds well below its siblings because `UiState.kt` was reworked shortly before the
+// gate landed (`93e8eb4f`, +1437/-538 across the module) and the new state surface is not yet
+// covered to the level the old one was. That is the first debt to pay here.
+kover {
+    reports {
+        total {
+            verify {
+                onCheck = true
+                rule(":ui:presentation aggregate") {
+                    bound {
+                        minValue = 68
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                    bound {
+                        minValue = 39
+                        coverageUnits = CoverageUnit.BRANCH
+                    }
+                }
+                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+                // tree, where a single uncovered arm moves the number by 17 points.
+                rule(":ui:presentation package floor") {
+                    groupBy = GroupingEntityType.PACKAGE
+                    bound {
+                        minValue = 68
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                }
+            }
         }
     }
 }

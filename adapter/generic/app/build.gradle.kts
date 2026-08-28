@@ -1,3 +1,6 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
+
 // `:adapter:generic:app` (spec `module-architecture`): platform-free technology implementations of the
 // `:domain` ports — the Ktor HTTP clients and the SQLDelight stores. Named for the technology,
 // placed by linkage: generic code links everywhere (JVM harness, app, extension), so this module
@@ -12,6 +15,23 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.sqldelight)
+    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // `subprojects {}` block so the instrumented set is readable per module.
+    alias(libs.plugins.kover)
+}
+
+// Coverage (capability `coverage-bounds`). The SQLDelight-GENERATED sources are excluded: nobody
+// writes or reviews them, so bounding them ratchets a code generator's output rather than this
+// module's tests. Effect is small and honest either way - the module measures 76.4% with them and
+// 77.5% without.
+kover {
+    reports {
+        filters {
+            excludes {
+                packages("app.snapsync.engine.db", "app.snapsync.downloadstore.db")
+            }
+        }
+    }
 }
 
 kotlin {
@@ -86,6 +106,62 @@ sqldelight {
             packageName.set("app.snapsync.downloadstore.db")
             srcDirs.setFrom("src/commonMain/sqldelight/download")
             dialect(libs.sqldelight.dialect.sqlite)
+        }
+    }
+}
+
+// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+//
+// A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
+// permitted to move in one direction only: UP. The destination is full coverage, and these numbers
+// are the distance still to travel.
+//
+// RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
+// stated forcing proof in that change's description, naming what makes the loss of coverage
+// unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
+// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// polarity - a ceiling that may only fall.
+//
+// TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
+// every package above the floor; the PACKAGE FLOOR - "no package here is worse than this" - catches
+// one package rotting behind well-tested neighbours, which is the shape an untested class has.
+//
+// ENGINE: Kover's default, not JaCoCo. The two disagree by up to 26% on a single package's
+// denominator, so every number below is engine-specific and switching engines means re-seeding all
+// of them in that same change.
+//
+// Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
+//
+// THE PACKAGE FLOOR IS 0, AND IT GATES NOTHING UNTIL IT RISES. `HttpAttestClient` - the client
+// behind capability `device-attestation` - has no test at all (500 instructions, 0% covered), and
+// `HttpEnrollment`, `HttpDeviceFilesSource` and `SystemTime` are in the same position. Seeded at
+// the measured value rather than at a number this module does not meet; testing `HttpAttestClient`
+// is the first ratchet step and lifts this floor to something that gates.
+kover {
+    reports {
+        total {
+            verify {
+                onCheck = true
+                rule(":adapter:generic:app aggregate") {
+                    bound {
+                        minValue = 68
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                    bound {
+                        minValue = 47
+                        coverageUnits = CoverageUnit.BRANCH
+                    }
+                }
+                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+                // tree, where a single uncovered arm moves the number by 17 points.
+                rule(":adapter:generic:app package floor") {
+                    groupBy = GroupingEntityType.PACKAGE
+                    bound {
+                        minValue = 0
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                }
+            }
         }
     }
 }

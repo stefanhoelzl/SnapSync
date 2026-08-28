@@ -1,3 +1,5 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
@@ -11,7 +13,33 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTes
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // `subprojects {}` block so the instrumented set is readable per module.
+    alias(libs.plugins.kover)
 }
+// Coverage (capability `coverage-bounds`). The report is filtered to this module's OWN classes.
+// The crediting edge that lets `:adapter:generic:fake`'s feature tests count toward this module is
+// declared in the ROOT build file, not here: `ModuleSetTest` asserts this file names no module at
+// all, because that absence is the precondition for the platform-free compile error.
+kover {
+    reports {
+        filters {
+            includes {
+                projects.add(":domain")
+            }
+            // The composition root is OUTSIDE the measurable set (capability `coverage-bounds`,
+            // "A composition root is outside the measurable set"). `module-architecture`'s
+            // "One shared composition" says the wiring graph shall not be unit-tested, and that law
+            // is the written form of a fact: a composition root is reachable only by composing it,
+            // and any test that composes the whole graph is not a unit test. Measured at 1.13% here.
+            // Excluded by ZONE, not by module, so `:domain`'s other eleven packages stay bounded.
+            excludes {
+                packages("app.snapsync.compose")
+            }
+        }
+    }
+}
+
 
 // Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
 // "AssertionError at null:-1" with no expected/actual, which is useless for diagnosing
@@ -108,5 +136,59 @@ kotlin {
         }
         // NO iosMain block, ever: `:domain` has no iosMain source directory (spec
         // `module-architecture`; guard: the zone gates' D6 scope + `compileIosMainKotlinMetadata`).
+    }
+}
+
+// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+//
+// A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
+// permitted to move in one direction only: UP. The destination is full coverage, and these numbers
+// are the distance still to travel.
+//
+// RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
+// stated forcing proof in that change's description, naming what makes the loss of coverage
+// unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
+// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// polarity - a ceiling that may only fall.
+//
+// TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves
+// every package above the floor; the PACKAGE FLOOR - "no package here is worse than this" - catches
+// one package rotting behind well-tested neighbours, which is the shape an untested class has.
+//
+// ENGINE: Kover's default, not JaCoCo. The two disagree by up to 26% on a single package's
+// denominator, so every number below is engine-specific and switching engines means re-seeding all
+// of them in that same change.
+//
+// Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
+//
+// The package floor names `flow/` at 57%: `SilentPush` and `Foreground` have unit tests,
+// `Provision`, `DownloadBackstop` and `Background` do not - and the last two are executed by no
+// test in the repository on any tier. That is the next debt to pay here.
+kover {
+    reports {
+        total {
+            verify {
+                onCheck = true
+                rule(":domain aggregate") {
+                    bound {
+                        minValue = 91
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                    bound {
+                        minValue = 81
+                        coverageUnits = CoverageUnit.BRANCH
+                    }
+                }
+                // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
+                // tree, where a single uncovered arm moves the number by 17 points.
+                rule(":domain package floor") {
+                    groupBy = GroupingEntityType.PACKAGE
+                    bound {
+                        minValue = 57
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                }
+            }
+        }
     }
 }
