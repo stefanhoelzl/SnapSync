@@ -67,6 +67,17 @@ severity (capability `diagnostic-logging`) and SHALL NOT propagate to the caller
 count that cannot be taken and a count of zero have different consequences and only the log can say
 which occurred.
 
+That containment SHALL live in the source itself, not at a call site. It is an invariant about this
+source's own state, and leaving its enforcement to callers makes a rule the source owns depend on every
+caller remembering to protect it.
+
+**Cancellation is not such a failure.** A cancelled enumeration SHALL propagate, and SHALL NOT be
+reported at `Error` severity. Swallowing it would break structured concurrency, and the `Error` line
+would reach the crash reporter (capability `crash-reporting`) for an ordinary teardown — an event that
+says nothing about whether a count could be taken. The distinction matters because the containment above
+is expressed with a construct that catches cancellation like anything else, so it has to be excluded
+deliberately rather than by omission.
+
 #### Scenario: Current size is available synchronously
 
 - **WHEN** a consumer reads `size.value` immediately after obtaining a `GalleryStatusSource`
@@ -112,6 +123,19 @@ which occurred.
 - **WHEN** an enumeration throws while the count has never successfully been taken
 - **THEN** `size.value` remains `null`, the failure is logged at `Error` severity, and no count is
   published
+
+#### Scenario: A cancelled enumeration is not reported as a failed count
+
+- **WHEN** the scope an enumeration runs in is cancelled while the walk is in flight
+- **THEN** the cancellation propagates, no `Error`-severity line is logged, and no crash-report event
+  is raised — because the count was not attempted and failed, it was abandoned
+
+#### Scenario: A caller wraps the enumeration to protect its siblings
+
+- **WHEN** a caller adds its own containment around the enumeration so a failure cannot cancel work
+  beside it
+- **THEN** that containment covers only what the caller itself does; the enumeration's own failure is
+  already contained by the source, and duplicating it there is not what keeps the invariant true
 
 ### Requirement: Live re-emission on library change
 

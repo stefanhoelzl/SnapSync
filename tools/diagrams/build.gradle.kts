@@ -2,7 +2,23 @@ import org.gradle.api.tasks.PathSensitivity
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kover)
 }
+// NOT INSTRUMENTED (capability `coverage-bounds`, "Coverage is measured over unit tests only"):
+// the freshness gate re-renders committed text and compares it, which is not evidence about
+// product code.
+//
+// `disabledForAll` - note the spelling, not `disableForAll` - means this module is not instrumented,
+// its coverage data is omitted from every report, and its test tasks are not triggered by report
+// generation.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForAll = true
+        }
+    }
+}
+
 
 // Derived architecture diagrams (capability `architecture-diagrams`): the source-scan generators
 // (zones, ports, flows, DI) and the Mermaid renderer for the module graph. The module graph's
