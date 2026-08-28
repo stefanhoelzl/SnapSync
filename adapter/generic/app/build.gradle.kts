@@ -133,11 +133,12 @@ sqldelight {
 //
 // Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
 //
-// THE PACKAGE FLOOR IS 0, AND IT GATES NOTHING UNTIL IT RISES. `HttpAttestClient` - the client
-// behind capability `device-attestation` - has no test at all (500 instructions, 0% covered), and
-// `HttpEnrollment`, `HttpDeviceFilesSource` and `SystemTime` are in the same position. Seeded at
-// the measured value rather than at a number this module does not meet; testing `HttpAttestClient`
-// is the first ratchet step and lifts this floor to something that gates.
+// THE PACKAGE FLOOR NOW GATES. It was seeded at 0 because four production classes carried no test
+// at all - `HttpAttestClient` (the client behind capability `device-attestation`, 500 instructions),
+// `HttpEnrollment`, `HttpDeviceFilesSource` and `SystemTime`. All four are covered now, so the floor
+// rose 0 -> 75 in one step and the rule guards every package in the module. 75 is `app.snapsync.join`,
+// and what is left there is generated: the decode-only DTOs' synthetic constructors, which no test can
+// reach. The next real step here is `SqlDelightLedgerStore` (87%), not the DTOs.
 kover {
     reports {
         total {
@@ -145,11 +146,11 @@ kover {
                 onCheck = true
                 rule(":adapter:generic:app aggregate") {
                     bound {
-                        minValue = 68
+                        minValue = 89
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     bound {
-                        minValue = 47
+                        minValue = 56
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }
@@ -158,7 +159,7 @@ kover {
                 rule(":adapter:generic:app package floor") {
                     groupBy = GroupingEntityType.PACKAGE
                     bound {
-                        minValue = 0
+                        minValue = 75
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                 }

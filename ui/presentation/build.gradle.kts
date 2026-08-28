@@ -96,9 +96,15 @@ kotlin {
 //
 // Bounds are whole percentages (`minValue` is an `Int`), so each concedes up to 1% of its scope.
 //
-// This module seeds well below its siblings because `UiState.kt` was reworked shortly before the
-// gate landed (`93e8eb4f`, +1437/-538 across the module) and the new state surface is not yet
-// covered to the level the old one was. That is the first debt to pay here.
+// This module seeded well below its siblings because `UiState.kt` was reworked shortly before the
+// gate landed (`93e8eb4f`, +1437/-538 across the module). The overlay and settings surfaces - the
+// rename dialog, the leave confirmation, the diagnostic sheet and the reconfigure form - were the
+// untested half of that, and covering them moved it 68 -> 77.
+//
+// Of what is left, ~340 instructions are `kotlinx.serialization`'s generated `$Companion`/serializer
+// accessors on `UiState`'s sealed tree, which nothing here serializes and no test can reach; most of
+// the rest is the default-filling in the state classes' own constructors. So the remaining honest
+// debt is smaller than 1448 missed instructions suggests - grep before writing a test for one.
 kover {
     reports {
         total {
@@ -106,11 +112,11 @@ kover {
                 onCheck = true
                 rule(":ui:presentation aggregate") {
                     bound {
-                        minValue = 68
+                        minValue = 77
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                     bound {
-                        minValue = 39
+                        minValue = 44
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }
@@ -119,7 +125,7 @@ kover {
                 rule(":ui:presentation package floor") {
                     groupBy = GroupingEntityType.PACKAGE
                     bound {
-                        minValue = 68
+                        minValue = 77
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
                 }

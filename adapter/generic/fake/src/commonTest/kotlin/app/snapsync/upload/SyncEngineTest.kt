@@ -1,7 +1,7 @@
-package app.snapsync.world
+package app.snapsync.upload
 
 import app.snapsync.model.toLedgerRow
-import app.snapsync.fake.inMemoryLedgerStore
+import app.snapsync.fake.InMemoryLedgerStore
 
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -25,7 +25,7 @@ import kotlin.test.assertSame
 class SyncEngineTest {
 
     private val provider = RecordingUploadRequestProvider()
-    private val ledger = LedgerWriter(inMemoryLedgerStore())
+    private val ledger = LedgerWriter(InMemoryLedgerStore())
 
     /** The joined event the engine records under — provenance on every written row (`sync-ledger`). */
     private val eventId = "event-1"

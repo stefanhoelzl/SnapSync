@@ -1,9 +1,13 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // `subprojects {}` block so the instrumented set is readable per module.
+    alias(libs.plugins.kover)
 }
 
 // Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
@@ -42,6 +46,53 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
+        }
+    }
+}
+
+// Coverage (capability `coverage-bounds`). The report is filtered to this module's OWN classes, so a
+// zone is measured on what it contains rather than on its neighbours' test suites. The crediting edge
+// that lets `:adapter:generic:fake`'s tests count toward this module is declared in the ROOT build
+// file, not here: `ModuleSetTest` asserts a `:domain:*` build file names no module at all, because
+// that absence is the precondition for the platform-free compile error.
+kover {
+    reports {
+        filters {
+            includes {
+                projects.add(":domain:flow")
+            }
+        }
+    }
+}
+
+// Coverage bounds (capability `coverage-bounds`). Each number below is a FLOOR that may only RISE:
+// lowering one is a regression and needs a stated forcing proof in the PR. Nothing enforces that — it
+// is a ratchet carried by this contract, exactly as `complexity-budgets` carries its ceilings at the
+// opposite polarity.
+//
+// Seeded from MEASUREMENT, never chosen: the number is what this module measured on the commit that
+// set it. ENGINE: Kover's default, not JaCoCo — the two disagree by up to 26 points on a single
+// package's denominator, so switching engines means re-seeding in that same change. Bounds are whole
+// percentages (`minValue` is an `Int`), so each concedes up to one point of its scope.
+//
+// One package, so no floor rule. Every trigger flow is covered; the residue is one inert default
+// lambda on `Provision`.
+kover {
+    reports {
+        total {
+            verify {
+                onCheck = true
+                rule(":domain:flow aggregate") {
+                    bound {
+                        minValue = 97
+                        coverageUnits = CoverageUnit.INSTRUCTION
+                    }
+                    bound {
+                        minValue = 85
+                        coverageUnits = CoverageUnit.BRANCH
+                    }
+                }
+            }
         }
     }
 }
