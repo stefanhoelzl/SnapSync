@@ -5,8 +5,11 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.Direction
 import app.snapsync.model.PermissionStatus
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
@@ -57,7 +60,7 @@ class ReconfigureIntegrationTest {
             w.refreshStatus()
 
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId), "enabling share uploads the own photo")
-            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
+            assertEquals(SyncHealth.InSync, (host.await { it.health() is SyncHealth.InSync }).health())
         } finally {
             scope.cancel()
         }
@@ -127,14 +130,16 @@ class ReconfigureIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------
 
     private fun statusHost(w: World, scope: CoroutineScope) = StatusContainerHost(
-        syncSource = w.syncStatusSource,
-        permission = w.permission.permission,
-        config = w.configSource.config,
+        StatusSources(
+            sync = w.syncStatusSource,
+            permission = w.permission.permission,
+            config = w.configSource.config,
+        ),
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
     )
 
-    private fun UiState.health(): SyncHealth? = (this as? UiState.Joined)?.health
+    private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =
         withTimeout(5_000) { container.stateFlow.first(predicate) }

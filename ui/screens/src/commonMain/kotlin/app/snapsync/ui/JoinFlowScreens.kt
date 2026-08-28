@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.model.Direction
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.EventDetails
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppInvitationHeaderLoading
@@ -39,8 +40,8 @@ import app.snapsync.ui.components.JoinNoticeOffline
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import app.snapsync.ui.components.AppRangePresetChoices
-import app.snapsync.ui.components.FromChoice
-import app.snapsync.ui.components.UntilChoice
+import app.snapsync.model.FromChoice
+import app.snapsync.model.UntilChoice
 import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppMinorSection
@@ -49,6 +50,7 @@ import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.ui.components.appDateLabel
 import app.snapsync.ui.components.appDateTimeLabel
+import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
@@ -79,71 +81,41 @@ import app.snapsync.ui.components.RangeChoices
  */
 @Composable
 internal fun JoiningEventScreen(
-    phase: JoinPhase,
-    cutoff: CutoffFormatter,
+    layer: Layer.JoiningEvent,
     actions: JoinActions,
     photoPermission: PermissionStatus,
 ) {
-    // The member's own picks, owned in one place and surviving the phase changes this screen goes
-    // through while mounted (Ready -> Committing -> CommitFailed), so a retry reuses what they chose.
-    // Seeded all-on over the full event window: narrow, never widen — the policy admits on doubt.
-    val participation = rememberParticipation(
-        ParticipationSeed(
-            switches = Switches(shareOn = true, receiveOn = true, saveToAlbum = false),
-            choices = RangeChoices(FromChoice.EVENT_START, null, UntilChoice.EVENT_END, null),
-        ),
-    )
-    // What would be committed if Join were pressed — pure derivation, and a different question from the
-    // `when` below, which decides what is DRAWN.
-    val selection = rememberJoinSelection(phase, cutoff, participation)
-
-
-
-    // ONE dispatcher over the phase, and every branch names a composable that renders BOTH that
-    // phase's body and the actions it offers. It was two `when`s ninety lines apart plus an early
-    // return, so a phase's appearance and its buttons were stated in three different places and
-    // nothing but exhaustiveness kept them in step.
+    val phase = layer.phase
+    // Two levels, and the nesting IS the type: the three phases that carry no event, then the loaded
+    // one dispatched on its step. Both `when`s are exhaustive, so a new phase or a new step fails the
+    // compile rather than falling through — and no branch reaches for details a phase might not have.
     when (phase) {
-        // The one phase that is a *decision surface* rather than a status-plus-actions surface, so it
-        // owns its whole layout instead of the scaffold every other phase opts into. That is why it
-        // is an ordinary branch here: once the shape is something a phase CHOOSES, a phase that wants
-        // a different one simply calls something else, and no early return has to jump the queue.
-        is JoinPhase.Ready -> ReadyLayout(
-            state = readyState(phase, cutoff, selection, participation, photoPermission),
-            actions = ReadyActions(
-                participation = participation.actions(actions.shareableCount),
-                onJoin = {
-                    actions.onConfirm(
-                        selection.chosenFrom,
-                        selection.chosenUntil,
-                        selection.chosenDirection,
-                        participation.saveToAlbum,
-                    )
-                },
-                onCancel = actions.onCancel,
-            ),
-        )
         JoinPhase.Loading -> LoadingPhase()
-        is JoinPhase.ExplainAccess -> ExplainAccessPhase(
-            name = phase.name,
-            onAcknowledge = actions.onAcknowledgeAccess,
-            onCancel = actions.onCancel,
-        )
         JoinPhase.NotFound -> NotFoundPhase(onCancel = actions.onCancel)
         JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
-        is JoinPhase.Committing -> CommittingPhase(name = phase.name)
-        is JoinPhase.CommitFailed -> CommitFailedPhase(
-            name = phase.name,
-            onRetry = {
-                actions.onRetryJoin(
-                    selection.chosenFrom,
-                    selection.chosenUntil,
-                    selection.chosenDirection,
-                    participation.saveToAlbum,
-                )
-            },
-            onCancel = actions.onCancel,
-        )
+        is JoinPhase.Detailed -> when (phase.step) {
+            // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
+            // owns its whole layout instead of the scaffold every other step opts into.
+            JoinPhase.Detailed.Step.Ready -> ReadyLayout(
+                state = readyState(phase.event, layer, photoPermission),
+                actions = ReadyActions(
+                    participation = actions.participation,
+                    onJoin = actions.onConfirm,
+                    onCancel = actions.onCancel,
+                ),
+            )
+            JoinPhase.Detailed.Step.ExplainAccess -> ExplainAccessPhase(
+                name = phase.event.name,
+                onAcknowledge = actions.onAcknowledgeAccess,
+                onCancel = actions.onCancel,
+            )
+            JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
+            JoinPhase.Detailed.Step.CommitFailed -> CommitFailedPhase(
+                name = phase.event.name,
+                onRetry = actions.onRetryJoin,
+                onCancel = actions.onCancel,
+            )
+        }
     }
 }
 
@@ -342,29 +314,34 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
  * unreadable as a dispatcher.
  */
 private fun readyState(
-    phase: JoinPhase.Ready,
-    cutoff: CutoffFormatter,
-    selection: RangeSelection,
-    participation: Participation,
+    event: EventDetails,
+    layer: Layer.JoiningEvent,
     photoPermission: PermissionStatus,
-) = ReadyState(
-    eventName = phase.name,
-    // The switches come off the HOLDER, never back off `selection.chosenDirection`: `directionOf`
-    // collapses both-off to `DownloadOnly` as an inert placeholder, so deriving them there would render
-    // the receive switch ON for a member who had turned both off.
-    participation = participation.state(
-        selection = selection,
-        rangeLabel = cutoff.formatRange(selection.fromResolved, selection.untilResolved),
+): ReadyState {
+    // Non-null by construction on a loaded phase: the reduction resolves the range wherever there is a
+    // window, and this surface renders only where there is one.
+    val range = layer.range ?: error("a loaded join phase always resolves a range")
+    return ReadyState(
+    eventName = event.name,
+    // The switches come off the FORM, never back off `range.direction`: `directionOf` collapses both-off
+    // to `DownloadOnly` as an inert placeholder, so deriving them there would render the receive switch
+    // ON for a member who had turned both off.
+    participation = ParticipationState(
+        form = layer.form,
+        range = range,
+        rangeLabel = appRangeLabel(range.from, range.until),
         photoPermission = photoPermission,
     ),
     labels = ReadyLabels(
-        floor = appDateTimeLabel(selection.windowStart),
-        ceiling = appDateTimeLabel(selection.windowEnd),
-        // The retention deadline, rendered as a plain date. Absent only if a phase somehow lost it, in
-        // which case the section states the fixed ceiling alone rather than inventing a date.
-        deletes = phase.deletesAt()?.let { cutoff.toLocal(it.at) }?.let(::appDateLabel),
+        floor = appDateTimeLabel(range.windowStart),
+        ceiling = appDateTimeLabel(range.windowEnd),
+        // The retention deadline, rendered as a plain date. A loaded phase always carries one now — it
+        // is a field of the details, not something a phase could have lost — so the only absence left is
+        // an unparseable instant, which the section renders as the fixed ceiling alone.
+        deletes = appDateLabel(range.deletesLocal ?: range.windowEnd),
     ),
-)
+    )
+}
 
 /**
  * Everything the join gate can ask for: the two ways to commit, the three ways out, and the count query.
@@ -377,10 +354,13 @@ private fun readyState(
  * loaded phase, and [onCancel] is the one every phase pins.
  */
 internal class JoinActions(
-    val onConfirm: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit,
-    val onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit,
+    // The commits carry NOTHING: what would be committed is what the reduction already resolved, so
+    // handing values back from the render path would be a second answer to a settled question.
+    val onConfirm: () -> Unit,
+    val onRetryJoin: () -> Unit,
     val onAcknowledgeAccess: () -> Unit,
     val onCancel: () -> Unit,
     val onRetryLoad: () -> Unit,
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
+    /** The member's edits to the range form, bound to the container's intents. */
+    val participation: ParticipationActions,
 )

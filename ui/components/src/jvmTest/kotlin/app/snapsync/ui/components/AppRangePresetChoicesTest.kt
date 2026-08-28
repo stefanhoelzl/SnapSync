@@ -1,5 +1,7 @@
 package app.snapsync.ui.components
 
+import app.snapsync.model.FromChoice
+import app.snapsync.model.UntilChoice
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties

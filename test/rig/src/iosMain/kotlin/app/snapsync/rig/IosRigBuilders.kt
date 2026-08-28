@@ -7,6 +7,9 @@ import app.snapsync.model.CaptureDate
 import app.snapsync.model.Direction
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.UploadExtensionRegistry
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReader
 import app.snapsync.rig.gallery.SeedKind
@@ -48,13 +51,12 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
             endsAt = localDateTime(params["endsAt"]),
         )
     },
+    // The commit carries nothing now: what is committed is what the reduction resolved from the form
+    // (capability `sync-status-screen`). So the channel does what a member does — set the choices, then
+    // confirm — rather than handing the container a pre-resolved answer it would have to trust.
     "confirmJoin" to RigUserCommand { params ->
-        host().onConfirmJoin(
-            cutoff = captureCutoff(params["cutoff"]),
-            until = captureCeiling(params["until"]),
-            direction = direction(params["direction"]),
-            saveToAlbum = params["saveToAlbum"].toBoolean(),
-        )
+        host().applyRangeChoices(params)
+        host().onConfirmJoin()
     },
     "cancelJoin" to RigUserCommand { host().onCancelJoin() },
     // The membership change this channel could not previously express. Narrowing a scope — raising the
@@ -62,15 +64,35 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
     // `reconfigure-membership`), so without this the one behaviour that change turns on is undriveable
     // on a device.
     "reconfigure" to RigUserCommand { params ->
-        host().onReconfigure(
-            eventId = params["eventId"].orEmpty(),
-            direction = direction(params["direction"]),
-            minPhotoDate = captureCutoff(params["cutoff"]),
-            maxPhotoDate = captureCeiling(params["until"]),
-            saveToAlbum = params["saveToAlbum"].toBoolean(),
-        )
+        // Open first: opening seeds the form from the persisted membership, exactly as the settings gear
+        // does, so an unspecified field keeps the membership's current value rather than a default.
+        host().surfaces.onOpenReconfigure()
+        host().applyRangeChoices(params)
+        host().onReconfigure()
     },
 )
+
+/**
+ * Drive the range form from the channel's committed-shaped parameters.
+ *
+ * The channel speaks in canonical `…Z` instants because that is what a caller can write down; the form
+ * speaks in presets plus a picked wall-clock value. The conversion lives HERE, in test-only code, rather
+ * than as a rig-shaped intent on the container — production has no caller that needs it.
+ */
+private fun StatusContainerHost.applyRangeChoices(params: Map<String, String>) {
+    params["direction"]?.let {
+        val d = direction(it)
+        form.onShareOn(d.includesUpload)
+        form.onReceiveOn(d.includesDownload)
+    }
+    params["saveToAlbum"]?.let { form.onSaveToAlbum(it.toBoolean()) }
+    params["cutoff"]?.let { form.onFromCustom(toLocalWallClock(it)) }
+    params["until"]?.let { form.onUntilCustom(toLocalWallClock(it)) }
+}
+
+/** A canonical `…Z` instant as the device's wall clock — the form's own vocabulary. */
+private fun toLocalWallClock(iso: String): LocalDateTime =
+    Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault())
 
 /**
  * `/user` members deliberately NOT wired, each with the consequence that makes the omission safe.
@@ -88,6 +110,38 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     "onChoosePhotos" to
         "presents the limited-library picker, a modal only a finger can answer. The selection it produces " +
         "arrives through the selection-change seam, which /device/state reports.",
+    // ---- the range form (capability `photo-selection-policy`) ------------------------------------
+    //
+    // The channel drives the form through `confirmJoin`/`reconfigure`, which set the values a caller
+    // names and then commit. The PRESET taps are the two it does not need: a preset is a shorthand for a
+    // bound the caller can state outright, and `applyRangeChoices` states it — offering both would give
+    // the channel two ways to say one thing, and they could disagree.
+    "onFromPreset" to
+        "a shorthand for a bound the channel already sets outright via the `cutoff` parameter; offering " +
+        "both would let one caller say the same thing two ways, which could then disagree.",
+    "onUntilPreset" to
+        "the same, for the upper bound the `until` parameter sets outright.",
+    // ---- what is drawn OVER the layer (capability `sync-status-screen`) ---------------------------
+    //
+    // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would
+    // change what a screenshot shows and nothing else — and what the app DOES is what this channel is
+    // for. The commit behind each confirmation IS wired: `leave`, `rename`, `reconfigure`.
+    "onConfirmLeaveOpen" to
+        "opens the leave confirmation and touches no port; the leave itself is wired as `/user/leave`.",
+    "onConfirmLeaveDismiss" to
+        "dismisses that confirmation, which the channel never opened.",
+    "onRenameOpen" to
+        "opens the rename sheet and touches no port; the rename itself is wired as `/user/rename`.",
+    "onRenameDismiss" to
+        "dismisses that sheet, which the channel never opened.",
+    "onCancelReconfigure" to
+        "discards the settings surface without writing; `/user/reconfigure` opens, sets and commits it in " +
+        "one call, so there is no half-open surface for the channel to cancel.",
+    "onReportBugOpen" to
+        "opens the diagnostic sheet, whose SEND is already excluded below for the same reason — the dump " +
+        "leaves the device, and a channel-triggered one would be indistinguishable from a real report.",
+    "onReportBugDismiss" to
+        "dismisses that sheet, which the channel never opens.",
     "onShareInvite" to
         "presents a UIActivityViewController and observes no result, so there is nothing to report and a " +
         "modal is left on screen. The invite URL itself is already in /device/state.",
@@ -244,13 +298,6 @@ private fun localDateTime(raw: String?): LocalDateTime = LocalDateTime.parse(req
     "startsAt/endsAt are required, as ISO local date-times — there is no safe default for an event window"
 })
 
-private fun captureCutoff(raw: String?): CaptureCutoff = CaptureCutoff(CaptureDate(requireNotNull(raw) {
-    "cutoff is required — defaulting it would share photos the caller did not choose to share"
-}))
-
-private fun captureCeiling(raw: String?): CaptureCeiling = CaptureCeiling(CaptureDate(requireNotNull(raw) {
-    "until is required — it is the capture-date ceiling and bounds what may be uploaded"
-}))
 
 private fun direction(raw: String?): Direction = requireNotNull(Direction.entries.firstOrNull {
     it.name.equals(raw, ignoreCase = true) || it.wire.equals(raw, ignoreCase = true)

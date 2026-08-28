@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.SyncHealth
+import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppEyebrow
 import app.snapsync.ui.components.EyebrowTone
 import kotlinx.datetime.plus
@@ -19,7 +20,7 @@ import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
-import app.snapsync.presentation.UiState
+import app.snapsync.presentation.Layer
 
 // The joined membership's own screen (capability `sync-status-screen`): the QR to share, the sync
 // health line, and the actions row.
@@ -31,8 +32,7 @@ import app.snapsync.presentation.UiState
  */
 @Composable
 internal fun JoinedLayer(
-    state: UiState.Joined,
-    inviteUrl: String?,
+    state: Layer.Joined,
     access: AccessActions,
     cutoff: CutoffFormatter,
 ) {
@@ -41,18 +41,21 @@ internal fun JoinedLayer(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
+        // A rejected event link, if one just arrived. Above the hero because it is about what the member
+        // JUST DID, and it self-clears on its own; without it a bad scan while joined said nothing at all.
+        state.notice?.let { AppErrorBanner(it) }
         // The invite hero: sharing the event IS the point, so the QR is the tallest object on the screen.
         // A tracked accent eyebrow names what the code is FOR to the current member (share it to add
         // guests), while the card's own caption instructs the person scanning it — two audiences, one
         // statement each, so neither line repeats the other.
-        if (inviteUrl != null) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AppEyebrow("Share this event", EyebrowTone.Accent)
-                AppQrCode(content = inviteUrl, caption = "Scan to join this event")
-            }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AppEyebrow("Share this event", EyebrowTone.Accent)
+            // Always rendered: the joined state carries the invite URL non-null, so there is no longer a
+            // "joined but no link yet" frame for the hero to be missing in.
+            AppQrCode(content = state.inviteUrl, caption = "Scan to join this event")
         }
         // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
         // card under a white QR card read as a second competing surface; the screen's second fixation

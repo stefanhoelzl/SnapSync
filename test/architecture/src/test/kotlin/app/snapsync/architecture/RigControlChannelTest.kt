@@ -258,9 +258,14 @@ class RigControlChannelTest {
      * `fun on…` only. `onSendDiagnostics` is a `val` holding a nullable lambda rather than a function, and
      * it is excluded by name below — deriving `val`s too would drag in every read-model property the host
      * exposes, which are not commands and have no business in a coverage assertion about commands.
+     *
+     * Commands NESTED in a grouping holder (`host.form.onShareOn(…)`) count exactly as top-level ones do:
+     * matching at either indentation is what stops a group from hiding commands from this inventory. That
+     * is not hypothetical — grouping the form edits and the surface taps moved fifteen commands one level
+     * in, and a four-space-only match would have silently stopped asking about every one of them.
      */
     private fun derivedUserCommands(): Set<String> =
-        Regex("""^\s{4}fun (on\w+)\(""", RegexOption.MULTILINE)
+        Regex("""^\s{4,8}fun (on\w+)\(""", RegexOption.MULTILINE)
             .findAll(read(hostFile))
             .map { it.groupValues[1] }
             .toSet() + "onSendDiagnostics"
@@ -275,7 +280,10 @@ class RigControlChannelTest {
      * "is every host command reachable or consciously not", and that is answered by the call, not the URL.
      */
     private fun wiredUserCommands(): Set<String> =
-        Regex("""host\(\)\.(on\w+)\(""").findAll(read(builders))
+        // `host().onX(`, `host().group.onX(`, and `group.onX(` on a host receiver — the grouping holders
+        // are still the host's commands, so reaching one through its group is reaching it.
+        Regex("""(?:host\(\)\.(?:\w+\.)?|\b(?:form|surfaces|access)\.)(on\w+)\(""")
+            .findAll(read(builders))
             .map { it.groupValues[1] }.toSet()
 
     private fun excludedUserCommands(): Set<String> =

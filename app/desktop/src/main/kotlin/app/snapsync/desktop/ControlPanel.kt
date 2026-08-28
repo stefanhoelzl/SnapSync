@@ -67,6 +67,7 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
             Button(onClick = { controller.showCreating() }) { Text("Creating (in flight)") }
             Button(onClick = { controller.showCreateFailedInvalidName() }) { Text("Failed: invalid name") }
             Button(onClick = { controller.showCreateFailedServer() }) { Text("Failed: server error") }
+            Button(onClick = { controller.showInvalidLink() }) { Text("Scan invalid QR") }
         }
 
         Text("Join event (config absent — full-screen JoiningEvent)")

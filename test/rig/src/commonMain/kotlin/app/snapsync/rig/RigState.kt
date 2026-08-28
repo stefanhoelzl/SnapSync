@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.UiState
 import kotlinx.serialization.Serializable
@@ -99,9 +100,14 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
     core.ledgerCounts.refresh()
     val counts = core.ledgerCounts.counts.value
     val progress = core.downloadStatus.progress.value
-    val config = host.membership.value
+    // The membership, the invite URL and the inline create error all live INSIDE the UI state now
+    // (capability `sync-status-screen`), so the rig reports exactly what the screen is rendering rather
+    // than a parallel set of read-models that could disagree with it.
+    val ui = host.container.stateFlow.value
+    val joined = ui as? Layer.Joined
+    val config = joined?.membership
     return RigState(
-        ui = host.container.stateFlow.value,
+        ui = ui,
         ready = Readiness(
             configResolved = config != null,
             eventId = config?.eventId,
@@ -116,9 +122,9 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
             inFlight = progress.inFlight,
         ),
         permission = core.photoPermission.value.name,
-        inviteUrl = host.inviteUrl.value,
-        eventName = host.eventName.value,
-        transientError = host.transientError.value,
+        inviteUrl = joined?.inviteUrl,
+        eventName = config?.name,
+        transientError = (ui as? Layer.CreateEvent)?.error,
         build = hooks.buildFacts(),
         // The grant is read from the same value reported above, so the two cannot disagree within one
         // snapshot — which matters precisely because a `false` is only interpretable alongside it.

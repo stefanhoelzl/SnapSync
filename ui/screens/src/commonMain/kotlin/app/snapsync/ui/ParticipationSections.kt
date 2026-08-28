@@ -11,13 +11,15 @@ import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppSectionValue
 import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
-import app.snapsync.ui.components.FromChoice
+import app.snapsync.model.FromChoice
 import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.presentation.RangeForm
+import app.snapsync.presentation.ResolvedRange
+import app.snapsync.ui.components.RangeWindow
 import app.snapsync.ui.components.RangeChoices
-import app.snapsync.ui.components.UntilChoice
+import app.snapsync.model.UntilChoice
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.datetime.LocalDateTime
@@ -97,8 +99,8 @@ AppToggleSection(
         // gallery photos this RANGE would share, recomputed as either bound (or a late permission
         // resolve) changes. Omitted when no count is available.
         ShareCountRow(
-            chosenCutoff = state.selection.chosenFrom,
-            chosenUntil = state.selection.chosenUntil,
+            chosenCutoff = state.range.chosenFrom,
+            chosenUntil = state.range.chosenUntil,
             shareableCount = actions.shareableCount,
             permissionKey = state.photoPermission,
         )
@@ -122,7 +124,7 @@ AppToggleSection(
                 },
             ),
             // Pre-start (and post-end), "Now" would fall outside the window — offered disabled.
-            window = state.selection.window,
+            window = state.window,
             fromFloorNote = notes.fromFloor,
             untilCeilingNote = notes.untilCeiling,
         )
@@ -175,39 +177,39 @@ AppMinorSection {
 }
 }
 
-/** What the participation surface displays. */
-internal class ParticipationState(
-    val selection: RangeSelection,
-    val choices: RangeChoices,
+/**
+ * What the participation surface displays — built from the reduced state, never from state the screen
+ * holds. [form] is what the member has chosen; [range] is what that resolves to against the event window.
+ */
+class ParticipationState(
+    val form: RangeForm,
+    val range: ResolvedRange,
     /** The resolved range as one readable label — the section's single statement of what will be shared. */
     val rangeLabel: String,
-    val switches: Switches,
     /** A recompute trigger for the shareable count, not a rendered value. */
     val photoPermission: PermissionStatus,
 ) {
-    val shareOn: Boolean get() = switches.shareOn
-    val receiveOn: Boolean get() = switches.receiveOn
-    val saveToAlbum: Boolean get() = switches.saveToAlbum
+    val shareOn: Boolean get() = form.shareOn
+    val receiveOn: Boolean get() = form.receiveOn
+    val saveToAlbum: Boolean get() = form.saveToAlbum
+    val choices: RangeChoices
+        get() = RangeChoices(form.fromPreset, form.fromCustom, form.untilPreset, form.untilCustom)
+    val window: RangeWindow get() = RangeWindow(range.windowStart, range.windowEnd, range.nowAvailable)
 }
 
-/**
- * The three on/off answers a participation surface collects. One value because they are asked together,
- * rendered together, and read together — the album note varies over all three at once.
- */
-internal class Switches(
-    val shareOn: Boolean,
-    val receiveOn: Boolean,
-    val saveToAlbum: Boolean,
-)
-
 /** Everything the participation surface can ask for. */
-internal class ParticipationActions(
-    val choices: RangeChoiceActions,
-    val onShareOn: (Boolean) -> Unit,
-    val onReceiveOn: (Boolean) -> Unit,
-    val onSaveToAlbum: (Boolean) -> Unit,
-    // The permission-aware count query over `[from, until]` (capability `join-share-count`).
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
+class ParticipationActions(
+    val choices: RangeChoiceActions = RangeChoiceActions(),
+    val onShareOn: (Boolean) -> Unit = {},
+    val onReceiveOn: (Boolean) -> Unit = {},
+    val onSaveToAlbum: (Boolean) -> Unit = {},
+    /**
+     * The permission-aware count query over `[from, until]` (capability `join-share-count`), and the
+     * grant that keys its recompute. Both live HERE rather than beside the screen's other actions: they
+     * belong to the one row that asks the question, and the key is not a rendered value.
+     */
+    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
+    val photoPermission: PermissionStatus = PermissionStatus.GRANTED,
 )
 
 /**
@@ -222,80 +224,8 @@ internal class ParticipationActions(
  * over which switches are on; at reconfigure it states that the album is **forward-only** — already-synced
  * photos are not retroactively gathered (capability `reconfigure-membership`).
  */
-internal class ParticipationNotes(
+class ParticipationNotes(
     val fromFloor: String,
     val untilCeiling: String,
     val album: String,
 )
-
-/**
- * The seven pieces of state a member edits on a participation surface, owned in one place.
- *
- * Both surfaces held these as seven loose `var`s and then rebuilt the same [RangeChoices] and the same
- * [ParticipationActions] from them — about twenty lines each, differing only in where the initial values
- * came from. That is a state holder in the ordinary Compose sense, and having two copies of it meant the
- * two screens could drift apart in what they let a member change.
- *
- * Mutable and read during composition, so each field is `mutableStateOf`-backed: writing one recomposes
- * exactly the readers of that field.
- */
-@Stable
-internal class Participation(seed: ParticipationSeed) {
-    var shareOn by mutableStateOf(seed.switches.shareOn)
-    var receiveOn by mutableStateOf(seed.switches.receiveOn)
-    var saveToAlbum by mutableStateOf(seed.switches.saveToAlbum)
-    var fromPreset by mutableStateOf(seed.choices.fromPreset)
-    var fromCustom by mutableStateOf(seed.choices.fromCustom)
-    var untilPreset by mutableStateOf(seed.choices.untilPreset)
-    var untilCustom by mutableStateOf(seed.choices.untilCustom)
-
-    /** The four range picks in the shape the design system's picker and the resolvers both take. */
-    val choices: RangeChoices get() = RangeChoices(fromPreset, fromCustom, untilPreset, untilCustom)
-
-    /** The edits, bound to this holder. [shareableCount] is the one thing it cannot supply itself. */
-    fun actions(
-        shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
-    ) = ParticipationActions(
-        choices = RangeChoiceActions(
-            onFromPreset = { fromPreset = it },
-            onFromCustom = { fromCustom = it },
-            onUntilPreset = { untilPreset = it },
-            onUntilCustom = { untilCustom = it },
-        ),
-        onShareOn = { shareOn = it },
-        onReceiveOn = { receiveOn = it },
-        onSaveToAlbum = { saveToAlbum = it },
-        shareableCount = shareableCount,
-    )
-
-    /** What the surface displays, once the caller has resolved the range against its own window. */
-    fun state(
-        selection: RangeSelection,
-        rangeLabel: String,
-        photoPermission: PermissionStatus,
-    ) = ParticipationState(
-        selection = selection,
-        choices = choices,
-        rangeLabel = rangeLabel,
-        switches = Switches(shareOn, receiveOn, saveToAlbum),
-        photoPermission = photoPermission,
-    )
-}
-
-/**
- * Where a [Participation] starts: all-on with the full event window at the join gate, and the persisted
- * membership's own values at the reconfigure surface.
- */
-internal class ParticipationSeed(
-    val switches: Switches,
-    val choices: RangeChoices,
-)
-
-/**
- * Survives the phase changes a surface goes through while mounted — Ready -> Committing -> CommitFailed
- * on the join gate — so a retry reuses what the member chose rather than re-seeding from defaults.
- */
-@Composable
-internal fun rememberParticipation(seed: ParticipationSeed): Participation =
-    remember { Participation(seed) }
-

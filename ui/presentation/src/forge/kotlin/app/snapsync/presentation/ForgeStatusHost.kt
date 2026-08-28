@@ -46,9 +46,11 @@ fun isForgeState(state: String): Boolean = ForgePreset.byId(state) != null
 fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: CutoffFormatter): StatusContainerHost? {
     val preset = ForgePreset.byId(state) ?: return null
     val host = StatusContainerHost(
-        syncSource = ConstSyncStatusSource(preset.sync),
-        permission = MutableStateFlow(preset.permission),
-        config = MutableStateFlow(preset.config),
+        StatusSources(
+            sync = ConstSyncStatusSource(preset.sync),
+            permission = MutableStateFlow(preset.permission),
+            config = MutableStateFlow(preset.config),
+        ),
         scope = scope,
         // The join gate's details fetch (capability `join-event`), forged to a `Found` so the gate can
         // reach its confirmation surface with no backend. `commitJoin` stays inert by default — a

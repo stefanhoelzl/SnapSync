@@ -63,6 +63,8 @@ Roots found:
 | `PushTokenSource` | x | | |
 | `SentryDiagnosticsReporter` | x | x | x |
 | `StatusContainerHost` | x | | |
+| `StatusDiagnostics` | x | | |
+| `StatusSources` | x | | |
 | `UploadPorts` | | x | x |
 | `UploadPushReceiver` | | | x |
 | `UrlSessionUploadController` | x | | |

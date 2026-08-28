@@ -10,7 +10,10 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.presentation.Layer
+import app.snapsync.presentation.EventDetails
 import app.snapsync.presentation.JoinPhase
+import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.PendingJoin
 import app.snapsync.model.EventConfig
@@ -170,24 +173,30 @@ class PanelController {
         permissionState.value = PermissionStatus.DENIED
     }
 
-    // Join-gate presets (capability `join-event`): forge the full-screen `UiState.JoiningEvent` by
+    // Join-gate presets (capability `join-event`): forge the full-screen `Layer.JoiningEvent` by
     // forcing config ABSENT (the gate's precondition) and writing the target `JoinPhase` into the
     // pending-join cell. The real reduction produces `JoiningEvent` from `config == null && pending`.
     // Canned name/startsAt payloads feed the phases that carry them; a PAST `startsAt` keeps the cutoff
     // row's "Now" preset enabled (the common case).
     fun showJoinLoading() = forgeJoin(JoinPhase.Loading)
 
-    fun showJoinExplainAccess() = forgeJoin(JoinPhase.ExplainAccess(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
+    fun showJoinExplainAccess() = forgeJoin(loadedJoin(JoinPhase.Detailed.Step.ExplainAccess))
 
-    fun showJoinReady() = forgeJoin(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
+    fun showJoinReady() = forgeJoin(loadedJoin(JoinPhase.Detailed.Step.Ready))
 
     fun showJoinNotFound() = forgeJoin(JoinPhase.NotFound)
 
     fun showJoinLoadFailed() = forgeJoin(JoinPhase.LoadFailed)
 
-    fun showJoinCommitting() = forgeJoin(JoinPhase.Committing(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
+    fun showJoinCommitting() = forgeJoin(loadedJoin(JoinPhase.Detailed.Step.Committing))
 
-    fun showJoinCommitFailed() = forgeJoin(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
+    fun showJoinCommitFailed() = forgeJoin(loadedJoin(JoinPhase.Detailed.Step.CommitFailed))
+
+    /** The canned loaded details, at whichever step is being forged. */
+    private fun loadedJoin(step: JoinPhase.Detailed.Step) = JoinPhase.Detailed(
+        EventDetails(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT),
+        step,
+    )
 
     private fun forgeJoin(phase: JoinPhase) {
         configState.value = null
@@ -205,7 +214,7 @@ class PanelController {
     // NO `CommitFailed` preset, because the confirmation's confirm runs only the leave, so no commit can
     // fail while a config is still present — forging that pair would offer a state the reduction cannot
     // reach. The post-leave commit failure is reachable through the full-screen JOIN presets above.
-    fun showSwitchReady() = forgeSwitch(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
+    fun showSwitchReady() = forgeSwitch(loadedJoin(JoinPhase.Detailed.Step.Ready))
 
     fun showSwitchNotFound() = forgeSwitch(JoinPhase.NotFound)
 
@@ -249,6 +258,28 @@ class PanelController {
 
     fun showCreateFailedServer() =
         forgeCreate(CreationStatus.Failed(CreationFailureReason.SERVER))
+
+    /**
+     * The container the left pane built, captured via `StatusPane`'s `onHostReady`.
+     *
+     * The forge forges SOURCES; this one state is not a source. A rejected event link is an EVENT — the
+     * decoder said no — and the self-clearing message it produces is presentation's own choreography, so
+     * the only honest way to review it is to hand the gate a link it will reject.
+     */
+    var host: StatusContainerHost? = null
+
+    /**
+     * Scan a QR the decoder rejects (capability `event-link`).
+     *
+     * This state was unreviewable in either desktop harness until now, and that was not an oversight of
+     * the panel: the banner reached the screen as a parameter, and this harness's one call site never
+     * passed it — so even with a lever the message could not have appeared. It is here because the value
+     * now travels inside `UiState`, which is what makes it renderable at all.
+     */
+    fun showInvalidLink() {
+        forgeCreate(CreationStatus.Idle)
+        host?.onOpenUrl("not-an-event-link")
+    }
 
     /**
      * Forge the joined layer's NOT-STARTED health (capability `sync-status-screen`) by giving the config a

@@ -22,11 +22,12 @@ import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppSectionValue
 import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
-import app.snapsync.ui.components.FromChoice
+import app.snapsync.presentation.ResolvedRange
+import app.snapsync.model.FromChoice
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
-import app.snapsync.ui.components.UntilChoice
+import app.snapsync.model.UntilChoice
 import kotlinx.datetime.LocalDateTime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -139,12 +140,12 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
         ) {
             // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
             // moving a switch the guest didn't touch.
-            if (!state.selection.commitEnabled) {
+            if (!state.range.commitEnabled) {
                 StatusHint(
                     "Turn on sharing or receiving — a membership that does neither does nothing.",
                 )
             }
-            PrimaryButton(label = "Join", onClick = actions.onJoin, enabled = state.selection.commitEnabled)
+            PrimaryButton(label = "Join", onClick = actions.onJoin, enabled = state.range.commitEnabled)
             SecondaryButton(label = "Cancel", onClick = actions.onCancel)
         }
     }
@@ -201,16 +202,16 @@ internal fun ShareCountRow(
  * What the **Ready** join surface displays. Two parameters replace twenty-nine: the previous signature
  * interleaved each value with its own callback, pair by pair, which is the shape that grows without bound.
  *
- * Most of this is not new state — [selection] is the [RangeSelection] the screen already derived, and
- * [choices] is the same quartet the design system's picker takes. What was genuinely loose is [labels].
+ * Most of this is not new state — [participation] carries the reduced form and its resolution. What was
+ * genuinely loose is [labels], the strings the design system renders the window as.
  */
 internal class ReadyState(
     val eventName: String,
     val participation: ParticipationState,
     val labels: ReadyLabels,
 ) {
-    /** The join button is enabled on the same rule the surface commits on. */
-    val selection: RangeSelection get() = participation.selection
+    /** The join button is enabled on the same rule the reduction commits on. */
+    val range: ResolvedRange get() = participation.range
 }
 
 /**

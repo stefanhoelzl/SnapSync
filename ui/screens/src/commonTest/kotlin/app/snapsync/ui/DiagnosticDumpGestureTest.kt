@@ -2,6 +2,20 @@
 
 package app.snapsync.ui
 
+import app.snapsync.presentation.Layer
+import app.snapsync.presentation.Overlays
+import app.snapsync.presentation.PendingSwitch
+
+import app.snapsync.model.eventEnd
+
+import app.snapsync.model.eventStart
+
+import app.snapsync.model.captureCeiling
+
+import app.snapsync.model.captureCutoff
+
+import app.snapsync.model.EventConfig
+
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -49,14 +63,26 @@ class DiagnosticDumpGestureTest {
     private val placeholder = "What went wrong, and what were you doing?"
 
     @Test
-    fun `double-tapping the app name opens the bug-report sheet`() = runComposeUiTest {
+    fun `double-tapping the app name asks for the bug-report sheet`() = runComposeUiTest {
+        var opened = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> }))
+            StatusScreen(
+                UiState(Layer.CreateEvent()),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(onSendDiagnostics = { _, _ -> }, surfaces = SurfaceActions(onReportBugOpen = { opened++ })),
+            )
         }
 
         onNodeWithText(sheetTitle).assertDoesNotExist()
         onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        assertEquals(1, opened)
+    }
 
+    @Test
+    fun `the sheet renders when the state says it is open`() = runComposeUiTest {
+        setContent {
+            StatusScreen(reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = diagnosticsActions())
+        }
         onNodeWithText(sheetTitle).assertExists()
     }
 
@@ -66,10 +92,10 @@ class DiagnosticDumpGestureTest {
         // message: an invalid submit is unreachable, so nothing needs to explain it.
         var sent = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
+            StatusScreen(
+                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
         onNodeWithText("Send").assertIsNotEnabled()
         onNodeWithText("Send").performClick()
 
@@ -81,10 +107,10 @@ class DiagnosticDumpGestureTest {
     fun `whitespace alone is not a description`() = runComposeUiTest {
         var sent = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
+            StatusScreen(
+                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
         onNodeWithText(placeholder).performTextInput("   ")
 
         onNodeWithText("Send").assertIsNotEnabled()
@@ -94,17 +120,18 @@ class DiagnosticDumpGestureTest {
     @Test
     fun `sending fires the command once with the trimmed description`() = runComposeUiTest {
         val sent = mutableListOf<Pair<String, String>>()
+        var dismissed = 0
         setContent {
             StatusScreen(
-                UiState.CreateEvent(),
+                reporting(Layer.CreateEvent()),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     onSendDiagnostics = { note, screen -> sent += note to screen },
+                    surfaces = SurfaceActions(onReportBugDismiss = { dismissed++ }),
                 )
             )
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
         onNodeWithText(placeholder).performTextInput("  photos stopped arriving  ")
         onNodeWithText("Send").performClick()
 
@@ -113,22 +140,29 @@ class DiagnosticDumpGestureTest {
             sent,
             "one report, trimmed, labelled with the surface it was written from",
         )
-        onNodeWithText(sheetTitle).assertDoesNotExist()
+        assertEquals(1, dismissed, "sending also asks for the sheet to close")
     }
 
     @Test
     fun `cancelling sends nothing`() = runComposeUiTest {
         var sent = 0
+        var dismissed = 0
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
+            StatusScreen(
+                reporting(Layer.CreateEvent()),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    onSendDiagnostics = { _, _ -> sent++ },
+                    surfaces = SurfaceActions(onReportBugDismiss = { dismissed++ }),
+                ),
+            )
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
         onNodeWithText(placeholder).performTextInput("never mind")
         onNodeWithText("Cancel").performClick()
 
         assertEquals(0, sent)
-        onNodeWithText(sheetTitle).assertDoesNotExist()
+        assertEquals(1, dismissed)
     }
 
     @Test
@@ -137,10 +171,10 @@ class DiagnosticDumpGestureTest {
         // not inert: an affordance that exists and silently does nothing is the one outcome forbidden,
         // because it is indistinguishable from a report that failed to send.
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = null))
+            StatusScreen(
+                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = null))
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
 
         onNodeWithText(sheetTitle).assertDoesNotExist()
     }
@@ -152,7 +186,7 @@ class DiagnosticDumpGestureTest {
         val sent = mutableListOf<String>()
         setContent {
             StatusScreen(
-                UiState.JoiningEvent("11111111-2222-4333-8444-555555555555", JoinPhase.LoadFailed),
+                reporting(Layer.JoiningEvent("11111111-2222-4333-8444-555555555555", JoinPhase.LoadFailed)),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     onSendDiagnostics = { _, screen -> sent += screen },
@@ -160,7 +194,6 @@ class DiagnosticDumpGestureTest {
             )
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
         onNodeWithText(placeholder).performTextInput("gate is stuck")
         onNodeWithText("Send").performClick()
 
@@ -173,7 +206,8 @@ class DiagnosticDumpGestureTest {
         // OnClick semantics action and a ripple — which is exactly what makes a control read as a
         // control, and would put the hidden affordance into the accessibility tree.
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> }))
+            StatusScreen(
+                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> }))
         }
 
         onNodeWithText(navLabel).assert(
@@ -187,17 +221,45 @@ class DiagnosticDumpGestureTest {
         // renders — that is why the gesture lives on it.
         setContent {
             StatusScreen(
-                UiState.Joined(SyncHealth.InSync),
+                reportingOver(joinedWith(SyncHealth.InSync)),
                 cutoff = fixedCutoff(),
-                eventName = "Anna's Birthday",
                 actions = StatusActions(
                     onSendDiagnostics = { _, _ -> },
                 )
             )
         }
 
-        onNodeWithText(navLabel).performTouchInput { doubleClick() }
 
         onNodeWithText(sheetTitle).assertExists()
     }
 }
+
+// The membership and invite URL live inside the joined state now (capability `sync-status-screen`), so
+// these tests build the state that carries them instead of passing them beside it.
+private val SWITCH_MEMBERSHIP = EventConfig(
+    eventId = "E1",
+    name = "Anna's Birthday",
+    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
+    startsAt = eventStart("2026-07-06T12:00:00Z"),
+    endsAt = eventEnd("2026-07-10T12:00:00Z"),
+    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
+)
+
+private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null, name: String = "Anna's Birthday") =
+    UiState(
+        Layer.Joined(
+            membership = SWITCH_MEMBERSHIP.copy(name = name),
+            inviteUrl = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiRTEifQ",
+            health = health,
+            pendingSwitch = pendingSwitch,
+        ),
+    )
+
+/** The same screen with the diagnostic sheet already open — the state a double-tap produces. */
+private fun reporting(layer: Layer) = UiState(layer, Overlays(reportingBug = true))
+
+/** The same, for a state a helper already built. */
+private fun reportingOver(state: UiState) = state.copy(overlays = Overlays(reportingBug = true))
+
+/** Diagnostics wired to a no-op, for the tests that only care that the sheet renders. */
+private fun diagnosticsActions() = StatusActions(onSendDiagnostics = { _, _ -> })

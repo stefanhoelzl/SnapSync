@@ -2,6 +2,8 @@ package app.snapsync.ui
 
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.ui.components.RangeChoiceActions
+import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Direction
 import kotlinx.datetime.LocalDateTime
 
@@ -35,16 +37,24 @@ class StatusActions(
     val joined: JoinedActions = JoinedActions(),
     val access: AccessActions = AccessActions(),
     val switch: SwitchActions = SwitchActions(),
+    /**
+     * Opening and dismissing what is drawn over — or instead of — the joined layer.
+     *
+     * They are acts the screen ASKS for rather than state it holds: what is on screen is reduced
+     * (capability `sync-status-screen`), so opening a dialog crosses the container like any other tap.
+     * Grouped for the same reason the container groups them — they are one question.
+     */
+    val surfaces: SurfaceActions = SurfaceActions(),
+
     // Create an event (capability `event-creation-ui`): the trimmed name and the chosen `[startsAt, endsAt]`
     // event window as LOCAL wall-clock values (the container converts each to a canonical `…Z` string).
     // Top-level rather than in a group of one: the create layer asks for exactly this and nothing else.
     val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
-    // The shareable-count preview (capability `join-share-count`): given the chosen range, how many of the
-    // member's own gallery photos would be shared. `null` = no count available (DENIED / unresolved grant)
-    // → the row is omitted. Permission-aware and cheap (no per-asset resource read) — the permission branch
-    // and the LIMITED snapshot live inside the compose-built query. Top-level because it is a QUERY, not an
-    // action, and because both the join gate and the reconfigure surface ask it.
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
+    /**
+     * The member's edits to the capture-range form, bound to the container's intents. Both decision
+     * surfaces ask for the same seven, so they are one bundle rather than two identical sets.
+     */
+    val participation: ParticipationActions = ParticipationActions(),
     // The hidden diagnostic dump (capability `diagnostic-logging`): fired by a double-tap on the app-name
     // label, carrying what the operator wrote about the problem and the surface they wrote it from.
     //
@@ -63,8 +73,8 @@ class StatusActions(
  * WITHOUT passing back through the loaded phase.
  */
 class JoinGateActions(
-    val onConfirmJoin: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit = { _, _, _, _ -> },
-    val onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit = { _, _, _, _ -> },
+    val onConfirmJoin: () -> Unit = {},
+    val onRetryJoin: () -> Unit = {},
     // The photo-access explainer's confirm: requests permission, then advances to the confirm surface.
     // The only route from the join gate to the system dialog.
     val onAcknowledgeAccess: () -> Unit = {},
@@ -79,8 +89,10 @@ class JoinedActions(
     // Commit an in-place reconfigure (capability `reconfigure-membership`): the event the surface was
     // opened for, the new direction, the chosen capture-date range (`minPhotoDate` floor-clamped and
     // `maxPhotoDate` ceiling-clamped on the far side in `ReconfigureEvent`), and the album opt-in.
-    val onReconfigure: (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit =
-        { _, _, _, _, _ -> },
+    // Commit the settings surface (capability `reconfigure-membership`). Save commits what the reduction
+    // resolved, so it carries no value — the screen is asking for an act, not reporting one. Opening and
+    // cancelling are navigation and live in [surfaces].
+    val onReconfigure: () -> Unit = {},
     // Rename the joined event (capability `event-rename`): the event the dialog was opened for and the
     // new name. Fired by the pen beside the heading; the outcome arrives back via `renameStatus`.
     val onRenameEvent: (String, String) -> Unit = { _, _ -> },
@@ -109,4 +121,27 @@ class AccessActions(
 class SwitchActions(
     val onConfirmSwitch: () -> Unit = {},
     val onCancelSwitch: () -> Unit = {},
+)
+
+/**
+ * Opening and dismissing the overlays and the settings surface.
+ *
+ * None of these touches a port: each asks the container to change what is on screen, and the container
+ * answers by reducing. That is the property `reconfigure-membership` D4 asked for, preserved now that
+ * the answer is state rather than a screen-held flag.
+ */
+class SurfaceActions(
+    val onConfirmLeaveOpen: () -> Unit = {},
+    val onConfirmLeaveDismiss: () -> Unit = {},
+    val onRenameOpen: () -> Unit = {},
+    val onRenameDismiss: () -> Unit = {},
+    val onOpenReconfigure: () -> Unit = {},
+    val onCancelReconfigure: () -> Unit = {},
+    /**
+     * The diagnostic sheet (capability `diagnostic-logging`). Here with the other overlays rather than
+     * on the joined layer's group, because its gesture is on the app-name label, which EVERY layer
+     * renders — the same reason its flag is not layer-scoped in the state.
+     */
+    val onReportBugOpen: () -> Unit = {},
+    val onReportBugDismiss: () -> Unit = {},
 )

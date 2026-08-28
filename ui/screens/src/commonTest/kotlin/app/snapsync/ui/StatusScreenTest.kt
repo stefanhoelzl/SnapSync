@@ -36,7 +36,19 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.model.Arrow
+import app.snapsync.presentation.RangeForm
+import app.snapsync.presentation.ResolvedRange
+import app.snapsync.presentation.JoinedSurface
+import app.snapsync.model.FromChoice
+import app.snapsync.model.UntilChoice
+import app.snapsync.presentation.Overlays
+import app.snapsync.presentation.RenameState
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.EventDetails
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
 import app.snapsync.feature.membership.RenameFailureReason
@@ -57,7 +69,75 @@ import app.snapsync.ui.AccessActions
 // A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
 private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
 
-private fun joined(health: SyncHealth) = UiState.Joined(health)
+// A representative joined membership for the reconfigure-surface tests: event started, the full window
+// `[startsAt, endsAt]` at both bounds (floor + ceiling), bidirectional, no album — so a no-edit Save
+// round-trips these exact values.
+private val MEMBERSHIP = EventConfig(
+    eventId = "E1",
+    name = "Anna's Birthday",
+    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
+    startsAt = eventStart("2026-07-06T12:00:00Z"),
+    endsAt = eventEnd("2026-07-10T12:00:00Z"),
+    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
+    direction = Direction.Both,
+    saveToAlbum = false,
+)
+
+/** The joined layer with the leave confirmation up — the state the leave action produces. */
+private fun confirmingLeave() = inSync.copy(overlays = Overlays(confirmingLeave = true))
+
+/** The joined layer with the rename sheet up, optionally carrying a rename outcome. */
+private fun renaming(renameState: RenameState = RenameState.Idle) =
+    joined(SyncHealth.InSync, renameState = renameState).copy(overlays = Overlays(renaming = true))
+
+/**
+ * The joined layer showing its SETTINGS surface, with [form] already seeded and resolved.
+ *
+ * Opening the surface is an intent now, so a screen test cannot tap its way in — it supplies the state
+ * the tap produces and asserts what is drawn. Whether the seed RECONSTRUCTS the right presets from a
+ * persisted membership is `reconfigureForm`'s answer, checked in `RangeResolutionTest`.
+ */
+private fun reconfiguring(
+    membership: EventConfig = MEMBERSHIP,
+    form: RangeForm = RangeForm(),
+) = UiState(
+    Layer.Joined(
+        membership = membership,
+        inviteUrl = SAMPLE_INVITE,
+        health = SyncHealth.InSync,
+        surface = JoinedSurface.Reconfigure(form, reconfigureResolved(membership, form)),
+    ),
+)
+
+/** What the reduction would resolve [form] to against [membership]'s own window — stated, not re-derived. */
+private fun reconfigureResolved(membership: EventConfig, form: RangeForm): ResolvedRange {
+    val f = fixedCutoff()
+    val windowStart = f.toLocal(membership.startsAt.at)!!
+    val windowEnd = f.toLocal(membership.endsAt?.at ?: membership.maxPhotoDate.at)!!
+    val from = if (form.fromPreset == FromChoice.CUSTOM) form.fromCustom ?: windowStart else windowStart
+    val until = if (form.untilPreset == UntilChoice.CUSTOM) form.untilCustom ?: windowEnd else windowEnd
+    return ResolvedRange(
+        windowStart = windowStart,
+        windowEnd = windowEnd,
+        from = from,
+        until = until,
+        chosenFrom = CaptureCutoff(f.toCutoff(from)),
+        chosenUntil = CaptureCeiling(f.toCutoff(until)),
+        direction = if (form.shareOn && form.receiveOn) Direction.Both else Direction.DownloadOnly,
+        commitEnabled = form.shareOn || form.receiveOn,
+        nowAvailable = true,
+    )
+}
+
+private fun joined(
+    health: SyncHealth,
+    pendingSwitch: PendingSwitch? = null,
+    canChoosePhotos: Boolean = false,
+    ended: Boolean = false,
+    membership: EventConfig = MEMBERSHIP,
+    inviteUrl: String = SAMPLE_INVITE,
+    renameState: RenameState = RenameState.Idle,
+) = UiState(Layer.Joined(membership, inviteUrl, health, pendingSwitch, canChoosePhotos, ended, renameState))
 private val inSync = joined(SyncHealth.InSync)
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
 private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
@@ -82,7 +162,6 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 joined(SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z"))),
-                inviteUrl = "https://snapsync.stho.net/join#v=3&d=abc",
                 cutoff = fixedCutoff(),
             )
         }
@@ -98,7 +177,7 @@ class StatusScreenTest {
 
     @Test
     fun `create screen shows the name input and the scan-to-join hint`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
 
         onNodeWithText("Start an event").assertExists()
         onNodeWithText("Or scan a QR code in the Camera app to join one.").assertExists()
@@ -109,20 +188,20 @@ class StatusScreenTest {
     @Test
     fun `invalid deeplink error shows on the create screen`() = runComposeUiTest {
         setContent {
-            StatusScreen(UiState.CreateEvent(), transientError = "That QR code wasn't valid.", cutoff = fixedCutoff())
+            StatusScreen(UiState(Layer.CreateEvent(error = "That QR code wasn't valid.")), cutoff = fixedCutoff())
         }
         onNodeWithText("That QR code wasn't valid.").assertExists()
     }
 
     @Test
     fun `a create failure shows its inline error on the create screen`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreateEvent(error = "Couldn't reach the server."), cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent(error = "Couldn't reach the server.")), cutoff = fixedCutoff()) }
         onNodeWithText("Couldn't reach the server.").assertExists()
     }
 
     @Test
     fun `create is disabled until a name is typed`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
 
         onNodeWithText("Create event").assertIsNotEnabled()
         onNode(hasSetTextAction()).performTextInput("My Party")
@@ -132,7 +211,7 @@ class StatusScreenTest {
     @Test
     fun `tapping create submits the typed name`() = runComposeUiTest {
         var created: String? = null
-        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), actions = StatusActions(onCreateEvent = { n, _, _ -> created = n })) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onCreateEvent = { n, _, _ -> created = n })) }
 
         onNode(hasSetTextAction()).performTextInput("My Party")
         onNodeWithText("Create event").performClick()
@@ -142,7 +221,7 @@ class StatusScreenTest {
     @Test
     fun `the create screen shows the date range defaulting to now to now plus 1d with a duration hint`() = runComposeUiTest {
         setContent {
-            StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff())
+            StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff())
         }
         // now = 6 Jul 12:00 (UTC) → default window [6 Jul 12:00, 7 Jul 12:00], the compact adaptive label.
         onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
@@ -157,7 +236,7 @@ class StatusScreenTest {
         var createdUntil: LocalDateTime? = null
         setContent {
             StatusScreen(
-                UiState.CreateEvent(),
+                UiState(Layer.CreateEvent()),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     onCreateEvent = { n, f, u -> createdName = n; createdFrom = f; createdUntil = u },
@@ -182,7 +261,7 @@ class StatusScreenTest {
         var createdFrom: LocalDateTime? = null
         setContent {
             StatusScreen(
-                UiState.CreateEvent(),
+                UiState(Layer.CreateEvent()),
                 cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
                 actions = StatusActions(
                     onCreateEvent = { _, f, _ -> createdFrom = f },
@@ -209,7 +288,7 @@ class StatusScreenTest {
         // Reduce motion is REQUIRED: the picker's time wheels animate on open (a LazyColumn settle), and an
         // animating scene never reaches idle — without this flag `waitForIdle` stalls for ~16 min.
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
         }
         onNodeWithText("Date & time").assertDoesNotExist() // no dialog yet
 
@@ -231,7 +310,7 @@ class StatusScreenTest {
         // The default window is [6 Jul 12:00, 7 Jul 12:00], so both wheel pairs open on 12 and 00. Reduce
         // motion is required so the wheels snap (an animating scene never idles — see the dialog test above).
         setContent {
-            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
         }
         onNodeWithContentDescription("Edit event dates").performClick()
 
@@ -245,7 +324,7 @@ class StatusScreenTest {
 
     @Test
     fun `the name field caps at 100 characters`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
 
         val field = onNode(hasSetTextAction())
         field.performTextInput("a".repeat(100))
@@ -256,7 +335,7 @@ class StatusScreenTest {
 
     @Test
     fun `create layer shows no sync line and no leave and no invite`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
 
         onNodeWithText("In sync").assertDoesNotExist()
         onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
@@ -266,7 +345,7 @@ class StatusScreenTest {
 
     @Test
     fun `creating event shows a preparing indicator and no input`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreatingEvent, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreatingEvent), cutoff = fixedCutoff()) }
 
         onNodeWithText("Creating your event …").assertExists()
         onNode(hasAnyProgressIndication()).assertExists()
@@ -393,7 +472,7 @@ class StatusScreenTest {
         // One recomposing scene walks the healths — the affordances are resting offers, present
         // regardless of the current health value, with the grant switch always BELOW the selection
         // widening (the cheaper step leads).
-        val state = mutableStateOf<UiState>(UiState.Joined(SyncHealth.InSync, canChoosePhotos = true))
+        val state = mutableStateOf<UiState>(joined(SyncHealth.InSync, canChoosePhotos = true))
         setContent { StatusScreen(state.value, cutoff = fixedCutoff()) }
 
         val healths = listOf(
@@ -402,7 +481,7 @@ class StatusScreenTest {
             SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z")),
         )
         for (health in healths) {
-            state.value = UiState.Joined(health, canChoosePhotos = true)
+            state.value = joined(health, canChoosePhotos = true)
             waitForIdle()
             val chooseY = onNodeWithText("Choose more photos").fetchSemanticsNode().positionInRoot.y
             val allowY = onNodeWithText("Allow full access").fetchSemanticsNode().positionInRoot.y
@@ -417,7 +496,7 @@ class StatusScreenTest {
         var requests = 0
         setContent {
             StatusScreen(
-                UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
+                joined(SyncHealth.InSync, canChoosePhotos = true),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     access = AccessActions(
@@ -441,7 +520,7 @@ class StatusScreenTest {
         var pickerOpens = 0
         setContent {
             StatusScreen(
-                UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
+                joined(SyncHealth.InSync, canChoosePhotos = true),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     access = AccessActions(
@@ -470,7 +549,7 @@ class StatusScreenTest {
 
     @Test
     fun `joined shows the event name as the title`() = runComposeUiTest {
-        setContent { StatusScreen(inSync, eventName = "Anna's Birthday", cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
         onNodeWithText("Anna's Birthday").assertExists()
     }
 
@@ -485,7 +564,6 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
-                inviteUrl = SAMPLE_INVITE,
              cutoff = fixedCutoff())
         }
         onNodeWithContentDescription("Leave event").assertExists()
@@ -494,53 +572,71 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `activating leave shows the leave-this-event dialog`() = runComposeUiTest {
-        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
-
+    fun `activating leave asks for the confirmation`() = runComposeUiTest {
+        var asked = 0
+        setContent {
+            StatusScreen(
+                inSync,
+                cutoff = fixedCutoff(),
+                actions = StatusActions(surfaces = SurfaceActions(onConfirmLeaveOpen = { asked++ })),
+            )
+        }
         onNodeWithText("Leave this event?").assertDoesNotExist()
         onNodeWithContentDescription("Leave event").performClick()
+        assertEquals(1, asked)
+    }
+
+    @Test
+    fun `the leave confirmation renders when the state says it is up`() = runComposeUiTest {
+        setContent { StatusScreen(confirmingLeave(), cutoff = fixedCutoff()) }
         onNodeWithText("Leave this event?").assertExists()
     }
 
     @Test
     fun `confirming leave invokes the callback`() = runComposeUiTest {
         var leaves = 0
-        setContent { StatusScreen(inSync, cutoff = fixedCutoff(), actions = StatusActions(joined = JoinedActions(onLeaveEvent = { leaves++ }))) }
+        setContent {
+            StatusScreen(
+                confirmingLeave(),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(joined = JoinedActions(onLeaveEvent = { leaves++ })),
+            )
+        }
 
-        onNodeWithContentDescription("Leave event").performClick()
         onNodeWithText("Leave").performClick()
         assertEquals(1, leaves)
     }
 
     @Test
-    fun `staying does not invoke leave and dismisses the dialog`() = runComposeUiTest {
+    fun `staying does not invoke leave and asks for the dialog to close`() = runComposeUiTest {
         var leaves = 0
-        setContent { StatusScreen(inSync, cutoff = fixedCutoff(), actions = StatusActions(joined = JoinedActions(onLeaveEvent = { leaves++ }))) }
-
-        onNodeWithContentDescription("Leave event").performClick()
+        var dismissed = 0
+        setContent {
+            StatusScreen(
+                confirmingLeave(),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    joined = JoinedActions(onLeaveEvent = { leaves++ }),
+                    surfaces = SurfaceActions(onConfirmLeaveDismiss = { dismissed++ }),
+                ),
+            )
+        }
         onNodeWithText("Stay").performClick()
         assertEquals(0, leaves)
-        onNodeWithText("Leave this event?").assertDoesNotExist()
+        assertEquals(1, dismissed)
     }
 
     @Test
     fun `joined shows the invite QR and share action`() = runComposeUiTest {
-        setContent { StatusScreen(inSync, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
         onNodeWithText("Scan to join this event").assertExists()
         onNodeWithContentDescription("Share invite link").assertExists()
     }
 
     @Test
-    fun `joined without an invite url hides the invite affordances`() = runComposeUiTest {
-        setContent { StatusScreen(inSync, inviteUrl = null, cutoff = fixedCutoff()) }
-        onNodeWithText("Scan to join this event").assertDoesNotExist()
-        onNodeWithContentDescription("Share invite link").assertDoesNotExist()
-    }
-
-    @Test
     fun `activating share invokes the callback`() = runComposeUiTest {
         var shares = 0
-        setContent { StatusScreen(inSync, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff(), actions = StatusActions(joined = JoinedActions(onShareInvite = { shares++ }))) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff(), actions = StatusActions(joined = JoinedActions(onShareInvite = { shares++ }))) }
         onNodeWithContentDescription("Share invite link").performClick()
         assertEquals(1, shares)
     }
@@ -550,7 +646,7 @@ class StatusScreenTest {
     @Test
     fun `joined with a membership shows the rename pen beside the heading`() = runComposeUiTest {
         setContent {
-            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+            StatusScreen(inSync, cutoff = fixedCutoff())
         }
         onNodeWithText("Anna's Birthday").assertExists()
         onNodeWithContentDescription("Rename event").assertExists()
@@ -563,8 +659,6 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 joined(health.value),
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
                 cutoff = fixedCutoff(),
             )
         }
@@ -587,11 +681,11 @@ class StatusScreenTest {
         // whole of every join's commit, which carries a pending join for the event being joined.
         setContent {
             StatusScreen(
-                UiState.Joined(
+                joined(
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        JoinPhase.Ready(
+                        phaseAt(JoinPhase.Detailed.Step.Ready, 
                             "New Event",
                             eventStart("2026-07-06T00:00:00Z"),
                             eventEnd("2026-07-16T00:00:00Z"),
@@ -599,8 +693,6 @@ class StatusScreenTest {
                         ),
                     ),
                 ),
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
                 cutoff = fixedCutoff(),
             )
         }
@@ -609,25 +701,35 @@ class StatusScreenTest {
 
     @Test
     fun `the rename pen is absent on the create screen — there is no heading to rename`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState(Layer.CreateEvent()), cutoff = fixedCutoff()) }
         onNodeWithContentDescription("Rename event").assertDoesNotExist()
     }
 
     @Test
     fun `the rename pen is absent while the reconfigure surface is open`() = runComposeUiTest {
-        setContent {
-            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
-        }
-        onNodeWithContentDescription("Event settings").performClick()
+        setContent { StatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
         onNodeWithContentDescription("Rename event").assertDoesNotExist()
     }
 
     @Test
-    fun `tapping the pen opens the dialog PRE-FILLED with the current name`() = runComposeUiTest {
+    fun `the pen asks for the rename dialog`() = runComposeUiTest {
+        var asked = 0
         setContent {
-            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+            StatusScreen(
+                inSync,
+                cutoff = fixedCutoff(),
+                actions = StatusActions(surfaces = SurfaceActions(onRenameOpen = { asked++ })),
+            )
         }
         onNodeWithContentDescription("Rename event").performClick()
+        assertEquals(1, asked)
+    }
+
+    @Test
+    fun `the rename dialog opens PRE-FILLED with the current name`() = runComposeUiTest {
+        setContent {
+            StatusScreen(renaming(), cutoff = fixedCutoff())
+        }
         // The field opens carrying the current name, ready to be corrected rather than retyped.
         onNode(hasSetTextAction()).assert(
             SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("Anna's Birthday")),
@@ -637,9 +739,8 @@ class StatusScreenTest {
     @Test
     fun `Save is inert while the name is unchanged and enables once it differs`() = runComposeUiTest {
         setContent {
-            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+            StatusScreen(renaming(), cutoff = fixedCutoff())
         }
-        onNodeWithContentDescription("Rename event").performClick()
         // A no-op rename must be unreachable, not merely rejected on a round trip.
         onNodeWithText("Save").assertIsNotEnabled()
         onNode(hasSetTextAction()).performTextInput("!")
@@ -651,9 +752,7 @@ class StatusScreenTest {
         val submitted = mutableListOf<Pair<String, String>>()
         setContent {
             StatusScreen(
-                inSync,
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
+                renaming(),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
                     joined = JoinedActions(
@@ -662,8 +761,7 @@ class StatusScreenTest {
                 )
             )
         }
-        onNodeWithContentDescription("Rename event").performClick()
-        onNode(hasSetTextAction()).performTextClearance()
+                onNode(hasSetTextAction()).performTextClearance()
         onNode(hasSetTextAction()).performTextInput("  Ana's 30th  ")
         onNodeWithText("Save").performClick()
         // The id rides along so a switch landing mid-edit makes the use-case a no-op.
@@ -674,15 +772,11 @@ class StatusScreenTest {
     fun `a failure keeps the dialog open with the typed value and an error BANNER`() = runComposeUiTest {
         setContent {
             StatusScreen(
-                inSync,
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
-                renameStatus = RenameStatus.Failed(RenameFailureReason.INVALID_NAME),
+                renaming(RenameState.Failed("That name wasn't accepted. Try a shorter one.")),
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Rename event").performClick()
-        // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
+                // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
         // no must not read as a complaint about the host's typing.
         onNodeWithText("Save").assertExists()
         onNodeWithText("That name wasn't accepted. Try a shorter one.").assertExists()
@@ -694,73 +788,64 @@ class StatusScreenTest {
         // change to act on it (capability `leave-event`).
         setContent {
             StatusScreen(
-                inSync,
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
-                renameStatus = RenameStatus.Failed(RenameFailureReason.SERVER),
+                renaming(RenameState.Failed("Couldn't rename the event. Check your connection and try again.")),
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Rename event").performClick()
-        onNodeWithText("Couldn't rename the event. Check your connection and try again.").assertExists()
+                onNodeWithText("Couldn't rename the event. Check your connection and try again.").assertExists()
     }
 
     @Test
     fun `success closes the dialog and clears the latch`() = runComposeUiTest {
         var consumed = 0
-        val status = mutableStateOf<RenameStatus>(RenameStatus.Idle)
+        var dismissed = 0
+        val status = mutableStateOf<RenameState>(RenameState.Idle)
         setContent {
             StatusScreen(
-                inSync,
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
-                renameStatus = status.value,
+                renaming(status.value),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    joined = JoinedActions(
-                        onRenameStatusConsumed = { consumed++ },
-                    ),
+                    joined = JoinedActions(onRenameStatusConsumed = { consumed++ }),
+                    surfaces = SurfaceActions(onRenameDismiss = { dismissed++ }),
                 )
             )
         }
-        onNodeWithContentDescription("Rename event").performClick()
         onNodeWithText("Save").assertExists()
 
-        status.value = RenameStatus.Succeeded
+        status.value = RenameState.Succeeded
         waitForIdle()
 
-        onNodeWithText("Save").assertDoesNotExist()
+        // The sheet's CLOSING is the reduction's — the screen asks for it and clears the latch, so a
+        // second rename starts from a clean sequence rather than re-reading this one's outcome.
+        assertEquals(1, dismissed, "success asks for the sheet to close")
         assertEquals(1, consumed, "the latch is cleared so a second rename starts clean")
     }
 
     @Test
     fun `cancelling submits nothing`() = runComposeUiTest {
         var submits = 0
+        var dismissed = 0
         setContent {
             StatusScreen(
-                inSync,
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
+                renaming(),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(
-                    joined = JoinedActions(
-                        onRenameEvent = { _, _ -> submits++ },
-                    ),
+                    joined = JoinedActions(onRenameEvent = { _, _ -> submits++ }),
+                    surfaces = SurfaceActions(onRenameDismiss = { dismissed++ }),
                 )
             )
         }
-        onNodeWithContentDescription("Rename event").performClick()
         onNode(hasSetTextAction()).performTextInput("x")
         onNodeWithText("Cancel").performClick()
         assertEquals(0, submits)
-        onNodeWithText("Save").assertDoesNotExist()
+        assertEquals(1, dismissed, "cancelling asks for the sheet to close")
     }
 
     // ---- the settings action + reconfigure surface (capability `reconfigure-membership`) ----
 
     @Test
     fun `joined with a membership shows the settings action next to share and leave`() = runComposeUiTest {
-        setContent { StatusScreen(inSync, membership = MEMBERSHIP, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
         onNodeWithContentDescription("Event settings").assertExists()
         onNodeWithContentDescription("Share invite link").assertExists()
         onNodeWithContentDescription("Leave event").assertExists()
@@ -771,7 +856,6 @@ class StatusScreenTest {
         setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
-                membership = MEMBERSHIP,
                 cutoff = fixedCutoff(),
             )
         }
@@ -783,11 +867,11 @@ class StatusScreenTest {
         // The mirror of the rename pen above, retired for the same reason.
         setContent {
             StatusScreen(
-                UiState.Joined(
+                joined(
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        JoinPhase.Ready(
+                        phaseAt(JoinPhase.Detailed.Step.Ready, 
                             "New Event",
                             eventStart("2026-07-06T00:00:00Z"),
                             eventEnd("2026-07-16T00:00:00Z"),
@@ -795,7 +879,6 @@ class StatusScreenTest {
                         ),
                     ),
                 ),
-                membership = MEMBERSHIP,
                 cutoff = fixedCutoff(),
             )
         }
@@ -813,11 +896,11 @@ class StatusScreenTest {
     fun `a join's own commit leaves the heading and cluster controls in place`() = runComposeUiTest {
         setContent {
             StatusScreen(
-                UiState.Joined(
+                joined(
                     SyncHealth.InSync,
                     PendingSwitch(
                         MEMBERSHIP.eventId,
-                        JoinPhase.Committing(
+                        phaseAt(JoinPhase.Detailed.Step.Committing, 
                             "Anna's Birthday",
                             eventStart("2026-07-06T00:00:00Z"),
                             eventEnd("2026-07-16T00:00:00Z"),
@@ -825,9 +908,6 @@ class StatusScreenTest {
                         ),
                     ),
                 ),
-                membership = MEMBERSHIP,
-                eventName = "Anna's Birthday",
-                inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
                 cutoff = fixedCutoff(),
             )
         }
@@ -840,9 +920,22 @@ class StatusScreenTest {
 
     @Test
     fun `tapping settings opens the reconfigure surface`() = runComposeUiTest {
-        setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
+        var opened = 0
+        setContent {
+            StatusScreen(
+                inSync,
+                cutoff = fixedCutoff(),
+                actions = StatusActions(surfaces = SurfaceActions(onOpenReconfigure = { opened++ })),
+            )
+        }
         onNodeWithText("Save").assertDoesNotExist()
         onNodeWithContentDescription("Event settings").performClick()
+        assertEquals(1, opened, "the gear asks the container to open the surface")
+    }
+
+    @Test
+    fun `the reconfigure surface renders its controls and its own action cluster`() = runComposeUiTest {
+        setContent { StatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
         onNodeWithText("Save").assertExists()
         onNodeWithText("Share my photos").assertExists()
         onNodeWithText("Cancel").assertExists()
@@ -852,8 +945,7 @@ class StatusScreenTest {
     fun `the reconfigure surface seeds the Event-start lower bound when the cutoff is at the floor`() = runComposeUiTest {
         // minPhotoDate == startsAt → Event-start preset; maxPhotoDate == endsAt → Event-end preset. The
         // value line states the full window as the compact adaptive range.
-        setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Event settings").performClick()
+        setContent { StatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
         onNodeWithTag("from-event-start").assertIsSelected()
         onNodeWithTag("until-event-end").assertIsSelected()
         onNodeWithText("Sharing 6 Jul 12:00 – 10 Jul 12:00").assertExists()
@@ -862,8 +954,8 @@ class StatusScreenTest {
     @Test
     fun `the reconfigure surface seeds a Custom lower bound when the cutoff is above the floor`() = runComposeUiTest {
         val above = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-06T18:00:00Z"))
-        setContent { StatusScreen(inSync, membership = above, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Event settings").performClick()
+        val form = RangeForm(fromPreset = FromChoice.CUSTOM, fromCustom = LocalDateTime(2026, 7, 6, 18, 0))
+        setContent { StatusScreen(reconfiguring(above, form), cutoff = fixedCutoff()) }
         onNodeWithTag("from-custom").assertIsSelected()
         onNodeWithText("Sharing 6 Jul 18:00 – 10 Jul 12:00").assertExists()
     }
@@ -871,8 +963,8 @@ class StatusScreenTest {
     @Test
     fun `the reconfigure surface seeds a Custom upper bound when the ceiling is below the event end`() = runComposeUiTest {
         val below = MEMBERSHIP.copy(maxPhotoDate = captureCeiling("2026-07-09T12:00:00Z"))
-        setContent { StatusScreen(inSync, membership = below, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Event settings").performClick()
+        val form = RangeForm(untilPreset = UntilChoice.CUSTOM, untilCustom = LocalDateTime(2026, 7, 9, 12, 0))
+        setContent { StatusScreen(reconfiguring(below, form), cutoff = fixedCutoff()) }
         onNodeWithTag("until-custom").assertIsSelected()
         onNodeWithText("Sharing 6 Jul 12:00 – 9 Jul 12:00").assertExists()
     }
@@ -880,51 +972,53 @@ class StatusScreenTest {
     @Test
     fun `turning the album on shows the forward-only helper text`() = runComposeUiTest {
         val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
-        setContent { StatusScreen(inSync, membership = withAlbum, cutoff = fixedCutoff()) }
-        onNodeWithContentDescription("Event settings").performClick()
+        setContent {
+            StatusScreen(reconfiguring(withAlbum, RangeForm(saveToAlbum = true)), cutoff = fixedCutoff())
+        }
         onNodeWithText("Only photos synced from now on are added.", substring = true).assertExists()
     }
 
     @Test
-    fun `saving invokes the reconfigure callback with the membership's values and closes the surface`() = runComposeUiTest {
-        var savedEventId: String? = null
-        var savedDirection: Direction? = null
-        var savedMin: CaptureCutoff? = null
-        var savedMax: CaptureCeiling? = captureCeiling("unset")
-        var savedAlbum: Boolean? = null
+    fun `saving asks the container to commit carrying no values of its own`() = runComposeUiTest {
+        // What a Save COMMITS is what the reduction resolved — the surface renders that resolution and
+        // asks for it to be applied. That the committed values round-trip a no-edit Save is
+        // `StatusContainerHostTest`'s to prove; here the question is only that Save reaches the container.
+        var saved = 0
         setContent {
             StatusScreen(
-                inSync,
-                membership = MEMBERSHIP,
+                reconfiguring(),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
-                    joined = JoinedActions(
-                        onReconfigure = { e, d, mn, mx, a ->
-                            savedEventId = e; savedDirection = d; savedMin = mn; savedMax = mx; savedAlbum = a
-                        },
-                    ),
-                )
+                actions = StatusActions(joined = JoinedActions(onReconfigure = { saved++ })),
             )
         }
-        onNodeWithContentDescription("Event settings").performClick()
         onNodeWithText("Save").performClick()
+        assertEquals(1, saved)
+    }
 
-        assertEquals("E1", savedEventId)
-        assertEquals(Direction.Both, savedDirection)
-        // Full-window membership (floor + ceiling) round-trips its exact bounds on a no-edit Save.
-        assertEquals(captureCutoff("2026-07-06T12:00:00Z"), savedMin)
-        assertEquals(captureCeiling("2026-07-10T12:00:00Z"), savedMax)
-        assertEquals(false, savedAlbum)
-        // Save closes the surface (back to the joined layer's action row).
-        onNodeWithText("Save").assertDoesNotExist()
-        onNodeWithContentDescription("Event settings").assertExists()
+    @Test
+    fun `cancelling asks the container to discard touching nothing else`() = runComposeUiTest {
+        var cancelled = 0
+        var saved = 0
+        setContent {
+            StatusScreen(
+                reconfiguring(),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(
+                    joined = JoinedActions(onReconfigure = { saved++ }),
+                    surfaces = SurfaceActions(onCancelReconfigure = { cancelled++ }),
+                ),
+            )
+        }
+        onNodeWithText("Cancel").performClick()
+        assertEquals(1, cancelled)
+        assertEquals(0, saved, "Cancel commits nothing")
     }
 
     // ---- joined layer: the "Event ended" marker (capability `sync-status-screen`) ----
 
     @Test
     fun `an ended event marks the health line on its own line`() = runComposeUiTest {
-        setContent { StatusScreen(UiState.Joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
+        setContent { StatusScreen(joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
         // The marker is its OWN line above the status, not an inline prefix. Asserting the EXACT text is
         // the point: an inline `Event ended · In sync` would satisfy a substring match, and reading as one
         // sentence is exactly the failure this layout exists to prevent — the two are unrelated facts (the
@@ -940,7 +1034,7 @@ class StatusScreenTest {
         // A syncing health is the case that produced the original complaint: `Event ended ·
         // Synchronization pending…` parses as a claim ABOUT the syncing and wraps mid-phrase on a phone.
         setContent { StatusScreen(
-                UiState.Joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), ended = true),
+                joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), ended = true),
                 cutoff = fixedCutoff(),
             ) }
         onNodeWithText("Event ended").assertExists()
@@ -958,22 +1052,21 @@ class StatusScreenTest {
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 }
 
-// A representative joined membership for the reconfigure-surface tests: event started, the full window
-// `[startsAt, endsAt]` at both bounds (floor + ceiling), bidirectional, no album — so a no-edit Save
-// round-trips these exact values.
-private val MEMBERSHIP = EventConfig(
-    eventId = "E1",
-    name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-    startsAt = eventStart("2026-07-06T12:00:00Z"),
-    endsAt = eventEnd("2026-07-10T12:00:00Z"),
-    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
-    direction = Direction.Both,
-    saveToAlbum = false,
-)
 
 private fun samePixels(a: PixelMap, b: PixelMap): Boolean {
     if (a.width != b.width || a.height != b.height) return false
     for (y in 0 until a.height) for (x in 0 until a.width) if (a[x, y] != b[x, y]) return false
     return true
 }
+
+/**
+ * A loaded join phase at [step]. The four event facts are stated ONCE on the phase now (capability
+ * `join-event`), so a test builds the details and says which step is showing.
+ */
+private fun phaseAt(
+    step: JoinPhase.Detailed.Step,
+    name: String,
+    startsAt: EventStart,
+    endsAt: EventEnd,
+    deletesAt: DeletesAt,
+) = JoinPhase.Detailed(EventDetails(name, startsAt, endsAt, deletesAt), step)

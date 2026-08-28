@@ -13,10 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.snapsync.model.EVENT_NAME_MAX_LENGTH
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.feature.membership.RenameFailureReason
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppErrorBanner
+import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppEventDateRangeSection
 import kotlinx.datetime.DateTimeUnit
@@ -58,9 +60,8 @@ import androidx.compose.runtime.setValue
  */
 @Composable
 internal fun CreateEventScreen(
-    state: UiState.CreateEvent,
+    state: Layer.CreateEvent,
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
-    transientError: String?,
     cutoff: CutoffFormatter,
 ) {
     var name by remember { mutableStateOf("") }
@@ -77,7 +78,10 @@ internal fun CreateEventScreen(
     // A returned failure — a scanned-invalid-link (transient) or a creation failure reduced into
     // `state.error` — is a submission-level condition, not a live field error, so it is banished to a
     // banner above the action rather than reddening the name field.
-    val bannerError: String? = transientError ?: state.error
+    // ONE banner, ONE value. The reduction already coalesced the two causes — a sticky create failure
+    // and a self-clearing invalid-link error, the transient winning — so the screen renders what it is
+    // given rather than re-deciding the precedence at the render site.
+    val bannerError: String? = state.error
     Column(modifier = Modifier.fillMaxSize()) {
         // Identity, pinned to the top so it holds its place across the form / creating swap.
         AppEventHeaderHost(
@@ -109,7 +113,7 @@ internal fun CreateEventScreen(
             AppEventDateRangeSection(
                 from = from,
                 until = until,
-                rangeLabel = { f, u -> cutoff.formatRange(f, u) },
+                rangeLabel = { f, u -> appRangeLabel(f, u) },
                 // The live humanized duration hint (capability `event-creation-ui`), e.g. "Event lasts 5 days".
                 durationLabel = { f, u -> "Event lasts ${cutoff.humanizedDuration(f, u)}" },
                 // The truthfulness line: this window is the event's capture-date bound
@@ -159,19 +163,4 @@ internal fun CreatingEventScreen() {
     }
 }
 
-// Mirrors the backend's name cap (trimmed, non-empty, ≤100) so a server 400 is near-unreachable.
-private const val EVENT_NAME_MAX_LENGTH = 100
 
-/**
- * The rename dialog's failure copy (capability `event-rename`). Two reasons, because the port reports
- * two: the backend rejected the name, or everything else.
- *
- * There is deliberately no "this event no longer exists" copy for the `404` that also arrives as
- * [RenameFailureReason.SERVER]. A `404` here is a single witness that the event is gone, and the
- * self-leave needs two (capability `leave-event`); giving it copy would give it a meaning, and a meaning
- * invites acting on it. The standing foreground refresh reaches that verdict on its own terms.
- */
-internal fun renameFailureText(reason: RenameFailureReason): String = when (reason) {
-    RenameFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a shorter one."
-    RenameFailureReason.SERVER -> "Couldn't rename the event. Check your connection and try again."
-}

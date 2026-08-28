@@ -31,7 +31,7 @@ class ForgeStatusHostTest {
     fun `create forges the create landing screen`() = runTest {
         val host = assertNotNull(forgeStatusHost("create", backgroundScope, fixedFormatter()))
         // Config absent + idle creation → the create input, exactly as production reduces it.
-        assertEquals(UiState.CreateEvent(error = null), host.container.stateFlow.value)
+        assertEquals(Layer.CreateEvent(error = null), host.container.stateFlow.value)
     }
 
     @Test
@@ -42,8 +42,8 @@ class ForgeStatusHostTest {
         // virtual time. The gate reduced ITSELF from the forged inputs: an interactive event link + a
         // Found details load, with config absent (a first join, not a switch) and permission granted
         // (so readyOrExplain picks Ready rather than the access explainer).
-        val state = host.container.stateFlow.first { it is UiState.JoiningEvent }
-        assertEquals(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, eventStart(EVENT_START), eventEnd(EVENT_END), deletesAt(EVENT_DELETES))), state)
+        val state = host.container.stateFlow.first { it is Layer.JoiningEvent }
+        assertEquals(Layer.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, eventStart(EVENT_START), eventEnd(EVENT_END), deletesAt(EVENT_DELETES))), state)
     }
 
     @Test
@@ -51,7 +51,7 @@ class ForgeStatusHostTest {
         val host = assertNotNull(forgeStatusHost("in_sync", backgroundScope, fixedFormatter()))
         // completed == total and the download arm empty → both arrows hidden → InSync, reached with the
         // benign default `attested` flow (always true) and download source (no imports).
-        assertEquals(UiState.Joined(SyncHealth.InSync), host.container.stateFlow.value)
+        assertEquals(Layer.Joined(SyncHealth.InSync), host.container.stateFlow.value)
         assertEquals("Anna's Birthday", host.eventName.value)
         assertNotNull(host.inviteUrl.value)
     }
