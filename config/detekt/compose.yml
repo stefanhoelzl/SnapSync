@@ -44,6 +44,18 @@
 # number falls when `AppPorts` is split into cohesive sub-bundles — a later change, and the reason
 # `core`'s parameter ceiling is already 15 rather than 47.
 #
+# WHAT SETS THE TWO NUMBERS THAT MOVED LAST, so the next reader knows where the slack is not.
+# `CyclomaticComplexMethod` is pinned at 9 by `UploadCore.kt`'s `readGate` (measured 8) and by nothing
+# else — the next-highest in the zone is 6. So this ceiling does NOT fall by moving more wiring out of
+# `SnapSyncApp.kt`; it falls only when the cycle gate's exception-classification policy moves, and that
+# policy is deliberately staying — it is the one piece of logic here the world harness and the
+# fake-backed runs drive directly, at 93% coverage, which is what makes it the counterexample: the rest
+# of this zone's logic was worth moving because it was unREACHABLE by any test, not because it was
+# logic. `LargeClass` was re-derived by binary search at 10-line granularity when `AppCore` gave up its
+# mechanism table, its selection-scope derivation, and its lane default. Most of the 600 → its current
+# value was slack accumulated since the seed rather than what one change bought — a ceiling is only
+# honest while someone re-measures it.
+#
 # `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
 # statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
 # a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
@@ -71,7 +83,7 @@ complexity:
     constructorThreshold: 47
   LargeClass:
     active: true
-    threshold: 600
+    threshold: 390
 style:
   ReturnCount:
     active: true

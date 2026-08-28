@@ -55,7 +55,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventUnionSource` | `:domain:ports` | `:adapter:generic:app` HttpEventUnionSource; `:adapter:generic:fake` EmptyUnion, FakeUnion, RecordingUnion | yes |
 | `GalleryStatusSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryGalleryStatusSource; `:domain:feature` OwnDeviceGalleryStatusSource | yes |
 | `ImportResult` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
-| `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:adapter:ios:app-only` PhotoKitAssetPresence; `:domain:compose` PermissionAwareAssetPresence; `:test:world` WorldAssetPresence | yes |
+| `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:adapter:ios:app-only` PhotoKitAssetPresence; `:domain:compose` PermissionAwareAssetPresence, RecordingLibrary; `:test:world` WorldAssetPresence | yes |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `JoinedEventMarker` | `:domain:ports` | `:adapter:generic:fake` InMemoryJoinedEventMarker; `:adapter:ios:ext-safe` IosJoinedEventMarker; `:domain:feature` FakeMarker | yes |
 | `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
