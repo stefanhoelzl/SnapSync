@@ -1,15 +1,16 @@
 package app.snapsync.architecture
 
-import app.snapsync.feature.upload.IdleUploadMechanism
-import app.snapsync.feature.upload.RelinquishThenRun
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.feature.upload.requireConsistent
+import app.snapsync.feature.upload.uploadMechanismTable
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.UploadMechanism
 import app.snapsync.model.resolveUploadMechanism
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -26,9 +27,16 @@ import kotlin.test.assertTrue
  *   selector and a dead process. That is strictly worse than the two-writer bug it replaced.
  * - **sequence bugs in an arm that now holds state.** `current` is new; the arm was stateless before.
  *
- * It drives the REAL [UploadArm] over the REAL resolver, with a factory mirroring the one `compose/`
- * builds — including the wrap that makes each mechanism relinquish what the other left behind. Wiring the
- * mechanisms bare would still pass every ordering assertion while testing nothing.
+ * It drives the REAL [UploadArm] over the REAL resolver and the REAL [uploadMechanismTable] — including
+ * the wrap that makes each mechanism relinquish what the other left behind. Wiring the mechanisms bare
+ * would still pass every ordering assertion while testing nothing.
+ *
+ * **The table used to be a copy.** This file held a private `factory()` documented as "mirroring the one
+ * `compose/` builds" — a second wiring, which is exactly what "One shared composition" forbids
+ * (*"a wiring difference is impossible rather than undetected"*). It had drifted: the mirror keyed its
+ * wrap on the OS fact, the composition on whether an OS-driven mechanism was constructed, and nothing
+ * forced those two to agree (`requireConsistent` now does). Calling the real function is what makes the
+ * ~93k sequences below evidence about production rather than about this file.
  */
 class ProducerExclusivityTest {
 
@@ -48,19 +56,37 @@ class ProducerExclusivityTest {
     private val permissions = PermissionStatus.entries
     private val memberships = listOf(true, false, null)
 
-    /** Mirrors `AppCore.uploadMechanisms`: both cells wrap, with deliberately asymmetric relinquish. */
+    /**
+     * The REAL table `AppCore.uploadMechanisms` builds, over recording mechanisms. The composition
+     * supplies these same three arguments and nothing else; `osSupported` selects whether an OS-driven
+     * mechanism exists at all, which is the pairing [requireConsistent] pins at the composition site.
+     */
     private fun factory(
         os: Recording,
         app: Recording,
         osSupported: Boolean,
     ): (UploadMechanism) -> UploadMechanismRuntime {
-        val appHere = if (osSupported) RelinquishThenRun({ os.stop() }, app) else app
-        val osHere = if (osSupported) RelinquishThenRun({ app.stop() }, os) else null
-        return { kind ->
-            when (kind) {
-                UploadMechanism.PHOTOKIT -> osHere ?: appHere
-                UploadMechanism.URL_SESSION -> appHere
-                UploadMechanism.IDLE -> IdleUploadMechanism
+        val osDriven = os.takeIf { osSupported }
+        requireConsistent(osSupported, osDriven)
+        return uploadMechanismTable(
+            osDriven = osDriven,
+            appDriven = app,
+            relinquishOsRegistration = { os.stop() },
+        )
+    }
+
+    /**
+     * The wiring mismatch the table's `PHOTOKIT` cell used to absorb twice over — running the app-driven
+     * mechanism unannounced AND skipping its relinquish wrap. Both facts are shell-supplied and
+     * independent by design (deriving one from the other would construct a mechanism the composition is
+     * only asking about), so this assertion is the only thing that makes them agree.
+     */
+    @Test
+    fun `a composition whose OS fact and mechanism disagree fails at assembly`() {
+        val log = mutableListOf<String>()
+        for (osSupported in listOf(true, false)) {
+            assertFailsWith<IllegalStateException>("osSupportsOsDrivenUpload=$osSupported") {
+                requireConsistent(osSupported, Recording("os", log).takeIf { !osSupported })
             }
         }
     }

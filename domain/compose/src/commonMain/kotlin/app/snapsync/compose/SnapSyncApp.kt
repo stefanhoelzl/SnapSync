@@ -29,9 +29,9 @@ import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
-import app.snapsync.feature.upload.RelinquishThenRun
-import app.snapsync.feature.upload.IdleUploadMechanism
 import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.feature.upload.requireConsistent
+import app.snapsync.feature.upload.uploadMechanismTable
 import app.snapsync.model.UploadMechanism
 import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.feature.upload.UploadArm
@@ -92,7 +92,6 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlin.time.Instant
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -210,7 +209,7 @@ class AppPorts(
      *  constructing a mechanism it is only asking about. */
     val osSupportsOsDrivenUpload: Boolean = false,
     /** Deregister a surviving OS-driven registration — **deregistration only**, no ledger clear and no
-     *  cursor reset (`upload-lifecycle`, [RelinquishThenRun]). Inert where no such registration exists. */
+     *  cursor reset (`upload-lifecycle`, `RelinquishThenRun`). Inert where no such registration exists. */
     val relinquishOsRegistration: suspend () -> Unit = {},
     /** A development pin on the resolved mechanism, read fresh at every resolution. **Always `null` in a
      *  production build**: its source exists only in a build made with the rig, so the mechanism a
@@ -458,39 +457,21 @@ class AppCore internal constructor(
     /**
      * Kind → instance (capability `upload-lifecycle`, "The upload mechanism is resolved, never selected").
      *
-     * Built **once**, and that is a platform requirement rather than an optimisation: the app-driven
-     * mechanism owns a background `URLSession` whose identifier must stay stable for the OS to re-adopt
-     * it across launches, and whose invalidation is terminal — an uncatchable `NSException` that aborts
-     * the process (`ios-url-session-upload`, "Cancellation never invalidates the background session").
-     * So resolving away from it and back returns the *same* instance; "instantiate" here means "obtain
-     * the mechanism for this kind", never "construct a second one".
-     *
-     * On an OS that carries both, the app-driven cell is wrapped so it gives the OS back a registration
-     * this process must not run behind. That is what makes the deregistration a consequence of the table
-     * rather than a case to remember, and it serves the development override and a downgrade to a partial
-     * grant with one rule instead of two.
+     * Built **once** — a platform requirement rather than an optimisation, for the reason
+     * [uploadMechanismTable] states — and built by the feature, not here. The mapping carries policy
+     * (the asymmetric cross-mechanism relinquish), and `:test:architecture`'s `ProducerExclusivityTest`
+     * drives that policy: it used to drive a hand-typed mirror of it, which had already drifted from
+     * this site. What remains here is what a composition owns — the two shell-supplied thunks and the
+     * assertion that this OS's resolver input and its constructed mechanism agree.
      */
     private val uploadMechanisms: (UploadMechanism) -> UploadMechanismRuntime by lazy {
         val osDriven = ports.osDrivenUpload()
-        val appDriven = ports.appDrivenUpload()
-        // Each cell relinquishes what the OTHER mechanism left behind, because both leave state the OS
-        // keeps across process death — a configuration record on one side, in-flight transfers and a
-        // submitted background task on the other. Symmetric structure, deliberately asymmetric content:
-        // giving up the OS-driven mechanism here is deregistration ONLY (its full stop would wipe ledger
-        // rows the incoming mechanism is about to reconcile precisely), while giving up the app-driven
-        // one is exactly its ordinary stop.
-        val appDrivenHere =
-            if (osDriven == null) appDriven else RelinquishThenRun(ports.relinquishOsRegistration, appDriven)
-        val osDrivenHere = osDriven?.let { RelinquishThenRun({ appDriven.stop() }, it) }
-        ({ kind ->
-            when (kind) {
-                // Unreachable unless this OS composed the mechanism: resolution clamps PHOTOKIT to what
-                // the device can run, and `:test:architecture` asserts no cell escapes that clamp.
-                UploadMechanism.PHOTOKIT -> osDrivenHere ?: appDrivenHere
-                UploadMechanism.URL_SESSION -> appDrivenHere
-                UploadMechanism.IDLE -> IdleUploadMechanism
-            }
-        })
+        requireConsistent(ports.osSupportsOsDrivenUpload, osDriven)
+        uploadMechanismTable(
+            osDriven = osDriven,
+            appDriven = ports.appDrivenUpload(),
+            relinquishOsRegistration = ports.relinquishOsRegistration,
+        )
     }
 
     // The tier-neutral upload lifecycle (capability `upload-lifecycle`): which verb fires on which
@@ -679,17 +660,18 @@ class AppCore internal constructor(
     private val latestSelectionSnapshot = MutableStateFlow<List<Resource>?>(null)
 
     /**
-     * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports):
-     * unrestricted under a full grant; the latest snapshot under a partial one. `Scoped(empty)` between
-     * the grant turning partial and the first snapshot is the honest gap — discovery finds nothing,
-     * rather than walking.
+     * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports).
+     *
+     * The two inputs are this composition's to hold — the permission port's current value and the
+     * snapshot cell above — and the derivation over them is `model/`'s
+     * [app.snapsync.model.selectionScope], which is where the rule about what a partial-grant member
+     * may upload at all belongs. A call and not a value because the answer changes between cycles.
      */
     fun selectionScope(): SelectionScope =
-        if (ports.photoAccess.permission.value == PermissionStatus.LIMITED) {
-            SelectionScope.Scoped(latestSelectionSnapshot.value ?: emptyList())
-        } else {
-            SelectionScope.Unrestricted
-        }
+        // Fully qualified, not imported: the member and the `model/` function share a name deliberately
+        // (this IS that derivation, over inputs only the composition holds), and a bare call would read
+        // as recursion to anyone who did not check the arity.
+        app.snapsync.model.selectionScope(ports.photoAccess.permission.value, latestSelectionSnapshot.value)
 
     // Re-read the own-device gallery total (enumeration, downloads suppressed), the ledger counts
     // (completed + in-flight), and the foreign download line (capability `sync-status`). No membership
@@ -884,9 +866,28 @@ class AppCore internal constructor(
      * synchronous prefix runs on whichever thread fired it — the main thread, for a tap. A `suspend`
      * function that never actually suspends (synchronous PhotoKit XPC behind a `suspend` signature is
      * exactly that shape) then runs to completion there.
+     *
+     * **A `check`, where an `?: EmptyCoroutineContext` used to stand.** That default was a default lane,
+     * one line above three decorators the law says may not supply one — and it degraded silently and
+     * asymmetrically: `scope.launch(EmptyCoroutineContext)` at least falls back to `Dispatchers.Default`,
+     * but `withContext(EmptyCoroutineContext)` changes dispatcher not at all, so every awaited tap
+     * (`leave`, `commitJoin`, `reconfigure`, `resetRename`, `sendDiagnostics`) would run to completion on
+     * the thread that fired it — the main thread — including `sendDiagnostics`' ~700 KB log read, which
+     * its own comment calls exactly the blocking work the main lane must never see. Nothing anywhere
+     * would say so.
+     *
+     * Unreachable today: every composition supplies one — the iOS shell's dedicated composition lane, the
+     * full-stack harness's `newSingleThreadContext`, `runBlocking`'s event loop under the world runners,
+     * `runTest`'s scheduler. The failure this converts is therefore the NEXT composition's, caught at
+     * assembly rather than as a main-thread stall nobody attributes (`module-architecture`, "Absence is
+     * never silent"; "Dispatcher lanes are fixed by the composition").
      */
     private val coreLane: CoroutineContext =
-        scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext
+        checkNotNull(scope.coroutineContext[ContinuationInterceptor]) {
+            "the composition scope carries no dispatcher: user commands would run on whatever thread " +
+                "fired them, which for an awaited tap is the main thread (law \"Dispatcher lanes are " +
+                "fixed by the composition\" — the composition names the lane, and no default may)"
+        }
 
     /**
      * A command the caller waits on, run on the composition lane. Used where the screen needs the
