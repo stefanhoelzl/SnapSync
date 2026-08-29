@@ -20,9 +20,9 @@
 #            idevice* call whose USBMUXD_SOCKET_ADDRESS lacks the UNIX: prefix
 #
 # The three lease shapes, and why each is what it is:
-#   scripts/device-lease --wait                 background, NOT ch-bg   waiting IS being busy
-#   ch-bg scripts/device-lease "<why>"          background AND ch-bg    holding must not read busy
-#   ch-bg scripts/device-lease --steal "<why>"  background AND ch-bg    same, plus the confirmation
+#   scripts/device-lease --wait                 background, NOT ch bg   waiting IS being busy
+#   ch bg scripts/device-lease "<why>"          background AND ch bg    holding must not read busy
+#   ch bg scripts/device-lease --steal "<why>"  background AND ch bg    same, plus the confirmation
 #
 # Default-deny by construction: the fence is decided by REDUCING the command — probe forms are
 # stripped, and anything that still names a device tool is fenced. A pymobiledevice3 subcommand
@@ -70,7 +70,7 @@ lease=$(printf '%s' "$cmd" \
         sub(/^[ \t]+/, "", seg)
         while (1) {
           if (match(seg, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+/)) { seg = substr(seg, RSTART + RLENGTH); continue }
-          if (match(seg, /^([^ \t]*\/)?ch-bg[ \t]+/))              { chbg = 1; seg = substr(seg, RSTART + RLENGTH); continue }
+          if (match(seg, /^([^ \t]*\/)?ch([ \t]+bg|-bg)[ \t]+/))  { chbg = 1; seg = substr(seg, RSTART + RLENGTH); continue }
           if (match(seg, /^(timeout[ \t]+[0-9.]+|time|nice|nohup|stdbuf|env|sh|bash)[ \t]+/)) { seg = substr(seg, RSTART + RLENGTH); continue }
           break
         }
@@ -101,13 +101,13 @@ if [ "$l_found" = 1 ]; then
   case "$l_mode" in
     wait)
       if [ "$l_wrapped" = 1 ]; then
-        decide deny "Do NOT run the wait under ch-bg. Waiting for the phone IS this workspace being busy, and the ch-bg marker is exactly what tells CodeHydra otherwise. Plain:  scripts/device-lease --wait"
+        decide deny "Do NOT run the wait under ch bg. Waiting for the phone IS this workspace being busy, and the ch bg marker is exactly what tells CodeHydra otherwise. Plain:  scripts/device-lease --wait"
       fi
       decide allow "Waiting for the phone. Touches no device — it watches the lock file and exits when the lease is free."
       ;;
     acquire | steal)
       if [ "$l_wrapped" != 1 ]; then
-        decide deny "Run the lease under ch-bg: \`ch-bg scripts/device-lease \"<why>\"\`. The ch-bg marker is what keeps this workspace able to go idle while it holds the phone; without it the workspace reads as busy for the whole device session."
+        decide deny "Run the lease under ch bg: \`ch bg scripts/device-lease \"<why>\"\`. The ch bg marker is what keeps this workspace able to go idle while it holds the phone; without it the workspace reads as busy for the whole device session."
       fi
       ;;
   esac
@@ -123,7 +123,7 @@ if [ "$l_found" = 1 ]; then
   h_when=$(lock_get acquired_human)
 
   if [ ! -f "$LOCK" ] || [ -z "$h_pid" ] || ! kill -0 "$h_pid" 2>/dev/null; then
-    decide deny "Nothing to steal: the phone is free (or its holder, pid ${h_pid:-?}, is dead and the lease is reclaimable). Take it plainly:  ch-bg scripts/device-lease \"<why>\""
+    decide deny "Nothing to steal: the phone is free (or its holder, pid ${h_pid:-?}, is dead and the lease is reclaimable). Take it plainly:  ch bg scripts/device-lease \"<why>\""
   fi
   if [ "$h_ws" = "$ws" ]; then
     decide deny "This workspace already holds the lease (pid $h_pid, since ${h_when:-?}). Nothing to steal — just run the device command."
@@ -166,7 +166,7 @@ esac
 
 # ---------------------------------------------------------------- the lease
 if [ ! -f "$LOCK" ]; then
-  decide deny "The connected iPhone is leased, and this workspace holds no lease. Take it first, as a BACKGROUND call:  ch-bg scripts/device-lease \"<why you need the phone>\"  — no confirmation is asked for a free phone, and every device command in this workspace then runs without prompting until you kill that shell."
+  decide deny "The connected iPhone is leased, and this workspace holds no lease. Take it first, as a BACKGROUND call:  ch bg scripts/device-lease \"<why you need the phone>\"  — no confirmation is asked for a free phone, and every device command in this workspace then runs without prompting until you kill that shell."
 fi
 
 h_ws=$(lock_get workspace)
@@ -175,11 +175,11 @@ h_reason=$(lock_get reason)
 h_when=$(lock_get acquired_human)
 
 if [ -z "$h_pid" ] || ! kill -0 "$h_pid" 2>/dev/null; then
-  decide deny "A lease file exists but its holder (pid ${h_pid:-?}, workspace ${h_ws:-?}) is dead — the lease shell was SIGKILLed without releasing. It is safe to reclaim:  ch-bg scripts/device-lease \"<why>\"  will take over a dead lease automatically."
+  decide deny "A lease file exists but its holder (pid ${h_pid:-?}, workspace ${h_ws:-?}) is dead — the lease shell was SIGKILLed without releasing. It is safe to reclaim:  ch bg scripts/device-lease \"<why>\"  will take over a dead lease automatically."
 fi
 
 if [ "$h_ws" != "$ws" ]; then
-  decide deny "The SE2 is held by workspace '$(basename "${h_ws:-unknown}")' since ${h_when:-?} — reason: \"${h_reason:-none given}\" (lease pid $h_pid, alive). Do NOT race it: a concurrent install wedges the installer for both of you. Queue for it as a BACKGROUND call, NOT under ch-bg:  scripts/device-lease --wait  — it exits when the phone is free (printing DEVICE-LEASE WAIT RESULT), and you then run the acquire. Steal it only if that session is genuinely abandoned:  ch-bg scripts/device-lease --steal \"<why>\""
+  decide deny "The SE2 is held by workspace '$(basename "${h_ws:-unknown}")' since ${h_when:-?} — reason: \"${h_reason:-none given}\" (lease pid $h_pid, alive). Do NOT race it: a concurrent install wedges the installer for both of you. Queue for it as a BACKGROUND call, NOT under ch bg:  scripts/device-lease --wait  — it exits when the phone is free (printing DEVICE-LEASE WAIT RESULT), and you then run the acquire. Steal it only if that session is genuinely abandoned:  ch bg scripts/device-lease --steal \"<why>\""
 fi
 
 decide allow "Lease held by this workspace since ${h_when:-?} — \"${h_reason:-none given}\"."

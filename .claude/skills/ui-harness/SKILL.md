@@ -43,12 +43,12 @@ Clicks go through the **real** buttons of the real panel, so there is no second 
 rot or lie.
 
 ```
-ch-bg ./gradlew :test:harness-driver:driveForge   # forge harness, 800x950
-ch-bg ./gradlew :test:harness-driver:driveWorld   # full-stack world, 1240x950
+ch bg ./gradlew :test:harness-driver:driveForge   # forge harness, 800x950
+ch bg ./gradlew :test:harness-driver:driveWorld   # full-stack world, 1240x950
 ```
 
 Run it backgrounded — it blocks serving until `/quit` or 30 min idle. It is a long-lived server rather
-than the work itself, so wrap it in **`ch-bg`** (CLAUDE.md, *Agent harness limits*) to keep the
+than the work itself, so wrap it in **`ch bg`** (CLAUDE.md, *Agent harness limits*) to keep the
 workspace able to go idle while it serves. Note the prefix changes the command string, so it falls
 outside the `Bash(./gradlew:*)` allow rule and will prompt once.
 

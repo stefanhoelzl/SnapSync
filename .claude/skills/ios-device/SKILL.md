@@ -23,11 +23,11 @@ To register a device UDID or mint a profile, load `asc-portal`.
 ## Take the lease first
 
 ⚠️ **There is ONE phone and up to a dozen workspaces. Take the lease before any command below** — as a
-**background** call, **always** under `ch-bg` (its marker is what lets this workspace still go idle
+**background** call, **always** under `ch bg` (its marker is what lets this workspace still go idle
 while it holds the phone):
 
 ```
-ch-bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
+ch bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
 ```
 
 **Nothing asks you to confirm a free phone** — "is it taken?" is a fact `scripts/device-guard` reads
@@ -37,18 +37,18 @@ since liveness is checked by pid, not by a timeout).
 
 **If another workspace holds it, queue — never race** (two concurrent installers wedge
 `installation_proxy` for both of you). The wait is a **second, separate invocation**, backgrounded
-and **NOT** under `ch-bg`, because waiting *is* this workspace being busy:
+and **NOT** under `ch bg`, because waiting *is* this workspace being busy:
 
 ```
 scripts/device-lease --wait          # exits when the phone is free: DEVICE-LEASE WAIT RESULT: free (…)
-ch-bg scripts/device-lease "<why>"   # then claim it — the acquire is always its own call
+ch bg scripts/device-lease "<why>"   # then claim it — the acquire is always its own call
 ```
 
 It waits **unbounded**, printing the holder, its reason and its **age** every 60s; that growing age
 is the signal that a session was abandoned. The gap between the two calls is real — if someone else
 claims first, the acquire exits 1 and tells you to `--wait` again. Taking it from a **live** holder
 is the one thing you are asked to confirm, because it kills that workspace's session mid-run:
-`ch-bg scripts/device-lease --steal "<why>"` (the guard denies a steal when there is nothing live to
+`ch bg scripts/device-lease --steal "<why>"` (the guard denies a steal when there is nothing live to
 steal from — use the plain acquire).
 
 **Outside the fence** — no lease needed, because they mutate nothing and never race: `usbmux list`,

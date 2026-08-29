@@ -28,8 +28,8 @@ of it can ship.
    the origin and the store path, and write the origin to `api/.localdev/host`. (It no longer prints a
    `BACKGROUND_UPLOAD_URL_BASE=…` line — that override was dead, and the hint now names the two steps in
    step 2 instead.) It is a long-lived server rather than the work itself, so wrap it
-   in **`ch-bg`** (CLAUDE.md, *Agent harness limits*) to keep the workspace able to go idle:
-   `ch-bg deno task dev:tunnel`. Contract and detail: `api/README.md`.
+   in **`ch bg`** (CLAUDE.md, *Agent harness limits*) to keep the workspace able to go idle:
+   `ch bg deno task dev:tunnel`. Contract and detail: `api/README.md`.
 2. **Rebuild the IPA against it** — the upload host is **compile-time** (PhotoKit forces it), so this
    needs a rebuild. 🚫 **Not via `BACKGROUND_UPLOAD_URL_BASE=` on the xcodebuild line**: that value now
    lives in a generated bundle resource no build setting can reach, so the override is accepted, ignored,
