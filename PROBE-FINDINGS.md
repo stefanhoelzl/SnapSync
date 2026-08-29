@@ -140,7 +140,7 @@ Two consequences, both design-changing:
    needs a deliberate decision of its own — summarise, drop, or truncate — and cannot simply ride
    an existing channel.
 
-### 4c. ⚠️ `applicationExitMetrics` has still NOT been observed
+### 4c. ~~`applicationExitMetrics` has still NOT been observed~~ — **RESOLVED 2026-08-29, see §5**
 
 The delivered metric payload carried **only** `diskSpaceUsageMetrics` — no exit metrics, no CPU, no
 memory:
@@ -157,7 +157,7 @@ originate from different system sources and arrive in a separate payload"* — b
 central object of this whole design has not yet been seen on a device.** Everything about
 `MXAppExitMetric`'s content, cadence, and window remains klib- and documentation-derived only.
 
-**This is the one question the probe has not answered.**
+**Answered on 2026-08-29 — see §5 below.** The payload observed on the 26th was a disk-space-only payload from a different system source; the daily aggregate carrying exit metrics is a separate payload with a true 24-hour window.
 
 ---
 
@@ -242,3 +242,98 @@ code, but it cost a full crash cycle here and reads as "the app crashes on launc
 - ~~whether analytics-sharing gates delivery~~ — **moot**: delivery works on this device as configured
 - extension exits: structurally unattributable (daily report cadence vs a per-invocation process
   lifetime), unchanged by anything measured here
+
+
+---
+
+## 5. `applicationExitMetrics` — OBSERVED ✅ (2026-08-29)
+
+Three and a half days after arming, a probe build was reinstalled and launched. One callback pair
+delivered **5 metric payloads and 12 diagnostic payloads** at once — everything queued since the 27th,
+across two intervening reinstalls of builds that carried no probe.
+
+### The exit metrics, verbatim
+
+Payload with a **true 24-hour window** (`2026-08-28 00:00:00 .. 2026-08-29 00:00:00`):
+
+```json
+"applicationExitMetrics": {
+  "backgroundExitData": {},
+  "foregroundExitData": {
+    "cumulativeMemoryResourceLimitExitCount": 1,
+    "cumulativeAbnormalExitCount": 6
+  }
+},
+"memoryMetrics": {
+  "peakMemoryUsage": "99409 kB",
+  "averageSuspendedMemory": { "averageValue": "21561 kB", "standardDeviation": 21282.05, "sampleCount": 4 }
+}
+```
+
+The 27th's window carried `"backgroundExitData": {}, "foregroundExitData": {}` and
+`peakMemoryUsage: 174081 kB`.
+
+**A real memory kill was attributed.** `cumulativeMemoryResourceLimitExitCount: 1`, foreground — the
+same class as the `proc-thrashing` jetsam in §5-of-the-earlier-record. The premise of the whole design
+is confirmed end to end: the OS did name the reason, and it reached the app.
+
+### 🔴 5a. Zero-valued counters are OMITTED from the JSON, not reported as 0
+
+`foregroundExitData` carried **two** keys, not six. `backgroundExitData` is `{}`, not ten zeros.
+
+This matters for the "dump the payload's own JSON verbatim so a counter Apple adds appears for free"
+idea. It still holds for *new* counters, but the JSON alone **cannot distinguish "this counter was
+zero" from "this OS does not have this counter"** — an absence-is-never-silent problem living inside
+the representation. The **Kotlin property accessors do not have this problem**: they are declared
+non-null `ULong` and return 0. So a design that reads named properties gets a total function; one that
+forwards JSON gets a partial one. That is an argument for reading the properties and pinning the set,
+against the earlier suggestion that verbatim JSON dissolves the need for a vocabulary pin.
+
+### 5b. There are two payload SOURCES, with different window shapes
+
+| payload | window | carries |
+|---|---|---|
+| daily aggregate | **true 24 h** (`00:00:00 .. 00:00:00`) | exit · memory · cpu · gpu · disk IO · launch · responsiveness · network · display · location · cellular · signpost |
+| disk-space | **a point** (`t .. t`) | `diskSpaceUsageMetrics` only |
+
+Of 5 delivered payloads, 2 were daily aggregates and 3 were disk-only. **This is why the 2026-08-26
+observation saw only `diskSpaceUsageMetrics`** and wrongly suggested exit metrics might never appear —
+that was simply the wrong payload. A design must not assume one payload per day, nor that any given
+payload carries exit metrics: `applicationExitMetrics` is nullable and frequently absent.
+
+### 5c. Durability confirmed at three days and across probe-less builds
+
+Payloads for the 27th, 28th and 29th were all delivered in one batch, having survived two reinstalls
+of builds with no subscriber. Apple's *"any previously undelivered daily reports"* holds strongly:
+**a missed launch, or a build without the integration, delays attribution rather than losing it.**
+
+### 🔴 5d. Logging diagnostics verbatim DESTROYS the log — measured
+
+One delivery of 12 diagnostic payloads wrote **15,156,294 bytes**:
+
+```
+debug.log.1   11,118,442 bytes   (rolled)
+debug.log      4,037,852 bytes   (current)
+callback duration: 18,078 ms
+```
+
+Consequences, all measured rather than projected:
+
+- it **blew the 10 MB roll in a single delivery**;
+- it **destroyed the prior log history** — the rolled sibling now begins at 2026-08-28 20:01, and
+  everything older is gone;
+- it blocked for **18 seconds** inside the callback.
+
+So the earlier suggestion — *"write the diagnostic verbatim to `debug.log`; it is un-redacted,
+size-bounded, and rides the next operator dump"* — is **not a tradeoff but self-destruction**: it
+obliterates the diagnostic channel it was meant to feed, and takes the operator dump's log tail with
+it. **The call stacks must not reach `debug.log` at all.** Only the scalars can.
+
+This also re-frames §4b: the problem is not 314 KB per crash, it is 314 KB × however many payloads
+the OS has queued — which was **12** after three days on a device that crashes during development.
+
+### 5e. Delivery timing, restated
+
+The `didReceive*` callbacks fired ~1 s after `addSubscriber`, on the first launch of a subscribing
+build. Confirmed again: delivery is prompt **relative to launch**, and arbitrarily delayed relative
+to the events described.
