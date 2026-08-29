@@ -276,7 +276,7 @@ fun deviceCommands(
     //
     // It never answers: the process is gone before a response can be written, and the caller sees the
     // connection drop. That IS the confirmation.
-    "crash" to RigCommand {
+    "crash" to RigCommand { _, _ ->
         log.i { "[metrickit] probe: aborting on request to manufacture a crash diagnostic" }
         abort()
         // `abort(): Unit` in the posix klib, so the map's value type still needs one. The process is
