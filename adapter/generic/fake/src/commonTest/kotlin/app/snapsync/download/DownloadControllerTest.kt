@@ -17,6 +17,7 @@ import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.StagedResource
+import app.snapsync.fake.inMemoryStagedBytes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -145,13 +146,18 @@ class DownloadControllerTest {
         jobs: RecordingJobs = RecordingJobs(),
         importer: FakeImporter = FakeImporter(),
         presence: ImportedAssetPresence = InMemoryAssetPresence(),
-        downloadEnabled: () -> Boolean? = { true },
+        // Whether a row's staged bytes are still on disk — the second oracle the *absent* branch reads
+        // (capability `photo-download`). Defaults to `None`, which answers "all present": these tests
+        // stage bytes through the store and nothing in them consumes those files, so that is the honest
+        // answer for the default fixture. A test modelling a library that INGESTED the bytes passes
+        // `inMemoryStagedBytes(mutableSetOf())` and says so at the call site.
         stagedBytes: StagedBytes = StagedBytes.None,
+        downloadEnabled: () -> Boolean? = { true },
     ) = DownloadController(
         union, store, jobs, importer, presence,
-        stagedBytes = stagedBytes,
         // Named from here on: this constructor has grown twice mid-change, and positional
         // arguments silently re-bind when it does.
+        stagedBytes = stagedBytes,
         myDeviceId = myDevice, downloadEnabled = downloadEnabled,
     )
 
@@ -456,21 +462,30 @@ class DownloadControllerTest {
     @Test
     fun an_absent_verdict_clears_the_marker_once_the_import_is_no_longer_claimed() = runTest {
         val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
         val ref = AssetRef("DEVICE-A", "Q")
         val c = controller(
-            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store,
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
+            // Its staged bytes are INTACT, so the library never ingested them and nothing was created —
+            // which is what makes this absence actionable (capability `photo-download`). A marker with no
+            // staged resources at all is not a state a device reaches: the marker is written from inside
+            // the change block, which runs only once every resource is staged.
+            stagedBytes = inMemoryStagedBytes(mutableSetOf("/p", "/l")),
         )
         c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
         // A marker left by a PREVIOUS process: nothing is claimed here, so absence is trustworthy.
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        store.recordCreatedLocalId(ref, "PREVIOUS-PROCESS")
 
         c.sweepInterruptedImports()
 
         assertTrue(
-            store.suppressedLocalIds().isEmpty(),
+            "PREVIOUS-PROCESS" !in store.suppressedLocalIds(),
             "nothing may still commit, so absence is trustworthy and the row goes back to importable",
         )
+        assertEquals(1, importer.imported.size, "and the drain imports it, so the photo still arrives")
     }
 
     /**
@@ -715,25 +730,31 @@ class DownloadControllerTest {
     }
 
     /**
-     * THE RESIDUAL, pinned (capability `photo-download`). Measured on device 2026-08-09: a
-     * `performChanges` commit SURVIVES the death of the process that opened it, so the prior change's
-     * premise ("a transaction cannot outlive its process") is false. A relaunch is normally safe anyway —
-     * the commit has landed by the time adjudication asks, so the answer is *present* and the row settles.
+     * THE DEFECT THIS CHANGE CLOSES (capability `photo-download`). A `performChanges` commit SURVIVES the
+     * death of the process that opened it (measured, SE2 2026-08-09), so a relaunch can adjudicate a row
+     * **while that commit is still landing**, and the library answers *absent* about an asset that is
+     * about to exist. Clearing the marker there strips the created asset's only suppression handle, and
+     * upload discovery sends a downloaded photo back into someone else's event — `SNAPSYNC-9`, reached
+     * through the guard built to prevent it.
      *
-     * This pins what happens in the one window where it has NOT landed: a fresh process, no claim, and a
-     * library honestly answering *absent* about a commit still in flight. It documents accepted behaviour,
-     * not desired behaviour — the same bounded trade `photo-download` already takes for a deleted photo
-     * ("resurrects it at most once").
+     * Reproduced in 8 of 9 runs at 25-43 MB, with the staged file gone at relaunch 6 of 6 and gone BEFORE
+     * the asset became visible (`changes/settle-imports-on-consumed-bytes/PROBE-FINDINGS.md`). That is the
+     * state modelled here: the library ingested the bytes, so nothing is left on disk, and the row is
+     * settled against the marker it already holds rather than cleared.
+     *
+     * This test previously asserted the opposite, as an accepted residual.
      */
     @Test
-    fun a_surviving_commit_still_in_flight_at_relaunch_is_the_accepted_residual() = runTest {
+    fun a_surviving_commit_still_in_flight_at_relaunch_settles_rather_than_clearing() = runTest {
         val store = InMemoryDownloadStore()
         val importer = FakeImporter()
         val ref = AssetRef("DEVICE-A", "Q")
-        // A previous process: the change block ran and recorded its marker; the process then died.
+        // A previous process: the change block ran, the library INGESTED the staged files (so they are
+        // gone from disk), the marker was recorded, and the process died mid-commit.
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())), // commit in flight
+            stagedBytes = inMemoryStagedBytes(mutableSetOf()), // the library took them
         )
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
@@ -742,16 +763,63 @@ class DownloadControllerTest {
 
         c.sweepInterruptedImports() // the relaunched process adjudicates
 
-        // What happens today, asserted so a future change cannot alter it silently: the marker is
-        // cleared, the asset is imported a SECOND time, and the suppression set holds only the second
-        // copy. When the surviving commit then lands, the first copy is in the library with nothing
-        // recording that it must not be uploaded — and upload discovery sends it back into the event.
-        assertEquals(1, importer.imported.size, "the row was re-imported")
-        assertEquals(
-            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
-            "and the FIRST copy's handle is gone — this is the residual, not a desired outcome",
+        assertEquals(0, importer.imported.size, "no second asset was created")
+        assertTrue(
+            "FIRST-COPY" in store.suppressedLocalIds(),
+            "the surviving commit's asset keeps its suppression handle",
         )
-        assertTrue("FIRST-COPY" !in store.suppressedLocalIds(), "the surviving commit's asset is unsuppressed")
+        assertTrue(store.isSettled(ref), "and the row is settled against the marker it already held")
+    }
+
+    /**
+     * One resource of several consumed is as much evidence of a submitted creation as all of them: an
+     * asset's resources are ingested individually, and a process can die between them.
+     */
+    @Test
+    fun one_consumed_resource_of_several_settles_the_row() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
+            presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
+            stagedBytes = inMemoryStagedBytes(mutableSetOf("/p")), // the paired video was taken, the still not yet
+        )
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        store.recordCreatedLocalId(ref, "FIRST-COPY")
+
+        c.sweepInterruptedImports()
+
+        assertEquals(0, importer.imported.size, "no second asset was created")
+        assertTrue("FIRST-COPY" in store.suppressedLocalIds(), "the handle survives on partial evidence")
+    }
+
+    /**
+     * A marker-carrying row recording no staged resource at all is evidence NEITHER way — nothing on disk
+     * to have been consumed, and nothing to import from. This branch exists to stop acting without
+     * evidence, so it must not act here either.
+     */
+    @Test
+    fun absent_with_no_staged_resources_changes_nothing() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
+            presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
+            stagedBytes = inMemoryStagedBytes(mutableSetOf()),
+        )
+        c.reconcile("event")
+        store.dropResources(ref) // no staged resources remain to reason from
+        store.recordCreatedLocalId(ref, "FIRST-COPY")
+
+        c.sweepInterruptedImports()
+
+        assertEquals(0, importer.imported.size, "nothing was imported")
+        assertTrue("FIRST-COPY" in store.suppressedLocalIds(), "and nothing was cleared")
+        assertFalse(store.isSettled(ref), "the row is left unconfirmed rather than settled")
     }
 
     /**
@@ -974,6 +1042,11 @@ class DownloadControllerTest {
             released += paths
             remaining.removeAll(paths.toSet())
         }
+
+        // [remaining] is this double's disk, so presence is read from it for the same reason
+        // [release] mutates it — the two must answer consistently or a reclaim test would see
+        // files it had just freed.
+        override suspend fun allPresent(paths: List<String>): Boolean = remaining.containsAll(paths)
     }
 
     @Test

@@ -13,6 +13,7 @@ import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.StagedResource
+import app.snapsync.ports.UnconfirmedImport
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
@@ -254,23 +255,11 @@ class DownloadController(
                 // The asset is really there. Settle the row against the marker it already holds — never
                 // against a fresh one, which is what overwrote the first copy's handle and orphaned it.
                 AssetPresence.PRESENT -> mutex.withLock {
-                    // Guarded on the marker, so a verdict computed for an identifier the row no longer
-                    // holds settles nothing — applying a stale PRESENT would replace a live suppression
-                    // handle with a dead one, the same harm as a stale ABSENT by a different route.
-                    if (!store.confirmCreatedLocalId(row.ref, row.createdLocalId)) {
+                    if (!settleAgainstMarker(row)) {
                         log.i { "adjudicated ${row.ref.sourceAssetId}: verdict went stale — row already settled, discarded" }
                         return@withLock
                     }
-                    // The library says the asset EXISTS, so that transaction landed and the claim describes
-                    // nothing. Hygiene rather than recovery, and deliberately stated as such: the write
-                    // above just made the row terminal, and a terminal row is excluded from importable
-                    // work, from adjudication and from the prune alike — so no reader can tell a released
-                    // claim from a retained one here. What this buys is a bounded set, not a behaviour.
-                    importing -= row.ref
                     log.i { "adjudicated ${row.ref.sourceAssetId}: asset ${row.createdLocalId} exists — settled, not re-imported" }
-                    // Only past the guard: releasing the bytes of a row that moved on would delete the
-                    // staged files a live import is reading from.
-                    releaseStagedBytes(row.ref) // settled by adjudication is still settled
                 }
                 // "Absent" is honest and WRONG to act on while an import for this ref is running here: the
                 // library answers about COMMITTED state, so it cannot see an asset whose change block has
@@ -300,6 +289,42 @@ class DownloadController(
                     // claim here, under the lock that also governs it, sees the truth.
                     if (row.ref in importing) {
                         log.i { "adjudicated ${row.ref.sourceAssetId}: absent, but its import is in flight — left unconfirmed" }
+                        return@withLock
+                    }
+                    // THE SECOND ORACLE, and the one the library cannot be: did the photo library already
+                    // TAKE this row's bytes? It takes a resource's file when it ingests it, and it ingests
+                    // only as part of creating an asset — so their absence is positive evidence that a
+                    // creation was submitted, available at exactly the moment `absent` cannot be trusted.
+                    //
+                    // Nothing else can have removed them: `releaseStagedBytes` runs only past a confirming
+                    // write, `pruneNonTerminal` never drops a marker-carrying row, and the App-Group
+                    // staging directory is not a location the OS reclaims.
+                    //
+                    // Measured (`changes/.../settle-imports-on-consumed-bytes/PROBE-FINDINGS.md`): after a
+                    // SIGKILL mid-commit the file is gone at relaunch 6/6, and gone BEFORE the asset is
+                    // visible — the exact state this reads. 8 of 9 runs at 25-43 MB reached it.
+                    val stagedPaths = store.stagedResources(row.ref).map { it.stagedPath }
+                    if (stagedPaths.isEmpty()) {
+                        // Evidence neither way. A row carrying a marker and recording no staged resource
+                        // has nothing to reason from, and this branch exists to stop reasoning without
+                        // evidence — so it is treated exactly as `unknown`.
+                        log.i { "adjudicated ${row.ref.sourceAssetId}: absent, but no staged resources to reason from — left unconfirmed" }
+                        return@withLock
+                    }
+                    if (!stagedBytes.allPresent(stagedPaths)) {
+                        // A creation WAS submitted. Settle against the marker the row already holds —
+                        // identical handling to `present`, because the evidence differs and the conclusion
+                        // does not. Clearing here is what re-uploads a downloaded photo into someone
+                        // else's event, and the re-import it would enable cannot succeed anyway: the bytes
+                        // it would read are the ones the library just took (measured, `3302`).
+                        if (!settleAgainstMarker(row)) {
+                            log.i { "adjudicated ${row.ref.sourceAssetId}: verdict went stale — row already settled, discarded" }
+                            return@withLock
+                        }
+                        log.i {
+                            "adjudicated ${row.ref.sourceAssetId}: absent, but its staged bytes were consumed — " +
+                                "commit not yet visible, settled against marker ${row.createdLocalId}"
+                        }
                         return@withLock
                     }
                     // Nothing was created after all. Clear the marker FIRST: an import that fails before
@@ -459,6 +484,31 @@ class DownloadController(
      * staged path for a file that no longer exists — which is also what makes [releaseSettledBytes]
      * self-extinguishing. Best-effort: freeing disk is never worth failing an import over.
      */
+    /**
+     * Settle [row] against the marker it **already holds**, never against a fresh one — the single action
+     * both evidence-bearing adjudication branches take (capability `photo-download`).
+     *
+     * `present` and `absent-with-consumed-bytes` differ in what proved a creation was submitted, not in
+     * what follows from it, so they share this rather than each reimplementing it. Returns whether the
+     * guarded write applied; `false` means the row moved on between the lookup and here — the completion
+     * callback settles rows from the platform's own queue holding no lock — and the caller must then do
+     * nothing further, least of all release bytes belonging to whatever the row moved on to.
+     *
+     * Releasing the claim is hygiene rather than recovery: the write above just made the row terminal,
+     * and a terminal row is excluded from importable work, from adjudication and from the prune alike, so
+     * no reader can tell a released claim from a retained one. What it buys is a bounded set.
+     *
+     * Callers hold [mutex]; every write here is governed by it.
+     */
+    private suspend fun settleAgainstMarker(row: UnconfirmedImport): Boolean {
+        if (!store.confirmCreatedLocalId(row.ref, row.createdLocalId)) return false
+        importing -= row.ref
+        // Only past the guard: releasing the bytes of a row that moved on would delete the staged files a
+        // live import is reading from.
+        releaseStagedBytes(row.ref)
+        return true
+    }
+
     private suspend fun releaseStagedBytes(ref: AssetRef) {
         runCatching {
             val paths = store.stagedResources(ref).map { it.stagedPath }

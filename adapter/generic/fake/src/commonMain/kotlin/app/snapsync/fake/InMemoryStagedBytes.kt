@@ -25,4 +25,6 @@ internal class InMemoryStagedBytes(
     override suspend fun release(paths: List<String>) {
         files.removeAll(paths.toSet())
     }
+
+    override suspend fun allPresent(paths: List<String>): Boolean = files.containsAll(paths)
 }
