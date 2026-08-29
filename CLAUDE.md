@@ -154,10 +154,11 @@ Two harness facts that are invisible until they bite, and that no amount of loca
   `SHIP-WAIT RESULT: <status> (<reason>)`) — write it with `writeSync(1, …)` or an equivalent, because
   a `console.log` immediately followed by `process.exit()` is truncated when stdout is a pipe. Then
   "no line" stays distinguishable from "it failed".
-- 🏃 **`ch-bg`** (`~/.local/share/codehydra/bin/ch-bg`) runs a command transparently — same stdio, same
-  exit code — and exists only to put a marker in the command string so CodeHydra does **not** count
-  that background shell as keeping the workspace busy. Wrap long-lived processes that are *not* the
-  work itself: dev servers, watchers, `tail -f`. Do **not** wrap work the workspace is genuinely doing
+- 🏃 **`ch bg <cmd…>`** runs a command transparently — same stdio, same exit code — and exists only
+  to put a marker in the command string so CodeHydra does **not** count that background shell as
+  keeping the workspace busy. (The old standalone `ch-bg` wrapper still works and still counts as the
+  marker, but `ch bg` is the canonical spelling — write that one.) Wrap long-lived processes that
+  are *not* the work itself: dev servers, watchers, `tail -f`. Do **not** wrap work the workspace is genuinely doing
   (`/ship`'s merge wait rebases and force-pushes the worktree — it *should* read as busy), and note
   the prefix changes the command string, so it can fall outside an `allowed-tools` grant like
   `Bash(npx:*)` and start prompting.

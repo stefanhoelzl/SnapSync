@@ -407,9 +407,9 @@ call is killed at exactly `10m 0s` while the script is still mid-wait, and the m
 is never learned. Raising the value changes nothing; it is the clamp, not the number. (This
 happened on 26 consecutive ships. See "Agent harness limits" in CLAUDE.md.)
 
-Do **not** wrap the command in `ch-bg`. A ship is real work - the script rebases and
+Do **not** wrap the command in `ch bg`. A ship is real work - the script rebases and
 force-pushes this very worktree - so the workspace should read as busy while it runs, and the
-`ch-bg` prefix would also fall outside this command's `Bash(npx:*)` grant, prompting on every
+`ch bg` prefix would also fall outside this command's `Bash(npx:*)` grant, prompting on every
 ship.
 
 The Bash tool returns immediately with a task id and an **output file path**. Then:

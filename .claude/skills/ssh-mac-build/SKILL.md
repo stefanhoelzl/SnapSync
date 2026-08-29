@@ -107,8 +107,8 @@ before assuming otherwise, since this is an image property and Apple may move ag
 
 Both are invisible to `git status`, which is exactly why they bite.
 
-Do **not** wrap the `until gh run download` poll in `ch-bg`: that poll is the workspace genuinely
-waiting on its own build, so it *should* read as busy (CLAUDE.md, *Agent harness limits*). `ch-bg` is
+Do **not** wrap the `until gh run download` poll in `ch bg`: that poll is the workspace genuinely
+waiting on its own build, so it *should* read as busy (CLAUDE.md, *Agent harness limits*). `ch bg` is
 for long-lived processes that are not the work — a tunnel you leave up, a `tail -f`.
 
 ## 6a. Build an UNSIGNED archive

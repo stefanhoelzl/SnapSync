@@ -3,17 +3,17 @@
 #
 # Dev infrastructure: non-gating, no spec. Enforced by scripts/device-guard (see .claude/settings.json).
 #
-#   scripts/device-lease --wait                    # background, NOT ch-bg; exits 0 when the phone is free
-#   ch-bg scripts/device-lease "<why>"             # background + ch-bg; claims and HOLDS (this process IS the lease)
-#   ch-bg scripts/device-lease --steal "<why>"     # same, taken from a LIVE holder — confirmed once
+#   scripts/device-lease --wait                    # background, NOT ch bg; exits 0 when the phone is free
+#   ch bg scripts/device-lease "<why>"             # background + ch bg; claims and HOLDS (this process IS the lease)
+#   ch bg scripts/device-lease --steal "<why>"     # same, taken from a LIVE holder — confirmed once
 #
 # Why the shapes differ, and why the guard refuses the wrong one rather than letting you find out
 # by hanging a turn:
 #   - all three are BACKGROUND calls: the wait is unbounded and holding is forever, and a
 #     foreground Bash call dies at the harness's 10-minute clamp;
-#   - the ACQUIRE runs under ch-bg, whose marker excludes the shell from keeping the workspace
+#   - the ACQUIRE runs under ch bg, whose marker excludes the shell from keeping the workspace
 #     busy — a workspace may hold the phone and still go idle;
-#   - the WAIT runs WITHOUT ch-bg, because waiting IS this workspace being busy.
+#   - the WAIT runs WITHOUT ch bg, because waiting IS this workspace being busy.
 #
 # Release = kill the holding shell (it shows in the CodeHydra sidebar for exactly as long as the
 # lease lasts). Session death releases it too. A SIGKILL cannot run the trap, so a lease whose pid
@@ -50,8 +50,8 @@ TAG_WAIT_LABEL='⏳'
 TAG_WAIT_DESC='Waiting for the device lease'
 
 usage() {
-  echo "usage: scripts/device-lease --wait                    (background, NOT under ch-bg)" >&2
-  echo "       ch-bg scripts/device-lease [--steal] \"<why you need the phone>\"" >&2
+  echo "usage: scripts/device-lease --wait                    (background, NOT under ch bg)" >&2
+  echo "       ch bg scripts/device-lease [--steal] \"<why you need the phone>\"" >&2
   exit 2
 }
 
@@ -216,7 +216,7 @@ if [ -f "$LOCK" ]; then
       rm -f "$LOCK"
     else
       echo "device-lease: held by '$(basename "${h_ws:-unknown}")' (pid $h_pid) — \"${h_reason:-none given}\"" >&2
-      echo "device-lease: wait for it:  scripts/device-lease --wait   (background, NOT under ch-bg)" >&2
+      echo "device-lease: wait for it:  scripts/device-lease --wait   (background, NOT under ch bg)" >&2
       exit 1
     fi
   else
@@ -241,7 +241,7 @@ umask 077
 if ! ln "$tmp" "$LOCK" 2>/dev/null; then
   rm -f "$tmp"
   echo "device-lease: lost the race — '$(basename "$(lock_get workspace)")' (pid $(lock_get pid)) claimed it first — \"$(lock_get reason)\"" >&2
-  echo "device-lease: wait again:  scripts/device-lease --wait   (background, NOT under ch-bg)" >&2
+  echo "device-lease: wait again:  scripts/device-lease --wait   (background, NOT under ch bg)" >&2
   exit 1
 fi
 rm -f "$tmp"

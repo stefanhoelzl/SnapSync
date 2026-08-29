@@ -29,10 +29,10 @@ To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `ios-devi
 ## Take the device lease first
 
 This skill drives the one phone, so everything here is inside `scripts/device-guard`'s fence. Take
-the lease exactly as `ios-device` describes — as a **background** call, **always** under `ch-bg`:
+the lease exactly as `ios-device` describes — as a **background** call, **always** under `ch bg`:
 
 ```
-ch-bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
+ch bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
 ```
 
 ## Containment — why this never ships
@@ -199,8 +199,8 @@ the response for that reason. A fetch under `.limited` can also surface iOS's ow
 ## Emptying the library
 
 ```
-ch-bg curl -sS -X POST "localhost:18099/device/gallery/wipe?scope=all"   # all|assets|albums; NO --max-time
-ch-bg curl -sS -X POST "…/wipe?scope=assets&limit=1"           # one asset — the smallest thing that prompts
+ch bg curl -sS -X POST "localhost:18099/device/gallery/wipe?scope=all"   # all|assets|albums; NO --max-time
+ch bg curl -sS -X POST "…/wipe?scope=assets&limit=1"           # one asset — the smallest thing that prompts
       curl -sS --max-time 30 -X POST "…/wipe?scope=assets&limit=0"   # selects nothing — the probe, below
 ```
 
@@ -208,8 +208,8 @@ ch-bg curl -sS -X POST "…/wipe?scope=assets&limit=1"           # one asset —
 empty string, not "unset", and it is refused with a `400` on purpose — a mistyped bound must never fall
 back to "no window" and delete the whole library.
 
-🏃 **Run it under `ch-bg`, backgrounded, and end your turn.** This is the one call in this channel where
-that is right, and it is not the usual `ch-bg` rule (CLAUDE.md: don't wrap work the workspace is genuinely
+🏃 **Run it under `ch bg`, backgrounded, and end your turn.** This is the one call in this channel where
+that is right, and it is not the usual `ch bg` rule (CLAUDE.md: don't wrap work the workspace is genuinely
 doing). The wipe is not waiting on a machine — it is waiting for **a person to walk to the phone and tap**.
 That is the definition of idle: the workspace should go idle so CodeHydra *notifies* the operator they are
 needed, instead of reading busy while nothing happens and nobody is told. Foreground is not an option
