@@ -44,6 +44,35 @@ interface StagedBytes {
     /** Delete the files at [paths]. Missing files are not an error; the operation is idempotent. */
     suspend fun release(paths: List<String>)
 
+    /**
+     * Are all of [paths] still on disk?
+     *
+     * The **fact**, and only the fact. This reports file existence; it does not report consumption,
+     * ingestion, or any reading of *why* a file is absent. That inference belongs to the download
+     * feature, which owns the knowledge that makes it sound: on a row carrying a created-asset marker
+     * nothing else can have removed the file, because [release] runs only after a confirming write or
+     * immediately before dropping a row, and a marker-carrying row is never dropped. Putting the
+     * inference behind this port would move a load-bearing decision to where `commonTest` cannot reach
+     * it.
+     *
+     * It lives here rather than on a port of its own for the same reason [stagingRoot] does: one owner
+     * decides where staging lives, what may be reclaimed from it, and what is still in it, so the three
+     * can never disagree about a directory.
+     *
+     * Why the adjudicator needs it (capability `photo-download`): the photo library answers about
+     * **committed** state, so it answers *absent* about an asset whose creating transaction is still
+     * open — and a commit outlives the process that opened it. The staged bytes are the second,
+     * independent oracle. The library takes a resource's file when it ingests it, which it does only as
+     * part of creating an asset, so their absence is positive evidence that a creation was submitted at
+     * a moment when the library's own answer cannot be acted on.
+     *
+     * **Any** missing member answers `false`: an asset's resources are ingested individually, so one
+     * missing file is as much evidence of a submitted creation as all of them. An **empty** [paths]
+     * answers `true`, carrying no evidence either way — the caller distinguishes that case and declines
+     * to act on it rather than reading it as "nothing was consumed".
+     */
+    suspend fun allPresent(paths: List<String>): Boolean
+
     companion object {
         /**
          * Stages nothing and releases nothing — the default for the features that only ever *reclaim*
@@ -62,6 +91,17 @@ interface StagedBytes {
                 error("StagedBytes.None stages nothing — a composition that downloads must supply a real StagedBytes")
 
             override suspend fun release(paths: List<String>) = Unit
+
+            /**
+             * `true` — nothing is missing, because nothing was ever staged here.
+             *
+             * Chosen to preserve the pre-existing branch rather than to silently settle rows: a
+             * composition that stages nothing also imports nothing from staging, so no adjudication
+             * reachable from here has bytes to reason about. Answering `false` would read as "these were
+             * consumed" and settle every unconfirmed row a stand-in composition happened to hold, which
+             * is a behaviour reached by omission — the shape [stagingRoot]'s `error` exists to refuse.
+             */
+            override suspend fun allPresent(paths: List<String>): Boolean = true
         }
     }
 }

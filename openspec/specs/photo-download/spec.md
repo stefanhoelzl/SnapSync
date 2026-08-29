@@ -353,9 +353,13 @@ because the library has not yet reported — leaves the download store holding a
 process imports anything, it SHALL ask the photo library about the unconfirmed rows it inherited, and act
 on the answer:
 
-- **present** — record the import against the marker it already holds and create nothing;
-- **absent** — clear the marker, then import, **but only if no import for that ref is running in this
-  process**;
+- **present** — settle the row against the marker it already holds and create nothing;
+- **absent, and the row's staged bytes are gone** — settle the row against the marker it already holds,
+  exactly as for *present*. The photo library consumed those bytes when it ingested them, which it does
+  only as part of creating an asset, so their absence is positive evidence that a creation was submitted;
+- **absent, and the row's staged bytes are still present** — clear the marker, then import, **but only if
+  no import for that ref is running in this process**;
+- **absent, and the row records no staged resources at all** — treat exactly as *unknown*;
 - **unknown** — do nothing this pass, and retry later.
 
 **Adjudication is a recovery sweep, not a gate on the import path.** A row carrying a marker is already
@@ -395,10 +399,15 @@ The record of claimed refs SHALL NOT survive the process. It describes imports r
 process that has ended is running none; a durable record would distrust a ref forever and its photo would
 never arrive. This SHALL NOT be justified by the claim that a transaction cannot outlive the process that
 opened it — that premise was measured and is **false** (SE2, iOS 26.5.2, 2026-08-09: a SIGKILL 200 ms after
-the change block returned still left the asset in the library). What makes the post-relaunch path safe is
-the *present* branch, which settles such a row against the marker it already holds. The residual — a
-relaunch adjudicating while a surviving commit is still in flight — is accepted and unchanged
-(decision record: `changes/archive/2026-08-10-take-imports-off-the-download-lock`).
+the change block returned still left the asset in the library).
+
+Because a commit outlives its process, a relaunch can adjudicate a row **while that commit is still in
+flight**, and the library then answers *absent* about an asset that is about to exist. That is not a
+theoretical window: measured across two hosts, 8 of 9 runs at 25-43 MB reproduced it, and killing the
+client widens the commit window 2-3x over the same import with a live client. The staged bytes are what
+close it — they are already gone at that moment, and nothing but the library's ingest can have taken them.
+A relaunch SHALL therefore NOT be treated as making *absent* actionable on its own; only the staged bytes
+still being present makes it actionable.
 
 **Every** verdict SHALL be applied through a store write that is **guarded on the row's current marker**, and
 SHALL take effect only while the row still carries the marker the verdict was computed for. This applies to
@@ -436,6 +445,16 @@ reconcile, import, leave, and switch. The adapter SHALL own its dispatcher hop f
 A *present* verdict SHALL also release that ref's claim. The write that precedes it has already made the row
 terminal, so no reader can distinguish a released claim from a retained one; what the release buys is a
 bounded set rather than a behaviour.
+
+A row settled on the strength of consumed bytes SHALL be settled **against the marker it already holds**,
+never against a fresh one, and SHALL be indistinguishable downstream from one settled by a *present*
+verdict. Where that row's commit had in fact failed content validation, the marker then names an asset that
+does not exist. That is accepted and SHALL be stated rather than corrected: such a marker is inert — the
+suppression projection is compared against assets the library actually holds, so an entry matching none is
+never compared to anything — while the alternatives either strip a live asset's only suppression handle or
+leave the row outstanding forever, pegging the download total below completion. The cost is that the photo
+is counted as imported although it never arrived; its bytes were consumed, so no path could have recovered
+it.
 
 #### Scenario: A relaunch after an interrupted import creates no second asset
 
@@ -506,9 +525,21 @@ bounded set rather than a behaviour.
 
 #### Scenario: A created asset that never materialised is retried
 
-- **WHEN** an unconfirmed row's asset is definitively absent from the library and no import for that ref
-  is claimed
+- **WHEN** an unconfirmed row's asset is absent from the library, its staged bytes are still present, and
+  no import for that ref is claimed
 - **THEN** the marker is cleared and the asset is imported, so the photo still arrives
+
+#### Scenario: A commit still in flight at relaunch is settled, not cleared
+
+- **WHEN** a process died mid-import, a later process adjudicates the row, and the library answers *absent*
+  because the surviving commit has not yet become visible
+- **THEN** the row's staged bytes are found to be gone, the row is settled against the marker it already
+  holds, no second asset is created, and the created asset stays in the suppression set
+
+#### Scenario: An unconfirmed row with no staged resources is left alone
+
+- **WHEN** an unconfirmed row carries a marker and records no staged resources at all
+- **THEN** nothing is cleared and nothing is settled, because their absence is evidence neither way
 
 #### Scenario: An unanswerable lookup defers rather than guesses
 
@@ -621,12 +652,13 @@ Once a foreign asset's import is **confirmed** (a terminal download-store row), 
 download or import it again, even if the user later deletes the imported asset from their library. The
 same asset linked into more than one event SHALL be imported only once (cross-event dedup via the store).
 
-This guarantee attaches to a **confirmed** import. For an **unconfirmed** row — one whose created-asset
-marker was recorded but never confirmed — a library lookup reporting *absent* cannot distinguish "the
-user deleted it" from "the commit never landed", and the client SHALL import. That resurrects a deleted
-photo at most **once**: the resulting import is confirmed, after which this requirement applies to it
-normally. The alternative — treating *absent* as deletion — would permanently lose a photo whose commit
-genuinely failed, invisibly and with no retry, since cross-event dedup blocks every later attempt.
+This guarantee attaches to a **confirmed** import. An **unconfirmed** row — one whose created-asset marker
+was recorded but never confirmed — SHALL NOT be re-imported once its staged bytes have been consumed, and
+they are consumed by the library's own ingest whenever a creation was submitted. A deleted photo whose
+import was never confirmed therefore does **not** return: there are no bytes to import it from, and the row
+settles against the marker it holds (capability `photo-download`, adjudication). Only a row whose bytes
+survive — a change block that died before ingest — is re-imported, and that row's asset never existed to be
+deleted.
 
 #### Scenario: A deleted collected photo is not restored
 
@@ -638,12 +670,12 @@ genuinely failed, invisibly and with no retry, since cross-event dedup blocks ev
 - **WHEN** a device's asset appears in the unions of two events this install joins
 - **THEN** it is imported only the first time and skipped thereafter
 
-#### Scenario: A deleted photo from an unconfirmed import returns at most once
+#### Scenario: A deleted photo from an unconfirmed import does not return
 
-- **WHEN** the user deletes an asset whose import was never confirmed, and a later pass adjudicates that
+- **WHEN** the user deletes an asset whose import was never confirmed, and a later sweep adjudicates that
   row as absent
-- **THEN** the photo is imported once more and that import is confirmed, so deleting it again is
-  respected permanently
+- **THEN** the row's staged bytes are found to be gone, the row is settled against the marker it holds, and
+  the photo is not re-imported
 
 ### Requirement: Event-driven discovery of later additions
 

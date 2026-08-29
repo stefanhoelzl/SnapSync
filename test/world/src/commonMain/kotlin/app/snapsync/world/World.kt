@@ -208,6 +208,20 @@ class World(
      *  than reading it back off the honest double (capability `architecture-guards`). */
     val stagedFiles: MutableSet<String> = mutableSetOf()
     val stagedBytes: StagedBytes = inMemoryStagedBytes(stagedFiles)
+
+    /**
+     * Model the photo library **ingesting** a staged resource: it takes a resource's file when it
+     * ingests it, which it does only as part of creating an asset, and it does so even when the process
+     * that submitted the change then dies (capability `photo-download`).
+     *
+     * Removing the path from [stagedFiles] IS the entire model — that set is the disk — and this exists
+     * to NAME the operation rather than to add a mechanism. Without a name a test spells it as a set
+     * removal, and the next reader cannot tell "the library took these" from "the release pass ran",
+     * which are the two states the adjudicator must never confuse.
+     */
+    fun consumeStagedBytes(vararg paths: String) {
+        stagedFiles.removeAll(paths.toSet())
+    }
     val marker: JoinedEventMarker = inMemoryJoinedEventMarker()
 
     /** Counts the real `Provision` flow's on-join push re-registration (capability `push-registration`):

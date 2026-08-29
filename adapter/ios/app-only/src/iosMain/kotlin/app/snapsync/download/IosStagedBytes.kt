@@ -53,4 +53,15 @@ class IosStagedBytes : StagedBytes {
         val fm = NSFileManager.defaultManager
         paths.forEach { fm.removeItemAtPath(it, error = null) }
     }
+
+    /**
+     * One `stat` per path, and no dispatcher hop — for the same reason [release] has none, only more so:
+     * this reads a directory entry and touches no daemon, unlike the PhotoKit seams whose blocking is
+     * what keeps them off the controller's lock.
+     */
+    override suspend fun allPresent(paths: List<String>): Boolean {
+        if (paths.isEmpty()) return true
+        val fm = NSFileManager.defaultManager
+        return paths.all { fm.fileExistsAtPath(it) }
+    }
 }
