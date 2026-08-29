@@ -19,7 +19,8 @@
 # lease lasts). Session death releases it too. A SIGKILL cannot run the trap, so a lease whose pid
 # is dead is reclaimed automatically — liveness is checked, never a guessed timeout.
 #
-# The sidebar says who has the phone: the holder carries the `device` tag, a waiter `device-wait`.
+# The sidebar says who has the phone: the holder carries the `device` tag (rendered 📱), a waiter
+# `device-wait` (rendered ⏳).
 # ADVISORY ONLY — the lock is the mutex and the tag is a picture of it, so every `ch` call is
 # bounded and swallowed: no CodeHydra, no `ch`, no jq, no tag, and never a failed or delayed lease.
 # The claim is where the truth is known, so it RECONCILES rather than patches: it clears `device`
@@ -37,11 +38,16 @@ POLL_INTERVAL="${SNAPSYNC_DEVICE_POLL_INTERVAL:-5}"
 STATUS_EVERY="${SNAPSYNC_DEVICE_STATUS_EVERY:-60}"
 CH_TIMEOUT=5
 
-# Tag names are [A-Za-z][A-Za-z0-9-]* — a metadata key, so no emoji and no spaces.
+# Tag names are [A-Za-z][A-Za-z0-9-]* — a metadata key, so no emoji and no spaces. The LABEL is
+# free UTF-8 and is what the sidebar renders, so the tag SHOWS as an emoji while the name survives
+# as the thing `ch project list` is filtered on (the sweep below reads `tags.device`, never the
+# label).
 TAG_HELD=device
-TAG_HELD_COLOR='#00F0A8'
+TAG_HELD_LABEL='📱'
+TAG_HELD_DESC='Holds the device lease — this workspace has the iPhone'
 TAG_WAIT=device-wait
-TAG_WAIT_COLOR='#00806B'
+TAG_WAIT_LABEL='⏳'
+TAG_WAIT_DESC='Waiting for the device lease'
 
 usage() {
   echo "usage: scripts/device-lease --wait                    (background, NOT under ch-bg)" >&2
@@ -64,8 +70,12 @@ tagged=0
 # Bounded and silent by construction (see the header): a tag is decoration on a mutex, and it may
 # never delay the phone's release or fail a lease. `--workspace-path` is always explicit — the
 # sweep addresses workspaces that are not this one, so cwd resolution would be a trap.
-ch_tag_set() { # <workspace> <name> <colour>
-  timeout "$CH_TIMEOUT" ch ws tag set "$2" --workspace-path "$1" --color "$3" >/dev/null 2>&1 || true
+# No `--color`, deliberately: without one the tag renders as bare text rather than a pill, and the
+# emoji is the whole signal. `ch ws tag set` REPLACES the tag whole — an omitted field is cleared,
+# not kept — so this call is also what un-colours a tag an older version of this script painted.
+ch_tag_set() { # <workspace> <name> <label> <description>
+  timeout "$CH_TIMEOUT" ch ws tag set "$2" --workspace-path "$1" \
+    --label "$3" --description "$4" >/dev/null 2>&1 || true
 }
 
 ch_tag_rm() { # <workspace> <name>
@@ -119,7 +129,7 @@ if [ "$mode" = wait ]; then
     exit "$st"
   }
   trap wait_cleanup EXIT INT TERM HUP
-  ch_tag_set "$ws" "$TAG_WAIT" "$TAG_WAIT_COLOR"
+  ch_tag_set "$ws" "$TAG_WAIT" "$TAG_WAIT_LABEL" "$TAG_WAIT_DESC"
 
   started=$(date +%s)
   last_status=""
@@ -248,7 +258,7 @@ owned=1
 ch_tag_rm "$ws" "$TAG_WAIT"
 ch_tag_sweep_held
 tagged=1
-ch_tag_set "$ws" "$TAG_HELD" "$TAG_HELD_COLOR"
+ch_tag_set "$ws" "$TAG_HELD" "$TAG_HELD_LABEL" "$TAG_HELD_DESC"
 
 echo "device-lease: held by '$(basename "$ws")' (pid $$) — \"$reason\""
 echo "device-lease: release by killing this shell."
