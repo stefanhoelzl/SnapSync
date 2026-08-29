@@ -181,6 +181,9 @@ object SnapSyncRoot {
      * Retained in a field because `addSubscriber` is not documented to keep a strong reference, and
      * the sibling `PhotoSelectionObserver` measured exactly that hazard with `PHPhotoLibrary`.
      */
+    // Read by nobody on purpose: the field IS the retention, and detekt cannot see that an ObjC
+    // subscriber list may hold only a weak reference.
+    @Suppress("UnusedPrivateProperty")
     private val metricKitProbe: MetricKitProbe = MetricKitProbe().also { it.register() }
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
