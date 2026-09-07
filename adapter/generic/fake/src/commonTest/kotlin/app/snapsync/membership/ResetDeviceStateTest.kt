@@ -92,8 +92,8 @@ class ResetDeviceStateTest {
 
         f.reset().reset()
 
-        assertEquals(1, f.downloads.importedCount(), "imported rows must survive the reset")
-        assertEquals(1, f.downloads.assetCount(), "the non-terminal row must be gone")
+        assertEquals(1, f.downloads.counts().imported, "imported rows must survive the reset")
+        assertEquals(1, f.downloads.counts().stillArriving, "the non-terminal row must be gone")
         assertTrue(f.downloads.isSettled(imported))
         // The suppression handle is the reason imported rows are kept: the upload path reads it to
         // avoid re-uploading a photo this device downloaded (the echo).
@@ -105,7 +105,7 @@ class ResetDeviceStateTest {
         val f = Fixture()
         f.reset().reset()
         assertEquals(0, f.ledger.aggregates().completed)
-        assertEquals(0, f.downloads.assetCount())
+        assertEquals(0, f.downloads.counts().stillArriving)
         assertTrue(f.config.cleared)
     }
 

@@ -4,7 +4,7 @@ import app.snapsync.model.JoinLoad
 
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.MembershipRefresh
-import app.snapsync.feature.status.LedgerCountsPoller
+import app.snapsync.feature.status.StatusCountsPoller
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -64,7 +64,7 @@ class Foreground(
      *  a CONFIRMED absence performs the teardown itself. */
     private val membershipRefresh: MembershipRefresh,
     /** The foreground-gated ledger-counts poll (capability `sync-status`); stopped by the Background flow. */
-    private val statusPoller: LedgerCountsPoller,
+    private val statusPoller: StatusCountsPoller,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
     /** The app-driven tier's foreground pump; a no-op on iOS ≥26.1 where the OS owns scheduling. */

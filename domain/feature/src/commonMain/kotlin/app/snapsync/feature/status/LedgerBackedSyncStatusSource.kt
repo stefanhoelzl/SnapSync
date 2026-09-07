@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
  * snapshot.
  *
  * Liveness is trigger-driven plus a foreground-gated poll: the [LedgerCountsSource] refreshes on
- * foreground entry, on each [LedgerCountsPoller] tick while foregrounded (migration step 12 — the
+ * foreground entry, on each [StatusCountsPoller] tick while foregrounded (migration step 12 — the
  * cross-process ding's replacement), and (app-driven tier) after each pump cycle — each a local
  * ledger read, no network.
  */

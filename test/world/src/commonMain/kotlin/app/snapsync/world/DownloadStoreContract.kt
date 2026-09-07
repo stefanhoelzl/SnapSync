@@ -50,19 +50,49 @@ abstract class DownloadStoreContract {
     fun in_flight_counts_assets_with_an_enqueued_not_yet_staged_resource() = runTest {
         val s = createStore()
         s.plan(ref, "2026-06-30T10:00:00Z", resources())
-        assertEquals(0, s.inFlightCount()) // planned, but nothing sent to the OS yet
+        assertEquals(0, s.counts().inFlight) // planned, but nothing sent to the OS yet
 
         s.markEnqueued(ref, "ASSET-Q-primary.heic")
-        assertEquals(1, s.inFlightCount()) // a resource sent → the asset is in flight
+        assertEquals(1, s.counts().inFlight) // a resource sent → the asset is in flight
 
         s.markEnqueued(ref, "ASSET-Q-live.mov")
-        assertEquals(1, s.inFlightCount()) // asset-counted, not one per resource
+        assertEquals(1, s.counts().inFlight) // asset-counted, not one per resource
 
         s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
-        assertEquals(1, s.inFlightCount()) // live still enqueued-not-staged
+        assertEquals(1, s.counts().inFlight) // live still enqueued-not-staged
 
         s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
-        assertEquals(0, s.inFlightCount()) // every resource staged → no longer in flight
+        assertEquals(0, s.counts().inFlight) // every resource staged → no longer in flight
+    }
+
+    /**
+     * The projection's counts come from ONE read (capability `download-store`).
+     *
+     * A store could satisfy every count's individual semantics above and still publish a torn composite by
+     * answering them from three different instants — which is what this asserts against. It cannot catch an
+     * interleaving directly (there is no writer racing this test), so it asserts the surface instead: the
+     * three counts are one value, taken together, and a store that cannot produce them together cannot
+     * satisfy this signature at all.
+     */
+    @Test
+    fun the_projection_counts_come_from_one_read() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markEnqueued(ref, "ASSET-Q-primary.heic")
+
+        val counts = s.counts()
+        assertEquals(0, counts.imported, "nothing imported yet")
+        assertEquals(1, counts.stillArriving, "the planned asset can still arrive")
+        assertEquals(1, counts.inFlight, "and one of its resources is enqueued, not staged")
+
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
+        s.markImported(ref, "LOCAL-1")
+
+        val settled = s.counts()
+        assertEquals(1, settled.imported)
+        assertEquals(1, settled.stillArriving, "an imported asset stays in the denominator")
+        assertEquals(0, settled.inFlight)
     }
 
     @Test
@@ -75,7 +105,7 @@ abstract class DownloadStoreContract {
 
         assertTrue(s.isSettled(ref))
         assertEquals(setOf("LOCAL-NEW/L0/001"), s.suppressedLocalIds())
-        assertEquals(1, s.importedCount())
+        assertEquals(1, s.counts().imported)
         assertTrue(s.importableAssets().isEmpty()) // imported, no longer importable
         assertTrue(s.pendingDownloads().isEmpty()) // imported asset's resources are not re-queued
     }
@@ -116,7 +146,7 @@ abstract class DownloadStoreContract {
         s.markImported(ref, "LOCAL-NEW")
         s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a later union read re-offers it
         assertTrue(s.isSettled(ref))
-        assertEquals(1, s.importedCount())
+        assertEquals(1, s.counts().imported)
     }
 
     /**
@@ -395,8 +425,8 @@ abstract class DownloadStoreContract {
         assertTrue(s.pendingDownloads().isEmpty(), "nor re-downloaded")
         assertTrue(s.stagedResources(ref).isEmpty(), "the rows that made it findable are dropped")
         assertTrue(s.suppressedLocalIds().isEmpty(), "it is NOT a suppression handle: no asset exists")
-        assertEquals(0, s.importedCount(), "it never counts as arrived")
-        assertEquals(0, s.assetCount(), "and it leaves the denominator, so the screen can still complete")
+        assertEquals(0, s.counts().imported, "it never counts as arrived")
+        assertEquals(0, s.counts().stillArriving, "and it leaves the denominator, so the screen can still complete")
     }
 
     /** The guard: a row that already settled one way must not be re-settled another. */
@@ -410,7 +440,7 @@ abstract class DownloadStoreContract {
 
         assertFalse(s.settleUnimportable(ref), "an imported row is terminal — this must match nothing")
         assertEquals(setOf("LOCAL-1"), s.suppressedLocalIds(), "and its handle is untouched")
-        assertEquals(1, s.importedCount())
+        assertEquals(1, s.counts().imported)
     }
 
     /** And a row mid-import — marker written, commit not landed — is not a row to give up on. */

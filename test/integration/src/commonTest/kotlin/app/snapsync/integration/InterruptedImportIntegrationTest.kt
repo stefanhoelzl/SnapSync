@@ -185,15 +185,15 @@ class InterruptedImportIntegrationTest {
         val w = World(this)
         w.stageWithAbandonedImport("E")
         assertTrue(
-            w.downloadStore.importedCount() < w.downloadStore.assetCount(),
+            w.downloadStore.counts().imported < w.downloadStore.counts().stillArriving,
             "precondition: unconfirmed, so progress is genuinely short",
         )
 
         w.downloadController.sweepInterruptedImports()
 
         assertEquals(
-            w.downloadStore.assetCount(),
-            w.downloadStore.importedCount(),
+            w.downloadStore.counts().stillArriving,
+            w.downloadStore.counts().imported,
             "imported reaches total — the counter is not left stuck",
         )
     }

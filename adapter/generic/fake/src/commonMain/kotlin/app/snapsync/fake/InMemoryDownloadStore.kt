@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.ports.AssetRef
+import app.snapsync.ports.DownloadCounts
 import app.snapsync.ports.DownloadState
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.ImportableAsset
@@ -137,21 +138,19 @@ internal class InMemoryDownloadStore : DownloadStore {
         return true
     }
 
-    override suspend fun importedCount(): Int = lock.withLock {
-        assets.values.count { it.state == DownloadState.IMPORTED }
-    }
-
+    // All three under ONE acquisition of the lock, which is this fake's equivalent of the driver's single
+    // statement: the counts describe one state of the store rather than three states it passed through.
     // An `UNIMPORTABLE` asset leaves the denominator (design D8): it can never arrive, so counting it
     // pegs the download line below completion forever on work that will never finish.
-    override suspend fun assetCount(): Int = lock.withLock {
-        assets.values.count { it.state != DownloadState.UNIMPORTABLE }
-    }
-
-    override suspend fun inFlightCount(): Int = lock.withLock {
-        assets.count { (ref, row) ->
-            !row.state.isTerminal &&
-                enqueued[ref].orEmpty().any { key -> resources[ref]?.get(key)?.second == null }
-        }
+    override suspend fun counts(): DownloadCounts = lock.withLock {
+        DownloadCounts(
+            imported = assets.values.count { it.state == DownloadState.IMPORTED },
+            stillArriving = assets.values.count { it.state != DownloadState.UNIMPORTABLE },
+            inFlight = assets.count { (ref, row) ->
+                !row.state.isTerminal &&
+                    enqueued[ref].orEmpty().any { key -> resources[ref]?.get(key)?.second == null }
+            },
+        )
     }
 
     override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = lock.withLock {

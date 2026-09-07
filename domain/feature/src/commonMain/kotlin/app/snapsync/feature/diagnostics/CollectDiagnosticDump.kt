@@ -116,12 +116,15 @@ class CollectDiagnosticDump(
      */
     private suspend fun ledgerSection(): Map<String, String> {
         val aggregates = ledger.aggregates()
+        // Both sides read in one round-trip each, so a dump reports one state of each store rather than a
+        // composite of several — the disagreement this section's KDoc warns reads as a bug at 2am.
+        val downloadCounts = downloads.counts()
         return mapOf(
             "photos_pending" to aggregates.pending.toString(),
             "photos_completed" to aggregates.completed.toString(),
-            "downloads_imported" to downloads.importedCount().toString(),
-            "downloads_assets" to downloads.assetCount().toString(),
-            "downloads_in_flight" to downloads.inFlightCount().toString(),
+            "downloads_imported" to downloadCounts.imported.toString(),
+            "downloads_assets" to downloadCounts.stillArriving.toString(),
+            "downloads_in_flight" to downloadCounts.inFlight.toString(),
         )
     }
 }

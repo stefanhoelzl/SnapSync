@@ -1,6 +1,6 @@
 package app.snapsync.flow
 
-import app.snapsync.feature.status.LedgerCountsPoller
+import app.snapsync.feature.status.StatusCountsPoller
 
 /**
  * The **background** OS-callback trigger flow (spec `module-architecture`, "Rules in features, order
@@ -16,7 +16,7 @@ import app.snapsync.feature.status.LedgerCountsPoller
  * background" banner stay in the shell.
  */
 class Background(
-    private val statusPoller: LedgerCountsPoller,
+    private val statusPoller: StatusCountsPoller,
     private val scheduleBackstop: suspend () -> Unit,
 ) {
     suspend fun run() {

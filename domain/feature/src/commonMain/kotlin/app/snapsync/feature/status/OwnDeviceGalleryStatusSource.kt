@@ -122,7 +122,7 @@ class OwnDeviceGalleryStatusSource(
             // Cancellation is not a failed walk. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which
             // reaches the crash reporter on production builds (capability `crash-reporting`) — for an
-            // ordinary teardown. `LedgerCountsPoller` separates the two for the same reason.
+            // ordinary teardown. `StatusCountsPoller` separates the two for the same reason.
             if (failure is CancellationException) throw failure
             // **The invariant is this source's, so the containment is too.** A walk that blew up must
             // leave `size` exactly as it was — the previous good count, or the un-counted seed if there

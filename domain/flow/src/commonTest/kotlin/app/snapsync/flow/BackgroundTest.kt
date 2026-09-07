@@ -1,7 +1,7 @@
 package app.snapsync.flow
 
 import app.snapsync.feature.status.LedgerCounts
-import app.snapsync.feature.status.LedgerCountsPoller
+import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.LedgerCountsSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,7 +50,7 @@ class BackgroundTest {
         val order = mutableListOf<String>()
         val counts = CountingCounts()
         // A poller wrapping a scope we can watch; `stop()` is what the flow is expected to call.
-        val poller = LedgerCountsPoller(backgroundScope, counts)
+        val poller = StatusCountsPoller(backgroundScope, { counts.refresh() })
         poller.start()
 
         Background(statusPoller = poller, scheduleBackstop = { order += "backstop" }).run()
@@ -67,7 +67,7 @@ class BackgroundTest {
         // The stop has to land, not merely be called: a suspended app cannot act on fresher counts, and
         // the next foreground entry's refresh is the backstop for anything missed meanwhile.
         val counts = CountingCounts()
-        val poller = LedgerCountsPoller(backgroundScope, counts)
+        val poller = StatusCountsPoller(backgroundScope, { counts.refresh() })
         poller.start()
 
         advanceTimeBy(5.seconds)
@@ -89,7 +89,7 @@ class BackgroundTest {
         // started.
         val submitted = CompletableDeferred<Unit>()
         var returned = false
-        val poller = LedgerCountsPoller(backgroundScope, CountingCounts())
+        val poller = StatusCountsPoller(backgroundScope, { /* this test asserts the flow, not the tick */ })
 
         val run = launch {
             Background(statusPoller = poller, scheduleBackstop = { submitted.await() }).run()

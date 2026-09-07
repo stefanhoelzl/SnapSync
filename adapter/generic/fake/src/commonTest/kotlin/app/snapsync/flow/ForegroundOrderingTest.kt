@@ -5,7 +5,7 @@ import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
-import app.snapsync.feature.status.LedgerCountsPoller
+import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.MutableLedgerCountsSource
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
@@ -61,7 +61,7 @@ class ForegroundOrderingTest {
         // never terminates. `runCurrent()` drains what is pending without moving the clock, which is
         // precisely the question here — what ran WITHOUT waiting for anything.
         val counts = MutableLedgerCountsSource()
-        val poller = LedgerCountsPoller(backgroundScope, counts)
+        val poller = StatusCountsPoller(backgroundScope, { counts.refresh() })
 
         val flow = foreground(
             statusPoller = poller,
@@ -94,7 +94,7 @@ class ForegroundOrderingTest {
     // ---- scaffolding ----------------------------------------------------------------------------
 
     private fun CoroutineScope.foreground(
-        statusPoller: LedgerCountsPoller,
+        statusPoller: StatusCountsPoller,
         pumpForeground: suspend () -> Unit,
         refreshStatus: suspend () -> Unit,
         onReclaim: () -> Unit = {},

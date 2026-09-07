@@ -323,7 +323,7 @@ wall clock (`Clock`), and the backend leave (`LeaveNotifier`) — a lambda in an
 adapter written in the composition root (spec `module-architecture`, "Ports are the I/O boundary
 named for the need"). Given those ports, `snapSyncApp` composes the feature graph: the **ledger-backed**
 `SyncStatusSource` (built from a `LedgerCountsSource`, the permission source, and the gallery
-source — see `sync-status`), the **foreground-gated ledger-counts poll** (`LedgerCountsPoller`,
+source — see `sync-status`), the **foreground-gated status-counts poll** (`StatusCountsPoller`,
 started/stopped by the Foreground/Background flows — see `sync-status`), the attestation,
 upload-arm, join/leave/create use-cases, the download
 controller and jobs, the album coordinator, the `flow/` trigger instances (Foreground · Background

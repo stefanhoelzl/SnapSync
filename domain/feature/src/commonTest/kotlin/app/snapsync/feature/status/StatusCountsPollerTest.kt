@@ -1,5 +1,8 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.CandidateRead
+import app.snapsync.ports.CandidateSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceTimeBy
@@ -10,13 +13,16 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The foreground-gated status poll (capability `sync-status`; migration step 12 — the ding's
- * replacement). The cadence is the feature's rule, so it is pinned here: ticks arrive once per
- * cadence while started, none before the first cadence elapses (foreground entry already refreshed),
+ * The foreground-gated status-counts poll (capability `sync-status`). The cadence is the feature's rule, so
+ * it is pinned here: ticks arrive once per cadence while started, none before the first cadence elapses,
  * none after stop, and repeated starts never stack pollers (the property the old Darwin observer's
  * defensive re-register held — a stacked poller would double the read rate silently).
+ *
+ * The tick's **reach** is pinned too, and separately: a tick re-reads BOTH arms of the cheap local group,
+ * never one. That is the assertion standing between this poll and the defect it was widened for — a
+ * download line refreshed once per foreground entry, holding a false "In sync" for a whole session.
  */
-class LedgerCountsPollerTest {
+class StatusCountsPollerTest {
 
     private class CountingSource : LedgerCountsSource {
         var refreshes = 0
@@ -29,7 +35,7 @@ class LedgerCountsPollerTest {
     @Test
     fun `polls once per cadence while started`() = runTest {
         val source = CountingSource()
-        val poller = LedgerCountsPoller(backgroundScope, source, cadence = 2.seconds)
+        val poller = StatusCountsPoller(backgroundScope, { source.refresh() }, cadence = 2.seconds)
 
         poller.start()
         advanceTimeBy(1.seconds)
@@ -46,7 +52,7 @@ class LedgerCountsPollerTest {
     @Test
     fun `stop ends the poll`() = runTest {
         val source = CountingSource()
-        val poller = LedgerCountsPoller(backgroundScope, source, cadence = 2.seconds)
+        val poller = StatusCountsPoller(backgroundScope, { source.refresh() }, cadence = 2.seconds)
 
         poller.start()
         advanceTimeBy(4.seconds)
@@ -61,7 +67,7 @@ class LedgerCountsPollerTest {
     @Test
     fun `repeated starts never stack pollers`() = runTest {
         val source = CountingSource()
-        val poller = LedgerCountsPoller(backgroundScope, source, cadence = 2.seconds)
+        val poller = StatusCountsPoller(backgroundScope, { source.refresh() }, cadence = 2.seconds)
 
         poller.start()
         poller.start() // a second foreground entry while already foregrounded
@@ -75,7 +81,7 @@ class LedgerCountsPollerTest {
     @Test
     fun `start after stop polls again`() = runTest {
         val source = CountingSource()
-        val poller = LedgerCountsPoller(backgroundScope, source, cadence = 2.seconds)
+        val poller = StatusCountsPoller(backgroundScope, { source.refresh() }, cadence = 2.seconds)
 
         poller.start()
         advanceTimeBy(2.seconds)
@@ -90,8 +96,50 @@ class LedgerCountsPollerTest {
 
     @Test
     fun `stop before any start is a no-op`() = runTest {
-        val poller = LedgerCountsPoller(backgroundScope, CountingSource(), cadence = 2.seconds)
+        val poller = StatusCountsPoller(backgroundScope, { /* never ticks: stop precedes any start */ }, cadence = 2.seconds)
         poller.stop() // backgrounding before the first foreground entry must not throw
+    }
+
+    @Test
+    fun `a tick re-reads BOTH arms of the group`() = runTest {
+        // THE DEFECT THIS POLL WAS WIDENED FOR. Ticking the ledger alone left the download projection
+        // refreshed once per foreground entry and never again, so a burst discovered after that read
+        // rendered a checkmarked "In sync" for the rest of the session. The arrows are conjunctive, so
+        // bounding one arm does not half-bound the screen — it leaves it unbounded through the other.
+        //
+        // Wired through the REAL `StatusRefresh`, because the group's membership is that class's to state
+        // and a lambda incrementing two counters here would assert only this test's own wiring.
+        var ledgerReads = 0
+        var downloadReads = 0
+        val refresh = StatusRefresh(
+            ledgerCounts = ReadingLedgerCountsSource {
+                ledgerReads++
+                LedgerCounts(completed = 0, pending = 0)
+            },
+            gallery = OwnDeviceGalleryStatusSource(
+                object : CandidateSource {
+                    override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
+                        throw AssertionError("a poll tick must never reach the library enumeration")
+                },
+            ),
+            refreshDownloadLine = { downloadReads++ },
+            // No membership: the walk is unreachable, so the tick is exactly the cheap local group — which
+            // is also what the poll is specified to read (never the enumeration).
+            activeConfig = { null },
+            policyFor = { throw AssertionError("no membership — no policy derivation") },
+        )
+        val poller = StatusCountsPoller(
+            backgroundScope,
+            { refresh.refreshCheapLocalReads() },
+            cadence = 2.seconds,
+        )
+
+        poller.start()
+        advanceTimeBy(4.seconds)
+        runCurrent()
+        assertEquals(2, ledgerReads, "the upload arm is re-read once per cadence")
+        assertEquals(2, downloadReads, "and so is the download arm — the arm this poll used to skip")
+        poller.stop()
     }
 
     @Test
@@ -107,7 +155,7 @@ class LedgerCountsPollerTest {
                 if (refreshes == 1) error("one bad tick")
             }
         }
-        val poller = LedgerCountsPoller(backgroundScope, source, cadence = 2.seconds)
+        val poller = StatusCountsPoller(backgroundScope, { source.refresh() }, cadence = 2.seconds)
 
         poller.start()
         advanceTimeBy(6.seconds)

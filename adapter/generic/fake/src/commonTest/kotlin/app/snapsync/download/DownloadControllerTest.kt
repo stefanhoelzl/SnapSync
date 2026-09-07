@@ -188,7 +188,7 @@ class DownloadControllerTest {
         assertEquals(listOf(ref), importer.imported)
         assertTrue(store.isSettled(ref))
         assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds()) // suppression handle recorded
-        assertEquals(1, store.importedCount())
+        assertEquals(1, store.counts().imported)
     }
 
     @Test
@@ -222,7 +222,7 @@ class DownloadControllerTest {
 
         assertEquals(0, union.calls, "no union fetch without a membership to reconcile against")
         assertTrue(jobs.enqueued.isEmpty(), "no downloads enqueued")
-        assertEquals(0, store.importedCount())
+        assertEquals(0, store.counts().imported)
     }
 
     @Test
@@ -235,7 +235,7 @@ class DownloadControllerTest {
 
         assertEquals(0, union.calls, "no union fetch when download is disabled")
         assertTrue(jobs.enqueued.isEmpty(), "no downloads enqueued when download is disabled")
-        assertEquals(0, store.importedCount())
+        assertEquals(0, store.counts().imported)
     }
 
     @Test
@@ -258,7 +258,7 @@ class DownloadControllerTest {
         val jobs = RecordingJobs()
         controller(FakeUnion(emptyList(), ok = false), store = store, jobs = jobs).reconcile("event")
         assertTrue(jobs.enqueued.isEmpty())
-        assertEquals(0, store.importedCount())
+        assertEquals(0, store.counts().imported)
     }
 
     /**
@@ -954,13 +954,13 @@ class DownloadControllerTest {
         )
 
         c.reconcile("event")
-        assertEquals(2, store.assetCount(), "both are outstanding while both can still arrive")
+        assertEquals(2, store.counts().stillArriving, "both are outstanding while both can still arrive")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
         c.importReady()
 
-        assertEquals(1, store.assetCount(), "the unimportable one is no longer counted as outstanding")
-        assertEquals(0, store.importedCount(), "and it is emphatically not counted as arrived")
+        assertEquals(1, store.counts().stillArriving, "the unimportable one is no longer counted as outstanding")
+        assertEquals(0, store.counts().imported, "and it is emphatically not counted as arrived")
     }
 
     // ---- the durable-state reset (capability `ios-app-shell`, `POST /device/reset`) -----------------
