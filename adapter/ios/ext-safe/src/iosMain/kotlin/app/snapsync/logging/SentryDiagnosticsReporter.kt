@@ -3,6 +3,7 @@ package app.snapsync.logging
 import app.snapsync.config.bakedSentryDsn
 import app.snapsync.config.bakedSentryEnvironment
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.redactUuids
 import app.snapsync.model.redactsMessages
@@ -130,7 +131,31 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
         // exists only in a DSN-carrying process.
         Logger.addLogWriter(SentryLogWriter())
     }
+
+    /**
+     * The OS's standing account of how this process has been behaving (capability `crash-reporting`).
+     *
+     * On the **global** scope, for the same measured reason the `process` tag is: the native SDK
+     * persists it into fatal events. So a crash captured in this process and delivered on a later
+     * launch arrives carrying the exit tallies, hang histogram and memory peak that preceded it —
+     * which is the correlation the platform vendor documents between per-incident diagnostics and
+     * aggregate counts, and the thing no single channel could supply on its own.
+     *
+     * `setContext` REPLACES the named context, which is the contract's "supersedes rather than
+     * accumulates" half — arrived at for free rather than by bookkeeping.
+     *
+     * The report's own fields are already plain strings and carry no UUID-shaped tokens (measured:
+     * the metadata is os / device / build / region), so the scrub has nothing to remove here and
+     * nothing is carved out of it.
+     */
+    override fun describeProcess(report: ProcessMetricReport) {
+        if (!isConfigured) return
+        Sentry.configureScope { scope -> scope.setContext(PROCESS_METRIC_CONTEXT, report.fields) }
+    }
 }
+
+/** The context section name process metrics ride in, so a reader always finds them in one place. */
+private const val PROCESS_METRIC_CONTEXT: String = "process_metrics"
 
 /**
  * The marker every operator-initiated report's message begins with, ahead of what the operator wrote.

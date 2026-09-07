@@ -45,7 +45,8 @@ import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpDeviceFilesSource
-import app.snapsync.metrics.MetricKitProbe
+import app.snapsync.metrics.MetricKitProcessMetricSource
+import app.snapsync.metrics.ProcessMetricHandler
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
@@ -168,23 +169,45 @@ object SnapSyncRoot {
     private val log = Logger.withTag("SnapSyncRoot")
 
     /**
-     * ⚠️ **PROBE — temporary, delete with the change that replaces it** (capability
-     * `crash-reporting`, exit attribution).
+     * What a delivered process-metric report does (capability `crash-reporting`): the device-log
+     * line, the standing context, and an event when the rule says it crossed.
      *
-     * Seated HERE, in the object's own initialization, rather than on [app]: `app` is `by lazy` on
-     * purpose so a cold background wake does not force the graph, and MetricKit delivers shortly
-     * after launch — including launches the graph never comes up for. This is also the earliest
-     * point that runs on EVERY process start, which matters because accumulation begins at the first
-     * `MXMetricManager.shared` touch and never retroactively: a launch that does not arm is a day of
-     * attribution nobody gets back.
+     * `internal`, not `private`, for one reason: the rig's contributed hook drives a synthetic report
+     * through THIS instance. Exercising a copy would prove only that the copy works; the point of the
+     * route is that the path the OS drives is the path a test drives. `internal` is module-wide and is
+     * not exported to the `SnapSyncKit` ObjC header.
      *
-     * Retained in a field because `addSubscriber` is not documented to keep a strong reference, and
-     * the sibling `PhotoSelectionObserver` measured exactly that hazard with `PHPhotoLibrary`.
+     * The reporter is constructed here rather than reached through [app], which would force the
+     * deferred graph. `SentryDiagnosticsReporter` is idempotent and its scope writes are
+     * process-global, so a second instance changes nothing.
      */
-    // Read by nobody on purpose: the field IS the retention, and detekt cannot see that an ObjC
-    // subscriber list may hold only a weak reference.
+    internal val processMetricHandler: ProcessMetricHandler =
+        ProcessMetricHandler(SentryDiagnosticsReporter())
+
+    /**
+     * The OS's own account of how this process has been behaving (capability `crash-reporting`).
+     *
+     * Seated HERE, in the object's own initialization, rather than on [app]. Two measured facts force
+     * it, and neither is a preference:
+     *
+     *  1. MetricKit accumulates **nothing** for an app until a process first touches it, and never
+     *     retroactively — so the earliest path that runs on every launch is the only correct seat.
+     *     `app` is `by lazy` precisely so a cold background wake does not force the graph, and a wake
+     *     that never forced it would be a day of attribution nobody gets back.
+     *  2. Delivery is **one-shot**: reports wait indefinitely while nothing observes, then are handed
+     *     over exactly once. Subscribing without a live handler therefore DISCARDS a report the OS was
+     *     holding safely — worse than not subscribing at all. So observing and handling are wired in
+     *     the same act, with the handler already complete above.
+     *
+     * Read by nobody on purpose: **the field IS the retention.** The source holds the OS subscriber,
+     * and MetricKit is not documented to keep a strong reference to it — so a collected source would
+     * take the subscriber with it, and this would fail the way it least tolerates: silently, and only
+     * on the devices that had something to report.
+     */
     @Suppress("UnusedPrivateProperty")
-    private val metricKitProbe: MetricKitProbe = MetricKitProbe().also { it.register() }
+    private val processMetrics: MetricKitProcessMetricSource =
+        MetricKitProcessMetricSource().also { it.observe(processMetricHandler::handle) }
+
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
     // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
