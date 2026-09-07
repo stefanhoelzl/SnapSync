@@ -1,38 +1,4 @@
-# upload-completion-notify Specification
-
-## Purpose
-
-The mechanism that closes the sharing loop: when an event's union gains a photo the other members can
-fetch, they are woken to pull it. Without a wake the push pipe exists but nothing calls it, and a
-co-contributor's photos are discovered only when the receiving user next opens the app.
-
-**The device does not fire it.** The fan-out is an effect, on the backend (`api-endpoints`), of the write
-that makes an asset newly fetchable: that write commits, then fans out, then responds. Ordering the wake
-after the union it advertises is therefore a property of one request rather than something the device
-achieves by sequencing two calls correctly — and the versioned device API has no notify route for it to
-call.
-
-That is where this capability arrived, and the route it took is the point. It began as a device-issued
-`POST /events/<id>/notify` fired once per **drained** cycle that completed an upload — an injected,
-best-effort, bounded lambda that could not fail the cycle. The word *drained* was the first thing to go
-(`changes/archive/2026-08-27-fix-cap-truncation-loop`): a device with more outstanding work than the
-platform's job limit never drains, so it never notified, while the promotion pass consumed the signal
-anyway. The trigger then became "promoted a row **and** the projection changed". Moving to `/api/v2`
-removed the remaining half: the device has nothing left to decide, because the backend can see the write
-for itself.
-
-The trigger then had to move once more. While the manifest listed only completed resources, the publish
-**was** the moment the union gained an asset. Now that the manifest declares **intent** (capability
-`device-manifest`), its content changes at discovery time, and an asset becomes fetchable when the last
-declared role's bytes arrive — so the byte upload carries the trigger, and the publish carries it only in
-the one case where an asset becomes fetchable with no byte moving: a membership widening its range to
-re-admit resources already stored.
-
-Decision record: `changes/archive/2026-07-05-notify-driven-download`, superseded in part by
-`changes/archive/2026-08-27-fix-cap-truncation-loop`, by the move to the versioned device API, and by
-`changes/declare-upload-intent`.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: The fan-out is an effect of the union gaining an asset
 
@@ -100,3 +66,17 @@ only its event and a recipient responds by reconciling the whole union.
 - **WHEN** an upload cycle completes any outcome that publishes
 - **THEN** it makes no notify call and publishes no unchanged document to provoke one, and the ordering of
   any wake against the union is the backend's guarantee rather than the cycle's
+
+## REMOVED Requirements
+
+### Requirement: The fan-out is an effect of the manifest publish
+
+**Reason**: The manifest publish is no longer the moment the union gains an asset. Once the manifest
+declares what a member intends to provide, its content changes at discovery time, while the union gains an
+asset when the last declared role's bytes arrive — and because a declaration and its later completion
+project identical manifest fields, the publish stops changing at completion and the wake would never fire.
+The trigger moves to the write that actually makes an asset fetchable.
+
+**Migration**: Replaced by "The fan-out is an effect of the union gaining an asset" above, which keeps the
+device-issues-no-notify rule intact and adds the byte-upload trigger. The retraction wake this requirement
+recorded as a known wasted cost stops occurring, so no consumer loses a signal it relied on.

@@ -85,8 +85,8 @@ class LedgerWriter(
     suspend fun backfillManifestDetail(resource: Resource, eventId: String) =
         backend.backfillManifestDetail(resource.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId))
 
-    /** The COMPLETED rows the device manifest projects from. */
-    suspend fun completedManifestRows(): List<LedgerEntry> = backend.completedManifestRows()
+    /** The rows the device manifest projects from — every non-absent row, whatever its state. */
+    suspend fun manifestRows(): List<LedgerEntry> = backend.manifestRows()
 
     /** The rows the platform recorded `UPLOADED` — what the cycle's promotion pass consumes. */
     suspend fun uploadedRows(): List<LedgerEntry> = backend.uploadedRows()
@@ -95,7 +95,7 @@ class LedgerWriter(
      * At most [limit] rows that need an upload job — the cycle's **source of work** (capability
      * `sync-ledger`), spanning `DISCOVERED` and `FAILED`.
      *
-     * A read on the writer's face, like [completedManifestRows] and [uploadedRows] beside it, because
+     * A read on the writer's face, like [manifestRows] and [uploadedRows] beside it, because
      * the cycle that consumes it is the single writer and asks through this one seam.
      */
     suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> = backend.rowsNeedingJob(limit)

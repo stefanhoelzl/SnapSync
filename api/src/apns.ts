@@ -96,7 +96,17 @@ export function createApnsSender(
           authorization: `bearer ${jwt}`,
           "apns-topic": config.apnsTopic,
           "apns-push-type": "background",
+          // 5 is not a choice: the background push type requires it. 1 deprioritises further and 10 is
+          // refused for this type, so priority is no lever for improving delivery.
           "apns-priority": "5",
+          // COALESCE BY EVENT. Two wakes for one event are interchangeable by construction — a wake
+          // carries only its event id, and a recipient answers by reconciling that event's whole union
+          // (capability `photo-download`) — so collapsing undelivered ones loses no information. It buys
+          // real headroom: Apple throttles background notifications on total volume and documents a
+          // ceiling of two or three per hour, so a burst that would spend several deliveries spends one.
+          // Per-ASSET would be the mistake: it preserves a distinction no recipient reads, at a delivery
+          // each.
+          "apns-collapse-id": eventId,
           "content-type": "application/json",
         },
         body: silentBody(eventId),

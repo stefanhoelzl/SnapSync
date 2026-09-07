@@ -243,6 +243,6 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         // construction, not marked absent.
         assertEquals(false, survived?.absent)
         // And it still projects into the manifest, which filters on that column.
-        assertEquals(listOf("A"), backend.completedManifestRows().map { it.assetId })
+        assertEquals(listOf("A"), backend.manifestRows().map { it.assetId })
     }
 }

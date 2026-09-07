@@ -157,14 +157,15 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         reconcile = { eventId -> reconciler.reconcile(eventId) },
         // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
         // library enumeration. Bounding is the cycle's.
-        // The device manifest is a PROJECTION of the ledger's COMPLETED rows (capability
-        // `device-manifest`), so this hook needs no discovery of its own — the cycle has already
-        // recorded and backfilled the rows by the time it fires.
+        // The manifest DECLARES what this device will provide: every non-absent ledger row, whatever its
+        // upload state. This hook therefore needs no discovery of its own — the cycle has already
+        // recorded every admitted resource and backfilled the bare ones by the time it fires, and the
+        // rows it recorded THIS cycle are part of what it declares.
         onDiscovery = { eventId, policy ->
             manifestProducer.produce(
                 eventId = eventId,
                 policy = policy, // the ONE admission (capability `photo-selection-policy`)
-                rows = ledger.completedManifestRows(),
+                rows = ledger.manifestRows(),
             )
         },
         // The cycle applies the membership's opt-in (it arrived with the gate); this translation

@@ -143,7 +143,11 @@ enum class LedgerState {
      * a lost transfer.
      *
      * Not a done state ([isDone]) and **does** need a job ([needsJob]), so it counts toward the backlog
-     * everywhere and stays out of the device-manifest projection until its bytes actually land.
+     * everywhere. It is nonetheless DECLARED in the device manifest: that document states what this device
+     * intends to provide, and a resource the walk found and the policy admitted is exactly that
+     * (capability `device-manifest`). The backend tells "not yet" from "never" by comparing the declared
+     * roles against the resources it has recorded — which is why declaring before the bytes land is the
+     * point rather than a leak.
      *
      * Decision record: `changes/fix-cap-truncation-loop` (D1, D3, D4).
      */
@@ -164,7 +168,8 @@ enum class LedgerState {
      * `REQUESTED` with no live task, then reads as lost and re-uploads bytes that already landed.
      *
      * It is **not** a done state ([isDone]): the bytes are safe but the photo has not been announced, so it
-     * counts toward the backlog everywhere and stays out of the device-manifest projection until promoted.
+     * counts toward the backlog everywhere. Like every other state it IS declared in the device manifest,
+     * which projects intent rather than progress (capability `device-manifest`).
      *
      * Decision record: `changes/fix-lost-upload-acks` (D1, D3).
      */

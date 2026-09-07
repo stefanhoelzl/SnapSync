@@ -1,0 +1,27 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
+-- 0002 — INDEX `event_assets` BY (device_id, asset_id) (capability `database`)
+--
+-- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
+-- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
+--
+-- WHY THIS INDEX EXISTS — it is FORCED, not an optimisation.
+--
+-- The device manifest declares what a member WILL provide rather than what it has already uploaded
+-- (capability `device-manifest`), so the moment an asset becomes fetchable is the arrival of its LAST
+-- declared role's bytes. The byte upload is therefore what wakes the event's other members (capability
+-- `upload-completion-notify`).
+--
+-- That route addresses a resource from its path alone — `PUT /api/v2/files/devices/<d>/<asset>/<role>` —
+-- and **that path carries no event**. To decide whether a landed byte completed an asset, and whom to
+-- wake, it must first ask which events declare this `(device_id, asset_id)`. The table's primary key is
+-- `(event_id, device_id, asset_id)`, whose leftmost column is precisely the one the byte route does not
+-- have, so the key cannot serve that lookup and it would otherwise be a full scan on every upload that
+-- completes an asset.
+--
+-- This is the same fact that places `resources` outside the event ownership chain: the upload URL is
+-- compile-time on the client, so "the byte route knows no event" outlives any schema revision.
+--
+-- `IF NOT EXISTS` so that a store which somehow already carries the index applies this inertly, exactly
+-- as the baseline's `CREATE TABLE IF NOT EXISTS` statements do.
+CREATE INDEX IF NOT EXISTS event_assets_by_device_asset
+  ON event_assets (device_id, asset_id);

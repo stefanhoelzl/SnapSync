@@ -44,15 +44,24 @@ class DeviceManifestProducerTest {
         ),
     )
 
-    /** One COMPLETED ledger row — what the manifest is now projected from (capability `sync-ledger`). */
-    private fun row(id: String, date: String = "2026-06-27T10:00:00Z") = LedgerEntry(
-        key = "$id-primary.jpg",
+    /**
+     * One ledger row — what the manifest is projected from (capability `sync-ledger`). [state] defaults
+     * to COMPLETED for the tests that do not care, but the projection reads it for nothing: the manifest
+     * declares INTENT, so every non-absent row is listed whatever its upload state.
+     */
+    private fun row(
+        id: String,
+        date: String = "2026-06-27T10:00:00Z",
+        state: LedgerState = LedgerState.COMPLETED,
+        role: ResourceRole = ResourceRole.PRIMARY,
+    ) = LedgerEntry(
+        key = "$id-${role.wire}.jpg",
         assetId = id,
-        state = LedgerState.COMPLETED,
+        state = state,
         attempt = 0,
         eventId = "E",
         creationDate = date,
-        role = ResourceRole.PRIMARY,
+        role = role,
         contentType = "image/jpeg",
         originalFilename = "IMG_$id.JPG",
     )
@@ -138,10 +147,56 @@ class DeviceManifestProducerTest {
     }
 
     @Test
+    fun every_state_is_declared_because_the_manifest_states_intent() = runTest {
+        // The change this capability turns on: a resource is listed because the device INTENDS to provide
+        // it, not because its bytes have landed. The backend keeps the asset out of the union until every
+        // declared role has a resource, which is what lets it tell "not yet" from "never".
+        val rows = LedgerState.entries.map { row("A${it.name}", state = it) }
+        val m = projectDeviceManifest("dev", rows, policyFrom("0001-01-01T00:00:00Z"))
+        assertEquals(
+            LedgerState.entries.map { "A${it.name}" }.sorted(),
+            m.assets.map { it.assetId }.sorted(),
+        )
+    }
+
+    @Test
+    fun a_failing_resource_does_not_change_the_declaration() = runTest {
+        // Why FAILED is declared like any other state: the engine retries forever with no attempt budget,
+        // so FAILED means "attempted, still owed". Excluding it would make the declared role set
+        // oscillate as a resource fails and retries — and each flip is a manifest write and a member wake.
+        val policy = policyFrom("0001-01-01T00:00:00Z")
+        val discovered = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
+        val failed = listOf(row("A"), row("A", state = LedgerState.FAILED, role = ResourceRole.LIVE))
+        val retried = listOf(row("A"), row("A", state = LedgerState.REQUESTED, role = ResourceRole.LIVE))
+
+        val json = projectDeviceManifest("dev", discovered, policy).encodeToJson()
+        assertEquals(json, projectDeviceManifest("dev", failed, policy).encodeToJson())
+        assertEquals(json, projectDeviceManifest("dev", retried, policy).encodeToJson())
+    }
+
+    @Test
+    fun a_partially_uploaded_asset_declares_both_roles() = runTest {
+        // The defect this closes: with a COMPLETED-only projection the asset was declared with `primary`
+        // alone, so the union served it as a complete one-resource asset and a recipient imported the
+        // Live Photo as a plain still — permanently, since a recipient plans per asset.
+        val m = projectDeviceManifest(
+            "dev",
+            listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE)),
+            policyFrom("0001-01-01T00:00:00Z"),
+        )
+        assertEquals(1, m.assets.size)
+        assertEquals(
+            listOf(ResourceRole.LIVE, ResourceRole.PRIMARY),
+            m.assets.single().resources.map { it.role }.sortedBy { it.name },
+        )
+    }
+
+    @Test
     fun a_bare_row_is_not_listed() = runTest {
         // A row the re-join reconcile seeded from a filename listing has no capture date until the next
-        // full enumeration backfills it. Listing it would place it outside every membership window
-        // rather than inside the right one, so the projection waits for the sweep.
+        // full enumeration backfills it. It is excluded by the POLICY, not by a predicate in the
+        // projection or its storage read: an empty capture date sorts before every real cutoff
+        // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.
         val bare = LedgerEntry("Z-primary.jpg", "Z", LedgerState.COMPLETED, attempt = 0, eventId = "E")
         val m = projectDeviceManifest("dev", listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
         assertEquals(listOf("A"), m.assets.map { it.assetId })

@@ -104,8 +104,9 @@
 //   GET /api/v1/events/:eventId/files
 //     → the event-wide UNION, as ONE query joining the event's assets to their resources across ACTIVE
 //       AND DEPARTED memberships (a member who left keeps contributing what it already shared). An asset
-//       naming a resource with no recorded upload is dropped — defense in depth, since the manifest lists
-//       only completed resources. Faithful: any read failure → 502, never a partial union. UNGATED
+//       naming a resource with no recorded upload is dropped — the PRIMARY completeness mechanism, since
+//       a manifest declares what its device will provide rather than what it has already uploaded.
+//       Faithful: any read failure → 502, never a partial union. UNGATED
 //       (GET/HEAD only). Identity-blind: own-vs-foreign skip is the client's concern.
 //       `Cache-Control: no-store, no-cache, max-age=0`.
 //   GET /health
@@ -183,10 +184,12 @@ import {
   enroll,
   type EnrollOutcome,
   type EventRow,
+  eventsCompletedBy,
   insertEvent,
   isMember,
   type ManifestAssetEntry,
   membersOf,
+  publishAddsFetchableAsset,
   publishStatements,
   pushTokensForEvent,
   putAttestation,
@@ -1299,8 +1302,9 @@ export function createApp(
   //
   // ONE QUERY, no fan-out: the event's assets joined to their resources across ACTIVE and DEPARTED
   // memberships, so a member who has left keeps contributing what it already shared. An asset naming a
-  // resource with no recorded upload is dropped — defense in depth, since a manifest lists only completed
-  // resources (capability `api-endpoints`). Each kept asset is flattened into one array, tagged with its
+  // resource with no recorded upload is dropped — the PRIMARY completeness mechanism (capability
+  // `api-endpoints`), since a manifest DECLARES what its device will provide rather than what it has
+  // already uploaded. Each kept asset is flattened into one array, tagged with its
   // owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is the client's concern). The
   // published manifest is already the event's date-filtered projection, so its asset list is trusted
   // as-is (no re-filtering). Faithful: any read failure → 502, never a partial union. Non-cacheable.
@@ -1328,9 +1332,10 @@ export function createApp(
       const rows = await unionRows(db, eventId);
 
       // Group by (device, asset), keeping each asset's resources together and dropping any asset that
-      // names a resource the backend has not recorded as uploaded. That check is DEFENSE-IN-DEPTH, not
-      // the completeness mechanism: the manifest lists only uploaded resources, so a listed resource is
-      // uploaded by construction, and the sweep protects a referenced byte from collection.
+      // names a resource the backend has not recorded as uploaded. That check IS the completeness
+      // mechanism: a manifest declares roles whose bytes may not have arrived, so the declaration supplies
+      // the expectation and these rows supply the reality. It is what distinguishes "this photo is coming"
+      // from "this photo does not exist". The sweep still protects a referenced byte from collection.
       const byAsset = new Map<string, { row: typeof rows[number]; resources: typeof rows }>();
       for (const r of rows) {
         const id = `${r.deviceId}/${r.assetId}`;
@@ -1589,12 +1594,27 @@ export function createApp(
     // at all, so nothing would repair it: the bytes would be stored, the backend would not know, the
     // device would be told it succeeded, and the resource would be absent from every union forever. A
     // visible retry costs one re-upload; the silence costs a photo.
+    // Which events this write would complete an asset for — asked BEFORE the record, because afterwards a
+    // completion is indistinguishable from a re-upload of a role that was already stored (see
+    // `eventsCompletedBy`). A read failure here must not fail an upload whose bytes are already stored, so
+    // it degrades to "wake nobody": the recipient's next foreground reconciles regardless.
+    let completed: string[] = [];
+    try {
+      completed = await eventsCompletedBy(db, { deviceId, assetId, role });
+    } catch (e) {
+      console.error(`v2 upload: completion lookup failed for ${deviceId}/${assetId}/${role}: ${e}`);
+    }
     try {
       await recordResource(db, { deviceId, assetId, role, key, contentType, filename });
     } catch (e) {
       console.error(`v2 upload: could not record ${byteKey(deviceId, key)}: ${e}`);
       return c.text("upstream error", 502);
     }
+    // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
+    // woken to come and fetch it (capability `upload-completion-notify`). The manifest publish cannot
+    // announce this — a declaration and its later completion project identical manifest fields, so the
+    // publish does not change when the bytes land. A byte that completed nothing wakes nobody.
+    for (const eventId of completed) await notifyMembers(eventId, deviceId);
     return c.body(null, 201);
   });
 
@@ -1669,6 +1689,23 @@ export function createApp(
       console.error(`v2 manifest: membership read failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
+    // Does this publish make anything FETCHABLE that was not before? Asked before the replace, for the
+    // same reason the byte route asks before its write. Under a manifest that declares intent most
+    // publishes name assets whose bytes have not arrived, and waking members for those would announce a
+    // photo they cannot fetch while spending an allowance APNs caps at two or three per hour. The case
+    // that does earn a wake is a WIDENING: a membership re-admits assets it already uploaded, so the union
+    // grows with no byte moving. A read failure degrades to "wake nobody" rather than failing the publish.
+    let addsFetchable = false;
+    try {
+      addsFetchable = await publishAddsFetchableAsset(
+        db,
+        eventId,
+        deviceId,
+        assets.map((a) => ({ assetId: a.assetId, roles: a.resources.map((r) => r.role) })),
+      );
+    } catch (e) {
+      console.error(`v2 manifest: fetchability lookup failed for ${eventId}/${deviceId}: ${e}`);
+    }
     try {
       await db.batch(publishStatements(eventId, deviceId, assets, { legacy: false }));
     } catch (e) {
@@ -1679,7 +1716,7 @@ export function createApp(
     // union and find the very state the notification announced to be missing. Best-effort — the response
     // is the transaction's outcome and is never changed by a push that failed, the same split the byte
     // route already draws for its database write.
-    await notifyMembers(eventId, deviceId);
+    if (addsFetchable) await notifyMembers(eventId, deviceId);
     return c.body(null, 200);
   });
 

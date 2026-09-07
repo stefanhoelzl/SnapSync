@@ -80,10 +80,10 @@ class SqlDelightLedgerStore(
         dings.tryEmit(Unit)
     }
 
-    override suspend fun completedManifestRows(): List<LedgerEntry> =
-        // `state` is read from the row rather than asserted: the predicate now binds DONE_STATES, so
-        // hardcoding COMPLETED here would become a lie the moment a second settled state exists.
-        queries.selectCompletedManifestRows(DONE_STATES) { key, assetId, state, creationDate, role, contentType, filename ->
+    override suspend fun manifestRows(): List<LedgerEntry> =
+        // `state` is read from the row rather than asserted. Nothing is bound: the query is not
+        // state-scoped, because the manifest declares intent (capability `device-manifest`).
+        queries.selectManifestRows { key, assetId, state, creationDate, role, contentType, filename ->
             LedgerEntry(
                 key = key,
                 assetId = assetId,

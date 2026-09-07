@@ -169,3 +169,42 @@ export function assertPresigned(url: string, key: string) {
   assertEquals(u.searchParams.get("X-Amz-Expires"), "604800");
   assert((u.searchParams.get("X-Amz-Signature") ?? "").length > 0);
 }
+
+/**
+ * A config carrying a REAL ES256 key, generated per run.
+ *
+ * The APNs sender signs its provider JWT lazily and catches a signing failure PER TOKEN — so with the
+ * placeholder PEM in {@link CONFIG}, every push is reported failed and none is ever sent. That is
+ * faithful to the route's best-effort contract, but it would make a fan-out test pass while asserting
+ * nothing, which is precisely the failure a fan-out test exists to catch.
+ *
+ * Machinery, not a fixture: it encodes how the rig makes a push observable, not what any version's wire
+ * contract is.
+ */
+export async function apnsConfig() {
+  const kp = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+  let bin = "";
+  for (const b of pkcs8) bin += String.fromCharCode(b);
+  const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(bin)}\n-----END PRIVATE KEY-----\n`;
+  return { ...CONFIG, apnsPrivateKey: pem };
+}
+
+/** An APNs-shaped fetch fake: records the pushes (and their headers) and answers each with `status`. */
+export function apnsRecorder(status = 200) {
+  const pushed: string[] = [];
+  const headers: Record<string, string>[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    if (url.includes("api.push.apple.com") || url.includes("api.sandbox.push.apple.com")) {
+      pushed.push(url.split("/").pop()!);
+      headers.push({ ...(init?.headers as Record<string, string> ?? {}) });
+      return Promise.resolve(new Response(null, { status }));
+    }
+    return Promise.resolve(new Response(null, { status: 201 }));
+  };
+  return { pushed, headers, fetchImpl };
+}

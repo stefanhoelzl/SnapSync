@@ -666,13 +666,21 @@ class UploadCycleTest {
             LedgerState.COMPLETED, backend.get("FOREIGN-primary.heic")?.state,
             "the stale row survives — it is a true statement about bytes on the backend",
         )
-        // MINE is only REQUESTED this cycle, so the projection holds just FOREIGN's row — and the echo
-        // suppression, an id set supplied per cycle, is what keeps it unlisted. Pruning used to do this.
-        val rows = backend.completedManifestRows()
-        assertEquals(listOf("FOREIGN"), rows.map { it.assetId }, "the stale row is present to be filtered")
+        // The read is not state-scoped, so BOTH rows are present — MINE only REQUESTED, FOREIGN stale and
+        // COMPLETED. The echo suppression, an id set supplied per cycle, is what keeps FOREIGN unlisted;
+        // pruning used to do this. That the filtering happens in the projection rather than in the read is
+        // the whole point: the ledger states what exists, the policy states what is shared.
+        val rows = backend.manifestRows()
+        assertEquals(
+            listOf("FOREIGN", "MINE"), rows.map { it.assetId }.sorted(),
+            "both rows are present to be filtered — the read excludes only absent rows",
+        )
         val listed = projectDeviceManifest("D", rows, admittingWith(echo = setOf("FOREIGN")))
             .assets.map { it.assetId }
-        assertTrue(listed.isEmpty(), "and the echo suppression keeps it out of the manifest")
+        assertEquals(
+            listOf("MINE"), listed,
+            "the echo suppression keeps FOREIGN out, and MINE is DECLARED though its bytes are in flight",
+        )
     }
 
     @Test
@@ -1047,7 +1055,7 @@ class UploadCycleTest {
      *
      * The probe is [unpromotedAtPublish]: what still rested UPLOADED at the moment the manifest hook
      * fired. Empty means the promotion pass had already run. It is deliberately NOT the published
-     * projection — `completedManifestRows()` also excludes rows still missing their manifest detail, so a
+     * projection — `manifestRows()` also excludes rows still missing their manifest detail, so a
      * projection assertion here would measure these fixtures' bare rows rather than the order.
      *
      * The hook still models `DeviceManifestProducer`'s **skip-if-unchanged**, because that is what a real
@@ -1069,7 +1077,7 @@ class UploadCycleTest {
                 order += "manifest"
                 unpromotedAtPublish += backend.uploadedRows().map { it.key }.sorted()
                 if (publishThrows) error("manifest boom")
-                val projection = backend.completedManifestRows().map { it.key }.sorted()
+                val projection = backend.manifestRows().map { it.key }.sorted()
                 val changed = projection != lastPublished
                 if (changed) lastPublished = projection
                 changed
@@ -1336,7 +1344,7 @@ class UploadCycleTest {
         // every row the policy stopped admitting; with the ledger no longer policy-pruned they differ, and
         // what other members see is the projection (capability `device-manifest`).
         onDiscovery = { _, policy ->
-            manifestSaw += projectDeviceManifest("D", backend.completedManifestRows(), policy)
+            manifestSaw += projectDeviceManifest("D", backend.manifestRows(), policy)
                 .assets.map { it.assetId }
             true
         },
@@ -1648,7 +1656,7 @@ class UploadCycleTest {
             reconcile = { true },
             onDiscovery = { _, policy ->
                 order += "discovery"
-                listed = projectDeviceManifest("D", backend.completedManifestRows(), policy)
+                listed = projectDeviceManifest("D", backend.manifestRows(), policy)
                     .assets.map { it.assetId }
                 true
             },
@@ -1672,7 +1680,7 @@ class UploadCycleTest {
         LedgerWriter(backend).recordCompleted(old, attempt = 0, eventId = TEST_EVENT)
         assertEquals(
             listOf("old"),
-            projectDeviceManifest("D", backend.completedManifestRows(), admittingWith(cutoff = "2026-06-01T00:00:00Z"))
+            projectDeviceManifest("D", backend.manifestRows(), admittingWith(cutoff = "2026-06-01T00:00:00Z"))
                 .assets.map { it.assetId },
             "precondition: shared and listed",
         )
@@ -1687,7 +1695,7 @@ class UploadCycleTest {
             "the ledger records bytes on the backend — a scope change is not a fact about that",
         )
         assertTrue(
-            projectDeviceManifest("D", backend.completedManifestRows(), admittingWith(cutoff = "2026-07-06T00:00:00Z"))
+            projectDeviceManifest("D", backend.manifestRows(), admittingWith(cutoff = "2026-07-06T00:00:00Z"))
                 .assets.isEmpty(),
             "but it stops being listed to the event",
         )
@@ -1703,7 +1711,7 @@ class UploadCycleTest {
         )
         assertEquals(
             listOf("old"),
-            projectDeviceManifest("D", backend.completedManifestRows(), admittingWith(cutoff = "2026-06-01T00:00:00Z"))
+            projectDeviceManifest("D", backend.manifestRows(), admittingWith(cutoff = "2026-06-01T00:00:00Z"))
                 .assets.map { it.assetId },
             "and it is listed again",
         )

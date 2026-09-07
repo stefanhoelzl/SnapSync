@@ -11,22 +11,22 @@ import app.snapsync.ports.ManifestPublisher
  * Writes the per-event device manifest each cycle (capability `device-manifest`). The **sole** writer of
  * the manifest; it PUTs **synchronously in-cycle** (no background `URLSession`).
  *
- * The manifest is a **projection of the upload ledger's COMPLETED rows** (capability `sync-ledger`),
- * admitted by the membership's one policy (capability `photo-selection-policy`). It used to be projected
- * from a device-global accumulator this class also maintained — a second durable structure tracking the
- * same deletion-aware asset set with different columns, and pruning it on the same signals. The ledger
- * already had to be right about all of that (a wrong row re-uploads a whole library, or hides a photo
- * forever), so the accumulator was duplication that could only ever disagree.
+ * The manifest is a **projection of the upload ledger** (capability `sync-ledger`), admitted by the
+ * membership's one policy (capability `photo-selection-policy`). It used to be projected from a
+ * device-global accumulator this class also maintained — a second durable structure tracking the same
+ * deletion-aware asset set with different columns, and pruning it on the same signals. The ledger already
+ * had to be right about all of that (a wrong row re-uploads a whole library, or hides a photo forever),
+ * so the accumulator was duplication that could only ever disagree.
  *
- * **What the change costs, stated plainly:** the manifest now lists **completed** resources rather than
- * **discovered** ones. A just-taken photo appears in the union when its bytes land instead of when it is
- * noticed — which is the honest timing, because the union's consumers can only fetch bytes that exist.
- * The event union's byte-presence cross-check (capability `bunny-list-endpoint`) therefore stops being
- * the mechanism that hides not-yet-uploaded assets and becomes defense-in-depth against a
- * COMPLETED-but-absent byte.
+ * **What it declares, stated plainly:** every resource this device INTENDS to provide, whatever its
+ * upload state — not the ones whose bytes have landed. A just-taken photo is listed when it is noticed,
+ * and the backend keeps it out of the event union until every role it declares has arrived. That is the
+ * honest division of labour: the device says what it will contribute, the backend says what is fetchable.
+ * Listing only completed resources instead made a half-uploaded Live Photo readable as a complete
+ * one-resource asset, which recipients imported as a still and never revisited.
  *
  * Deletion-awareness comes from the ledger's **absence mark**: an asset the change feed reports removed
- * has its rows marked (never deleted — their bytes are still on the backend, and the rows are what stop a
+ * has its rows marked (never deleted — their bytes may be on the backend, and the rows are what stop a
  * restored asset re-uploading), and the projection excludes marked rows, so they leave it with no second
  * structure to keep in step. There is no full-enumeration retain-live backstop: it was fed the
  * policy-admitted set, so a raised capture cutoff discarded rows for photos still present and still
@@ -42,17 +42,18 @@ class DeviceManifestProducer(
 ) {
     /**
      * Project and PUT; answers whether the published projection **changed**. [rows] are the ledger's
-     * COMPLETED rows carrying manifest detail; [policy] is the membership's admission, applied here
-     * exactly as every other consumer applies it.
+     * rows carrying manifest detail; [policy] is the membership's admission, applied here exactly as
+     * every other consumer applies it.
      *
-     * `true` means this call confirmed a write of a projection different from the last one confirmed —
-     * the union now lists something it did not before. That is exactly what the completion notify exists
-     * to announce, so the notify rides this answer rather than a per-cycle count of what completed
-     * (capability `upload-completion-notify`). A count can be spent by a cycle that cannot announce it;
-     * this cannot, because it is derived from the durable skip-if-unchanged record.
-     *
+     * `true` means this call confirmed a write of a projection different from the last one confirmed.
      * `false` covers both "the projection was unchanged, so nothing was PUT" and "the PUT was not
-     * confirmed", and the two are the same fact to a recipient: nothing new to come and fetch.
+     * confirmed".
+     *
+     * **Nothing reads this answer any more, and that is deliberate rather than an oversight.** It used to
+     * gate the device's completion notify; the versioned device API removed that call, and the wake is
+     * now the backend's effect of the write that makes an asset fetchable (capability
+     * `upload-completion-notify`). It is kept because "did this cycle actually publish?" is the honest
+     * result of the operation and is what a test asserts on — not because a caller branches on it.
      */
     suspend fun produce(eventId: String, policy: SelectionPolicy, rows: List<LedgerEntry>): Boolean {
         val json = projectDeviceManifest(deviceId, rows, policy).encodeToJson()
