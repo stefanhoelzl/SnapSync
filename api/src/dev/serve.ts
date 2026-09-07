@@ -39,7 +39,7 @@ import { putAttestation } from "../db.ts";
 import { DEV_ATTEST_TTL_MS, enrolmentTarget } from "./fallback.ts";
 import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
-import { migrate } from "../migrations.ts";
+import { replay } from "./replay.ts";
 import { fsFetch } from "./fs-storage.ts";
 import { startTunnel, type Tunnel } from "./tunnel.ts";
 
@@ -83,7 +83,7 @@ const storage = fsFetch(config, options.store);
 // broken for no visible reason.
 await Deno.mkdir(options.store, { recursive: true });
 const db = sqliteDb(`${options.store}/api.db`);
-await migrate(db);
+await replay(db);
 
 const app = createApp({ config, db, fetch: storage });
 

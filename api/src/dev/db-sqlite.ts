@@ -22,7 +22,7 @@ import type { Db, Row, Statement } from "../db.ts";
  * resolves immediately rather than deferring — a test observes the same ordering the production driver
  * would impose, without a scheduler in between.
  */
-export function sqliteDb(path = ":memory:"): Db & { close(): void } {
+export function sqliteDb(path = ":memory:"): Db & { close(): void; exec(sql: string): void } {
   const handle = new DatabaseSync(path);
   // Enforcement is ON in this build, but state it rather than inherit it: the deployed store is a
   // different engine, and a schema that relies on cascades must not depend on which one it meets.
@@ -36,7 +36,7 @@ export function sqliteDb(path = ":memory:"): Db & { close(): void } {
     return { rows, rowsAffected: Number(changes.c) };
   };
 
-  const db: Db & { close(): void } = {
+  const db: Db & { close(): void; exec(sql: string): void } = {
     execute(sql: string, args: unknown[] = []) {
       return Promise.resolve(run(sql, args));
     },
@@ -64,6 +64,21 @@ export function sqliteDb(path = ":memory:"): Db & { close(): void } {
     },
     close() {
       handle.close();
+    },
+    /**
+     * Run one or more statements as raw SQL, outside the port's prepare/bind path.
+     *
+     * `execute` prepares a SINGLE statement, so it cannot run a migration file — and splitting a file on
+     * `;` is the kind of half-parser this codebase should not own (semicolons live inside string
+     * literals and trigger bodies). `exec` is SQLite's own multi-statement entry point, so the replayer
+     * hands it whole files and never parses SQL. It is also the only way to issue `PRAGMA` and
+     * transaction control, which the replayer needs (see `replay.ts`).
+     *
+     * Deliberately NOT on the `Db` port: nothing in production runs unparameterised multi-statement SQL,
+     * and adding it there would invite exactly that.
+     */
+    exec(sql: string) {
+      handle.exec(sql);
     },
   };
   return db;

@@ -16,7 +16,7 @@ import { createApp as createRealApp, type Deps, type FetchLike } from "../../src
 import { mintToken } from "../../src/attest.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
 import { type Db, insertEvent } from "../../src/db.ts";
-import { migrate } from "../../src/migrations.ts";
+import { replay } from "../../src/dev/replay.ts";
 
 export const NOW = Date.parse("2026-07-14T12:00:00Z");
 
@@ -86,7 +86,7 @@ export function recorder(opts: { status?: number; throws?: boolean } = {}) {
 /** A migrated in-memory store. Every test gets its own, so none can observe another's rows. */
 export async function store(): Promise<Db & { close(): void }> {
   const db = sqliteDb(":memory:");
-  await migrate(db);
+  await replay(db);
   return db;
 }
 

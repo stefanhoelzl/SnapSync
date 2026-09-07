@@ -67,7 +67,20 @@ name: api-deploy
 # maintenance and real bundles are the same commit resolved from two deployments that differ in one key,
 # which is why `/health` reports the window state and both probes assert it — the sha cannot tell them
 # apart. Capability `backend-deployment`; decision record
-# `openspec/changes/add-deploy-maintenance-mode/design.md`.
+# `openspec/changes/archive/2026-08-27-add-deploy-maintenance-mode/design.md`.
+#
+# ── THE STORE'S SHAPE IS ASSERTED, ON BOTH BRANCHES ──────────────────────────────────────────────────
+#
+# The migrations are applied by the PLATFORM runner (`bunny db migrations`), and this workflow checks that
+# the store it produced is the one the repository describes — comparing the deployed `sqlite_master`
+# against what replaying `api/migrations/*.sql` builds. Nothing else observes the DEPLOYED shape: every
+# other check runs against a replay on a different engine.
+#
+# It runs in whichever position is cheap for that branch. With nothing pending the store should already
+# match, so the assertion happens BEFORE the window decision and a mismatch costs no outage — which is
+# also where a store hand-edited through `bunny db shell` is caught, since that happens between deploys.
+# With a migration pending it runs after applying and before the real bundle publishes, inside the window
+# the restore path already knows how to lift.
 
 on:
   push:
@@ -137,6 +150,21 @@ jobs:
             exit 1
           }
 
+      # ── The runner that applies them ─────────────────────────────────────────────────────────────
+      #
+      # The migration runner is the platform's (capability `database`). It authenticates with `--url` and
+      # `--token` — the two database secrets this workflow already holds — so adopting it needs NO bunny
+      # account key and does not widen what a compromised deploy path can reach.
+      #
+      # DELIBERATELY UNPINNED. `db migrations` is self-labelled experimental and the package ships often,
+      # so a breaking release can arrive on a merge that has nothing to do with it. That is accepted:
+      # ordering covers both places it could bite — the pending check below runs BEFORE the live-bundle
+      # capture, so a broken CLI fails the run before any window opens, and a failure during `apply`
+      # lands inside the window, which the restore path at the bottom of this file lifts.
+      - name: Install the bunny CLI
+        if: github.ref == 'refs/heads/main'
+        run: npm install -g @bunny.net/cli
+
       # ── Does this deploy touch the schema at all? ────────────────────────────────────────────────
       #
       # THE ANSWER DECIDES WHETHER THERE IS AN OUTAGE. Most deploys change no schema, and those must cost
@@ -156,7 +184,7 @@ jobs:
           BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
         run: |
           set +e
-          deno run --allow-net --allow-env src/scripts/migrate.ts --pending
+          deno run --allow-env --allow-run --allow-read src/scripts/migration-plan.ts
           code=$?
           set -e
           case "$code" in
@@ -167,6 +195,28 @@ jobs:
                      "bundle onto a possibly un-migrated store."
                 exit 1 ;;
           esac
+
+      # ── The store already matches, or this deploy stops here ─────────────────────────────────────
+      #
+      # THE FREE HALF of the shape assertion (capability `backend-deployment`). With nothing pending the
+      # deployed store is ALREADY expected to equal what the migrations build, so asserting it costs
+      # nothing and fails before anything is published and before any window can open.
+      #
+      # This is where a hand-edited store is caught. `bunny db shell` can write, and such an edit happens
+      # BETWEEN deploys and involves no migration — so it lands in exactly this branch, where the check is
+      # free. It is also the only measurement anywhere of the DEPLOYED shape: every other check in this
+      # repository runs against a replay on a different engine.
+      #
+      # It deliberately does NOT run on the pending branch: while a migration is due the store legitimately
+      # does not match the new snapshot yet, so asserting here would fail every migrating deploy. The
+      # post-migrate half below covers that case instead.
+      - name: The deployed store matches the migrations
+        if: github.ref == 'refs/heads/main' && steps.plan.outputs.pending == 'false'
+        working-directory: api
+        env:
+          BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
+          BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
+        run: deno run --allow-net --allow-env --allow-read src/scripts/assert-schema.ts
 
       # ── Capture what is live, so the window can always be lifted ─────────────────────────────────
       #
@@ -273,13 +323,35 @@ jobs:
       # what applies migrations. This widens a compromised deploy path's reach to the relational store
       # and SHALL NOT be widened further to storage. It is also why the bundle archive below lives in
       # GitHub Actions rather than in the storage zone.
+      # ⚠️ NO `--allow-drift`, EVER. Refusing to apply over a history whose files have been edited, gone
+      # missing, or landed out of order is the first reason this runner was adopted; a flag that waives it
+      # in the automated path hands that back. A drift-blocked deploy fails here, inside the window, and
+      # the restore path below lifts it — that cost is accepted rather than papered over.
       - name: Migrate the relational store
         if: steps.live.outputs.sha != ''
         working-directory: api
         env:
           BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
           BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
-        run: deno run --allow-net --allow-env src/scripts/migrate.ts
+        run: |
+          bunny db migrations apply \
+            --dir migrations \
+            --url "$BUNNY_DATABASE_URL" \
+            --token "$BUNNY_DATABASE_AUTH_TOKEN" \
+            --force
+
+      # THE OTHER HALF of the shape assertion, and the expensive one: it runs INSIDE the window, so a
+      # mismatch costs a rollback. It is what witnesses that the migration just applied produced the shape
+      # the committed snapshot describes — on the deployed engine, which is not the one the tests ran on.
+      # Placed before the real bundle publishes, so a bundle is never shipped against a store whose shape
+      # nobody has confirmed.
+      - name: The migrated store matches the migrations
+        if: steps.live.outputs.sha != ''
+        working-directory: api
+        env:
+          BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
+          BUNNY_DATABASE_AUTH_TOKEN: ${{ secrets.BUNNY_DATABASE_AUTH_TOKEN }}
+        run: deno run --allow-net --allow-env --allow-read src/scripts/assert-schema.ts
 
       # The maintenance bundle overwrote `dist/main.js`, so rebuild the real one. Re-resolving `prod` is
       # what puts the flag back to false — the bundle is the only carrier of that value.
