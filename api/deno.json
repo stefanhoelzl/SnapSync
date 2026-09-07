@@ -21,6 +21,12 @@
     // They are type-checked here for the same reason src/dev/ is: a broken one must fail CI rather than
     // surface the next time someone runs it.
     "check": "deno task config && deno check src/*.ts src/dev/*.ts src/scripts/*.ts src/lint/*.ts",
+    // The GENERATED schema snapshot (capability `database`). `schema` rewrites `api/schema.sql` by
+    // replaying `api/migrations/*.sql`; `schema:check` is the CI half and fails when the committed file
+    // is not what replaying produces. Deliberately NOT chained to `deno task config`: the generator
+    // reads migrations and SQLite and touches no configuration, so it works on a fresh clone.
+    "schema": "deno run --allow-read --allow-write src/scripts/generate-schema.ts",
+    "schema:check": "deno run --allow-read src/scripts/generate-schema.ts --check",
     // The local backend rig (dev infrastructure — non-gating, no spec). `dev:local` is the curl loop;
     // `dev:tunnel` adds a cloudflared quick tunnel so a physical device can reach it under default ATS.
     // Both resolve the `local` deployment, whose filesystem storage kind the rig requires — running them

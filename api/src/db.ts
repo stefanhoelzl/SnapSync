@@ -62,121 +62,18 @@ export interface Db {
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>;
 }
 
-/**
- * The schema as it stands — every statement needed to build it FROM NOTHING, and the readable statement
- * of what these tables are today. The statements below are written against this shape.
- *
- * This is HALF the schema's expression. It cannot change a store that already holds tables (every
- * statement is `IF NOT EXISTS`), so evolving one is `migrations.ts`'s ordered list. The two are bound by
- * `migrations.test.ts`, which builds one store from each and asserts the schemas are identical — so this
- * can never quietly describe something the deployed store is not.
- */
-export const SCHEMA: readonly string[] = [
-  `CREATE TABLE IF NOT EXISTS events (
-     id               TEXT PRIMARY KEY NOT NULL,
-     name             TEXT NOT NULL,
-     created_at       TEXT NOT NULL,
-     starts_at        TEXT NOT NULL,
-     ends_at          TEXT NOT NULL,
-     capacity         INTEGER NOT NULL,
-     lifetime_seconds INTEGER NOT NULL
-   ) STRICT`,
-  `CREATE TABLE IF NOT EXISTS memberships (
-     event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-     device_id TEXT NOT NULL,
-     state     TEXT NOT NULL,
-     joined_at TEXT NOT NULL,
-     PRIMARY KEY (event_id, device_id)
-   ) STRICT`,
-  `CREATE TABLE IF NOT EXISTS event_assets (
-     event_id      TEXT NOT NULL,
-     device_id     TEXT NOT NULL,
-     asset_id      TEXT NOT NULL,
-     creation_date TEXT NOT NULL,
-     -- The roles this asset DECLARES for this event, as a JSON array (e.g. '["primary","live"]').
-     -- The manifest is the only party that knows an asset has two resources, so the expectation has to
-     -- be recorded here: \`resources\` holds only what ARRIVED, and one row proves nothing about whether
-     -- a second is still owed. The union compares the two as SETS (\`json_each\` + NOT EXISTS), never as
-     -- counts — \`resources\` is device-scoped while this is event-scoped, so a device may hold a role
-     -- this event does not declare, and counting would read that asset as incomplete and drop it.
-     -- NOT NULL so no read ever needs a fallback branch for a row written before the column existed.
-     roles         TEXT NOT NULL,
-     PRIMARY KEY (event_id, device_id, asset_id),
-     FOREIGN KEY (event_id, device_id)
-       REFERENCES memberships(event_id, device_id) ON DELETE CASCADE
-   ) STRICT`,
-  `CREATE TABLE IF NOT EXISTS resources (
-     device_id    TEXT NOT NULL,
-     -- IDENTITY: which asset this resource belongs to, and which role it plays within it. An asset
-     -- carries AT MOST ONE resource per role — an invariant the client upholds and this backend CANNOT
-     -- verify, because a second same-role upload is indistinguishable from a legitimate re-upload of the
-     -- same resource. Keying on it bounds a violation to an overwrite: no orphan object, and no row that
-     -- disagrees with the bytes it names.
-     asset_id     TEXT NOT NULL,
-     role         TEXT NOT NULL,
-     -- ADDRESS, not identity: the bare stored object name under the device's byte partition
-     -- (<assetId>-<role>.<ext>). Composed by the BACKEND, and byte-identical across API versions, so a
-     -- device that moves between versions finds its bytes where it left them rather than re-uploading
-     -- its whole library. Kept as a column so the storage layout can change without changing what a
-     -- resource IS, and so two versions can address one row while spelling the name differently.
-     key          TEXT NOT NULL,
-     content_type TEXT NOT NULL,
-     filename     TEXT NOT NULL,
-     PRIMARY KEY (device_id, asset_id, role),
-     -- One stored object, one row. The key encodes identity, so this can never contradict the primary
-     -- key — it earns its place by indexing the sweep's lookup, which addresses a row by object name.
-     UNIQUE (device_id, key)
-   ) STRICT`,
-  // `resources_by_asset` is GONE, not forgotten: the primary key is now
-  // `(device_id, asset_id, role)`, whose leftmost prefix is exactly what that index covered. Keeping it
-  // would be a second copy of the same b-tree.
-  // ONE ROW PER DEVICE, TWO INDEPENDENTLY-WRITTEN GROUPS.
-  //
-  // The push token is THREE columns, not a document. It began as one `push_token TEXT` holding the
-  // config body verbatim, on the reasoning that the shape is `push-registration`'s to decide and the
-  // backend should hold no second opinion. That reasoning was wrong: `readPushToken` reads exactly
-  // `kind`, `token` and `env` and ignores everything else, so the opinion existed either way — it was
-  // just buried in a parser instead of declared here, where STRICT can type it and a malformed write
-  // fails at the endpoint that made it rather than on the notify path days later.
-  //
-  // The push group is nullable TOGETHER: a device with no registered token is an ordinary state (it has
-  // not launched since attesting), and is why notify is best-effort.
-  //
-  // The ATTESTATION group is `NOT NULL`, because A ROW EXISTS IF AND ONLY IF THE DEVICE HAS ATTESTED
-  // (capability `device-attestation`). That is not a convention chosen here — it is forced by the gate:
-  // every route but `/attest/*` requires a device token, and a token is obtainable only by attesting, so
-  // no device can reach any other device-scoped write first. `created_at` therefore means FIRST ATTESTED.
-  //
-  // EACH GROUP HAS ONE WRITER, and each writer names ONLY its own columns, so neither can overwrite the
-  // other's fact. `created_at` is written on insert and never rewritten.
-  //
-  // ⚠️ EVERY TIMESTAMP BELOW IS ISO-8601 UTC WITH MILLISECONDS AND A LITERAL Z — what
-  // `new Date().toISOString()` mints, and the ONLY shape these columns may hold. This is inherited law,
-  // not a fresh preference: the cutover backfill once wrote bunny storage's `LastChanged` into
-  // `updated_at` (…362813+00:00 — microseconds, numeric offset), so one column carried two spellings of
-  // the same instant. `+` is 0x2B and `Z` is 0x5A, so the lexicographic comparison every other date in
-  // this codebase relies on orders …+00:00 BEFORE …Z for the same moment.
-  //
-  // THAT TRAP IS NO LONGER HYPOTHETICAL HERE. `updated_at` was safe because nothing read it; its
-  // successors are not. `attest_token_expires_at` is compared lexicographically by the nightly sweep
-  // (see `collectableDevices`) to decide whether a device may still hold a working credential — and a
-  // row spelled the other way would sort as ALREADY EXPIRED, collecting a device that is still using its
-  // token and driving it into the re-attestation loop that clause exists to prevent. Both writers here
-  // mint through `tokenExpiryIso`, which is `toISOString()`; the one-time attestation migration seeds
-  // through the same helper. Do not reach for whatever timestamp is already in hand.
-  `CREATE TABLE IF NOT EXISTS devices (
-     device_id               TEXT PRIMARY KEY NOT NULL,
-     created_at              TEXT NOT NULL,
-     attest_key              TEXT NOT NULL,
-     attest_env              TEXT NOT NULL,
-     attested_at             TEXT NOT NULL,
-     attest_token_expires_at TEXT NOT NULL,
-     push_kind               TEXT,
-     push_token              TEXT,
-     push_env                TEXT,
-     push_updated_at         TEXT
-   ) STRICT`,
-];
+// ── Where the schema lives ────────────────────────────────────────────────────────────────────────
+//
+// NOT HERE ANY MORE. The statements in this file are written against **`api/schema.sql`**, which is
+// GENERATED (`deno task schema`) by replaying **`api/migrations/*.sql`** — the ordered files that are the
+// only thing able to change a store that already holds rows.
+//
+// This file used to carry a `SCHEMA` constant stating the same shape a second time, by hand, kept honest
+// by a test asserting the two agreed. Deriving one from the other removes the possibility of disagreement
+// rather than policing it, and the prose that annotated those tables moved with them into
+// `migrations/0001_baseline.sql`, where SQLite preserves it verbatim into the generated snapshot.
+//
+// To read the current shape: open `api/schema.sql`. To change it: add a migration.
 
 // ── Events ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -589,13 +486,18 @@ export async function readAttestation(
     [deviceId],
   );
   if (rows.length === 0) return null;
+  // NO NULL CHECK ON THE COLUMNS, and that is the schema's guarantee rather than an omission: the
+  // attestation group is `NOT NULL`, so a row exists if and only if the device has attested. Absence is
+  // therefore expressed by the ABSENT ROW above and by nothing else.
+  //
+  // It was not always so. During the relational cutover a row could exist with the attestation columns
+  // still NULL — migration v2 carried every legacy row across before their values, which lived in the
+  // storage zone, could be backfilled — and this function guarded against handing renewal `String(null)`,
+  // the literal "null", which fails to verify and reads as a REFUSED ASSERTION blaming the device's
+  // Secure Enclave for something the backend never had. v3 tightened the columns and the cutover is long
+  // finished; the guard outlived the state it was written for.
   const { attest_key: key, attest_env: env } = rows[0];
-  // A row can exist with NO attestation during the cutover (migration v2 carries every legacy row across
-  // before the attestation columns are filled). `String(null)` would yield the literal "null" and hand
-  // renewal a garbage public key, which fails to verify and reads as a REFUSED ASSERTION — naming the
-  // device's Secure Enclave for something the backend never had. Absent is absent.
-  if (typeof key !== "string" || typeof env !== "string") return null;
-  return { publicKey: key, environment: env };
+  return { publicKey: String(key), environment: String(env) };
 }
 
 /**

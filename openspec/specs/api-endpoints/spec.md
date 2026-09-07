@@ -18,7 +18,7 @@ the status code a violation earns, and stops. A reader who wants to know *why* a
 days is sent to `event-limits`; a reader who wants to know what a client gets for exceeding it reads `400`
 here.
 
-Decision record: `changes/record-uploads-in-database`.
+Decision record: `changes/archive/2026-08-25-record-uploads-in-database`.
 
 ## Requirements
 ### Requirement: The route table is closed

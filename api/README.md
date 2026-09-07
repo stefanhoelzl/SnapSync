@@ -262,11 +262,16 @@ src/app.ts        Hono app (createApp({config, db, fetch}) → routes): the atte
                   event union, push registration, notify; PLUS the static-site proxy (serveSiteObject
                   → GET /, /join, /_astro/* from the storage site/ prefix, capability web-site) and the
                   AASA. Holds the token gate's closed list and presignDownloadUrl().
-src/db.ts         the RELATIONAL STORE: the `Db` port, `SCHEMA` (the created shape), and every
-                  statement — the capacity gate, the atomic publish, the union, the sweep's queries.
-src/migrations.ts schema EVOLUTION: the ordered `MIGRATIONS` list + a `schema_migrations` record, and
-                  `migrate()`. Bound to `SCHEMA` by migrations.test.ts, which asserts a store built
-                  from each is identical. Never reached from main.ts — the edge does not migrate.
+src/db.ts         the RELATIONAL STORE: the `Db` port and every statement — the capacity gate, the
+                  atomic publish, the union, the sweep's queries. It carries NO schema: see
+                  migrations/ and schema.sql below.
+migrations/*.sql  schema EVOLUTION: ordered, checksummed files. The DEPLOYED store is migrated by
+                  `bunny db migrations` (the platform runner) from api-deploy.yml; the rig, the test
+                  fixtures and the generator use src/dev/replay.ts, because that CLI refuses any
+                  non-encrypted URL and so cannot address a local store. Never reached from main.ts.
+schema.sql        GENERATED (`deno task schema`) by replaying migrations/ and dumping sqlite_master.
+                  Committed, and CI fails when it is stale. The artifact a reviewer reads to see what
+                  a migration did — including what it silently DROPPED.
 src/db-libsql.ts  the `Db` over bunny Database (libsql/web) — the deployed driver.
 src/storage.ts    storage primitives for the BYTE store + the site prefix (key builders, LIST/GET/
                   PUT/DELETE), shared verbatim with the out-of-edge sweep so the two cannot drift.
@@ -379,19 +384,32 @@ store directory on purpose, so `rm -rf api/.localstore` clears both halves at on
 objects and keeping the rows leaves a rig whose events exist but whose photos do not, which reads as
 "downloads are broken" with no error anywhere. Reset is still `rm -rf api/.localstore`.
 
-**The schema is applied by an ordered migration list**, not by the create statements. `db.ts`'s
-`SCHEMA` is the current shape (readable, and what every statement in that file is written against);
-`migrations.ts` holds the ordered history plus a `schema_migrations` record, and `migrate()` applies
-only what a store has not yet seen. `migrations.test.ts` builds one store from each and asserts the
-two agree, so they cannot drift. The deployed store is migrated by `api-deploy.yml` **before** it
-publishes the bundle — a failed migration fails the run with the previous bundle still live. The rig
-migrates on start, so a `.localstore` from an older rig is carried forward rather than needing a
-wipe.
+**The schema is applied by ordered migration files**, and stated by a GENERATED snapshot.
+`migrations/*.sql` is the history — checksummed, so editing one that has already been applied is
+refused rather than silently ignored — and `schema.sql` is what replaying them builds, regenerated
+by `deno task schema` and gated for freshness in CI. The second form is derived from the first, so
+the two cannot disagree; `db.ts` no longer carries a hand-written copy.
+
+TWO RUNNERS, ONE SET OF FILES. The deployed store is migrated by the platform's
+`bunny db migrations` from `api-deploy.yml`, **before** it publishes the bundle — a failed migration
+fails the run with the previous bundle still live. Everything local uses `src/dev/replay.ts`,
+because the CLI refuses any URL that is not `libsql://`/`https://`/`wss://` and therefore cannot
+address a file or `:memory:`. Both apply each file with foreign-key enforcement genuinely OFF (not
+deferred): `DROP TABLE` performs an implicit delete that FIRES `ON DELETE CASCADE`, so a rebuild of
+a referenced table would otherwise empty its children while reporting success. The rig migrates on
+start, so a `.localstore` from an older rig is carried forward rather than needing a wipe.
+
+THE DEPLOY ASSERTS THE RESULT. `api-deploy.yml` compares the live store's `sqlite_master` against
+`schema.sql` — before the window decision when no migration is pending (where a store hand-edited
+through `bunny db shell` is caught, for free), and after applying when one is.
 
 ⚠️ **A migration MIGRATES its data; it does not drop it**, and one that narrows a constraint REFUSES
 rather than discarding the rows it cannot carry — a refusal that fails the deploy with the previous
-bundle still serving. Both are `database`'s contract and are gated by `migrations.test.ts`; read the
-spec for the reasoning rather than this paragraph.
+bundle still serving — expressed as SQL that aborts, inside the migration file, because that is the
+only thing that runs where the rows are. A migration's row copy also NAMES its columns: `SELECT *`
+maps by position, so a rebuild that reorders columns carries every row and transposes all of them.
+All three are `database`'s contract and are gated by `migrations.test.ts`; read the spec for the
+reasoning rather than this paragraph.
 
 ⚠️ **A device must ATTEST before any other device-scoped write**, and the rig fills that in the same
 place it fills an absent token. A `devices` row is created only by `POST /api/v1/attest/token`, so

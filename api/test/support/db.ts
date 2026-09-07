@@ -4,13 +4,13 @@
 // starts reading rows fails on the assertion it should, not on a stub that throws.
 
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
-import { migrate } from "../../src/migrations.ts";
+import { replay } from "../../src/dev/replay.ts";
 import type { Db } from "../../src/db.ts";
 
 /** An empty, migrated store. Callers that assert nothing about rows need not close it. */
 export async function emptyStore() {
   const db = sqliteDb(":memory:");
-  await migrate(db);
+  await replay(db);
   return db;
 }
 

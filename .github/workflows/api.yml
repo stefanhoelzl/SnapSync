@@ -85,6 +85,17 @@ jobs:
         working-directory: api
         run: deno task test
 
+      # The committed schema snapshot must be exactly what replaying `api/migrations/*.sql` produces
+      # (capability `database`). It has two readers and a stale copy makes both wrong: a REVIEWER reads
+      # its diff to see what a migration did to the schema — including what the migration silently
+      # dropped, which is visible nowhere else — and the DEPLOY asserts the live store against it.
+      #
+      # This is a freshness check, not a correctness one: regenerating after a mistake makes it pass.
+      # That is why the deletion shows up in the diff instead.
+      - name: Schema snapshot is current
+        working-directory: api
+        run: deno task schema:check
+
       # Bundling is a check too, not only a deploy step: an import that does not resolve, or a bundle
       # that outgrows the Edge Scripting 10 MB script limit, fails here rather than on `main`.
       # api-deploy.yml bundles again for real — artifacts do not cross workflows, and it needs the file

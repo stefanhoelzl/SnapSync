@@ -1,348 +1,342 @@
-// THE VERIFY TEST (capability `database`): the created schema and the migrated schema are the same schema.
+// THE SCHEMA GATES (capability `database`).
 //
-// `db.ts`'s `SCHEMA` builds the tables from nothing; `migrations.ts`'s `MIGRATIONS` evolves a store that
-// already holds rows. Both describe the same shape, and nothing but this test makes that true — edit one
-// and forget the other and the deployed store quietly stops matching the statements written against it.
+// Two things live here. First, THE VERIFY PROPERTY: the committed `api/schema.sql` is exactly what
+// replaying `api/migrations/*.sql` produces. That pair used to be two HAND-WRITTEN forms kept honest by a
+// test; the created form is now generated from the ordered one, so they cannot disagree — this asserts the
+// committed copy is current, which is the only way they now can.
 //
-// This is the property the DEVICE side already gets for free from SQLDelight, whose `6.sqm` names it:
-// "the verify task compares migrated vs created schemas". There is no such task in Deno, so it is written
-// out here.
+// Second, THE AUTHORING GATES, which catch the mistakes that are invisible in a migration's diff:
 //
-// WHAT IS COMPARED. The normalized `sqlite_master` SQL of every table and index. Text rather than
-// `PRAGMA table_info`, because the pragma cannot see the two things most worth catching: `STRICT` (a
-// table that silently coerces where its twin rejects) and a `FOREIGN KEY … ON DELETE CASCADE` clause (an
-// event whose deletion strands its memberships). Normalization strips `--` comments and collapses
-// whitespace, so the two forms may be laid out and annotated differently — as they are, `SCHEMA` carrying
-// prose that v1's frozen historical copy must not.
+//   ① a `DROP TABLE` with no copy out of it first — a schema change that behaves as a deletion;
+//   ② a column narrowed to NOT NULL with no precondition — a rebuild that silently discards the rows
+//     that do not qualify;
+//   ③ `INSERT … SELECT *` — which maps BY POSITION, so a rebuild that reorders columns writes every
+//     value into its neighbour's column, carrying every row and corrupting all of them.
+//
+// ⚠️ WHAT THESE CANNOT CATCH, stated so they are not over-trusted. ① establishes that a copy is PRESENT,
+// never that it is COMPLETE — a copy naming the wrong columns, or narrowed by a `WHERE`, passes. And none
+// of them sees an object that vanished with a rebuilt table (an index, a table option): a rebuild drops
+// those silently, and the only thing that shows it is the deletion in `schema.sql`'s diff. Mechanical
+// detection of THAT was deliberately deferred — see the change's design record for what triggers it.
+//
+// ── THE CANONICAL PRECONDITION GUARD ──────────────────────────────────────────────────────────────
+//
+// Gate ② asks for a refusal that runs against the DEPLOYED store's rows, which means it has to be SQL in
+// the migration file — nothing in TypeScript executes where the rows are. Copy this, substituting the
+// migration's number, and put it BEFORE the rebuild it guards:
+//
+//   CREATE TEMP TABLE _pre_0007 (offending INTEGER);
+//   CREATE TEMP TRIGGER _pre_0007_guard BEFORE INSERT ON _pre_0007 WHEN NEW.offending > 0
+//   BEGIN
+//     SELECT RAISE(ABORT, 'refusing to tighten devices.foo: rows still hold NULL. List them with
+//       SELECT device_id FROM devices WHERE foo IS NULL, fill them, then re-run this deploy.');
+//   END;
+//   INSERT INTO _pre_0007 SELECT COUNT(*) FROM devices WHERE foo IS NULL;
+//   DROP TRIGGER _pre_0007_guard;
+//   DROP TABLE _pre_0007;
+//
+// Three things about it are not stylistic.
+//
+// ⚠️ THE NAMES CARRY THE MIGRATION NUMBER. An abort leaves the temp table and trigger behind — its own
+// `DROP`s never run — so a guard reusing a fixed name collides with its own leftovers on the retry and
+// fails with "table already exists" instead of the message it was written to deliver.
+//
+// ⚠️ THE MESSAGE NAMES A QUERY, NOT A COUNT. `RAISE(ABORT, …)` takes a string LITERAL — SQL cannot
+// interpolate the number of offending rows into it. `database` requires a refusal to name what would
+// satisfy it, so the message hands the operator the query that lists them instead.
+//
+// ⚠️ IT MUST PRECEDE THE REBUILD. Placed after, it inspects the store the migration already produced and
+// passes trivially.
+//
+// THE SCHEMA MODEL IS REAL SQLITE, not a regex. The gate replays the files into an in-memory store and
+// reads `pragma_table_info` between them, so what it believes about a column is what SQLite built. Only
+// the ORDERING questions — did a copy precede this drop, is this `SELECT *` inside an INSERT — are
+// answered from the file text, by string index, because they are questions about the file rather than
+// about the schema.
 
-import { assertEquals, assertRejects } from "@std/assert";
-import { SCHEMA } from "../src/db.ts";
-import { appliedVersions, migrate, MIGRATIONS, pendingMigrations } from "../src/migrations.ts";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { sqliteDb } from "../src/dev/db-sqlite.ts";
+import { discoverMigrations, replay } from "../src/dev/replay.ts";
+import { generateSchema, SCHEMA_PATH } from "../src/scripts/generate-schema.ts";
 
-/**
- * A store's schema as a comparable value: every table and index, by name, with its defining SQL stripped
- * of comments and reflowed. `schema_migrations` is excluded — it is the runner's own bookkeeping and by
- * construction exists in only one of the two stores.
- */
-async function shapeOf(
-  db: { execute: (sql: string) => Promise<{ rows: Record<string, unknown>[] }> },
-) {
+// ── The verify property ───────────────────────────────────────────────────────────────────────────
+
+Deno.test("the committed schema snapshot is what replaying the migrations produces", async () => {
+  assertEquals(
+    await Deno.readTextFile(SCHEMA_PATH),
+    await generateSchema(),
+    "api/schema.sql is stale — run `deno task schema` in api/ and commit it",
+  );
+});
+
+Deno.test("replaying the migrations builds every table the snapshot declares", async () => {
+  const db = sqliteDb(":memory:");
+  await replay(db);
   const { rows } = await db.execute(
-    `SELECT name, sql FROM sqlite_master
-      WHERE type IN ('table', 'index')
-        AND name NOT LIKE 'sqlite_%'
-        AND name <> 'schema_migrations'
-      ORDER BY name`,
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
+       AND name <> '__bunny_migrations' ORDER BY name`,
   );
-  return rows.map((r) => ({
-    name: String(r.name),
-    sql: String(r.sql ?? "")
-      .replace(/--[^\n]*/g, "") // prose, which the two forms are free to differ on
-      // `IF NOT EXISTS` and the quoting SQLite adds when `ALTER TABLE … RENAME TO` rewrites
-      // sqlite_master. Both are spelling, not shape: a tightening migration necessarily ends in a
-      // rename, and comparing raw text would fail on the quotes alone.
-      .replace(/\bIF NOT EXISTS\b/gi, "")
-      .replace(/"/g, "")
-      .replace(/\s+/g, " ")
-      .trim(),
-  }));
-}
-
-Deno.test("the created schema and the migrated schema are identical", async () => {
-  const created = sqliteDb(":memory:");
-  for (const sql of SCHEMA) await created.execute(sql);
-
-  const migrated = sqliteDb(":memory:");
-  await migrate(migrated);
-
-  assertEquals(await shapeOf(migrated), await shapeOf(created));
-
-  created.close();
-  migrated.close();
-});
-
-Deno.test("migrate records every version, and re-running applies nothing", async () => {
-  const db = sqliteDb(":memory:");
-  await migrate(db);
-  assertEquals(await appliedVersions(db), MIGRATIONS.map((m) => m.version));
-
-  // Re-running is the ordinary case, not an edge one: the CI step runs on every deploy.
-  const applied: string[] = [];
-  await migrate(db, (msg) => applied.push(msg));
-  assertEquals(applied, []);
-  assertEquals(await appliedVersions(db), MIGRATIONS.map((m) => m.version));
-
-  db.close();
-});
-
-// ── The plan comparison (capability `backend-deployment`) ─────────────────────────────────────────
-//
-// What `scripts/migrate.ts --pending` answers, and what `api-deploy.yml` branches a maintenance window
-// on. Wrong in either direction is expensive: a false "none" publishes new code onto an un-migrated
-// store, and a false "pending" imposes an outage window on a deploy that changes no schema.
-
-Deno.test("pending: a fresh store has every migration pending", async () => {
-  const db = sqliteDb(":memory:");
-  assertEquals(
-    (await pendingMigrations(db)).map((m) => m.version),
-    MIGRATIONS.map((m) => m.version),
-  );
-  db.close();
-});
-
-Deno.test("pending: a migrated store has none — the answer that skips the window", async () => {
-  // The common case by a wide margin: most deploys change no schema, and this is what keeps them at one
-  // publish with no outage.
-  const db = sqliteDb(":memory:");
-  await migrate(db);
-  assertEquals(await pendingMigrations(db), []);
-  db.close();
-});
-
-Deno.test("pending: a store behind the list reports exactly what is missing, in order", async () => {
-  const db = sqliteDb(":memory:");
-  await migrate(db);
-  // Rewind the record by one, as a store would sit if the list gained an entry since it last migrated.
-  const last = MIGRATIONS[MIGRATIONS.length - 1];
-  await db.execute(`DELETE FROM schema_migrations WHERE version = ?`, [last.version]);
-  assertEquals((await pendingMigrations(db)).map((m) => m.version), [last.version]);
-  db.close();
-});
-
-Deno.test("pending: asking does not apply, and does not record", async () => {
-  // `--pending` runs BEFORE the window opens, against the live store. If asking the question applied
-  // anything, the check would migrate production outside the window it exists to create.
-  const db = sqliteDb(":memory:");
-  await pendingMigrations(db);
-  assertEquals(await appliedVersions(db), []);
-  // And it stays answerable: creating the version record is the one write it makes, so a second ask on a
-  // store that predates the table answers the same way rather than throwing.
-  assertEquals(
-    (await pendingMigrations(db)).map((m) => m.version),
-    MIGRATIONS.map((m) => m.version),
-  );
-  db.close();
-});
-
-Deno.test("pending and migrate agree, because they are one comparison", async () => {
-  // The pair that must never disagree: one decides whether the window opens, the other decides what runs
-  // inside it. Pinned by construction rather than by two lists happening to match.
-  const db = sqliteDb(":memory:");
-  const planned = (await pendingMigrations(db)).map((m) => m.version);
-  const applied: number[] = [];
-  await migrate(db, (msg) => applied.push(Number(msg.match(/v(\d+)/)![1])));
-  assertEquals(applied, planned);
-  db.close();
-});
-
-Deno.test("a live-shaped store is migrated forward, and REFUSES to tighten before its data is ready", async () => {
-  // The DEPLOYED store's exact position: v1's tables present, rows in them, no version record.
-  const db = sqliteDb(":memory:");
-  const v1 = MIGRATIONS.find((m) => m.version === 1)!;
-  for (const sql of v1.statements) await db.execute(sql);
-  await db.execute(
-    `INSERT INTO device_records (device_id, push_kind, push_token, push_env, updated_at)
-     VALUES ('d1', 'apns', 'tok', 'production', '2026-08-01T00:00:00.000Z')`,
-  );
-
-  // v3 cannot carry a row that has no attestation, and a migration must migrate its data rather than
-  // discard it — so it refuses, leaving the store on v2 with everything intact.
-  await assertRejects(() => migrate(db), Error, "refusing to tighten");
-
-  assertEquals(await appliedVersions(db), [1, 2]);
-  const { rows } = await db.execute(`SELECT * FROM devices`);
-  assertEquals(rows.length, 1);
-  assertEquals(rows[0].push_token, "tok"); // CARRIED, not dropped — the whole point
-  assertEquals(rows[0].created_at, "2026-08-01T00:00:00.000Z"); // seeded from updated_at
-  assertEquals(rows[0].attest_key, null); // filled by the one-time backfill, or by the device attesting
-
-  // Once every row has an attestation, the tightening is total: nothing left to drop.
-  await db.execute(
-    `UPDATE devices SET attest_key = 'k', attest_env = 'production', attested_at = 'a',
-                        attest_token_expires_at = 'e'`,
-  );
-  await migrate(db);
-  assertEquals(await appliedVersions(db), MIGRATIONS.map((m) => m.version));
-  const after = await db.execute(`SELECT push_token FROM devices`);
-  assertEquals(after.rows, [{ push_token: "tok" }]); // survived the tightening rebuild too
-
-  db.close();
-});
-
-// ── THE GATE: a migration migrates its data (capability `database`) ────────────────────────────────
-//
-// A migration is written once and read rarely, and the mistake this guards against is invisible in the
-// diff: a `DROP TABLE` looks identical whether or not a copy precedes it. SQLite makes the wrong shape
-// the easy one — a column's constraints cannot be altered in place, so any change to them forces a
-// create-new/drop-old rebuild, and the `INSERT … SELECT` in the middle is the step it is possible to
-// simply not write. That shape reads as a schema change and behaves as a deletion; it reached `main`
-// once and was caught by a reviewer's question, not by anything mechanical.
-//
-// ⚠️ WHAT THIS CANNOT CATCH, stated so it is not over-trusted: it establishes that a copy is PRESENT,
-// never that it is COMPLETE. A copy naming the wrong columns, or one narrowed by a `WHERE`, passes here.
-// Completeness is what the per-migration tests above assert for the migrations that actually exist.
-// The alternative — replay every migration against a populated store and compare row counts — is a better
-// test of one migration and a worse gate over all of them: it would need representative data for every
-// table a future migration touches, which is exactly what an author writing a bad migration would not
-// supply. This check needs nothing from the author and so cannot be satisfied vacuously.
-
-type Column = { name: string; notNull: boolean };
-
-/** The columns a `CREATE TABLE` declares. Constraint clauses (PRIMARY KEY (…), FOREIGN KEY …) are not columns. */
-function columnsOf(createSql: string): Column[] {
-  const body = createSql.slice(createSql.indexOf("(") + 1, createSql.lastIndexOf(")"));
-  const parts: string[] = [];
-  let depth = 0;
-  let current = "";
-  for (const ch of body.replace(/--[^\n]*/g, "")) {
-    if (ch === "(") depth++;
-    if (ch === ")") depth--;
-    if (ch === "," && depth === 0) {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-    current += ch;
+  const snapshot = await Deno.readTextFile(SCHEMA_PATH);
+  for (const name of rows.map((r) => String(r.name))) {
+    assertStringIncludes(snapshot, `CREATE TABLE ${name} (`);
   }
-  parts.push(current);
-  return parts
-    .map((p) => p.trim())
-    .filter((p) => p && !/^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)\b/i.test(p))
-    .map((p) => ({ name: p.split(/\s+/)[0], notNull: /\bNOT\s+NULL\b/i.test(p) }));
-}
+  db.close();
+});
 
-/** The tables a migration list defines, replayed statement by statement. */
-type Schema = Map<string, Column[]>;
+// ── The authoring gates ───────────────────────────────────────────────────────────────────────────
 
-function applyToModel(schema: Schema, sql: string): void {
-  const create = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?\s*\(/i.exec(sql);
-  if (create) {
-    schema.set(create[1], columnsOf(sql));
-    return;
+/** A migration as the gate reads it: a name to blame, and the text to inspect. */
+type Candidate = { name: string; sql: string };
+
+/** Which columns each table has, and whether each is NOT NULL — read from SQLite, not parsed. */
+type Model = Map<string, Map<string, boolean>>;
+
+async function modelOf(db: ReturnType<typeof sqliteDb>): Promise<Model> {
+  const model: Model = new Map();
+  const { rows } = await db.execute(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
+       AND name <> '__bunny_migrations'`,
+  );
+  for (const t of rows.map((r) => String(r.name))) {
+    const cols = await db.execute(`SELECT name, "notnull" AS nn FROM pragma_table_info(?)`, [t]);
+    model.set(t, new Map(cols.rows.map((c) => [String(c.name), Number(c.nn) === 1])));
   }
-  const rename = /ALTER\s+TABLE\s+["']?(\w+)["']?\s+RENAME\s+TO\s+["']?(\w+)["']?/i.exec(sql);
-  if (rename) {
-    const cols = schema.get(rename[1]);
-    schema.delete(rename[1]);
-    if (cols) schema.set(rename[2], cols);
-    return;
-  }
-  const drop = /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?["']?(\w+)["']?/i.exec(sql);
-  if (drop) schema.delete(drop[1]);
+  return model;
 }
 
 /**
- * Every way the given migrations break the rule. Empty means they obey it.
+ * The file with comments and string literals blanked out, character-for-character.
+ *
+ * WHY THIS EXISTS. The scans below are index-based, and SQL that only MENTIONS a keyword would otherwise
+ * be read as SQL that DOES it. That is not hypothetical: the canonical precondition guard raises a
+ * message telling the operator to run `SELECT * FROM …`, and its trigger is declared `BEFORE INSERT` — so
+ * the recommended idiom tripped the `SELECT *` rule the first time this ran.
+ *
+ * Length is preserved exactly, so every index into the mask means the same position in the original. The
+ * original is what gets executed; only the scanning reads this. It is a lexer for quotes and comments,
+ * NOT a SQL parser — it knows nothing about schemas, and the worst it can do is make a text rule slightly
+ * over- or under-eager.
+ */
+function mask(sql: string): string {
+  const out = sql.split("");
+  const blank = (i: number) => {
+    if (sql[i] !== "\n") out[i] = " ";
+  };
+  let i = 0;
+  while (i < sql.length) {
+    if (sql[i] === "-" && sql[i + 1] === "-") {
+      while (i < sql.length && sql[i] !== "\n") blank(i++);
+    } else if (sql[i] === "/" && sql[i + 1] === "*") {
+      blank(i++), blank(i++);
+      while (i < sql.length && !(sql[i] === "*" && sql[i + 1] === "/")) blank(i++);
+      if (i < sql.length) blank(i++), blank(i++);
+    } else if (sql[i] === "'") {
+      blank(i++);
+      while (i < sql.length) {
+        if (sql[i] === "'") {
+          // A doubled quote is an escaped one: still inside the literal.
+          if (sql[i + 1] === "'") {
+            blank(i++), blank(i++);
+            continue;
+          }
+          blank(i++);
+          break;
+        }
+        blank(i++);
+      }
+    } else i++;
+  }
+  return out.join("");
+}
+
+/** Does an `INSERT … SELECT … FROM <table>` appear in this span of text? */
+function copiesFrom(text: string, table: string): boolean {
+  return new RegExp(
+    `INSERT\\s+(?:OR\\s+\\w+\\s+)?INTO[\\s\\S]*?SELECT[\\s\\S]*?FROM\\s+["']?${table}["']?\\b`,
+    "i",
+  ).test(text);
+}
+
+/** The statement a match sits in, taken as the text back to the previous `;`. */
+function statementBefore(sql: string, index: number): string {
+  return sql.slice(sql.lastIndexOf(";", index) + 1, index);
+}
+
+/**
+ * Every way the given migrations break the rules. Empty means they obey them.
  *
  * Exported shape rather than assertions inline so the tests below can drive it with DELIBERATELY BAD
  * fixtures — a gate never shown to go red is not a property, it is a hope.
  */
-export function migrationViolations(
-  migrations: readonly { version: number; statements: readonly string[]; precondition?: unknown }[],
-): string[] {
+export async function migrationViolations(files: readonly Candidate[]): Promise<string[]> {
   const out: string[] = [];
-  const schema: Schema = new Map();
+  const db = sqliteDb(":memory:");
+  // Enforcement off, exactly as both real runners apply migrations — otherwise a rebuild here would
+  // cascade and the model would describe a store neither runner produces.
+  db.exec("PRAGMA foreign_keys = off");
 
-  for (const m of migrations) {
-    const before = new Map([...schema].map(([t, c]) => [t, c.map((x) => ({ ...x }))]));
+  try {
+    for (const f of files) {
+      const before = await modelOf(db);
+      // Every scan below runs on the MASK, never on the raw file: mentioning a keyword in prose or in a
+      // message string must not read as doing it. Indices are shared, so `f.sql` is what executes.
+      const scan = mask(f.sql);
 
-    m.statements.forEach((sql, i) => {
-      const drop = /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?["']?(\w+)["']?/i.exec(sql);
-      if (drop) {
-        const table = drop[1];
+      // ① A drop must be preceded, IN THIS FILE, by a copy out of the table. Located by string index so
+      //    "preceded" means what it says, without splitting the file into statements.
+      for (const m of scan.matchAll(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?["']?(\w+)["']?/gi)) {
+        const table = m[1];
         // A table this migration created itself carries nothing; only a pre-existing one holds rows.
-        const preExisting = before.has(table);
-        const copied = m.statements.slice(0, i).some((earlier) =>
-          new RegExp(
-            `INSERT\\s+(OR\\s+\\w+\\s+)?INTO[\\s\\S]*SELECT[\\s\\S]*FROM\\s+["']?${table}["']?`,
-            "i",
-          )
-            .test(earlier)
-        );
-        if (preExisting && !copied) {
+        if (!before.has(table)) continue;
+        if (!copiesFrom(scan.slice(0, m.index), table)) {
           out.push(
-            `v${m.version} drops \`${table}\` without copying from it first — a migration migrates its ` +
+            `${f.name} drops \`${table}\` without copying from it first — a migration migrates its ` +
               `data, it does not drop it`,
           );
         }
       }
-      applyToModel(schema, sql);
-    });
 
-    // A column that was nullable and is now NOT NULL cannot carry every row by construction, so the
-    // migration must REFUSE rather than discard the rows that do not qualify.
-    for (const [table, cols] of schema) {
-      const was = before.get(table);
-      if (!was) continue;
-      for (const col of cols) {
-        const previously = was.find((c) => c.name === col.name);
-        if (previously && !previously.notNull && col.notNull && !m.precondition) {
+      // ③ `SELECT *` inside an INSERT. Position-mapped, so a reordering rebuild transposes every value
+      //    while carrying every row — the only failure here that produces WRONG data, not missing data.
+      for (const m of scan.matchAll(/SELECT\s+\*/gi)) {
+        if (/\bINSERT\s+(?:OR\s+\w+\s+)?INTO\b/i.test(statementBefore(scan, m.index))) {
           out.push(
-            `v${m.version} narrows \`${table}.${col.name}\` to NOT NULL without a precondition — it ` +
-              `would discard every row that does not already qualify`,
+            `${f.name} copies rows with \`INSERT … SELECT *\`, which maps by POSITION — name the ` +
+              `columns on both sides so a reordering rebuild cannot transpose them`,
           );
         }
       }
+
+      db.exec(f.sql);
+      const after = await modelOf(db);
+
+      // ② A column that was nullable and is now NOT NULL cannot carry every row by construction, so the
+      //    migration must REFUSE rather than discard the rows that do not qualify. The refusal lives in
+      //    the file, as SQL that aborts, because that is the only thing that runs against real rows.
+      const declaresPrecondition = /RAISE\s*\(\s*ABORT/i.test(scan);
+      for (const [table, cols] of after) {
+        const was = before.get(table);
+        if (!was) continue;
+        for (const [col, notNull] of cols) {
+          if (notNull && was.get(col) === false && !declaresPrecondition) {
+            out.push(
+              `${f.name} narrows \`${table}.${col}\` to NOT NULL without a precondition — it would ` +
+                `discard every row that does not already qualify. Add the canonical RAISE(ABORT) guard ` +
+                `(see the header of this file) before the rebuild.`,
+            );
+          }
+        }
+      }
     }
+  } finally {
+    db.exec("PRAGMA foreign_keys = on");
+    db.close();
   }
   return out;
 }
 
-Deno.test("the migration list migrates its data", () => {
-  assertEquals(migrationViolations(MIGRATIONS), []);
+Deno.test("the repository's migrations obey the gates", async () => {
+  assertEquals(await migrationViolations(discoverMigrations()), []);
 });
 
-Deno.test("the gate catches a drop with no copy", () => {
-  const bad = [
-    { version: 1, statements: [`CREATE TABLE old (id TEXT PRIMARY KEY NOT NULL, v TEXT)`] },
+Deno.test("the gate catches a drop with no copy", async () => {
+  const bad: Candidate[] = [
+    { name: "0001_a.sql", sql: `CREATE TABLE old (id TEXT PRIMARY KEY NOT NULL, v TEXT) STRICT;` },
     {
-      version: 2,
-      statements: [`CREATE TABLE new (id TEXT PRIMARY KEY NOT NULL, v TEXT)`, `DROP TABLE old`],
+      name: "0002_b.sql",
+      sql: `CREATE TABLE new (id TEXT PRIMARY KEY NOT NULL, v TEXT) STRICT;
+            DROP TABLE old;`,
     },
   ];
-  assertEquals(migrationViolations(bad), [
-    "v2 drops `old` without copying from it first — a migration migrates its data, it does not drop it",
+  assertEquals(await migrationViolations(bad), [
+    "0002_b.sql drops `old` without copying from it first — a migration migrates its data, it does not " +
+    "drop it",
   ]);
 
   // The same migration WITH the copy passes — so the gate is keyed on the copy, not on the drop.
-  bad[1].statements.splice(1, 0, `INSERT INTO new SELECT * FROM old`);
-  assertEquals(migrationViolations(bad), []);
+  bad[1].sql = `CREATE TABLE new (id TEXT PRIMARY KEY NOT NULL, v TEXT) STRICT;
+                INSERT INTO new (id, v) SELECT id, v FROM old;
+                DROP TABLE old;`;
+  assertEquals(await migrationViolations(bad), []);
 });
 
-Deno.test("the gate catches a tightening with no precondition", () => {
-  const bad: { version: number; statements: string[]; precondition?: unknown }[] = [
-    { version: 1, statements: [`CREATE TABLE t (id TEXT PRIMARY KEY NOT NULL, k TEXT)`] },
+Deno.test("the gate catches a tightening with no precondition", async () => {
+  const bad: Candidate[] = [
+    { name: "0001_a.sql", sql: `CREATE TABLE t (id TEXT PRIMARY KEY NOT NULL, k TEXT) STRICT;` },
     {
-      version: 2,
-      statements: [
-        `CREATE TABLE t2 (id TEXT PRIMARY KEY NOT NULL, k TEXT NOT NULL)`,
-        `INSERT INTO t2 SELECT * FROM t`,
-        `DROP TABLE t`,
-        `ALTER TABLE t2 RENAME TO t`,
-      ],
+      name: "0002_b.sql",
+      sql: `CREATE TABLE t2 (id TEXT PRIMARY KEY NOT NULL, k TEXT NOT NULL) STRICT;
+            INSERT INTO t2 (id, k) SELECT id, k FROM t;
+            DROP TABLE t;
+            ALTER TABLE t2 RENAME TO t;`,
     },
   ];
-  assertEquals(migrationViolations(bad), [
-    "v2 narrows `t.k` to NOT NULL without a precondition — it would discard every row that does not " +
-    "already qualify",
+  assertEquals(await migrationViolations(bad), [
+    "0002_b.sql narrows `t.k` to NOT NULL without a precondition — it would discard every row that does " +
+    "not already qualify. Add the canonical RAISE(ABORT) guard (see the header of this file) before the " +
+    "rebuild.",
   ]);
 
-  // Declaring one satisfies the gate: the migration now refuses rather than discarding.
-  bad[1].precondition = () => Promise.resolve();
-  assertEquals(migrationViolations(bad), []);
+  // The same migration WITH an aborting guard passes.
+  bad[1].sql = `CREATE TEMP TABLE _pre_0002 (offending INTEGER);
+                CREATE TEMP TRIGGER _pre_0002_guard BEFORE INSERT ON _pre_0002 WHEN NEW.offending > 0
+                BEGIN
+                  SELECT RAISE(ABORT, 'refusing to tighten t.k: rows hold NULL. List them with
+                    SELECT * FROM t WHERE k IS NULL, fill them, then re-run.');
+                END;
+                INSERT INTO _pre_0002 SELECT COUNT(*) FROM t WHERE k IS NULL;
+                DROP TRIGGER _pre_0002_guard;
+                DROP TABLE _pre_0002;
+                CREATE TABLE t2 (id TEXT PRIMARY KEY NOT NULL, k TEXT NOT NULL) STRICT;
+                INSERT INTO t2 (id, k) SELECT id, k FROM t;
+                DROP TABLE t;
+                ALTER TABLE t2 RENAME TO t;`;
+  assertEquals(await migrationViolations(bad), []);
 });
 
-Deno.test("dropping a table the same migration created is not a violation", () => {
-  // A scratch table holds no rows anyone had; requiring a copy out of it would be noise, and noise is
-  // how a gate earns a blanket suppression.
+Deno.test("the gate catches `INSERT … SELECT *`", async () => {
+  const bad: Candidate[] = [
+    { name: "0001_a.sql", sql: `CREATE TABLE t (a TEXT NOT NULL, b TEXT NOT NULL) STRICT;` },
+    {
+      name: "0002_b.sql",
+      sql: `CREATE TABLE t2 (b TEXT NOT NULL, a TEXT NOT NULL) STRICT;
+            INSERT INTO t2 SELECT * FROM t;
+            DROP TABLE t;
+            ALTER TABLE t2 RENAME TO t;`,
+    },
+  ];
+  assertStringIncludes((await migrationViolations(bad))[0], "maps by POSITION");
+
+  // A bare `SELECT *` that is not copying rows is not the hazard and is left alone.
   assertEquals(
-    migrationViolations([
-      {
-        version: 1,
-        statements: [`CREATE TABLE scratch (id TEXT PRIMARY KEY NOT NULL)`, `DROP TABLE scratch`],
-      },
+    await migrationViolations([
+      { name: "0001_a.sql", sql: `CREATE TABLE t (a TEXT NOT NULL) STRICT;` },
+      { name: "0002_b.sql", sql: `CREATE VIEW v AS SELECT * FROM t;` },
     ]),
     [],
   );
+});
+
+// ── The transposition the `SELECT *` rule exists to prevent ───────────────────────────────────────
+
+Deno.test("a reordering rebuild that names its columns carries values into the right columns", async () => {
+  const db = sqliteDb(":memory:");
+  db.exec(`CREATE TABLE d (device_id TEXT NOT NULL, attest_key TEXT NOT NULL,
+                           attest_env TEXT NOT NULL) STRICT`);
+  await db.execute(`INSERT INTO d VALUES ('dev-1', 'PUBKEY-abc', 'production')`);
+
+  db.exec("PRAGMA foreign_keys = off");
+  // The columns are deliberately reordered, which is exactly what makes `SELECT *` transpose.
+  db.exec(`CREATE TABLE d_new (device_id TEXT NOT NULL, attest_env TEXT NOT NULL,
+                               attest_key TEXT NOT NULL) STRICT;
+           INSERT INTO d_new (device_id, attest_env, attest_key)
+                SELECT device_id, attest_env, attest_key FROM d;
+           DROP TABLE d;
+           ALTER TABLE d_new RENAME TO d;`);
+  db.exec("PRAGMA foreign_keys = on");
+
+  const { rows } = await db.execute(`SELECT attest_key, attest_env FROM d`);
+  assertEquals(rows[0].attest_key, "PUBKEY-abc");
+  assertEquals(rows[0].attest_env, "production");
+  db.close();
 });

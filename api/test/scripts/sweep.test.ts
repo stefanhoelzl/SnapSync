@@ -10,7 +10,7 @@ import type { Config } from "../../src/config.ts";
 import type { FetchLike } from "../../src/storage.ts";
 import { sqliteDb } from "../../src/dev/db-sqlite.ts";
 import { type Db, insertEvent, publishStatements } from "../../src/db.ts";
-import { migrate } from "../../src/migrations.ts";
+import { replay } from "../../src/dev/replay.ts";
 import { DEAD_TOKEN, enrolDevice, LIVE_TOKEN } from "../support/db.ts";
 
 // The sweep (capability `scheduled-cleanup`) MARKS FROM THE DATABASE and DELETES FROM STORAGE. These
@@ -108,7 +108,7 @@ function fake(initial: Record<string, { lc?: string; len?: number }>) {
 /** A migrated store. */
 async function db(): Promise<Db & { close(): void }> {
   const d = sqliteDb(":memory:");
-  await migrate(d);
+  await replay(d);
   return d;
 }
 
