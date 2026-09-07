@@ -337,3 +337,58 @@ the OS has queued — which was **12** after three days on a device that crashes
 The `didReceive*` callbacks fired ~1 s after `addSubscriber`, on the first launch of a subscribing
 build. Confirmed again: delivery is prompt **relative to launch**, and arbitrarily delayed relative
 to the events described.
+
+---
+
+## 6. The population this actually serves (Bugsink, read 2026-08-29)
+
+The issue statement framed this around SNAPSYNC-23 — one background kill, unrecoverable. Reading the
+board shows a larger, still-live population that the design serves *first*.
+
+### `SNAPSYNC-1 · WatchdogTermination` — open, 40 events, the biggest issue in the project
+
+Sentry's own message text is the whole problem, stated by the vendor:
+
+> *"The OS watchdog terminated your app, **possibly because it overused RAM**"*
+
+Sentry cannot distinguish a watchdog kill from a memory kill. That is exactly the SNAPSYNC-23
+question, and it has been accumulating since 2026-07-21.
+
+### What the 40 events really are
+
+```
+2026-07-21 08:58   iPhone12,8  build 519
+2026-08-01 09:06   iPhone11,2  build 542   ← the XS tester, iOS 18.7.9
+2026-08-03 07:15   iPhone11,2  build 542   ←   (SNAPSYNC-23's own device)
+2026-08-06 00:41   iPhone11,2  build 542   ←
+2026-08-10 01:03   iPhone17,1  build 605   ← a third device
+2026-08-25 19:50:19 ┐
+… ×14, ~10 s apart  │ iPhone12,8  build 675  ← ONE crash loop, ~3 minutes
+2026-08-25 19:53:09 ┘
+2026-08-25 21:30    iPhone12,8  build 687
+```
+
+- **~7 incidents, not 40.** Fourteen of the events are a single three-minute relaunch loop.
+- **20 of 40 are `environment: development`** — our own dispatched builds on the SE2. Only 20 are
+  production, across **three** real devices.
+- **All 40 carry `in_foreground: true`.** Measured, not inferred: Sentry's watchdog heuristic excludes
+  background terminations by construction, so SNAPSYNC-23's case is not under-represented in this
+  population — it is **absent from it entirely**.
+- No `App Hanging` issue exists anywhere in 35 issues spanning July–September, so sentry-cocoa's
+  app-hang tracking is not producing events here. The MetricKit hang histogram duplicates nothing.
+
+### Three consequences for the design
+
+1. **The immediate payoff is FOREGROUND.** Six production incidents across three devices in five
+   weeks, where the only account is "watchdog, possibly RAM". The foreground exit counters
+   (`cumulativeAppWatchdogExitCount` vs `cumulativeMemoryResourceLimitExitCount`) partition exactly
+   that population. The design pays off against data that **already exists**, not only against the
+   next background kill.
+2. **The daily window deduplicates storms, for free.** That 14-event loop would arrive as one
+   window carrying `watchdog: 14` (or `memoryResourceLimit: 14`) — a single threshold event naming
+   the reason, instead of fourteen undifferentiated Sentry events. The aggregation accepted as a
+   limitation is also a virtue.
+3. **Crash diagnostics look weak, twice over.** The counters name the reason; Sentry already catches
+   everything except `SIGKILL`; and a `MXCrashDiagnostic` for a SIGKILL carries a null
+   `terminationReason` (measured) so it says *less* than the counter does. Both the duplication
+   analysis and this population argue against reading `MXDiagnosticPayload` at all.
