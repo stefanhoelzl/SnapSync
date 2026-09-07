@@ -58,19 +58,30 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
     deviceManifestJson.decodeFromString(DeviceManifest.serializer(), text)
 
 /**
- * Project the upload ledger's COMPLETED [rows] into a single event's [DeviceManifest], keeping exactly
- * the assets the membership's [policy] **admits** (capability `photo-selection-policy`).
+ * Project the upload ledger's [rows] into a single event's [DeviceManifest], keeping exactly the assets
+ * the membership's [policy] **admits** (capability `photo-selection-policy`).
  *
- * It applies the *one* admission rather than a date comparison of its own. That is the fix for the bug
- * this change exists to close: the projection used to take a bare `startDate` and filter
+ * **The manifest declares INTENT, not completion.** It lists what this device will provide to the event —
+ * every non-absent row the policy admits, whatever its upload state. The backend records the roles each
+ * asset declares and serves it only once every one of them has a resource, so a declared-but-unlanded
+ * resource keeps its asset hidden rather than leaking it: that comparison is what lets the backend tell
+ * "this photo is coming" from "this photo does not exist" (capability `api-endpoints`).
+ *
+ * Listing only completed rows is what this replaced, and it had a defect of its own. A recipient plans
+ * downloads per ASSET, so a Live Photo whose `primary` and `live` completed in different cycles was
+ * offered mid-upload as a complete one-resource asset — and a recipient reconciling in that window
+ * imported it as a still, marked it settled, and never took the video (capability `photo-download`).
+ *
+ * It applies the *one* admission rather than a date comparison of its own. That is the fix for an older
+ * bug this projection already carries: it used to take a bare `startDate` and filter
  * `creationDate >= startDate`, so when the capture-date **ceiling** was added it reached the byte filter
- * and never reached here. Post-ceiling photos were listed in `device.json` — offered to every other
- * member as bytes that were never uploaded — while the status total counted them and could never settle.
+ * and never reached here. The same rule now covers the undated row — an empty `creationDate` sorts before
+ * every real cutoff, so the policy excludes it and this projection states no predicate about it.
  *
- * A ledger row carries a date and an id but not the origin facts (a screenshot's row is COMPLETED only
- * if a policy admitted it when it uploaded), so those facts default to admit-on-doubt: the rules that can
- * still speak here are the two capture-date bounds and the two id-set exclusions — which is exactly what
- * a per-event projection of a device-global ledger needs to decide.
+ * A ledger row carries a date and an id but not the origin facts (a screenshot earns no row at all,
+ * because the cycle drops it before recording), so those facts default to admit-on-doubt: the rules that
+ * can still speak here are the two capture-date bounds and the two id-set exclusions — which is exactly
+ * what a per-event projection of a device-global ledger needs to decide.
  *
  * Rows are grouped per asset (several resources of one photo share an `assetId`) and sorted by
  * `assetId`, so the serialized snapshot is deterministic and the producer's skip-if-unchanged comparison

@@ -7,11 +7,14 @@
 
 import { assert, assertEquals } from "@std/assert";
 import {
+  apnsConfig,
+  apnsRecorder,
   CONFIG,
   createApp,
   D,
   D2,
   E,
+  enrolDevice,
   recorder,
   rows,
   store,
@@ -443,21 +446,168 @@ Deno.test("union → a resource declared but never uploaded does not silently sh
 });
 
 // ── The fan-out ────────────────────────────────────────────────────────────────────────────────────
+//
+// The trigger is "the union GAINED an asset", not "a device wrote something" (capability
+// `upload-completion-notify`). Under a manifest that declares INTENT most publishes name assets whose
+// bytes have not arrived, so the byte route carries the announcement and the manifest route fires only
+// for the widening case. These tests read the recorder's APNs calls, because a fan-out that stopped
+// happening is invisible in a status code — the reason the previous version of the first test below
+// still passed while exercising nothing.
+
+/**
+ * A second member holding a registered push token, over a config whose ES256 key really signs — see
+ * `apnsConfig`. With the placeholder PEM every push is reported failed and none is ever SENT, so these
+ * assertions would hold vacuously.
+ */
+async function withRecipient(db: Awaited<ReturnType<typeof storeWithEvent>>, status = 200) {
+  const { pushed, headers, fetchImpl } = apnsRecorder(status);
+  const app = v2({ config: await apnsConfig(), db, fetch: fetchImpl });
+  await app.request(JOIN_PATH, { method: "PUT" });
+  await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT" });
+  // Seeded directly, not through `PUT /devices/:id`: that route is an UPDATE on a row ATTESTATION
+  // creates, so a device that has never attested is refused `401` and would register no token — leaving
+  // every assertion below vacuously green.
+  await enrolDevice(db, D2);
+  await db.execute(
+    `UPDATE devices SET push_kind = 'apns', push_token = 'recipient', push_env = 'sandbox',
+                        push_updated_at = '2026-07-14T00:00:00Z'
+      WHERE device_id = ?`,
+    [D2],
+  );
+  return { app, pushed, headers };
+}
+
+const DECLARE_ONE = manifest([{
+  assetId: "ASSET1",
+  creationDate: "2026-07-01T00:00:00Z",
+  resources: [RES("ASSET1-primary.heic")],
+}]);
+
+const DECLARE_TWO = manifest([{
+  assetId: "ASSET1",
+  creationDate: "2026-07-01T00:00:00Z",
+  resources: [RES("ASSET1-primary.heic"), RES("ASSET1-live.mov", "live")],
+}]);
+
+Deno.test("fan-out → the byte that completes an asset wakes the event", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  assertEquals(pushed, [], "declaring intent alone wakes nobody");
+
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+  assertEquals(pushed, ["recipient"], "the last declared role landing wakes the other member");
+  db.close();
+});
+
+Deno.test("fan-out → a byte that leaves the asset incomplete wakes nobody", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_TWO });
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+  assertEquals(pushed, [], "the `live` role is still owed, so nothing became fetchable");
+  db.close();
+});
+
+Deno.test("fan-out → re-uploading a role that already landed wakes nobody", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(pushed.length, 1);
+  // The union gains nothing the second time. This is why the completion question is asked BEFORE the
+  // record: asked after, a re-upload is indistinguishable from a completion.
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(pushed.length, 1);
+  db.close();
+});
+
+Deno.test("fan-out → a publish that only declares intent wakes nobody", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  assertEquals(
+    (await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_TWO })).status,
+    200,
+  );
+  assertEquals(pushed, []);
+  db.close();
+});
+
+Deno.test("fan-out → a retraction wakes nobody, and a widening that re-admits a stored asset does", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(pushed.length, 1);
+
+  await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) });
+  assertEquals(pushed.length, 1, "a retraction makes nothing fetchable");
+
+  // Re-admitted by a widening: no byte moves, but the union gains the asset back.
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  assertEquals(pushed.length, 2, "the union gained a fetchable asset with no byte moving");
+
+  // Publishing the same complete set again gains nothing.
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  assertEquals(pushed.length, 2);
+  db.close();
+});
+
+Deno.test("fan-out → a completed-only manifest behaves as it did before intent", async () => {
+  // The compatibility property the backend half rests on: a device that still publishes only what it has
+  // uploaded declares nothing whose bytes are absent, so the conditional publish rule fires exactly where
+  // the unconditional one used to.
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(pushed, [], "an undeclared byte completes no asset");
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  assertEquals(pushed, ["recipient"], "publishing what is already stored wakes members");
+  db.close();
+});
+
+Deno.test("fan-out → the wake carries a collapse id of the event, and no expiration", async () => {
+  const db = await storeWithEvent();
+  const { app, headers } = await withRecipient(db);
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(headers.length, 1);
+  assertEquals(headers[0]["apns-collapse-id"], E);
+  assertEquals(headers[0]["apns-priority"], "5");
+  assertEquals(headers[0]["apns-push-type"], "background");
+  assert(
+    !("apns-expiration" in headers[0]),
+    "omitting it leaves APNs storing and retrying the wake",
+  );
+  db.close();
+});
+
+Deno.test("fan-out → an APNs rejection does not fail the byte upload", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db, 410); // APNs: token no longer valid
+  await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
+  assertEquals((await app.request(BYTE_PATH, { method: "PUT", body: "x" })).status, 201);
+  assertEquals(pushed, ["recipient"], "it was attempted, and its rejection changed nothing");
+  db.close();
+});
 
 Deno.test("manifest → a failed fan-out does not fail the publish", async () => {
   const db = await storeWithEvent();
+  // The publish must REACH the fan-out for this to test anything, so the bytes land first and the publish
+  // then declares a complete asset. CONFIG's placeholder PEM makes the provider JWT unsignable, so every
+  // push fails inside `notifyMembers`.
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
   await app.request(JOIN_PATH, { method: "PUT" });
-  // Register a push token for a second member, then break APNs by giving it an unusable key.
   await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT" });
-  await app.request(`/api/v2/devices/${D2}`, {
-    method: "PUT",
-    body: JSON.stringify({ pushToken: { kind: "apns", token: "t", env: "sandbox" } }),
-  });
-  const res = await app.request(MANIFEST_PATH, {
-    method: "PUT",
-    body: manifest([{ assetId: "A", creationDate: "2026-07-01T00:00:00Z", resources: [RES("k")] }]),
-  });
+  await enrolDevice(db, D2);
+  await db.execute(
+    `UPDATE devices SET push_kind = 'apns', push_token = 't', push_env = 'sandbox',
+                        push_updated_at = '2026-07-14T00:00:00Z'
+      WHERE device_id = ?`,
+    [D2],
+  );
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  const res = await app.request(MANIFEST_PATH, { method: "PUT", body: DECLARE_ONE });
   assertEquals(res.status, 200); // the publish stands whatever the fan-out did
   assert((await rows(db, `SELECT 1 FROM event_assets`)).length > 0);
   db.close();

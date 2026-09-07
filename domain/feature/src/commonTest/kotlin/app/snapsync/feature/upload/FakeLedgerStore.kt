@@ -53,7 +53,7 @@ class FakeLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun completedManifestRows(): List<LedgerEntry> = emptyList()
+    override suspend fun manifestRows(): List<LedgerEntry> = emptyList()
 
     override suspend fun backfillManifestDetail(entry: LedgerEntry) = Unit
 

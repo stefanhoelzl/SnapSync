@@ -73,20 +73,23 @@ SET creationDate = :creationDate,
     originalFilename = :originalFilename
 WHERE key = :key AND creationDate = '';
 
--- The SETTLED rows that carry manifest detail — the device manifest, projected. Rows still bare
--- (`creationDate = ''`) are excluded: they are mid-backfill, and listing a resource with no capture
--- date would put it outside every membership window rather than inside the right one.
+-- The rows the device manifest projects from — what this device INTENDS to provide to the event
+-- (capability `device-manifest`). Deliberately NOT state-scoped: what a member will contribute does not
+-- depend on how far its bytes have got, and a state predicate here is what let the manifest and the
+-- backend's declaration model disagree.
 --
--- `:doneStates` is bound from Kotlin's `LedgerState.isDone` rather than written as a literal here, so a
--- state added later must be classified in one compile-checked place instead of landing silently on one
--- side of this predicate. It resolves to exactly `COMPLETED` today, so the projection is unchanged; an
--- UPLOADED row is deliberately NOT settled and stays out of the manifest until the cycle promotes it.
--- `state` is selected so the mapper reads it rather than asserting it (it used to hardcode COMPLETED,
--- which a second settled state would have made a lie).
-selectCompletedManifestRows:
+-- Absent rows are excluded because that is a fact about the ROW — the asset left the library, so this
+-- device no longer shares it. Admission is NOT decided here: the membership's policy applies the
+-- capture-date bounds, including the exclusion of a bare row, whose empty `creationDate` sorts before
+-- every real cutoff (`SelectionRule.CaptureAfter` — "the one place a missing fact excludes rather than
+-- admits"). A `creationDate != ''` predicate here would be a second copy of that rule, which is the
+-- drift `photo-selection-policy` exists to make unrepresentable.
+--
+-- `state` is still selected because the mapper reads it rather than asserting it.
+selectManifestRows:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename
 FROM ledgerRow
-WHERE state IN :doneStates AND creationDate != '' AND absent = 0;
+WHERE absent = 0;
 
 -- Rewrite the provenance of every pre-provenance row (`eventId = ''` — rows recorded by a build
 -- before 4.sqm, or by a staged-revert build) to the live event id. Touches ONLY the sentinel:

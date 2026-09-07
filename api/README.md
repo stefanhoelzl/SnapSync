@@ -105,8 +105,16 @@ it itself, after the gate has passed.
 > under the prefix **`/api/v1`** — written that way here, and the one shape it answers at. The gate
 > normalizes the `/api/vN` prefix before its closed-list checks, so the ungated `/api/v1/attest/*`
 > set holds under it. The **web/link** routes (`/`, `/join`, the AASA) stay at the **root**, never
-> under `/api/v1`. The routing is version-parametric: a future `/api/v2` is one more mount in
-> `createApp`.
+> under `/api/v1`. The routing is version-parametric, and **`/api/v2` is now served** — it is what
+> the shipped device speaks, while v1 is frozen for builds that cannot be updated. The routes below
+> describe **v1**; v2's differences are specified in `openspec/specs/api-endpoints`.
+>
+> **One v2 difference matters to anyone reading the flow here: the fan-out.** v2 has no notify route
+> — members are woken by the backend as an effect of the write that makes an asset **fetchable**.
+> Since the v2 manifest declares what a device _will_ provide (capability `device-manifest`), that
+> write is usually the **byte upload**, which wakes the event when its resource was the last
+> declared role missing. The manifest publish wakes members only when it makes an asset newly
+> fetchable — a widening that re-admits already-stored assets.
 
 ```
 GET  /api/v1/attest/challenge                              (UNGATED — it issues the input to attestation)

@@ -558,7 +558,8 @@ unbounded walk is watchdog-killed before the authoritative filter ever runs:
 
 The origin exclusions SHALL be applied before a resource reaches the ledger, so an origin-excluded asset
 never gains a ledger row and therefore cannot appear in any device manifest — the manifest being a
-projection of the ledger's `COMPLETED` rows (capability `device-manifest`). The capture-date bounds SHALL be
+projection of the ledger's rows whatever their upload state, so a row that does not exist is the only
+way an asset can be absent from it (capability `device-manifest`). The capture-date bounds SHALL be
 applied at **projection** time, against the membership's own policy, exactly as every other consumer applies
 it. The projection SHALL receive the **policy**, not the inputs from which one could be derived, and SHALL
 NOT take the ledger's contents for the admitted set.
@@ -625,8 +626,8 @@ NOT take the ledger's contents for the admitted set.
 
 - **WHEN** a cycle discovers a screenshot, a pre-lower-bound camera photo, and an in-range camera photo
 - **THEN** neither the screenshot nor the pre-lower-bound photo gains a ledger row, and the manifest
-  projected from the ledger's `COMPLETED` rows — admitted by the same membership policy — lists only the
-  in-range camera photo, so no consumer downstream can re-derive a different set
+  projected from the ledger's rows — admitted by the same membership policy — lists only the in-range
+  camera photo, so no consumer downstream can re-derive a different set
 
 ### Requirement: Origin exclusions admit on doubt
 

@@ -70,8 +70,12 @@ Deno.test("a missing object is reported the other way round", async () => {
   await replay(expectedStore);
   const empty = sqliteDb(":memory:");
 
-  const diffs = shapeDifferences(await shapeOf(empty), await shapeOf(expectedStore));
-  assertEquals(diffs.length, 5);
+  const expected = await shapeOf(expectedStore);
+  const diffs = shapeDifferences(await shapeOf(empty), expected);
+  // Derived, not a literal: EVERY object the migrations build is reported missing. A hardcoded count
+  // would have to be bumped by any migration that adds an object — a table, or an index — which makes
+  // the test fail for a reason it is not about.
+  assertEquals(diffs.length, expected.length);
   assertEquals(diffs[0], "devices: the migrations build it, the deployed store does not have it");
 
   empty.close();

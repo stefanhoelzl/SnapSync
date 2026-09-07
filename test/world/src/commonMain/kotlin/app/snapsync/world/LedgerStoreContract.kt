@@ -484,15 +484,39 @@ abstract class LedgerStoreContract {
     }
 
     @Test
-    fun `the manifest projection lists completed enriched rows only`() = runTest {
+    fun `the manifest projection is not state-scoped because it lists intent`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
         writer.recordCompleted(res("done.heic", "A"), attempt = 0, eventId = "E1")
         writer.recordRequested(res("inflight.heic", "B"), attempt = 0, eventId = "E1")
+        writer.recordDiscovered(res("found.heic", "D"), eventId = "E1")
+        writer.recordFailed(res("failed.heic", "F"), attempt = 1, eventId = "E1")
         // A row the re-join reconcile seeded from a filename listing: COMPLETED, but no capture date.
+        // The read no longer excludes it — the membership's policy does, because an empty capture date
+        // sorts before every real cutoff (capability `photo-selection-policy`).
         backend.put(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 0, eventId = "E1"))
 
-        assertEquals(listOf("done.heic"), backend.completedManifestRows().map { it.key })
+        assertEquals(
+            listOf("done.heic", "failed.heic", "found.heic", "inflight.heic", "seeded.heic"),
+            backend.manifestRows().map { it.key }.sorted(),
+            "every non-absent row is declared: what a device INTENDS to provide does not depend on how " +
+                "far its bytes have got",
+        )
+    }
+
+    @Test
+    fun `an absent row is the one thing the manifest projection drops`() = runTest {
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordCompleted(res("kept.heic", "A"), attempt = 0, eventId = "E1")
+        writer.recordDiscovered(res("gone.heic", "B"), eventId = "E1")
+        backend.markAbsent("B")
+
+        assertEquals(listOf("kept.heic"), backend.manifestRows().map { it.key })
+        assertEquals(
+            LedgerState.DISCOVERED, backend.get("gone.heic")!!.state,
+            "the row survives — absence is a fact it carries, not a deletion",
+        )
     }
 
     // ── The guarded terminal write, the UPLOADED state, and the narrow reads ────────────────────
@@ -586,8 +610,9 @@ abstract class LedgerStoreContract {
         assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
         assertEquals(listOf(PendingResource("A", "up.heic")), backend.pendingResources())
         assertEquals(
-            emptyList(), backend.completedManifestRows(),
-            "and stays out of the manifest until promoted — the union must not offer an unannounced photo",
+            listOf("up.heic"), backend.manifestRows().map { it.key },
+            "but it is still DECLARED: the manifest states intent, and bytes that have landed are " +
+                "intended by any reading",
         )
     }
 
@@ -654,15 +679,16 @@ abstract class LedgerStoreContract {
     }
 
     @Test
-    fun `a DISCOVERED row is backlog but neither manifest nor stranding candidate`() = runTest {
+    fun `a DISCOVERED row is backlog and declared but no stranding candidate`() = runTest {
         val backend = createBackend()
         backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
 
         // Counted as outstanding everywhere...
         assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
         assertEquals(listOf(PendingResource("A", "a.heic")), backend.pendingResources())
-        // ...but it is not in the manifest projection (its bytes are not on the backend)...
-        assertEquals(emptyList(), backend.completedManifestRows())
+        // ...and it IS declared: the manifest states what this device will provide, and the backend
+        // keeps the asset out of the union until every declared role has a resource.
+        assertEquals(listOf("a.heic"), backend.manifestRows().map { it.key })
         // ...and it is not a stranding candidate: a row that never had a job cannot be a lost transfer,
         // and surfacing it would write a failure that did not happen.
         assertEquals(emptySet(), backend.requestedKeys())

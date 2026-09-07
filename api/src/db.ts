@@ -354,6 +354,108 @@ export async function recordResource(db: Db, r: {
   );
 }
 
+/**
+ * The events whose union would GAIN this asset if `role`'s bytes were recorded right now — the byte
+ * route's wake list (capability `upload-completion-notify`).
+ *
+ * ASK BEFORE WRITING, not after. "Is this asset complete?" answered after the insert cannot tell a
+ * completion from a re-upload of a role that was already stored, and a re-upload makes the union gain
+ * nothing. Asked before, the three conditions below say exactly "this write is the one that completes it":
+ * the event declares this role, this role is not recorded yet, and every OTHER declared role already is.
+ *
+ * Completeness is a SET comparison, never a count — `resources` is device-scoped while `roles` is
+ * event-scoped, so a device may hold a role this event does not declare and counting would misjudge it
+ * (`add-v2-device-api` D8). This is the per-asset lookup that idiom was written for; the union's own
+ * completeness check is a different query with a different cost profile.
+ *
+ * Reached by `event_assets_by_device_asset`, which exists because this route's path names no event.
+ */
+export async function eventsCompletedBy(db: Db, r: {
+  deviceId: string;
+  assetId: string;
+  role: string;
+}): Promise<string[]> {
+  const { rows } = await db.execute(
+    `SELECT ea.event_id
+       FROM event_assets ea
+      WHERE ea.device_id = ? AND ea.asset_id = ?
+        AND EXISTS (SELECT 1 FROM json_each(ea.roles) j WHERE j.value = ?)
+        AND NOT EXISTS (SELECT 1 FROM resources r
+                         WHERE r.device_id = ea.device_id AND r.asset_id = ea.asset_id
+                           AND r.role = ?)
+        AND NOT EXISTS (
+              SELECT 1 FROM json_each(ea.roles) j
+               WHERE j.value != ?
+                 AND NOT EXISTS (SELECT 1 FROM resources r
+                                  WHERE r.device_id = ea.device_id AND r.asset_id = ea.asset_id
+                                    AND r.role = j.value))`,
+    [r.deviceId, r.assetId, r.role, r.role, r.role],
+  );
+  return rows.map((row) => String(row.event_id));
+}
+
+/**
+ * The events whose union GAINS an asset because this publish declared one that is already fully stored —
+ * the manifest route's wake list (capability `upload-completion-notify`).
+ *
+ * The manifest publish is no longer the moment the union grows: under a manifest that declares INTENT, its
+ * content changes when discovery changes, and the assets it names are usually incomplete. The one case
+ * where a publish alone makes something fetchable is a **widening** — a membership re-admits assets whose
+ * bytes it uploaded under an earlier, broader range (capability `reconfigure-membership`), so no byte
+ * moves and only the declaration changed.
+ *
+ * Asked BEFORE the replace, for the same reason as [eventsCompletedBy]: afterwards, "complete" cannot be
+ * told from "was already complete and still is". Answers whether the incoming set names a complete asset
+ * that the stored set did not.
+ *
+ * An asset that was already served and merely gained a resource is deliberately NOT a wake: recipients
+ * plan per asset and would refetch nothing (capability `photo-download`), so the union gained no asset.
+ *
+ * COST: two reads proportional to the device's declared and stored sets. That is the same order as the
+ * publish it precedes — `publishStatements` already emits one statement per declared asset — so it adds
+ * no new scaling class to this route.
+ */
+export async function publishAddsFetchableAsset(
+  db: Db,
+  eventId: string,
+  deviceId: string,
+  incoming: readonly { assetId: string; roles: readonly string[] }[],
+): Promise<boolean> {
+  if (incoming.length === 0) return false;
+  const { rows } = await db.execute(
+    `SELECT ea.asset_id,
+            (NOT EXISTS (SELECT 1 FROM json_each(ea.roles) j
+                          WHERE NOT EXISTS (SELECT 1 FROM resources r
+                                             WHERE r.device_id = ea.device_id
+                                               AND r.asset_id = ea.asset_id
+                                               AND r.role = j.value))) AS complete
+       FROM event_assets ea
+      WHERE ea.event_id = ? AND ea.device_id = ?`,
+    [eventId, deviceId],
+  );
+  const alreadyComplete = new Set(
+    rows.filter((r) => Number(r.complete) === 1).map((r) => String(r.asset_id)),
+  );
+  const stored = new Set(rows.map((r) => String(r.asset_id)));
+
+  // A stored resource row per (asset, role) this device holds — the reality the incoming declaration is
+  // compared against. Device-scoped, like the table.
+  const held = await db.execute(
+    `SELECT asset_id, role FROM resources WHERE device_id = ?`,
+    [deviceId],
+  );
+  const present = new Set(held.rows.map((r) => `${String(r.asset_id)} ${String(r.role)}`));
+
+  return incoming.some((a) => {
+    const complete = a.roles.length > 0 &&
+      a.roles.every((role) => present.has(`${a.assetId} ${role}`));
+    if (!complete) return false;
+    // Newly fetchable: either this event did not declare the asset at all, or it declared it in a shape
+    // that was not yet complete.
+    return !stored.has(a.assetId) || !alreadyComplete.has(a.assetId);
+  });
+}
+
 // ── Reads ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** One resource of one union asset, before its presigned `url` is minted. */

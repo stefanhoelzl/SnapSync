@@ -188,6 +188,16 @@ resource uploaded under either version is the same stored object. Without that, 
 versions would consider none of its bytes uploaded and re-upload its entire library, and an event with a
 member on each version would need two addressing schemes for one photo.
 
+After recording the resource, the route SHALL determine whether that resource was the **last declared role**
+its asset was missing, and if so SHALL wake the other active members of every event whose manifest declares
+that asset (capability `upload-completion-notify`). The completeness test SHALL be the same set comparison
+the union applies. This route's path names no event, so the events declaring the asset SHALL be resolved
+from the device and asset identity.
+
+The wake SHALL be **best-effort and bounded**: the response remains the outcome of the storage write and the
+resource record, and is never changed by a push that failed, was skipped for a member with no token, or
+timed out. A byte upload that completes no asset SHALL wake nobody.
+
 #### Scenario: Identity comes from the path
 
 - **WHEN** a v2 byte upload names an asset and role in its path
@@ -213,6 +223,23 @@ member on each version would need two addressing schemes for one photo.
 - **WHEN** the same asset and role are re-uploaded with a different filename
 - **THEN** the existing resource's metadata is updated and its object overwritten
 
+#### Scenario: The byte that completes an asset wakes the event
+
+- **WHEN** a v2 byte upload records the last declared role its asset was missing
+- **THEN** the other active members of each event declaring that asset are woken, and the response is still
+  the storage outcome
+
+#### Scenario: A byte that leaves an asset incomplete wakes nobody
+
+- **WHEN** a v2 byte upload records a resource while its asset still declares a role with no recorded
+  resource
+- **THEN** no member is woken
+
+#### Scenario: A failed wake does not fail the upload
+
+- **WHEN** the push fan-out errors or times out after the resource was recorded
+- **THEN** the route still responds with the storage outcome
+
 ### Requirement: OPTIONS preflight falls back to plain PUT
 
 The application SHALL answer an `OPTIONS` request on any path without requiring a token, so that a
@@ -236,6 +263,12 @@ full-state replace, so an asset the body omits is removed. The routes are
 A short document is a **retraction, not an omission**: a manifest that no longer names an asset removes it
 from the event. The document is the device's complete statement of what it contributes, and a device that
 cannot establish that complete set SHALL publish nothing rather than publish a partial one.
+
+After the commit, the v2 route SHALL wake the event's other active members **only when the publish made an
+asset newly fetchable** — that is, when it declares an asset whose every declared role already has a
+recorded resource and which the previous declaration did not name (capability
+`upload-completion-notify`). A publish that only declares resources whose bytes have not arrived, or that
+only retracts, SHALL wake nobody. The wake SHALL be best-effort and bounded, never changing the response.
 
 **The v1 route additionally writes two things the v2 route does not**, and both are preserved rather than
 carried forward: v1 is legacy, spoken by builds that cannot be updated, and its behaviour is frozen.
@@ -286,6 +319,17 @@ Neither route SHALL write the manifest to storage.
 
 - **WHEN** a manifest omits an asset it previously listed, whose bytes are still stored
 - **THEN** that asset leaves the event, and its bytes remain for any other event that still names them
+
+#### Scenario: A publish that only declares intent wakes nobody
+
+- **WHEN** a v2 manifest publish declares assets whose roles have no recorded resources
+- **THEN** the asset set is replaced and no member is woken
+
+#### Scenario: A widening publish that re-admits stored assets wakes members
+
+- **WHEN** a v2 manifest publish newly declares an asset whose every declared role already has a recorded
+  resource
+- **THEN** the event's other active members are woken
 
 #### Scenario: A manifest for a missing event is refused
 
@@ -569,25 +613,41 @@ nothing.
 ### Requirement: The v2 manifest publish notifies the event's members
 
 The v2 manifest publish SHALL dispatch a silent push to the event's other **active** members after its
-transaction commits, replacing v1's separate notify route.
+transaction commits, replacing v1's separate notify route — but **only when the publish made an asset
+newly fetchable**: when it declares an asset whose every declared role already has a recorded resource and
+which the stored declaration did not already serve.
 
-It SHALL notify on **every** publish that the route accepts, rather than attempting to notify only when
-the event's downloadable set grew. Whether it grew cannot be determined from the publish alone: bytes
-arriving between two publishes enlarge the union with no change to any manifest, so a before-and-after
-comparison inside the transaction would miss the ordinary case, and detecting it would require durable
-state recording what was last announced. The accepted cost is that a recipient may wake and find nothing
-new.
+It SHALL NOT notify on every publish that the route accepts. That rule was correct while the manifest
+listed what a device had already uploaded, because then every publish did enlarge the downloadable set. It
+is wrong once the manifest declares **intent** (capability `device-manifest`): most publishes then name
+assets whose bytes have not arrived, so notifying on all of them would wake members for photos they cannot
+fetch — and spend an allowance the platform caps at two or three background notifications per hour.
+
+The reasoning this replaces held that growth "cannot be determined from the publish alone", because bytes
+arriving between two publishes enlarge the union with no change to any manifest. That observation is
+correct and is now answered where it arises: the **byte upload** notifies when its resource completes an
+asset (see "A v2 byte upload names its resource in the path"), which is the ordinary case the publish
+could never see. What remains for the publish is the case only it can see — a membership widening its
+capture-date range to re-admit assets whose bytes are already stored — and that IS determinable, because
+the stored declaration is exactly the durable record of what was last announced.
 
 The fan-out SHALL be **best-effort**, exactly as v1's notify route is: the response SHALL reflect the
 transaction's outcome and SHALL NOT be changed by a push that failed, was skipped for a member with no
-token, or timed out. The fan-out SHALL be bounded so that a stalled connection cannot delay the response
-past the caller's own timeout — a publish reported as failed but actually committed would suppress the
-next cycle's write.
+token, or timed out. A failure to determine whether anything became fetchable SHALL likewise not fail the
+publish; it SHALL wake nobody. The fan-out SHALL be bounded so that a stalled connection cannot delay the
+response past the caller's own timeout — a publish reported as failed but actually committed would
+suppress the next cycle's write.
 
-#### Scenario: A publish notifies the other active members
+#### Scenario: A publish that makes an asset fetchable notifies the other active members
 
-- **WHEN** a v2 manifest publish commits for an event with active and departed members
+- **WHEN** a v2 manifest publish newly declares an asset whose every declared role is already recorded,
+  for an event with active and departed members
 - **THEN** a push is attempted for each other active member and none for a departed one
+
+#### Scenario: A publish that declares only unlanded resources notifies nobody
+
+- **WHEN** a v2 manifest publish declares assets whose roles have no recorded resources
+- **THEN** no push is attempted, because the union serves nothing it did not serve before
 
 #### Scenario: A failed push does not fail the publish
 

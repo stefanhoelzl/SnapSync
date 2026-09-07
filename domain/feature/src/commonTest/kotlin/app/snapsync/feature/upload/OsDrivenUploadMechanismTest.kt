@@ -100,7 +100,7 @@ class OsDrivenUploadMechanismTest {
         override suspend fun promoteUploaded(key: String): Boolean = TODO("not reached by this mechanism")
         override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> = TODO()
         override suspend fun requestedKeys(): Set<String> = TODO("not reached by this mechanism")
-        override suspend fun completedManifestRows(): List<LedgerEntry> = TODO("not reached by this mechanism")
+        override suspend fun manifestRows(): List<LedgerEntry> = TODO("not reached by this mechanism")
         override suspend fun backfillManifestDetail(entry: LedgerEntry) = TODO("not reached by this mechanism")
         override suspend fun clear() = TODO("not reached by this mechanism")
         override suspend fun resetTo(entries: List<LedgerEntry>) = TODO("not reached by this mechanism")

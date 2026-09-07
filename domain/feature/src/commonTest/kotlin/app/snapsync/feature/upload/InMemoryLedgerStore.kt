@@ -93,8 +93,8 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun completedManifestRows(): List<LedgerEntry> =
-        entries.values.filter { it.state.isDone && !it.needsManifestDetail && !it.absent }
+    override suspend fun manifestRows(): List<LedgerEntry> =
+        entries.values.filter { !it.absent }
 
     override suspend fun backfillManifestDetail(entry: LedgerEntry) {
         val current = entries[entry.key] ?: return

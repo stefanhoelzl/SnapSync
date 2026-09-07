@@ -23,9 +23,10 @@
 // deliberately, and that absence is what guarantees no test can reach a live store.
 
 import { assert, assertEquals } from "@std/assert";
-import type { FetchLike } from "../src/app.ts";
 import type { Db } from "../src/db.ts";
 import {
+  apnsConfig,
+  apnsRecorder,
   assertPresigned,
   CONFIG,
   createApp,
@@ -992,38 +993,6 @@ Deno.test("device config → the document is not a resource: it never reaches th
 });
 
 // ── POST /events/:eventId/notify ───────────────────────────────────────────────────────────────────
-
-/**
- * A REAL ES256 key, generated per run. The APNs sender signs its provider JWT lazily and catches a
- * signing failure PER TOKEN — so with the placeholder PEM the rest of this file uses, every push is
- * reported failed and none is ever sent. That is faithful to the route's best-effort contract, but it
- * would make a fan-out test pass while asserting nothing.
- */
-async function apnsConfig() {
-  const kp = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"],
-  );
-  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
-  let bin = "";
-  for (const b of pkcs8) bin += String.fromCharCode(b);
-  const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(bin)}\n-----END PRIVATE KEY-----\n`;
-  return { ...CONFIG, apnsPrivateKey: pem };
-}
-
-/** An APNs-shaped fetch fake: records the pushes and answers each with `status`. */
-function apnsRecorder(status = 200) {
-  const pushed: string[] = [];
-  const fetchImpl: FetchLike = (url) => {
-    if (url.includes("api.push.apple.com") || url.includes("api.sandbox.push.apple.com")) {
-      pushed.push(url.split("/").pop()!);
-      return Promise.resolve(new Response(null, { status }));
-    }
-    return Promise.resolve(new Response(null, { status: 201 }));
-  };
-  return { pushed, fetchImpl };
-}
 
 async function registerToken(db: Db, deviceId: string, token: string) {
   // A registration is an UPDATE on a row attestation created, so the device must be enrolled first.

@@ -48,6 +48,9 @@ CREATE TABLE event_assets (
     REFERENCES memberships(event_id, device_id) ON DELETE CASCADE
 ) STRICT;
 
+CREATE INDEX event_assets_by_device_asset
+  ON event_assets (device_id, asset_id);
+
 CREATE TABLE events (
   id               TEXT PRIMARY KEY NOT NULL,
   name             TEXT NOT NULL,

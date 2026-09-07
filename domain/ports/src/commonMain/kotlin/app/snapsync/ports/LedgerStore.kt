@@ -126,12 +126,23 @@ interface LedgerStore {
     suspend fun requestedKeys(): Set<String>
 
     /**
-     * The `COMPLETED` rows that carry manifest detail — the **device manifest, projected**
-     * (capability `device-manifest`). Rows still bare (no `creationDate`) are excluded: they are
-     * mid-backfill, and listing a resource with no capture date would place it outside every
-     * membership window rather than inside the right one.
+     * The rows the **device manifest** projects from (capability `device-manifest`): every row this
+     * device has not marked absent, whatever its upload state.
+     *
+     * Deliberately **not state-scoped**, and deliberately carrying no state adjective in its name. The
+     * manifest declares what this member *intends to provide*, and that does not depend on how far a
+     * resource's bytes have got — so a `DISCOVERED` row and a `COMPLETED` one are equally listed. This
+     * read used to return only settled rows, and the stale word "completed" in its name outlived the
+     * decision behind it: `api-endpoints` came to describe a manifest that declares intent while
+     * `device-manifest` still required the completed projection.
+     *
+     * It filters on a fact about the ROW (`absent` — the asset left the library, so this device no longer
+     * shares it) and on nothing else. **Admission is the policy's**, applied by the projection: the
+     * capture-date bounds, and with them the exclusion of a row whose `creationDate` is still bare, whose
+     * empty value sorts before every real cutoff. Restating that here would be a second copy of an
+     * admission rule (capability `photo-selection-policy`).
      */
-    suspend fun completedManifestRows(): List<LedgerEntry>
+    suspend fun manifestRows(): List<LedgerEntry>
 
     /**
      * Fill the manifest detail of one already-recorded row **without touching its state or attempt**,

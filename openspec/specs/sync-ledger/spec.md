@@ -413,11 +413,23 @@ in-event resources, so the device manifest can be projected from it (capability 
 than maintained in a parallel accumulator that duplicated the same asset set. The dedup key and the
 event-provenance `eventId` are unchanged.
 
-#### Scenario: A completed row names its resource fully
+A row SHALL carry this detail from the moment it is first recorded, not only once its upload completes: the
+manifest declares intent, so a `DISCOVERED` row must already be able to name its resource. The discovery
+walk supplies every field, so no additional platform read is required.
 
-- **WHEN** a resource upload completes and its ledger row is COMPLETED
+The `LedgerStore` read that serves the projection SHALL NOT be state-scoped, and its name SHALL NOT claim a
+state. It SHALL return every row that is not marked absent, leaving admission to the membership's policy.
+
+#### Scenario: A row names its resource fully as soon as it is recorded
+
+- **WHEN** the discovery walk admits a resource and a `DISCOVERED` row is recorded for it
 - **THEN** the row carries `creationDate`, `role`, `contentType`, and `filename` sufficient to build the
   resource's device-manifest entry with no additional PhotoKit read
+
+#### Scenario: The manifest read is not state-scoped
+
+- **WHEN** the projection reads the rows it lists
+- **THEN** the read returns rows in every state, excluding only those marked absent
 
 ### Requirement: Requested-state reset
 
@@ -608,8 +620,10 @@ the upload terminated, at the moment it is told; it is promoted to `COMPLETED` b
 work has run.
 
 `UPLOADED` SHALL be a **non-done** state (see "The done-state set is decided in Kotlin"): it counts toward
-the backlog in every read, and the device manifest — which projects `COMPLETED` rows — SHALL NOT include it.
-Only the cycle's promotion pass treats it as outstanding work rather than as pending upload.
+the backlog in every read. It SHALL, however, appear in the device-manifest projection like every other
+state — the manifest declares what this device intends to provide, and a resource whose bytes are already
+stored is intended by any reading (capability `device-manifest`). Only the cycle's promotion pass treats it
+as outstanding work rather than as pending upload.
 
 The engine's per-key decision SHALL treat `UPLOADED` as **already uploaded** (skip), like `COMPLETED` and
 `REQUESTED`: its bytes are stored, so re-uploading them would be waste.
@@ -628,11 +642,11 @@ database written by an earlier build simply contains no rows in the new state.
 - **WHEN** discovery re-derives a resource whose row is `UPLOADED`
 - **THEN** the engine answers already-uploaded and creates no upload job
 
-#### Scenario: An UPLOADED row counts as outstanding
+#### Scenario: An UPLOADED row counts as outstanding but is still declared
 
 - **WHEN** an asset has one `UPLOADED` row and no other rows
 - **THEN** `aggregates()` counts that asset as pending, the pending-resource read returns its key, and the
-  device-manifest projection excludes it
+  device-manifest projection **includes** it
 
 #### Scenario: An older database needs no migration
 
@@ -749,10 +763,12 @@ seen.) The `LedgerStore` SHALL expose a bounded state-scoped read of the rows th
 `DISCOVERED` and `FAILED` rows SHALL both be returned by it — they are the same fact to a producer,
 differing only in whether an attempt has already been made.
 
-`DISCOVERED` SHALL NOT be a done state, so a row in it counts toward the backlog everywhere and is
-excluded from the device-manifest projection. It SHALL NOT be a stranding candidate: the stranded
-reconciliation reads `REQUESTED` keys only, and surfacing a row that never had a job as a lost
-transfer would record a failure that did not happen.
+`DISCOVERED` SHALL NOT be a done state, so a row in it counts toward the backlog everywhere. It SHALL
+nonetheless be **included** in the device-manifest projection: the manifest declares what this device
+intends to provide, and a resource the walk found and the policy admitted is precisely that (capability
+`device-manifest`). It SHALL NOT be a stranding candidate: the stranded reconciliation reads `REQUESTED`
+keys only, and surfacing a row that never had a job as a lost transfer would record a failure that did not
+happen.
 
 #### Scenario: A discovered resource is recorded before any job exists
 
@@ -771,11 +787,11 @@ transfer would record a failure that did not happen.
 - **THEN** the next cycle re-enqueues it from the ledger, rather than waiting for a full enumeration
   to re-derive it
 
-#### Scenario: A discovered row is backlog, not manifest
+#### Scenario: A discovered row is backlog AND manifest
 
 - **WHEN** a row is `DISCOVERED`
-- **THEN** it counts toward the pending aggregate and the pending-resource read, and it appears in no
-  device-manifest projection
+- **THEN** it counts toward the pending aggregate and the pending-resource read, and it appears in the
+  device-manifest projection for every membership whose policy admits its asset
 
 #### Scenario: A discovered row is never stranded
 
