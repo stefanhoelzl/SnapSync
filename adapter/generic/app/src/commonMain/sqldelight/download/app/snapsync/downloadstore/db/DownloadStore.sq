@@ -143,16 +143,21 @@ suppressedLocalIds:
 SELECT createdLocalId FROM downloadAsset
 WHERE createdLocalId IS NOT NULL;
 
-countImported:
-SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED';
-
--- Every foreign asset known for download (pending + imported) — the download-progress denominator.
--- The download-progress DENOMINATOR. An `UNIMPORTABLE` asset is excluded deliberately (capability
--- `photo-download`, design D8): its import can never succeed, so counting it pegs the line below
--- completion forever on work that will never finish. The loss is reported at `Error` to the
--- crash-reporting sink instead of being displayed as permanent incompleteness.
-countAssets:
-SELECT COUNT(*) FROM downloadAsset WHERE state != 'UNIMPORTABLE';
+-- The download projection's three counts in ONE statement, so they come from one snapshot of the
+-- database rather than three reads taken at different instants (capability `download-store`; the
+-- `sync-status` group requires each of its members to be internally consistent). SQLite evaluates the
+-- whole SELECT in a single implicit transaction, so the three subqueries cannot disagree with each other.
+projectionCounts:
+SELECT
+  (SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED') AS imported,
+  (SELECT COUNT(*) FROM downloadAsset WHERE state != 'UNIMPORTABLE') AS stillArriving,
+  (SELECT COUNT(*) FROM downloadAsset a
+     WHERE a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
+       AND EXISTS (
+           SELECT 1 FROM downloadResource r
+           WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
+             AND r.enqueued = 1 AND r.stagedPath IS NULL
+       )) AS inFlight;
 
 -- The rows a prune would drop: non-terminal and carrying no `createdLocalId`. Read inside the prune's own
 -- transaction so the caller can subtract the refs whose imports are in flight and free exactly the files it
@@ -226,16 +231,6 @@ UPDATE downloadResource
 SET enqueued = 1
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND resourceKey = :resourceKey;
 
--- Foreign assets with at least one resource in flight — enqueued to the OS but not yet staged — and
--- not yet imported. The download analogue of the upload ledger's in-flight `pending` (asset-counted).
-countInFlightAssets:
-SELECT COUNT(*) FROM downloadAsset a
-WHERE a.state NOT IN ('IMPORTED', 'UNIMPORTABLE')
-  AND EXISTS (
-      SELECT 1 FROM downloadResource r
-      WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
-        AND r.enqueued = 1 AND r.stagedPath IS NULL
-  );
 
 selectResourcesForAsset:
 SELECT resourceKey, url, role, contentType, originalFilename, stagedPath

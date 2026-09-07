@@ -80,7 +80,7 @@ class ResetDeviceState(
     suspend fun reset() {
         // Read before pruning: this is the number the operator needs to see, and it is the count that
         // SURVIVES — the log line's job is to make "imported rows were kept" verifiable, not assumed.
-        val keptImported = runCatching { downloads.importedCount() }.getOrNull()
+        val keptImported = runCatching { downloads.counts().imported }.getOrNull()
 
         step("clear ledger") { ledger.clear() }
         // Without this the ledger clear achieves nothing: no change token means no enumeration.

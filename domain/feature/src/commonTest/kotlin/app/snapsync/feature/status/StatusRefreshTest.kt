@@ -137,6 +137,40 @@ class StatusRefreshTest {
     }
 
     @Test
+    fun `the group is exactly the two cheap reads and never the enumeration`() = runTest {
+        // The group has TWO callers — this class's `run`, and the foreground-gated poll — and stating its
+        // membership in both places is how the poll came to tick only the ledger, leaving the download line
+        // unbounded. One definition, asserted here; the poll's own test asserts it reaches both arms.
+        val (steps, refresh) = harness()
+        refresh.refreshCheapLocalReads()
+        assertEquals(listOf("ledger", "downloads"), steps, "both arms, and nothing slower")
+        assertTrue("walk" !in steps, "the enumeration is not a member of the group")
+        assertTrue("policy" !in steps, "nor is the policy derivation it needs")
+    }
+
+    @Test
+    fun `a failing member neither cancels its sibling nor the enumeration`() = runTest {
+        // Both members keep last-good on a failed read, so neither can take down the Foreground flow's
+        // other children. The ledger source already had this posture; the download line gained it with
+        // the group, which is what makes the two members uniform rather than one safe by accident.
+        val steps = mutableListOf<String>()
+        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        StatusRefresh(
+            ledgerCounts = ReadingLedgerCountsSource {
+                steps += "ledger"
+                error("the ledger read blew up")
+            },
+            gallery = gallery,
+            refreshDownloadLine = { steps += "downloads" },
+            activeConfig = { config },
+            policyFor = { steps += "policy"; policy() },
+        ).run() // must NOT throw
+
+        assertEquals(listOf("ledger", "downloads", "policy"), steps, "the sibling and the walk still ran")
+        assertEquals(1, gallery.size.value, "and the enumeration still published N")
+    }
+
+    @Test
     fun `cancellation propagates rather than being logged as a policy failure`() = runTest {
         // The leftover this change closes. `runCatching` catches CancellationException like anything
         // else; swallowing it breaks structured concurrency AND posts an Error line — which reaches the

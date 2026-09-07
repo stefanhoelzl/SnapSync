@@ -784,7 +784,7 @@ class StatusContainerHost(
             )
         } catch (cancelled: CancellationException) {
             // Cancellation is teardown, not failure: rethrow before the repair below, or a cancelled
-            // commit would rewrite the phase on its way out (the `LedgerCountsPoller` shape).
+            // commit would rewrite the phase on its way out (the `StatusCountsPoller` shape).
             throw cancelled
         } catch (t: Throwable) {
             // `Committing` pins NO action (`JoiningEventScreen`: "In-flight phases offer no actions"), so a

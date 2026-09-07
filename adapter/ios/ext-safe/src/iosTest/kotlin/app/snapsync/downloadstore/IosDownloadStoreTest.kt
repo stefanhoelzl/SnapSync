@@ -46,7 +46,7 @@ class IosDownloadStoreTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { iosDownloadStore(basePath = dir).assetCount() }
+            runBlocking { iosDownloadStore(basePath = dir).counts().stillArriving }
 
             assertTrue(fileExists("$dir/downloads.db"))
         }
@@ -55,7 +55,7 @@ class IosDownloadStoreTest {
     @Test
     fun `the download store is a separate file from the ledger`() {
         withTempDirectory { dir ->
-            runBlocking { iosDownloadStore(basePath = dir).assetCount() }
+            runBlocking { iosDownloadStore(basePath = dir).counts().stillArriving }
 
             assertFalse(
                 fileExists("$dir/ledger.db"),

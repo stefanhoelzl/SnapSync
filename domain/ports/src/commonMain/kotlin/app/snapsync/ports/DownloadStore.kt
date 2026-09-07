@@ -27,6 +27,25 @@ enum class DownloadState {
     val isTerminal: Boolean get() = this == IMPORTED || this == UNIMPORTABLE
 }
 
+/**
+ * The download projection's counts, read together (capability `download-store`).
+ *
+ * A value type rather than three reads, so the projection cannot publish a torn composite of its own counts —
+ * the `sync-status` group requires each of its members to be internally consistent.
+ *
+ * [stillArriving] excludes `UNIMPORTABLE` rows deliberately (capability `photo-download`, design D8): counting
+ * work that can never finish pegs the download line below completion forever, in a state the member can neither
+ * act on nor dismiss. That loss reaches the operator through the crash-reporting sink instead of the screen.
+ */
+data class DownloadCounts(
+    /** Imported foreign assets — the progress numerator. */
+    val imported: Int,
+    /** Foreign assets known for download that can still arrive — the progress denominator. */
+    val stillArriving: Int,
+    /** Foreign assets with a resource enqueued to the OS but not yet staged — the ↓-pulse signal. */
+    val inFlight: Int,
+)
+
 /** The source identity of a foreign asset: its owning device and that device's assetId. */
 data class AssetRef(val sourceDeviceId: String, val sourceAssetId: String)
 
@@ -211,20 +230,20 @@ interface DownloadStore : SuppressionSource {
      */
     suspend fun settleUnimportable(ref: AssetRef): Boolean
 
-    /** Count of imported foreign assets (the download-progress numerator). */
-    suspend fun importedCount(): Int
-
     /**
-     * Count of foreign assets known for download that can still arrive — the progress denominator.
+     * The download projection's counts, in **one round-trip** (capability `download-store`).
      *
-     * Excludes `UNIMPORTABLE` rows deliberately (design D8): counting work that can never finish pegs the
-     * download line below completion forever, in a state the member can neither act on nor dismiss. The
-     * loss reaches the operator through the crash-reporting sink instead of the screen.
+     * One read rather than three, for the same reason the upload ledger's `aggregates()` is one: these counts
+     * are published together as a single projection, and the status group requires each of its members to be
+     * internally consistent (`sync-status`, "The cheap local status reads are one bounded group").
+     *
+     * Reading them separately made that consistency an ARGUMENT rather than a property — safe only because
+     * `IMPORTED` is terminal and every imported row is also counted in the denominator, so a torn read could
+     * only ever understate completeness. That argument holds today and nothing enforces it: a later change to
+     * what the denominator excludes (as design D8 already did once) could break it silently, surfacing as a
+     * wrong arrow with no test naming the cause. One read makes the question unaskable instead of answered.
      */
-    suspend fun assetCount(): Int
-
-    /** Count of foreign assets with a resource in flight — enqueued to the OS but not yet staged (the ↓-pulse signal). */
-    suspend fun inFlightCount(): Int
+    suspend fun counts(): DownloadCounts
 
     /**
      * Drop non-terminal rows on leave/switch/reset, **returning the staged paths those rows owned** so the

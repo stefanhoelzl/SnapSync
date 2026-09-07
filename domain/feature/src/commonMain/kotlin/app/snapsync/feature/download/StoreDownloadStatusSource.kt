@@ -18,11 +18,27 @@ class StoreDownloadStatusSource(private val store: DownloadStore) : DownloadStat
     private val _progress = MutableStateFlow(DownloadProgress.UNREAD)
     override val progress: StateFlow<DownloadProgress> = _progress.asStateFlow()
 
+    /**
+     * ONE read, so the published projection cannot be a torn composite of counts taken at three different
+     * instants (capability `download-store`).
+     *
+     * **Keep-last-good on failure**, matching `ReadingLedgerCountsSource` — the group's other member — rather
+     * than throwing (capability `sync-status`, "The cheap local status reads are one bounded group"). Two
+     * callers make that load-bearing: the foreground refresh runs as one child of the `Foreground` flow's
+     * `coroutineScope`, so an escaping failure would cancel its SIBLINGS (the download reconcile, the
+     * staged-byte reclaim, the membership refresh) — which the spec forbids outright; and the poll ticks this
+     * every cadence, where a store error would otherwise be raised over and over.
+     *
+     * A failed read leaves the last good value standing, which is the honest answer: it is still the most
+     * recent thing this source actually read. It never regresses to a placeholder, and never to a counted
+     * zero — the distinction `DownloadProgress.UNREAD` exists to protect.
+     */
     override suspend fun refresh() {
+        val counts = runCatching { store.counts() }.getOrNull() ?: return
         _progress.value = DownloadProgress(
-            downloaded = store.importedCount(),
-            total = store.assetCount(),
-            inFlight = store.inFlightCount(),
+            downloaded = counts.imported,
+            total = counts.stillArriving,
+            inFlight = counts.inFlight,
         )
     }
 }

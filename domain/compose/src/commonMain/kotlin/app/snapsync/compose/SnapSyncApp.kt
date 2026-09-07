@@ -23,7 +23,7 @@ import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
-import app.snapsync.feature.status.LedgerCountsPoller
+import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
@@ -767,17 +767,21 @@ class AppCore internal constructor(
     // flows"; migration step 8). Each is built here — features referenced directly, port/platform
     // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
 
-    // The foreground-gated ledger-counts poll (capability `sync-status`; migration step 12): started
-    // by the Foreground flow, stopped by the Background flow — the cadence is the feature's rule.
-    val ledgerCountsPoller: LedgerCountsPoller by lazy {
-        LedgerCountsPoller(scope, ledgerCounts)
+    // The foreground-gated status-counts poll (capability `sync-status`): started by the Foreground flow,
+    // stopped by the Background flow — the cadence is the feature's rule.
+    //
+    // It ticks the GROUP through `StatusRefresh`, not the ledger source directly. Handing it `ledgerCounts`
+    // is what let the poll and the refresh disagree about what the cheap local reads are, leaving the
+    // download line refreshed once per foreground entry and the screen able to hold a false "In sync".
+    val statusCountsPoller: StatusCountsPoller by lazy {
+        StatusCountsPoller(scope, refreshCheapLocalReads = { statusRefresh.refreshCheapLocalReads() })
     }
 
     val foregroundFlow: Foreground by lazy {
         Foreground(
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
-            statusPoller = ledgerCountsPoller,
+            statusPoller = statusCountsPoller,
             reloadConfig = ports.reloadConfig,
             // Delivered unconditionally to whichever mechanism is resolved; the mechanism declines if it
             // has nothing to add (`upload-lifecycle`, "Triggers are delivered to the mechanism and
@@ -798,7 +802,7 @@ class AppCore internal constructor(
     }
 
     val backgroundFlow: Background by lazy {
-        Background(statusPoller = ledgerCountsPoller, scheduleBackstop = ports.scheduleBackstop)
+        Background(statusPoller = statusCountsPoller, scheduleBackstop = ports.scheduleBackstop)
     }
 
     val silentPushFlow: SilentPush by lazy {

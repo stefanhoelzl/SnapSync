@@ -1,6 +1,7 @@
 package app.snapsync.downloadstore
 
 import app.snapsync.ports.AssetRef
+import app.snapsync.ports.DownloadCounts
 import app.snapsync.ports.DownloadState
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.ImportableAsset
@@ -124,11 +125,19 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
         applied
     }
 
-    override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()
-
-    override suspend fun assetCount(): Int = q.countAssets().executeAsOne().toInt()
-
-    override suspend fun inFlightCount(): Int = q.countInFlightAssets().executeAsOne().toInt()
+    /**
+     * ONE statement, not three reads and not three reads inside a transaction: the counts are subqueries of a
+     * single `SELECT`, which SQLite evaluates against one snapshot. A transaction wrapping three separate
+     * reads would be equivalent here, but it would put the consistency in the caller's hands, where the next
+     * count added could quietly be read outside it.
+     */
+    override suspend fun counts(): DownloadCounts = q.projectionCounts().executeAsOne().let {
+        DownloadCounts(
+            imported = it.imported.toInt(),
+            stillArriving = it.stillArriving.toInt(),
+            inFlight = it.inFlight.toInt(),
+        )
+    }
 
     /**
      * Read the prunable rows, subtract [protecting], drop what remains and return the staged paths those

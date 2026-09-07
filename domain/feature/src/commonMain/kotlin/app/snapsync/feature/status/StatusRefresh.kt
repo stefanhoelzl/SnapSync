@@ -55,6 +55,23 @@ class StatusRefresh(
 ) {
 
     /**
+     * The **cheap local status reads** — the group, defined ONCE (capability `sync-status`, "The cheap local
+     * status reads are one bounded group").
+     *
+     * It is its own entry point because the group has two callers with different jobs: [run] reads it before
+     * the library enumeration, and the foreground-gated poll re-reads it on a cadence. Stating the membership
+     * in both places is how the poll came to cover only one of the two arms — which left the download line
+     * unbounded and the screen able to claim "In sync" over an outstanding burst for a whole session.
+     *
+     * Ordering inside the group is not significant; ordering **against the enumeration** is, and that is
+     * [run]'s.
+     */
+    suspend fun refreshCheapLocalReads() {
+        ledgerCounts.refresh()
+        refreshDownloadLine()
+    }
+
+    /**
      * **No membership → nothing to count**, and `N` stays `null`, *not counted*. A download-only
      * membership still counts, and reaches `0` through the ordinary path: its policy is `DenyAll`, so
      * the admission answers a **counted** zero rather than this method guarding the walk.
@@ -62,8 +79,7 @@ class StatusRefresh(
     suspend fun run() {
         // CHEAP LOCAL READS FIRST — the rule this class is named for. Both counts gate the screen out of
         // its neutral first frame; the walk below is the slow one, and it must not arrive alone.
-        ledgerCounts.refresh()
-        refreshDownloadLine()
+        refreshCheapLocalReads()
         val config = activeConfig() ?: return
         // NO GRANT CHECK. The read seam answers both halves — where candidates come from AND whether an
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,
@@ -75,7 +91,7 @@ class StatusRefresh(
             // Cancellation is not a failed read. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which
             // reaches the crash reporter on production builds (capability `crash-reporting`) — for an
-            // ordinary teardown. [OwnDeviceGalleryStatusSource] and [LedgerCountsPoller] separate the two
+            // ordinary teardown. [OwnDeviceGalleryStatusSource] and [StatusCountsPoller] separate the two
             // for the same reason; this call site did not, which is the last place in this sequence that
             // still conflated them.
             if (failure is CancellationException) throw failure
