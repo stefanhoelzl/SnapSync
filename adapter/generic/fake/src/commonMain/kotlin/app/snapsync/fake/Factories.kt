@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.ports.AlbumMapStore
@@ -95,7 +96,8 @@ fun inMemoryDiagnosticsReporter(
     started: MutableStateFlow<Boolean>,
     sent: MutableStateFlow<List<DiagnosticDump>>,
     isConfigured: Boolean = true,
-): DiagnosticsReporter = InMemoryDiagnosticsReporter(started, sent, isConfigured)
+    described: MutableStateFlow<ProcessMetricReport?> = MutableStateFlow(null),
+): DiagnosticsReporter = InMemoryDiagnosticsReporter(started, sent, isConfigured, described)
 
 fun inMemoryDiagnosticsReporter(): DiagnosticsReporter = InMemoryDiagnosticsReporter()
 

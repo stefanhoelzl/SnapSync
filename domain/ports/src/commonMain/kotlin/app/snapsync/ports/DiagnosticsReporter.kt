@@ -1,6 +1,7 @@
 package app.snapsync.ports
 
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.ProcessMetricReport
 
 /**
  * Reporting this process's diagnostics off-device for the operator (capability `crash-reporting`):
@@ -37,4 +38,22 @@ interface DiagnosticsReporter {
      * mean the dump has left the device, and no caller may claim it has.
      */
     fun send(dump: DiagnosticDump)
+
+    /**
+     * Attach [report] as the standing account of how this process has been behaving (capability
+     * `crash-reporting`), so that **every** event this process reports afterwards carries it —
+     * including a crash captured here and delivered on a later launch.
+     *
+     * Named for what it does to the channel, not for the reporting SDK's own vocabulary. It exists on
+     * this port and not beside the metric adapter because the SDK is confined to one module, and that
+     * module is not the one that reads process metrics.
+     *
+     * **Replaces rather than accumulates**: a later report supersedes an earlier one, so what rides an
+     * event is always the most recent account, never a growing pile. Implementations SHALL make this
+     * survive a fatal event — the whole value is that a crash arrives next to the OS's explanation of
+     * recent terminations.
+     *
+     * A complete no-op when the build is unconfigured, on the same rule as [start] and [send].
+     */
+    fun describeProcess(report: ProcessMetricReport)
 }

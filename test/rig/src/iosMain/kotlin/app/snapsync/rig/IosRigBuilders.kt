@@ -1,6 +1,8 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
+import app.snapsync.model.ProcessMetricReport
+import app.snapsync.model.processMetricEmissions
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
@@ -20,7 +22,8 @@ import app.snapsync.rig.gallery.wipeGallery
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.Json
-import platform.posix.abort
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Everything the hook would otherwise have to decide.
@@ -188,6 +191,8 @@ fun deviceCommands(
     core: () -> AppCore,
     photoAccess: PhotoLibraryPermission,
     osSupportsOsDrivenUpload: Boolean,
+    /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
+    handleReport: (ProcessMetricReport) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + mapOf(
     // The development pin on the upload mechanism — the channel's replacement for the deleted
     // `SNAPSYNC_FORCE_URLSESSION_UPLOAD` (capability `upload-lifecycle`). Reports the pin AND what the
@@ -262,28 +267,45 @@ fun deviceCommands(
             }
         }
     },
-    // ⚠️ PROBE — temporary, delete with the change that replaces it (capability `crash-reporting`,
-    // exit attribution). Manufactures a REAL termination so MetricKit's diagnostic channel can be
-    // observed on demand instead of waiting for a natural one: Apple says diagnostics arrive
-    // "immediately in iOS 15 and later", which cannot mean immediately for a process that has been
-    // killed, and only a device says what it does mean.
-    //
-    // `abort()` and not a main-thread hang, deliberately: SIGABRT is a deterministic, standard crash
-    // report, which is what tests whether the CHANNEL works at all. A watchdog kill (the SNAPSYNC-23
-    // shape) is the same channel with a different classification, and manufacturing one means naming
-    // `Dispatchers.Main` here — which the main-lane containment gate would have to be taught about.
-    // That belongs to the real change, not to a probe.
-    //
-    // It never answers: the process is gone before a response can be written, and the caller sees the
-    // connection drop. That IS the confirmation.
-    "crash" to RigCommand { _, _ ->
-        log.i { "[metrickit] probe: aborting on request to manufacture a crash diagnostic" }
-        abort()
-        // `abort(): Unit` in the posix klib, so the map's value type still needs one. The process is
-        // gone before this is reached.
-        CommandResult.ok("""{"crashed":true}""")
+    // Drive a synthetic process-metric report through the app's OWN handler (capability
+    // `crash-reporting`). Real reports arrive on the OS's cadence — roughly daily, and only after a
+    // period has closed — so without this the only way to exercise the three channels is to wait a
+    // day. The report is an open key/value bag by design, so a synthetic one needs no MetricKit types
+    // and this route stays honest: it feeds the same rule and the same channels the OS feeds.
+    "process-metrics" to RigCommand { _, body ->
+        val fields = parseFields(body)
+        when (fields) {
+            null -> CommandResult.badRequest(
+                "body must be a JSON object of string keys to scalar values, e.g. " +
+                    """{"applicationExitMetrics.backgroundExitData.cumulativeAppWatchdogExitCount":"1"}""",
+            )
+            else -> {
+                val report = ProcessMetricReport(fields)
+                handleReport(report)
+                val reasons = processMetricEmissions(report).flatMap { it.reasons }
+                CommandResult.ok(
+                    """{"fields":${fields.size},"crossed":${reasons.isNotEmpty()},""" +
+                        """"reasons":${jsonArray(reasons)}}""",
+                )
+            }
+        }
     },
 )
+
+/**
+ * A JSON object of scalars as the flat field map a report carries, or `null` when it is not one.
+ *
+ * Refusing rather than guessing: a mistyped body that silently became an empty report would exercise
+ * the channels with nothing in them and look like a pass.
+ */
+private fun parseFields(body: String?): Map<String, String>? {
+    val text = body?.takeIf { it.isNotBlank() } ?: return null
+    val root = runCatching { json.parseToJsonElement(text) }.getOrNull() as? JsonObject ?: return null
+    return root.mapValues { (_, value) -> (value as? JsonPrimitive)?.content ?: return null }
+}
+
+private fun jsonArray(values: List<String>): String =
+    values.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
 
 /** The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk. */
 fun galleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
