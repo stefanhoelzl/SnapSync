@@ -72,12 +72,14 @@
 
 ## 8. On-device verification
 
-- [ ] 8.1 Build and install a rig build; fire the synthetic-report route and confirm all three
+- [x] 8.1 Build and install a rig build; fire the synthetic-report route and confirm all three
       channels behave (log line, context attached, event on crossing).
 - [ ] 8.2 Wait one report cycle and confirm a **real** payload flows end to end — the one part the
       synthetic route cannot exercise.
-- [ ] 8.3 Record what was measured, with device, OS point release and an ⏰ re-measure trigger. Do not
-      claim device-verified what was not run.
+- [x] 8.3 Record what was measured, with device, OS point release and an ⏰ re-measure trigger. Do not
+      claim device-verified what was not run. **Recorded in PROBE-FINDINGS §7**, including the two
+      things this run did NOT prove (the Bugsink half — no DSN on a dev build — and the ObjC decode,
+      which the rig route enters below by design).
 
 ## 9. The deliberate experiment (settles an Open Question)
 

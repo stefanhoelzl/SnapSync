@@ -392,3 +392,54 @@ question, and it has been accumulating since 2026-07-21.
    everything except `SIGKILL`; and a `MXCrashDiagnostic` for a SIGKILL carries a null
    `terminationReason` (measured) so it says *less* than the counter does. Both the duplication
    analysis and this population argue against reading `MXDiagnosticPayload` at all.
+
+---
+
+## 7. Implementation verification on device (2026-09-07)
+
+**Measured:** iPhone12,8 (SE2), **iOS 26.6**, dev-signed sideload of the implementation
+(Debug, `-Psnapsync.rig=true`, no baked DSN). ⏰ Re-measure at the next iOS major; n=1 device.
+
+Binary shape, from `nm` on the shipped arm64 image: `MetricKitProcessMetricSource` (60 symbols),
+`ProcessMetricHandler` (26), rig linked (1198), and **`MetricKitProbe` absent (0)** — the temporary
+probe is gone from the build, not merely from the source tree.
+
+### What the synthetic-report route proved
+
+Three calls through `POST /device/process-metrics`, each driving the app's **own** handler instance:
+
+| input | response | device log |
+|---|---|---|
+| normal exits only | `{"fields":3,"crossed":false,"reasons":[]}` | one `Info` line, no `Error` |
+| bg watchdog ×2 + memory pressure ×1 | `{"fields":5,"crossed":true,"reasons":[…2 reasons…]}` | one `Info` line **and** one `Error` |
+| `not json` | `{"error":"body must be a JSON object…"}` | nothing |
+
+```
+21:27:05.494 [Info/processMetrics]  process metrics: observing
+21:27:27.255 [Info/processMetrics]  process metrics: 2026-09-06 .. 2026-09-07, 3 field(s)
+21:27:27.271 [Info/processMetrics]  process metrics: 2026-09-06 .. 2026-09-07, 5 field(s)
+21:27:27.272 [Error/processMetrics] process exit threshold crossed
+```
+
+Confirmed by this:
+
+- **arming happens on the shell-init path** — `observing` is written at launch, on a build whose
+  graph nothing has forced;
+- **one line per report, always**, including the quiet one — "nothing was wrong" is distinguishable
+  from "nothing arrived";
+- **the crossing message is fixed** (`process exit threshold crossed`), so occurrences group into one
+  issue rather than one per counter;
+- **a malformed body is refused** rather than becoming a silent empty report that would exercise the
+  channels with nothing in them and look like a pass;
+- the two crossing reasons were reported together from **one** report — the report is the unit.
+
+### What this run did NOT prove, and why
+
+- **The reporting channel.** This build carries no DSN, so the context attach and the event send are
+  inert — decision "no-DSN builds arm and log as always" working as specified, but it means the
+  Bugsink half is unverified. Verifying it needs a `gh workflow run ios.yml --ref <branch>` dispatch.
+- **The ObjC decode.** The rig route deliberately enters below it, at the `model/` report. Only a real
+  platform payload exercises `dictionaryRepresentation()` → flatten, and those arrive on the OS's own
+  cadence.
+
+Neither is claimed as verified.
