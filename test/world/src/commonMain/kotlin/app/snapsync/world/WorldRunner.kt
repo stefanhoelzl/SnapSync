@@ -4,7 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 
 /**
  * Runs a world integration test on a **real-time** dispatcher (JVM/native `runBlocking`), NOT
- * `runTest`'s virtual clock. The composed `ExtensionReconciler` wraps its device-listing fetch in
+ * `runTest`'s virtual clock. The composed `UploadReconciler` wraps its device-listing fetch in
  * `withTimeoutOrNull(30s)`, and the mini-edge `MockEngine` executes on a real background dispatcher — a
  * combination that fires the timeout prematurely under `runTest` (the virtual clock advances to 30s
  * while the real HTTP hop is in flight). Real time avoids that race, so the REAL reconcile → cycle path

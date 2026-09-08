@@ -42,8 +42,9 @@ import kotlinx.coroutines.withTimeout
  * left non-`COMPLETED` by an asset deleted mid-upload from pinning `pending > 0` forever): removed
  * assets reported by the change feed are pruned by key prefix each cycle, and a fully-drained full
  * enumeration reconciles the whole ledger against the live key-set. Pruning is the one direct
- * `LedgerWriter` write the cycle makes (everything else flows through the [engine]); the extension
- * is the single writer, so this preserves the invariant. No S3 object is ever deleted.
+ * `LedgerWriter` write the cycle makes (everything else flows through the [engine]); the upload tier's
+ * process is the single writer — the extension on iOS ≥26.1, the app on iOS 18–26.0 — so this
+ * preserves the invariant. No S3 object is ever deleted.
  */
 class UploadCycle(
     // THE ENTRY GATE (capability `upload-lifecycle`): the three-state membership read, in the shared
@@ -388,7 +389,7 @@ class UploadCycle(
             // the same write-after-act discipline the engine uses for a job, applied one level up — and
             // it is the dual of an invariant the codebase already keeps on the other side, where every
             // operation that destroys rows behind the cursor also clears it (`ResetDeviceState`,
-            // `ExtensionReconciler`, `OsDrivenUploadMechanism.stop`).
+            // `UploadReconciler`, `OsDrivenUploadMechanism.stop`).
             //
             // It is deliberately BEFORE any job is created. The old condition — "every job was created" —
             // was a proxy for "every resource is recorded", and on a device with more outstanding work

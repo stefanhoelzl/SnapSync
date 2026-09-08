@@ -2,14 +2,16 @@
 
 ## Purpose
 
-The extension-side gate that runs **before** a (re)joined device uploads anything: it pulls the event's
-stored-file listing, seeds the ledger with one `COMPLETED` row per already-stored resource, and only then
-enables the producer. A device that re-joins therefore re-uploads **nothing** it has already contributed.
+The **upload tier's** gate that runs **before** a (re)joined device uploads anything: it pulls the
+**device's** stored-file listing, seeds the ledger with one `COMPLETED` row per already-stored resource,
+and only then enables the producer. A device that re-joins therefore re-uploads **nothing** it has already
+contributed. The listing is per-**device** and event-independent, which is what makes the dedup survive an
+event switch.
 
 Without it, a device rejoining against an empty ledger — after a delete-and-reinstall (the App Group is
 wiped) or a destructive ledger-schema migration — re-enumerates the whole library and re-uploads every
 photo that is already sitting in storage. The reconcile is gated on a persisted `joinedEventId` marker
-rather than ledger-emptiness, because the extension's process is short-lived and per-cycle: a zero-row join
+rather than ledger-emptiness, because a tier's cycle process is short-lived and per-cycle: a zero-row join
 keyed on emptiness would never settle.
 
 This reconcile is also what keeps ledger-sourced status honest. `sync-status` classifies from the ledger
@@ -173,7 +175,7 @@ be a stale/transient read, because (a) an upload confirms its bytes before the j
 writes and deletes immediately (read-after-write consistent), and (c) the list endpoint never returns a
 `2xx` for a failed or partial listing (capability `api-endpoints`: a failure is `502`, surfaced
 to the reconciliation as a fetch failure, not an empty array). An **untrustworthy** signal — a transport
-error or a timeout — SHALL still defer (see "Extension defers uploads until the seed succeeds"), leaving
+error or a timeout — SHALL still defer (see "Upload tier defers uploads until the seed succeeds"), leaving
 the ledger, cursor, and marker untouched so the next cycle retries. A **decode** failure SHALL defer
 likewise, but SHALL NOT be reported as a transient condition: it will not heal by retrying, so it is
 surfaced as the permanent fault it is. The ledger is thus reset only ever on an authoritative listing.

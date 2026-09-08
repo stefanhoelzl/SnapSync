@@ -3,7 +3,7 @@
 ## Purpose
 
 A controllable in-memory "world" (`:test:world`) that the REAL platform-agnostic stack — `SyncEngine`
-+ `UploadCycle`, `ExtensionReconciler`, `DeviceManifestProducer`, `DownloadController` +
++ `UploadCycle`, `UploadReconciler`, `DeviceManifestProducer`, `DownloadController` +
 `QueuedPhotoDownloadJobs`, `OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource`,
 `CreateEvent` — runs against, so the whole system (upload AND download) is observable and testable on
 JVM + `iosSimulatorArm64` without a device. It provides a backend object store computing the edge's read-models faithfully (drift
@@ -534,7 +534,7 @@ the world's fakes — not through a world-local mirror of a composition root: th
 in-memory ports (`ConfigReader` over the config cell and the `membershipUnreadable` lever, the fake
 `BackgroundTransfer`, the `:adapter:generic:fake` ledger/discovery/manifest/marker stores, the mini-edge HTTP
 seams) and `uploadCore` builds the real `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` +
-`ExtensionReconciler` + `DeviceManifestProducer` graph, exactly as it does for the device roots. The
+`UploadReconciler` + `DeviceManifestProducer` graph, exactly as it does for the device roots. The
 app-side graph — download, status, membership, creation, the command bundle — SHALL come from the
 composed `AppCore` (see "The world composes the app graph through snapSyncApp"). Only the platform
 edges (`BackgroundTransfer`, `DownloadTransport`, `PhotoLibraryImporter`), the storage seams, and the

@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  * a `COMPLETED` row stays *true* across a leave (`sync-ledger`, "Event-independent key"). Wiping them
  * would force a re-upload of everything already stored on the next join, which is exactly what the
  * app-driven tier used to do here. The upload tier clears only the `joinedEventId` marker, on its next
- * cycle, once the configured event no longer matches (see [ExtensionReconciler]); a later join of *any*
+ * cycle, once the configured event no longer matches (see [UploadReconciler]); a later join of *any*
  * event then reconciles fresh and re-uploads nothing already in the byte partition.
  *
  * **The local teardown never waits on the network.** The clear is the second, awaited step, so
