@@ -13,19 +13,27 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Upper bound on the reconcile's network device-listing `LIST` (mirrors the device-manifest PUT guard).
- * The extension runner has a hard ~3-minute OS cap; a hung `LIST` under `runBlocking` would burn it and
- * get the worker force-killed. Larger than the small manifest-PUT guard because the listing can return
- * tens of thousands of entries on a big library — but still bounds a genuinely stuck call. Only the
- * network call is bounded; the subsequent `resetTo` stays a single atomic, un-timed transaction.
+ * Every upload tier runs inside a window the OS closes: the extension runner has a hard ~3-minute cap
+ * (a hung `LIST` under `runBlocking` burns it and gets the worker force-killed), and the app-driven tier
+ * has its `BGProcessingTask` window. Larger than the small manifest-PUT guard because the listing can
+ * return tens of thousands of entries on a big library — but still bounds a genuinely stuck call. Only
+ * the network call is bounded; the subsequent `resetTo` stays a single atomic, un-timed transaction.
  */
 private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
 
 /**
- * Extension-side re-join reconciliation (capability `event-rejoin-reconciliation`). Runs on the
- * extension's own cycle, **before** any upload job is created, and decides whether the producer may
- * upload this cycle. The seed is a pure producer-side dedup optimization — it stops a re-joined /
- * reinstalled device from re-uploading already-stored bytes; status is read from storage truth, not
- * from this ledger (see `sync-status`), so the seed has no UI role and narrates nothing.
+ * Re-join reconciliation for the **upload tier** (capability `event-rejoin-reconciliation`) — whichever
+ * process holds the `LedgerWriter`: the extension on iOS ≥26.1, the app on iOS 18–26.0. It is built
+ * once in the shared `uploadCore`, so it runs on that tier's own cycle whichever tier that is, **before**
+ * any upload job is created, and it decides whether the producer may upload this cycle. It was named for
+ * the extension when only the extension had one; the app-driven tier shipped with no reconciliation at
+ * all until `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` generalized it.
+ *
+ * The seed is a producer-side dedup optimization — it stops a re-joined / reinstalled device from
+ * re-uploading already-stored bytes. It is **not** invisible to the UI: the upload arm's completed count
+ * is a `LedgerStore.aggregates()` read (`LedgerBackedSyncStatusSource`, capability `sync-status`), so a
+ * re-baseline that drops rows moves the reported progress with it. That is honest — those bytes really
+ * are not stored — but it is a visible consequence, not a silent bookkeeping detail.
  *
  * Bytes are device-partitioned and **event-independent** (`/files/devices/<deviceId>/…`), so seeding from the
  * **device** listing (not a per-event one) is what preserves cross-event dedup: a switch re-seeds the
@@ -55,13 +63,13 @@ private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
  * - no event configured but a marker remains (a leave) → clear the marker only and upload nothing; the
  *   ledger (global, valid across events) is left intact so a later re-join dedups against it.
  */
-class ExtensionReconciler(
+class UploadReconciler(
     private val files: DeviceFilesSource,
     private val ledger: LedgerStore,
     private val marker: JoinedEventMarker,
     private val deviceId: String,
     private val clearDiscoveryCursor: suspend () -> Unit,
-    private val log: Logger = Logger.withTag("ExtensionReconciler"),
+    private val log: Logger = Logger.withTag("UploadReconciler"),
 ) {
     /**
      * Reconcile for the [configuredEventId] (`null` when no event is configured). Returns whether the

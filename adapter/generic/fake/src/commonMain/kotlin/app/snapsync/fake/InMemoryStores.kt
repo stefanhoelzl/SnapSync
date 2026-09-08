@@ -18,7 +18,7 @@ internal class InMemoryDiscoveryStore : DiscoveryStore {
     }
 }
 
-/** An honest in-memory [JoinedEventMarker] for the composed `ExtensionReconciler`. */
+/** An honest in-memory [JoinedEventMarker] for the composed `UploadReconciler`. */
 internal class InMemoryJoinedEventMarker(private var value: String? = null) : JoinedEventMarker {
     override fun read(): String? = value
     override fun set(eventId: String) {

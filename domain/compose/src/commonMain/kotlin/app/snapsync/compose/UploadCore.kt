@@ -3,7 +3,7 @@ package app.snapsync.compose
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.feature.upload.CycleGate
-import app.snapsync.feature.upload.ExtensionReconciler
+import app.snapsync.feature.upload.UploadReconciler
 import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
@@ -111,7 +111,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe
     // has succeeded — never at composition time, where a locked device would throw out of assembly.
     val reconciler by lazy {
-        ExtensionReconciler(
+        UploadReconciler(
             files = ports.deviceFiles,
             ledger = ports.ledger,
             marker = ports.joinedMarker,

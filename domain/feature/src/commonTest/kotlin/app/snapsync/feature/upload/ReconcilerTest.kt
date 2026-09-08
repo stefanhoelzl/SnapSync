@@ -52,7 +52,7 @@ class ReconcilerTest {
         marker: JoinedEventMarker,
         log: Logger = Logger.withTag("ReconcilerTest"),
         onCursorClear: () -> Unit = {}, // last, so the existing call sites keep their trailing lambda
-    ) = ExtensionReconciler(files, ledger, marker, deviceId, { onCursorClear() }, log)
+    ) = UploadReconciler(files, ledger, marker, deviceId, { onCursorClear() }, log)
 
     /** Records what was logged, so a severity can be asserted rather than a message. */
     private class Recorder : LogWriter() {
