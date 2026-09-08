@@ -79,6 +79,8 @@ architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit
 metadata/       App Store listing copy + App Review notes
 screenshots/    the 6 committed raw captures both the listing and the site derive from
 scripts/        build and dev tooling, incl. the device lease + guard (see On-device iOS)
+.ship/          this repo's half of the global `/ship` skill - gates, PR-title policy,
+                post-merge hook, merge budgets (contract: `~/.claude/skills/ship/hooks.md`)
 tools/ config/ gradle/            more build tooling
 ```
 
@@ -449,6 +451,15 @@ and, for each rule, what it does **not** cover.
   to `main`). Every PR carries exactly one changelog label — `enhancement` · `bug` · `internal` —
   which `/ship` applies and the required `check-label` gate enforces; the App Store release notes are
   derived from it (capability `changelog-labels`), so `internal` means "no customer sees this".
+- **`/ship` is a GLOBAL skill** (`~/.claude/skills/ship/`), not a file in this repo. Everything that
+  varies per repo lives in **`.ship/`** — `gates.sh` (the local half of what gates a merge),
+  `pr-title.md` (the App Store title policy), `post-merge.md` (the Bugsink resolve), `config.json`
+  (the merge budgets). The hook contract is `~/.claude/skills/ship/hooks.md`; read it before editing
+  any of them, and do not add a sixth file expecting ship to read it.
+- **The branch ruleset is LIVE-ONLY** — ship owns it as an exhaustive baseline and there is no
+  committed copy to edit. Read it with `gh api repos/stefanhoelzl/SnapSync/rulesets`. Required-check
+  contexts accumulate additively from what actually executed on a PR; dropping one is a deliberate,
+  confirmed act inside `/ship`, never a file edit.
 - **The OpenSpec flow is user-driven — never entered on the agent's initiative.** Changes that
   **add, alter, or remove behavior** go through it (propose → apply → sync/archive) so
   `openspec/specs/` stays the contract of record — but *entering* the flow is the user's call, and so

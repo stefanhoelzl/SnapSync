@@ -6,7 +6,7 @@ name: api-deploy
 # Capabilities: backend-deployment, deployment-configuration.
 #
 # THE CHECK SET IS NOT HERE, AND ITS ABSENCE IS THE POINT. `api.yml`'s `api-test` job runs
-# fmt/lint/type-check/tests on every ref and is a REQUIRED status check (.github/rulesets/main.json),
+# fmt/lint/type-check/tests on every ref and is a REQUIRED status check on `main`'s branch ruleset,
 # so a commit CANNOT reach `main` unless they passed on the PR that carried it. Re-running them here
 # would be a second copy of a gate that has already fired.
 #

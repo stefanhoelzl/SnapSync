@@ -9,7 +9,7 @@
 # this gate existed — so an unlabelled PR that slipped through would surface, if at all, in the
 # summary of a release that already shipped without it.
 #
-# It is a REQUIRED status check (.github/rulesets/main.json). Safe to require for the same reason
+# It is a REQUIRED status check on `main`'s branch ruleset. Safe to require for the same reason
 # `appstore-metadata-validate` is: it is triggered by pull-request events, so it always posts on a
 # PR's head commit and can never freeze merges the way a main-only check would. It costs a shipped
 # change nothing — `/ship` applies the label as it opens the PR.
@@ -24,7 +24,8 @@ permissions:
 
 jobs:
   check-label:
-    # This display name is the status-check context required by .github/rulesets/main.json.
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted).
     name: check-label

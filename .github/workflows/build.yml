@@ -40,7 +40,8 @@ jobs:
       - run: ./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true -Psnapsync.forge=true
 
   spec-validate:
-    # This display name is the status-check context required by .github/rulesets/main.json.
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted). Safe to require: build.yml carries no path filter, so it posts on every ref.
     name: spec-validate
@@ -56,7 +57,8 @@ jobs:
       - run: npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict
 
   resolver-test:
-    # This display name is the status-check context required by .github/rulesets/main.json.
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted). Safe to require: build.yml carries no path filter, so it posts on every ref.
     name: resolver-test

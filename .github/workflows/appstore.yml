@@ -2,14 +2,14 @@
 # gate/deliver split of ios.yml:
 #   * appstore-metadata-validate — EVERY ref, ubuntu, NO secrets: validates the committed metadata/
 #     files OFFLINE (schema + App Store character limits + URL format). It is a REQUIRED status check
-#     (.github/rulesets/main.json) — safe to require because it runs on every ref and always posts,
+#     on `main`'s branch ruleset — safe to require because it runs on every ref and always posts,
 #     so it can never freeze merges the way a main-only required check would.
 #   * appstore-metadata-apply — main ONLY, `needs` the validator, ubuntu, reuses the EXISTING Admin
 #     ASC key (no new secret, no Xcode/keychain/cert): resolves the currently EDITABLE App Store
 #     version at run time and pushes the listing text to its localizations, declaratively (file wins;
 #     absent field = no-op). It never edits a version in review and never creates one. Like
 #     ios-deliver it posts NO required check and is free to fail RED without blocking a
-#     merge (do NOT add it to .github/rulesets/main.json).
+#     merge (do NOT add it to `main`'s required checks).
 #
 # Text only: screenshots/app previews are binaries with no CLI path and are out of scope (manual).
 # The metadata tool `asc` is a pinned, checksum-verified third-party binary (see asc_fetch.sh).
@@ -29,7 +29,8 @@ concurrency:
 
 jobs:
   appstore-metadata-validate:
-    # This display name is the status-check context required by .github/rulesets/main.json.
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted).
     name: appstore-metadata-validate

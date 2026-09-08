@@ -89,7 +89,7 @@ The workflow SHALL authenticate to App Store Connect with the **existing** Admin
 
 ### Requirement: The release workflow never gates merges
 
-`.github/workflows/ios-appstore-promote.yml` SHALL post **no** branch-protection status check and SHALL NOT be added to `.github/rulesets/main.json`: it runs only when explicitly dispatched and never as part of a pull request's checks, so requiring it would freeze every merge. A failed release SHALL conclude the run as **failure (red)** so it is visible, while blocking no merge.
+`.github/workflows/ios-appstore-promote.yml` SHALL post **no** branch-protection status check and SHALL NOT be added to the required checks in `main`'s branch ruleset: it runs only when explicitly dispatched and never as part of a pull request's checks, so requiring it would freeze every merge. A failed release SHALL conclude the run as **failure (red)** so it is visible, while blocking no merge.
 
 #### Scenario: A failed release blocks nothing
 - **WHEN** any step of a dispatched release fails
