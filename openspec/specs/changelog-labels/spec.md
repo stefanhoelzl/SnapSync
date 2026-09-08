@@ -45,8 +45,8 @@ SHALL report the required set. The check SHALL read the pull request's **live** 
 triggering event's payload, because a label applied moments after the PR is created races the
 `opened` webhook snapshot.
 
-The gate SHALL be a **required status check** in the committed branch ruleset
-(`.github/rulesets/main.json`), and SHALL be the only
+The gate SHALL be a **required status check** in the branch ruleset on `main`
+(owned by `/ship`; there is no committed copy), and SHALL be the only
 thing that *prevents* an uncategorized change: the derivation reports what it could not categorize but
 does not refuse it, so without the gate an unlabelled pull request would be absent from the changelog
 and discovered — if at all — only in the release run that already shipped without it.

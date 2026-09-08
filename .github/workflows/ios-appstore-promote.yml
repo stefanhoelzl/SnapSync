@@ -37,7 +37,7 @@
 # SUBMIT is opt-in (`-f submit=true`) AND gated: `asc review doctor` must report zero blocking checks or
 # the run refuses. The gate is OURS — a submission is outward-facing and effectively irreversible.
 #
-# This workflow posts NO branch-protection status check and is NOT in .github/rulesets/main.json: it runs
+# This workflow posts NO branch-protection status check and is NOT a required check on `main`: it runs
 # only when dispatched and never as part of a PR's checks, so requiring it would freeze merges. A failed
 # release is RED but blocks nothing. It introduces no new App Store Connect credential (the review CONTACT
 # secrets grant no ASC access; they are secrets only because this repo is public and they are personal data).

@@ -35,7 +35,7 @@
 # rather than a `continue-on-error` convention. ios-deliver never runs on a PR branch's push and posts
 # no branch-protection status check, so it is free to fail RED without blocking anything — which is
 # strictly better than the old continue-on-error, where a failed TestFlight upload left the run green
-# and the failure was easy to miss. Do NOT add ios-deliver to .github/rulesets/main.json: it never
+# and the failure was easy to miss. Do NOT add ios-deliver to the required checks: it never
 # runs on a PR branch's PUSH (a dispatch is a separate, deliberate run), so as a required check it
 # would never be posted and merges would freeze.
 #
@@ -108,7 +108,8 @@ concurrency:
 
 jobs:
   ios-build:
-    # This display name is the status-check context required by .github/rulesets/main.json.
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
     # Changing it without updating the ruleset would freeze merges (the required check would
     # never be posted).
     name: ios-build
@@ -504,7 +505,7 @@ jobs:
             --whats-new "$WHATS_NEW"
 
   ios-test:
-    # Display name = the status-check context required by .github/rulesets/main.json. Runs in
+    # Display name = the status-check context required by `main`'s branch ruleset. Runs in
     # parallel with ios-build (no `needs:`). Same macos-26 + caching scaffolding as ios-build;
     # the two jobs compile different Kotlin/Native targets, so the heavy per-target work is not
     # duplicated — only checkout/setup + the commonMain klib compile is re-paid.

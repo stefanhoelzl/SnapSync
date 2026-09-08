@@ -41,7 +41,8 @@ concurrency:
 
 jobs:
   api-test:
-    # This display name is the status-check context required by .github/rulesets/main.json.
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted).
     name: api-test

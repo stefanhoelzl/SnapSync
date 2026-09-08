@@ -170,7 +170,7 @@ SHALL then run the full check set — `deno fmt --check`, `deno lint`, the type-
 `Deno.test` suite.
 
 The status check the check workflow posts SHALL be a **required** status check on the default branch
-(`.github/rulesets/main.json`, the sole authority for which contexts gate a merge). That is what gates
+(the branch ruleset on `main` is the sole authority for which contexts gate a merge). That is what gates
 the backend: a commit SHALL NOT be able to reach `main` unless the full check set passed on the pull
 request that carried it. The check set therefore SHALL NOT be repeated in the deploy workflow — the
 gate has already fired, and a second copy of a gate is a drift source like any other. **A check that

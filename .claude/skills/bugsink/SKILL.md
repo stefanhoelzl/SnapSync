@@ -235,7 +235,7 @@ This is deliberately a trailer and not a bare mention. This repo's history cites
 fixing SNAPSYNC-9 — and a mention cannot tell those two apart. Write it early: by the time
 the branch ships, this skill is long out of context, and an unmarked fix is resolved by hand.
 
-`/ship` does the rest, after the PR **merges** (its step 9.2). Nothing here fires before a
+`/ship` does the rest, after the PR **merges** (its post-merge hook, `.ship/post-merge.md`). Nothing here fires before a
 merge: a fix that never lands never closes an issue.
 
 ### Which endpoint

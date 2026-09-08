@@ -10,7 +10,7 @@
 # a concurrency slot, which is why the interactive step self-terminates (see Lifecycle below).
 #
 # NON-GATING & dispatch-only: `on: workflow_dispatch` (never on push) and this posts NO required status
-# check, so it can never block merges. It is deliberately absent from .github/rulesets/main.json.
+# check, so it can never block merges. It is deliberately absent from `main`'s required checks.
 #
 # Connection — AUTH is separate from CONNECTIVITY:
 #   * Auth: the caller passes its PUBLIC key as the `ssh_pubkey` input; we authorize exactly that key on

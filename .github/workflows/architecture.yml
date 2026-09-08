@@ -9,7 +9,7 @@
 # inside `architectureDiagrams` and the freshness test).
 #
 #   diagrams — the freshness gate. Fails when the committed architecture/ diagrams are stale, and
-#              BLOCKS PRs (required check, in main.json). CI checkouts are clean, so
+#              BLOCKS PRs (a required check on `main`). CI checkouts are clean, so
 #              regenerate-then-porcelain is sound here and also catches the sidecar's
 #              self-staleness gap and untracked new files; the local half of the same gate is
 #              `:tools:diagrams:test` under `./gradlew build`. There is NO self-healing job — a

@@ -12,7 +12,7 @@ release itself (capabilities `changelog-labels`, `ios-appstore-release`). Becaus
 never deleted here, the two writers do not collide.
 
 A credential-free **`appstore-metadata-validate`** gate runs on **every** ref (a required status check
-in the committed branch ruleset, `.github/rulesets/main.json`) and fails the merge on any character-limit, URL-format, or unknown-key
+in the branch ruleset on `main`) and fails the merge on any character-limit, URL-format, or unknown-key
 violation *before* it can reach Apple. **`appstore-metadata-apply`** runs on **`main` only**, resolves the
 app's currently **editable** App Store version at run time, and applies the committed per-locale files to
 that version's localizations **declaratively** — the file wins; drift entered in the console is overwritten.
@@ -164,7 +164,7 @@ Store Connect.
 character limits (`description` ≤ 4000, `keywords` ≤ 100, `promotionalText` ≤ 170, `whatsNew` ≤ 4000,
 `subtitle` ≤ 30), URL syntactic validity, and rejection of unknown keys — on **every** ref, using **no**
 App Store Connect credentials. A violation SHALL fail the job. This job is a required status check in
-the committed branch ruleset (`.github/rulesets/main.json`), so an invalid listing file cannot merge.
+the branch ruleset on `main`, so an invalid listing file cannot merge.
 
 #### Scenario: An over-length field fails the gate
 - **WHEN** a per-locale file's `keywords` string exceeds 100 characters on a PR branch
@@ -267,8 +267,8 @@ fields — an unknown key there fails `appstore-metadata-validate`, a required c
 
 ### Requirement: Apply never blocks a merge and never fails silently
 
-`appstore-metadata-apply` SHALL post **no** required status check (it SHALL NOT be added to
-`.github/rulesets/main.json`) and SHALL NOT use `continue-on-error`: a failed resolution or apply SHALL
+`appstore-metadata-apply` SHALL post **no** required status check (it SHALL NOT be added to the
+required checks on `main`) and SHALL NOT use `continue-on-error`: a failed resolution or apply SHALL
 conclude the job as **failure (red)**, visibly, while blocking no merge (the commit is already merged and the
 job is not a required check).
 
