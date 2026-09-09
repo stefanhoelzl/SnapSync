@@ -20,6 +20,7 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
@@ -422,14 +423,31 @@ class UploadCycle(
      * failed: "the asset is gone" and "the upload did not work" have different causes and different
      * fixes, and the port's partial contract exists so this seam can tell them apart.
      *
-     * The batch bounds only what is RESOLVED. What is created is bounded by the platform, which is the
-     * only thing that knows how many transfers it will take — and on the app-driven tier that same limit
-     * bounds staged temp-file disk, so asking for more than it will accept costs a resolve, never a
-     * write.
+     * **The rows are admitted first** (capability `photo-selection-policy`). A row is an upstream-filtered
+     * structure: it records that the policy admitted its asset *when the row was written*, and a
+     * membership's policy changes under it — so a member who raises their cutoff leaves rows behind that
+     * the current policy excludes, and uploading them would send the photos they just chose not to share.
+     * [admittedAssetIds] is the same derivation the device manifest projects through, so what leaves the
+     * device and what it declares cannot disagree.
+     *
+     * The batch bounds only what is RESOLVED — the ADMITTED rows, never the read. Bounding the read would
+     * starve: rows come back in a stable key order, so excluded rows sorting ahead of admitted ones would
+     * fill the slice on every cycle and the admitted work further down would never be reached. What is
+     * created is bounded by the platform on top of that, which is the only thing that knows how many
+     * transfers it will take — and on the app-driven tier that same limit bounds staged temp-file disk, so
+     * asking for more than it will accept costs a resolve, never a write.
      */
     private suspend fun enqueue(ready: Ready): Enqueued {
-        val rows = ledger.rowsNeedingJob(enqueueBatchSize)
-        if (rows.isEmpty()) return Enqueued(created = 0, truncated = false)
+        val needJob = ledger.rowsNeedingJob()
+        if (needJob.isEmpty()) return Enqueued(created = 0, truncated = false)
+
+        val admitted = admittedAssetIds(needJob, ready.policy)
+        // Admit, THEN bound: no excluded row costs a platform round-trip, and none consumes a batch slot.
+        val rows = needJob.filter { it.assetId in admitted }.take(enqueueBatchSize)
+        if (rows.isEmpty()) {
+            log.i { "${needJob.size} row(s) need a job; the membership's policy admits none of them" }
+            return Enqueued(created = 0, truncated = false)
+        }
 
         val byKey = platform.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
         var created = 0

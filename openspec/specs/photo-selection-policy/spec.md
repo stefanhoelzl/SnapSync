@@ -408,7 +408,11 @@ Admission SHALL be applied at the point of **query** — when a consumer asks fo
 no consumer SHALL treat an upstream-filtered structure as the admitted set. An upstream stage MAY exclude
 assets earlier (the cycle drops origin-excluded resources before they reach the ledger, so they never reach
 any reader downstream of it), but such a pre-filter enforces only a subset of the rules, so the consumer
-still asks the policy. The single authoritative in-memory admission SHALL remain authoritative over every optimization
+still asks the policy. **The ledger's needs-job read is such a structure and SHALL NOT be treated as the
+admitted set**: a row records that the policy admitted its asset *when the row was written*, and a
+membership's policy changes under it (`reconfigure-membership`), so the set of rows needing a job and the
+set of admitted assets are not the same set and diverge the moment a member narrows their scope. The
+single authoritative in-memory admission SHALL remain authoritative over every optimization
 (platform fetch narrowing included, capability's *Selection filter* requirement) — a narrowing MAY reduce
 what a walk returns but SHALL NOT change the admitted set.
 
@@ -435,6 +439,12 @@ what a walk returns but SHALL NOT change the admitted set.
 
 - **WHEN** the codebase is inspected for the capture-date comparison (`creationDate` against a bound)
 - **THEN** it appears only inside the single `SelectionPolicy` admission, not at any consumer
+
+#### Scenario: The upload work source is not the admitted set
+
+- **WHEN** the upload cycle reads the ledger rows that need a job
+- **THEN** it asks the policy about those rows before resolving or enqueuing any of them, rather than
+  treating the read's result as already admitted
 
 ### Requirement: Admission is decidable on asset facts alone
 
@@ -480,6 +490,12 @@ the policy — by capture-date range (**both** the lower cutoff and the upper ce
 album — SHALL neither have its bytes uploaded nor appear in the manifest (and therefore SHALL NOT enter
 the event union).
 
+This SHALL hold when the policy **narrows under a live membership** (`reconfigure-membership`), and not
+only for a policy that was already in force when a resource was discovered. A resource recorded as
+needing an upload job under a wider policy SHALL NOT have its bytes uploaded once the membership's
+current policy excludes its asset — the exclusion takes effect on the next cycle, whatever the ledger
+already records, and whether or not the discovery cursor was reset.
+
 #### Scenario: Upload and manifest admit the identical set
 
 - **WHEN** a device backs up for an event
@@ -490,6 +506,20 @@ the event union).
 
 - **WHEN** the device holds a photo captured after the membership's ceiling
 - **THEN** its bytes are not uploaded and it is not listed in the manifest
+
+#### Scenario: Raising the cutoff stops uploading the rows recorded under the wider one
+
+- **WHEN** a membership's walk has recorded rows needing a job for assets across a wide capture-date
+  range, the member then raises the cutoff so most of those assets fall outside it, and further cycles run
+- **THEN** no excluded asset's bytes are uploaded, and the count the reconfigure surface showed as "will
+  be shared" is the count whose bytes actually leave the device
+
+#### Scenario: Excluded rows do not block admitted work
+
+- **WHEN** the ledger holds more rows needing a job than one cycle enqueues, and the rows the current
+  policy excludes sort ahead of the admitted ones
+- **THEN** the cycle still enqueues admitted work, rather than exhausting its batch on excluded rows and
+  making no progress
 
 ### Requirement: The policy scopes the own-device status total
 

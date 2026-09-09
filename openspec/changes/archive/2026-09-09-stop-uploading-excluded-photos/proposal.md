@@ -75,6 +75,10 @@ None.
   listing* and *The admitted set is a single derivation every consumer receives*.
 - `sync-ledger`: the needs-job read's bound is re-stated as bounding the work a cycle **resolves**, not
   the rows it reads, so a bounded read cannot starve admitted work behind excluded rows.
+- `harness-world-model`: the world's fake change feed derives `removedAssetIds` from the **unscoped**
+  gallery, never from the policy-scoped read. Found during implementation, not anticipated here: the fake
+  diffed the scoped read, so a narrowing reached the cycle as a mass deletion and the cycle marked exactly
+  the excluded rows absent — doing the fix's job in the harness alone and hiding whether the fix existed.
 
 ## Impact
 

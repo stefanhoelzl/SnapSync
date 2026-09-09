@@ -77,10 +77,9 @@ class FakeLedgerStore : LedgerStore {
     override suspend fun uploadedRows(): List<LedgerEntry> =
         rows.values.filter { it.state == LedgerState.UPLOADED }
 
-    override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> =
+    override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         rows.values.filter { it.state.needsJob && !it.absent }
             .sortedBy { it.key }
-            .take(limit)
 
     override suspend fun requestedKeys(): Set<String> =
         rows.values.filter { it.state == LedgerState.REQUESTED }.mapTo(mutableSetOf()) { it.key }

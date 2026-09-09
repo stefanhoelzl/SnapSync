@@ -92,13 +92,17 @@ class LedgerWriter(
     suspend fun uploadedRows(): List<LedgerEntry> = backend.uploadedRows()
 
     /**
-     * At most [limit] rows that need an upload job — the cycle's **source of work** (capability
-     * `sync-ledger`), spanning `DISCOVERED` and `FAILED`.
+     * Every row that needs an upload job — the cycle's **source of work** (capability `sync-ledger`),
+     * spanning `DISCOVERED` and `FAILED`, in a stable key order.
+     *
+     * Unbounded: the caller admits these rows against the membership's current policy and bounds what it
+     * **resolves**, because a bound on the read would starve admitted work behind excluded rows (see the
+     * port's KDoc).
      *
      * A read on the writer's face, like [manifestRows] and [uploadedRows] beside it, because
      * the cycle that consumes it is the single writer and asks through this one seam.
      */
-    suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> = backend.rowsNeedingJob(limit)
+    suspend fun rowsNeedingJob(): List<LedgerEntry> = backend.rowsNeedingJob()
 
     /**
      * Promote one `UPLOADED` row to `COMPLETED` — the cycle's half of the two-phase completion, run once

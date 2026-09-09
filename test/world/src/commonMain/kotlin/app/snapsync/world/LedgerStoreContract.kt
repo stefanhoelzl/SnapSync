@@ -650,7 +650,7 @@ abstract class LedgerStoreContract {
         // REQUESTED has a job, UPLOADED has bytes, COMPLETED is settled — none of them is work.
         assertEquals(
             listOf("a.heic", "b.heic"),
-            backend.rowsNeedingJob(limit = 10).map { it.key },
+            backend.rowsNeedingJob().map { it.key },
         )
     }
 
@@ -663,19 +663,25 @@ abstract class LedgerStoreContract {
         // A departed asset has no bytes left to read, so there is nothing to upload from. This is the one
         // place the work read and `uploadedRows` disagree, and deliberately: an UPLOADED row still owes a
         // promotion, which absence does not change.
-        assertEquals(emptyList(), backend.rowsNeedingJob(limit = 10))
+        assertEquals(emptyList(), backend.rowsNeedingJob())
     }
 
     @Test
-    fun `rowsNeedingJob honours its bound with a stable order`() = runTest {
+    fun `rowsNeedingJob returns every needing row unbounded in a stable key order`() = runTest {
         val backend = createBackend()
         for (k in listOf("c.heic", "a.heic", "d.heic", "b.heic")) {
             backend.put(entry(key = k, assetId = k, state = LedgerState.DISCOVERED))
         }
 
-        // Bounded because a first walk on a large library records a row per outstanding resource, and
-        // ordered so the bound takes a deterministic slice rather than whatever the storage returned.
-        assertEquals(listOf("a.heic", "b.heic"), backend.rowsNeedingJob(limit = 2).map { it.key })
+        // Ordered so a caller's slice is deterministic rather than whatever the storage returned — and
+        // UNBOUNDED, which is the half that matters (capability `sync-ledger`). The cycle bounds what it
+        // RESOLVES, after admitting these rows against the membership's current policy; a bound applied
+        // here instead would let excluded rows sorting ahead of admitted ones fill the slice on every
+        // cycle, and the admitted work further down would never be reached.
+        assertEquals(
+            listOf("a.heic", "b.heic", "c.heic", "d.heic"),
+            backend.rowsNeedingJob().map { it.key },
+        )
     }
 
     @Test
