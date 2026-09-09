@@ -138,8 +138,8 @@ class SqlDelightLedgerStore(
     override suspend fun uploadedRows(): List<LedgerEntry> =
         queries.selectUploaded(::toEntry).executeAsList()
 
-    override suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry> =
-        queries.selectNeedingJob(NEEDS_JOB_STATES, limit.toLong(), ::toEntry).executeAsList()
+    override suspend fun rowsNeedingJob(): List<LedgerEntry> =
+        queries.selectNeedingJob(NEEDS_JOB_STATES, ::toEntry).executeAsList()
 
     override suspend fun promoteUploaded(key: String): Boolean {
         val applied = queries.transactionWithResult {

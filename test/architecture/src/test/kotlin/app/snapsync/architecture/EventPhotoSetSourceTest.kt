@@ -37,9 +37,10 @@ class EventPhotoSetSourceTest {
         // The cycle's discovery already took the policy — `discoverResources(token, policy)` — so the
         // platform narrowed before these candidates existed. Re-reading here would fetch twice.
         "UploadCycle.kt" to "candidates came from discoverResources(token, policy)",
-        // The manifest projects the LEDGER, not the library: its rows are already-uploaded facts, and
-        // there is no walk to take a policy in the first place.
-        "DeviceManifest.kt" to "projected from ledger rows; no library read exists here",
+        // The admission over LEDGER rows, shared by the device-manifest projection and the upload cycle's
+        // enqueue: rows are facts already in hand, and there is no walk to take a policy in the first
+        // place.
+        "LedgerAdmission.kt" to "admits ledger rows; no library read exists here",
     )
 
     /** `EventPhotoSet(` … `)` opening a lambda block rather than passing a method reference. */

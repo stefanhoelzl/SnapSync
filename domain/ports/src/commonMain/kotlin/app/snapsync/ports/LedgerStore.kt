@@ -96,21 +96,25 @@ interface LedgerStore {
     suspend fun promoteUploaded(key: String): Boolean
 
     /**
-     * The rows that **need an upload job**, in a stable key order, at most [limit] of them — the upload
-     * cycle's source of work (capability `sync-ledger`).
+     * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
+     * (capability `sync-ledger`).
      *
      * Returns exactly the rows whose state is in [app.snapsync.model.NEEDS_JOB_STATES], interpreting
      * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set spans
      * `DISCOVERED` and `FAILED`, which are the same fact to a producer — a key with no live job and no
      * bytes on the backend — differing only in whether an attempt was already made.
      *
-     * **Bounded, unlike [uploadedRows].** A first walk on a large library records a row per outstanding
-     * resource, and a cycle that tried to enqueue all of them would stage every one of them to disk. The
-     * bound is the caller's, because only the caller knows how many slots the platform will take.
+     * **Unbounded, deliberately.** A cycle does bound its work — a first walk on a large library records a
+     * row per outstanding resource, and enqueuing all of them would stage every one to disk — but it
+     * bounds what it **resolves**, never what it reads, because a row needing a job is not yet the
+     * admitted set (capability `photo-selection-policy`). A bound here would starve: rows come back in a
+     * stable key order, so rows the membership's current policy excludes, sorting ahead of admitted ones,
+     * would fill the slice on every cycle and the admitted work further down would never be reached. The
+     * scan is local and indexed; the platform round-trip the bound protects is the caller's to make.
      *
      * Absent rows are excluded: the asset has left the library, so there is nothing to upload from.
      */
-    suspend fun rowsNeedingJob(limit: Int): List<LedgerEntry>
+    suspend fun rowsNeedingJob(): List<LedgerEntry>
 
     /**
      * The `REQUESTED` keys — the candidates for the app-driven tier's stranded reconciliation

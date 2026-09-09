@@ -72,16 +72,12 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * offered mid-upload as a complete one-resource asset — and a recipient reconciling in that window
  * imported it as a still, marked it settled, and never took the video (capability `photo-download`).
  *
- * It applies the *one* admission rather than a date comparison of its own. That is the fix for an older
- * bug this projection already carries: it used to take a bare `startDate` and filter
- * `creationDate >= startDate`, so when the capture-date **ceiling** was added it reached the byte filter
- * and never reached here. The same rule now covers the undated row — an empty `creationDate` sorts before
- * every real cutoff, so the policy excludes it and this projection states no predicate about it.
- *
- * A ledger row carries a date and an id but not the origin facts (a screenshot earns no row at all,
- * because the cycle drops it before recording), so those facts default to admit-on-doubt: the rules that
- * can still speak here are the two capture-date bounds and the two id-set exclusions — which is exactly
- * what a per-event projection of a device-global ledger needs to decide.
+ * It applies the *one* admission rather than a date comparison of its own — [admittedAssetIds], shared
+ * verbatim with the upload cycle's enqueue, so what this device declares and what its bytes do cannot
+ * disagree. That is the fix for an older bug this projection already carries: it used to take a bare
+ * `startDate` and filter `creationDate >= startDate`, so when the capture-date **ceiling** was added it
+ * reached the byte filter and never reached here. The same rule now covers the undated row, and states
+ * no predicate about it here.
  *
  * Rows are grouped per asset (several resources of one photo share an `assetId`) and sorted by
  * `assetId`, so the serialized snapshot is deterministic and the producer's skip-if-unchanged comparison
@@ -96,19 +92,12 @@ suspend fun projectDeviceManifest(
     // the library, so this device no longer SHARES it — but its bytes are still on the backend, so the row
     // stays and keeps suppressing re-upload if the asset is restored. This is the one place a row's
     // absence changes what other members see.
-    val byAsset = rows.filterNot { it.absent }.groupBy { it.assetId }
-    val admitted = EventPhotoSet(policy) {
-        candidatesFromFacts(
-            byAsset.map { (assetId, group) ->
-                AssetFacts(assetId = assetId, creationDate = CaptureDate(group.first().creationDate))
-            },
-        )
-    }.assets()
+    val present = rows.filterNot { it.absent }
+    val admitted = admittedAssetIds(present, policy)
 
-    val assets = admitted.mapNotNull { candidate ->
-        val group = byAsset[candidate.facts.assetId] ?: return@mapNotNull null
+    val assets = present.groupBy { it.assetId }.filterKeys { it in admitted }.map { (assetId, group) ->
         DeviceManifestAsset(
-            assetId = candidate.facts.assetId,
+            assetId = assetId,
             creationDate = group.first().creationDate,
             resources = group.sortedBy { it.key }.map {
                 ManifestResource(

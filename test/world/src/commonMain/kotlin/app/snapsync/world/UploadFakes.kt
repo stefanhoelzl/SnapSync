@@ -48,9 +48,10 @@ class FakeBackgroundTransfer(
      * The gallery's raw contents, unscoped — the world's stand-in for "fetch these assets by identifier".
      *
      * A thunk over [WorldGallery.current] rather than the [CandidateSource] beside it, because that seam
-     * takes a policy and there is no policy to supply here: a key exists because a walk already admitted
-     * its resource, and re-admitting it would let a narrowing reconfigure silently drop rows the ledger
-     * still holds (capability `device-manifest` puts scope in the projection, not in the upload).
+     * takes a policy and there is no policy to supply here: this models "fetch these assets by
+     * identifier", which is what the real adapters do. The admission over ledger rows belongs to the
+     * CYCLE, which applies it before it asks (capability `photo-selection-policy`) — a fake that admitted
+     * here too would hide whether the cycle ever did.
      */
     private val rawAssets: () -> List<RawAsset>,
 ) : BackgroundTransfer {
@@ -142,10 +143,10 @@ class FakeBackgroundTransfer(
      * how a test asserts that a cycle enqueued from the ledger rather than from the discovery feed
      * (capability `sync-ledger`).
      *
-     * Deliberately unscoped by the policy, unlike [discoverResources]. A key exists because a walk
-     * already admitted its resource; re-applying the admission here would let a narrowing reconfigure
-     * silently drop rows the ledger still holds, and scope belongs to the manifest projection, not to
-     * the upload (capability `device-manifest`).
+     * Deliberately unscoped by the policy, unlike [discoverResources] — as the real adapters are: this
+     * resolves the keys it is handed. The cycle admits its rows against the membership's *current* policy
+     * before it gets here (capability `photo-selection-policy`), so a key that reaches this fake is one
+     * the policy already allowed; admitting again here would make the cycle's own admission untestable.
      *
      * An asset the operator removed from the gallery resolves to nothing — the port's partial contract,
      * and the case a test needs in order to construct "the asset left between the row and the send".
@@ -170,17 +171,22 @@ class FakeBackgroundTransfer(
                 fullEnumeration = false,
             )
         }
-        val currentAssetIds = current.mapTo(mutableSetOf()) { it.facts.assetId }
+        // Removals are diffed against the LIBRARY, unscoped — never against the policy-scoped read above.
+        // The real feed's removals are PhotoKit's `deletedLocalIdentifiers`: assets that left the library.
+        // Diffing the scoped set instead would report a *narrowing reconfigure* as a mass deletion, and
+        // the cycle would mark those rows absent — silently doing, in the harness only, the job the
+        // enqueue admission does on a device, and hiding whether the admission happens at all.
+        val presentAssetIds = rawAssets().mapTo(mutableSetOf()) { it.assetId }
         val full = forceFull || sinceToken == null
         forceFull = false
         val nextToken = (++tokenCounter).toString().encodeToByteArray()
         return if (full) {
-            knownAssetIds = currentAssetIds
+            knownAssetIds = presentAssetIds
             Discovery(candidates = current, nextToken = nextToken, fullEnumeration = true)
         } else {
             val added = current.filter { it.facts.assetId !in knownAssetIds }
-            val removed = (knownAssetIds - currentAssetIds).toList()
-            knownAssetIds = currentAssetIds
+            val removed = (knownAssetIds - presentAssetIds).toList()
+            knownAssetIds = presentAssetIds
             Discovery(candidates = added, nextToken = nextToken, removedAssetIds = removed, fullEnumeration = false)
         }
     }

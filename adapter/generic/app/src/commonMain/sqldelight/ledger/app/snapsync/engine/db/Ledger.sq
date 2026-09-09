@@ -205,12 +205,14 @@ WHERE state = 'REQUESTED';
 -- and the row still owes a promotion; a row that needs a job owes an upload, which a departed asset can
 -- no longer supply.
 --
--- Ordered by key so the bound below takes a deterministic slice rather than whatever the storage engine
--- happened to return, and LIMITed because a first walk on a large library records a row per outstanding
--- resource and a cycle that tried to enqueue all of them would stage every one to disk.
+-- Ordered by key, and deliberately UNLIMITED. The cycle bounds what it RESOLVES, not what it reads: a row
+-- needing a job records that the policy admitted its asset when the row was written, not that the
+-- membership's current policy admits it (capability `photo-selection-policy`). A LIMIT here would starve —
+-- excluded rows sorting ahead of admitted ones would fill the slice on every cycle, and the admitted work
+-- further down would never be reached. This is a local indexed scan; the platform round-trip and the
+-- staged temp file the bound exists to protect follow the admitted rows, in the caller.
 selectNeedingJob:
 SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
 FROM ledgerRow
 WHERE state IN :needsJobStates AND absent = 0
-ORDER BY key
-LIMIT :limit;
+ORDER BY key;

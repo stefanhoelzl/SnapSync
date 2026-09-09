@@ -281,6 +281,18 @@ as a new `Candidate` in `Discovery.candidates`; removing an asset SHALL surface 
 `Discovery.removedAssetIds`; and an operator **expire-token** action SHALL return
 `Discovery.fullEnumeration = true` carrying the whole current key-set (the routine token-expiry path).
 
+**A removal SHALL mean the asset left the LIBRARY, never that the policy stopped admitting it.**
+`Discovery.removedAssetIds` SHALL therefore be derived by diffing the **unscoped** gallery — the same raw
+asset cell the fake resolves keys from — and SHALL NOT be derived by diffing the policy-scoped
+`candidates(policy)` read, however convenient that read is to have in hand. This mirrors the device, where
+removals are PhotoKit's `deletedLocalIdentifiers`: assets that were deleted, not assets that fell out of a
+fetch predicate. Diffing the scoped read instead makes a **narrowing reconfigure** arrive at the cycle as
+a mass deletion, and the cycle then marks exactly the rows a narrowing excludes absent — performing, in
+the harness alone, the job the enqueue admission does on a device (capability `photo-selection-policy`),
+and thereby hiding whether that admission exists at all. That is not hypothetical: it is how the world
+answered while the uploader was still sending the photos a narrowing had excluded, and the first
+integration test written against the real defect passed its upload assertions and failed on retention.
+
 A full enumeration SHALL reconcile **nothing** away. The cycle no longer prunes or marks rows for assets
 an enumeration did not return (capability `sync-ledger`), so the expire-token path exercises
 re-enumeration and cursor advance, not retention. Removal reaches the ledger by exactly one route — the
@@ -298,6 +310,14 @@ different observable outcomes.
 - **WHEN** an asset is removed and discovery runs
 - **THEN** `Discovery.removedAssetIds` carries its id and the cycle marks its ledger rows absent, so
   they stop counting and stop being listed while remaining readable
+
+#### Scenario: Narrowing the policy is not a removal
+
+- **WHEN** the membership's capture-date cutoff is raised so assets still present in the gallery fall
+  outside it, and discovery then runs
+- **THEN** `Discovery.removedAssetIds` is empty and those assets' ledger rows are left unmarked — the
+  world shows the narrowing exactly as a device does, as rows the enqueue admission declines to upload
+  rather than as rows the feed retracted
 
 #### Scenario: Expiring the token forces a full enumeration
 
