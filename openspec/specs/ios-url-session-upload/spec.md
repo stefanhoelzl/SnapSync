@@ -800,17 +800,20 @@ without ever draining. (That per-walk figure is situational, not intrinsic: the 
 measured 145 ms for 1084 candidates on an idle iPhone12,8 / iOS 26.6. What the requirement rests on
 is the **repetition**, not the cost of any one walk.)
 
-The read SHALL be bounded by **what the platform will accept right now**, not by a fixed batch. A
-platform that knows its own capacity SHALL report it (see "The platform reports the capacity it will
-accept"); where it reports a number, the cycle SHALL ask the ledger for no more rows than that.
-Resolving a row costs a synchronous platform round-trip that nothing can interrupt, so every row
-resolved beyond what the platform will accept is uninterruptible time spent on a job that is not
+What is RESOLVED SHALL be bounded by **what the platform will accept right now**, not by a fixed
+batch. A platform that knows its own capacity SHALL report it (see "The platform reports the capacity
+it will accept"); where it reports a number, the cycle SHALL take no more admitted rows than that.
+Resolving a row costs a synchronous platform round-trip that nothing can interrupt, so every admitted
+row taken beyond what the platform will accept is uninterruptible time spent on a job that is not
 created — measured at 54 ms for sixteen keys against a cap of four (iPhone12,8 / iOS 26.6), where one
 key costs 11 ms and three cost 19 ms. Where the platform reports no number, the fixed batch SHALL
-remain the bound, because an unbounded read would try to resolve a whole backlog.
+remain that bound.
 
-An enqueue pass whose work-source read **is filled to its bound** SHALL report the cycle
-**truncated**, because the ledger may hold rows the pass could not take. Bounding the read removes the
+This bounds the **slice of admitted rows**, never the read, for the reason stated above: bounding the
+read starves, and the capacity is applied after the admission for the same reason the batch is.
+
+An enqueue pass that **leaves admitted rows it could not take** SHALL report the cycle
+**truncated**, because those rows still need a job. Bounding the read removes the
 signal that previously carried this: truncation was observed by the platform refusing a creation, and a
 pass that never asks for more than the platform will accept is never refused. Without it, every
 capacity below the backlog would publish a drained cycle over remaining work.
@@ -841,8 +844,8 @@ on.
 #### Scenario: The top-up asks for no more than the platform will take
 
 - **WHEN** a cycle enqueues while the platform reports free capacity smaller than the fixed batch
-- **THEN** the work-source read is bounded by that capacity, so no row is resolved for a job the
-  platform would refuse
+- **THEN** the slice of admitted rows is bounded by that capacity, so no row is resolved for a job the
+  platform would refuse, and the work-source read itself stays unbounded
 
 #### Scenario: A full platform truncates rather than reporting no work
 
@@ -853,8 +856,8 @@ on.
 
 #### Scenario: A saturated read reports work remaining
 
-- **WHEN** a cycle enqueues, the work-source read returns as many rows as its bound allows, and every
-  one of them is accepted by the platform
+- **WHEN** a cycle enqueues, the admitted rows outnumber what the platform will take, and every row it
+  does take is accepted
 - **THEN** the cycle is reported truncated, so a backlog larger than one pass is never published as a
   drained cycle
 
