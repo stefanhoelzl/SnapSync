@@ -79,6 +79,12 @@ edge.
 Corrected: the trials measured held; the caution was reasoned by analogy from storage; the deployment is a
 single primary. The guard binds **if** the topology gains read replicas.
 
+The single-primary claim is not established anywhere in the repository — `PROBE-FINDINGS.md` §4.2 measured
+read-your-writes and then reasoned by analogy, and nothing else records a topology. It rests on the
+**operator's confirmation, given while applying this change (2026-09-09)**: the deployed relational store
+is a single primary with no read replica. That is the citation; if the requirement is ever questioned,
+this is what it stands on.
+
 That keeps the protection for the case it was written for while removing an inherited hazard that has
 already propagated once — `UploadReconciler` still argues from the storage `LIST`'s consistency for a read
 that is now a database query.
@@ -94,3 +100,20 @@ that is now a database query.
 - **Someone later reads the corrected replica requirement as "staleness is not a concern"** → the guard
   is kept in force and its trigger condition stated, so the requirement still fires the moment the
   topology changes. Wording should make the conditional prominent rather than a footnote.
+
+## Note for the reconciliation work
+
+Whoever picks up `detect-lost-upload-records` — or any repair that follows it — should cite this change
+rather than re-derive it. Two things changed here that the work depends on:
+
+- `database` **no longer forbids a dedicated reconciliation pass**. The prohibition was a consequence of
+  the v1 repair; with that repair gone it forbade the only remaining mechanism. What survives is narrower:
+  no repair may be assumed to happen as a *side effect of an unrelated write*. A dedicated pass is now
+  neither required nor forbidden — the evidence decides.
+- The **uncovered case is named in the contract**: while the device believes the resource landed, nothing
+  repairs the row, and the resource is absent from every union that would have served it. That sentence is
+  the citation for why a detection is worth building at all; it does not have to be argued again.
+
+What this change deliberately did **not** decide: whether the gap occurs often enough to close, and by
+what mechanism. It also did not restore the v1 repair — see Non-Goals.
+

@@ -255,12 +255,16 @@ GET  /health                                               (ROOT-mounted, UNGATE
 > (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from the
 > main region are read-after-write consistent.
 >
-> The relational store has the matching hazard, and it is handled where it bites: **read-your-writes
-> is unmeasured from the edge**, so the nightly sweep's deletion decision runs inside an interactive
-> transaction — which executes against the PRIMARY — rather than on whatever replica an ordinary
-> read reaches. A stale read that missed a rejoin would otherwise let it delete a live event.
-> Ordinary request handling may use ordinary reads. Any future change that lets a **destructive**
-> operation act on an ordinary read must first re-confirm read-your-writes from the edge.
+> The relational store does **not** have that hazard today: it is a **single primary with no read
+> replica**. The caution once recorded for it was reasoned by analogy from storage rather than from
+> any established replica routing on the database — read-your-writes held in every trial measured.
+> The guard is kept for the day the topology changes, and it is handled where it would bite:
+> read-your-writes is unmeasured **from the edge**, so the nightly sweep's deletion decision runs
+> inside an interactive transaction — which executes against the PRIMARY — rather than on whatever
+> an ordinary read reaches. A stale read that missed a rejoin would otherwise let it delete a live
+> event. Ordinary request handling may use ordinary reads. If the deployment ever gains read
+> replicas, any change that lets a **destructive** operation act on an ordinary read must first
+> re-confirm read-your-writes from the edge.
 
 ## Layout
 
