@@ -443,3 +443,49 @@ Confirmed by this:
   cadence.
 
 Neither is claimed as verified.
+
+---
+
+## 8. ⚠️ No real payload has reached the implementation (2026-09-09)
+
+Two days after the implementation was installed, tasks 8.2 (a real payload end to end) and 9.2 (the
+`abnormal` experiment) are **still unverified**, and the reason is worth recording because it is not a
+defect in the code.
+
+### What is true
+
+- **Arming works, on every launch.** Six `process metrics: observing` lines across 2026-09-07 and
+  2026-09-09, each immediately after `=== app process start ===`.
+- **No `didReceive*` callback has EVER fired** on the implementation — zero across both the current
+  device log and its absence of a rolled sibling (the log did not roll, so nothing was lost).
+- A fresh cold launch plus 120 s of waiting delivered nothing. In the probe, delivery landed **297 ms**
+  after arming, so "nothing in two minutes" means nothing is queued, not that we waited too little.
+
+### Why, most likely: the device is reinstalled out from under the app
+
+Arm lines stop after 2026-09-09 17:41 UTC, while process starts continue at 19:03 and 19:57 — so a
+sibling workspace replaced the build with one carrying no subscriber, the **third** such replacement
+during this work (2026-08-26, 2026-08-29, 2026-09-09).
+
+The shared SE2 is reinstalled every few hours by whichever workspace needs it. MetricKit's daily
+aggregate covers a 24-hour period; a build that never survives a full day plausibly never completes
+one. That is a **property of the test device**, not of the design — but it means this device may be
+structurally unable to produce the evidence.
+
+### What that does NOT show
+
+It does not show the implementation is wrong. Everything below the platform decode is verified (§7),
+arming is verified here, and the probe proved the platform delivers to this app when payloads exist.
+What is unverified is the one link the rig route deliberately cannot exercise: the ObjC decode of a
+real payload.
+
+### The route that fixes both gaps at once
+
+A **TestFlight dispatch** (`gh workflow run ios.yml --ref <branch>`):
+
+- it lands on a phone as an ordinary install rather than a sideload sibling workspaces replace, so a
+  24-hour window can actually complete;
+- it carries a **baked DSN**, which the dev build cannot — so it verifies the two channels §7 had to
+  leave unproven (the global-scope context and the transmitted event), not just the log line.
+
+Until then: 8.2, 9.2 and 9.3 stay open, and nothing here is claimed as verified.
