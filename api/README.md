@@ -298,7 +298,7 @@ src/main.ts       Edge Scripting entry: reads config at startup, serves createAp
 src/scripts/      OUT-OF-EDGE programs (never bundled): sweep.ts (the nightly cleanup), migrate.ts
                   (applied by api-deploy before it publishes), probe.ts (the post-deploy boot probe).
                   A ONE-TIME data cutover is not here and must not be: it runs once, from a scratchpad,
-                  through proton-env (capability `database`, "The migration mechanism is permanent; a
+                  through secrets-env (capability `database`, "The migration mechanism is permanent; a
                   data cutover is throwaway").
 src/dev/*.ts      DEV-ONLY, never imported by main.ts (so `deno bundle` cannot reach it): the local rig —
                   fs-storage.ts (a FetchLike answering bunny's native Storage API off a directory),

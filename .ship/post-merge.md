@@ -33,7 +33,7 @@ here — after the PR is MERGED, before the report.
 4. **Report** each id on its own line in the MERGED report, saying what actually happened.
 
 ⚠️ **This step NEVER fails the ship.** The PR is already merged; the resolve is bookkeeping
-after the fact. A declined proton sign-off, an API error, an id that does not exist, an
+after the fact. A declined `secrets-env` unlock, an API error, an id that does not exist, an
 unattended run with nobody there to confirm - each is one honest line in the report and
 nothing more. Do not retry, do not diagnose, and do not let any of it change the exit path or
 the workspace-delete decision.

@@ -432,7 +432,7 @@ with the proxy task above).
   dev infra; read-only apart from ONE write — resolving an issue a shipped fix closes, on
   confirmation, which `/ship` fires from a `Bugsink-Resolves:` commit trailer): it lists
   unresolved issues from `steho.bugsink.com` (project 1, API
-  `/api/canonical/0/`, `BUGSINK_TOKEN` via proton-env) and drills into one for the symbolicated
+  `/api/canonical/0/`, `BUGSINK_TOKEN` via secrets-env) and drills into one for the symbolicated
   stacktrace — symbolication runs **on Linux** via the `symbolic` lib against the `dsyms-<data.dist>`
   artifact (no Mac/atos needed), and fails loud when that artifact has expired.
 - Errors are **reduced into state**: sealed domain errors → `UiState`, converted at capability

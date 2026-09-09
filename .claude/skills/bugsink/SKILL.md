@@ -25,10 +25,12 @@ first. Muting, reopening, commenting and deleting stay out of scope entirely.
 - **API namespace:** `/api/canonical/0/` (Bugsink-native). The Sentry-compat `/api/0/`
   is sentry-cli / debug-file upload ONLY — its `/organizations`, `/teams`, `/projects`
   read paths are unimplemented here (they 404). Do not use them.
-- **Auth:** `Authorization: Bearer $BUGSINK_TOKEN`, injected by **proton-env** from
-  `.proton.yaml` (`Personal: BUGSINK_TOKEN: steho.bugsink.com/token`). Every run
-  carries proton's per-run sign-off — that IS the guardrail. Run the whole flow inside
-  one `proton-env -- bash -s <<'SH' … SH` block so the operator signs off once.
+- **Auth:** `Authorization: Bearer $BUGSINK_TOKEN`, injected by **secrets-env** from
+  `.secrets.yaml` (`BUGSINK_TOKEN: Personal/steho.bugsink.com/token`). Its TPM unlock is
+  cached ~15 min per shell session, so it is **not** a per-run sign-off and **not** the
+  guardrail — the guardrail is §4's explicit operator confirmation before any resolve.
+  Still run the whole flow inside one `secrets-env -- bash -s <<'SH' … SH` block: one
+  process, one injection, no token on any command line.
 
 ## Invocation
 
@@ -55,7 +57,7 @@ Save curl output to a file, then read it with a python **heredoc** — do NOT in
 python with `python3 -c '…'`; escaped quotes inside a `<<'SH'` heredoc break it.
 
 ```bash
-proton-env -- bash -s <<'SH'
+secrets-env -- bash -s <<'SH'
 set -euo pipefail
 H="Authorization: Bearer $BUGSINK_TOKEN"
 B="https://steho.bugsink.com/api/canonical/0"
@@ -90,7 +92,7 @@ build number · `process` tag), the **symbolicated stacktrace**, recent **breadc
 there is nothing to add to step 1's list.)
 
 ```bash
-proton-env -- bash -s <<'SH'
+secrets-env -- bash -s <<'SH'
 set -euo pipefail
 ISSUE_UUID="<uuid-from-step-1>"
 OUT="${SCRATCH:-/tmp}/bugsink"; mkdir -p "$OUT"
@@ -264,7 +266,7 @@ events carry — capability `crash-reporting` — so it is a separate change nob
 first, so the question names what is actually being closed:
 
 ```bash
-proton-env -- python3 - "SNAPSYNC-9" <<'PY'
+secrets-env -- python3 - "SNAPSYNC-9" <<'PY'
 import json, os, sys, urllib.request
 
 friendly = sys.argv[1]
@@ -289,7 +291,7 @@ Then POST the endpoint that the kind selects — `resolve/` for a dump, `resolve
 crash:
 
 ```bash
-proton-env -- bash -s <<'SH'
+secrets-env -- bash -s <<'SH'
 set -euo pipefail
 curl -sS -o /tmp/resolved.json -w 'HTTP %{http_code}\n' \
   -X POST -H "Authorization: Bearer $BUGSINK_TOKEN" -H 'Content-Type: application/json' \
@@ -320,7 +322,7 @@ wrong, say so and let the operator reopen it in the web UI.
 - **Token scope:** the injected token is `org:ci` (broad — it *could* mutate). This skill's
   narrow write surface — resolve only, on confirmation (§4) — is enforced by what it issues,
   not by the token. If a narrower credential is wanted, mint a Bugsink token scoped to reads
-  plus resolve and repoint the proton path.
+  plus resolve and repoint the `.secrets.yaml` path.
 - **First real crash validates symbolication.** At authoring time the only stored event was a
   `WatchdogTermination` (no frames), so the exact `debug_meta.images` / frame
   `instruction_addr` field names in `symbolicate.py` are written to the standard Sentry-cocoa
