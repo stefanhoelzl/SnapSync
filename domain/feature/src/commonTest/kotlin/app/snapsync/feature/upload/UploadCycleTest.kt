@@ -104,6 +104,9 @@ class UploadCycleTest {
         private val failCreate: Boolean = false,
         private val removedAssetIds: List<String> = emptyList(),
         private val fullEnumeration: Boolean = false,
+        // What this platform says it will accept. `null` — the default — is "I will not say", which keeps
+        // every test that predates the bound on the cycle's own `enqueueBatchSize`, exactly as before.
+        private val capacity: Int? = null,
     ) : BackgroundTransfer {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
@@ -124,6 +127,7 @@ class UploadCycleTest {
         private var creates = 0
 
         override suspend fun fetchRetryJobs() = retryJobs
+        override suspend fun remainingCapacity(): Int? = capacity
         override suspend fun drainTerminals(): List<PlatformUploadJob> {
             drained = true
             succeeded.forEach { ledger?.markTerminal(it, LedgerState.UPLOADED) }
@@ -909,6 +913,85 @@ class UploadCycleTest {
         assertContentEquals(byteArrayOf(9), store.saved, "the walk was recorded, so the cursor advances")
         assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "the remainder is remembered")
         assertEquals(LedgerState.REQUESTED, backend.get("a")?.state, "what got a job is in flight")
+    }
+
+    // ---- The top-up is bounded by what the platform will take ----------------------------------------
+    // Resolving a row costs a synchronous, uninterruptible platform round-trip, so a row read past what
+    // the platform will accept is time spent on a job that is never created.
+
+    @Test
+    fun the_top_up_resolves_no_more_rows_than_the_platform_will_take() = runTest {
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(
+            discovered = listOf(resource("a"), resource("b"), resource("c"), resource("d")),
+            capacity = 2,
+        )
+
+        val result = cycleOver(backend, platform, FakeStore()).run()
+
+        assertEquals(2, platform.resolvedKeys.size, "only what the platform will take is resolved")
+        assertEquals(listOf("a", "b"), platform.created.map { it.filename })
+        assertEquals(CycleResult.PROCESSING, result, "the read filled its bound, so work may remain")
+        assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "the remainder is remembered")
+    }
+
+    @Test
+    fun a_saturated_read_reports_work_remaining_even_when_every_creation_is_accepted() = runTest {
+        // The regression this guards: truncation used to be observed by `createJob` REFUSING, and a pass
+        // that never asks for more than the platform will accept is never refused. Without the saturated
+        // read standing in for that signal, this cycle publishes COMPLETED over a backlog and the pump
+        // re-arms nothing.
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(
+            discovered = listOf(resource("a"), resource("b"), resource("c")),
+            capacity = 2,
+        )
+
+        val result = cycleOver(backend, platform, FakeStore()).run()
+
+        assertEquals(listOf("a", "b"), platform.created.map { it.filename }, "both were accepted")
+        assertEquals(CycleResult.PROCESSING, result, "a full read means the ledger may hold more")
+    }
+
+    @Test
+    fun a_full_platform_resolves_nothing_and_reports_work_remaining() = runTest {
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordDiscovered(resource("a"), TEST_EVENT)
+        // The change feed reports nothing new: the only work is what the ledger already holds.
+        val platform = FakePlatform(discovered = emptyList(), capacity = 0)
+
+        val result = cycleOver(backend, platform, FakeStore()).run()
+
+        assertTrue(platform.resolvedKeys.isEmpty(), "a full platform costs no platform round-trip at all")
+        assertTrue(platform.created.isEmpty())
+        assertEquals(CycleResult.PROCESSING, result, "backpressure, not an absence of work")
+        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "the row is untouched")
+    }
+
+    @Test
+    fun a_full_platform_with_an_empty_ledger_still_drains() = runTest {
+        // The counterweight to the test above: "the platform is full" and "there is nothing to do" produce
+        // the SAME empty read, and reporting truncation unconditionally would satisfy that test while
+        // re-arming a device forever on a settled ledger.
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(discovered = emptyList(), capacity = 0)
+
+        val result = cycleOver(backend, platform, FakeStore()).run()
+
+        assertEquals(CycleResult.COMPLETED, result, "an empty backlog drains, however full the platform")
+    }
+
+    @Test
+    fun a_platform_that_states_no_capacity_falls_back_to_the_batch() = runTest {
+        val backend = InMemoryLedgerStore()
+        // Twenty admissible resources against the cycle's own batch of sixteen, on a platform that reports
+        // no number — the OS-driven tier's answer, and every test that predates this bound.
+        val platform = FakePlatform(discovered = (1..20).map { resource("r$it") }, capacity = null)
+
+        val result = cycleOver(backend, platform, FakeStore()).run()
+
+        assertEquals(16, platform.resolvedKeys.size, "the fixed batch still bounds the read")
+        assertEquals(CycleResult.PROCESSING, result)
     }
 
     @Test

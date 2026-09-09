@@ -293,6 +293,19 @@ class IosPhotoKitUploadPlatform(
 
     // Shared with the other tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
     // both are PhotoKit fetches and only the job lifecycle differs between the tiers.
+    /**
+     * No number — and that is the honest answer here, not a gap.
+     *
+     * This tier's limit is the OS's own durable upload-job queue. We cannot read its depth, and it is
+     * unrelated to any bound this process could invent, so the system surfaces it exactly once: as
+     * `limitExceeded` at the moment a create is refused. A guessed ceiling would be a fiction the cycle
+     * would then resolve rows against; `null` sends it back to its own batch bound instead.
+     *
+     * The same shape as [fetchRetryJobs] and [drainTerminals] on the app-driven tier — a member the
+     * mechanism has nothing to give, answered with a constant rather than faked.
+     */
+    override suspend fun remainingCapacity(): Int? = null
+
     override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
         log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
             discovery.resourcesFor(keys)

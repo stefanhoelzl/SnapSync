@@ -29,6 +29,11 @@ class SelectionScopedTransfer(
     private val selectionScope: () -> SelectionScope,
 ) : BackgroundTransfer by delegate {
 
+    // `remainingCapacity` is deliberately NOT overridden. Free capacity is the transport's fact — how many
+    // transfers it will take right now — and a partial photo grant changes what may be READ, never what
+    // the session will accept. The delegation is the correct answer here, not an omission: overriding it
+    // would make the read discipline decide a transport question it knows nothing about.
+
     /**
      * The same read discipline applied to the ledger-driven resolve (capability `sync-ledger`): under a
      * partial grant the selection snapshot IS this membership's own-photo scope, so the keys are answered

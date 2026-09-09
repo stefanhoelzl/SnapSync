@@ -56,6 +56,9 @@ class FakeBackgroundTransfer(
     private val rawAssets: () -> List<RawAsset>,
 ) : BackgroundTransfer {
 
+    /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
+    var resolvedKeyCount = 0
+
     /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
     var jobLimit: Int = Int.MAX_VALUE
 
@@ -130,6 +133,18 @@ class FakeBackgroundTransfer(
         j.error = null
     }
 
+    /**
+     * Derived from [jobLimit] — the same number [createJob] admits against — so the world cannot report a
+     * capacity it would then refuse, exactly as the device adapter derives its answer from its own cap.
+     *
+     * An unset [jobLimit] reports **no number**, not an enormous one. `Int.MAX_VALUE` is this fake's way of
+     * saying "the operator has configured no cap", and that is the same fact the OS-driven tier reports
+     * with `null`: there is no meaningful ceiling to give. It also keeps every test that never touches the
+     * lever on the cycle's own batch bound, so setting a limit is the only thing that changes a read.
+     */
+    override suspend fun remainingCapacity(): Int? =
+        if (jobLimit == Int.MAX_VALUE) null else (jobLimit - jobs.size).coerceAtLeast(0)
+
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
         if (failCreate) return CreateResult.FAILED
         if (jobs.size >= jobLimit) return CreateResult.LIMIT_EXCEEDED
@@ -153,6 +168,9 @@ class FakeBackgroundTransfer(
      */
     override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
         resolvedKeys += keys
+        // How many keys were resolved in total, not how many distinct ones — the surplus this bound exists
+        // to remove is repeated work on rows the platform was never going to take, and a set hides it.
+        resolvedKeyCount += keys.size
         return resourcesFrom(rawAssets()).filter { it.filename in keys }
     }
 
