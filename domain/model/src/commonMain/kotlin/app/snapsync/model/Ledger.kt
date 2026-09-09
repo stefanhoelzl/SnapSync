@@ -230,6 +230,32 @@ val LedgerState.needsJob: Boolean
 val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJob }
 
 /**
+ * Whether a row in this state records a **belief that the bytes are on the backend** — the ledger's own
+ * claim, which is exactly what a check against the backend's listing must compare (capability
+ * `event-rejoin-reconciliation`).
+ *
+ * The third classification alongside [isDone] and [needsJob], and independent of both: the two axes above
+ * answer "is anything still owed?" and "should a job be made?", neither of which is the same question as
+ * "does this row assert that the upload landed?". [LedgerState.UPLOADED] separates them — it is neither
+ * done nor in need of a job, and it is precisely a claim that the bytes are stored.
+ *
+ * [LedgerState.UPLOADED] is included, and that inclusion is the point rather than an edge case. On the
+ * OS-driven tier the returned upload job carries no HTTP status (`PHAssetResourceUploadJob` has no
+ * `statusCode`), so the adapter writes `UPLOADED` on a job the OS reports as finished without being able
+ * to tell a stored `201` from a `502`. A comparison that skipped `UPLOADED` would skip the tier where a
+ * wrong belief is most likely.
+ *
+ * Exhaustive with no `else`, for the reason [isDone] has none: a state added without classifying it must
+ * stop the compile rather than land silently on one side of a comparison that decides whether a lost
+ * photo is ever noticed.
+ */
+val LedgerState.bytesBelievedStored: Boolean
+    get() = when (this) {
+        LedgerState.UPLOADED, LedgerState.COMPLETED -> true
+        LedgerState.DISCOVERED, LedgerState.REQUESTED, LedgerState.FAILED -> false
+    }
+
+/**
  * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not
  * resource row**: [pending] = photos with any non-`COMPLETED` resource, [completed] = photos whose
  * resources are all `COMPLETED`.

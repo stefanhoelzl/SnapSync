@@ -8,6 +8,7 @@ import app.snapsync.model.SCENE_GENERATION_INITIAL
 import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.config.bakedApnsEnv
@@ -43,7 +44,9 @@ import app.snapsync.feature.push.PushRegistration
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
+import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
+import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
@@ -385,7 +388,17 @@ object SnapSyncRoot {
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
                 selectionChanges = selectionSource,
-                ledger = ledgerStore,
+                // What this process knows about its own uploads (capability `event-rejoin-reconciliation`):
+                // the ledger, the per-device listing over the SAME authenticated client every other call
+                // uses, and the App-Group join marker. On iOS 18-26.0 the upload tier in this process
+                // already holds all three; on >=26.1 the cycle lives in the extension, so the app builds
+                // its own handles — which is the point, because that is the tier whose upload jobs carry
+                // no HTTP status and whose belief is therefore least verifiable.
+                uploadRecord = UploadRecordPorts(
+                    ledger = ledgerStore,
+                    files = HttpDeviceFilesSource(http, backendHost),
+                    joinedMarker = IosJoinedEventMarker(),
+                ),
                 downloadStore = downloadStore,
                 // Full-access presence for the import guard; composition wraps it so a partial or
                 // revoked grant never reports an asset as absent (capability `photo-download`).

@@ -2,6 +2,7 @@ package app.snapsync.world
 
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.compose.uploadCore
@@ -150,6 +151,21 @@ class World(
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
 
     val store: BackendStore = BackendStore()
+
+    /**
+     * What the composed graph logged — an **inspection list**, the same family of operator rigging as the
+     * failure levers (capability `harness-world-model`).
+     *
+     * It exists because a **severity** is part of some contracts rather than an implementation detail. The
+     * read-only upload-ledger check reports its fault at `Error` precisely so it reaches crash reporting
+     * as an event (capability `crash-reporting`), and the two states it must stay *silent* about are only
+     * assertable by watching what it wrote. Asserting on the outcome instead is not available: the check
+     * writes nothing, by contract.
+     *
+     * It ADDS a writer rather than replacing the platform one, so the desktop world harness's console
+     * still shows everything it always did.
+     */
+    val logs: WorldLog = WorldLog()
 
     /** The world's gallery rigging around the honest raw-asset fake (see [WorldGallery]). */
     val gallery: WorldGallery = WorldGallery()
@@ -475,7 +491,14 @@ class World(
             // The shared discovery cursor a cutoff-lowering reconfigure invalidates (capability
             // `reconfigure-membership`) — the SAME store the world's upload cycle reads.
             clearDiscoveryCursor = discoveryStore::clearToken,
-            ledger = ledgerBackend,
+            // The SAME mini-edge listing and the SAME marker the upload tier's reconcile uses — the
+            // read-only foreground check is a second consumer of both, never a second source
+            // (capability `event-rejoin-reconciliation`).
+            uploadRecord = UploadRecordPorts(
+                ledger = ledgerBackend,
+                files = deviceFiles,
+                joinedMarker = marker,
+            ),
             downloadStore = downloadStore,
             assetPresence = assetPresence,
             // Staging root AND release, one port: the world's staged paths are built from the same
@@ -508,7 +531,7 @@ class World(
             // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
             registerPush = { registerPushCount++ },
             onEventMinted = { eventId -> onEventMinted(eventId) },
-            log = Logger.withTag("World"),
+            log = logs.logger("World"),
         ),
     )
 
