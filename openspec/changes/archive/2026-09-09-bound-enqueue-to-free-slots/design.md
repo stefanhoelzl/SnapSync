@@ -171,3 +171,28 @@ ledger contains nothing this change writes.
   detector — the first shape considered — was rejected because `Warn` rides to the crash reporter as a
   breadcrumb rather than an event, and the span's duration is already logged on every call by
   `Logger.invocation`.
+
+## Addendum — what actually shipped
+
+Between this change's approval and its merge, `main` reshaped `enqueue` (`a narrowing must reach the
+bytes, not just the manifest`, and the reconciler move beside it): `LedgerStore.rowsNeedingJob()` lost
+its bound entirely, and the cycle now reads unbounded, filters by `admittedAssetIds`, and bounds the
+**admitted slice** with `.take(enqueueBatchSize)`.
+
+That invalidates D1's mechanism as written here. Bounding the *read* — which this document proposed —
+is not merely incompatible with the new shape, it is **wrong**, and `main` states why: rows come back
+in a stable key order, so excluded rows sorting ahead of admitted ones would fill the slice on every
+cycle and the admitted work further down would never be reached. Bounding the read starves.
+
+The change's claim survives intact — the platform is still the only party that knows how many
+transfers it will take, and the code still said "asking for more than it will accept costs a resolve,
+never a write" — so `remainingCapacity()` is unchanged and simply moved: it bounds the `take` of the
+admitted rows rather than the ledger read.
+
+One thing got **better** for it. D2's saturated-read rule was a heuristic here (`rows.size >= bound`,
+over-reporting by one cycle when the bound was met exactly). With an unbounded read the admitted set is
+the whole remaining backlog, so truncation is now exact: `rows.size < eligible.size`.
+
+The requirement text in `openspec/specs/ios-url-session-upload/spec.md` was corrected at merge time to
+describe the slice rather than the read. This addendum is left rather than the body edited: the body
+records what was decided, and this records what the decision met on its way in.
