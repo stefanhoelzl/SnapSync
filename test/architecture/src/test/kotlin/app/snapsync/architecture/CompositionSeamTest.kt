@@ -11,7 +11,8 @@ import kotlin.test.assertTrue
  * are the I/O boundary named for the need"). Decision record: `changes/…/enforce-port-boundary`
  * (D1, D5, D9).
  *
- * `AppPorts` and `UploadPorts` are where the shell hands the core everything it may not build itself.
+ * `AppPorts`, `UploadPorts` and the sub-bundle `UploadRecordPorts` are where the shell hands the core
+ * everything it may not build itself.
  * Most of what crosses is a port, and a port is a *declared* boundary — a reader, and every gate that
  * reads types, can see the process end there. A function-typed field declares nothing: it is equally
  * the shape of pure in-core coordination and of an inline adapter written in the composition root. Five
@@ -43,8 +44,9 @@ import kotlin.test.assertTrue
  *    re-derives it. The reason is a receipt for a judgement, not a proof of one.
  *  - **It is scoped to the two bundles.** A platform touch smuggled in as a field of some *other* type
  *    the shell constructs — a data class carrying a lambda, say — is not function-typed at this level
- *    and is not seen. The bundle set itself is pinned (below) so a *third* bundle cannot appear
- *    unnoticed, which is the one novelty this gate can close.
+ *    and is not seen. The bundle set itself is pinned (below) so a *further* bundle cannot appear
+ *    unnoticed, which is the one novelty this gate can close — `UploadRecordPorts` arrived that way and
+ *    is listed with an empty inventory, which is a statement rather than an omission.
  *
  * The tone is [MainLaneContainmentTest]'s, deliberately: *it contains a lane; it does not decide
  * whether a call blocks.* This one pins a seam inventory; it does not decide whether a seam crosses.
@@ -55,6 +57,7 @@ class CompositionSeamTest {
     private val bundles = mapOf(
         "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
         "UploadPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadCore.kt",
+        "UploadRecordPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadRecordPorts.kt",
     )
 
     /**
@@ -178,6 +181,11 @@ class CompositionSeamTest {
                 "if the declared version ever becomes runtime-resolved, it is a port — the same expiry " +
                 "`host` carries, for the same reason",
         ),
+        // DELIBERATELY EMPTY, and that is the entry rather than an omission. A cohesive sub-bundle of
+        // AppPorts, holding three PORT-typed fields and no lambda at all — so there is nothing here to
+        // judge, and a bundle whose inventory is empty must still be listed or the set-of-bundles check
+        // below cannot tell "no seams" from "not scanned".
+        "UploadRecordPorts" to emptyMap(),
     )
 
     // ---- scanning ---------------------------------------------------------------------------------
@@ -329,15 +337,21 @@ class CompositionSeamTest {
      * parse is a whole constructor rather than the one parameter that survived a broken split.
      */
     @Test
-    fun `the gate actually parsed both composition bundles (non-vacuity floor)`() {
-        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10)
+    fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
+        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 3)
         floors.forEach { (bundle, floor) ->
-            val all = params(bundle)
             assertTrue(
-                all.size >= floor,
-                "composition seam gate: parsed only ${all.size} parameters of $bundle (expected at " +
-                    "least $floor) — the constructor scan is broken and this gate is passing on nothing",
+                params(bundle).size >= floor,
+                "composition seam gate: parsed only ${params(bundle).size} parameters of $bundle " +
+                    "(expected at least $floor) — the constructor scan is broken and this gate is " +
+                    "passing on nothing",
             )
+        }
+        // The arrow detection is exercised on the bundles that carry BOTH kinds of field. It cannot be
+        // asserted on `UploadRecordPorts`, whose fields are all ports — which is the whole reason its
+        // pinned inventory is empty, and therefore not evidence that the detection is broken.
+        listOf("AppPorts", "UploadPorts").forEach { bundle ->
+            val all = params(bundle)
             assertTrue(
                 all.any { isFunctionType(it.type) } && all.any { !isFunctionType(it.type) },
                 "composition seam gate: $bundle parsed as all-function or no-function fields — the " +

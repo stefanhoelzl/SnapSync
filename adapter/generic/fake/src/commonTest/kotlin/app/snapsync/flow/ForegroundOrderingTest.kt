@@ -7,6 +7,7 @@ import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.MutableLedgerCountsSource
+import app.snapsync.feature.upload.UploadForeground
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
@@ -125,7 +126,9 @@ class ForegroundOrderingTest {
             ),
             statusPoller = statusPoller,
             reloadConfig = {},
-            pumpForeground = pumpForeground,
+            // The check rides beside the pump in the same bundle; this test is about ordering and the
+            // latency the pump used to impose, so it is inert here.
+            uploadForeground = UploadForeground(pump = pumpForeground, check = {}),
             refreshStatus = refreshStatus,
             // No membership: the reconcile and the membership refresh short-circuit, leaving the pump,
             // the status refresh and the unconditional reclaim as the flow's children — which is exactly

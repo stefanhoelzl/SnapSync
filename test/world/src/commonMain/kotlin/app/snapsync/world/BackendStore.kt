@@ -179,6 +179,21 @@ class BackendStore {
         byteStore.remove(deviceId)
     }
 
+    /**
+     * Collect **one** stored object — the nightly sweep's per-object effect (capability
+     * `scheduled-cleanup`), which reclaims the bytes no manifest references rather than a whole
+     * partition.
+     *
+     * Distinct from [wipeBytes] because the difference is the whole question a device-side check has to
+     * answer: a partition wipe takes the referenced and the unreferenced alike, while the sweep takes
+     * only what nothing declares. A test that can remove one object can put the ledger and the backend
+     * into ordinary disagreement — which the check must stay silent about — as well as into the
+     * disagreement that means a lost photo.
+     */
+    fun collectBytes(deviceId: String, filename: String) {
+        byteStore[deviceId]?.remove(filename)
+    }
+
     fun isRegistered(eventId: String): Boolean = eventId in events
 
     /**

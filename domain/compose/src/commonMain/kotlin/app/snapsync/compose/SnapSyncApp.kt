@@ -37,6 +37,7 @@ import app.snapsync.feature.upload.uploadMechanismTable
 import app.snapsync.model.UploadMechanism
 import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.feature.upload.UploadArm
+import app.snapsync.feature.upload.UploadForeground
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.flow.Background
 import app.snapsync.flow.DownloadBackstop
@@ -81,7 +82,6 @@ import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.EventJoin
 import app.snapsync.ports.LeaveNotifier
-import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -145,8 +145,9 @@ class AppPorts(
     /** The permission-aware gallery read seam. ONE instance serves both the status total and the
      *  join-time shareable-count preview (capability `join-share-count`), so the two cannot disagree. */
     val candidateSource: CandidateSource,
-    /** Read-only in this graph: the app-side ledger handle (aggregates read; the arm never writes records). */
-    val ledger: LedgerStore,
+    /** What this process knows about its own uploads — the ledger, the backend's listing of it, and the
+     *  join marker tying the two to an event. Read-only in this graph: see [UploadRecordPorts]. */
+    val uploadRecord: UploadRecordPorts,
     val downloadStore: DownloadStore,
     val importer: PhotoLibraryImporter,
     /**
@@ -323,7 +324,7 @@ class AppCore internal constructor(
     // (capability `sync-status`). Read-only; on any failure the last good counts are retained.
     val ledgerCounts: ReadingLedgerCountsSource by lazy {
         ReadingLedgerCountsSource {
-            ports.ledger.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
+            ports.uploadRecord.ledger.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
         }
     }
 
@@ -649,7 +650,7 @@ class AppCore internal constructor(
     val resetDeviceState: ResetDeviceState by lazy {
         ResetDeviceState(
             config = ports.configStore,
-            ledger = ports.ledger,
+            ledger = ports.uploadRecord.ledger,
             // Read-only here now: the reset reports how many imported rows SURVIVED, which is the number
             // that makes "imported rows were kept" verifiable rather than assumed.
             downloads = ports.downloadStore,
@@ -778,6 +779,11 @@ class AppCore internal constructor(
     }
 
     val foregroundFlow: Foreground by lazy {
+        // Built here rather than as a member: the check needs nothing else in this graph, and `AppCore`
+        // is measured (see `uploadLedgerAuditFor`, which holds the placement decision).
+        val audit = uploadLedgerAuditFor(ports) {
+            ports.configSource.config.value?.let { selectionPolicyForMembership(it) }
+        }
         Foreground(
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
@@ -793,7 +799,13 @@ class AppCore internal constructor(
             // full grant, do not pump, because the OS owns scheduling. That IS the resolution, so
             // resolving says it once instead. (The two pump entry points it chose between have identical
             // bodies; the choice was never between them.)
-            pumpForeground = { uploadArm.triggers.onForeground() },
+            uploadForeground = UploadForeground(
+                pump = { uploadArm.triggers.onForeground() },
+                // The config read is the port touch a flow may not make (law "flow/ never references
+                // ports/"); the SKIP on an absent event is the check's own rule, not this lambda's, so
+                // it is handed the nullable id rather than being guarded here.
+                check = { audit.check(ports.configSource.config.value?.eventId) },
+            ),
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
@@ -1035,7 +1047,7 @@ class AppCore internal constructor(
         CollectDiagnosticDump(
             environment = ports.diagnosticEnvironment,
             logs = ports.deviceLogSource,
-            ledger = ports.ledger,
+            ledger = ports.uploadRecord.ledger,
             downloads = ports.downloadStore,
             config = ports.configSource,
             permission = ports.photoAccess,

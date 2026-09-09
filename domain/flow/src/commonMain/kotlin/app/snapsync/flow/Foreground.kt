@@ -5,6 +5,7 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.StatusCountsPoller
+import app.snapsync.feature.upload.UploadForeground
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -14,7 +15,8 @@ import kotlinx.coroutines.launch
  * persisted membership (below), renew a stale attestation token, start the foreground status poll,
  * then — each on its own launch, so a slow one never blocks the others — pump the app-driven upload
  * tier (a no-op on the OS-driven tier), re-read the status sources, reconcile foreign downloads,
- * reclaim the staged bytes of already-imported downloads, and refresh the event title.
+ * check the upload ledger against what the backend actually holds, reclaim the staged bytes of
+ * already-imported downloads, and refresh the event title.
  *
  * **The pump is one of those launches, and that placement is load-bearing** (capability `sync-status`).
  * It used to be awaited before them, which meant every step below it inherited the pump's latency —
@@ -27,9 +29,9 @@ import kotlinx.coroutines.launch
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay in the shell (platform surfaces `flow/`
  * cannot reach); every step that touches a port ([reloadConfig] the membership re-read,
- * [pumpForeground] the tier pump, [refreshStatus] the read-model refreshes, [fetchEventDetails] the
- * directory fetch, [activeEventId] the config read, [refreshAttestation] the token wake) arrives as a
- * `model`-typed effect lambda built in `compose/`.
+ * [uploadForeground] the tier pump and the ledger check, [refreshStatus] the read-model refreshes,
+ * [fetchEventDetails] the directory fetch, [activeEventId] the config read, [refreshAttestation] the
+ * token wake) arrives as a `model`-typed effect lambda built in `compose/`.
  *
  * The membership refresh coordinates fetch-then-fold: what a fetched result *means* is
  * [MembershipRefresh]'s rule (`feature/membership`), including the one destructive consequence — when the
@@ -67,8 +69,10 @@ class Foreground(
     private val statusPoller: StatusCountsPoller,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
-    /** The app-driven tier's foreground pump; a no-op on iOS ≥26.1 where the OS owns scheduling. */
-    private val pumpForeground: suspend () -> Unit,
+    /** What the upload arm contributes to a foreground entry — the tier pump (a no-op wherever the
+     *  resolved mechanism declines) and the read-only backend check (which runs on every tier). Both are
+     *  `compose/`-built effects; the asymmetry between them is [UploadForeground]'s to explain. */
+    private val uploadForeground: UploadForeground,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
     /** The active event id, or `null` when unjoined — the config read, injected (a port touch). */
@@ -113,10 +117,23 @@ class Foreground(
             // Moving it here changes nothing about when `run()` returns — `coroutineScope` still awaits
             // it — so the shell's completion report to the OS stays truthful. It changes only what the
             // pump is allowed to hold up: itself (capability `sync-status`).
-            launch { pumpForeground() }
+            launch { uploadForeground.pump() }
             launch { refreshStatus() }
             // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
             launch { activeEventId()?.let { downloadController.reconcile(it) } }
+            // The upload arm's counterpart to that reconcile, and the reason it is here: the download arm
+            // has asked the backend what is true on every foreground since it shipped, and the upload arm
+            // never asks at all. It only ASKS — nothing it learns is written back (capability
+            // `event-rejoin-reconciliation`).
+            //
+            // A sibling launch rather than a step, for the reason the pump is one: it makes a network
+            // round-trip, and nothing else here may inherit that latency. Its answer reaches Bugsink, not
+            // this flow, so there is nothing to await it for.
+            //
+            // Every condition under which it does nothing — no event, a pending re-join, its own re-ask
+            // floor, a fetch that could not answer — is the feature's rule, so this flow neither guards
+            // it nor reads its result.
+            launch { uploadForeground.check() }
             // The staged-byte backlog reclaim (capability `download-store`): free the files of assets
             // whose import is confirmed but whose resource rows predate per-asset release, so a received
             // photo is not stored twice — as a library asset and as a staged file — forever.

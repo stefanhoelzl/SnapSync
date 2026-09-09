@@ -27,7 +27,7 @@ Roots found:
 | `FileBackedConfigStore` | x | x | |
 | `FileLogWriter` | x | x | |
 | `HttpAttestClient` | x | | |
-| `HttpDeviceFilesSource` | | x | x |
+| `HttpDeviceFilesSource` | x | x | x |
 | `HttpEventCreation` | x | | |
 | `HttpEventDirectory` | x | | |
 | `HttpEventJoin` | x | | |
@@ -44,7 +44,7 @@ Roots found:
 | `IosDiscovery` | | x | x |
 | `IosDiscoveryStore` | x | x | x |
 | `IosDownloadTransport` | x | | |
-| `IosJoinedEventMarker` | | x | x |
+| `IosJoinedEventMarker` | x | x | x |
 | `IosLinkOpener` | x | | |
 | `IosPhotoLibraryImporter` | x | | |
 | `IosShareSheet` | x | | |
@@ -69,4 +69,5 @@ Roots found:
 | `StatusSources` | x | | |
 | `UploadPorts` | | x | x |
 | `UploadPushReceiver` | | | x |
+| `UploadRecordPorts` | x | | |
 | `UrlSessionUploadController` | x | | |
