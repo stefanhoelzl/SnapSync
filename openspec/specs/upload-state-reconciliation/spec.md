@@ -23,9 +23,9 @@ Reconciliation is also what keeps ledger-sourced status honest. `sync-status` cl
 under a no-deletion-during-an-active-event invariant, and these are the points where the ledger and storage
 can diverge — seeding closes them.
 
-This capability was named `event-rejoin-reconciliation` until the `name-the-repair-not-the-trigger`
-change, after the one occasion it originally had. Decision records under `changes/archive/` cite that
-former name and are deliberately left as written.
+This capability was named `event-rejoin-reconciliation` until
+`changes/archive/2026-09-09-name-the-repair-not-the-trigger`, after the one occasion it originally had.
+Decision records under `changes/archive/` cite that former name and are deliberately left as written.
 
 Decision record: `changes/archive/2026-06-27-add-rejoin-reconciliation`.
 
