@@ -4,7 +4,7 @@ description: >-
   Drive Apple Developer portal and App Store Connect chores from the CLI instead
   of the GUI — code-signing certificates, registering device UDIDs, provisioning
   profiles, bundle-id capabilities, and App Store / TestFlight text metadata, via
-  codemagic-cli-tools' app-store-connect with credentials injected by proton-env.
+  codemagic-cli-tools' app-store-connect with credentials injected by secrets-env.
   Use for "register this device", "mint/refresh a provisioning profile", "enable a
   capability on the App ID", "list certificates", "update the TestFlight what-to-test
   or App Store description", or any app-store-connect / asc portal task.
@@ -17,30 +17,31 @@ profiles, bundle-id capabilities, and App Store / TestFlight text metadata — a
 **App Store Connect API** via the `codemagic-cli-tools` `app-store-connect` command, run with **uvx**
 (no install).
 
-Credentials are injected as env vars by **`proton-env`**, which requires **user sign-off on each run**
-— that approval is the only mutation guardrail (no bespoke protection on the CI certs), so prefer
-read-only subcommands and keep mutations deliberate.
+Credentials are injected as env vars by **`secrets-env`**, from `.secrets.yaml` at the repo root. It
+prompts for a TPM unlock (fingerprint/polkit) only when the PAT is not already cached for this shell
+session — the cache lives ~15 minutes — so **the prompt is not a per-call approval**. Nothing else
+protects the CI certs, so prefer read-only subcommands and keep mutations deliberate.
 
 ## The credential bridge (the trap)
 
 ```
-# proton-env injects these three (the same values as the CI secrets of the same names):
+# secrets-env injects these three (the same values as the CI secrets of the same names):
 #   ASC_ISSUER_ID
 #   ASC_KEY_ID
 #   ASC_AUTH_KEY     # full .p8 PEM content (not a path)
 ```
 
 ⚠️ Those names are **NOT** what the codemagic CLI looks for (it wants `APP_STORE_CONNECT_ISSUER_ID` /
-`_KEY_IDENTIFIER` / `_PRIVATE_KEY`), so a bare `proton-env -- app-store-connect …` fails with
+`_KEY_IDENTIFIER` / `_PRIVATE_KEY`), so a bare `secrets-env -- app-store-connect …` fails with
 **"Missing value ISSUER_ID"**. Bridge them with the CLI's own `@env:` prefix — no shell remap needed:
 
 ```
 A="--issuer-id @env:ASC_ISSUER_ID --key-id @env:ASC_KEY_ID --private-key @env:ASC_AUTH_KEY"
 
-proton-env -- uvx --from codemagic-cli-tools app-store-connect certificates list $A --json
-proton-env -- uvx --from codemagic-cli-tools app-store-connect devices list $A --json
-proton-env -- uvx --from codemagic-cli-tools app-store-connect profiles list $A --json
-proton-env -- uvx --from codemagic-cli-tools app-store-connect bundle-ids list $A --json
+secrets-env -- uvx --from codemagic-cli-tools app-store-connect certificates list $A --json
+secrets-env -- uvx --from codemagic-cli-tools app-store-connect devices list $A --json
+secrets-env -- uvx --from codemagic-cli-tools app-store-connect profiles list $A --json
+secrets-env -- uvx --from codemagic-cli-tools app-store-connect bundle-ids list $A --json
 ```
 
 ## Invocation notes

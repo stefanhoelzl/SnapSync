@@ -374,7 +374,7 @@ Refreshing needs **no Mac and no build** — mint and download both profiles ove
 breaks it):
 
 ```
-P="proton-env -- uvx --from codemagic-cli-tools app-store-connect"
+P="secrets-env -- uvx --from codemagic-cli-tools app-store-connect"
 $P profiles list $A --json                        # find the INVALID one + note cert/device ids
 $P profiles delete <INVALID_PROFILE_ID> $A        # Apple rejects a duplicate name; delete first
 $P profiles create <BUNDLE_RESOURCE_ID> $A --certificate-ids <CERT> --device-ids <DEVICE> \
