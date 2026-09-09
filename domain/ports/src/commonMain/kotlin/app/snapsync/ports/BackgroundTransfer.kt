@@ -55,6 +55,30 @@ interface BackgroundTransfer {
     suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery
 
     /**
+     * How many upload jobs this platform will accept **right now**, or `null` where it cannot say.
+     *
+     * The bound on the cycle's work-source read. Resolving a ledger row to a [Resource] costs a
+     * synchronous platform round-trip that nothing can interrupt (see [resourcesFor]), so a row resolved
+     * beyond what the platform will take is uninterruptible time spent on a job that is never created.
+     * Asking the platform is the only way to avoid that: it is the one party that knows its own limit.
+     *
+     * **`null` is an answer, not a failure.** A platform whose limit belongs to the OS — a durable job
+     * queue it cannot read — reports the absence of a number rather than a guess, and the caller falls
+     * back to its own bound. That is the same shape [fetchRetryJobs] and [drainTerminals] already take on
+     * the tier where the mechanism has nothing to give.
+     *
+     * **Advisory, and stale in both safe directions.** Transfers start and finish while the caller acts on
+     * this number, so it is never exact — and nothing needs it to be. Too low resolves fewer rows than it
+     * could, and the remainder stays in the ledger for the next cycle to read (capability `sync-ledger`).
+     * Too high is refused by [createJob]'s own [CreateResult.LIMIT_EXCEEDED], exactly as an unbounded read
+     * is refused today. There is no third outcome, so this needs no lock and no generation counter.
+     *
+     * A reported number is never negative: an implementation whose cap does not bind across process death
+     * clamps at zero rather than reporting the overshoot.
+     */
+    suspend fun remainingCapacity(): Int?
+
+    /**
      * Resolve ledger [keys] to uploadable [Resource]s — **id-scoped, never a walk**.
      *
      * This is what lets the ledger be the cycle's source of work (capability `sync-ledger`). A row records

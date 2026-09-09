@@ -168,6 +168,23 @@ class IosUrlSessionUploadPlatform(
             emptyList<PlatformUploadJob>()
         }
 
+    /**
+     * The remaining slots, from the SAME count [createJob] admits against — the session's live tasks, not
+     * an in-process registry. Derived rather than configured, so the bound on the cycle's work-source read
+     * and the bound on its creations cannot disagree; a separately stated batch size would be a second
+     * number for one truth, in another module, with nothing to catch a drift between them.
+     *
+     * `coerceAtLeast(0)` is load-bearing, not defensive. The cap does not bind across process death: the
+     * OS keeps transfers running while we are gone, so a relaunched session can legitimately hold MORE
+     * live tasks than the cap allows (capability `ios-url-session-upload`, "The cap binds across a
+     * relaunch"). Reporting that overshoot as a negative would ask the ledger for a negative number of
+     * rows; zero says the true thing — take nothing until a slot frees.
+     */
+    override suspend fun remainingCapacity(): Int? =
+        log.invocation("platform.remainingCapacity", result = { "$it slot(s)" }) {
+            (cap - liveTaskKeys().size).coerceAtLeast(0)
+        }
+
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
         log.invocation("platform.createJob", params = "key=${request.resource.filename}", result = { "$it" }) {
         val phResource = resource.data as? PHAssetResource ?: run {

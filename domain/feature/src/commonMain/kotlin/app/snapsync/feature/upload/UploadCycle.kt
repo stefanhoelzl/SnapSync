@@ -124,9 +124,13 @@ class UploadCycle(
     // How many rows one cycle RESOLVES from the ledger. Defaulted, like the budgets above, because there
     // is a safe value: it bounds a platform round-trip, never a durable write. What is CREATED is bounded
     // by the platform itself — which is the only thing that knows how many transfers it will take, and on
-    // the app-driven tier the same limit bounds staged temp-file disk. So asking for more than the
-    // platform will accept costs a resolve, not a stage. It exists at all because a first walk on a large
-    // library records a row per outstanding resource, and an unbounded read would try to resolve them all.
+    // the app-driven tier the same limit bounds staged temp-file disk.
+    //
+    // It is now the FALLBACK, not the bound. A platform that knows its own capacity reports it
+    // (`BackgroundTransfer.remainingCapacity`) and that answer bounds the read, so this number no longer has to
+    // be a compromise between two tiers whose limits are unrelated. What remains is the job it was always
+    // described as doing: a first walk on a large library records a row per outstanding resource, and an
+    // unbounded read on a platform that will not say how many it wants would try to resolve them all.
     private val enqueueBatchSize: Int = 16,
 ) {
     /**
@@ -443,11 +447,25 @@ class UploadCycle(
 
         val admitted = admittedAssetIds(needJob, ready.policy)
         // Admit, THEN bound: no excluded row costs a platform round-trip, and none consumes a batch slot.
-        val rows = needJob.filter { it.assetId in admitted }.take(enqueueBatchSize)
-        if (rows.isEmpty()) {
+        val eligible = needJob.filter { it.assetId in admitted }
+        if (eligible.isEmpty()) {
             log.i { "${needJob.size} row(s) need a job; the membership's policy admits none of them" }
             return Enqueued(created = 0, truncated = false)
         }
+
+        // Then ask the PLATFORM what it will take, and bound the slice by that. Resolving a row costs a
+        // synchronous platform round-trip that nothing can interrupt, so every admitted row taken past
+        // what will be accepted is uninterruptible time spent on a job that is never created — measured
+        // at 54 ms for sixteen keys against a cap of four, where one key costs 11 ms. This bounds the
+        // RESOLVE, never the read: bounding the read would starve, for the reason stated above.
+        // A platform that will not say (`null`) falls back to the batch, which is what that constant is for.
+        val bound = platform.remainingCapacity() ?: enqueueBatchSize
+        // Backpressure, not absence of work: the platform is full and admitted rows still need a job.
+        // Reporting this as a drained cycle would publish COMPLETED over a non-empty backlog, and a
+        // completion-driven trigger would re-arm nothing while those rows sat in the ledger. It is checked
+        // AFTER the admission above, so "the policy admits none of them" still reports drained.
+        if (bound <= 0) return Enqueued(created = 0, truncated = true)
+        val rows = eligible.take(bound)
 
         val byKey = platform.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
         var created = 0
@@ -474,7 +492,15 @@ class UploadCycle(
                 CreateResult.FAILED -> Unit // not created → no UploadStarted; the row still needs a job
             }
         }
-        return Enqueued(created, truncated = false)
+        // Admitted rows this pass could not take. Bounding the slice to what the platform will accept
+        // REMOVES the signal that used to carry truncation: it was observed by `createJob` refusing, and a
+        // pass that never offers more than will be accepted is never refused. Without this the cycle would
+        // publish COMPLETED over a backlog for every capacity below it — the same stall the zero case
+        // guards, spread across every partial one.
+        //
+        // EXACT, not a heuristic: the read is unbounded, so the admitted set is the whole remaining
+        // backlog and the comparison is the truth rather than an inference from a filled slice.
+        return Enqueued(created, truncated = rows.size < eligible.size)
     }
 
     /**

@@ -163,6 +163,14 @@ private class SimulatorUploadJobQueue(
             discovery.resourcesFor(keys)
         }
 
+    /**
+     * No number, matching the host this substitutes for. The OS-driven tier's limit is the system's job
+     * queue, and here the OPERATOR plays the system — so there is no cap to report and nothing that would
+     * refuse a create. Answering a number would make this host disagree with a device about how many rows
+     * a cycle resolves, which is the one kind of divergence a substitute must not introduce.
+     */
+    override suspend fun remainingCapacity(): Int? = null
+
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
             SimulatorUploadJobs.inSet(SimulatorJobAction.RETRY).map { it.asPlatformJob() }
