@@ -94,13 +94,13 @@ bearer enrols the device the path names whenever it supplies the token. A caller
 is untouched.
 
 ⚠️ **`api/.localstore` survives across sessions.** If it still holds objects from an earlier run, the
-re-join reconcile (`event-rejoin-reconciliation`) seeds them as `COMPLETED` from the device's
+re-join reconcile (`upload-state-reconciliation`) seeds them as `COMPLETED` from the device's
 stored-file listing and they never re-upload. `rm -rf api/.localstore` when you want a clean slate —
 measured 2026-08-25: a rejoin seeded 167 rows this way, which is correct behaviour and looks exactly
 like "nothing uploaded".
 
 Going **back to production** is the direction with no automatic protection and it needs the same reset;
-`event-rejoin-reconciliation` then re-seeds already-stored photos as `COMPLETED`, so the cost is one
+`upload-state-reconciliation` then re-seeds already-stored photos as `COMPLETED`, so the cost is one
 reconcile, not a re-upload of the library.
 
 ## Two rig behaviours worth knowing before you debug them

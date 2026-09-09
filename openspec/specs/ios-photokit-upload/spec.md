@@ -545,7 +545,7 @@ the app-driven tier, which has no OS registration record to re-create (see `ios-
 
 On this tier the re-provision's `start()` SHALL re-register the extension (the disable→enable toggle).
 On its next cycle the extension reconciles against the per-device file listing (capability
-`api-endpoints`, see `event-rejoin-reconciliation`): it **`resetTo`s** (atomic clear-and-seed)
+`api-endpoints`, see `upload-state-reconciliation`): it **`resetTo`s** (atomic clear-and-seed)
 the ledger to one already-uploaded row per stored file and **clears the discovery cursor** (forcing a
 full re-enumeration). The device-global listing re-seeds the same files as already-uploaded, so
 **nothing already stored re-uploads**, while the clear drops stale/phantom rows and the cursor clear

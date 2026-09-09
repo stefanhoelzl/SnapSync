@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  * `active` is derived from permission. The source issues **no storage LIST** for upload status — this is
  * the notify-driven, ledger-sourced projection (spec: sync-status). Reading the ledger for classification
  * is safe under the **no-deletion-during-an-active-event** invariant (the ledger cannot over-count; the
- * sole ledger↔storage divergence point, (re)join, is reconciled by `event-rejoin-reconciliation`).
+ * sole ledger↔storage divergence point, (re)join, is reconciled by `upload-state-reconciliation`).
  *
  * Like any source backed by an asynchronous first read, the factory does NOT suspend: it seeds
  * [SyncStatus.Loading] and, on [scope], collects the three inputs combined, emitting [SyncStatus.Ready]

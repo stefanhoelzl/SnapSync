@@ -104,7 +104,7 @@ class RuntimeIdentityTest {
      *
      * The config seat (`app.snapsync.config`/`eventconfig`) left this set with `KeychainConfigReader`
      * — the Stage-2 change deleted the read-only legacy fallback that was its only justification for
-     * searching unscoped (capability `event-rejoin-reconciliation`). Because the set is exact in both
+     * searching unscoped (capability `upload-state-reconciliation`). Because the set is exact in both
      * directions, reconstructing that seat **unscoped** fails this gate. Stated blind spot:
      * reconstructing it **scoped** would not — scoped sites are only checked for the device-id seat's
      * presence, never pinned as a set — which is narrow, since a scoped read cannot find the unscoped
@@ -129,7 +129,7 @@ class RuntimeIdentityTest {
         // seat. It now appears in production Kotlin NOWHERE, which an exactly-once pin cannot
         // express — pinning it would fail the "nowhere" arm for ever. The config's runtime identity
         // is carried by the "eventconfig.json" literal above; a reconstructed unscoped seat is
-        // caught by the unscoped inventory (capability event-rejoin-reconciliation).
+        // caught by the unscoped inventory (capability upload-state-reconciliation).
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",
         "app.snapsync.album" to "albummap",

@@ -24,7 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 
 /**
- * The read-only foreground check (capability `event-rejoin-reconciliation`).
+ * The read-only foreground check (capability `upload-state-reconciliation`).
  *
  * Two of these tests assert **silence**, and they are the ones that earn the fault the right to ride at
  * `Error` at all: collected residue and a fetch that could not answer are the two states that look

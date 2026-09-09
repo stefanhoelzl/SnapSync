@@ -120,7 +120,7 @@ compensate for a terminal outcome that was not durably recorded; with the outcom
 delivers it, the remaining stranded population is transfers the OS dropped or a force-quit cancelled — for
 which no completion is delivered and the bytes did not land — so the check would pay a full per-device
 listing to be told so. A re-upload is idempotent and cheaper. (The device listing remains the seed for
-re-join reconciliation, where the ledger genuinely has no memory — see `event-rejoin-reconciliation`.)
+re-join reconciliation, where the ledger genuinely has no memory — see `upload-state-reconciliation`.)
 
 #### Scenario: Lost task is recreated, survivors untouched
 - **WHEN** the app relaunches after the OS dropped a background transfer (e.g. user force-quit) and a `REQUESTED` row has no matching live task
@@ -306,7 +306,7 @@ producer's **mechanism**:
   be deleted — the byte destination is the device's event-independent partition
   (`/files/devices/<deviceId>/<filename>`), so an in-flight upload remains valid across the switch and
   cancelling it would re-upload identical bytes to an identical URL. The cycle re-reads config each
-  run, and its marker-gated reconciliation (`event-rejoin-reconciliation`) seeds already-stored
+  run, and its marker-gated reconciliation (`upload-state-reconciliation`) seeds already-stored
   resources as `COMPLETED` and clears the discovery cursor before any upload job is created. There
   SHALL be no disable→enable toggle, no ledger wipe, and no cross-process race.
 - **leave**: `stop()` (cancel the in-flight tasks and the scheduled task, leaving the session intact) and
@@ -314,7 +314,7 @@ producer's **mechanism**:
   device-global dedup state that stays valid across events (`sync-ledger`, "Event-independent key"), and
   clearing them would force a re-upload of every already-stored resource on the next join. The
   `joinedEventId` marker is cleared by the reconciliation gate on the next cycle
-  (`event-rejoin-reconciliation`).
+  (`upload-state-reconciliation`).
 
 #### Scenario: Re-provision is an in-process ordered sequence
 

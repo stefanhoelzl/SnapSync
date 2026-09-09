@@ -22,7 +22,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
 
 /**
- * Re-join reconciliation for the **upload tier** (capability `event-rejoin-reconciliation`) — whichever
+ * Re-join reconciliation for the **upload tier** (capability `upload-state-reconciliation`) — whichever
  * process holds the `LedgerWriter`: the extension on iOS ≥26.1, the app on iOS 18–26.0. It is built
  * once in the shared `uploadCore`, so it runs on that tier's own cycle whichever tier that is, **before**
  * any upload job is created, and it decides whether the producer may upload this cycle. It was named for

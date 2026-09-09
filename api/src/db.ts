@@ -520,7 +520,7 @@ export async function unionRows(db: Db, eventId: string): Promise<UnionResourceR
  * The device's uploaded resources, for the per-device listing and the rejoin reconcile's seed.
  *
  * It yields the stored `key`, NOT the human `filename`: the listing's `filename` field is the object name
- * the reconciler matches its ledger against (capability `event-rejoin-reconciliation` — "the bare
+ * the reconciler matches its ledger against (capability `upload-state-reconciliation` — "the bare
  * `<assetId>-<role>.<ext>`"), and handing it a capture name instead would seed nothing and look exactly
  * like "this device has uploaded nothing".
  */

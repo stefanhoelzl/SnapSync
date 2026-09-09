@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonElement
  *
  * The envelope exists for exactly one reason: a **future build must be able to change the format
  * without a past build misreading the result as a leave**. The file read is what decides "this
- * device left the event" (capability `event-rejoin-reconciliation`), so a revert build that opens a
+ * device left the event" (capability `upload-state-reconciliation`), so a revert build that opens a
  * successor's file must land on *unreadable* ([ConfigFileDecode.Foreign]) — deferring, membership
  * intact — never on *absent*. A bare `EventConfig` JSON could not make that distinction: any
  * unparseable content would be indistinguishable from a corrupt current-format file.

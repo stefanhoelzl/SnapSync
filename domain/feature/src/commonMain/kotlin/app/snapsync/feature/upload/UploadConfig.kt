@@ -62,7 +62,7 @@ class JoinedMembership(
  * not "no event is configured".
  *
  * The distinction is load-bearing: [NotJoined] runs the leave-side reconciliation, which **clears the
- * persisted `joinedEventId` marker** (capability `event-rejoin-reconciliation`). An upload cycle runs
+ * persisted `joinedEventId` marker** (capability `upload-state-reconciliation`). An upload cycle runs
  * when the device is idle — which usually means *locked* — and a locked device could not read the
  * Keychain at all before the accessibility fix. That read failure used to arrive as "not joined", so
  * every invocation performed a **false leave**: the marker was cleared, and the next readable cycle

@@ -149,7 +149,7 @@ Displaying the invite QR SHALL be understood to expose the event's **full join c
 `eventId` it encodes is the upload authorization, so any party that scans the displayed QR joins the
 event and becomes able to upload to it. This is an accepted, deliberate consequence — the app holds no
 finer-grained credential to withhold. An **existing** member re-scanning the QR SHALL be idempotent:
-the `event-rejoin-reconciliation` join seeds already-stored photos as `COMPLETED`, so a re-scan
+the `upload-state-reconciliation` join seeds already-stored photos as `COMPLETED`, so a re-scan
 uploads nothing already present. There SHALL be no access control on who may scan.
 
 #### Scenario: A new scanner becomes an uploader

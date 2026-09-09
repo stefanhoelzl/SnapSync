@@ -30,7 +30,7 @@ import co.touchlab.kermit.Logger
  * single-record-writer invariant).
  *
  * The app performs no upload, fetch, enumeration, or seed on this tier: the extension self-reconciles on
- * its next cycle, gated by its `joinedEventId` marker (`event-rejoin-reconciliation`).
+ * its next cycle, gated by its `joinedEventId` marker (`upload-state-reconciliation`).
  */
 class OsDrivenUploadMechanism(
     private val ledgerStore: LedgerStore,

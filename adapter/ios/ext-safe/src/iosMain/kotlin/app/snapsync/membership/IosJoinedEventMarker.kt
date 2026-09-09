@@ -12,7 +12,7 @@ import platform.Foundation.NSUserDefaults
  * per-cycle process death — the property that makes it, not ledger-emptiness, the join signal.
  *
  * It lives here, beside the [JoinedEventMarker] interface, rather than in either upload tier's module,
- * because **both** tiers reconcile (capability `event-rejoin-reconciliation`) and so both need it: the
+ * because **both** tiers reconcile (capability `upload-state-reconciliation`) and so both need it: the
  * extension on iOS ≥26.1 and the app process on iOS 18–26.0. Parking it in the extension module is what
  * kept it out of reach of the app-driven tier, which shipped with no reconciliation at all.
  *

@@ -839,7 +839,7 @@ full event window).
 The ceiling SHALL be a **required** value on a persisted membership — there is no unbounded ceiling. A
 membership always carries a concrete upper bound (persisted from `min(chosen, endsAt)` at join), and every
 consumer applies it via the admitted set. (The prior "absent upper bound treated as unbounded" allowance
-for pre-ceiling configs is removed; see `join-event` and `event-rejoin-reconciliation` — a pre-ceiling
+for pre-ceiling configs is removed; see `join-event` and `upload-state-reconciliation` — a pre-ceiling
 config is reconciled by `decouple-event-window-from-lifetime` before this change's strict decode.)
 
 The ceiling SHALL apply to **every** admitting consumer with **no exemption**, because they all derive from

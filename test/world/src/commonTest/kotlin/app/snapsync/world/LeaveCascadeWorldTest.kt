@@ -94,7 +94,7 @@ class LeaveCascadeWorldTest {
         assertTrue(w.store.isDeparted(e, w.ownDeviceId)) // departed, but manifest + bytes persist
 
         // Re-scan the same event → re-join: reconcile seeds the already-stored bytes COMPLETED, so the
-        // next cycle uploads NOTHING (the bytes are already in storage; see `event-rejoin-reconciliation`).
+        // next cycle uploads NOTHING (the bytes are already in storage; see `upload-state-reconciliation`).
         // The backend's fresh-manifest-supersedes-.left.json path is covered by the backend unit tests.
         w.provision(e)
         val createdBefore = w.platform.created.size

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
  * extension's reconciliation depends on.
  *
  * "No config" means *this device left the event* to the reconciler: it clears the persisted
- * `joinedEventId` marker (capability `event-rejoin-reconciliation`). So an **unreadable** config —
+ * `joinedEventId` marker (capability `upload-state-reconciliation`). So an **unreadable** config —
  * the normal state on a locked device before this change, since the item was stored `WhenUnlocked` —
  * must never be reported as an **absent** one. It used to be, and the result was a *false leave* on
  * every OS-scheduled invocation: the marker was cleared, and the next readable cycle paid for a full
@@ -29,7 +29,7 @@ sealed interface ConfigRead {
      * There is definitively no usable config: the config file is genuinely missing. This is the only
      * outcome that may drive the leave-side reconciliation, and since the Stage-2 fallback deletion
      * it is reached from **one** fact — the file's not-found error class — with no second store
-     * consulted (capability `event-rejoin-reconciliation`).
+     * consulted (capability `upload-state-reconciliation`).
      */
     data object None : ConfigRead
 
@@ -71,7 +71,7 @@ sealed interface ConfigFileRead {
      * The file genuinely does not exist (not-found error class **only**) — **definitively not
      * joined**, the sole road to "this device left the event", reached with nothing else consulted.
      * An App-Group container dies with the install, so this is also what makes a reinstall a leave
-     * (capability `event-rejoin-reconciliation`).
+     * (capability `upload-state-reconciliation`).
      */
     data object Missing : ConfigFileRead
 

@@ -68,7 +68,7 @@ class UploadCycle(
     private val ledger: LedgerWriter,
     private val platform: BackgroundTransfer,
     private val store: DiscoveryStore,
-    // Re-join reconciliation (capability `event-rejoin-reconciliation`): the marker-gated seed that makes
+    // Re-join reconciliation (capability `upload-state-reconciliation`): the marker-gated seed that makes
     // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /
     // reinstalled device re-uploads nothing it has already contributed. Returns whether the producer may
     // create jobs this cycle — `false` defers (a failed/timed-out device listing), and this cycle creates
@@ -194,7 +194,7 @@ class UploadCycle(
         val eventId = config.eventId
         val engine = engineFor(config)
 
-        // Phase 0 — re-join reconciliation (capability `event-rejoin-reconciliation`), BEFORE any upload
+        // Phase 0 — re-join reconciliation (capability `upload-state-reconciliation`), BEFORE any upload
         // job is created. On a marker mismatch it seeds the ledger from the device's stored-file listing
         // so nothing already contributed re-uploads; on a settled join it is a no-op. A `false` return is
         // a deferral (the listing fetch failed or timed out): create nothing this cycle and report a clean
@@ -231,7 +231,7 @@ class UploadCycle(
         // still contributes — which the branch above has honoured since the 50008 measurement — nor on
         // whether the seed succeeded, which this branch used to get wrong. The two sat one below the
         // other stating opposite rules for one obligation, and no spec ever asked for this one:
-        // `event-rejoin-reconciliation`'s "defers without settling" is about the ledger SEED, not about
+        // `upload-state-reconciliation`'s "defers without settling" is about the ledger SEED, not about
         // the platform's returned jobs.
         if (!seedSucceeded) {
             recreateRetrySpent(engine)

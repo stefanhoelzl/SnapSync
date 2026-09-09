@@ -124,7 +124,7 @@ class Foreground(
             // The upload arm's counterpart to that reconcile, and the reason it is here: the download arm
             // has asked the backend what is true on every foreground since it shipped, and the upload arm
             // never asks at all. It only ASKS — nothing it learns is written back (capability
-            // `event-rejoin-reconciliation`).
+            // `upload-state-reconciliation`).
             //
             // A sibling launch rather than a step, for the reason the pump is one: it makes a network
             // round-trip, and nothing else here may inherit that latency. Its answer reaches Bugsink, not

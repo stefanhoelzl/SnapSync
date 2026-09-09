@@ -226,7 +226,7 @@ defaults, and a field whose absence would silently move a bound or a scope does 
   `minPhotoDate`** when absent, the only value guaranteed consistent with the floor invariant
   `minPhotoDate >= startsAt`.
 - `endsAt` is the event's declared end date — **nullable, defaulting to `null`**, backfilled by the
-  membership refresh when absent (capability `event-rejoin-reconciliation`).
+  membership refresh when absent (capability `upload-state-reconciliation`).
 - `maxPhotoDate` is this membership's capture-date ceiling — **required and non-null, with no default**,
   like `minPhotoDate`.
 - `deletesAt` is when the backend deletes the event's shared data — **nullable, defaulting to `null`**,
@@ -306,12 +306,12 @@ a misclassified not-found was caught downstream — the fallback found the legac
 stayed joined — so absence required a *second* answer to agree. It no longer does: the classifier
 that decides whether an `NSError` belongs to the not-found class is now solely load-bearing for the
 leave decision, and a wrong verdict is an unrecoverable, silent logout (capability
-`event-rejoin-reconciliation` states the consequence). Widening that whitelist SHALL therefore be
+`upload-state-reconciliation` states the consequence). Widening that whitelist SHALL therefore be
 treated as changing the leave decision itself.
 
 A reader that acts on the absence of a config — in particular the re-join reconciliation, for
 which "no event configured" means *the device left the event* and triggers clearing the persisted
-`joinedEventId` marker (capability `event-rejoin-reconciliation`) — SHALL act **only** on a
+`joinedEventId` marker (capability `upload-state-reconciliation`) — SHALL act **only** on a
 definitely absent config. On an unreadable config **the upload cycle** SHALL skip entirely: it
 SHALL NOT reconcile, SHALL NOT clear the join marker, SHALL NOT reset the discovery cursor, and
 SHALL NOT create upload jobs; the cycle SHALL complete cleanly and the next cycle SHALL retry.
@@ -547,7 +547,7 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
   pre-11a Keychain item survived the uninstall
 - **THEN** the read reports no config — the surviving item is never consulted, so the device is
   not resurrected — and rejoining requires re-scanning the invite (capability
-  `event-rejoin-reconciliation`)
+  `upload-state-reconciliation`)
 
 #### Scenario: No config file reads as null
 

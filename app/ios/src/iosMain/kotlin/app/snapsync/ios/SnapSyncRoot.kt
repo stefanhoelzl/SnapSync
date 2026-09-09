@@ -388,7 +388,7 @@ object SnapSyncRoot {
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
                 selectionChanges = selectionSource,
-                // What this process knows about its own uploads (capability `event-rejoin-reconciliation`):
+                // What this process knows about its own uploads (capability `upload-state-reconciliation`):
                 // the ledger, the per-device listing over the SAME authenticated client every other call
                 // uses, and the App-Group join marker. On iOS 18-26.0 the upload tier in this process
                 // already holds all three; on >=26.1 the cycle lives in the extension, so the app builds
@@ -1062,7 +1062,7 @@ object SnapSyncRoot {
      * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
      * total and the storage-truth status sources, then **starts** the producer if access is granted (via
      * the tested, tier-neutral [UploadArm]). The app runs no join, fetch, or seed — the upload cycle
-     * self-reconciles, gated by its `joinedEventId` marker (`event-rejoin-reconciliation`).
+     * self-reconciles, gated by its `joinedEventId` marker (`upload-state-reconciliation`).
      *
      * Starting here is load-bearing: the grant collector fires only on a *transition* to GRANTED, so a
      * membership provisioned while access is already granted — the common case for every join after the

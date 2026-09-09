@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The re-join marker (capability `event-rejoin-reconciliation`).
+ * The re-join marker (capability `upload-state-reconciliation`).
  *
  * This three-line class is the **join signal** for the process that cannot use ledger-emptiness as
  * one: the upload extension dies between cycles, and a genuinely zero-row join would never settle if
