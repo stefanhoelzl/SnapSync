@@ -59,6 +59,9 @@ is still justified by storage-era read-after-write consistency.
   the row non-best-effort and answers `502` if it cannot, so a `2xx` implies a committed row, and with a
   single primary a later read sees it.
 
+- **`api/README.md`'s deployment invariant is corrected** the same way, so the backend's doc of record
+  stops repeating the storage analogy for the database.
+
 - **No behaviour changes.** No code path is altered; the only Kotlin edit is a comment.
 
 ## Capabilities
@@ -77,6 +80,9 @@ None.
 
 - `openspec/specs/database/spec.md` — two requirements.
 - `domain/feature/upload/Reconciler.kt` — one comment block, no code.
+- `api/README.md` — the *Deployment invariant* block, which repeats the same analogy-from-storage framing
+  for the relational store. Corrected alongside the spec so the backend's doc of record does not
+  contradict it.
 - No API change, no schema change, no migration, no behaviour change.
 - Reading order for a reviewer: `api-endpoints` lines 129–136 and 280–290 (already correct), then the two
   `database` requirements (stale), then `publishStatements` in `api/src/db.ts` (the `legacy` flag that

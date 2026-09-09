@@ -114,13 +114,15 @@ class UploadReconciler(
         }
         // A SUCCESSFUL listing is AUTHORITATIVE — empty, partial, or full — so we reset to exactly what
         // it reports and never second-guess it. An empty (or short) listing while the ledger still holds
-        // COMPLETED rows means those objects were DELETED from storage (a full/partial reset), not a
-        // transient: an upload confirms its bytes before its job succeeds (`bunny-upload-endpoint` never
-        // 2xx's an unconfirmed upload), the storage LIST is read-after-write consistent, and the list
-        // endpoint returns 502 — surfaced above as a fetch failure — never an empty array, for a failed
-        // LIST (`bunny-list-endpoint`). So the only untrustworthy signal is a fetch error/timeout, which
-        // already deferred above; a confirmed listing re-baselines. This is what heals a stuck device
-        // after a storage reset: the missing files drop out of the ledger and re-upload.
+        // COMPLETED rows means those resources are GONE from the backend (a full/partial reset), not a
+        // transient. The listing is a DATABASE read, and three facts make it trustworthy: the byte route
+        // records the resource row NON-best-effort and answers 502 if it cannot (capability
+        // `api-endpoints`), so a 2xx upload implies a committed row; the deployment is a single primary,
+        // so a later read sees that row (capability `database`); and this listing route answers 502 —
+        // surfaced above as a fetch failure — never an empty array — when its own query fails. So the
+        // only untrustworthy signal is a fetch error/timeout, which already deferred above; a confirmed
+        // listing re-baselines. This is what heals a stuck device after a reset: the missing resources
+        // drop out of the ledger and re-upload.
         //
         // RESET the ledger to exactly the device's stored files — one COMPLETED row each — via an atomic
         // clear-and-seed, NOT an additive upsert. The clear also drops stale/phantom rows, e.g. a
