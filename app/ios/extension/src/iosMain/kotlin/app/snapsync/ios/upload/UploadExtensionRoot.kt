@@ -222,7 +222,7 @@ object UploadExtensionRoot {
                 ledger = ledgerStore,
                 transfer = platform,
                 discoveryStore = discoveryStore,
-                // Re-join reconciliation seed (capability `event-rejoin-reconciliation`): the
+                // Re-join reconciliation seed (capability `upload-state-reconciliation`): the
                 // device's stored-file listing over the Darwin HTTPS client, same compile-time host.
                 deviceFiles = HttpDeviceFilesSource(httpClient, bakedUploadBase()),
                 joinedMarker = IosJoinedEventMarker(),

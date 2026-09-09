@@ -133,7 +133,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  *
  * It **defaults to `null`** like [endsAt], and a `null` means **never reached** — the self-leave cannot
  * fire on a membership that has not yet learned its deadline. Reconcile backfills it (capability
- * `event-rejoin-reconciliation`). Both defaults fail toward keeping the membership.
+ * `upload-state-reconciliation`). Both defaults fail toward keeping the membership.
  *
  * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
  * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the

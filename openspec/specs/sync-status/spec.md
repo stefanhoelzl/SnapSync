@@ -138,7 +138,7 @@ INCOMPLETE and no FAILED state (untellable under retry-forever, `failed ≡ 0`).
 Classification reading the ledger is safe under the **no-deletion-during-an-active-event** invariant:
 storage is never reset or pruned while an event is active, so a `COMPLETED` ledger row always maps to a
 durable object and the ledger cannot over-count. The sole ledger↔storage divergence point — (re)join —
-is reconciled by `event-rejoin-reconciliation` (already-stored photos are seeded `COMPLETED` before
+is reconciled by `upload-state-reconciliation` (already-stored photos are seeded `COMPLETED` before
 enabling).
 
 #### Scenario: No in-scope photos classifies as nothing to sync

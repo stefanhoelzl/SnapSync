@@ -186,7 +186,7 @@ class UrlSessionUploadController(
     /**
      * The cycle — assembled by the SHARED composition `uploadCore` (spec `module-architecture`, "One
      * shared composition"): this controller supplies only its ports and platform reads; the
-     * entry-gate translation, the reconciler (capability `event-rejoin-reconciliation` — reached
+     * entry-gate translation, the reconciler (capability `upload-state-reconciliation` — reached
      * from inside `UploadCycle`, so no future tier can omit it), the device-manifest producer
      * (capability `device-manifest` — on this tier the APP is its sole writer, and without the PUT
      * this tier's uploads would never appear in the event union), and the engine wiring are the

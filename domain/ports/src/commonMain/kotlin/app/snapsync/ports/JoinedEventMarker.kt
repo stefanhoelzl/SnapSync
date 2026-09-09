@@ -17,7 +17,7 @@ interface JoinedEventMarker {
      *
      * What makes it safe is the bound on being wrong: a forged "reinstall" costs exactly one
      * reconcile, and a reconcile seeds already-stored photos as `COMPLETED` rather than re-uploading
-     * them (capability `event-rejoin-reconciliation`). Expiry: if reconciliation ever stops being
+     * them (capability `upload-state-reconciliation`). Expiry: if reconciliation ever stops being
      * cheap and idempotent, this marker needs a store that can distinguish the two.
      */
     fun read(): String?

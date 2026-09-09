@@ -29,7 +29,7 @@ private val DEFAULT_MIN_INTERVAL: Duration = 30.minutes
 
 /**
  * The **read-only** check that asks the backend what it holds and compares it against what the ledger
- * believes (capability `event-rejoin-reconciliation`).
+ * believes (capability `upload-state-reconciliation`).
  *
  * It exists to establish whether a particular failure happens at all: the ledger records a *belief*, and
  * when that belief is wrong in one direction — the row says the bytes are on the backend and they are

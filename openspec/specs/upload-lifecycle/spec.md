@@ -21,7 +21,7 @@ The two-verb seam is the fix, and it is a **structural** one. With no destructiv
 no edge from *provision* to *destruction* to get wrong: the bug is unrepresentable rather than merely
 absent. Durable state is device-global dedup (`sync-ledger`, "Event-independent key") and stays true across
 a leave, a switch, and a re-join; only a triggered reconciliation's `resetTo` ever re-baselines it
-(`event-rejoin-reconciliation`). Selecting exactly one producer per process likewise makes the two tiers'
+(`upload-state-reconciliation`). Selecting exactly one producer per process likewise makes the two tiers'
 mutual exclusion structural — the non-selected tier's mechanism is never constructed, so it cannot run and
 cannot become a second `LedgerWriter`.
 
@@ -52,7 +52,7 @@ The system SHALL express the upload arm's **lifecycle** as a platform-free `Uplo
 There SHALL be **no** destructive verb on the seam. No lifecycle transition — provision, re-provision,
 event switch, permission change, direction change, or leave — SHALL clear the ledger. Durable dedup state
 is device-global (`sync-ledger`), and divergence from storage is repaired by reconciliation
-(`event-rejoin-reconciliation`), never by a lifecycle wipe.
+(`upload-state-reconciliation`), never by a lifecycle wipe.
 
 The trigger surface ("Triggers are delivered to the mechanism and declined explicitly") SHALL be a
 **separate** seam on the same object, so this lifecycle seam keeps exactly the two verbs above and the
@@ -325,7 +325,7 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly th
   item that does not decode (the legacy-item rule, Keychain-side only), or no baked
   host). The cycle SHALL run the
   leave-side reconciliation, which clears the `joinedEventId` marker (capability
-  `event-rejoin-reconciliation`), and SHALL create no upload job.
+  `upload-state-reconciliation`), and SHALL create no upload job.
 - **Run** — joined and configured. The cycle SHALL proceed to its contribution gate and phases.
 
 A composition root SHALL NOT make this decision. A root SHALL supply only the platform reads the decision

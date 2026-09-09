@@ -349,7 +349,7 @@ the host and the screen. The composed graph SHALL construct the iOS
 SHALL issue **no** storage LIST for upload status. While the **OS-driven mechanism** is the resolved
 one the composed graph SHALL construct **no `LedgerWriter`** (the ledger read is read-only; the
 extension is the sole writer) and **no `EventStatusSource`** (the ledger is private to the extension,
-which also owns reconciliation — see `event-rejoin-reconciliation`). Constructing the app-driven
+which also owns reconciliation — see `upload-state-reconciliation`). Constructing the app-driven
 mechanism is what brings a writer into this process, so the single-writer invariant (`sync-ledger`)
 holds by which mechanism is resolved, not by which OS this is.
 
@@ -496,7 +496,7 @@ When photo-library access is (or becomes) full (`.readWrite` → `GRANTED`), the
 background-upload extension (`PHPhotoLibrary.setUploadJobExtensionEnabled(true)`) so the system can
 invoke it. The app SHALL **not** run any join, fetch, enumeration, or seed, and SHALL **not** disable the
 extension around a join — reconciliation runs **inside the extension**, gated by its `joinedEventId`
-marker (see `event-rejoin-reconciliation`). The app creates no upload jobs, performs no uploads, and
+marker (see `upload-state-reconciliation`). The app creates no upload jobs, performs no uploads, and
 constructs no ledger type. The enable call SHALL be idempotent-safe to repeat on each grant/foreground.
 
 #### Scenario: Granting full access enables the extension directly

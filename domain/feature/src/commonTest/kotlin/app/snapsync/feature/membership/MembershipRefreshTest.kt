@@ -123,7 +123,7 @@ class MembershipRefreshTest {
 
     @Test
     fun `a legacy config missing the window is backfilled from the fetched details`() = runTest {
-        // capability `event-rejoin-reconciliation`: endsAt/maxPhotoDate/deletesAt all absent (joined
+        // capability `upload-state-reconciliation`: endsAt/maxPhotoDate/deletesAt all absent (joined
         // before the window and the deadline existed) → filled from the fetched details, in the SAME save
         // as any name refresh.
         val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)

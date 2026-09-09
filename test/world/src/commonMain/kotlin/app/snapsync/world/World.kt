@@ -493,7 +493,7 @@ class World(
             clearDiscoveryCursor = discoveryStore::clearToken,
             // The SAME mini-edge listing and the SAME marker the upload tier's reconcile uses — the
             // read-only foreground check is a second consumer of both, never a second source
-            // (capability `event-rejoin-reconciliation`).
+            // (capability `upload-state-reconciliation`).
             uploadRecord = UploadRecordPorts(
                 ledger = ledgerBackend,
                 files = deviceFiles,

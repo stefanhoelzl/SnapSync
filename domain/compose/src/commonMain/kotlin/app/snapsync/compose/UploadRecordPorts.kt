@@ -43,7 +43,7 @@ class UploadRecordPorts(
 )
 
 /**
- * Build the read-only foreground check (capability `event-rejoin-reconciliation`) over [ports].
+ * Build the read-only foreground check (capability `upload-state-reconciliation`) over [ports].
  *
  * A top-level factory rather than an `AppCore` property because `AppCore` is measured: the `compose`
  * tier's `LargeClass` ceiling is what keeps that class from absorbing every composition in the graph,

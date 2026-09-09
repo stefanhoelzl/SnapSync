@@ -238,7 +238,7 @@ The join request SHALL fire **only** when joining an event the device is not cur
 a switch's leave clears the config before its join commits, is always a join taken with **no config**. A
 re-scan or re-provision of the event the device is **already** joined to SHALL be a no-op that issues no
 join request, so re-scanning never rewrites a live membership's configuration. This is consistent with
-`event-rejoin-reconciliation`'s no-op on re-provision of the already-joined event.
+`upload-state-reconciliation`'s no-op on re-provision of the already-joined event.
 
 The join request is itself idempotent — enrolling twice is harmless — so this rule no longer protects a
 manifest from being clobbered. It protects the **persisted configuration**: a re-scan must not re-run the
@@ -628,7 +628,7 @@ A config persisted **before** `startsAt` existed SHALL decode with `startsAt` **
 config's `minPhotoDate`**. It SHALL NOT fail to decode.
 
 A config persisted **before** `endsAt` existed SHALL decode with `endsAt` **absent** rather than failing;
-reconcile backfills it from the event's details (capability `event-rejoin-reconciliation`). An absent
+reconcile backfills it from the event's details (capability `upload-state-reconciliation`). An absent
 `endsAt` is the **event's** fact going momentarily unknown — never an unbounded upload ceiling: the
 membership's own `maxPhotoDate` is required and concrete on every config that decodes at all (see "The
 persisted membership's capture-date ceiling is required"), so the capture-date range stays bounded
@@ -636,7 +636,7 @@ throughout. Until it is backfilled, consumers SHALL treat an absent `endsAt` as 
 not yet reached** (capability `sync-status-screen`).
 
 A config persisted **before** `deletesAt` existed SHALL decode with `deletesAt` **absent** rather than
-failing; reconcile backfills it (capability `event-rejoin-reconciliation`). An absent `deletesAt` SHALL
+failing; reconcile backfills it (capability `upload-state-reconciliation`). An absent `deletesAt` SHALL
 be treated as **never reached**, so the self-leave cannot fire on a membership that has not yet learned
 its deadline — the safe direction, matching `endsAt`'s absent default.
 

@@ -232,7 +232,7 @@ val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJ
 /**
  * Whether a row in this state records a **belief that the bytes are on the backend** — the ledger's own
  * claim, which is exactly what a check against the backend's listing must compare (capability
- * `event-rejoin-reconciliation`).
+ * `upload-state-reconciliation`).
  *
  * The third classification alongside [isDone] and [needsJob], and independent of both: the two axes above
  * answer "is anything still owed?" and "should a job be made?", neither of which is the same question as

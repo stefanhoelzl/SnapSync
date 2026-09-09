@@ -85,7 +85,7 @@
 //   GET /api/v1/files/devices/:deviceId
 //     → the device's uploaded resources, from ONE query — no storage LIST. Each entry is
 //       `{ filename, url }`, where `filename` is the STORED OBJECT KEY (what the rejoin reconciler matches
-//       its ledger against, capability `event-rejoin-reconciliation`) and `url` is a presigned S3 GET.
+//       its ledger against, capability `upload-state-reconciliation`) and `url` is a presigned S3 GET.
 //       `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls; see NO_CACHE — the pull zone
 //       honors `no-cache`, not `no-store`).
 //   PUT /api/v1/events/:eventId/devices/:deviceId
@@ -1377,7 +1377,7 @@ export function createApp(
   //
   // Reading the RECORD rather than the byte store is the correct direction for this route's main
   // consumer: the rejoin reconcile seeds `COMPLETED` rows from it (capability
-  // `event-rejoin-reconciliation`), and seeding from bytes the backend cannot vouch for would suppress
+  // `upload-state-reconciliation`), and seeding from bytes the backend cannot vouch for would suppress
   // an upload that never happened.
   v1Only.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");

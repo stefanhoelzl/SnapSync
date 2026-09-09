@@ -467,7 +467,7 @@ The marker SHALL be computed from the now-stored `endsAt` and the existing foreg
 symmetric with the existing not-started line: it SHALL advance on the one-minute foreground tick, so an
 event that ends while the screen is foregrounded gains the marker within one minute without any ledger
 event. When the membership carries **no** `endsAt` (a pre-backfill legacy membership, capability
-`event-rejoin-reconciliation`), no "Event ended" marker SHALL be shown.
+`upload-state-reconciliation`), no "Event ended" marker SHALL be shown.
 
 #### Scenario: A past end marks the health line on its own line
 - **WHEN** config is present, the membership's `endsAt` is before `now`, and the snapshot-derived health

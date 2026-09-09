@@ -21,7 +21,7 @@ const val DISCOVERY_TOKEN_KEY: String = "discovery.changeToken"
 
 /**
  * The App-Group `NSUserDefaults` key the extension persists its `joinedEventId` re-join marker under —
- * the last event it reconciled (capability `event-rejoin-reconciliation`). It is the join signal in
+ * the last event it reconciled (capability `upload-state-reconciliation`). It is the join signal in
  * the extension's short-lived process, where ledger-emptiness cannot be (a zero-row join would never
  * settle). Lives beside [DISCOVERY_TOKEN_KEY] so the extension's keys stay in one place.
  */

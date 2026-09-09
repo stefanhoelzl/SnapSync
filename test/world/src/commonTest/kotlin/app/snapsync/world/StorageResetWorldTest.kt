@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 /**
  * End-to-end over the REAL stack (reconciler → cycle → manifest → union): a storage reset followed by
- * a re-join re-uploads everything, instead of hanging (capability `event-rejoin-reconciliation`). This
+ * a re-join re-uploads everything, instead of hanging (capability `upload-state-reconciliation`). This
  * test would FAIL before the empty-listing guard was removed — the reconcile would defer forever on the
  * empty listing while the ledger still held `COMPLETED` rows.
  */

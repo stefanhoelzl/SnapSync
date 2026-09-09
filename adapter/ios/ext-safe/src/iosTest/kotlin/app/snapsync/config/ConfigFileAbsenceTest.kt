@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * The ⑥ classifier: absence is the not-found error class **only** (capability
- * `event-rejoin-reconciliation`).
+ * `upload-state-reconciliation`).
  *
  * These assertions used to live in `:domain`'s `commonTest`, where they compared integer literals
  * against integer literals and could not fail — a JVM run has no `NSCocoaErrorDomain` to disagree

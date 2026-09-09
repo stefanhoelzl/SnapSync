@@ -1,28 +1,38 @@
-# event-rejoin-reconciliation Specification
+# upload-state-reconciliation Specification
 
 ## Purpose
 
-The **upload tier's** gate that runs **before** a (re)joined device uploads anything: it pulls the
-**device's** stored-file listing, seeds the ledger with one `COMPLETED` row per already-stored resource,
-and only then enables the producer. A device that re-joins therefore re-uploads **nothing** it has already
-contributed. The listing is per-**device** and event-independent, which is what makes the dedup survive an
-event switch.
+Ask the backend which resources it already holds **for this device**, and make the local record agree.
+That is the whole operation; everything else here is when it runs and what it is allowed to conclude.
 
-Without it, a device rejoining against an empty ledger — after a delete-and-reinstall (the App Group is
+The **upload tier** runs it as a gate **before** it uploads anything: it pulls the **device's** stored-file
+listing, seeds the ledger with one `COMPLETED` row per already-stored resource, and only then enables the
+producer. A device whose ledger has diverged therefore re-uploads **nothing** it has already contributed.
+The listing is per-**device** and event-independent, which is what makes the dedup survive an event switch.
+
+The occasions are a `joinedEventId` marker mismatch — a fresh provision, an event switch, a
+leave-then-rejoin, and a delete-and-reinstall — plus a read-only foreground check that reports upload state
+the backend contradicts. The marker — **not** ledger-emptiness — is the gate signal, because a tier's cycle
+process is short-lived and per-cycle: a zero-row reconcile keyed on emptiness would never settle.
+
+Without it, a device running against an empty ledger — after a delete-and-reinstall (the App Group is
 wiped) or a destructive ledger-schema migration — re-enumerates the whole library and re-uploads every
-photo that is already sitting in storage. The reconcile is gated on a persisted `joinedEventId` marker
-rather than ledger-emptiness, because a tier's cycle process is short-lived and per-cycle: a zero-row join
-keyed on emptiness would never settle.
+photo that is already sitting in storage.
 
-This reconcile is also what keeps ledger-sourced status honest. `sync-status` classifies from the ledger
-under a no-deletion-during-an-active-event invariant, and (re)join is the sole point where the ledger and
-storage can diverge — seeding closes it.
+Reconciliation is also what keeps ledger-sourced status honest. `sync-status` classifies from the ledger
+under a no-deletion-during-an-active-event invariant, and these are the points where the ledger and storage
+can diverge — seeding closes them.
+
+This capability was named `event-rejoin-reconciliation` until the `name-the-repair-not-the-trigger`
+change, after the one occasion it originally had. Decision records under `changes/archive/` cite that
+former name and are deliberately left as written.
 
 Decision record: `changes/archive/2026-06-27-add-rejoin-reconciliation`.
 
 Generalized from **the extension** to **the upload tier** (both tiers, reconciling inside the shared
 `UploadCycle`) in `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` — it previously bound only the
 iOS ≥26.1 extension, so the app-driven tier shipped with no reconciliation at all.
+
 ## Requirements
 ### Requirement: Reconciliation gate before enabling uploads
 
@@ -139,7 +149,7 @@ cannot vouch for would suppress an upload that never happened.
 - **THEN** the listing omits it, so the reconciler does not seed a `COMPLETED` row that would suppress a
   needed upload
 
-### Requirement: Join reconciliation seeds already-stored photos as completed
+### Requirement: Reconciliation seeds already-stored resources as completed
 
 A triggered reconciliation (in the extension) SHALL: fetch the **per-device** file listing
 (`list(deviceId)`); **`resetTo`** (atomic clear-and-seed) the ledger to exactly one `COMPLETED` row

@@ -15,7 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **The read-only foreground check** (capability `event-rejoin-reconciliation`): does what the ledger
+ * **The read-only foreground check** (capability `upload-state-reconciliation`): does what the ledger
  * believes landed agree with what the backend actually holds?
  *
  * Driven through the **trigger**, never through the method. `flow/Foreground` is the same instance the

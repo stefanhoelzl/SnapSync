@@ -538,7 +538,7 @@ class UploadCycleTest {
         assertTrue(!store.cleared, "nor is it cleared")
     }
 
-    // ---- Phase 0: the re-join reconciliation gate (capability `event-rejoin-reconciliation`) ----------
+    // ---- Phase 0: the re-join reconciliation gate (capability `upload-state-reconciliation`) ----------
     // The gate lives in the CYCLE, not in each tier's composition root, because the cycle is the only
     // thing that runs on every route to a divergent ledger. Root-wired reconciliation is exactly how the
     // app-driven tier shipped with none, re-uploading the whole post-cutoff library after a reinstall.
@@ -586,7 +586,7 @@ class UploadCycleTest {
         // neither on the direction gate — which has honoured that since the 50008 measurement — nor on
         // whether the seed succeeded. This assertion used to say the opposite, 75 lines below one saying
         // an un-acknowledged presented job makes the OS discard the outstanding jobs; no spec ever asked
-        // for it, and `event-rejoin-reconciliation`'s "defers without settling" is about the ledger SEED.
+        // for it, and `upload-state-reconciliation`'s "defers without settling" is about the ledger SEED.
         assertTrue(platform.drained, "a deferred seed still settles with the platform")
         assertNull(platform.discoverPolicyArg, "a deferred cycle must not even walk the library")
         assertNull(store.saved, "the cursor must not advance on a deferred cycle")

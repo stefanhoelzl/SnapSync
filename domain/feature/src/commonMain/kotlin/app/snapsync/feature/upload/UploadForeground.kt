@@ -2,7 +2,7 @@ package app.snapsync.feature.upload
 
 /**
  * What the upload arm contributes to a **foreground** entry (capability `upload-lifecycle`,
- * `event-rejoin-reconciliation`) — the two effects `compose/` builds and `flow/Foreground` fans out.
+ * `upload-state-reconciliation`) — the two effects `compose/` builds and `flow/Foreground` fans out.
  *
  * They travel together because the interesting fact about them is the asymmetry between them, and two
  * bare lambdas side by side say nothing about it:

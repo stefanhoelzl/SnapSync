@@ -183,7 +183,7 @@ event) can be projected without re-walking the library.
 
 The ledger is a durable record rather than a cache of the library: a row exists because the walk admitted the
 resource, and the re-join reconciliation re-seeds it from the authoritative per-device file listing (capability
-`event-rejoin-reconciliation`). Such a seeded row is **bare** — a filename listing carries no capture date —
+`upload-state-reconciliation`). Such a seeded row is **bare** — a filename listing carries no capture date —
 and a bare row SHALL NOT be listed in any projection until a full enumeration backfills its manifest detail.
 This is fail-closed on purpose: a row whose capture date is unknown cannot be shown to fall inside an event's
 range. That exclusion SHALL be effected by the membership's policy rather than by a predicate in the
@@ -326,7 +326,7 @@ SHALL **suppress the write** — leaving the previously published manifest in pl
 Because the projection is a **full-state** document, publishing one built from an incomplete ledger silently
 un-lists resources that really are uploaded.
 
-In particular, when the re-join reconciliation (capability `event-rejoin-reconciliation`) defers because the
+In particular, when the re-join reconciliation (capability `upload-state-reconciliation`) defers because the
 device's stored-file listing failed or timed out, the ledger has not been seeded and the cycle SHALL NOT
 write a manifest that cycle. The same SHALL hold for any failure to read the ledger rows the projection is
 built from.

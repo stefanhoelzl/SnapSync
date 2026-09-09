@@ -485,12 +485,12 @@ join.
 
 The discovery cursor is **not** part of this prohibition, because it is not dedup state. It records where
 an incremental scan resumes; a tier may clear it to repair its own mechanism (`upload-lifecycle`), and a
-reconciliation clears it whenever it re-baselines (`event-rejoin-reconciliation`). What that costs is a
+reconciliation clears it whenever it re-baselines (`upload-state-reconciliation`). What that costs is a
 full re-enumeration whose every resource is already `COMPLETED` here — which is precisely why the ledger
 is the thing that must not be cleared, and the cursor is not.
 
 The **only** operation that re-baselines the ledger SHALL be `resetTo`, invoked by a triggered
-reconciliation against the authoritative per-device listing (`event-rejoin-reconciliation`). Ledger and
+reconciliation against the authoritative per-device listing (`upload-state-reconciliation`). Ledger and
 storage may diverge only at a (re)join, and reconciliation — not a lifecycle wipe — is what closes that
 divergence.
 
@@ -834,7 +834,7 @@ Each axis answers a different question, and no axis implies another:
 - **needs a job** — is nothing in flight and are the bytes not on the backend?
 - **bytes believed stored** — does this row assert that the upload landed? `UPLOADED` and `COMPLETED`
   both do. This is the axis a comparison against the backend's own listing takes (capability
-  `event-rejoin-reconciliation`), and it includes `UPLOADED` deliberately: on the OS-driven tier the
+  `upload-state-reconciliation`), and it includes `UPLOADED` deliberately: on the OS-driven tier the
   returned upload job carries no HTTP status, so that state is recorded without the device being able to
   distinguish a stored `201` from a `502` — which makes it the tier where a wrong belief is most likely
   and the one an axis that skipped it could not see.

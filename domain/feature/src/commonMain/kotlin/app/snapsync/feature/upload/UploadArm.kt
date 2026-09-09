@@ -88,7 +88,7 @@ object IdleUploadMechanism : UploadMechanismRuntime {
  * With no destructive verb on the seam there is no edge from *provision* to *destruction* to get wrong.
  * `stop()` never clears the **ledger**: that state is device-global dedup (`sync-ledger`,
  * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
- * reconciliation's `resetTo` ever re-baselines it (`event-rejoin-reconciliation`).
+ * reconciliation's `resetTo` ever re-baselines it (`upload-state-reconciliation`).
  *
  * The **cursor** is not dedup state, which is why the PhotoKit column above may clear it: the OS's
  * extension-disable wipes every in-flight job, and `clearRequested()` alone leaves those photos behind a

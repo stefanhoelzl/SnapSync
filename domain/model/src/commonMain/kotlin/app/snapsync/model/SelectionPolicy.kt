@@ -139,7 +139,7 @@ class SelectionPolicy(val rules: List<SelectionRule>) {
  * would read `0`, and the screen would read "In sync" while nothing happened.
  *
  * [ceiling] is nullable only for a membership persisted before the capture-date range existed and not yet
- * reconciled (capability `event-rejoin-reconciliation`); `null` means unbounded above, the admit-on-doubt
+ * reconciled (capability `upload-state-reconciliation`); `null` means unbounded above, the admit-on-doubt
  * direction. It becomes required once every device has reconciled.
  */
 suspend fun selectionRulesFor(

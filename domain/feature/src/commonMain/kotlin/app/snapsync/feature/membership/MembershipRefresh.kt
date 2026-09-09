@@ -50,7 +50,7 @@ class MembershipRefresh(
      *
      * - [RefreshOutcome.REFRESHED] — the fetch resolved for the still-configured event. Two rewrites ride
      *   together in **one** whole-config save: **name convergence** (an unchanged name saves nothing), and
-     *   the **window + retention backfill** (capability `event-rejoin-reconciliation`) filling the
+     *   the **window + retention backfill** (capability `upload-state-reconciliation`) filling the
      *   event's `endsAt` and `deletesAt` — each only when ABSENT. Doing them in one save is what stops
      *   the rewrites from losing each other's field. The membership's own `maxPhotoDate` is **not**
      *   backfilled: it is required on every persisted membership (capability `join-event`), so a config
@@ -94,7 +94,7 @@ class MembershipRefresh(
                 // value. It is the only path by which that could ever happen. An unchanged name saves
                 // nothing.
                 if (current.name != fetched.name) next = next.copy(name = fetched.name)
-                // Event-window backfill (capability `event-rejoin-reconciliation`): a membership
+                // Event-window backfill (capability `upload-state-reconciliation`): a membership
                 // persisted before the event window existed carries a `null` `endsAt`; fill it from the
                 // freshly fetched details, so a legacy member gains the event's declared end.
                 //

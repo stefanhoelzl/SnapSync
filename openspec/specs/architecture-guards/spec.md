@@ -492,7 +492,7 @@ is a spec change to this requirement, deliberately):
   (`app.snapsync.album`, `albummap`). Each pair SHALL match exactly once in production Kotlin.
   The config pair (`app.snapsync.config`, `eventconfig`) was **retired from this inventory** by the
   Stage-2 change that deleted the read-only legacy-Keychain fallback (capability
-  `event-rejoin-reconciliation`): its one seat was that fallback, and with it gone the pair appears
+  `upload-state-reconciliation`): its one seat was that fallback, and with it gone the pair appears
   in production Kotlin **nowhere**, which an exactly-once pin cannot express. The config's runtime
   identity is now carried entirely by the `eventconfig.json` pin below.
 - **Keychain access group** — the shared group the device-id item is addressed with (capability

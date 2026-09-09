@@ -21,7 +21,7 @@ and passed into the notify, so the notify targets the correct event with no race
 config. The backend notify SHALL be dispatched **fire-and-forget** on an injected app-lifetime
 `CoroutineScope` so it does not block the local teardown (see "Local teardown does not block on the
 backend notify"). The use-case SHALL **not** touch the ledger, the discovery cursor, or any
-`EventStatus`: with the producer's reconciliation in the extension (see `event-rejoin-reconciliation`),
+`EventStatus`: with the producer's reconciliation in the extension (see `upload-state-reconciliation`),
 the extension resets its private ledger, cursor, and `joinedEventId` marker on its next join (a
 configured `eventId` that no longer matches the marker, or a later provision of a different event). The
 producer is disabled **before** the config clear so no producer work races the teardown. The platform
