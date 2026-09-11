@@ -53,6 +53,7 @@ Roots found:
 | `KeychainAttestStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
 | `KtorPushHttpClient` | x | | |
+| `MetricKitProcessMetricSource` | x | | |
 | `OsDrivenUploadMechanism` | x | | |
 | `OsReceipt` | x | | |
 | `PhotoKitAssetPresence` | x | | |
@@ -60,6 +61,7 @@ Roots found:
 | `PhotoLibraryPermission` | x | | |
 | `PhotoSelectionSnapshotSource` | x | | |
 | `PlatformHandoff` | x | | |
+| `ProcessMetricHandler` | x | | |
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
 | `PushTokenSource` | x | | |
