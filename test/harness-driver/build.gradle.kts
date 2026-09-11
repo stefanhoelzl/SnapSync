@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.compose)
 }
 
-// Test-only dev infrastructure (no spec — same posture as `ssh-mac.yml`; rationale in `Driver.kt`).
+// Test-only dev infrastructure (no spec — rationale in `Driver.kt`).
 //
 // Serves the two desktop harnesses over HTTP to a headless caller (an agent). It composes the SHIPPED
 // harness roots — `ForgeHarnessRoot()` / `WorldHarnessRoot()` — into an OFFSCREEN Compose scene, so

@@ -11,7 +11,7 @@
       "Bash(deno fmt:*)",
       "Bash(deno lint:*)",
       "Bash(deno test:*)",
-      "Bash(gh workflow run ssh-mac.yml:*)"
+      "Bash(node ~/.claude/skills/ssh-runner/ssh-runner.ts:*)"
     ]
   },
   "hooks": {

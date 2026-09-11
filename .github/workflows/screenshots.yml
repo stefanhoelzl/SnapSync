@@ -1,5 +1,5 @@
-# App Store / landing-page marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra — like
-# ssh-mac.yml, it posts no status check and never blocks a merge. It changes no product behavior. Its
+# App Store / landing-page marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra:
+# it posts no status check and never blocks a merge. It changes no product behavior. Its
 # rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
 # The one product-facing PROPERTY — that a committed raw depicts the real screen in a state the real
 # reduction can reach — is spec'd in `ios-appstore-metadata`, beside the requirement making those raws

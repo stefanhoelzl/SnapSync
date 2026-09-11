@@ -23,7 +23,7 @@
 #     armed on an undistributed build. An override here would beat the fragment and reopen both.
 #   * There is deliberately NO upload-host input: every CI archive bakes the Config.xcconfig host,
 #     the single source of the host literal (capability ios-ci). Pointing a DEV build at another
-#     backend is done on the ssh-mac loop's own xcodebuild line, where the IPA is actually delivered
+#     backend is done on the interactive dev build loop, where the IPA is actually delivered
 #     to a device — CI never produced an installable dev IPA, so the input it once had was dead.
 name: iOS archive (signed)
 description: Compile the extension framework, import signing certs, and produce a signed device xcarchive.

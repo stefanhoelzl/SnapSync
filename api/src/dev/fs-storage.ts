@@ -1,5 +1,5 @@
 // DEV-ONLY. A filesystem stand-in for bunny's native Storage API (capability-free dev infrastructure —
-// non-gating, no spec, same posture as `.github/workflows/ssh-mac.yml` and `:test:harness-driver`).
+// non-gating, no spec, same posture as `:test:harness-driver`).
 //
 // WHY THIS EXISTS. `api/` has one deploy target and one storage zone, and `src/config.ts` names that zone
 // as a source constant — so a plain local `deno run src/main.ts` writes into `snap-sync-dev`, the zone that

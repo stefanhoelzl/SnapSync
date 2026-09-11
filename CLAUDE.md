@@ -97,7 +97,7 @@ tools/ config/ gradle/            more build tooling
   `java.awt.Robot`, and never capture the real screen `:0` - it raises a portal consent prompt and
   **blocks until someone answers**. (`:test:harness-driver`, `driveForge`, `driveWorld`)
 - **Anything needing a Mac** - an Xcode build, an `.xcarchive`, an IPA, code signing, or the
-  `iosSimulatorArm64Test`s -> load **`ssh-mac-build`**. (`xcodebuild`, `ssh-mac.yml`)
+  `iosSimulatorArm64Test`s -> load **`ssh-mac-build`**. (`xcodebuild`, `.ssh-runner.yml`)
 - **Testing a backend change against a real device** -> load **`local-backend`** first; it owns the
   three-hop chain and the one step whose omission is silent. (`deno task dev:local|dev:tunnel`)
 - **Driving the app on device** — joining, creating, leaving, resetting, seeding, wiping, reading the
@@ -400,7 +400,7 @@ with the proxy task above).
   events). It is deliberately invisible: no button, no semantics, and on a build with no baked
   DSN (every dev/sideload build) **no dialog opens at all**. To exercise it on device, **dispatch the
   branch** — `gh workflow run ios.yml --ref <branch>` — which builds the release channel and delivers to
-  internal TestFlight. ⚠️ Injecting `SENTRY_DSN` on the ssh-mac `xcodebuild` line **no longer works**:
+  internal TestFlight. ⚠️ Injecting `SENTRY_DSN` on the dev build loop's `xcodebuild` line **no longer works**:
   the DSN rides in the generated `Deployment.plist` bundled as a resource, and a build-setting override
   cannot substitute into a resource file. Measured against the hosted instance (2026-07-29):
   Bugsink **drops attachments entirely**, caps events at `MAX_EVENT_SIZE` = 1 MiB (a `413` the SDK

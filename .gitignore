@@ -28,6 +28,10 @@ iosApp/Configuration/Deployment.xcconfig
 iosApp/Configuration/Deployment.plist
 site/src/deployment.json
 
+# Dev IPAs pulled off the build runner (the `ssh-mac-build` loop lands one here by default). Build
+# output, never committed — and at ~26 MB, one `git add -A` away from being a problem.
+*.ipa
+
 # Python bytecode caches (e.g. .github/scripts/) — build output, never committed.
 __pycache__/
 *.py[cod]

@@ -16,7 +16,7 @@ import kotlin.test.fail
  * answer.
  *
  * That is survivable for a value that only configures something. It is not survivable for a value that
- * composes an IDENTITY. Measured 2026-08-25: the `ssh-mac-build` re-sign step still awked `TEAM_ID` out of
+ * composes an IDENTITY. Measured 2026-08-25: the re-sign step (then prose in a skill, now `scripts/dev-sign`) still awked `TEAM_ID` out of
  * `Config.xcconfig` weeks after it moved, so `$(AppIdentifierPrefix)` expanded to a bare `.` and the IPA
  * was signed claiming keychain group `.app.snapsync.shared`. The app installed, launched, looked entirely
  * normal — and had no device id, because `device-identity` names the group explicitly, so the read threw
@@ -64,8 +64,11 @@ class DeploymentKeyProvenanceTest {
     }
 
     /**
-     * The text surfaces a reader can live in — source, build files, workflows, and `.claude/skills/`,
-     * because the reader that motivated this guard was a skill rather than code.
+     * The text surfaces a reader can live in — source, build files, workflows, `.claude/skills/`
+     * (because the reader that motivated this guard was a skill rather than code), and everything under
+     * `scripts/` regardless of extension, because a runnable command there carries none by convention
+     * (`sim-sign`, `device-guard`, `dev-sign`). Extension alone would silently drop the re-sign the
+     * moment it moved out of the skill and into a script, which is exactly what it did.
      *
      * `openspec/` is excluded: it is where the split is *documented*, and it contains no reader. The
      * resolver is excluded because it WRITES the renderings. The generated OpenSpec skills and commands
@@ -76,7 +79,8 @@ class DeploymentKeyProvenanceTest {
         val skipDirs = setOf(".git", ".gradle", ".idea", "build", "node_modules", "openspec")
         repoRoot.walkTopDown()
             .onEnter { it.name !in skipDirs }
-            .filter { it.isFile && it.extension in SCANNED_EXTENSIONS }
+            .filter { it.isFile }
+            .filter { it.extension in SCANNED_EXTENSIONS || it.relativeTo(repoRoot).path.startsWith("scripts/") }
             .filterNot { it.relativeTo(repoRoot).path == RESOLVER }
             .filterNot { it.relativeTo(repoRoot).path.startsWith(".claude/commands/") }
             .filterNot { it.relativeTo(repoRoot).path.startsWith(".claude/skills/openspec-") }
@@ -96,10 +100,31 @@ class DeploymentKeyProvenanceTest {
                 "an empty RESULT over a non-empty SCAN; an empty scan is not.",
         )
         assertTrue(
-            scanned.any { it.relativeTo(repoRoot).path == RESIGN_SKILL },
-            "$RESIGN_SKILL is outside the scan. It is the reader this guard exists for; if it is not " +
-                "covered, the guard proves nothing about the case that motivated it.",
+            fragmentReaders.isNotEmpty(),
+            "no file in the scan extracts a deployment key out of $FRAGMENT_NAME. Something must: the " +
+                "re-sign composes a signing identity from exactly these keys, and it is the reader this " +
+                "guard exists for. An empty result here means the scan no longer reaches it — so the " +
+                "violation test below would pass while inspecting nothing that matters.",
         )
+    }
+
+    /**
+     * Every extraction that reads the GENERATED fragment — the reads that are correct today.
+     *
+     * This is what makes the non-vacuity check self-maintaining. The previous form pinned one PATH
+     * (`.claude/skills/ssh-mac-build/SKILL.md`) and asserted it was in the scan, which answers a
+     * weaker question: the file kept existing after the re-sign moved out of it into `scripts/dev-sign`,
+     * so the assertion would have passed while the reader it named had walked away. Deriving the anchor
+     * from BEHAVIOUR follows the code wherever it lands, and additionally catches the case no path pin
+     * can see — the last real reader disappearing, after which this guard watches nothing.
+     */
+    private val fragmentReaders: List<String> = scanned.flatMap { file ->
+        val lines = file.readLines()
+        lines.withIndex().flatMap { (index, line) ->
+            extractedSettings(line)
+                .filter { sourceRead(lines, index) == FRAGMENT_NAME }
+                .map { "${file.relativeTo(repoRoot).path}:${index + 1}  extracts `$it`" }
+        }
     }
 
     @Test
@@ -185,7 +210,6 @@ class DeploymentKeyProvenanceTest {
         const val FRAGMENT_NAME = "Deployment.xcconfig"
         const val COMMITTED_PATH = "iosApp/Configuration/Config.xcconfig"
         const val RESOLVER = "scripts/resolve-deployment.py"
-        const val RESIGN_SKILL = ".claude/skills/ssh-mac-build/SKILL.md"
 
         val SCANNED_EXTENSIONS = setOf(
             "md", "kt", "kts", "sh", "yml", "yaml", "py", "ts", "json", "plist", "xcconfig", "entitlements",

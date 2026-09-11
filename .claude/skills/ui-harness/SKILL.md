@@ -38,7 +38,7 @@ server** and never raises the screen-capture consent prompt.
 ## The driver
 
 `:test:harness-driver` serves **either harness over HTTP with no window at all**. It is **dev
-infrastructure, non-gating, no spec** (same posture as `ssh-mac.yml`; rationale in `Driver.kt`).
+infrastructure, non-gating, no spec** (rationale in `Driver.kt`).
 Clicks go through the **real** buttons of the real panel, so there is no second way-to-drive that can
 rot or lie.
 

@@ -4,11 +4,11 @@
 // `NSAllowsLocalNetworking` exception ships — so a device cannot talk to `http://<laptop>:8080` under any
 // circumstances. A quick tunnel yields a real HTTPS `*.trycloudflare.com` host with no account, no
 // certificate work, and no device-side trust profile to install (which would need taps, and so would be
-// hostile to the headless loop). `cloudflared` is already the transport in the ssh-mac runbook, so it is
+// hostile to the headless loop). `cloudflared` is already the transport the dev build loop uses, so it is
 // a known quantity here.
 //
 // ACCEPTED COST: the hostname is RANDOM PER SESSION, so the compile-time `BACKGROUND_UPLOAD_URL_BASE`
-// changes every session and the dev IPA is rebuilt per session (~1 min incremental Debug on ssh-mac).
+// changes every session and the dev IPA is rebuilt per session (~1 min incremental Debug on the runner).
 // The upgrade to a stable host — a named tunnel behind a `dev.snapsync.stho.net` CNAME in our Bunny DNS
 // zone — needs no redesign here; only the value of that build setting changes.
 

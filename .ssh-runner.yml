@@ -23,6 +23,11 @@ runs-on: macos-26
 # `xcodebuild` LOADS the project (Gradle's own re-resolve fires too late, in the
 # `embedAndSignAppleFrameworkForXcode` phase).
 #
+# `artifacts/` is where the loop archives and signs. It sits INSIDE the workspace on purpose, so every
+# path in the runbook stays relative — `sync`'s `:` prefix anchors at the workspace, not at `$HOME`,
+# unlike the `scp` the old loop used. Excluding it is what keeps `--delete` from deleting the build
+# you just made on the next push.
+#
 # NOTE what is deliberately NOT excluded: `gradle.properties`. The per-session properties
 # (`snapsync.rig`, `snapsync.deployment`) go in the runner's `~/.gradle/gradle.properties`, OUTSIDE
 # this tree — uncommittable by construction. A `snapsync.rig=true` that reached `main` in the
@@ -33,6 +38,7 @@ sync:
     - build
     - .gradle
     - .kotlin
+    - artifacts
     - api/.localstore
     - api/.localdev
     - .idea

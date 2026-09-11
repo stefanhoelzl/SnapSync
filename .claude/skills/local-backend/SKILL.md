@@ -17,7 +17,7 @@ and why the attestation gate stays fully on. What lives here is the part **no si
 the three-hop chain from "I changed the backend" to "the device really uploaded to it", and the one
 step whose omission fails **silently**.
 
-Dev infrastructure: non-gating, no spec, same posture as `ssh-mac.yml` and `:test:harness-driver`.
+Dev infrastructure: non-gating, no spec, same posture as `:test:harness-driver`.
 `main.ts` never imports `src/dev/`, and `deno bundle` roots the deployed bundle at `main.ts`, so none
 of it can ship.
 
