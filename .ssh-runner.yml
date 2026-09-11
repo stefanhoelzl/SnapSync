@@ -1,0 +1,119 @@
+# ssh-runner — the headless macOS build box (DEV INFRASTRUCTURE, not a merge gate).
+#
+# iOS work is macOS-only and the sandbox is Linux, so `./gradlew compileIosMainKotlinMetadata` is as
+# far as Linux goes. This opens ONE long-lived macos-26 job with an sshd behind a cloudflared tunnel,
+# so an agent iterates rsync -> xcodebuild -> dev-sign -> pull the IPA -> install, many times against
+# one WARM runner instead of one CI run per change. Public repo => macos-26 minutes are free.
+#
+# The generated `.github/workflows/ssh-runner-*.yml` is OWNED by the ssh-runner skill: `init`
+# regenerates it wholesale, so edit THIS file and regenerate — never the workflow.
+# Runbook: the `ssh-mac-build` skill.
+#
+# ⚠️ LAYOUT CONSTRAINT: a comment at column 0 belongs to whatever key PRECEDES it, and a block's
+# indentation is normalised from its least-indented line — so a column-0 comment after `steps:`
+# silently breaks the generated YAML. `steps:` is therefore LAST, and every comment inside it is
+# indented.
+name: macos
+runs-on: macos-26
+
+# `--delete` is on (the default), so the runner loses whatever this tree does not have. Everything
+# excluded here is either produced ON the runner and must survive an iterate (`build`, `.gradle`,
+# `.kotlin`), local-dev bulk with no business on a Mac, or a GENERATED deployment rendering — the
+# runner re-renders those itself via `scripts/resolve-deployment.py`, which must run before
+# `xcodebuild` LOADS the project (Gradle's own re-resolve fires too late, in the
+# `embedAndSignAppleFrameworkForXcode` phase).
+#
+# NOTE what is deliberately NOT excluded: `gradle.properties`. The per-session properties
+# (`snapsync.rig`, `snapsync.deployment`) go in the runner's `~/.gradle/gradle.properties`, OUTSIDE
+# this tree — uncommittable by construction. A `snapsync.rig=true` that reached `main` in the
+# tracked file would link `:test:rig` into every shipped build.
+sync:
+  exclude:
+    - .git
+    - build
+    - .gradle
+    - .kotlin
+    - api/.localstore
+    - api/.localdev
+    - .idea
+    - __pycache__
+    - iosApp/Configuration/Deployment.xcconfig
+    - iosApp/Configuration/Deployment.plist
+    - api/src/deployment.ts
+    - site/src/deployment.json
+
+# Copied VERBATIM into the job, after `actions/checkout` and before the tunnel opens. Secrets ride as
+# `${{ secrets.* }}` expressions Actions evaluates in this repo with masking — no secret value ever
+# reaches this file, the sandbox, or a dispatch input, which matters because on a public repo
+# dispatch inputs and logs are world-readable.
+steps:
+  - uses: actions/setup-java@v6
+    with:
+      distribution: temurin
+      java-version: 25
+  - uses: gradle/actions/setup-gradle@v5
+
+  # Warm from the same Kotlin/Native entry as ios.yml, so the first in-session build is not cold.
+  # RESTORE-ONLY, deliberately: `main` owns that entry (ios.yml writes it) and a session is a pure
+  # consumer. A ~500 MB session-end write into an already-full 10 GB budget would evict entries
+  # every PR build depends on, and sessions are rare, hand-dispatched and branch-scoped.
+  # The run id guarantees the primary key MISSES, so the restore falls through to the NEWEST entry —
+  # a hit would pin the session to a possibly ancient one. Prefer the DEVICE family: this loop's
+  # dominant cost is `xcodebuild -configuration Debug -destination 'generic/platform=iOS'`, which
+  # links iosArm64 against exactly the `ios_arm64-gSTATIC-*` caches ios-build warms.
+  # `iosSimulatorArm64Test` in a session still falls through to the shared prefix below.
+  - name: Restore Kotlin/Native (~/.konan)
+    uses: actions/cache/restore@v6
+    with:
+      path: ~/.konan
+      key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
+      restore-keys: |
+        konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-device-
+        konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
+        konan-${{ runner.os }}-
+
+  # Import ONLY the Apple Development cert (dev signing needs no Distribution cert). Ephemeral
+  # keychain with a random password; dies with the runner. NO ASC key ever reaches this box — a
+  # signed archive is therefore impossible here, so the loop archives UNSIGNED and re-signs by hand
+  # (`scripts/dev-sign`). Both signing steps are `continue-on-error` so a missing secret still
+  # yields a usable shell rather than no session at all.
+  - name: Generate ephemeral keychain password
+    run: |
+      PW="$(openssl rand -base64 24)"
+      echo "::add-mask::$PW"
+      echo "KEYCHAIN_PW=$PW" >> "$GITHUB_ENV"
+  - name: Import Development signing certificate
+    continue-on-error: true
+    uses: apple-actions/import-codesign-certs@v7.0.0
+    with:
+      p12-file-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
+      p12-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
+      keychain: snapsync-ssh-runner
+      keychain-password: ${{ env.KEYCHAIN_PW }}
+
+  # The baked development provisioning profiles (no ASC key, no compile). The secret is a tar of
+  # BOTH the app (`app.snapsync`) and the extension (`app.snapsync.BackgroundUpload`) profiles; the
+  # re-sign signs both targets, so both must be present. A profile carries no private keys — just
+  # the app id, team, device UDIDs and public certs — so it is safe as a secret. Written under BOTH
+  # the classic and the Xcode-16+ directories, named by embedded UUID.
+  # REFRESH when they expire (~1yr), when a new device is registered, OR when a bundle-id capability
+  # is enabled — that last one silently INVALIDATES the affected profile. See `ssh-mac-build`.
+  - name: Install baked development provisioning profiles
+    continue-on-error: true
+    env:
+      DEV_PROFILE_B64: ${{ secrets.DEV_PROVISIONING_PROFILE_BASE64 }}
+    run: |
+      set -euo pipefail
+      if [ -z "$DEV_PROFILE_B64" ]; then echo "::warning::DEV_PROVISIONING_PROFILE_BASE64 unset"; exit 0; fi
+      WORK="$RUNNER_TEMP/profiles"; mkdir -p "$WORK"
+      printf '%s' "$DEV_PROFILE_B64" | base64 -d | tar -C "$WORK" -xf -
+      for TMP in "$WORK"/*.mobileprovision; do
+        UUID="$(security cms -D -i "$TMP" 2>/dev/null | plutil -extract UUID raw - )"
+        EXP="$(security cms -D -i "$TMP" 2>/dev/null | plutil -extract ExpirationDate raw - )"
+        for DIR in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                   "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+          mkdir -p "$DIR"; cp -f "$TMP" "$DIR/$UUID.mobileprovision"
+        done
+        echo "installed $UUID.mobileprovision (expires $EXP)"
+      done
+      rm -rf "$WORK"
