@@ -15,8 +15,7 @@ name: nightly-cleanup
 # Script's own `storage`/`lifecycle` modules, so the layout and lifecycle rules cannot drift between the
 # two (backend-deployment).
 #
-# It is DEV/OPS INFRASTRUCTURE, non-gating: it posts no required status check and blocks no merge (like
-# ssh-mac.yml). A failed run is red and visible but stops nothing.
+# It is DEV/OPS INFRASTRUCTURE, non-gating: it posts no required status check and blocks no merge. A failed run is red and visible but stops nothing.
 #
 # SECRETS. This job holds exactly the credentials the two halves of its work need: the storage
 # `AccessKey` (read and delete objects) and the relational store's URL + token (read the state it marks

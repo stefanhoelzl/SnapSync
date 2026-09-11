@@ -2,7 +2,7 @@
 # Fetch the pinned `asc` App Store Connect CLI (the metadata tool) and verify its SHA-256 before use.
 #
 # `asc` is a THIRD-PARTY binary (github.com/rudrankriyam/App-Store-Connect-CLI), so it is pinned by
-# tag AND checksum — the same discipline ssh-mac.yml uses for cloudflared. To bump: change ASC_VERSION
+# tag AND checksum. To bump: change ASC_VERSION
 # and ASC_SHA256 together (the checksum is the `asc_<version>_linux_amd64` line from the release's
 # asc_<version>_checksums.txt). A mismatch aborts before the caller can run any apply.
 #

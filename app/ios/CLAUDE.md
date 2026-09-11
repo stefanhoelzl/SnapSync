@@ -185,7 +185,7 @@ constructs no writer.
   `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `event-link`), which is
   how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be
   enabled on the app.snapsync App ID in the portal**, or signed builds fail to provision — and
-  enabling it *invalidates existing profiles*, so the ssh-mac loop's baked secret needs refreshing
+  enabling it *invalidates existing profiles*, so the dev build loop's baked secret needs refreshing
   (root `CLAUDE.md`). The **extension declares none**: it never handles URLs.
 - **App `Info.plist`**: registers **no** `CFBundleURLTypes` — the `snapsync` scheme is retired, and a
   scheme re-added here would route links the one authoritative codec no longer accepts.

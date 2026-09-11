@@ -38,7 +38,7 @@ act — `snapSyncApp` and `uploadCore` each call `start()`, so both tiers and bo
 the One-shared-composition law rather than by shell memory, and the world harness observes the same call
 through its fake. The port's `start()` SHALL be **idempotent** (the app process composes both entry
 points) and a complete **no-op when the DSN is absent or blank**, so a build without a baked DSN — every
-dev-sideload, ssh-mac, and simulator build — sends nothing and starts no SDK. Features that Bugsink
+dev-sideload, dev-loop, and simulator build — sends nothing and starts no SDK. Features that Bugsink
 cannot ingest — tracing, performance, session replay, profiling — SHALL be disabled in the SDK
 configuration. `sendDefaultPii` SHALL remain off.
 
@@ -60,7 +60,7 @@ stay free of per-call-site instrumentation. Only the deliberate dump crosses the
 
 #### Scenario: A dev build sends nothing
 
-- **WHEN** a build without a baked DSN launches (dev-sideload, ssh-mac, simulator)
+- **WHEN** a build without a baked DSN launches (dev-sideload, dev build loop, simulator)
 - **THEN** the init function no-ops: no SDK starts, no network connection to Bugsink is ever made, and
   the dump send is likewise inert
 

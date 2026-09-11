@@ -1,7 +1,7 @@
 #!/bin/sh
 # PreToolUse(Bash) guard for the one physically-connected iPhone.
 #
-# Dev infrastructure: non-gating, no spec — same posture as ssh-mac.yml, :test:harness-driver
+# Dev infrastructure: non-gating, no spec — same posture as :test:harness-driver
 # and the local backend rig. Wired from .claude/settings.json.
 #
 # Why it exists: up to a dozen CodeHydra workspaces run in parallel against ONE SE2. Two of them

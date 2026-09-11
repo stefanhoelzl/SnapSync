@@ -1,0 +1,166 @@
+#!/bin/sh
+# Re-sign an UNSIGNED .xcarchive with the Apple Development identity and package it as an IPA.
+#
+# Dev infrastructure: non-gating, no spec. Runs on the macOS side of the dev build loop (the repo is
+# rsync'd there), never in the Linux sandbox — `codesign` is a macOS tool. Load the `ssh-mac-build`
+# skill for the surrounding runbook.
+#
+#   scripts/dev-sign <path/to/App.xcarchive>      # writes <archive dir>/SnapSync.ipa
+#
+# WHY AN UNSIGNED ARCHIVE PLUS A HAND RE-SIGN. The Xcode project is CODE_SIGN_STYLE=Automatic, which
+# needs -allowProvisioningUpdates and the Admin ASC key — deliberately absent from the build box, so a
+# SIGNED archive is impossible there. `xcodebuild -exportArchive` is not the way out either: automatic
+# signing does not reuse manually-installed profiles without an ASC key ("No profiles for
+# 'app.snapsync…' were found"), and a CODE_SIGNING_ALLOWED=NO archive has EMPTY entitlements, so any
+# export ships an IPA that aborts at launch on the App-Group container ("client is not entitled").
+#
+# ⚠️ A PROFILE IS A GRANT; ENTITLEMENTS ARE A CLAIM. The profile says "you MAY use anything in
+# <TEAM>.*"; entitlements say "I AM this". Copying one into the other is a category error, and it is
+# silently wrong for every WILDCARD key an Apple DEV profile carries — of which there are two:
+#
+#   * associated-domains: *        -> the app claims every domain, therefore NONE. Every universal
+#                                     link dies silently (verified 2026-07-16).
+#   * keychain-access-groups: <TEAM>.*
+#                                  -> not a writable group name, so each process falls back to its OWN
+#                                     application-identifier group. The app and the upload extension
+#                                     then hold DIFFERENT device ids, both reads succeed, and the app
+#                                     re-imports every photo it uploaded (2026-07-20). Since
+#                                     device-identity names the group EXPLICITLY, the wildcard is now
+#                                     WORSE than silent: an explicit-group query is not satisfied by a
+#                                     <TEAM>.* entitlement, so the read throws errSecMissingEntitlement
+#                                     (-34018) and the app is dead in the water with no device id.
+#
+# The keychain one is the worse of the two: it writes a real item to a real group, and the device id is
+# written once and never rewritten — so the mistake is frozen permanently, on a value whose loss is
+# unrecoverable. That is why this GENERATES the claim from the repo's own .entitlements instead of
+# narrowing the grant key by key: narrowing only ever fixes the wildcard you already know about
+# (associated-domains was narrowed in July; keychain-access-groups sat there unnarrowed the whole time
+# and nobody connected the two).
+#
+# ⚠️ A DONATED WILDCARD IS ONE WAY IN; A GARBAGE SUBSTITUTION IS THE OTHER. This is only as good as the
+# values it interpolates, and an EMPTY one lands in the same place by a different road:
+# $(AppIdentifierPrefix) -> a bare `.`, so the binary claims `.app.snapsync.shared` and the app boots
+# with no device id, exactly as above. Not hypothetical — it happened on 2026-08-25, because TEAM_ID
+# and ASSOCIATED_DOMAIN had moved into the GENERATED Deployment.xcconfig while the re-sign still awked
+# them out of Config.xcconfig, which matches nothing and yields the empty string in silence. Neither
+# existing check could see it: the wildcard guard tests for the ABSENCE of a leaked grant, and
+# `.app.snapsync.shared` contains no wildcard; `codesign -v` validates the signature, not the claim.
+# Hence the fail-closed checks below, and the POSITIVE post-sign assertion beside the negative one.
+set -eu
+
+ARCHIVE="${1:-}"
+if [ -z "$ARCHIVE" ]; then
+    echo "usage: scripts/dev-sign <path/to/App.xcarchive>" >&2
+    exit 2
+fi
+if [ ! -d "$ARCHIVE" ]; then
+    echo "dev-sign: '$ARCHIVE' is not an archive directory" >&2
+    exit 1
+fi
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+OUT=$(CDPATH= cd -- "$(dirname -- "$ARCHIVE")" && pwd)
+SRC="$ROOT/iosApp"
+PD="$HOME/Library/MobileDevice/Provisioning Profiles"
+PB=/usr/libexec/PlistBuddy
+
+APP="$ARCHIVE/Products/Applications/SnapSync.app"
+# iOS 26 embeds app extensions in Extensions/, NOT PlugIns/.
+EXT="$APP/Extensions/BackgroundUploadExtension.appex"
+[ -d "$APP" ] || { echo "dev-sign: no SnapSync.app in $ARCHIVE" >&2; exit 1; }
+[ -d "$EXT" ] || { echo "dev-sign: no BackgroundUploadExtension.appex in $APP" >&2; exit 1; }
+
+ID=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
+[ -n "$ID" ] || { echo "dev-sign: no Apple Development identity in the keychain" >&2; exit 1; }
+
+# The GENERATED fragment, NOT Config.xcconfig. TEAM_ID and ASSOCIATED_DOMAIN live here (capability
+# `deployment-configuration`); Config.xcconfig names them only in a header comment, so awking IT
+# matches nothing and both variables come back EMPTY — the trap described above. xcodebuild's Gradle
+# build phase runs the resolver, so this file exists by the time the archive does. The rendered domain
+# already carries its `applinks:` prefix; nothing below prepends it.
+CFG="$SRC/Configuration/Deployment.xcconfig"
+[ -f "$CFG" ] || { echo "dev-sign: missing $CFG — run scripts/resolve-deployment.py first" >&2; exit 1; }
+TEAM=$(awk -F= '/^TEAM_ID/{gsub(/[ \t]/,"",$2);print $2}' "$CFG")
+DOMAIN=$(awk -F= '/^ASSOCIATED_DOMAIN/{gsub(/[ \t]/,"",$2);print $2}' "$CFG")
+
+# FAIL CLOSED. An empty value here is not a missing nicety — it signs a WRONG IDENTITY that every
+# later check passes. If either fires, re-run the resolver and re-archive.
+[ -n "$TEAM" ]   || { echo "dev-sign: TEAM_ID empty in $CFG — refusing to sign" >&2; exit 1; }
+[ -n "$DOMAIN" ] || { echo "dev-sign: ASSOCIATED_DOMAIN empty in $CFG — refusing to sign" >&2; exit 1; }
+
+# $1 = repo .entitlements, $2 = out plist, $3 = the matched profile
+build_ent() {
+    sed -e 's|\$(AppIdentifierPrefix)|'"$TEAM"'.|g' \
+        -e 's|\$(ASSOCIATED_DOMAIN)|'"$DOMAIN"'|g' \
+        -e 's|\$(APS_ENVIRONMENT)|development|g' "$1" > "$2"
+    # The three keys the profile-resolve used to supply for free, which the repo .entitlements do NOT
+    # carry. `application-identifier` is MANDATORY: without it the install is refused ("Application is
+    # missing the application-identifier entitlement", verified 2026-07-20). Both id keys are CONCRETE
+    # in the profile (never wildcards), so lifting exactly them is safe — it is only the wildcard keys
+    # a grant must never donate to a claim.
+    _appid=$(security cms -D -i "$3" | plutil -extract Entitlements.application-identifier raw -)
+    _teamid=$(security cms -D -i "$3" | plutil -extract Entitlements.com\\.apple\\.developer\\.team-identifier raw -)
+    $PB -c "Add :application-identifier string $_appid" "$2"
+    $PB -c "Add :com.apple.developer.team-identifier string $_teamid" "$2"
+    $PB -c "Add :get-task-allow bool true" "$2"                  # dev-only; required to launch/debug
+}
+
+# Embed each profile and remember which target it belongs to.
+APPP=""; EXTP=""
+for p in "$PD"/*.mobileprovision; do
+    [ -f "$p" ] || continue
+    aid=$(security cms -D -i "$p" | plutil -extract Entitlements.application-identifier raw -)
+    case "$aid" in
+        *.app.snapsync.BackgroundUpload) EXTP="$p"; cp "$p" "$EXT/embedded.mobileprovision";;
+        *.app.snapsync)                  APPP="$p"; cp "$p" "$APP/embedded.mobileprovision";;
+    esac
+done
+[ -n "$APPP" ] || { echo "dev-sign: no app provisioning profile in $PD" >&2; exit 1; }
+[ -n "$EXTP" ] || { echo "dev-sign: no extension provisioning profile in $PD" >&2; exit 1; }
+
+build_ent "$SRC/iosApp/iosApp.entitlements" "$OUT/app.plist" "$APPP"
+build_ent "$SRC/BackgroundUploadExtension/BackgroundUploadExtension.entitlements" "$OUT/ext.plist" "$EXTP"
+
+# INNER TO OUTER. Nested frameworks first, then the extension, then the app. The SPM `Sentry` product
+# links STATICALLY into both binaries (nm-verified), but Xcode still embeds the binaryTarget's dynamic
+# Sentry.framework in Frameworks/ — unreferenced dead weight that must nonetheless be signed or the
+# install is refused (measured 2026-07-21).
+for fw in "$APP"/Frameworks/*.framework; do
+    [ -d "$fw" ] && codesign -f -s "$ID" "$fw"
+done
+codesign -f -s "$ID" --entitlements "$OUT/ext.plist" "$EXT"
+codesign -f -s "$ID" --entitlements "$OUT/app.plist" "$APP"
+
+# THE GUARDS — two of them, asking OPPOSITE questions. Neither subsumes the other; keep both.
+# (1) NEGATIVE — no wildcard may reach a signed binary. Key-agnostic ON PURPOSE: it catches whichever
+#     wildcard key Apple adds next, which per-key narrowing by construction cannot.
+# (2) POSITIVE — the claim carries the REAL identity. (1) is blind to this: an empty $TEAM yields
+#     `.app.snapsync.shared`, which contains no wildcard and sails straight through, and `codesign -v`
+#     passes too. Absence of a wildcard is not presence of the right prefix. Checked on BOTH binaries:
+#     app and extension must land in the SAME keychain group or they hold different device ids.
+#     `grep -qF` because the `.` in `<TEAM>.app.snapsync.shared` is a regex metacharacter.
+for b in "$EXT" "$APP"; do
+    ENT=$(codesign -d --entitlements :- "$b" 2>/dev/null)
+    if printf '%s' "$ENT" | grep -q '[*]'; then
+        echo "dev-sign: WILDCARD LEAKED into $b — do not install this build:" >&2
+        printf '%s' "$ENT" | plutil -p -; exit 1
+    fi
+    if ! printf '%s' "$ENT" | grep -qF "$TEAM.app.snapsync.shared"; then
+        echo "dev-sign: KEYCHAIN GROUP LACKS THE TEAM PREFIX ($TEAM) in $b — do not install:" >&2
+        printf '%s' "$ENT" | plutil -p -; exit 1
+    fi
+    # The app claims the associated domain; the extension declares none (it never handles URLs).
+    if [ "$b" = "$APP" ] && ! printf '%s' "$ENT" | grep -qF "$DOMAIN"; then
+        echo "dev-sign: ASSOCIATED DOMAIN ($DOMAIN) MISSING from $b — universal links would open Safari:" >&2
+        printf '%s' "$ENT" | plutil -p -; exit 1
+    fi
+done
+codesign -v "$EXT"
+codesign -v "$APP"
+
+rm -rf "$OUT/Payload" "$OUT/SnapSync.ipa"
+mkdir "$OUT/Payload"
+cp -R "$APP" "$OUT/Payload/"
+(cd "$OUT" && zip -qry SnapSync.ipa Payload)
+rm -rf "$OUT/Payload"
+echo "dev-sign: signed with team $TEAM -> $OUT/SnapSync.ipa"

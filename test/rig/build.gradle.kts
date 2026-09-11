@@ -5,7 +5,7 @@ plugins {
 
 // The dev/test CONTROL CHANNEL (`:test:rig`) — an HTTP server that runs INSIDE the iOS app so an agent
 // can force OS-callback entry points and read live state over `usbmux forward`. Dev infrastructure:
-// non-gating, NO SPEC — the same posture as `:test:harness-driver` and `ssh-mac.yml`, and for the same
+// non-gating, NO SPEC — the same posture as `:test:harness-driver`, and for the same
 // reason it states: every surface here is a mechanical projection of a contract specified elsewhere
 // (`/state` is a compiler-generated encoder over the real `UiState`, `/trigger` invokes the real
 // `@PlatformEntry` members, `/logs` passes `DeviceLogSource.tail` through verbatim), so there is no

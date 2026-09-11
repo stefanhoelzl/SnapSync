@@ -1,7 +1,7 @@
 #!/bin/sh
 # Ad-hoc-sign a SIMULATOR .app so it has an App-Group container.
 #
-# Dev infrastructure: non-gating, no spec. Runs on the macOS side of the ssh-mac loop (the repo is
+# Dev infrastructure: non-gating, no spec. Runs on the macOS side of the dev build loop (the repo is
 # rsync'd there), never in the Linux sandbox — `codesign` is a macOS tool. Load the `ios-simulator`
 # skill for the surrounding runbook.
 #

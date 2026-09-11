@@ -49,10 +49,12 @@ not part of `LaunchDirectives`.
 
 ## Building and connecting
 
-On the ssh-mac runner, before `xcodebuild` (Xcode's Gradle invocation picks it up):
+On the build runner, before `xcodebuild` (Xcode's Gradle invocation picks it up). It goes in the
+runner's `GRADLE_USER_HOME`, which outranks the project's — **never** in the repo's tracked
+`gradle.properties`, where one forgotten revert would link the channel into every shipped build:
 
 ```
-echo "snapsync.rig=true" >> gradle.properties
+printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
 ```
 
 Then, with the build installed and launched:

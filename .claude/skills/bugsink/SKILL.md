@@ -14,8 +14,8 @@ description: >-
 
 Read-only triage of the crashes both SnapSync iOS processes report to the operator's
 **Bugsink** instance (capability `crash-reporting`). Dev/operator infrastructure:
-non-gating, no spec, no shipped-code change — same posture as `ssh-mac`,
-`harness-driver`, and the local backend rig. **Triage is read-only**: every step below
+non-gating, no spec, no shipped-code change — same posture as
+`harness-driver` and the local backend rig. **Triage is read-only**: every step below
 issues `GET`s. There is exactly **one** write — resolving an issue a shipped fix closes
 (§4), through `resolve/` or `resolve-next/`, and never without the operator confirming
 first. Muting, reopening, commenting and deleting stay out of scope entirely.

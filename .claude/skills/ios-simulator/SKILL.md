@@ -20,7 +20,7 @@ confirmation), and **set permission state headlessly**. It is also disposable an
 `xcrun`/`simctl`, and two agents can hold two simulators at once. That is the opposite of `ios-device`,
 and it is the main reason this is its own skill.
 
-Everything runs on the macOS side of the **ssh-mac** loop — load `ssh-mac-build` for the session. To
+Everything runs on the macOS side of the **dev build loop** — load `ssh-mac-build` for the session. To
 drive the channel once the app is up, load `rig-channel` (the endpoints are identical; only the port
 discovery differs). For the backend, load `local-backend`.
 

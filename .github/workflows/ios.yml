@@ -14,8 +14,8 @@
 #     ios-deliver as a workflow artifact.
 #     Per-branch device installability before merge is served either by a `workflow_dispatch` on
 #     this workflow (delivers the branch to internal TestFlight — the only route to a phone with no
-#     cable) or OUT OF BAND by the ssh-mac build loop (.github/workflows/ssh-mac.yml; see
-#     CLAUDE.md), which hands a human an IPA.
+#     cable) or OUT OF BAND by the interactive dev build loop (dev infrastructure; see the
+#     `ssh-mac-build` skill), which hands a human an IPA.
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
 #     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target. Runs in PARALLEL
 #     with ios-build (no `needs:`) — neither gate waits on the other.
@@ -61,7 +61,7 @@ on:
   # A DELIBERATE BRANCH DELIVERY (capability `ios-ci`): dispatch this workflow on any ref and it
   # archives RELEASE and DELIVERS to internal TestFlight, exactly as a push to main does. It exists
   # for the one loop the repo otherwise cannot run — an iOS version we have no device for on a cable.
-  # The ssh-mac loop hands a human an IPA, which needs a USB cable; a tester's phone reachable only
+  # The dev build loop hands a human an IPA, which needs a USB cable; a tester's phone reachable only
   # through TestFlight cannot be served by it at all, so a platform question that only that phone can
   # answer had to merge to main to be asked. It no longer does.
   #
@@ -83,7 +83,7 @@ on:
   # The retired input is NOT coming back: the old dispatch carried `upload_host` and could never
   # deliver it, because ios-build published its archive only on main, so a dispatched run built a
   # Debug archive and threw it away. Pointing a device build at another backend stays an operator
-  # action on the ssh-mac loop's own xcodebuild line (`BACKGROUND_UPLOAD_URL_BASE=<https-host>`),
+  # action on the dev build loop's own deployment selection (see the `ssh-mac-build` skill),
   # where a human is present to receive the IPA.
   workflow_dispatch:
     inputs:
@@ -156,7 +156,7 @@ jobs:
       #
       # The upload host is NEVER overridden here: every ref bakes the Config.xcconfig default, the
       # single source of the host literal (capability ios-ci, "Compile-time edge host default"). A dev
-      # build aimed at another backend is built on the ssh-mac loop instead.
+      # build aimed at another backend is built on the dev build loop instead.
       - name: Select build configuration
         env:
           DELIVERING: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
