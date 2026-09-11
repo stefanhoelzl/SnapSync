@@ -489,3 +489,62 @@ A **TestFlight dispatch** (`gh workflow run ios.yml --ref <branch>`):
   leave unproven (the global-scope context and the transmitted event), not just the log line.
 
 Until then: 8.2, 9.2 and 9.3 stay open, and nothing here is claimed as verified.
+
+---
+
+## 9. ✅ End to end on a real payload — `SNAPSYNC-38` (2026-09-11)
+
+TestFlight build **805** (`release 0.4 · dist 805 · env production`, the first build in this work
+carrying a baked DSN) received a genuine MetricKit payload, crossed the threshold, and reported it.
+
+### The attribution itself
+
+```
+applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount = 1
+crossing.reasons  = backgroundExitData.cumulativeMemoryPressureExitCount
+timeStampBegin    = 2026-09-09 00:00:00
+timeStampEnd      = 2026-09-10 00:00:00
+memoryMetrics.peakMemoryUsage = 305985 kB
+applicationTimeMetrics.cumulativeForegroundTime = 2304 sec   (background: 18 sec)
+applicationResponsivenessMetrics…bucketEnd = 319 ms          (below the 1 s ceiling; contributed nothing)
+```
+
+**A background `memoryPressure` kill** — the system reclaimed the app under starvation, *not* the app
+exceeding its own budget (`memoryResourceLimit` is absent, and absence means zero). That is exactly the
+distinction `SNAPSYNC-1` has never been able to make — its text says "watchdog, **possibly** because it
+overused RAM" — on exactly the axis `SNAPSYNC-23` turned on. And it is a **background** exit, the class
+Sentry's heuristic excludes by construction, so this record exists where nothing could previously see.
+
+### Every previously-unproven link, closed
+
+| link | evidence |
+|---|---|
+| ObjC decode of a real payload | 51 flattened fields, dotted keys, correct values |
+| `dictionaryRepresentation()` bridging | counts render as `1`, not `1.0` — the silent-threshold fear did not materialise |
+| call stacks excluded | no `callStackTree` key anywhere in the 51 |
+| the rule crossing on real data | `crossing.reasons` names exactly the one non-normal counter |
+| global-scope context | all 51 fields rode the event |
+| transmitted event (needs a DSN) | the event exists at all |
+| grouping by fixed message | its own issue, one occurrence |
+
+### The write-only field WAS the bug
+
+Same code, same device, same OS. The only change between four days of total silence and delivery
+working was holding the subscriber in a field that is **read** rather than assigned-and-never-read
+(§8). This was recorded as an unproven hypothesis at the time and is now demonstrated.
+
+⏰ Re-measure at the next iOS major; one device, one point release.
+
+### 🔴 Defect this exposed: the attribution event carries no `process` tag
+
+The event's tags contain **no `process`** — every other event in the project has one, set on the global
+scope by `DiagnosticsReporter.start()`.
+
+Cause: arming happens in `SnapSyncRoot`'s own initialization (deliberately, so a cold background wake
+is covered), while `start()` runs only when the deferred graph is forced. So an attribution delivered
+before the graph comes up reaches the scope first and goes out untagged.
+
+Harmless in effect today — MetricKit is app-process-only, so there is no ambiguity about which process
+it describes — but it contradicts `crash-reporting`'s standing requirement that every reported event
+name its process, and this change's own delta ("attribution SHALL identify the process it describes").
+Tracked as task 10.
