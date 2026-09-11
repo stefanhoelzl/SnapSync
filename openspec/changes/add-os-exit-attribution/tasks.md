@@ -74,8 +74,9 @@
 
 - [x] 8.1 Build and install a rig build; fire the synthetic-report route and confirm all three
       channels behave (log line, context attached, event on crossing).
-- [ ] 8.2 Wait one report cycle and confirm a **real** payload flows end to end — the one part the
-      synthetic route cannot exercise.
+- [x] 8.2 Wait one report cycle and confirm a **real** payload flows end to end — the one part the
+      synthetic route cannot exercise. **Done on TestFlight build 805**: `SNAPSYNC-38` carries a real
+      payload's 51 flattened fields and a background `memoryPressure` crossing (PROBE-FINDINGS §9).
 - [x] 8.3 Record what was measured, with device, OS point release and an ⏰ re-measure trigger. Do not
       claim device-verified what was not run. **Recorded in PROBE-FINDINGS §7**, including the two
       things this run did NOT prove (the Bugsink half — no DSN on a dev build — and the ObjC decode,
@@ -86,3 +87,12 @@
 - [ ] 9.1 Force-quit the app by swipe a known number of times, deliberately.
 - [ ] 9.2 After the next report, check whether `cumulativeAbnormalExitCount` rose by that number.
 - [ ] 9.3 Record the answer, and narrow the threshold if ordinary force-quit turns out to trip it.
+
+## 10. The missing `process` tag (found by §9)
+
+- [ ] 10.1 An attribution event reported before the deferred graph is forced carries no `process` tag,
+      because arming runs in shell init while `DiagnosticsReporter.start()` runs on graph assembly.
+      Decide the fix: start the reporter alongside arming, or have `describeProcess` ensure the tag.
+- [ ] 10.2 Cover it so it cannot regress — the requirement that every reported event names its process
+      is `crash-reporting`'s, and this is the first path that could reach the scope before `start()`.
+- [ ] 10.3 Re-verify on a TestFlight build that an attribution event carries the tag.
