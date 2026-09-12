@@ -548,3 +548,47 @@ Harmless in effect today — MetricKit is app-process-only, so there is no ambig
 it describes — but it contradicts `crash-reporting`'s standing requirement that every reported event
 name its process, and this change's own delta ("attribution SHALL identify the process it describes").
 Tracked as task 10.
+
+---
+
+## 10. The `abnormal` experiment — answered (2026-09-11 window, read 2026-09-12)
+
+**A user force-quit is a NORMAL exit, not an abnormal one.** So is a `dvt` `SIGKILL`.
+
+### The measurement
+
+| input to the 2026-09-11 window | count |
+|---|---|
+| operator swipes (swipe away + relaunch) | 5 |
+| agent `SIGKILL`s via `dvt` | 2 |
+
+On the first launch after the window closed, the report arrived — `2026-09-11 00:00:00 ..
+2026-09-12 00:00:00`, **73 fields** — and **did not cross the threshold**.
+
+The threshold fires on *any* non-normal exit counter being present. So a non-crossing report is not a
+weak signal here: it says every one of those seven terminations was counted as normal, and
+`cumulativeAbnormalExitCount` did not rise at all.
+
+### What follows
+
+- **Keep `abnormal` in the threshold.** Decision 13 included it to learn its meaning, expecting it
+  might have to be dropped for noise. The opposite is true: it is quiet, so when it does fire it means
+  something rarer than a user closing the app. That is the high-signal case.
+- **An earlier reading is retracted.** The first probe window showed `cumulativeAbnormalExitCount: 6`
+  and the record attributed it to development `SIGKILL`s. It cannot have been — `SIGKILL`s count as
+  normal. Those six remain **unexplained**, and are a smaller open question than the one just closed.
+
+### ⚠️ How this was read, and why that is weaker than it should be
+
+The verdict rests on the **absence** of a crossing rather than on reading the counters, because a
+non-crossing report's fields reached no channel: the device-log line carried only
+`"<window>, 73 field(s)"`, the context only rides a transmitted event, and there was no event. So the
+one window this experiment was designed around left behind the number 73 and nothing else.
+
+That contradicted this change's own `diagnostic-logging` delta — *"The line SHALL carry the report's
+fields"* — which the implementation did not do. Both were written here and neither caught the other;
+`openspec validate --strict` cannot, since it checks structure rather than truth.
+
+Fixed: the line now carries every field, sorted, and two tests pin it. ⏰ **Re-read the next window
+with the fix in place** to put `normal ≈ 7 · abnormal = 0` behind the verdict as a measurement rather
+than an inference.
