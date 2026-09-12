@@ -111,8 +111,11 @@
       **Fixed**: the handler calls `reporter.start()` before touching the scope. `start()` is
       idempotent and a no-op without a DSN — both already in the port's contract — so this satisfies
       that contract from a path that can outrun the composition, at no cost.
-- [ ] 10.2 Cover it so it cannot regress — the requirement that every reported event names its process
-      is `crash-reporting`'s, and this is the first path that could reach the scope before `start()`.
-      (Not yet covered: the fake reporter records `start()` and contexts separately, so a test would
-      have to assert ordering between them.)
+- [x] 10.2 Cover it so it cannot regress. **Done differently than planned, and better**: asserting the
+      handler's call order would have unit-tested the wiring graph, which `module-architecture`
+      forbids ("smoke-tested end to end … over fake ports", never unit-tested). So the guarantee moved
+      ONTO the port — `describeProcess` ensures the channel is started — honoured by both the Sentry
+      impl and the fake, and asserted through the fake in
+      `DiagnosticsReporterContractTest`. No caller can now get the ordering wrong, so there is no
+      ordering left to test.
 - [ ] 10.3 Re-verify on a TestFlight build that an attribution event carries the tag.
