@@ -53,6 +53,15 @@ interface DiagnosticsReporter {
      * survive a fatal event — the whole value is that a crash arrives next to the OS's explanation of
      * recent terminations.
      *
+     * **Implementations SHALL ensure the channel is started before attaching**, rather than trusting
+     * the caller to have called [start] first. That is not defensive tidiness: this operation is
+     * reachable from a path that can outrun the composition which normally starts the channel — the
+     * process-metric subscriber is armed at process start so a cold background wake is covered, while
+     * the composition starts the reporter only when its deferred graph is forced. Measured: the first
+     * real attribution event went out with **no `process` tag**, because it reached the channel's
+     * scope before [start] had run. Since [start] is idempotent, the guarantee costs nothing, and
+     * putting it here means no present or future caller can get the ordering wrong.
+     *
      * A complete no-op when the build is unconfigured, on the same rule as [start] and [send].
      */
     fun describeProcess(report: ProcessMetricReport)
