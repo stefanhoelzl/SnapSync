@@ -153,12 +153,24 @@ private fun millisOf(raw: String?): Long? {
     }
 }
 
-/** The report's own period when it has one, so a log line says which period it describes. */
+/**
+ * The report's period and **every field it carries**, sorted so two reports read comparably.
+ *
+ * The fields are here and not merely counted because a report that does NOT cross reaches no other
+ * channel: the context only rides a transmitted event, so a quiet report's contents would exist
+ * nowhere. That was measured the hard way — a 73-field window covering a deliberate experiment
+ * arrived, did not cross, and left behind only the number 73, which is the "absence is never silent"
+ * rule failing in the one channel meant to guarantee it.
+ *
+ * Size is bounded and already accepted: ~50–100 fields is a few KB, three orders of magnitude under
+ * the call stacks this design excludes outright.
+ */
 private fun describe(report: ProcessMetricReport): String {
     val begin = report.fields[PROCESS_METRIC_WINDOW_BEGIN]
     val end = report.fields[PROCESS_METRIC_WINDOW_END]
     val period = if (begin != null && end != null) "$begin .. $end" else "no period reported"
-    return "$period, ${report.fields.size} field(s)"
+    val fields = report.fields.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}=${it.value}" }
+    return "$period, ${report.fields.size} field(s) | $fields"
 }
 
 /**

@@ -84,15 +84,35 @@
 
 ## 9. The deliberate experiment (settles an Open Question)
 
-- [ ] 9.1 Force-quit the app by swipe a known number of times, deliberately.
-- [ ] 9.2 After the next report, check whether `cumulativeAbnormalExitCount` rose by that number.
-- [ ] 9.3 Record the answer, and narrow the threshold if ordinary force-quit turns out to trip it.
+- [x] 9.1 Force-quit the app by swipe a known number of times, deliberately. **5 swipes on
+      2026-09-11, plus 2 agent SIGKILLs, recorded as a baseline before the window closed.**
+- [x] 9.2 After the next report, check whether `cumulativeAbnormalExitCount` rose by that number.
+      **It did not rise at all**: the 73-field window did not cross, and the threshold fires on any
+      non-normal counter — so all 7 terminations counted as NORMAL (PROBE-FINDINGS §10).
+- [x] 9.3 Record the answer, and narrow the threshold if ordinary force-quit turns out to trip it.
+      **No narrowing needed** — `abnormal` is quiet, so it stays in the threshold as a high-signal
+      counter. Retracts the earlier guess that the probe's 6 abnormal exits were dev SIGKILLs.
+
+## 11. A quiet report left its fields nowhere (found by §10)
+
+- [x] 11.1 The device-log line carried only the field COUNT, so a non-crossing report's contents
+      reached no channel at all — the context only rides a transmitted event. This contradicted this
+      change's own `diagnostic-logging` delta ("The line SHALL carry the report's fields"). The line
+      now carries every field, sorted.
+- [x] 11.2 Pin it: two `commonTest` cases assert a quiet report's values are recoverable from its own
+      line, and that fields are sorted so two reports read comparably.
+- [ ] 11.3 ⏰ Re-read a window with the fix shipped, to put `normal ≈ 7 · abnormal = 0` behind §10's
+      verdict as a measurement rather than an inference from an absence.
 
 ## 10. The missing `process` tag (found by §9)
 
-- [ ] 10.1 An attribution event reported before the deferred graph is forced carries no `process` tag,
+- [x] 10.1 An attribution event reported before the deferred graph is forced carries no `process` tag,
       because arming runs in shell init while `DiagnosticsReporter.start()` runs on graph assembly.
-      Decide the fix: start the reporter alongside arming, or have `describeProcess` ensure the tag.
+      **Fixed**: the handler calls `reporter.start()` before touching the scope. `start()` is
+      idempotent and a no-op without a DSN — both already in the port's contract — so this satisfies
+      that contract from a path that can outrun the composition, at no cost.
 - [ ] 10.2 Cover it so it cannot regress — the requirement that every reported event names its process
       is `crash-reporting`'s, and this is the first path that could reach the scope before `start()`.
+      (Not yet covered: the fake reporter records `start()` and contexts separately, so a test would
+      have to assert ordering between them.)
 - [ ] 10.3 Re-verify on a TestFlight build that an attribution event carries the tag.

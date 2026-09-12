@@ -31,6 +31,13 @@ class ProcessMetricHandler(
 ) {
 
     fun handle(report: ProcessMetricReport) {
+        // The reporter's own contract says `start()` is the first act, and it is idempotent and a
+        // no-op without a DSN — so calling it here costs nothing and satisfies that contract from a
+        // path that can outrun the composition. It has to: arming happens in the shell's own
+        // initialization so a cold background wake is covered, while the composition starts the
+        // reporter only when the deferred graph is forced. Measured: the first real attribution event
+        // (SNAPSYNC-38) arrived carrying NO `process` tag, because it reached the scope first.
+        reporter.start()
         val emissions = processMetricEmissions(report)
         // Why it crossed, carried WITH the report rather than as transport tags. The vocabulary is
         // open precisely so a derived fact can ride alongside the measured ones, and it keeps the
