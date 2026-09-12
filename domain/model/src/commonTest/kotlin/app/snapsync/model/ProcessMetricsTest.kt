@@ -255,3 +255,39 @@ class ProcessMetricsCallStackTest {
         assertTrue(flat.isEmpty())
     }
 }
+
+/**
+ * The report line carries every field (capability `diagnostic-logging`).
+ *
+ * Pinned because the code and the spec disagreed silently: the delta said the line carries the
+ * report's fields, the implementation logged only how many there were, and nothing caught it —
+ * `openspec validate --strict` checks structure, not truth. It surfaced only when a 73-field window
+ * covering a deliberate experiment arrived, did not cross, and left the numbers nowhere.
+ */
+class ProcessMetricsLineTest {
+
+    @Test
+    fun `a quiet report's fields are recoverable from its own line`() {
+        val report = ProcessMetricReport(
+            mapOf(
+                PROCESS_METRIC_WINDOW_BEGIN to "2026-09-11 00:00:00",
+                PROCESS_METRIC_WINDOW_END to "2026-09-12 00:00:00",
+                "$PROCESS_EXIT_PREFIX.foregroundExitData.$NORMAL_EXIT_SUFFIX" to "7",
+            ),
+        )
+        val line = processMetricEmissions(report).single().message
+        // The window, so a reader knows which period this describes...
+        assertTrue("2026-09-11 00:00:00 .. 2026-09-12 00:00:00" in line)
+        // ...and the values themselves, which no other channel carries for a non-crossing report.
+        assertTrue("$PROCESS_EXIT_PREFIX.foregroundExitData.$NORMAL_EXIT_SUFFIX=7" in line, line)
+    }
+
+    @Test
+    fun `fields are sorted so two reports read comparably`() {
+        val line = processMetricEmissions(
+            ProcessMetricReport(mapOf("zulu" to "1", "alpha" to "2", "mike" to "3")),
+        ).single().message
+        assertTrue(line.indexOf("alpha=") < line.indexOf("mike="), line)
+        assertTrue(line.indexOf("mike=") < line.indexOf("zulu="), line)
+    }
+}
