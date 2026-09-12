@@ -149,6 +149,10 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
      * nothing is carved out of it.
      */
     override fun describeProcess(report: ProcessMetricReport) {
+        // The port's guarantee: describing implies started. Idempotent, and a no-op without a DSN, so
+        // this is free — and it is what keeps an attribution that outruns the composition from
+        // reaching the scope before the `process` tag is on it.
+        start()
         if (!isConfigured) return
         Sentry.configureScope { scope -> scope.setContext(PROCESS_METRIC_CONTEXT, report.fields) }
     }

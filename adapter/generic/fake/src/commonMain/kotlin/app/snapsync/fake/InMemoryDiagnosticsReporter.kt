@@ -36,6 +36,10 @@ internal class InMemoryDiagnosticsReporter(
     }
 
     override fun describeProcess(report: ProcessMetricReport) {
+        // The port's guarantee: describing implies started. Modelled here as well as in the real
+        // impl, because a fake that skipped it would model a contract nobody has — and this is the
+        // half a test can actually observe.
+        start()
         // The contract's no-op, and its "replaces rather than accumulates" half: the cell holds the
         // most recent account, never a growing pile.
         if (!isConfigured) return
