@@ -1,0 +1,5 @@
+runner-profile: macos
+build: D=$(sed -n 's/^snapsync\.deployment=//p' ~/.gradle/gradle.properties 2>/dev/null | tail -1); python3 scripts/resolve-deployment.py "${D:-prod}" --quiet && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -destination generic/platform=iOS -archivePath artifacts/SnapSync.xcarchive CODE_SIGNING_ALLOWED=NO archive
+archive: artifacts/SnapSync.xcarchive
+project: iosApp/iosApp.xcodeproj
+configuration: Debug

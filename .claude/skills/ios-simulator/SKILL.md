@@ -16,8 +16,9 @@ The SE2 cannot do three things this can: run **two members of one event at once*
 photo library headlessly** (`SNAPSYNC_WIPE_GALLERY` needs a physical tap on the platform's own delete
 confirmation), and **set permission state headlessly**. It is also disposable and parallel.
 
-**It needs NO device lease.** Nothing here touches the phone, `scripts/device-guard` does not fence
-`xcrun`/`simctl`, and two agents can hold two simulators at once. That is the opposite of `ios-device`,
+**It needs NO device lease.** Nothing here touches the phone, the global `ios-device` guard does not
+fence `xcrun`/`simctl`, and two agents can hold two simulators at once. That is the opposite of the
+phone (`snapsync-device`),
 and it is the main reason this is its own skill.
 
 Everything runs on the macOS side of the **dev build loop** — load `ssh-mac-build` for the session. To

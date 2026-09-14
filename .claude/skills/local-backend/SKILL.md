@@ -37,8 +37,9 @@ of it can ship.
    `deployments/local.json` and re-running the resolver. Load **`ssh-mac-build`** → *Pointing a build at
    a local backend* for the exact commands. A quick tunnel's hostname is random per session, so the IPA
    is rebuilt per session (~1 min incremental Debug).
-3. **Install, launch, then RESET over the channel** — load **`ios-device`** (which owns the device lease
-   every phone command requires) to install and launch, then **`rig-channel`** for
+3. **Install, launch, then RESET over the channel** — load **`snapsync-device`** (it has you load the
+   global `ios-device` skill, which owns the device lease every phone command requires) to sign, install
+   and launch, then **`rig-channel`** for
    `POST /device/reset`. The reset is not optional; see below.
 
 Reset is `rm -rf api/.localstore`. This is the deliberate **inverse** of the production rule: no
@@ -119,4 +120,4 @@ reconcile, not a re-upload of the library.
 
 `find api/.localstore -type f` — objects land as `api/.localstore/objects/<key>`, keys mapping 1:1 onto
 the production keys. Against the **deployed** backend the oracle is the bunny storage zone instead;
-see `ios-device` → *Verifying real uploads*.
+see `snapsync-device` → *Verifying real uploads*.

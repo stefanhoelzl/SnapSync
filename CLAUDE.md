@@ -78,7 +78,7 @@ openspec/       specs/ (contract of record) + changes/archive/ (decision records
 architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit; stale blocks the PR
 metadata/       App Store listing copy + App Review notes
 screenshots/    the 6 committed raw captures both the listing and the site derive from
-scripts/        build and dev tooling, incl. the device lease + guard (see On-device iOS)
+scripts/        build and dev tooling (the phone's lease, guard and re-sign are the global `ios-device` skill's)
 .ship/          this repo's half of the global `/ship` skill - gates, PR-title policy,
                 post-merge hook, merge budgets (contract: `~/.claude/skills/ship/hooks.md`)
 tools/ config/ gradle/            more build tooling
@@ -89,10 +89,11 @@ tools/ config/ gradle/            more build tooling
 
 ## Runbooks (load the skill before you start)
 
-- **Touching the connected iPhone** - install, launch, screenshot, device logs -> load **`ios-device`**.
-  It opens with the **device lease**, which `scripts/device-guard` requires before any of it will run.
-  It stops at the running app: to *drive* one, see `rig-channel` below.
-  (`pymobiledevice3`, `dvt`, the libimobiledevice tools)
+- **Touching the connected iPhone** - install, launch, screenshot, device logs -> load **`snapsync-device`**.
+  It first has you load the machine-global `ios-device` skill, which owns the **device lease** (shared by
+  every project on this machine; its guard hook refuses device commands without it), the Linux re-sign
+  and the install. It stops at the running app: to *drive* one, see `rig-channel` below.
+  (`pymobiledevice3`, `dvt`, the libimobiledevice tools, `.ios-device.yml`)
 - **Seeing or clicking the app's UI without a device** -> load **`ui-harness`**. 🚫 **Never**
   `java.awt.Robot`, and never capture the real screen `:0` - it raises a portal consent prompt and
   **blocks until someone answers**. (`:test:harness-driver`, `driveForge`, `driveWorld`)
@@ -346,7 +347,7 @@ git add screenshots/ && git commit
 :app:ios:extension     iOS ≥26.1 background-upload extension: the composition root (UploadExtensionRoot) calling :domain compose/'s uploadCore over :adapter:ios:ext-safe (which holds the PhotoKit platform adapter) + :adapter:generic:app — the SnapSyncUploadKit framework; thin, untested (orchestration + tests live in :domain feature/upload)
 :app:ios:forge         the FORGE binary (built ONLY under -Psnapsync.forge=true): the real StatusScreen over forged sources, for the marketing screenshots. A separate module and Xcode target because that is the only way to CONTAIN it — it links neither :app:ios nor the live graph, so a forge process cannot boot the live stack because there is nothing in it to boot (spec module-architecture, "A build-time-only module is contained by compilation"). Without the property it compiles NOTHING (empty srcDirs), and :ui:presentation stops carrying the preset table too
 :test:world            test-only shared infra: the controllable in-memory "world" — BackendStore + MockEngine mini-edge + operator levers/wrappers rigging :adapter:generic:fake's honest doubles — whose World.core IS the real AppCore from the SAME snapSyncApp the iOS shell calls (features, flows, and the UserCommands bundle are production instances), with the extension-tier cycle from the same uploadCore. commonMain also hosts the LedgerStore/DownloadStore CONTRACTS (a test source set cannot be exported; :adapter:generic:app's driver tests and the fake-backed runs extend them from their own test source sets). jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
-:test:architecture     test-only JVM guards for invariants the compiler cannot express (capability architecture-guards), all gating ./gradlew build: the zone gates (model-purity, ports→model, feature-blindness, flow-no-ports, presentation-imports), KeychainContainmentTest (no SecItem* outside :adapter:ios:ext-safe — catches fully-qualified calls, which no linter can see on iosMain), the extension-safety gate (no platform.UIKit/BackgroundTasks in extension-linked source), RuntimeIdentityTest (every OS-held literal exactly once), the entitlements guard (never raise default-data-protection to NSFileProtectionComplete — it would make every App-Group file unreadable while locked, killing the background tier), SwiftShellGuardTest + KotlinShellGuardTest (the shell decision pins, exact in both directions; detektAppShell itself gates inside check), ModuleSetTest (settings == the target module set), MixedPortImplTest (no port interface beside a technology impl), DeletionLedgerTest (the migration's retired dead weight stays dead), FakeHonestyTest, LawsDigestTest, RunbookSkillsTest (every skill CLAUDE.md's Runbooks block points at exists, and the ios-device skill's SNAPSYNC_* launch-trigger index equals the literals in production Kotlin - the two duplicates the runbook split deliberately keeps, held loud-when-stale), EventLink guards
+:test:architecture     test-only JVM guards for invariants the compiler cannot express (capability architecture-guards), all gating ./gradlew build: the zone gates (model-purity, ports→model, feature-blindness, flow-no-ports, presentation-imports), KeychainContainmentTest (no SecItem* outside :adapter:ios:ext-safe — catches fully-qualified calls, which no linter can see on iosMain), the extension-safety gate (no platform.UIKit/BackgroundTasks in extension-linked source), RuntimeIdentityTest (every OS-held literal exactly once), the entitlements guard (never raise default-data-protection to NSFileProtectionComplete — it would make every App-Group file unreadable while locked, killing the background tier), SwiftShellGuardTest + KotlinShellGuardTest (the shell decision pins, exact in both directions; detektAppShell itself gates inside check), ModuleSetTest (settings == the target module set), MixedPortImplTest (no port interface beside a technology impl), DeletionLedgerTest (the migration's retired dead weight stays dead), FakeHonestyTest, LawsDigestTest, RunbookSkillsTest (every skill CLAUDE.md's Runbooks block points at exists in-repo, and production Kotlin declares no SNAPSYNC_* launch trigger), EventLink guards
 :test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
 :test:harness-driver   test-only dev infra (non-gating, no spec): serves EITHER desktop harness over HTTP with no window — composes the shipped ForgeHarnessRoot/WorldHarnessRoot into an offscreen Compose scene (CPU raster Skia; no X server, no screen-capture portal) so an agent can click the real buttons and read back the real pixels + semantics tree. Runbook above; rationale in Driver.kt
 :test:rig              test-only dev infra (non-gating, no spec): the CONTROL CHANNEL — a Ktor CIO server linked into :app:ios ONLY under -Psnapsync.rig=true, so an agent can force OS-callback entry points and read live state over usbmux forward. Contained at COMPILE TIME (a production build contains none of it); it contributes its own call site into :app:ios rather than making the shell carry a seam. The one module that may depend on ktor-server-*. Runbook: load the `rig-channel` skill
@@ -393,7 +394,7 @@ with the proxy task above).
   processes, each writing its **own** verbatim, un-redacted log - the app to its `Documents/debug.log`,
   the extension to `ext-debug.log` in the **shared App Group** (not pullable, so getting it over USB
   takes one extra launch). Each is the **canonical un-redacted channel** (os_log redacts `<private>`)
-  and rolls to a `.1` sibling past 10 MB. To pull either off a device, load the **`ios-device`** skill.
+  and rolls to a `.1` sibling past 10 MB. To pull either off a device, load the **`snapsync-device`** skill.
 - **Sending the logs off-device** (capability `diagnostic-logging`): **double-tap the "SnapSync" label**
   at the top of any screen → a confirm dialog → one diagnostic dump reaches Bugsink (state + counts +
   the tail of BOTH logs, ~700 KB total, sent **verbatim** — ids intact, unlike automatic crash
