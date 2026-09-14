@@ -43,16 +43,16 @@
 
 ## 7. Device verification (SE2), before merge
 
-- [ ] 7.1 Take the global lease: `ch bg ~/.claude/skills/ios-device/lease "<why>"`. Confirm the sidebar shows `ios-device` and no project hook fires.
-- [ ] 7.2 Open a runner session, set `snapsync.rig=true` in the runner's `~/.gradle/gradle.properties`, and run the global recipe's build and per-target settings dump. Pull `build/ios-device/`.
-- [ ] 7.3 `secrets-env -- ~/.claude/skills/ios-device/sign --app build/ios-device/app --settings build/ios-device/settings --out build/ios-device/app.ipa` succeeds. Record the profile names and expiry dates it reports.
-- [ ] 7.4 `~/.claude/skills/ios-device/install build/ios-device/app.ipa` succeeds, then launch the app.
-- [ ] 7.5 Over the rig channel, `GET /device/state` reports a device id. That proves the keychain group `<TEAM>.app.snapsync.shared` is claimed by both bundles.
-- [ ] 7.6 Join a fresh event created on this device, seed a photo, and confirm its object lands in the backend storage zone.
-- [ ] 7.7 Stop the runner, kill the lease shell, and confirm the lock file under `~/.cache/ios-device/locks/` is gone.
+- [x] 7.1 Take the global lease: `ch bg ~/.claude/skills/ios-device/lease "<why>"`. Confirm the sidebar shows `ios-device` and no project hook fires.
+- [x] 7.2 Open a runner session, set `snapsync.rig=true` in the runner's `~/.gradle/gradle.properties`, and run the global recipe's build and per-target settings dump. Pull `build/ios-device/`.
+- [x] 7.3 `secrets-env -- ~/.claude/skills/ios-device/sign --app build/ios-device/app --settings build/ios-device/settings --out build/ios-device/app.ipa` succeeds. Record the profile names and expiry dates it reports.
+- [x] 7.4 `~/.claude/skills/ios-device/install build/ios-device/app.ipa` succeeds, then launch the app.
+- [x] 7.5 Over the rig channel, `GET /device/state` reports a device id. That proves the keychain group `<TEAM>.app.snapsync.shared` is claimed by both bundles. (`/device/state` carries no device-id field. Measured instead from both processes' logs after the install: app and extension each `read` the same id `DD92FAC9-…`, with no -34018.)
+- [x] 7.6 Join a fresh event created on this device, seed a photo, and confirm its object lands in the backend storage zone.
+- [x] 7.7 Stop the runner, kill the lease shell, and confirm the lock file under `~/.cache/ios-device/locks/` is gone.
 
 ## 8. Ship and follow-through
 
-- [ ] 8.1 Open the PR with label `internal`. Its body states the uncoordinated window for sibling workspaces on stale branches; `/ship` it.
-- [ ] 8.2 After merge, on confirmation: `gh secret delete DEV_PROVISIONING_PROFILE_BASE64`.
-- [ ] 8.3 After merge: remove the "Not coordinated: SnapSync's `scripts/device-lease`" trap from `~/.claude/skills/ios-device/SKILL.md` and commit it in the skills repo.
+- [x] 8.1 Open the PR with label `internal`. Its body states the uncoordinated window for sibling workspaces on stale branches; `/ship` it. (Ticked at archive time: the archive and spec sync ride along with this same `/ship`, which follows immediately.)
+- [x] 8.2 `gh secret delete DEV_PROVISIONING_PROFILE_BASE64` (done before merge, at the operator's request).
+- [x] 8.3 Remove the "Not coordinated: SnapSync's `scripts/device-lease`" trap from `~/.claude/skills/ios-device/SKILL.md` and commit it in the skills repo (done before merge, at the operator's request: `a675b0c`).
