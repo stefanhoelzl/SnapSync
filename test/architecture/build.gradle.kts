@@ -96,8 +96,7 @@ tasks.test {
             include("CLAUDE.md")
             include("openspec/specs/module-architecture/spec.md")
             // `RunbookSkillsTest`'s subjects (capability `architecture-guards`): CLAUDE.md's runbook
-            // pointers must resolve to these files, and `ios-device`'s launch-trigger index must equal
-            // the `SNAPSYNC_*` literals in production Kotlin. Without them declared, renaming or
+            // pointers must resolve to these files. Without them declared, renaming or
             // deleting a skill leaves this task UP-TO-DATE — a dangling pointer is invisible by
             // construction, so a guard that stops re-running is the same as no guard at all.
             include(".claude/skills/*/SKILL.md")
@@ -115,27 +114,4 @@ tasks.test {
         },
     ).withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("guardedSources")
-
-    // `DeploymentKeyProvenanceTest` scans for READERS of a deployment key, and a reader can live in any
-    // text surface — a script, a workflow, a skill, a build file. Its scan is therefore repo-wide by
-    // extension rather than a list of known homes ("Gates fail closed on novelty"), and this input set
-    // MIRRORS THAT SCAN: the two must name the same surfaces, or the task reports UP-TO-DATE while the
-    // guard's subject has moved. Verified the hard way — with only the tree above declared, adding a
-    // reader under `scripts/` left the task UP-TO-DATE and the guard never ran.
-    //
-    // `openspec/` is excluded on both sides: it is where the split is documented, and holds no reader.
-    // `**/build/**` is excluded because those are other tasks' outputs, which this task may not consume
-    // without a dependency edge.
-    inputs.files(
-        fileTree(rootDir) {
-            listOf("md", "kt", "kts", "sh", "yml", "yaml", "py", "ts", "json", "plist", "xcconfig", "entitlements")
-                .forEach { include("**/*.$it") }
-            exclude("**/build/**")
-            exclude("**/node_modules/**")
-            exclude("openspec/**")
-            exclude(".gradle/**")
-            exclude(".idea/**")
-        },
-    ).withPathSensitivity(PathSensitivity.RELATIVE)
-        .withPropertyName("deploymentKeyReaderSurfaces")
 }

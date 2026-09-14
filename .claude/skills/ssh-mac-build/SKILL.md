@@ -1,12 +1,12 @@
 ---
 name: ssh-mac-build
 description: >-
-  Build, test, sign and package a SnapSync iOS build on a real macOS runner from
-  Linux — open a session with the `ssh-runner` skill, rsync, xcodebuild an
-  unsigned archive, re-sign it by hand, and pull the IPA back. Use whenever the
-  task needs a Mac, an Xcode build, an .xcarchive, an IPA, code signing,
-  provisioning profiles for a build, or running the iOS simulator tests
-  (iosSimulatorArm64Test) that cannot run on Linux.
+  Build and test SnapSync on a real macOS runner from Linux — open a session with
+  the `ssh-runner` skill, rsync, xcodebuild an unsigned archive for the global
+  `ios-device` skill to sign on Linux, point a build at a local backend, or run
+  the iOS simulator tests (iosSimulatorArm64Test) that cannot run on Linux. Use
+  whenever the task needs a Mac, an Xcode build, an .xcarchive, an IPA, or the
+  SnapSync specifics of signing and provisioning profiles for a dev build.
 ---
 
 # ssh-mac-build — the headless macOS build loop
@@ -16,13 +16,18 @@ compileIosMainKotlinMetadata` is the **Linux-runnable proxy** — it compiles `i
 (and cinterop) without a Mac, so it catches iOS-only Kotlin breakage. Everything past that needs a
 Mac.
 
-**This skill owns the SnapSync half only** — the archive, the re-sign, the deployment, the
-profiles. The macOS box itself belongs to the global **`ssh-runner`** skill, configured by
-`.ssh-runner.yml` at the repo root: one warm runner, many iterations, instead of one CI run per
-change. Dev infrastructure — `workflow_dispatch`-only, no status check, gates nothing.
+**This skill owns the SnapSync half only** — the archive, the deployment, the properties. Three global
+skills own the rest:
 
-To install the resulting IPA on the phone, load `ios-device`. To drive the running app, load
-`rig-channel`. To refresh an expired provisioning profile, load `asc-portal`.
+- **`ssh-runner`** owns the macOS box, configured by `.ssh-runner.yml` at the repo root: one warm
+  runner, many iterations, instead of one CI run per change. Dev infrastructure —
+  `workflow_dispatch`-only, no status check, gates nothing.
+- **`ios-device`** owns the device loop — build on the runner, **sign on Linux**, install, launch —
+  configured by `.ios-device.yml` at the repo root. The runner holds **no signing material**.
+- **`asc-portal`** mints provisioning profiles.
+
+To install the IPA, load the global `ios-device` skill, then `snapsync-device` for the SnapSync facts.
+To drive the running app, load `rig-channel`.
 
 ## The session
 
@@ -35,7 +40,6 @@ test -f ~/.claude/skills/ssh-runner/ssh-runner.ts || {
 ID=$(node ~/.claude/skills/ssh-runner/ssh-runner.ts start | tail -1)   # id is on the LAST line
 node ~/.claude/skills/ssh-runner/ssh-runner.ts sync $ID ./ :           # ':' = the checkout dir
 node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID '<command>'    # runs in the workspace
-node ~/.claude/skills/ssh-runner/ssh-runner.ts sync $ID :artifacts/SnapSync.ipa ./
 node ~/.claude/skills/ssh-runner/ssh-runner.ts stop $ID                # always stop
 ```
 
@@ -46,13 +50,13 @@ command string** — `$R` does not match it, so the shorthand prompts on every s
 
 ⚠️ **`:` anchors at the WORKSPACE, not at `$HOME`** — unlike the `scp` the old loop used, whose
 relative paths were home-relative. So the loop archives into `artifacts/` *inside* the workspace and
-`.ssh-runner.yml` excludes that directory, which is also what stops the next push's `--delete` from
-removing the build you just made. Measured 2026-09-11: pulling `:artifacts/…` while archiving to
-`$HOME/artifacts` fails with `No such file or directory` naming a workspace path.
+`.ssh-runner.yml` excludes that directory (and `ios-device-out/`, the global recipe's staging
+directory), which is also what stops the next push's `--delete` from removing the build you just
+made. Measured 2026-09-11: pulling `:artifacts/…` while archiving to `$HOME/artifacts` fails with
+`No such file or directory` naming a workspace path.
 
-Everything the build needs is already in the job (see `.ssh-runner.yml`): JDK 25, Gradle, a warm
-`~/.konan`, the Apple Development certificate, and both dev provisioning profiles. Read that file
-rather than re-deriving it; it carries the reasoning for each.
+Everything the build needs is already in the job (see `.ssh-runner.yml`): JDK 25, Gradle and a warm
+`~/.konan`. Read that file rather than re-deriving it; it carries the reasoning for each.
 
 Do **not** wrap `start` in `ch bg`: it is the workspace genuinely waiting on its own build, so it
 *should* read as busy (CLAUDE.md, *Agent harness limits*).
@@ -74,23 +78,22 @@ claims rests entirely on that property never being set in a committed file. `~/.
 uncommittable by construction, survives every rsync with no exclusion, and needs no cleanup: the
 runner is gone at `stop`.
 
-### Always re-render the deployment on the runner, before `xcodebuild`
+## 1. Build an UNSIGNED archive — `.ios-device.yml`
 
-```bash
-node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID 'python3 scripts/resolve-deployment.py prod --quiet'
-```
+Run the global `ios-device` skill's build step (its step 3) unchanged: it runs the `build:` line from
+`.ios-device.yml` on the runner, stages the `.app`, dumps each target's build settings, and pulls both
+back to `build/ios-device/`. The build line does two things, in this order:
 
-`Deployment.xcconfig` is generated and gitignored, and `.ssh-runner.yml` excludes it from the sync
-so a stale local rendering cannot be pushed. It must exist **before `xcodebuild` LOADS the
-project** — Gradle's own re-resolve fires in the `embedAndSignAppleFrameworkForXcode` run-script
-phase, which is too late for an xcconfig. One line, and the ordering question disappears in both
-the prod and the local case.
-
-## 1. Build an UNSIGNED archive
-
-Compiles the Kotlin frameworks + assembles app+appex. The Xcode project is `CODE_SIGN_STYLE=Automatic`,
-which needs `-allowProvisioningUpdates` + the Admin ASC key (absent here by design) — so a *signed*
-archive is impossible on the box. Build unsigned, re-sign by hand (step 2).
+1. **Renders the deployment before `xcodebuild` loads the project.** `Deployment.xcconfig` is generated
+   and gitignored, and `.ssh-runner.yml` excludes it from the sync so a stale local rendering cannot be
+   pushed. Gradle's own re-resolve fires in the `embedAndSignAppleFrameworkForXcode` run-script phase,
+   which is too late for an xcconfig. The line reads **`snapsync.deployment` from the runner's
+   `~/.gradle/gradle.properties`** (default `prod`) and hands it to `scripts/resolve-deployment.py` —
+   so the deployment is named ONCE, and the xcconfig and `Deployment.plist` can never come from two
+   different deployments.
+2. **Archives Debug with `CODE_SIGNING_ALLOWED=NO`.** The Xcode project is `CODE_SIGN_STYLE=Automatic`,
+   which needs `-allowProvisioningUpdates` and the Admin ASC key, absent on the box by design. Signing
+   happens afterwards, on Linux.
 
 **BUILD DEBUG, NOT RELEASE.** `-configuration Debug` links `linkDebugFramework`, skipping the
 Kotlin/Native LLVM optimizer that dominates a Release link — and it reruns FULLY on every relink, so it
@@ -98,50 +101,29 @@ costs you on every iterate, not just cold. Measured on the warm runner (macos-26
 `~/.konan` warm), archive of a ONE-FILE Kotlin change: **Release 449 s vs Debug 57 s (~8×)**;
 cold-from-empty-`build/`: Release 523 s vs Debug 348 s; no-op rebuild ~30 s either way. The dev/sideload
 IPA needs no optimization, and the Debug archive is a complete installable bundle (arm64 app binary +
-`BackgroundUploadExtension.appex` in `Extensions/`) — step 2 is config-agnostic, so ONLY this
-`-configuration` line changes. Switch to Release only when you need an optimization-representative
-build. Keep the cold cost paid once: never wipe `build/` or `.gradle` between iterates (`.ssh-runner.yml`
-already excludes them from the sync) and keep the Gradle daemon alive (no `--no-daemon`) — an
-incremental Debug iterate is then ~1 min.
+`BackgroundUploadExtension.appex` in `Extensions/`). Switch to Release (in `.ios-device.yml`: `build:`
+and `configuration:` together) only when you need an optimization-representative build. Keep the cold
+cost paid once: never wipe `build/` or `.gradle` between iterates (`.ssh-runner.yml` already excludes
+them from the sync) and keep the Gradle daemon alive (no `--no-daemon`) — an incremental Debug iterate
+is then ~1 min.
 
-```bash
-node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID \
-  'xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
-     -destination "generic/platform=iOS" -archivePath artifacts/SnapSync.xcarchive \
-     CODE_SIGNING_ALLOWED=NO archive'
-```
+## 2. Sign and install — the global `ios-device` skill
 
-## 2. Re-sign and package — `scripts/dev-sign`
+Steps 4–5 of that skill: `sign` then `install`, both on Linux. There is no SnapSync signing script any
+more. What SnapSync's history taught about signing is now enforced by `sign` itself, and is worth
+knowing when it refuses:
 
-```bash
-node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID 'bash scripts/dev-sign artifacts/SnapSync.xcarchive'
-node ~/.claude/skills/ssh-runner/ssh-runner.ts sync $ID :artifacts/SnapSync.ipa ./
-node ~/.claude/skills/ssh-runner/ssh-runner.ts stop $ID
-```
-
-The script signs inside-out (frameworks → extension → app), embeds both profiles, and writes
-`SnapSync.ipa` beside the archive. **Its header carries the full rationale** — read it before
-changing anything in it. The two things worth knowing from out here:
-
-⚠️ **A PROFILE IS A GRANT; ENTITLEMENTS ARE A CLAIM.** The profile says "you MAY use anything in
-`<TEAM>.*`"; entitlements say "I AM this". Copying one into the other is a category error, and it is
-silently wrong for every **wildcard** key an Apple dev profile carries. `associated-domains: *` makes
-the app claim every domain and therefore none, killing universal links. `keychain-access-groups:
-<TEAM>.*` is worse: since device-identity names the group explicitly, the read throws
-`errSecMissingEntitlement` (-34018) and the app runs with no device id — a value written once and
-never rewritten, so the mistake freezes permanently on the device. This is why the script GENERATES
-the claim from the repo's own `.entitlements` rather than narrowing the grant key by key: narrowing
-only ever fixes the wildcard you already know about.
+⚠️ **A PROFILE IS A GRANT; ENTITLEMENTS ARE A CLAIM.** A dev profile *grants* wildcards
+(`associated-domains: *`, `keychain-access-groups: <TEAM>.*`); a wildcard *claim* makes the app claim
+every domain and therefore none (every universal link opens Safari), and makes the explicit-group
+keychain read throw `errSecMissingEntitlement` (-34018) — the app then runs with no device id, a value
+written once and never rewritten. `sign` generates each claim from the repo's own `.entitlements` and
+refuses any wildcard in it.
 
 ⚠️ **An EMPTY interpolated value lands in the same place by a different road.** `$(AppIdentifierPrefix)`
-→ a bare `.`, so the binary claims `.app.snapsync.shared` and boots with no device id — and no existing
-check sees it, because the wildcard guard tests for a leaked grant and `.app.snapsync.shared` contains
-no wildcard, while `codesign -v` validates the signature rather than the claim. Hence the script's
-fail-closed checks and its POSITIVE post-sign assertion beside the negative one, and, in the repo, a
-`:test:architecture` gate that no file reads a fragment-owned key out of `Config.xcconfig` (capability
-`deployment-configuration`).
-
-Then install it — **SIGKILL the app first**; see `ios-device`.
+→ a bare `.` claims `.app.snapsync.shared` (2026-08-25). `sign` expands each variable from that target's
+real build settings and refuses one that is absent or empty, then refuses to write the IPA unless the
+entitlements signed into each binary **equal** the claim.
 
 ## Pointing a build at a local backend
 
@@ -154,8 +136,9 @@ device-facing values moved out of the xcconfig into that bundled resource (capab
 override is **accepted and ignored**, and the build silently bakes the *production* host instead. Do not
 reach for it.
 
-Retarget by **selecting the deployment**: write the rig's host into `deployments/local.json`, then name
-`local` in both places on the runner.
+Retarget by **selecting the deployment**: write the rig's host into `deployments/local.json`, sync, and
+name `local` in the runner's `~/.gradle` — once. The `.ios-device.yml` build line picks it up for both
+the resolver and Gradle.
 
 ```bash
 H=$(cat api/.localdev/host)      # e.g. random-words.trycloudflare.com  (no scheme)
@@ -167,16 +150,12 @@ p.write_text(json.dumps(d, indent=2) + "\n")
 EOF
 node ~/.claude/skills/ssh-runner/ssh-runner.ts sync $ID ./ :
 node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID \
-  'printf "snapsync.deployment=local\n" >> ~/.gradle/gradle.properties
-   python3 scripts/resolve-deployment.py local --quiet'
-# then the unchanged archive + dev-sign steps above
+  'printf "snapsync.deployment=local\n" >> ~/.gradle/gradle.properties'
+# then the unchanged build + sign + install steps above
 ```
 
-Both halves are needed and for different reasons: the **property** is what Gradle's own re-resolve
-obeys during the build, and the **manual run** is what puts `Deployment.xcconfig` on disk before
-`xcodebuild` evaluates it. If the two ever named different deployments you would get an xcconfig from
-one and a `Deployment.plist` from the other. Naming `local` once in a single `exec` keeps them
-together.
+The build line takes the **last** `snapsync.deployment=` line, so switching back is another append
+(`snapsync.deployment=prod`), not an edit.
 
 **Verify the bundle before you drive it** — one command, and it turns a silent misdirection into an
 answer you can read:
@@ -204,35 +183,19 @@ DSN-carrying build onto a device (capability `ios-ci`).
 
 ## Provisioning profiles
 
-Same one-time device prerequisites as installing a dev IPA (registered UDID + Developer Mode; see
-`ios-device`). The `DEV_PROVISIONING_PROFILE_BASE64` secret is a **tar of both** the app
-(`app.snapsync`, profile *SnapSync Dev Push*) and extension (`app.snapsync.BackgroundUpload`, *SnapSync
-Ext Dev Push*) dev profiles — `scripts/dev-sign` signs both targets, so both must be present.
+Same one-time device prerequisites as any dev install (registered UDID + Developer Mode; see the
+global `ios-device` skill). SnapSync needs two `IOS_APP_DEVELOPMENT` profiles: the app (`app.snapsync`)
+and the extension (`app.snapsync.BackgroundUpload`).
 
-Refresh it when they expire (~yearly), when you register a new device, **or when you enable a bundle-id
-capability** — that last one silently *invalidates* the affected profile (verified 2026-07-16: enabling
-Associated Domains flipped *SnapSync Dev Push* to `INVALID` while the extension's profile, whose bundle
-id gained nothing, stayed `ACTIVE`). A stale profile is the worst kind of failure here: the re-sign
-resolves entitlements **out of the repo**, so the IPA installs and launches fine and merely lacks the
-capability — no error, no log line.
+`sign` **fetches them itself** from App Store Connect (the `ASC_*` mappings in `.secrets.yaml`), caches
+them in `~/.cache/ios-device/profiles/`, and picks, per bundle, the unexpired profile that lists the
+connected device and the signing certificate and **grants every claimed entitlement**. There is no baked
+profile tar and no GitHub secret to refresh.
 
-Refreshing needs **no Mac and no build** — mint and download both profiles over the ASC API from Linux
-(load `asc-portal` for the credential bridge and `$A`), then tar them **flat** (the workflow globs
-`$WORK/*.mobileprovision` and installs each by its embedded UUID, so filenames are free but nesting
-breaks it):
-
-```
-P="secrets-env -- uvx --from codemagic-cli-tools app-store-connect"
-$P profiles list $A --json                        # find the INVALID one + note cert/device ids
-$P profiles delete <INVALID_PROFILE_ID> $A        # Apple rejects a duplicate name; delete first
-$P profiles create <BUNDLE_RESOURCE_ID> $A --certificate-ids <CERT> --device-ids <DEVICE> \
-     --type IOS_APP_DEVELOPMENT --name "SnapSync Dev Push" --save
-$P profiles get <EXT_PROFILE_ID> $A --save        # the extension's, still ACTIVE — grab it as-is
-# both land in ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
-tar -cf p.tar -C <dir> app.mobileprovision ext.mobileprovision   # FLAT
-base64 -w0 p.tar | gh secret set DEV_PROVISIONING_PROFILE_BASE64
-```
-
-Verify before shipping — decode each and confirm the app's carries what you added and the extension's
-does not: `openssl smime -inform DER -verify -noverify -in <p>.mobileprovision` (works on Linux; no
-`security cms` needed).
+Re-mint a profile (load `asc-portal`) when it expires (~yearly), when you register a new device, **or
+when you enable a bundle-id capability** — that last one silently *invalidates* the affected profile
+(verified 2026-07-16: enabling Associated Domains flipped *SnapSync Dev Push* to `INVALID` while the
+extension's profile, whose bundle id gained nothing, stayed `ACTIVE`). That used to be the worst failure
+here, because the IPA installed and merely lacked the capability. `sign` now refuses such a profile by
+name ("does not grant …"), falls back from its cache to App Store Connect, and refuses again if the fresh
+one is stale too — at which point re-minting is the fix.

@@ -3,7 +3,7 @@
 The iOS platform layer. **Wiring-only and untested** (root `CLAUDE.md` hard rule): all testable
 logic — shared *or* iOS-specific — lives in `domain`/`capability` modules under test; nothing
 testable is parked here. This doc covers what is specific to the iOS surface — the **structure**, not
-the operator procedure. For on-device testing load the **`ios-device`** skill, for builds and signing
+the operator procedure. For on-device testing load the **`snapsync-device`** skill, for builds and signing
 **`ssh-mac-build`**, for portal chores **`asc-portal`** (root `CLAUDE.md` → *Runbooks*); for
 architecture and resolved decisions see the `openspec/specs/` contracts and their `Decision record:`
 pointers into `openspec/changes/archive/`.
@@ -256,8 +256,9 @@ simulator, on an unmeasured belief that a background one could not run there; me
 
 ⚠️ The OS's upload-job registration lives in the **system**, not the app, and survives relaunch and
 reinstall — so on a ≥26.1 device the extension must be **deregistered first** or it uploads behind the
-app-driven tier's back. That procedure, its verification, and the rest of the on-device loop are in the
-**`ios-device`** skill (root `CLAUDE.md` → *Runbooks*). Irrelevant on a real 18–26.0 device, where no
+app-driven tier's back. The on-device loop is in the **`snapsync-device`** skill (root `CLAUDE.md` →
+*Runbooks*), and pinning which upload mechanism runs is `rig-channel`'s
+`POST /device/upload-mechanism`. Irrelevant on a real 18–26.0 device, where no
 appex can exist at all.
 
 ## Gotchas

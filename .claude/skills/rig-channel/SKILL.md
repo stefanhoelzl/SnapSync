@@ -9,7 +9,7 @@ description: >-
   gallery", "reset the device", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
   anything touching /os, /user, /device or usbmux forward 18099. To install or
-  launch a build first, load `ios-device`.
+  launch a build first, load `snapsync-device`.
 ---
 
 # rig-channel — driving the app's entry points over HTTP
@@ -24,15 +24,17 @@ read the state back. It is **dev infrastructure: non-gating, no spec** — every
 mechanical projection of a contract specified elsewhere, so there is no second way-to-drive that can
 rot or lie.
 
-To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `ios-device`.
+To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `snapsync-device` (which has
+you load the global `ios-device` skill first).
 
 ## Take the device lease first
 
-This skill drives the one phone, so everything here is inside `scripts/device-guard`'s fence. Take
-the lease exactly as `ios-device` describes — as a **background** call, **always** under `ch bg`:
+This skill drives a phone every project on this machine shares, so everything here is inside the
+global `ios-device` guard's fence. Take the lease exactly as that skill describes — as a
+**background** call, **always** under `ch bg`:
 
 ```
-ch bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
+ch bg ~/.claude/skills/ios-device/lease "<why you need the phone>"      # blocks; THIS process is the lease
 ```
 
 ## Containment — why this never ships
@@ -42,10 +44,9 @@ into `:app:ios`. Without the property it adds **neither**, so a production build
 source at all — not a stub, not an inert branch. Measured: `_kclass:app.snapsync.rig.RigServer` is
 present in the binary with the property and there are **zero** `app.snapsync.rig` symbols without it.
 
-This is also why there is no `SNAPSYNC_RIG_*` entry in `ios-device`'s launch-trigger index:
-`SNAPSYNC_RIG_PORT` is read by a file that **does not exist** in a production build, so unlike every
-`SNAPSYNC_*` trigger it is inert by construction rather than by a runtime check, and it is deliberately
-not part of `LaunchDirectives`.
+This is also why `SNAPSYNC_RIG_PORT` is not a launch trigger (production Kotlin declares none): it is
+read by a file that **does not exist** in a production build, so it is inert by construction rather
+than by a runtime check.
 
 ## Building and connecting
 
@@ -149,7 +150,7 @@ get the created jobs back, and move their bytes with `POST /device/upload-jobs/p
 
 ## Driving an event end to end
 
-Everything below assumes a rig build installed and launched (`ios-device`) and `usbmux forward 18099`.
+Everything below assumes a rig build installed and launched (`snapsync-device`) and `usbmux forward 18099`.
 
 ```
 # JOIN — the warm universal-link path, same decode -> gate -> join a scanned QR takes
@@ -296,7 +297,7 @@ nothing happened. Poll `/device/state`'s `ready.configResolved` instead of sleep
 `connection refused` is ambiguous between "app not running", "port forward not set up" and "the rig
 failed to bind". The rig logs a bind failure at `Error` naming the address and port, and that log is
 pullable **without** the rig (`apps pull … Documents/debug.log`) — read it before guessing. The usual
-cause is a previous instance still alive holding the port; SIGKILL it (`ios-device` covers that).
+cause is a previous instance still alive holding the port; SIGKILL it (the global `ios-device` skill's restart recipe).
 
 ## Pinning the upload tier
 

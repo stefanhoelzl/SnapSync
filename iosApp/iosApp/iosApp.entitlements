@@ -34,9 +34,9 @@
 	     every invite opens Safari instead of the app. Like App Groups and Push (and unlike keychain
 	     groups), Associated Domains MUST be enabled on the app.snapsync App ID in the Developer
 	     portal, or signed builds fail to provision. Enabling it invalidates existing profiles: CI
-	     re-generates them (-allowProvisioningUpdates), but the dev build loop's baked
-	     DEV_PROVISIONING_PROFILE_BASE64 does not — a stale one yields an IPA whose links silently
-	     open Safari.
+	     re-generates them (-allowProvisioningUpdates); the dev build loop's Linux re-sign (the
+	     global ios-device skill's `sign`) refuses a profile that does not grant this claim, so a
+	     stale dev profile must be re-minted rather than silently shipping links that open Safari.
 	     The extension declares NO associated domain: it never handles URLs. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
