@@ -27,7 +27,7 @@ Decision record: `changes/archive/2026-07-29-add-diagnostic-dump` (the operator-
 extension log's move to the App Group, and the measured Bugsink limits behind the byte budget); the
 required written description, the sheet that collects it, grouping by description (which **reverses**
 that record's constant-message decision), the tag-carried redaction exemption, and the full-height
-sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`; the per-report process-metric line: `changes/add-os-exit-attribution` (to be repointed at its archive path when archived).
+sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`; the per-report process-metric line: `changes/archive/2026-09-14-add-os-exit-attribution`.
 ## Requirements
 
 ### Requirement: Per-process un-redacted device log
