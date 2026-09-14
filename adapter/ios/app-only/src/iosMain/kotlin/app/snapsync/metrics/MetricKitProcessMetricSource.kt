@@ -1,10 +1,11 @@
 package app.snapsync.metrics
 
-import app.snapsync.logging.invocation
+import app.snapsync.logging.IosThreadLogScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.flattenToDottedKeys
 import app.snapsync.ports.ProcessMetricSource
+import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import platform.MetricKit.MXDiagnosticPayload
 import platform.MetricKit.MXMetricManager
@@ -81,6 +82,12 @@ class MetricKitProcessMetricSource(
  * The ObjC end of the subscription — an `NSObject` conforming to MetricKit's subscriber protocol, and
  * nothing else.
  *
+ * Both callbacks claim the log prefix for **their own thread only** ([IosThreadLogScope]). Handling is
+ * inline and launches nothing, so every line of theirs is on the calling thread; a process-wide claim
+ * instead labelled seven concurrent launch lines `[didReceiveMetricPayloads]` (capability
+ * `diagnostic-logging`). ⚠️ If a callback ever hands work to another thread, those lines log
+ * unprefixed — move it to the process-wide claim rather than accept that silently.
+ *
  * Separate from [MetricKitProcessMetricSource] because Kotlin/Native refuses to mix Kotlin and ObjC
  * supertypes, so the class ObjC is handed cannot also be the class `:domain` sees. Internal rather
  * than private: a private nested class was the previous shape, and keeping this one visible to the
@@ -95,7 +102,7 @@ internal class MetricKitSubscriber(
 
     @PlatformEntry
     override fun didReceiveMetricPayloads(payloads: List<*>) =
-        log.invocation("didReceiveMetricPayloads", params = "count=${payloads.size}") {
+        log.invocation(IosThreadLogScope, "didReceiveMetricPayloads", params = "count=${payloads.size}") {
             payloads.forEach { payload ->
                 (payload as? MXMetricPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
@@ -103,7 +110,7 @@ internal class MetricKitSubscriber(
 
     @PlatformEntry
     override fun didReceiveDiagnosticPayloads(payloads: List<*>) =
-        log.invocation("didReceiveDiagnosticPayloads", params = "count=${payloads.size}") {
+        log.invocation(IosThreadLogScope, "didReceiveDiagnosticPayloads", params = "count=${payloads.size}") {
             payloads.forEach { payload ->
                 (payload as? MXDiagnosticPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }

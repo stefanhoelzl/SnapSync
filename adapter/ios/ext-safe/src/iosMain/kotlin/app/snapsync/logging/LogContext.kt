@@ -8,37 +8,82 @@ package app.snapsync.logging
  * process-global mutable lives here in the adapter — where a platform global is legitimate — and not
  * in the core (law "State and authority").
  *
- * It is a **process-global** holder, deliberately NOT a `@ThreadLocal` and NOT a coroutine-context
- * element: the Kermit [co.touchlab.kermit.LogWriter.log] callback is a plain synchronous call with
- * no coroutine context and no knowledge of which thread's work triggered it. A plain global is the
- * only form the writer can read synchronously from any thread, and — being global, not per-thread —
- * the prefix survives dispatcher/thread hops within an invocation (e.g. a Ktor call on the Darwin
- * queue). The trade-off (two genuinely-overlapping invocations can mislabel a line) is accepted:
- * iOS delivers app entry points serially per process and this is a dev-only diagnostic log.
+ * It holds **two** claims, and [current] resolves the thread's own before the process-wide one.
  *
- * "Outermost wins": the first [enter] within a synchronous execution span sets the context; nested
- * wrapped seams keep the outer label until it is restored. Because fire-and-forget `scope.launch`
- * bodies run after their launcher returns, instrumentation sets the context *inside* the launched
- * coroutine so it spans the actual async work.
+ * **Process-wide** ([enter], bound as [IosLogScope]) is the default, and it is deliberately NOT a
+ * `@ThreadLocal` and NOT a coroutine-context element: the Kermit [co.touchlab.kermit.LogWriter.log]
+ * callback is a plain synchronous call with no coroutine context and no knowledge of which thread's
+ * work triggered it. A global is the only form the writer can read from any thread, and — being
+ * global, not per-thread — the prefix survives dispatcher/thread hops within an invocation (e.g. a
+ * Ktor call on the Darwin queue).
+ *
+ * Its inaccuracy is measured, not assumed: entry points are **not** delivered serially with the rest
+ * of the process's work. On 2026-09-14 a MetricKit delivery arrived while launch work was still
+ * logging, and seven launch lines (`gallery`, `Http`, `PushRegistration`, `SnapSyncRoot`) carried
+ * `[didReceiveMetricPayloads]`. A process-wide claim labels every concurrent line that has no entry
+ * point of its own. Accepted for a dev-only log — for the entry points that cannot avoid it.
+ *
+ * **Thread-scoped** ([enterThread], bound as [IosThreadLogScope]) is for the ones that can. A
+ * synchronous call occupies its thread, so every line on that thread during the call is its own and
+ * no line elsewhere is: the claim is exact by construction. It is only for bodies that do not suspend
+ * and launch nothing whose lines should inherit the prefix — such work would log unprefixed, which is
+ * the safe way to be wrong.
+ *
+ * "Outermost wins", across both kinds: the first enter on an execution span sets the context, nested
+ * wrapped seams keep the outer label, and on a thread holding a thread-scoped claim NO enter claims
+ * anything — otherwise a process-wide seam reached from inside it would take the global slot and
+ * bring the bleed straight back. Because fire-and-forget `scope.launch` bodies run after their
+ * launcher returns, instrumentation sets the context *inside* the launched coroutine so it spans the
+ * actual async work.
+ *
+ * Decision record: `changes/thread-scoped-log-prefix`.
  */
 object LogContext {
 
-    var current: String? = null
-        private set
+    private var processWide: String? = null
+
+    /** The prefix a line logged right now, on this thread, carries. */
+    val current: String?
+        get() = ThreadClaim.name ?: processWide
 
     /**
-     * Set [name] as the current context only if none is set (outermost wins). Returns `true` when
-     * THIS call established the context — the caller must pass that back to [exit] so only the
+     * Claim the context process-wide, only if nothing is claimed here (outermost wins). Returns `true`
+     * when THIS call established it — the caller must pass that back to [exit] so only the
      * establishing call clears it.
      */
     fun enter(name: String): Boolean {
-        if (current != null) return false
-        current = name
+        if (ThreadClaim.name != null || processWide != null) return false
+        processWide = name
         return true
     }
 
-    /** Clear the context, but only if [owned] (i.e. this caller established it via [enter]). */
+    /** Clear the process-wide claim, but only if [owned] (this caller established it via [enter]). */
     fun exit(owned: Boolean) {
-        if (owned) current = null
+        if (owned) processWide = null
     }
+
+    /**
+     * Claim the context for the calling thread only, unless this thread already holds one. A
+     * process-wide claim held elsewhere does not block it: this call is a separate trigger occupying
+     * this thread, and its lines are its own.
+     */
+    fun enterThread(name: String): Boolean {
+        if (ThreadClaim.name != null) return false
+        ThreadClaim.name = name
+        return true
+    }
+
+    /** Clear this thread's claim, but only if [owned] (this caller established it via [enterThread]). */
+    fun exitThread(owned: Boolean) {
+        if (owned) ThreadClaim.name = null
+    }
+}
+
+/**
+ * One copy per thread. `@ThreadLocal` rather than a map keyed by `pthread_self()`: no lock on every log
+ * line, and nothing to leak for a thread that dies while claimed.
+ */
+@kotlin.native.concurrent.ThreadLocal
+private object ThreadClaim {
+    var name: String? = null
 }

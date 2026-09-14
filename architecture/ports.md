@@ -62,7 +62,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts | no |
 | `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore, UnreachedLedgerStore | yes |
 | `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
-| `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope; `:domain:ports` NoOp, RecordingScope | no |
+| `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope, IosThreadLogScope; `:domain:ports` NoOp, RecordingScope | no |
 | `ManifestPublisher` | `:domain:ports` | `:adapter:generic:app` HttpManifestPublisher; `:domain:feature` FakeUploader | yes |
 | `PhotoAccessRequester` | `:domain:ports` | `:adapter:ios:app-only` PhotoLibraryPermission | no |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
