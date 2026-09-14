@@ -628,3 +628,32 @@ crossing.reasons = backgroundExitData.cumulativeMemoryPressureExitCount
   on build 805, which predates the fix; the first event did not. Consistent with the diagnosis — it
   depends on whether the graph was forced before delivery — and the fix remains correct, since it
   removes the dependence on that ordering.
+
+
+---
+
+## 11. Build 816 on device (2026-09-14) — quiet lines readable, two new flaws
+
+**Confirmed (task 11.3):** build 816 delivered the 2026-09-13 window on launch — quiet, no crossing
+(checked against BOTH line kinds this time, `process metrics:` and `process exit threshold crossed`) —
+and its device-log line now carries its fields: `45 field(s) | appVersion=0.4 …`. No exit counters
+were present, consistent with the app having run once in that window.
+
+### 🔴 The field line is not machine-splittable
+
+Fields are joined as `key=value` separated by single spaces, but platform values contain spaces:
+`memoryMetrics.peakMemoryUsage=118417 kB`, `timeStampBegin=2026-09-13 00:00:00`. Splitting on space
+yields `peakMemoryUsage=118417` plus a stray `kB`. Readable by eye, ambiguous to a parser — measured
+by parsing it and getting it wrong. Needs a separator no value contains.
+
+### 🔴 The MetricKit entry-point prefix bleeds onto unrelated lines
+
+During one 292 ms delivery, seven lines MetricKit did not produce carried `[didReceiveMetricPayloads]`:
+`Http` ×3, `gallery` ×2, `PushRegistration` ×1, `SnapSyncRoot` ×1. The handler runs inline inside
+`log.invocation`, which sets the process-global ambient context (`IosLogScope`), so any concurrent
+composition work logging in that window inherits it. `diagnostic-logging`'s prefix exists to trace a
+line to what triggered it; these lines were triggered by the foreground launch, not by MetricKit, so
+the prefix now misattributes them.
+
+Inline handling itself stays correct (a one-shot report must be written before the callback
+returns). What is wrong is how long the ambient context is held, and that it is global.

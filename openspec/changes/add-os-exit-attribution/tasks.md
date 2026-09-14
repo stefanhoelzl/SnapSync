@@ -102,9 +102,14 @@
       now carries every field, sorted.
 - [x] 11.2 Pin it: two `commonTest` cases assert a quiet report's values are recoverable from its own
       line, and that fields are sorted so two reports read comparably.
-- [ ] 11.3 ⏰ Re-read a window with the fix shipped. **§10's numbers are now measured another way**
-      (the window crossed, so Bugsink carried the fields — §10a), so what remains is only to confirm on
-      device that a QUIET report's line carries its fields, which build 816 can show.
+- [x] 11.3 ⏰ Re-read a window with the fix shipped. **Confirmed on build 816** (PROBE-FINDINGS §11): the
+      quiet 2026-09-13 window's line carries its 45 fields.
+- [ ] 11.4 The field line is not machine-splittable: values contain spaces (`118417 kB`,
+      `2026-09-13 00:00:00`), so space-separated `key=value` is ambiguous. Use a separator no value
+      contains, and pin it with a round-trip test.
+- [ ] 11.5 The `[didReceiveMetricPayloads]` ambient prefix bleeds onto unrelated concurrent lines (7
+      measured: Http, gallery, PushRegistration, SnapSyncRoot) because the process-global LogContext
+      is held for the whole inline delivery. Decide the fix without giving up inline handling.
 
 ## 10. The missing `process` tag (found by §9)
 
