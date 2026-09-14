@@ -36,7 +36,7 @@ package app.snapsync.logging
  * launcher returns, instrumentation sets the context *inside* the launched coroutine so it spans the
  * actual async work.
  *
- * Decision record: `changes/thread-scoped-log-prefix`.
+ * Decision record: `changes/archive/2026-09-14-thread-scoped-log-prefix`.
  */
 object LogContext {
 

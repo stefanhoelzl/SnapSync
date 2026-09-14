@@ -48,12 +48,17 @@
 
 ## 5. Specs
 
-- [ ] 5.1 At sync: also update `diagnostic-logging`'s Purpose, which names `LogContext`/`IosLogScope` as
+- [x] 5.1 At sync: also update `diagnostic-logging`'s Purpose, which names `LogContext`/`IosLogScope` as
       "the process-global ambient context", and add this change as a decision record citation.
-- [ ] 5.2 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
+      **Synced**: Purpose now names both bindings; citation added.
+- [x] 5.2 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`. **Passed at archive.**
 
 ## 6. On device
 
 - [ ] 6.1 After a TestFlight build carrying this lands, read the first MetricKit delivery that overlaps
       launch work: the delivery's lines carry `[didReceiveMetricPayloads]`, and the concurrent launch
       lines do not. Deliveries arrive about daily, so this waits on one; record device, OS and date.
+      **Deliberately left open at archive (2026-09-14), by decision.** It needs a real MetricKit delivery
+      overlapping launch work on a build carrying this, which nobody controls — handed to the builds after
+      the merge, as `add-os-exit-attribution`'s 10.3 was. The mechanism itself is pinned on the simulator
+      by `LogContextTest`.
