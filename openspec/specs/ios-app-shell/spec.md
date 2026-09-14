@@ -22,7 +22,7 @@ binary target rather than remaining a mode of it.
 Decision record: `changes/archive/2026-06-17-ios-first-target`; the retirement of the launch triggers and
 the forge target's extraction: `changes/archive/2026-08-24-retire-launch-env-triggers`; the scene-rebuild
 rule, the create-don't-reuse contract and the placeholder's backdrop:
-`changes/archive/2026-08-26-stop-rebuilding-the-composed-scene`; subscribing for process-metric reports at process start: `changes/add-os-exit-attribution` (to be repointed at its archive path when archived).
+`changes/archive/2026-08-26-stop-rebuilding-the-composed-scene`; subscribing for process-metric reports at process start: `changes/archive/2026-09-14-add-os-exit-attribution`.
 ## Requirements
 ### Requirement: iOS application shell
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a

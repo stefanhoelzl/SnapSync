@@ -133,3 +133,8 @@
       `DiagnosticsReporterContractTest`. No caller can now get the ordering wrong, so there is no
       ordering left to test.
 - [ ] 10.3 Re-verify on a TestFlight build that an attribution event carries the tag.
+      **Deliberately left open at archive (2026-09-14), by decision.** It needs a real OS termination
+      on build ≥816 to produce a crossing, which nobody controls, so it is handed to the builds that
+      follow the merge rather than blocking it. It is also weaker evidence than it looks: the bug was a
+      race, and build 805 produced a tagged event too — the guarantee rests on `describeProcess`
+      starting the channel by contract, asserted in `DiagnosticsReporterContractTest`.

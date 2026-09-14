@@ -25,7 +25,7 @@ identity (and why `dist` is deliberately left to the SDK):
 `changes/archive/2026-07-29-add-diagnostic-dump`; the carve-out's move onto an explicit
 `non-redacted` event tag (and the measurement that a scope tag reaches `beforeSend`):
 `changes/archive/2026-07-31-add-bug-report-description`; OS-attributed process termination from platform metrics (`ProcessMetricSource`, the threshold, the
-crash-surviving report context, and the measurements behind them): `changes/add-os-exit-attribution` (to be repointed at its archive path when archived).
+crash-surviving report context, and the measurements behind them): `changes/archive/2026-09-14-add-os-exit-attribution`.
 
 ## Requirements
 
