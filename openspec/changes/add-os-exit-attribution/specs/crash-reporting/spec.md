@@ -95,6 +95,13 @@ SDK is confined to a single module and the attribution adapter is not that modul
 This SHALL require no persisted state: the context is set when a report is delivered, and the SDK
 snapshots the scope onto events captured afterwards.
 
+The attaching operation SHALL **ensure the reporting channel is started** before it attaches, rather
+than trusting the caller to have started it. This path can outrun the composition that normally starts
+the channel — reports are subscribed for at process start, while the channel starts when the deferred
+graph is forced — and the first real attribution event was measured going out **without the `process`
+tag**, which is set when the channel starts. Starting is idempotent and inert without a reporting
+configuration, so the guarantee costs nothing and no caller can get the ordering wrong.
+
 The attribution event SHALL NOT restate the report it crossed on, because the context already carries
 it.
 
@@ -103,6 +110,11 @@ it.
 - **WHEN** a report is delivered, and the process later crashes and is reported on a subsequent launch
 - **THEN** the delivered crash carries that report as context, so the crash and the OS's account of
   recent terminations are read together
+
+#### Scenario: A report arrives before the composition has started the channel
+
+- **WHEN** a report is delivered to a process whose deferred graph has not yet been forced
+- **THEN** attaching it starts the channel first, so the attribution event carries the `process` tag
 
 #### Scenario: A build with no reporting configuration
 
