@@ -8,8 +8,12 @@ counters are all normal. The device log is the channel that exists on every buil
 independently of any reporting configuration, so it is the one place an attribution can always be
 found.
 
-The line SHALL carry the report's fields, and the **report is the unit**: one line per report, never
-one line per counter. A report that crosses the reporting threshold SHALL additionally be logged at a
+The line SHALL carry **every** field of the report, rendered as **one JSON object** with keys sorted,
+and the **report is the unit**: one line per report, never one line per counter. JSON rather than
+space-separated `key=value` pairs, because platform values contain spaces (`118417 kB`, full
+timestamps): a space-joined line met "carries the fields" and still could not be split back into them,
+measured by parsing one and getting it wrong. For a report that does not cross the threshold this line
+is the **only** channel its contents reach, since the reporting context rides only a transmitted event. A report that crosses the reporting threshold SHALL additionally be logged at a
 severity that reaches the reporting channel, so the severity states the meaning of the occurrence
 rather than its destination — including on builds where that channel is inert.
 
@@ -25,8 +29,13 @@ process woken briefly in the background may be killed before deferred work runs.
 #### Scenario: A quiet report is still recorded
 
 - **WHEN** a report is delivered whose exit counters are all normal
-- **THEN** one line is written naming the report, so a reader can tell "nothing was wrong" from
-  "nothing arrived"
+- **THEN** one line is written carrying the report's fields, so a reader can tell "nothing was wrong"
+  from "nothing arrived" and can read the counters that say so
+
+#### Scenario: The fields can be recovered from the line
+
+- **WHEN** a report carries values containing spaces or quotes
+- **THEN** the JSON object on its line parses back to exactly the report's fields
 
 #### Scenario: A report on a build with no reporting configuration
 

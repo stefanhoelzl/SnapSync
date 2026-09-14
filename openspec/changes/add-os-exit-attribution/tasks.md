@@ -63,11 +63,15 @@
 
 ## 7. Specs and docs
 
-- [ ] 7.1 Update `openspec/specs/crash-reporting/spec.md` from the delta, citing this change as its
-      decision record.
-- [ ] 7.2 Update `openspec/specs/diagnostic-logging/spec.md` and
-      `openspec/specs/ios-app-shell/spec.md` from their deltas.
-- [ ] 7.3 Run `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
+- [x] 7.1 Update `openspec/specs/crash-reporting/spec.md` from the delta, citing this change as its
+      decision record. **Synced**: 5 requirements; the delta first gained the port guarantee that
+      describing starts the channel (it was implemented and tested but unstated), and lost a duplicated
+      sentence.
+- [x] 7.2 Update `openspec/specs/diagnostic-logging/spec.md` and
+      `openspec/specs/ios-app-shell/spec.md` from their deltas. **Synced**; the diagnostic-logging delta
+      first gained the JSON rendering (its "carries the fields" had been met by a line that could not be
+      parsed).
+- [x] 7.3 Run `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`. **61/61 passed.**
 - [x] 7.4 Run `./gradlew architectureDiagrams` and commit the result.
 
 ## 8. On-device verification
