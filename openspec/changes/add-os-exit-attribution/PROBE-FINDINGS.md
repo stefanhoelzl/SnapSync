@@ -592,3 +592,39 @@ fields"* — which the implementation did not do. Both were written here and nei
 Fixed: the line now carries every field, sorted, and two tests pin it. ⏰ **Re-read the next window
 with the fix in place** to put `normal ≈ 7 · abnormal = 0` behind the verdict as a measurement rather
 than an inference.
+
+
+---
+
+## 10a. ⚠️ Correction to §10 — the window DID cross, and the numbers are now read, not inferred
+
+§10 said the 2026-09-11 window "did not cross the threshold" and derived the verdict from that absence.
+**That was wrong about the crossing.** The device-log check grepped for `process metrics|didReceive`,
+and the crossing line reads `process exit threshold crossed`, which that pattern cannot match. The
+window crossed; the grep was blind to it. `SNAPSYNC-38` holds the event (2026-09-12 16:28:02, build
+805), with the full report as context:
+
+```
+foregroundExitData.cumulativeNormalAppExitCount       = 4
+backgroundExitData.cumulativeNormalAppExitCount       = 1
+backgroundExitData.cumulativeMemoryPressureExitCount  = 1   ← the crossing
+cumulativeAbnormalExitCount                           (absent → 0)
+crossing.reasons = backgroundExitData.cumulativeMemoryPressureExitCount
+```
+
+### What survives, and what does not
+
+- **The verdict survives, and is now measured**: `abnormal` = 0 with five deliberate swipes in the
+  window. A user force-quit does not count as abnormal. §10's conclusions about keeping `abnormal` in
+  the threshold stand.
+- **The arithmetic does not close.** Predicted 5 swipes + 2 agent SIGKILLs = 7 normal exits; measured
+  4 foreground + 1 background = **5**. Unexplained. Candidates, none established: the two SIGKILLs
+  landed on the dev sideload before build 805 was installed and a reinstall may partition the window;
+  or a swipe-and-relaunch in quick succession is not always a separate exit. Recorded as unexplained
+  rather than rounded toward the prediction.
+- **The crossing was a real kill.** A background memory-pressure termination on 2026-09-11 — the
+  second one measured on this device (§9 was 2026-09-09). Nothing in the experiment caused it.
+- **The missing `process` tag is a race, not a constant.** This event carries `process: app.snapsync`
+  on build 805, which predates the fix; the first event did not. Consistent with the diagnosis — it
+  depends on whether the graph was forced before delivery — and the fix remains correct, since it
+  removes the dependence on that ordering.

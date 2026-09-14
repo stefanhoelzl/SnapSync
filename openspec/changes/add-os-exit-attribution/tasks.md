@@ -87,8 +87,9 @@
 - [x] 9.1 Force-quit the app by swipe a known number of times, deliberately. **5 swipes on
       2026-09-11, plus 2 agent SIGKILLs, recorded as a baseline before the window closed.**
 - [x] 9.2 After the next report, check whether `cumulativeAbnormalExitCount` rose by that number.
-      **It did not rise at all**: the 73-field window did not cross, and the threshold fires on any
-      non-normal counter — so all 7 terminations counted as NORMAL (PROBE-FINDINGS §10).
+      **It did not rise at all — measured**: `SNAPSYNC-38`'s 2026-09-11 context reads abnormal absent (0),
+      normal fg 4 + bg 1. (§10 first claimed the window did not cross — wrong, a grep missed the crossing
+      line; corrected in §10a. The 5-vs-predicted-7 normal count is unexplained.)
 - [x] 9.3 Record the answer, and narrow the threshold if ordinary force-quit turns out to trip it.
       **No narrowing needed** — `abnormal` is quiet, so it stays in the threshold as a high-signal
       counter. Retracts the earlier guess that the probe's 6 abnormal exits were dev SIGKILLs.
@@ -101,8 +102,9 @@
       now carries every field, sorted.
 - [x] 11.2 Pin it: two `commonTest` cases assert a quiet report's values are recoverable from its own
       line, and that fields are sorted so two reports read comparably.
-- [ ] 11.3 ⏰ Re-read a window with the fix shipped, to put `normal ≈ 7 · abnormal = 0` behind §10's
-      verdict as a measurement rather than an inference from an absence.
+- [ ] 11.3 ⏰ Re-read a window with the fix shipped. **§10's numbers are now measured another way**
+      (the window crossed, so Bugsink carried the fields — §10a), so what remains is only to confirm on
+      device that a QUIET report's line carries its fields, which build 816 can show.
 
 ## 10. The missing `process` tag (found by §9)
 
