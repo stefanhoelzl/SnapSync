@@ -201,13 +201,14 @@ The cleanup:
    sign, install, launch. Then confirm over the rig channel that `/device/state` reports a device id
    (the keychain group is right), and that an upload to a fresh event lands.
 3. Merge with label `internal`.
-4. After merge, each on confirmation:
-   - delete `DEV_PROVISIONING_PROFILE_BASE64`;
+4. Before merge, at the operator's request:
+   - delete `DEV_PROVISIONING_PROFILE_BASE64`. `main`'s runner step tolerates its absence (it warns and
+     skips), but a sibling branch still on the old `dev-sign` loop loses its baked profiles until it
+     rebases;
    - remove the "Not coordinated: SnapSync" line from the global skill.
 
-**Rollback**: revert the PR. The old scripts, hook and runner steps return intact. The deleted secret
-would need re-baking (see the old `ssh-mac-build` profile section), so it is deleted only after the
-merge has been used.
+**Rollback**: revert the PR. The old scripts, hook and runner steps return intact, but the deleted
+secret does not: re-bake it first (see the old `ssh-mac-build` profile section).
 
 ## Open Questions
 
