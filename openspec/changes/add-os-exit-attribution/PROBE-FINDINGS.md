@@ -657,3 +657,8 @@ the prefix now misattributes them.
 
 Inline handling itself stays correct (a one-shot report must be written before the callback
 returns). What is wrong is how long the ambient context is held, and that it is global.
+
+**Decision (2026-09-14):** the prefix bleed is recorded as a `diagnostic-logging` defect and fixed in its
+own change, not here. It is not specific to MetricKit — `IosLogScope`'s ambient context is
+process-global, so any entry point that holds it while concurrent work logs misattributes those lines;
+this delivery is simply the first place it was measured.

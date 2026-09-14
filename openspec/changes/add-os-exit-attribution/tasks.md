@@ -107,9 +107,11 @@
 - [ ] 11.4 The field line is not machine-splittable: values contain spaces (`118417 kB`,
       `2026-09-13 00:00:00`), so space-separated `key=value` is ambiguous. Use a separator no value
       contains, and pin it with a round-trip test.
-- [ ] 11.5 The `[didReceiveMetricPayloads]` ambient prefix bleeds onto unrelated concurrent lines (7
-      measured: Http, gallery, PushRegistration, SnapSyncRoot) because the process-global LogContext
-      is held for the whole inline delivery. Decide the fix without giving up inline handling.
+- [x] 11.5 The `[didReceiveMetricPayloads]` ambient prefix bleeds onto unrelated concurrent lines (7
+      measured: Http, gallery, PushRegistration, SnapSyncRoot). **Decided: out of scope here, recorded
+      as a `diagnostic-logging` defect to fix separately.** The root cause is that `IosLogScope`'s
+      ambient context is process-global, so ANY entry point holding it while other work logs will
+      mislabel lines — this change merely made it visible. Inline handling stays.
 
 ## 10. The missing `process` tag (found by §9)
 
