@@ -42,8 +42,8 @@
 ## 4. Build
 
 - [x] 4.1 `./gradlew build` green, including `compileIosMainKotlinMetadata`. **Green** (after the extension-safety gate refused GCD in the test; see 1.2).
-- [ ] 4.2 `iosSimulatorArm64Test` for `:adapter:ios:ext-safe` green — on the ssh Mac or on CI; Linux
-      cannot run it. Record which.
+- [x] 4.2 `iosSimulatorArm64Test` for `:adapter:ios:ext-safe` green — on the ssh Mac or on CI; Linux
+      cannot run it. Record which. **Green on CI**: `ios.yml` run 34831869288 on `62aa1a8f`, `ios-test` executed `:adapter:ios:ext-safe:iosSimulatorArm64Test` (not up-to-date — `LogContextTest` was new).
 - [x] 4.3 `./gradlew architectureDiagrams`; commit anything it changes. **`architecture/ports.md` gained `IosThreadLogScope`.**
 
 ## 5. Specs
