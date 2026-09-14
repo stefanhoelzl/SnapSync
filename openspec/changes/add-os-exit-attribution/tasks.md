@@ -104,9 +104,10 @@
       line, and that fields are sorted so two reports read comparably.
 - [x] 11.3 ⏰ Re-read a window with the fix shipped. **Confirmed on build 816** (PROBE-FINDINGS §11): the
       quiet 2026-09-13 window's line carries its 45 fields.
-- [ ] 11.4 The field line is not machine-splittable: values contain spaces (`118417 kB`,
-      `2026-09-13 00:00:00`), so space-separated `key=value` is ambiguous. Use a separator no value
-      contains, and pin it with a round-trip test.
+- [x] 11.4 The field line is not machine-splittable: values contain spaces (`118417 kB`,
+      `2026-09-13 00:00:00`), so space-separated `key=value` is ambiguous. **Fixed: the fields render
+      as one JSON object after the `|`**, keys sorted — unambiguous, no invented escaping, readable
+      with `jq`. Pinned by a round-trip test over values with spaces and an embedded quote.
 - [x] 11.5 The `[didReceiveMetricPayloads]` ambient prefix bleeds onto unrelated concurrent lines (7
       measured: Http, gallery, PushRegistration, SnapSyncRoot). **Decided: out of scope here, recorded
       as a `diagnostic-logging` defect to fix separately.** The root cause is that `IosLogScope`'s

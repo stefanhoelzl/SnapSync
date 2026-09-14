@@ -279,7 +279,7 @@ class ProcessMetricsLineTest {
         // The window, so a reader knows which period this describes...
         assertTrue("2026-09-11 00:00:00 .. 2026-09-12 00:00:00" in line)
         // ...and the values themselves, which no other channel carries for a non-crossing report.
-        assertTrue("$PROCESS_EXIT_PREFIX.foregroundExitData.$NORMAL_EXIT_SUFFIX=7" in line, line)
+        assertTrue(""""$PROCESS_EXIT_PREFIX.foregroundExitData.$NORMAL_EXIT_SUFFIX":"7"""" in line, line)
     }
 
     @Test
@@ -287,7 +287,23 @@ class ProcessMetricsLineTest {
         val line = processMetricEmissions(
             ProcessMetricReport(mapOf("zulu" to "1", "alpha" to "2", "mike" to "3")),
         ).single().message
-        assertTrue(line.indexOf("alpha=") < line.indexOf("mike="), line)
-        assertTrue(line.indexOf("mike=") < line.indexOf("zulu="), line)
+        assertTrue(line.indexOf("\"alpha\"") < line.indexOf("\"mike\""), line)
+        assertTrue(line.indexOf("\"mike\"") < line.indexOf("\"zulu\""), line)
+    }
+
+    @Test
+    fun `the fields round-trip even when values contain spaces`() {
+        // The measured failure: a space-joined line could not be split back, because platform values
+        // carry spaces. The JSON after the separator must parse back to exactly the report's fields.
+        val fields = mapOf(
+            "memoryMetrics.peakMemoryUsage" to "118417 kB",
+            PROCESS_METRIC_WINDOW_BEGIN to "2026-09-13 00:00:00",
+            "quoted" to "a \"b\" c",
+        )
+        val line = processMetricEmissions(ProcessMetricReport(fields)).single().message
+        val json = kotlinx.serialization.json.Json.parseToJsonElement(line.substringAfter(" | "))
+            as kotlinx.serialization.json.JsonObject
+        val parsed = json.mapValues { (it.value as kotlinx.serialization.json.JsonPrimitive).content }
+        assertEquals(fields, parsed)
     }
 }
