@@ -1,6 +1,8 @@
 package app.snapsync.model
 
 import co.touchlab.kermit.Severity
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * One report about this process's own behaviour, as some platform accounted for it (capability
@@ -169,7 +171,13 @@ private fun describe(report: ProcessMetricReport): String {
     val begin = report.fields[PROCESS_METRIC_WINDOW_BEGIN]
     val end = report.fields[PROCESS_METRIC_WINDOW_END]
     val period = if (begin != null && end != null) "$begin .. $end" else "no period reported"
-    val fields = report.fields.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}=${it.value}" }
+    // ONE JSON object, keys sorted. Not `key=value` pairs: platform values contain spaces
+    // (`118417 kB`, `2026-09-13 00:00:00`), so a space-joined line did not split back into fields —
+    // measured by parsing one and getting it wrong. JSON is unambiguous, needs no invented escaping,
+    // and `jq` reads it straight out of a pulled log.
+    // `sortedBy` + `associate`, not `toSortedMap()`: the latter is JVM-only, and this is commonMain.
+    // `associate` keeps insertion order, and JsonObject renders in the order it is given.
+    val fields = JsonObject(report.fields.entries.sortedBy { it.key }.associate { it.key to JsonPrimitive(it.value) })
     return "$period, ${report.fields.size} field(s) | $fields"
 }
 
