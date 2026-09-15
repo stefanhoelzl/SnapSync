@@ -17,6 +17,7 @@ import platform.Photos.PHAssetResourceUploadJobStateRegistered
 import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorLimitExceeded
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -281,5 +282,42 @@ class PhotoKitJobMappingTest {
             ),
         )
         assertNull(emit.legacyKey)
+    }
+
+    // ---- which .retry job a retry re-points --------------------------------------------------------
+
+    private fun failed(url: String): FetchedJob =
+        classifyPhotoKitJob(destination = request(url), state = PHAssetResourceUploadJobStateFailed, error = null)
+
+    @Test
+    fun `a v2 retry finds its job by the recorded destination although the last segment is the role`() = runBlocking {
+        // The defect this pins: comparing the last segment (`primary`) to the key matched nothing, so every
+        // free retry was lost.
+        val recorded = mapOf("/api/v2/files/devices/D/ABC-123/primary" to "ABC-123-primary.heic")
+        val candidates = listOf(
+            "other" to failed("https://edge.example/api/v2/files/devices/D/XYZ-9/primary"),
+            "mine" to failed("https://edge.example/api/v2/files/devices/D/ABC-123/primary"),
+        )
+
+        val found = retryJobMatching(candidates, "ABC-123-primary.heic") { recorded[it.destinationPath] ?: it.legacyKey }
+
+        assertEquals("mine", found)
+    }
+
+    @Test
+    fun `a pre-identity retry job still resolves through the fallback`() = runBlocking {
+        val candidates = listOf("old" to failed("https://edge.example/api/v1/files/devices/D/ABC-123-primary.heic"))
+
+        assertEquals("old", retryJobMatching(candidates, "ABC-123-primary.heic") { it.legacyKey })
+    }
+
+    @Test
+    fun `no candidate resolving to the key yields none and a job with no destination never matches`() = runBlocking {
+        val candidates = listOf(
+            "drained" to FetchedJob.AcknowledgeToDrain,
+            "other" to failed("https://edge.example/api/v2/files/devices/D/XYZ-9/primary"),
+        )
+
+        assertNull(retryJobMatching(candidates, "ABC-123-primary.heic") { "XYZ-9-primary.heic" })
     }
 }

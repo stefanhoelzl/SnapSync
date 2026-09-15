@@ -111,6 +111,12 @@ class UploadCycleTest {
         // every test that predates the bound on the cycle's own `enqueueBatchSize`, exactly as before.
         private val capacity: Int? = null,
     ) : BackgroundTransfer, UploadDiscovery {
+        /**
+         * What this platform says it still holds. `null` — the default — is a durable queue that cannot say, so
+         * the stranded pass reconciles nothing in every test that does not ask for it. A property rather than a
+         * constructor parameter: the constructor sits at the `tests` tier's parameter ceiling.
+         */
+        var live: Set<String>? = null
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
@@ -131,6 +137,7 @@ class UploadCycleTest {
 
         override suspend fun fetchRetryJobs() = retryJobs
         override suspend fun remainingCapacity(): Int? = capacity
+        override suspend fun liveKeys(): Set<String>? = live
         override suspend fun drainTerminals(): List<PlatformUploadJob> {
             drained = true
             succeeded.forEach { ledger?.markTerminal(it, TerminalOutcome.COMPLETED) }
@@ -216,7 +223,7 @@ class UploadCycleTest {
      * the entry-gate tests below.
      */
     private suspend fun cycle(
-        backend: InMemoryLedgerStore,
+        backend: LedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
         // Nullable rather than defaulted: a suspend call is not allowed in a default value.
@@ -844,6 +851,67 @@ class UploadCycleTest {
         cycleOver(backend, platform).run()
 
         assertEquals(false, backend.get("R-photo.jpg")?.absent, "the candidate fetch is the later fact")
+    }
+
+    // ---- The stranded reconciliation (capability `ios-url-session-upload`) -----------------------------
+    // Decided HERE, over the set the transport reports it still holds — no longer inside the app-driven
+    // adapter, where no host test could reach it.
+
+    @Test
+    fun a_requested_row_the_transport_no_longer_holds_is_recorded_failed() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("lost-primary.heic")
+        backend.inFlight("running-primary.heic")
+
+        cycleOver(backend, FakePlatform().apply { live = setOf("running-primary.heic") }).run()
+
+        assertEquals(
+            LedgerState.FAILED, backend.get("lost-primary.heic")?.state,
+            "no completion will ever arrive for a transfer the transport lost, so the cycle records it",
+        )
+        assertEquals(LedgerState.REQUESTED, backend.get("running-primary.heic")?.state, "still held: untouched")
+    }
+
+    @Test
+    fun a_transport_that_cannot_enumerate_strands_nothing() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("a-primary.heic")
+
+        cycleOver(backend, FakePlatform().apply { live = null }).run()
+
+        assertEquals(LedgerState.REQUESTED, backend.get("a-primary.heic")?.state, "a durable queue loses nothing")
+    }
+
+    @Test
+    fun a_stranded_candidate_that_settled_before_the_write_is_left_as_it_stands() = runTest {
+        // The candidates are read before the write, and the two are not atomic. Model a row the platform's
+        // callback recorded COMPLETED in between by handing the pass a stale REQUESTED set.
+        val backend = InMemoryLedgerStore()
+        backend.completed(resource("done-primary.heic", "done"))
+        val stale = object : LedgerStore by backend {
+            override suspend fun requestedKeys(): Set<String> = setOf("done-primary.heic")
+        }
+
+        cycle(stale, FakePlatform().apply { live = emptySet() }).run()
+
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("done-primary.heic")?.state,
+            "the guard in the write, not the read, keeps a settled row from being clobbered",
+        )
+    }
+
+    @Test
+    fun a_declined_cycle_still_reconciles_stranded_rows() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("lost-primary.heic")
+
+        val result = decliningCycle(backend, FakePlatform().apply { live = emptySet() }, FakeStore()).run()
+
+        assertEquals(CycleResult.SKIPPED, result)
+        assertEquals(
+            LedgerState.FAILED, backend.get("lost-primary.heic")?.state,
+            "the reconciliation rides the settlement a declined cycle still owes, exactly as the drain did",
+        )
     }
 
     @Test

@@ -3,7 +3,6 @@ package app.snapsync.ports
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.PendingResource
-import app.snapsync.model.TerminalOutcome
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -20,7 +19,7 @@ import kotlinx.coroutines.flow.Flow
  * guarded: with no production caller left it could only be an unguarded door for the next write. Tests seed
  * a store through [recordUnlessSettled] or [resetTo], like production does.
  */
-interface LedgerStore {
+interface LedgerStore : TransferRecord {
     val changes: Flow<Unit>
 
     /**
@@ -29,18 +28,6 @@ interface LedgerStore {
      * caller treat null as a fact about the ledger instead of a fact about the storage.
      */
     suspend fun get(key: String): LedgerEntry?
-
-    /**
-     * The row whose upload was addressed to [destinationPath], or null when no row records it.
-     *
-     * This is how a returned platform upload job is resolved back to its row: the destination is the only
-     * field a succeeded job reliably carries, and under a byte route that names identity in its path the
-     * ledger key is no longer recoverable from it (capability `ios-photokit-upload`).
-     *
-     * A row recorded before the ledger kept a destination carries null and is never matched here, which
-     * is correct rather than lossy — such a row is recovered by the tier's own fallback.
-     */
-    suspend fun entryForDestination(destinationPath: String): LedgerEntry?
 
     /**
      * Upsert one complete row — **unless the row already there is in a done state**
@@ -64,37 +51,6 @@ interface LedgerStore {
      * store, and *which* states are settled is decided once, in `model/`, not per query.
      */
     suspend fun pendingResources(): List<PendingResource>
-
-    /**
-     * Record how one upload terminated — [outcome] becomes the row's state — but **only while that row is
-     * still `REQUESTED`**; answers whether it applied. [TerminalOutcome] admits only `COMPLETED` and
-     * `FAILED`, so no other state can be recorded through this verb.
-     *
-     * The guard is the operation's purpose. Two writers reach a row holding no shared lock — a platform
-     * callback recording that an upload terminated, on the platform's own queue, and the upload cycle's
-     * stranded pass on the composition lane — so a read-then-write pair is not atomic against the one that
-     * does not take the lock. Putting the condition in the write is what makes a fact recorded underneath
-     * a stale read impossible to clobber. (`photo-download` reached the same conclusion for the same
-     * reason: *"the guard SHALL live in the store's write rather than in a caller's preceding read"*.)
-     *
-     * Every other column is preserved by the backend rather than re-supplied here: the caller is a delegate
-     * that holds only the key and cannot re-state `assetId`, `attempt`, `eventId` or the manifest detail.
-     *
-     * **Non-suspending**, because its caller cannot suspend — an ObjC completion block is not a coroutine —
-     * and because the write must land *before* that callback returns. After it returns the process's
-     * continued runtime is not guaranteed, so a scheduled write races the system's willingness to keep
-     * running us.
-     *
-     * `false` means the row was not `REQUESTED` — already terminal, or pruned. That is a different fact
-     * from "recorded" and callers SHALL NOT discard it silently (`module-architecture`, "Absence is never
-     * silent").
-     *
-     * This is a **record** operation on a non-writer surface, which the reader/writer split otherwise
-     * forbids. It is deliberate and narrow: the party the platform tells is inside the single
-     * record-writing process, and the invariant is that exactly one *process* records. See `sync-ledger`,
-     * "Reader and writer capability split". Do not add a second record operation here on this argument.
-     */
-    fun markTerminal(key: String, outcome: TerminalOutcome): Boolean
 
     /**
      * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work

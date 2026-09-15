@@ -101,8 +101,8 @@ object UploadExtensionRoot {
         IosDiscovery(log, PhotoKitCandidateSource())
     }
     private val platform: BackgroundTransfer by lazy {
-        // The adapter records terminal outcomes into the ledger and acknowledges in place; the cycle's
-        // promotion pass then places in the album, notifies, and promotes. Same store the cycle gets.
+        // The adapter records terminal outcomes into the ledger — through the narrow `TransferRecord` the
+        // store satisfies — and acknowledges in place. Same store the cycle gets.
         //
         // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `ios-photokit-upload`,
         // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is

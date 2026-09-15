@@ -12,7 +12,7 @@ import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.model.TerminalOutcome
 
@@ -42,7 +42,7 @@ class FakeBackgroundTransfer(
     private val store: BackendStore,
     private val ownDeviceId: String,
     /** The same ledger the composed cycle writes — this adapter records terminal outcomes into it. */
-    private val ledger: LedgerStore,
+    private val ledger: TransferRecord,
 ) : BackgroundTransfer {
 
     /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
@@ -126,6 +126,12 @@ class FakeBackgroundTransfer(
         created.add(resource)
         return CreateResult.CREATED
     }
+
+    /**
+     * No set, like the OS-driven queue this models: its jobs are durable, so the world runs no stranded
+     * reconciliation (capability `harness-world-model`).
+     */
+    override suspend fun liveKeys(): Set<String>? = null
 
     // ---- operator actions -----------------------------------------------------------------------
 

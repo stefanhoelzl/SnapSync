@@ -1,7 +1,7 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.TransferRecord
 import co.touchlab.kermit.Logger
 
 /**
@@ -44,5 +44,5 @@ import co.touchlab.kermit.Logger
  */
 expect fun uploadJobQueue(
     log: Logger,
-    ledger: LedgerStore,
+    ledger: TransferRecord,
 ): BackgroundTransfer

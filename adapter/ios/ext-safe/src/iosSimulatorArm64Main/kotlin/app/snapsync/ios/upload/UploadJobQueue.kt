@@ -11,7 +11,7 @@ import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CreateResult
-import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -31,7 +31,7 @@ import platform.Photos.PHAssetResource
  */
 actual fun uploadJobQueue(
     log: Logger,
-    ledger: LedgerStore,
+    ledger: TransferRecord,
 ): BackgroundTransfer = SimulatorUploadJobQueue(log, ledger)
 
 /**
@@ -144,7 +144,7 @@ object SimulatorUploadJobs {
  */
 private class SimulatorUploadJobQueue(
     private val log: Logger,
-    private val ledger: LedgerStore,
+    private val ledger: TransferRecord,
 ) : BackgroundTransfer {
 
     /**
@@ -154,6 +154,13 @@ private class SimulatorUploadJobQueue(
      * a cycle resolves, which is the one kind of divergence a substitute must not introduce.
      */
     override suspend fun remainingCapacity(): Int? = null
+
+    /**
+     * No set, matching the host this substitutes for: the OS-driven queue is durable and exposes no set of
+     * jobs still in flight, so a substitute that answered one would make this host reconcile what a device
+     * never does.
+     */
+    override suspend fun liveKeys(): Set<String>? = null
 
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
@@ -225,6 +232,9 @@ private class SimulatorUploadJobQueue(
      * Key-derived identity is the established idiom here, not a rig invention: the event-album add path
      * already recovers a `PHAsset` from a completed upload's key the same way, and the retried `Resource`
      * is one the cycle rebuilds from the key alone.
+     *
+     * It is **not discovery**, and deliberately not routed through `UploadDiscovery`: it stands in for the
+     * `resource` field a device job object carries, which is part of the job subsystem this file substitutes.
      */
     private fun resourceForKey(key: String): PHAssetResource? {
         val localId = denormalizeAssetId(assetIdFromUploadKey(key))

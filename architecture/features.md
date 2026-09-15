@@ -48,7 +48,7 @@ on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `BackgroundUploadPump.kt`, `ClearRequested.kt`, `LedgerWriter.kt`, `OsDrivenUploadMechanism.kt`, `Reconciler.kt`, `RelinquishThenRun.kt`, `SelectionScopedDiscovery.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadForeground.kt`, `UploadLedgerAudit.kt`, `UploadMechanismTable.kt`, `UploadPushReceiver.kt`
+- files: `BackgroundUploadPump.kt`, `ClearRequested.kt`, `LedgerWriter.kt`, `OsDrivenUploadMechanism.kt`, `Reconciler.kt`, `RelinquishThenRun.kt`, `SelectionScopedDiscovery.kt`, `StrandedKeys.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadForeground.kt`, `UploadLedgerAudit.kt`, `UploadMechanismTable.kt`, `UploadPushReceiver.kt`
 - top-level types: `BackgroundUploadPump (class)`, `CycleGate (interface)`, `IdleUploadMechanism (object)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenUploadMechanism (class)`, `RelinquishThenRun (class)`, `SelectionScopedDiscovery (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadForeground (class)`, `UploadLedgerAudit (class)`, `UploadMechanismRuntime (interface)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`, `UploadReconciler (class)`, `UploadTriggers (interface)`
 
 ## `feature/version`
