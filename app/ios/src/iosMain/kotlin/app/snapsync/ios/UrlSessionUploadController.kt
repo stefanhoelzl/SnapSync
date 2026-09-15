@@ -122,7 +122,6 @@ class UrlSessionUploadController(
 
     private val platform = IosUrlSessionUploadPlatform(
         log = log,
-        discovery = discovery,
         appGroup = LEDGER_APP_GROUP,
         sessionIdentifier = SESSION_IDENTIFIER,
         // The adapter records terminal outcomes itself, the moment iOS delivers one, so it holds the
@@ -216,6 +215,7 @@ class UrlSessionUploadController(
                 host = { host },
                 ledger = ledgerStore,
                 transfer = platform,
+                discovery = discovery,
                 selectionScope = selectionScope,
                 discoveryStore = discoveryStore,
                 // Re-join reconciliation seed: the device's stored-file listing over the shared

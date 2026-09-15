@@ -34,9 +34,9 @@ class EventPhotoSetSourceTest {
      * not a re-introduction of the bug.
      */
     private val allowed = mapOf(
-        // The cycle's discovery already took the policy — `discoverResources(token, policy)` — so the
+        // The cycle's discovery already took the policy — `discover(token, policy)` — so the
         // platform narrowed before these candidates existed. Re-reading here would fetch twice.
-        "UploadCycle.kt" to "candidates came from discoverResources(token, policy)",
+        "UploadCycle.kt" to "candidates came from discover(token, policy)",
         // The admission over LEDGER rows, shared by the device-manifest projection and the upload cycle's
         // enqueue: rows are facts already in hand, and there is no walk to take a policy in the first
         // place.

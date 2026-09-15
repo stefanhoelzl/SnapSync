@@ -1,13 +1,11 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-import app.snapsync.ios.discovery.IosDiscovery
+import app.snapsync.ios.upload.uploadUrlRequest
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.CreateResult
-import app.snapsync.ports.Discovery
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
@@ -64,7 +62,6 @@ import kotlin.coroutines.resume
 @OptIn(ExperimentalForeignApi::class)
 class IosUrlSessionUploadPlatform(
     private val log: Logger,
-    private val discovery: IosDiscovery,
     private val appGroup: String,
     sessionIdentifier: String,
     // The ledger, held directly. This adapter RECORDS: the party iOS tells that an upload terminated is
@@ -150,18 +147,6 @@ class IosUrlSessionUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
-        log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
-            discovery.discover(sinceToken, policy)
-        }
-
-    // Shared with the other tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
-    // both are PhotoKit fetches and only the job lifecycle differs between the tiers.
-    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
-        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
-            discovery.resourcesFor(keys)
-        }
-
     // No OS-sponsored free retry on this platform: failures return via fetchAckJobs and are recreated.
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
@@ -204,7 +189,7 @@ class IosUrlSessionUploadPlatform(
             log.w { "createJob: malformed destination URL — not creating" }
             return@invocation CreateResult.FAILED
         }
-        val urlRequest = discovery.buildRequest(url, request)
+        val urlRequest = uploadUrlRequest(url, request)
         val task = session.uploadTaskWithRequest(urlRequest, fromFile = fileUrl)
         task.taskDescription = resource.filename // the ledger key — the only field present across the lifecycle
         task.resume()

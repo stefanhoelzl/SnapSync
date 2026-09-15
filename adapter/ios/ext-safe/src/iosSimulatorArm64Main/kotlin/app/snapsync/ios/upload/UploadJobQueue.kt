@@ -3,9 +3,7 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.gallery.photoKitResourceRole
-import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
@@ -13,7 +11,6 @@ import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CreateResult
-import app.snapsync.ports.Discovery
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.logging.invocation
@@ -34,9 +31,8 @@ import platform.Photos.PHAssetResource
  */
 actual fun uploadJobQueue(
     log: Logger,
-    discovery: IosDiscovery,
     ledger: LedgerStore,
-): BackgroundTransfer = SimulatorUploadJobQueue(log, discovery, ledger)
+): BackgroundTransfer = SimulatorUploadJobQueue(log, ledger)
 
 /**
  * The third answer for a content type, matching `photoKitContentType`'s own last resort: the request's
@@ -137,9 +133,10 @@ object SimulatorUploadJobs {
 /**
  * A [BackgroundTransfer] over [SimulatorUploadJobs] — the four job verbs, and nothing else.
  *
- * **Discovery is delegated**, exactly as [IosPhotoKitUploadPlatform] delegates it. The change-token walk,
- * the `PHAsset` fetches and the selection policy's inputs are real platform behaviour that works on this
- * host, and answering them here would throw away the most valuable coverage the host offers.
+ * **Discovery is not here**, exactly as it is not in [IosPhotoKitUploadPlatform]: the root binds the real
+ * PhotoKit change-token walk (`IosDiscovery`) beside this queue on every target. The walk, the `PHAsset`
+ * fetches and the selection policy's inputs are real platform behaviour that works on this host, and
+ * answering them here would throw away the most valuable coverage the host offers.
  *
  * **Ledger adjudication is shared, not re-implemented**: `drainTerminals` applies the same
  * [terminalDisposition] the PhotoKit queue applies, so this host and a device cannot disagree about what a
@@ -147,21 +144,8 @@ object SimulatorUploadJobs {
  */
 private class SimulatorUploadJobQueue(
     private val log: Logger,
-    private val discovery: IosDiscovery,
     private val ledger: LedgerStore,
 ) : BackgroundTransfer {
-
-    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
-        log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
-            discovery.discover(sinceToken, policy)
-        }
-
-    // Shared with the device tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
-    // both are PhotoKit fetches and only the job lifecycle differs.
-    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
-        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
-            discovery.resourcesFor(keys)
-        }
 
     /**
      * No number, matching the host this substitutes for. The OS-driven tier's limit is the system's job

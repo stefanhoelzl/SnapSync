@@ -242,7 +242,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     fun expireToken() = launchMutation {
-        world.platform.expireToken()
+        world.discovery.expireToken()
         appendConsole("change token expired → next invoke does a full enumeration")
     }
 

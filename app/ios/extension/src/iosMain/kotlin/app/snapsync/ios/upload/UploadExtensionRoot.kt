@@ -109,7 +109,7 @@ object UploadExtensionRoot {
         // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
         // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
         // the process. This root is unchanged either way: it names the need, and the target answers it.
-        uploadJobQueue(log, discovery, ledgerStore)
+        uploadJobQueue(log, ledgerStore)
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 
@@ -221,6 +221,7 @@ object UploadExtensionRoot {
                 host = { bakedUploadBase() },
                 ledger = ledgerStore,
                 transfer = platform,
+                discovery = discovery,
                 discoveryStore = discoveryStore,
                 // Re-join reconciliation seed (capability `upload-state-reconciliation`): the
                 // device's stored-file listing over the Darwin HTTPS client, same compile-time host.

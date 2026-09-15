@@ -4,17 +4,17 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
-import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.Discovery
+import app.snapsync.ports.UploadDiscovery
 
 /**
  * The read-discipline gate on upload discovery (capability `limited-photo-access`): under a partial
  * grant, discovery reads the current selection snapshot instead of walking the library.
  *
- * Wraps the platform [BackgroundTransfer] inside the ONE shared cycle assembly (`uploadCore`), so
- * every tier and the world get it identically; the cycle itself stays discovery-source-blind. The
- * decision input is the injected [selectionScope] — derived by the composition from the current
- * permission and the latest snapshot — so this class holds no policy of its own:
+ * Wraps the cycle's [UploadDiscovery] inside the ONE shared cycle assembly (`uploadCore`), so every tier
+ * and the world get it identically; the cycle itself stays discovery-source-blind. The decision input is
+ * the injected [selectionScope] — derived by the composition from the current permission and the latest
+ * snapshot — so this class holds no policy of its own:
  *
  * - [SelectionScope.Unrestricted] → delegate to the platform walk, unchanged.
  * - [SelectionScope.Scoped] → return the snapshot as the discovery, **without any platform read**.
@@ -23,16 +23,14 @@ import app.snapsync.ports.Discovery
  *   snapshot is not the whole-library key-set, so it must never drive ledger pruning — an uploaded,
  *   later-deselected photo keeps its `COMPLETED` row (deselection is not withdrawal; upload is a
  *   publish).
+ *
+ * It wraps the library reads and nothing else. Free capacity, job creation and the terminal drain are the
+ * transport's facts, and a partial photo grant changes what may be READ, never what a transport will accept.
  */
-class SelectionScopedTransfer(
-    private val delegate: BackgroundTransfer,
+class SelectionScopedDiscovery(
+    private val delegate: UploadDiscovery,
     private val selectionScope: () -> SelectionScope,
-) : BackgroundTransfer by delegate {
-
-    // `remainingCapacity` is deliberately NOT overridden. Free capacity is the transport's fact — how many
-    // transfers it will take right now — and a partial photo grant changes what may be READ, never what
-    // the session will accept. The delegation is the correct answer here, not an omission: overriding it
-    // would make the read discipline decide a transport question it knows nothing about.
+) : UploadDiscovery {
 
     /**
      * The same read discipline applied to the ledger-driven resolve (capability `sync-ledger`): under a
@@ -50,9 +48,9 @@ class SelectionScopedTransfer(
             is SelectionScope.Scoped -> scope.resources.filter { it.filename in keys }
         }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
+    override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
         when (val scope = selectionScope()) {
-            SelectionScope.Unrestricted -> delegate.discoverResources(sinceToken, policy)
+            SelectionScope.Unrestricted -> delegate.discover(sinceToken, policy)
             is SelectionScope.Scoped -> Discovery(
                 // The snapshot arrives already read, with resources — the sanctioned eager read is what
                 // keeps every library FETCH in-flow (capability `limited-photo-access`). Wrapping it as

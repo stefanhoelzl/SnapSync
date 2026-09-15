@@ -1,6 +1,5 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
@@ -37,14 +36,13 @@ import co.touchlab.kermit.Logger
  *
  * Only the job subsystem. Asset and resource fetches, the persistent change-token walk, the selection
  * policy's reads, and album creation and membership are the real platform APIs on every target — they
- * work on a simulator, and they are among the most valuable things that host exercises. A substitute
- * therefore **delegates discovery** to the same [IosDiscovery] the PhotoKit implementation delegates to,
- * rather than answering it itself.
+ * work on a simulator, and they are among the most valuable things that host exercises. Discovery is
+ * therefore not reached through this seam at all: the root binds the real PhotoKit discovery
+ * (`IosDiscovery`, the cycle's `UploadDiscovery`) beside it, identically on every target.
  *
  * Decision record: `changes/exercise-os-driven-upload-on-simulator` (D6, D7).
  */
 expect fun uploadJobQueue(
     log: Logger,
-    discovery: IosDiscovery,
     ledger: LedgerStore,
 ): BackgroundTransfer

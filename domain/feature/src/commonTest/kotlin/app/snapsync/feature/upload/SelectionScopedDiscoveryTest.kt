@@ -5,16 +5,12 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.UploadRequest
-import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.PlatformUploadJob
+import app.snapsync.ports.UploadDiscovery
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -24,24 +20,16 @@ import kotlinx.coroutines.test.runTest
  * delegates unchanged. The walk cursor is preserved across the scoped period, and a snapshot is
  * never a full enumeration (it must not drive ledger pruning).
  */
-/** An admitting policy over [cutoff] — the shape the cycle hands the transfer. */
+/** An admitting policy over [cutoff] — the shape the cycle hands the discovery. */
 private suspend fun admitting(cutoff: String): SelectionPolicy =
     SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
 
-class SelectionScopedTransferTest {
+class SelectionScopedDiscoveryTest {
 
-    private class RecordingDelegate : BackgroundTransfer {
+    private class RecordingDelegate : UploadDiscovery {
         var discoverCalls = 0
         var resolveCalls = 0
-        var capacityCalls = 0
-        override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList()
-        override suspend fun remainingCapacity(): Int? {
-            capacityCalls++
-            return 3
-        }
-        override suspend fun drainTerminals(): List<PlatformUploadJob> = emptyList()
-        override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) = Unit
-        override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+        override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
             discoverCalls++
             return Discovery(emptyList(), byteArrayOf(7))
         }
@@ -49,8 +37,6 @@ class SelectionScopedTransferTest {
             resolveCalls++
             return emptyList()
         }
-        override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
-            CreateResult.CREATED
     }
 
     private fun resource(name: String) =
@@ -59,9 +45,9 @@ class SelectionScopedTransferTest {
     @Test
     fun unrestricted_delegates_to_the_platform_walk() = runTest {
         val delegate = RecordingDelegate()
-        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Unrestricted }
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Unrestricted }
 
-        val discovery = transfer.discoverResources(byteArrayOf(1), admitting("2026-01-01T00:00:00Z"))
+        val discovery = scoped.discover(byteArrayOf(1), admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(1, delegate.discoverCalls)
         assertContentEquals(byteArrayOf(7), discovery.nextToken)
@@ -71,9 +57,9 @@ class SelectionScopedTransferTest {
     fun scoped_returns_the_snapshot_without_any_platform_read() = runTest {
         val delegate = RecordingDelegate()
         val snapshot = listOf(resource("A"), resource("B"))
-        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(snapshot) }
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(snapshot) }
 
-        val discovery = transfer.discoverResources(byteArrayOf(1, 2), admitting("2026-01-01T00:00:00Z"))
+        val discovery = scoped.discover(byteArrayOf(1, 2), admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(0, delegate.discoverCalls)
         assertEquals(
@@ -91,9 +77,9 @@ class SelectionScopedTransferTest {
     @Test
     fun scoped_with_no_prior_cursor_yields_an_empty_token() = runTest {
         val delegate = RecordingDelegate()
-        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(emptyList()) }
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(emptyList()) }
 
-        val discovery = transfer.discoverResources(null, admitting("2026-01-01T00:00:00Z"))
+        val discovery = scoped.discover(null, admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(0, delegate.discoverCalls)
         assertTrue(discovery.candidates.isEmpty())
@@ -105,9 +91,9 @@ class SelectionScopedTransferTest {
     @Test
     fun unrestricted_resolve_delegates_to_the_platform() = runTest {
         val delegate = RecordingDelegate()
-        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Unrestricted }
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Unrestricted }
 
-        transfer.resourcesFor(setOf("A"))
+        scoped.resourcesFor(setOf("A"))
 
         assertEquals(1, delegate.resolveCalls)
     }
@@ -118,9 +104,9 @@ class SelectionScopedTransferTest {
         // platform under a partial grant is exactly the read the discipline exists to avoid.
         val delegate = RecordingDelegate()
         val snapshot = listOf(resource("A"), resource("B"), resource("C"))
-        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(snapshot) }
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(snapshot) }
 
-        val resolved = transfer.resourcesFor(setOf("A", "C"))
+        val resolved = scoped.resourcesFor(setOf("A", "C"))
 
         assertEquals(0, delegate.resolveCalls)
         assertEquals(listOf("A", "C"), resolved.map { it.filename })
@@ -133,9 +119,9 @@ class SelectionScopedTransferTest {
         // library — the caller stops asking for it either way. Resolving it from the platform instead
         // would upload a photo the user did not hand over.
         val delegate = RecordingDelegate()
-        val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(listOf(resource("A"))) }
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(listOf(resource("A"))) }
 
-        val resolved = transfer.resourcesFor(setOf("A", "NOT-SELECTED"))
+        val resolved = scoped.resourcesFor(setOf("A", "NOT-SELECTED"))
 
         assertEquals(0, delegate.resolveCalls, "an unselected key must not fall through to a platform read")
         assertEquals(listOf("A"), resolved.map { it.filename })

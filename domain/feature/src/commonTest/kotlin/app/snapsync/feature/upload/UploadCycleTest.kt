@@ -7,6 +7,7 @@ import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.UploadDiscovery
 
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.LedgerEntry
@@ -109,7 +110,7 @@ class UploadCycleTest {
         // What this platform says it will accept. `null` — the default — is "I will not say", which keeps
         // every test that predates the bound on the cycle's own `enqueueBatchSize`, exactly as before.
         private val capacity: Int? = null,
-    ) : BackgroundTransfer {
+    ) : BackgroundTransfer, UploadDiscovery {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
@@ -152,7 +153,7 @@ class UploadCycleTest {
             return library.filter { it.filename in keys }
         }
 
-        override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+        override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
             discoverTokenArg = sinceToken
             discoverPolicyArg = policy
             // The fake returns HELD candidates: it stands in for a platform whose discovery already
@@ -239,6 +240,7 @@ class UploadCycleTest {
             engineFor = { config -> SyncEngine(StubUploadRequestProvider(), ledger, config.eventId) },
             ledger = ledger,
             platform = platform,
+            library = platform,
             store = store,
             reconcile = reconcile,
             onDiscovery = onDiscovery,

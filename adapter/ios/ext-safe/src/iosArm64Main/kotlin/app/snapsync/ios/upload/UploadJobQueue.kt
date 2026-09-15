@@ -1,6 +1,5 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
@@ -14,6 +13,5 @@ import co.touchlab.kermit.Logger
  */
 actual fun uploadJobQueue(
     log: Logger,
-    discovery: IosDiscovery,
     ledger: LedgerStore,
-): BackgroundTransfer = IosPhotoKitUploadPlatform(log, discovery, ledger)
+): BackgroundTransfer = IosPhotoKitUploadPlatform(log, ledger)
