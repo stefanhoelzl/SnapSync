@@ -7,6 +7,7 @@ import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 
+import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.isDone
 import app.snapsync.feature.upload.LedgerWriter
@@ -108,11 +109,11 @@ class UploadCycle(
     // `{ emptySet() }` re-uploads every downloaded foreign photo back into the event, or uploads the
     // member's WhatsApp album into a stranger's. A tier without an album source states that at its call
     // site, where a reviewer can see it.
-    // Event-album placement (capability `event-album`): fired with the `assetId`s (normalized) that
-    // GENUINELY completed this cycle, so the running process adds those own photos to the event album.
-    // Runs in whichever process runs the cycle (extension on ≥26.1, app on 18–26.0). Best-effort —
-    // invoked under `runCatching`. Fired only when the membership opted in (`saveToAlbum`), which arrives
-    // with the gate, so the opt-in check is no longer each root's to remember.
+    // Event-album placement (capability `event-album`): fired with the `assetId`s (normalized) this cycle is
+    // about to enqueue for the FIRST time, so the running process adds those own photos to the event album
+    // before their upload jobs exist. Runs in whichever process runs the cycle (extension on ≥26.1, app on
+    // 18–26.0). Best-effort — invoked under `runCatching`. Fired only when the membership opted in
+    // (`saveToAlbum`), which arrives with the gate, so the opt-in check is no longer each root's to remember.
     private val placeInAlbum: suspend (eventId: String, assetIds: Set<String>) -> Unit,
     private val log: Logger = Logger.withTag("UploadCycle"),
     // The best-effort hooks' budgets. Defaulted, because unlike the ports above there IS a safe value: a
@@ -221,9 +222,8 @@ class UploadCycle(
         //
         // It withholds NEW WORK, not settlement, and not the record of what is already uploaded. A declined
         // cycle still settles with the platform and still publishes its (empty) manifest — neither of which
-        // creates upload work. No promotion, though: that places in the album and gates the notify, which a
-        // non-contributor owes nobody. Rows the platform recorded UPLOADED stay that way, and are reconciled
-        // from the device's stored-file listing on a re-join.
+        // creates upload work. Nor does it place anything in the event album: placement rides job creation,
+        // which a non-contributor does not reach.
         if (!policy.contributes) {
             recreateRetrySpent(engine)
             log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
@@ -485,6 +485,7 @@ class UploadCycle(
         val rows = eligible.take(bound)
 
         val byKey = platform.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
+        placeFirstEnqueued(ready, rows, byKey)
         var created = 0
         for (row in rows) {
             val resource = byKey[row.key]
@@ -521,6 +522,31 @@ class UploadCycle(
     }
 
     /**
+     * Event-album placement (capability `event-album`) for the photos this pass is about to enqueue for the
+     * **first** time: the slice's rows still `DISCOVERED` whose resource resolved. One best-effort call.
+     *
+     * **Before** any job is created, deliberately. Creating a job records `REQUESTED` durably, so a process
+     * death between that write and a later placement would leave a photo that no pass ever places — nothing
+     * reads a `REQUESTED` row for that. Placed first, a creation that fails, hits the platform's limit, or is
+     * interrupted leaves the row `DISCOVERED`, and the next cycle places it again for free: adding an asset
+     * already in the collection is a no-op (measured, simulator, iOS 26.5 — `changes/fix-lost-upload-acks`).
+     *
+     * A `FAILED` row being re-created is not placed again — its first attempt passed through here as
+     * `DISCOVERED` — and the slice has already been admitted by the membership's current policy, so a photo
+     * a narrowing change excluded is never placed. Placement never gates job creation.
+     *
+     * Decision record: `changes/retire-uploaded-state` (D2).
+     */
+    private suspend fun placeFirstEnqueued(ready: Ready, rows: List<LedgerEntry>, byKey: Map<String, Resource>) {
+        if (!ready.saveToAlbum) return
+        val assetIds = rows.filter { it.state == LedgerState.DISCOVERED && it.key in byKey }
+            .mapTo(mutableSetOf()) { it.assetId }
+        if (assetIds.isEmpty()) return
+        runCatching { placeInAlbum(ready.eventId, assetIds) }
+            .onFailure { log.w(it) { "event-album placement failed this cycle" } }
+    }
+
+    /**
      * Write what the event can see: the enumeration audit line, the device manifest, and the completion
      * notify. Decided over the outcome, exhaustively, so a new outcome cannot inherit a publication
      * policy nobody chose for it (capability `upload-lifecycle`).
@@ -553,12 +579,12 @@ class UploadCycle(
             // the declined branch below has always written one without any walk at all.
             is CycleOutcome.Truncated -> {
                 logEnumeration(audit)
-                promoteThenPublishManifest(ready, seedSucceeded = true)
+                writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded = true)
             }
 
             is CycleOutcome.Drained -> {
                 logEnumeration(audit)
-                promoteThenPublishManifest(ready, seedSucceeded = true)
+                writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded = true)
             }
         }
         return result
@@ -580,32 +606,6 @@ class UploadCycle(
             "enumeration: ${audit.seen} seen, ${audit.newWork} new, " +
                 "${audit.alreadyUploaded} already-uploaded$tail"
         }
-    }
-
-    /**
-     * Promote this cycle's uploaded rows, then write the device manifest (capability `device-manifest`).
-     *
-     * **The order is the contract, not a coincidence.** The manifest is a PROJECTION of the ledger's
-     * settled rows, so a row promoted after the write would be absent from the projection it belongs in
-     * and would not reach the event union until some later cycle happened to publish again. Nothing else
-     * is handed over but the event and the admission: every row this cycle recorded or backfilled is
-     * already durable, and the projection reads them. The write is bounded and best-effort inside
-     * [writeDeviceManifest], so a hung host cannot stall a cycle and no root has to remember to bound it.
-     *
-     * There is no completion notify any more, and it is worth saying what it was and why it can go. The
-     * device used to `POST` "I have uploaded" so the backend would wake the other members. On the
-     * versioned device API that route does not exist: the manifest write IS the announcement, because
-     * publishing a device's asset set is the only thing that changes what the event union states, and the
-     * backend fans out from it. Deleting the second call removes a whole class of disagreement — a cycle
-     * whose manifest wrote but whose notify failed used to leave members looking at a union nobody told
-     * them about — and it removes the gate that decided when to send: [promoteUploaded]'s count and the
-     * write's confirmation existed ONLY to answer "is this worth a wake", a question with no asker left.
-     * Members still converge without it: each reconciles on its next foreground, and the backend's own
-     * fan-out is driven by the publish (capability `upload-completion-notify`).
-     */
-    private suspend fun promoteThenPublishManifest(ready: Ready, seedSucceeded: Boolean) {
-        promoteUploaded(ready)
-        writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded)
     }
 
     // --- the stage vocabulary --------------------------------------------------------------------
@@ -826,46 +826,6 @@ class UploadCycle(
             }
         }
         return capHit
-    }
-
-    /**
-     * Phase 2b — the promotion pass, shared by both tiers.
-     *
-     * `UPLOADED` rows are the completions this cycle learns about: their bytes are stored, and what they
-     * still owe is the event-album placement and the completion notify. Place, then promote; the notify
-     * fires later, after the device-manifest write, because the manifest projects `COMPLETED` rows and a
-     * recipient woken before it lands would find a union that does not list these assets yet. That is why
-     * the promotion happens **here** rather than after the manifest: promoting first is what puts them in
-     * it.
-     *
-     * Promotion does not wait on the placement succeeding. Both effects are best-effort, as they were
-     * before, and gating the row on them would invent a permanently-stuck state — `UPLOADED` counts as
-     * pending everywhere, so a device whose album or notify kept failing would read "uploading" forever
-     * over photos that are already stored.
-     *
-     * A repeat placement after a crash between the two is free: `addAssets` on an asset already in the
-     * collection is a no-op (measured, simulator, iOS 26.5 — `changes/fix-lost-upload-acks`).
-     *
-     * Runs in [publish], FIRST, and that order is load-bearing: the manifest is a projection of settled
-     * rows, so a row promoted after the write would be missing from the projection the notify wakes
-     * recipients to read. It publishes nothing itself but it settles what the manifest then states, which
-     * is why it belongs with the outward effects rather than with the ledger writes.
-     *
-     * Answers how many rows it promoted — one half of the notify's trigger, the other being whether the
-     * manifest changed. That count is safe to use again now that promotion and notify happen in the same
-     * place: it can no longer be spent by a cycle that goes on to publish nothing.
-     */
-    private suspend fun promoteUploaded(ready: Ready): Int {
-        val rows = ledger.uploadedRows()
-        if (rows.isEmpty()) return 0
-        if (ready.saveToAlbum) {
-            val assetIds = rows.mapTo(mutableSetOf()) { assetIdFromUploadKey(it.key) }
-            runCatching { placeInAlbum(ready.eventId, assetIds) }
-                .onFailure { log.w(it) { "event-album placement failed this cycle" } }
-        }
-        rows.forEach { ledger.promote(it.key) }
-        log.i { "promoted ${rows.size} uploaded row(s) to COMPLETED" }
-        return rows.size
     }
 
 }

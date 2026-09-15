@@ -2,6 +2,7 @@ package app.snapsync.engine
 
 import app.snapsync.ports.LedgerStore
 import app.snapsync.world.LedgerStoreContract
+import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 
@@ -244,5 +245,45 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertEquals(false, survived?.absent)
         // And it still projects into the manifest, which filters on that column.
         assertEquals(listOf("A"), backend.manifestRows().map { it.assetId })
+    }
+
+    @Test
+    fun `migration v8 to v9 settles UPLOADED rows and touches nothing else`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // 8.sqm changes no schema, so the v8 schema IS the current one: create it, then plant rows exactly
+        // as a build that still wrote `UPLOADED` left them. The raw INSERT is the point — the current enum
+        // cannot express that state, so no Kotlin write could put it there.
+        LedgerDatabase.Schema.create(driver)
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow (key, assetId, state, attempt, eventId, creationDate, role, contentType, " +
+                "originalFilename, absent, destinationPath) VALUES " +
+                "('U-primary.jpg', 'U', 'UPLOADED', 2, 'E1', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', " +
+                "'IMG_U.JPG', 0, '/v2/files/U'), " +
+                "('D-primary.jpg', 'D', 'DISCOVERED', 0, 'E1', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_D.JPG', 0, NULL), " +
+                "('R-primary.jpg', 'R', 'REQUESTED', 0, 'E1', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_R.JPG', 0, NULL), " +
+                "('C-primary.jpg', 'C', 'COMPLETED', 0, 'E1', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_C.JPG', 0, NULL), " +
+                "('F-primary.jpg', 'F', 'FAILED', 1, 'E1', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_F.JPG', 0, NULL)",
+            0,
+        )
+
+        // The data-only rewrite. The migration-verify task compares schemas and cannot see a wrong one of
+        // these, which is why this test exists.
+        LedgerDatabase.Schema.migrate(driver, 8L, LedgerDatabase.Schema.version).await()
+
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        val settled = backend.get("U-primary.jpg")
+        assertEquals(LedgerState.COMPLETED, settled?.state, "an UPLOADED row decodes, and decodes settled")
+        assertEquals(2, settled?.attempt)
+        assertEquals("E1", settled?.eventId)
+        assertEquals("2026-07-10T00:00:00Z", settled?.creationDate)
+        assertEquals("/v2/files/U", settled?.destinationPath)
+        assertEquals(LedgerState.DISCOVERED, backend.get("D-primary.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get("R-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get("C-primary.jpg")?.state)
+        assertEquals(LedgerState.FAILED, backend.get("F-primary.jpg")?.state)
+        // The half a decode alias could never have fixed: the aggregate compares the STORED text against the
+        // bound done set, so an unrewritten row would have counted pending forever.
+        assertEquals(LedgerAggregates(pending = 3, completed = 2), backend.aggregates())
     }
 }

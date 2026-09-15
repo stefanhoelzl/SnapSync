@@ -41,7 +41,7 @@ class LostUploadRecordIntegrationTest {
         runUploadCycle()
         ledgerBackend.requestedKeys().forEach { platform.completeJob(it) }
         platform.drainTerminals()
-        runUploadCycle() // promotes UPLOADED -> COMPLETED
+        runUploadCycle()
     }
 
     /** Every row the ledger holds, as a comparable snapshot. */

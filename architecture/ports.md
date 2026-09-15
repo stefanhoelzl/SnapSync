@@ -89,7 +89,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SuppressionSource` | `:domain:ports` | — | no |
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` LeavePrevious, Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
-| `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadCompleted, UploadFailed, UploadStarted | no |
+| `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource | yes |
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |

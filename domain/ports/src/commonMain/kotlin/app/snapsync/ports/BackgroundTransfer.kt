@@ -30,8 +30,8 @@ interface BackgroundTransfer {
      * A terminal fact never crosses this seam. The platform tells exactly one party that an upload ended,
      * and that party records it where it survives the process (`sync-ledger`'s guarded `markTerminal`);
      * handing the fact up for a later cycle to collect is what made a completed upload re-upload after
-     * process death. So a succeeded job is written and acknowledged in place, and the cycle learns about
-     * it by reading `UPLOADED` rows, not from this list.
+     * process death. So a succeeded job is recorded `COMPLETED` and acknowledged in place, and nothing
+     * about it reaches the cycle.
      *
      * The implementation also owes the platform whatever settling it demands — the PhotoKit tier must
      * acknowledge **every** presented job or the system reports error 50008, whether or not its guarded

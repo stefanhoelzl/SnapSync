@@ -12,6 +12,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.PendingResource
+import app.snapsync.model.TerminalOutcome
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -168,9 +169,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
 
         writer.recordFailed(res("k", "A"), attempt = 0, eventId = "E1")
         assertEquals(entry("k", "A", LedgerState.FAILED, 0, eventId = "E1"), writer.entry("k"))
-
-        writer.recordCompleted(res("k", "A"), attempt = 1, eventId = "E1")
-        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1, eventId = "E1"), writer.entry("k"))
     }
 
     @Test
@@ -227,7 +225,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     fun `writer exposes the backfill sweep`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordCompleted(res("k", "A"), attempt = 0, eventId = "")
+        writer.recordRequested(res("k", "A"), attempt = 0, eventId = "")
 
         writer.backfillEventId("E1")
 
@@ -385,7 +383,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         // asset must not re-upload (capability `sync-ledger`).
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordCompleted(res("X-photo.jpg", "X"), attempt = 0, eventId = "E1")
+        backend.seedCompleted(res("X-photo.jpg", "X"), eventId = "E1")
 
         writer.markAbsent("X")
 
@@ -399,12 +397,12 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
 
-        writer.recordCompleted(res("k", "A"), attempt = 2, eventId = "E1")
-        writer.recordCompleted(res("k", "A"), attempt = 2, eventId = "E1")
+        writer.recordFailed(res("k", "A"), attempt = 2, eventId = "E1")
+        writer.recordFailed(res("k", "A"), attempt = 2, eventId = "E1")
 
         val entry = writer.entry("k")!!
         assertEquals("A", entry.assetId)
-        assertEquals(LedgerState.COMPLETED, entry.state)
+        assertEquals(LedgerState.FAILED, entry.state)
         assertEquals(2, entry.attempt)
         assertEquals("E1", entry.eventId)
     }
@@ -414,7 +412,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     @Test
     fun `a recorded row round-trips its manifest detail`() = runTest {
         val backend = createBackend()
-        LedgerWriter(backend).recordCompleted(res(), attempt = 0, eventId = "E1")
+        LedgerWriter(backend).recordRequested(res(), attempt = 0, eventId = "E1")
 
         val row = backend.get("cloud-1-ios.photo.heic")!!
         assertEquals(CREATION_DATE, row.creationDate)
@@ -425,20 +423,20 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
 
     @Test
     fun `a state transition never erases the manifest detail`() = runTest {
-        // THE invariant behind the ledger-backed manifest. A terminal job comes back from the platform
+        // THE invariant behind the ledger-backed manifest. A retry-spent job comes back from the platform
         // as a key, and the cycle rebuilds its Resource from that key alone — with empty metadata,
-        // because completion needs nothing else. If the COMPLETED write overwrote with those blanks,
-        // every row would be blanked at the exact moment it became eligible for the manifest, and the
-        // device's photos would vanish from the event union while its bytes sat in storage.
+        // because adjudicating a failure needs nothing else. If the FAILED write overwrote with those
+        // blanks, the row would lose its capture date, and — the manifest projecting every row whatever
+        // its state — the photo would drop out of the event union while its upload was being retried.
         val backend = createBackend()
         val writer = LedgerWriter(backend)
         writer.recordRequested(res(), attempt = 0, eventId = "E1")
 
         val bare = Resource("cloud-1-ios.photo.heic", "cloud-1", "image/heic", emptyMap(), Unit)
-        writer.recordCompleted(bare, attempt = 0, eventId = "E1")
+        writer.recordFailed(bare, attempt = 0, eventId = "E1")
 
         val row = backend.get("cloud-1-ios.photo.heic")!!
-        assertEquals(LedgerState.COMPLETED, row.state)
+        assertEquals(LedgerState.FAILED, row.state)
         assertEquals(CREATION_DATE, row.creationDate, "the detail written at REQUESTED survives")
         assertEquals("IMG_0001.HEIC", row.originalFilename)
     }
@@ -447,7 +445,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     fun `the manifest projection is not state-scoped because it lists intent`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordCompleted(res("done.heic", "A"), attempt = 0, eventId = "E1")
+        backend.seedCompleted(res("done.heic", "A"), eventId = "E1")
         writer.recordRequested(res("inflight.heic", "B"), attempt = 0, eventId = "E1")
         writer.recordDiscovered(res("found.heic", "D"), eventId = "E1")
         writer.recordFailed(res("failed.heic", "F"), attempt = 1, eventId = "E1")
@@ -468,7 +466,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     fun `an absent row is the one thing the manifest projection drops`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordCompleted(res("kept.heic", "A"), attempt = 0, eventId = "E1")
+        backend.seedCompleted(res("kept.heic", "A"), eventId = "E1")
         writer.recordDiscovered(res("gone.heic", "B"), eventId = "E1")
         backend.markAbsent("B")
 
@@ -479,16 +477,16 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         )
     }
 
-    // ── The guarded terminal write, the UPLOADED state, and the narrow reads ────────────────────
+    // ── The guarded terminal write and the narrow reads ─────────────────────────────────────────────
 
     @Test
     fun `markTerminal flips a REQUESTED row and says it applied`() = runTest {
         val backend = createBackend()
         LedgerWriter(backend).recordRequested(res("a.heic", "A"), attempt = 2, eventId = "E1")
 
-        assertTrue(backend.markTerminal("a.heic", LedgerState.UPLOADED), "it applied")
+        assertTrue(backend.markTerminal("a.heic", TerminalOutcome.COMPLETED), "it applied")
         val row = backend.get("a.heic")!!
-        assertEquals(LedgerState.UPLOADED, row.state)
+        assertEquals(LedgerState.COMPLETED, row.state)
         // Every other column is the statement's business to preserve, not the caller's: the party that
         // records a terminal outcome is a platform callback holding nothing but the key.
         assertEquals("A", row.assetId)
@@ -500,9 +498,9 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     @Test
     fun `markTerminal refuses a row that is not REQUESTED`() = runTest {
         val backend = createBackend()
-        LedgerWriter(backend).recordCompleted(res("a.heic", "A"), attempt = 0, eventId = "E1")
+        backend.seedCompleted(res("a.heic", "A"), eventId = "E1")
 
-        assertFalse(backend.markTerminal("a.heic", LedgerState.FAILED), "it did not apply")
+        assertFalse(backend.markTerminal("a.heic", TerminalOutcome.FAILED), "it did not apply")
         assertEquals(LedgerState.COMPLETED, backend.get("a.heic")!!.state, "and clobbered nothing")
     }
 
@@ -510,7 +508,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     fun `markTerminal on an absent key writes nothing and says so`() = runTest {
         val backend = createBackend()
 
-        assertFalse(backend.markTerminal("ghost.heic", LedgerState.UPLOADED))
+        assertFalse(backend.markTerminal("ghost.heic", TerminalOutcome.COMPLETED))
         assertNull(backend.get("ghost.heic"), "a guarded write never resurrects a pruned row")
     }
 
@@ -522,28 +520,11 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         val job = launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
         runCurrent()
 
-        backend.markTerminal("a.heic", LedgerState.UPLOADED)
+        backend.markTerminal("a.heic", TerminalOutcome.COMPLETED)
         runCurrent()
 
         assertEquals(1, dings, "it changed the truth, so watchers must re-read it")
         job.cancel()
-    }
-
-    @Test
-    fun `uploadedRows returns whole entries and only UPLOADED ones`() = runTest {
-        val backend = createBackend()
-        val writer = LedgerWriter(backend)
-        writer.recordRequested(res("up.heic", "A"), attempt = 1, eventId = "E1")
-        backend.markTerminal("up.heic", LedgerState.UPLOADED)
-        writer.recordRequested(res("flight.heic", "B"), attempt = 0, eventId = "E1")
-        writer.recordCompleted(res("done.heic", "C"), attempt = 0, eventId = "E1")
-        writer.recordFailed(res("bad.heic", "D"), attempt = 0, eventId = "E1")
-
-        val rows = backend.uploadedRows()
-        assertEquals(listOf("up.heic"), rows.map { it.key })
-        // Whole entries: the promotion pass needs assetId for the album and the detail for its write.
-        assertEquals("A", rows.single().assetId)
-        assertEquals(CREATION_DATE, rows.single().creationDate)
     }
 
     @Test
@@ -552,28 +533,28 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         val writer = LedgerWriter(backend)
         writer.recordRequested(res("flight.heic", "A"), attempt = 0, eventId = "E1")
         writer.recordFailed(res("bad.heic", "B"), attempt = 0, eventId = "E1")
-        writer.recordCompleted(res("done.heic", "C"), attempt = 0, eventId = "E1")
+        backend.seedCompleted(res("done.heic", "C"), eventId = "E1")
         writer.recordRequested(res("up.heic", "D"), attempt = 0, eventId = "E1")
-        backend.markTerminal("up.heic", LedgerState.UPLOADED)
+        backend.markTerminal("up.heic", TerminalOutcome.COMPLETED)
 
-        // A FAILED row is already adjudicated and an UPLOADED row has landed; handing either to the
-        // stranded pass re-reports a loss that did not happen — and for UPLOADED, writes the fact away.
+        // A FAILED row is already adjudicated and a COMPLETED row has landed; handing either to the
+        // stranded pass re-reports a loss that did not happen.
         assertEquals(setOf("flight.heic"), backend.requestedKeys())
     }
 
     @Test
-    fun `an UPLOADED row is outstanding everywhere the bytes are not the question`() = runTest {
+    fun `a completion recorded by the platform settles the photo everywhere at once`() = runTest {
+        // No state sits between "the bytes are stored" and "settled" any more: the moment the platform's
+        // callback records the outcome, the photo counts completed and nothing is outstanding for it —
+        // without waiting for any cycle.
         val backend = createBackend()
         LedgerWriter(backend).recordRequested(res("up.heic", "A"), attempt = 0, eventId = "E1")
-        backend.markTerminal("up.heic", LedgerState.UPLOADED)
+        backend.markTerminal("up.heic", TerminalOutcome.COMPLETED)
 
-        assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
-        assertEquals(listOf(PendingResource("A", "up.heic")), backend.pendingResources())
-        assertEquals(
-            listOf("up.heic"), backend.manifestRows().map { it.key },
-            "but it is still DECLARED: the manifest states intent, and bytes that have landed are " +
-                "intended by any reading",
-        )
+        assertEquals(LedgerAggregates(pending = 0, completed = 1), backend.aggregates())
+        assertEquals(emptyList(), backend.pendingResources())
+        assertEquals(emptyList(), backend.rowsNeedingJob())
+        assertEquals(listOf("up.heic"), backend.manifestRows().map { it.key }, "and it is still declared")
     }
 
     @Test
@@ -603,11 +584,10 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         backend.recordUnlessSettled(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
         backend.recordUnlessSettled(entry(key = "b.heic", assetId = "B", state = LedgerState.FAILED))
         backend.recordUnlessSettled(entry(key = "c.heic", assetId = "C", state = LedgerState.REQUESTED))
-        backend.recordUnlessSettled(entry(key = "d.heic", assetId = "D", state = LedgerState.UPLOADED))
         backend.recordUnlessSettled(entry(key = "e.heic", assetId = "E", state = LedgerState.COMPLETED))
 
         // DISCOVERED and FAILED are the same fact to a producer: no live job, no bytes on the backend.
-        // REQUESTED has a job, UPLOADED has bytes, COMPLETED is settled — none of them is work.
+        // REQUESTED has a job and COMPLETED is settled — neither is work.
         assertEquals(
             listOf("a.heic", "b.heic"),
             backend.rowsNeedingJob().map { it.key },
@@ -620,9 +600,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         backend.recordUnlessSettled(entry(key = "gone.heic", assetId = "G", state = LedgerState.DISCOVERED))
         backend.markAbsent("G")
 
-        // A departed asset has no bytes left to read, so there is nothing to upload from. This is the one
-        // place the work read and `uploadedRows` disagree, and deliberately: an UPLOADED row still owes a
-        // promotion, which absence does not change.
+        // A departed asset has no bytes left to read, so there is nothing to upload from.
         assertEquals(emptyList(), backend.rowsNeedingJob())
     }
 
@@ -667,7 +645,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
 
         // `markTerminal` is guarded on REQUESTED, which is what lets the walk write a row without racing
         // the platform's delegate for a key it has never issued a job for.
-        assertFalse(backend.markTerminal("a.heic", LedgerState.UPLOADED))
+        assertFalse(backend.markTerminal("a.heic", TerminalOutcome.COMPLETED))
         assertEquals(LedgerState.DISCOVERED, backend.get("a.heic")!!.state)
     }
 }

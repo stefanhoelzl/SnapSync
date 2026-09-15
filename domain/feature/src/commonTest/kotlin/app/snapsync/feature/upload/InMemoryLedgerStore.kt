@@ -6,6 +6,7 @@ import app.snapsync.model.isDone
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.PendingResource
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
@@ -127,11 +128,11 @@ class InMemoryLedgerStore : LedgerStore {
         )
     }
 
-    override fun markTerminal(key: String, state: LedgerState): Boolean {
+    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
         val current = entries[key] ?: return false
         if (current.state != LedgerState.REQUESTED) return false
         entries[key] = LedgerEntry(
-            key = current.key, assetId = current.assetId, state = state,
+            key = current.key, assetId = current.assetId, state = outcome.state,
             attempt = current.attempt, eventId = current.eventId,
             creationDate = current.creationDate, role = current.role,
             contentType = current.contentType, originalFilename = current.originalFilename,
@@ -140,9 +141,6 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
         return true
     }
-
-    override suspend fun uploadedRows(): List<LedgerEntry> =
-        entries.values.filter { it.state == LedgerState.UPLOADED }
 
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         entries.values.filter { it.state.needsJob && !it.absent }
@@ -150,19 +148,4 @@ class InMemoryLedgerStore : LedgerStore {
 
     override suspend fun requestedKeys(): Set<String> =
         entries.values.filter { it.state == LedgerState.REQUESTED }.mapTo(mutableSetOf()) { it.key }
-
-    override suspend fun promoteUploaded(key: String): Boolean {
-        val current = entries[key] ?: return false
-        if (current.state != LedgerState.UPLOADED) return false
-        // One field changes; every other fact about the row is carried over — see the port's KDoc.
-        entries[key] = LedgerEntry(
-            key = current.key, assetId = current.assetId, state = LedgerState.COMPLETED,
-            attempt = current.attempt, eventId = current.eventId,
-            creationDate = current.creationDate, role = current.role,
-            contentType = current.contentType, originalFilename = current.originalFilename,
-            absent = current.absent,
-        )
-        dings.tryEmit(Unit)
-        return true
-    }
 }

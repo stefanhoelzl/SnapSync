@@ -91,6 +91,10 @@ class ReconfigureIntegrationTest {
             // A NEW photo synced after the toggle IS placed (forward-only).
             w.addOwnAsset("B")
             w.runUploadCycle()
+            assertTrue(
+                w.albumManager.assetsIn(albumId).isNotEmpty(),
+                "placed when its upload was enqueued — before the upload completed",
+            )
             w.platform.completeJob("B-primary.jpg")
             w.runUploadCycle()
             assertTrue(w.albumManager.assetsIn(albumId).isNotEmpty(), "photos synced after album-on are placed")

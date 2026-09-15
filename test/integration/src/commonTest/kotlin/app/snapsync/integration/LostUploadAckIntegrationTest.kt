@@ -37,7 +37,7 @@ class LostUploadAckIntegrationTest {
     private val EVENT = "11111111-1111-4111-8111-111111111111"
 
     @Test
-    fun a_completion_learned_by_a_dead_process_is_promoted_and_never_re_uploaded() = worldTest {
+    fun a_completion_learned_by_a_dead_process_is_settled_and_never_re_uploaded() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         val ledger = try {
             val first = World(scope)
@@ -52,8 +52,8 @@ class LostUploadAckIntegrationTest {
             first.platform.drainTerminals()
 
             assertEquals(
-                LedgerState.UPLOADED, first.ledgerBackend.get(key)?.state,
-                "the outcome is durable the moment the platform reports it — not when a cycle next runs",
+                LedgerState.COMPLETED, first.ledgerBackend.get(key)?.state,
+                "the outcome is durable, and settled, the moment the platform reports it — not when a cycle next runs",
             )
             first.ledgerBackend
         } finally {
@@ -68,7 +68,7 @@ class LostUploadAckIntegrationTest {
 
             second.runUploadCycle()
 
-            val key = ledger.uploadedRows().map { it.key } + ledger.pendingResources().map { it.key }
+            val key = ledger.pendingResources().map { it.key }
             assertTrue(key.isEmpty(), "nothing is left outstanding: $key")
             assertTrue(
                 second.platform.created.isEmpty(),
@@ -126,14 +126,12 @@ class LostUploadAckIntegrationTest {
     }
 
     @Test
-    fun a_platform_that_reports_within_the_cycle_promotes_places_and_notifies_in_that_same_cycle() =
+    fun a_platform_that_reports_within_the_cycle_settles_in_that_same_cycle_and_places_once() =
         worldTest {
-            // The PhotoKit tier's shape, and the reason the two-phase completion costs it nothing. That
-            // tier has no callback outside the cycle: its adapter fetches the finished jobs, records them
-            // `UPLOADED` and acknowledges in place, and the SAME cycle's promotion pass then places, notifies
-            // and promotes. So `UPLOADED` is never observable at a cycle boundary there — it is a state the
-            // row passes through, not one it rests in — while on the app-driven tier it is precisely what
-            // survives a process death. One state machine, two arrival times.
+            // The PhotoKit tier's shape: that tier has no callback outside the cycle — its adapter fetches
+            // the finished jobs, records them `COMPLETED` and acknowledges in place. The album placement
+            // is not waiting for that: it happened when the upload was first enqueued, so the completion
+            // adds nothing to the album and nothing to do.
             val scope = CoroutineScope(coroutineContext + Job())
             try {
                 val w = World(scope)
@@ -143,32 +141,31 @@ class LostUploadAckIntegrationTest {
                 w.albumCoordinator.ensureAlbum(EVENT, name = "World Event", saveToAlbum = true)
                 w.addOwnAsset("A")
 
-                w.runUploadCycle() // creates the job
+                w.runUploadCycle() // places, then creates the job
+                assertEquals(
+                    listOf(normalizeAssetId("A")),
+                    w.albumManager.added.flatMap { it.second },
+                    "placed when the upload was enqueued, before any byte moved",
+                )
                 val key = w.ledgerBackend.requestedKeys().single()
                 w.platform.completeJob(key) // the "OS" finished it while we were away
 
-                // ONE cycle: the drain records UPLOADED and the promotion pass carries it the rest of the way.
+                // ONE cycle: the drain records COMPLETED, and the manifest publishes it.
                 w.runUploadCycle()
 
                 assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get(key)?.state)
-                assertTrue(
-                    w.ledgerBackend.uploadedRows().isEmpty(),
-                    "nothing rests UPLOADED when the report and the promotion share a cycle",
-                )
                 assertEquals(
                     listOf(normalizeAssetId("A")),
                     w.albumManager.added.flatMap { it.second },
                     "placed in the event album exactly once",
                 )
-                // And the announcement, which IS the manifest write: on the versioned device API
-                // there is no notify route, so publishing the device's asset set is the only thing that
-                // tells the event anything happened. Asserting the published set — rather than a
-                // recorded notify call — also asserts the ORDER that used to be implicit, because the
-                // promoted row could not appear here had it been promoted after the write.
+                // The announcement IS the manifest write: on the versioned device API there is no notify
+                // route, so publishing the device's asset set is the only thing that tells the event
+                // anything happened.
                 assertEquals(
                     listOf(normalizeAssetId("A")),
                     w.store.manifestOf(EVENT, w.ownDeviceId)?.assets?.map { it.assetId },
-                    "the promoted row reached the published manifest",
+                    "the settled row reached the published manifest",
                 )
             } finally {
                 scope.cancel()

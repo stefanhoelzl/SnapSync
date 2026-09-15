@@ -5,7 +5,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ios.discovery.IosDiscovery
-import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.LedgerStore
@@ -249,23 +249,21 @@ class IosUrlSessionUploadPlatform(
      * It does not consider anything but `REQUESTED` rows. It used to be handed the whole non-settled
      * backlog, so every `FAILED` row was re-reported as newly stranded on every cycle until it completed:
      * a field log shows one key "stranded" twelve times inside a single process, seven within sixteen
-     * seconds. And now that `UPLOADED` exists, that same wide read would hand a freshly-uploaded row to
-     * this pass, which would write it back to `FAILED` — destroying the fact the delegate just made
-     * durable.
+     * seconds.
      *
      * It does not ask storage whether the bytes landed. That check (`ios-url-session-upload` required it;
      * this adapter never implemented it) existed to compensate for a terminal outcome that was not
      * recorded durably. With the outcome recorded when iOS delivers it, what is left here genuinely did
      * not land, so a full per-device listing would buy a "no" — and a re-PUT is idempotent and cheaper.
      *
-     * The write is the same guarded verb the delegate uses, so a row that reached `UPLOADED` between the
+     * The write is the same guarded verb the delegate uses, so a row that reached `COMPLETED` between the
      * read below and the write is never clobbered: the candidates are read first, the two are not atomic,
      * and the guard — not the read — is what makes that safe.
      */
     private suspend fun reconcileStranded() {
         val stranded = strandedKeys(pending = ledger.requestedKeys(), live = liveTaskKeys())
         for (key in stranded) {
-            if (ledger.markTerminal(key, LedgerState.FAILED)) {
+            if (ledger.markTerminal(key, TerminalOutcome.FAILED)) {
                 log.i { "reconcile: stranded REQUESTED $key (no live task) — recorded FAILED to re-upload" }
             } else {
                 // Not silent: the row moved on under us, which is a different fact from "recorded".
@@ -346,7 +344,7 @@ class IosUrlSessionUploadPlatform(
      * again, and the launch-time sweep covers whatever a killed process leaves behind.
      */
     private fun recordTerminal(key: String, success: Boolean, error: UploadError?) {
-        val state = if (success) LedgerState.UPLOADED else LedgerState.FAILED
+        val state = if (success) TerminalOutcome.COMPLETED else TerminalOutcome.FAILED
         val applied = ledger.markTerminal(key, state)
         stagedFileFor(key)?.let(::deleteFile)
         if (applied) {

@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CreateResult
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -141,9 +141,9 @@ internal fun legacyKeyOf(path: String): String? {
  * re-implement. A drift between what one host adjudicates and what another does would not fail a test; it
  * would make every scenario on the substituting host quietly report a different ledger than the device.
  *
- * A succeeded job becomes [LedgerState.UPLOADED], **not** `COMPLETED`: the cycle's promotion pass owes it
- * an event-album placement and a completion notify, and it finds that work by reading `UPLOADED` rows.
- * Writing `COMPLETED` here would present the pass with an already-settled row and skip both.
+ * A succeeded job becomes [TerminalOutcome.COMPLETED] directly: nothing a completion used to trigger is still
+ * owed — the device manifest declared the resource at discovery, and its event-album placement happened when
+ * its upload was first enqueued (`changes/retire-uploaded-state`).
  *
  * Every non-succeeded terminal state — `FAILED`, `CANCELLED`, and the `PENDING` an untaught state maps to
  * — is recorded `FAILED` and re-created **iff its resource is still live**. `resourceIsLive` is a fact
@@ -157,7 +157,7 @@ internal fun legacyKeyOf(path: String): String? {
  */
 data class TerminalDisposition(
     /** What to record for this key. */
-    val ledgerState: LedgerState,
+    val outcome: TerminalOutcome,
     /** Whether the cycle should create a fresh job for this key in this same cycle. */
     val reCreate: Boolean,
 )
@@ -166,7 +166,7 @@ data class TerminalDisposition(
 fun terminalDisposition(state: PhotoKitJobState, resourceIsLive: Boolean): TerminalDisposition {
     val succeeded = state == PhotoKitJobState.SUCCEEDED
     return TerminalDisposition(
-        ledgerState = if (succeeded) LedgerState.UPLOADED else LedgerState.FAILED,
+        outcome = if (succeeded) TerminalOutcome.COMPLETED else TerminalOutcome.FAILED,
         reCreate = !succeeded && resourceIsLive,
     )
 }

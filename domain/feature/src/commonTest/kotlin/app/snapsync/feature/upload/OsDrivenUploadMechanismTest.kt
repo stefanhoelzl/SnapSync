@@ -4,6 +4,7 @@ import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.PendingResource
 import app.snapsync.model.isDone
 import app.snapsync.ports.DiscoveryStore
@@ -100,9 +101,7 @@ class OsDrivenUploadMechanismTest {
         override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
             TODO("not reached by this mechanism")
         override suspend fun pendingResources(): List<PendingResource> = TODO("not reached by this mechanism")
-        override fun markTerminal(key: String, state: LedgerState): Boolean = TODO("not reached by this mechanism")
-        override suspend fun uploadedRows(): List<LedgerEntry> = TODO("not reached by this mechanism")
-        override suspend fun promoteUploaded(key: String): Boolean = TODO("not reached by this mechanism")
+        override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean = TODO("not reached by this mechanism")
         override suspend fun rowsNeedingJob(): List<LedgerEntry> = TODO()
         override suspend fun requestedKeys(): Set<String> = TODO("not reached by this mechanism")
         override suspend fun manifestRows(): List<LedgerEntry> = TODO("not reached by this mechanism")

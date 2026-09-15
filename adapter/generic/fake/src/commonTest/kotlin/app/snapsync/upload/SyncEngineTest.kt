@@ -26,7 +26,8 @@ import kotlin.test.assertSame
 class SyncEngineTest {
 
     private val provider = RecordingUploadRequestProvider()
-    private val ledger = LedgerWriter(InMemoryLedgerStore())
+    private val store = InMemoryLedgerStore()
+    private val ledger = LedgerWriter(store)
 
     /** The joined event the engine records under — provenance on every written row (`sync-ledger`). */
     private val eventId = "event-1"
@@ -43,9 +44,14 @@ class SyncEngineTest {
         data = byteArrayOf(1, 2, 3),
     )
 
+    /**
+     * Mint a job for [resource], then settle it as uploaded, returning the job. The engine records no
+     * completion — the platform does, through the ledger's guarded terminal write — so the settled row is
+     * stated directly.
+     */
     private suspend fun completeUpload(resource: Resource): UploadJob {
         val work = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource)))
-        engine.handle(SyncEvent.UploadCompleted(work.job))
+        store.recordUnlessSettled(resource.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId = eventId))
         return work.job
     }
 
@@ -240,31 +246,6 @@ class SyncEngineTest {
     }
 
     @Test
-    fun `completion marks the key done and answers already-uploaded`() = runTest {
-        val resource = resource()
-        val job = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource))).job
-
-        val decision = engine.handle(SyncEvent.UploadCompleted(job))
-
-        assertIs<SyncDecision.AlreadyUploaded>(decision)
-        assertEquals(
-            resource.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId = eventId),
-            ledger.entry(resource.filename),
-        )
-    }
-
-    @Test
-    fun `duplicate completion is a no-op`() = runTest {
-        val job = completeUpload(resource())
-        val once = ledger.entry(resource().filename)
-
-        val decision = engine.handle(SyncEvent.UploadCompleted(job))
-
-        assertIs<SyncDecision.AlreadyUploaded>(decision)
-        assertEquals(once, ledger.entry(resource().filename))
-    }
-
-    @Test
     fun `replaying any suffix of an event history converges to the same ledger state`() = runTest {
         val resource = resource()
         val job0 = assertIs<SyncDecision.Upload>(engine.handle(SyncEvent.ResourceChanged(resource))).job
@@ -273,13 +254,11 @@ class SyncEngineTest {
             engine.handle(SyncEvent.UploadFailed(job0, UploadError.Network)),
         ).job
         engine.handle(SyncEvent.UploadStarted(job1))
-        engine.handle(SyncEvent.UploadCompleted(job1))
         val history = listOf<SyncEvent>(
             SyncEvent.ResourceChanged(resource),
             SyncEvent.UploadStarted(job0),
             SyncEvent.UploadFailed(job0, UploadError.Network),
             SyncEvent.UploadStarted(job1),
-            SyncEvent.UploadCompleted(job1),
         )
         val settled = ledger.entry(resource.filename)
 
@@ -304,16 +283,13 @@ class SyncEngineTest {
     @Test
     fun `every record operation carries the engine's eventId`() = runTest {
         // The engine is minted per cycle from that cycle's config, so the eventId is a constructor
-        // fact — every lifecycle write (REQUESTED, FAILED, COMPLETED) records under it.
+        // fact — every lifecycle write it makes (REQUESTED, FAILED) records under it.
         val resource = resource()
         val job0 = assertIs<SyncDecision.Upload>(engine.handle(SyncEvent.ResourceChanged(resource))).job
         engine.handle(SyncEvent.UploadStarted(job0))
         assertEquals(eventId, ledger.entry(resource.filename)?.eventId)
 
-        val retry = assertIs<SyncDecision.Retry>(engine.handle(SyncEvent.UploadFailed(job0, UploadError.Network)))
-        assertEquals(eventId, ledger.entry(resource.filename)?.eventId)
-
-        engine.handle(SyncEvent.UploadCompleted(retry.job))
+        assertIs<SyncDecision.Retry>(engine.handle(SyncEvent.UploadFailed(job0, UploadError.Network)))
         assertEquals(eventId, ledger.entry(resource.filename)?.eventId)
     }
 

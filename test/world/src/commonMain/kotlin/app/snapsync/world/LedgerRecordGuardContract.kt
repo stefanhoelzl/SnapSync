@@ -146,12 +146,11 @@ abstract class LedgerRecordGuardContract {
     fun `a settled row survives every writer record operation`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordCompleted(res("k", "A"), attempt = 1, eventId = "E1")
+        backend.seedCompleted(res("k", "A"), eventId = "E1", attempt = 1)
         val settled = backend.get("k")
 
         assertFalse(writer.recordRequested(res("k", "A"), attempt = 0, eventId = "E2", destinationPath = "/late"))
         assertFalse(writer.recordFailed(res("k", "A"), attempt = 3, eventId = "E2"))
-        assertFalse(writer.recordCompleted(res("k", "A"), attempt = 9, eventId = "E2"))
 
         assertEquals(settled, backend.get("k"))
     }
