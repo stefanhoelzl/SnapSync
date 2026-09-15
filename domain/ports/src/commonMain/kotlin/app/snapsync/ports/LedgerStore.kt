@@ -7,13 +7,18 @@ import app.snapsync.model.PendingResource
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The ledger's storage seam — a dumb row store. Backends store entries verbatim: no
- * interpretation, no precedence, no clocks of their own, last write wins. [put] is a single-row
- * upsert and the unit of atomicity; record semantics live above, in [LedgerWriter], written once
- * for every backend. [changes] dings after every successful put — no payload, the only promise
+ * The ledger's storage seam — a dumb row store. Backends store the fields of an applied write verbatim: no
+ * interpretation, no clocks of their own. The only precedence a backend applies is the one each guarded
+ * write names ([recordUnlessSettled], [markTerminal], [promoteUploaded]), and each enforces it inside its
+ * own statement; the reset family applies none. Record semantics live above, in `LedgerWriter`, written once
+ * for every backend. [changes] dings after every write that changed the store — no payload, the only promise
  * is "re-read the truth", so conflation and missed signals are harmless by construction. The ding
  * is **in-process only**: the ledger is the extension's private upload memory with no cross-process
  * watcher, so backends post no cross-process (e.g. Darwin) notification.
+ *
+ * There is deliberately **no** unconditional per-row upsert. `put` was removed once the record path became
+ * guarded: with no production caller left it could only be an unguarded door for the next write. Tests seed
+ * a store through [recordUnlessSettled] or [resetTo], like production does.
  */
 interface LedgerStore {
     val changes: Flow<Unit>
@@ -36,7 +41,21 @@ interface LedgerStore {
      * is correct rather than lossy — such a row is recovered by the tier's own fallback.
      */
     suspend fun entryForDestination(destinationPath: String): LedgerEntry?
-    suspend fun put(entry: LedgerEntry)
+
+    /**
+     * Upsert one complete row — **unless the row already there is in a done state**
+     * ([app.snapsync.model.DONE_STATES]); answers whether it applied.
+     *
+     * The guard is the operation's purpose, and it lives in the storage statement, not in a caller's
+     * preceding read: a read-then-write is not atomic against a second writer, and a late record over a
+     * settled row — a stale `FAILED`, a duplicate `REQUESTED` — would demand a job for bytes the backend
+     * already holds. Transitions between non-done states still apply.
+     *
+     * Dings [changes] only when it applied. `false` means the row was settled, which is a different fact from
+     * "recorded" and SHALL NOT be discarded silently (`module-architecture`, "Absence is never silent").
+     */
+    suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean
+
     suspend fun aggregates(): LedgerAggregates
 
     /**
@@ -160,7 +179,7 @@ interface LedgerStore {
 
     /**
      * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
-     * Dings [changes] like a [put] so watchers re-read the now-empty truth.
+     * Dings [changes] so watchers re-read the now-empty truth.
      */
     suspend fun clear()
 
@@ -179,7 +198,8 @@ interface LedgerStore {
      * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
      * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
      * (the caller supplies `state`; no clock stamping here). Dings [changes]
-     * **once** on success, like a [put]. This is a reset-family op (alongside [clear]) — the app-side
+     * **once** on success. It applies no precedence — a settled row is replaced like any other. This is a
+     * reset-family op (alongside [clear]) — the app-side
      * join seed uses it; it is **not** a per-key record, so it does not breach the single-record-writer
      * invariant.
      */
@@ -190,7 +210,7 @@ interface LedgerStore {
      * left this device's library. The rows are **kept**: what they record (these bytes are on the
      * backend) is still true, and keeping them is what stops a restored asset re-uploading. The backend
      * matches by equality and never interprets the value — `assetId` is a second opaque grouping field
-     * (it does not know what an "asset" means). Idempotent. Dings [changes] like a [put].
+     * (it does not know what an "asset" means). Idempotent. Dings [changes].
      *
      * There is deliberately **no** `retainAssets`, and no delete-by-asset at all. Retention used to prune
      * every row outside a supplied keep-set, and the cycle supplied the **policy-admitted** set — so
@@ -202,6 +222,19 @@ interface LedgerStore {
      * `device-manifest`), never to this record.
      */
     suspend fun markAbsent(assetId: String)
+
+    /**
+     * Clear [LedgerEntry.absent] on every row whose [LedgerEntry.assetId] is among [assetIds] — the inverse of
+     * [markAbsent], for assets a walk has seen in the library again.
+     *
+     * **Whatever the row's state.** A settled row is exactly the one no record write reaches again — the engine
+     * writes nothing for an already-uploaded resource — so without this a restored photo would stay out of the
+     * device manifest for good. Every other column is preserved.
+     *
+     * Runs every cycle over every asset the walk saw, so it SHALL write nothing when none of them is marked,
+     * and dings [changes] only when it cleared a mark.
+     */
+    suspend fun markPresent(assetIds: Collection<String>)
 
     /**
      * Rewrite the [LedgerEntry.eventId] of every row whose value is the pre-provenance sentinel

@@ -5,12 +5,14 @@ import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.LedgerState
 import app.snapsync.ports.LedgerStore
+import co.touchlab.kermit.Logger
 
 /**
  * The ledger's single writer (one per platform, hosted with the engine), carrying the engine's
- * per-key read ([entry]). Each record operation upserts a complete, self-contained entry in one
- * backend [LedgerStore.put] — no operation depends on a prior read, so duplicate records converge
- * per key on state and attempt. The writer keeps no clock; the engine and backends are all
+ * per-key read ([entry]). Each record operation upserts a complete, self-contained entry through the
+ * backend's guarded [LedgerStore.recordUnlessSettled] — which never overwrites a settled row, and whose
+ * guard does not depend on any read made here — so duplicate records converge per key on state and
+ * attempt. The writer keeps no clock; the engine and backends are all
  * clock-free and store verbatim. Only the composition root that owns the engine ever constructs it.
  * Aggregates and change signals are deliberately absent from this per-key face; the extension's own
  * cycle reads them via [LedgerStore] directly.
@@ -18,6 +20,8 @@ import app.snapsync.ports.LedgerStore
 class LedgerWriter(
     private val backend: LedgerStore,
 ) {
+
+    private val log = Logger.withTag("LedgerWriter")
 
     suspend fun entry(key: String): LedgerEntry? = backend.get(key)
 
@@ -37,8 +41,7 @@ class LedgerWriter(
      */
     suspend fun recordDiscovered(resource: Resource, eventId: String): Boolean {
         if (backend.get(resource.filename) != null) return false
-        record(resource, LedgerState.DISCOVERED, attempt = 0, eventId)
-        return true
+        return record(resource, LedgerState.DISCOVERED, attempt = 0, eventId)
     }
 
     /**
@@ -65,6 +68,13 @@ class LedgerWriter(
      * marks. The rows survive, so a restored asset re-uploads nothing.
      */
     suspend fun markAbsent(assetId: String) = backend.markAbsent(assetId)
+
+    /**
+     * Record that the walk saw [assetIds] in the library — the inverse of [markAbsent], and the only thing
+     * that brings a restored photo whose rows are settled back into the device manifest (the engine writes
+     * nothing for an already-uploaded resource). Writes nothing unless one of them was marked absent.
+     */
+    suspend fun markPresent(assetIds: Collection<String>) = backend.markPresent(assetIds)
 
     /**
      * Sweep every pre-provenance row (`eventId = ""` — recorded before the ledger carried the
@@ -129,6 +139,11 @@ class LedgerWriter(
      * The detail is a property of the **resource**, not of the transition: it was written when the row
      * was first recorded from a real discovered resource, and a later state change has nothing new to
      * say about it.
+     *
+     * The `prior` read serves that preservation and nothing else. It is NOT the settled-row guard: that lives
+     * in the backend's statement, because a read here followed by a write is not atomic against a second
+     * writer. A declined write is logged rather than dropped — with one writer it means a rare late record
+     * reached a finished row (`module-architecture`, "Absence is never silent").
      */
     private suspend fun record(
         resource: Resource,
@@ -136,10 +151,10 @@ class LedgerWriter(
         attempt: Int,
         eventId: String,
         destinationPath: String? = null,
-    ) {
+    ): Boolean {
         val row = resource.toLedgerRow(state, attempt, eventId, destinationPath)
         val prior = if (row.needsManifestDetail) backend.get(row.key) else null
-        backend.put(
+        val applied = backend.recordUnlessSettled(
             if (prior == null || prior.needsManifestDetail) {
                 row
             } else {
@@ -160,5 +175,7 @@ class LedgerWriter(
                 )
             },
         )
+        if (!applied) log.w { "declined $state over a settled row key=${row.key} attempt=$attempt" }
+        return applied
     }
 }

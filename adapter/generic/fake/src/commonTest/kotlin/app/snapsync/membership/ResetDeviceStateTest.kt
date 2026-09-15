@@ -57,8 +57,8 @@ class ResetDeviceStateTest {
     @Test
     fun `it clears the ledger and the cursor and the config`() = runTest {
         val f = Fixture()
-        f.ledger.put(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED, 0, "E1"))
-        f.ledger.put(LedgerEntry("IMG_2.HEIC", "asset-2", LedgerState.COMPLETED, 0, "E1"))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED, 0, "E1"))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_2.HEIC", "asset-2", LedgerState.COMPLETED, 0, "E1"))
 
         f.reset().reset()
 
@@ -118,7 +118,7 @@ class ResetDeviceStateTest {
             override suspend fun save(config: EventConfig) {}
             override suspend fun clear() = throw IllegalStateException("config write failed")
         }
-        f.ledger.put(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED, 0, "E1"))
+        f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED, 0, "E1"))
 
         ResetDeviceState(
             config = throwingConfig,

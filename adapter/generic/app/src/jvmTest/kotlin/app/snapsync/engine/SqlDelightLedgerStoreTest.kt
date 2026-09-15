@@ -46,7 +46,7 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
         assertNull(backend.get("old-key")) // 1.sqm is destructive — pre-migration rows are not preserved
         // The assetId column exists and version/updatedAt are gone: a put/get round-trips.
-        backend.put(LedgerEntry("k", "A", LedgerState.REQUESTED, 0, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("k", "A", LedgerState.REQUESTED, 0, eventId = "E1"))
         assertEquals("A", backend.get("k")?.assetId)
     }
 
@@ -111,7 +111,7 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertEquals("A", survived?.assetId)
         assertEquals(0, survived?.attempt)
         // The generated schema no longer binds updatedAt — a fresh put/get round-trips.
-        backend.put(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
         assertEquals("B", backend.get("B-photo.jpg")?.assetId)
     }
 
@@ -153,7 +153,7 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertEquals(LedgerState.COMPLETED, backend.get("A-photo.jpg")?.state)
 
         // And a fresh put on the migrated schema round-trips the new column.
-        backend.put(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
         assertEquals("E1", backend.get("B-photo.jpg")?.eventId)
     }
 
@@ -187,8 +187,8 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         // the indexed UPDATE still finds its row in a table large enough to matter.
         val backend = createBackend()
         val others = (0 until 40_000).map { "k$it" }
-        others.forEach { backend.put(LedgerEntry(it, it, LedgerState.REQUESTED, 0, eventId = "E1")) }
-        backend.put(LedgerEntry("gone", "gone", LedgerState.COMPLETED, 0, eventId = "E1"))
+        others.forEach { backend.recordUnlessSettled(LedgerEntry(it, it, LedgerState.REQUESTED, 0, eventId = "E1")) }
+        backend.recordUnlessSettled(LedgerEntry("gone", "gone", LedgerState.COMPLETED, 0, eventId = "E1"))
 
         backend.markAbsent("gone")
 

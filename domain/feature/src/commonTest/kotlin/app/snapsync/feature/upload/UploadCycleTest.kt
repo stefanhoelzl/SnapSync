@@ -190,7 +190,7 @@ class UploadCycleTest {
 
     /** Seed a row as `REQUESTED`, which is what a terminal outcome's guarded write requires. */
     private suspend fun InMemoryLedgerStore.inFlight(key: String, assetId: String = key.substringBefore('-')) =
-        put(LedgerEntry(key, assetId, LedgerState.REQUESTED, attempt = 0, eventId = TEST_EVENT))
+        recordUnlessSettled(LedgerEntry(key, assetId, LedgerState.REQUESTED, attempt = 0, eventId = TEST_EVENT))
 
     /**
      * The one place a cycle is built for these tests, so each test states only what it is about.
@@ -328,9 +328,9 @@ class UploadCycleTest {
     fun the_cycle_backfills_pre_provenance_rows_and_new_records_carry_the_live_event() = runTest {
         val backend = InMemoryLedgerStore()
         // Two rows as 4.sqm leaves them (sentinel), one row already carrying provenance.
-        backend.put(LedgerEntry("A-photo.jpg", "A", LedgerState.COMPLETED, 0, eventId = ""))
-        backend.put(LedgerEntry("B-photo.jpg", "B", LedgerState.FAILED, 1, eventId = ""))
-        backend.put(LedgerEntry("C-photo.jpg", "C", LedgerState.COMPLETED, 0, eventId = "OLD"))
+        backend.recordUnlessSettled(LedgerEntry("A-photo.jpg", "A", LedgerState.COMPLETED, 0, eventId = ""))
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.FAILED, 1, eventId = ""))
+        backend.recordUnlessSettled(LedgerEntry("C-photo.jpg", "C", LedgerState.COMPLETED, 0, eventId = "OLD"))
         val platform = FakePlatform(discovered = listOf(resource("N-primary.heic", "N")))
 
         cycleOver(backend, platform).run()
@@ -350,7 +350,7 @@ class UploadCycleTest {
         // The sweep sits AFTER the reconcile gate: an unsettled membership (deferred listing) labels
         // nothing this cycle — the sentinel survives for the next, settled cycle to sweep.
         val backend = InMemoryLedgerStore()
-        backend.put(LedgerEntry("A-photo.jpg", "A", LedgerState.COMPLETED, 0, eventId = ""))
+        backend.recordUnlessSettled(LedgerEntry("A-photo.jpg", "A", LedgerState.COMPLETED, 0, eventId = ""))
 
         cycle(backend, FakePlatform(), FakeStore(), reconcile = { false }).run()
 
@@ -739,7 +739,7 @@ class UploadCycleTest {
         // can settle this row is the row itself. It must promote, and it must NOT re-upload: this is
         // exactly the shape that had one device send the same two photos three times over two days.
         val backend = InMemoryLedgerStore()
-        backend.put(LedgerEntry("a", "a", LedgerState.UPLOADED, attempt = 0, eventId = TEST_EVENT))
+        backend.recordUnlessSettled(LedgerEntry("a", "a", LedgerState.UPLOADED, attempt = 0, eventId = TEST_EVENT))
         val platform = FakePlatform(discovered = listOf(resource("a", "a")), ledger = backend)
 
         cycleOver(backend, platform).run()
@@ -790,6 +790,67 @@ class UploadCycleTest {
         assertEquals(LedgerState.REQUESTED, entry?.state) // UploadStarted recorded the retry
         assertEquals(1, entry?.attempt)
         assertTrue(platform.created.isEmpty(), "a free retry re-points, it does not create")
+    }
+
+    @Test
+    fun a_first_failure_for_a_settled_key_never_un_completes_it() = runTest {
+        // A re-join seeded the key COMPLETED from the device's stored-file listing while an old OS job for it
+        // was still out, and that job now comes back as a first failure. The pass has no state check, so it
+        // still retries (an untouched `.retry` job's fate is unmeasured, and a duplicate PUT converges) — but
+        // both records it makes are declined by the ledger's guard.
+        val backend = InMemoryLedgerStore()
+        backend.resetTo(listOf(LedgerEntry("a", "a", LedgerState.COMPLETED, attempt = 0, eventId = TEST_EVENT)))
+        val job = platformJob("a", UploadError.Network)
+        val platform = FakePlatform(retryJobs = listOf(job))
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(listOf(job), platform.retried)
+        assertEquals(LedgerState.COMPLETED, backend.get("a")?.state, "neither FAILED nor REQUESTED landed")
+        assertEquals(0, backend.get("a")?.attempt)
+        assertTrue(platform.created.isEmpty())
+    }
+
+    @Test
+    fun a_restored_settled_asset_is_listed_again_without_a_job() = runTest {
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordCompleted(resource("R-photo.jpg", "R"), attempt = 0, eventId = TEST_EVENT)
+        backend.markAbsent("R")
+        // The photo came back from Recently Deleted: the walk returns it again.
+        val platform = FakePlatform(discovered = listOf(resource("R-photo.jpg", "R")))
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(false, backend.get("R-photo.jpg")?.absent, "the engine writes nothing for it, so markPresent must")
+        assertEquals(LedgerState.COMPLETED, backend.get("R-photo.jpg")?.state)
+        assertEquals(listOf("R-photo.jpg"), backend.manifestRows().map { it.key })
+        assertTrue(platform.created.isEmpty(), "and nothing re-uploads")
+    }
+
+    @Test
+    fun a_restored_asset_outside_the_policy_is_still_marked_present() = runTest {
+        val backend = InMemoryLedgerStore()
+        val outOfScope = datedResource("O-photo.jpg", creationDate = "2020-01-01T00:00:00Z", assetId = "O")
+        LedgerWriter(backend).recordCompleted(outOfScope, attempt = 0, eventId = TEST_EVENT)
+        backend.markAbsent("O")
+        val platform = FakePlatform(discovered = listOf(outOfScope))
+
+        cycleOver(backend, platform).run()
+
+        // Being in the library is not a question of scope; the projection still applies the policy on its own.
+        assertEquals(false, backend.get("O-photo.jpg")?.absent)
+        assertTrue(platform.created.isEmpty())
+    }
+
+    @Test
+    fun an_asset_removed_and_returned_in_one_walk_ends_present() = runTest {
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordCompleted(resource("R-photo.jpg", "R"), attempt = 0, eventId = TEST_EVENT)
+        val platform = FakePlatform(discovered = listOf(resource("R-photo.jpg", "R")), removedAssetIds = listOf("R"))
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(false, backend.get("R-photo.jpg")?.absent, "the candidate fetch is the later fact")
     }
 
     @Test
@@ -847,8 +908,8 @@ class UploadCycleTest {
         // What a re-join seed leaves behind: COMPLETED rows taken from a filename listing, which carries
         // no capture date. A bare row is excluded from every projection fail-closed, so until something
         // fills it this member's photos are missing from the event union.
-        backend.put(LedgerEntry("seeded-a", "seeded-a", LedgerState.COMPLETED, 0, TEST_EVENT))
-        backend.put(LedgerEntry("seeded-b", "seeded-b", LedgerState.COMPLETED, 0, TEST_EVENT))
+        backend.recordUnlessSettled(LedgerEntry("seeded-a", "seeded-a", LedgerState.COMPLETED, 0, TEST_EVENT))
+        backend.recordUnlessSettled(LedgerEntry("seeded-b", "seeded-b", LedgerState.COMPLETED, 0, TEST_EVENT))
         val platform = FakePlatform(
             // New work FIRST, so creation stops before the walk reaches the seeded rows in the old order.
             discovered = listOf(resource("new-1"), resource("new-2"), resource("new-3"),
@@ -1598,7 +1659,7 @@ class UploadCycleTest {
         // What is lost is only the sweep. Reaching this state needs a row written before the screenshot
         // rule existed, and that rule predates any event that can still be live.
         val backend = InMemoryLedgerStore()
-        backend.put(
+        backend.recordUnlessSettled(
             LedgerEntry(key = "shot.png", assetId = "shot", state = LedgerState.COMPLETED, attempt = 0, eventId = TEST_EVENT),
         )
         val platform = FakePlatform(
@@ -1629,7 +1690,7 @@ class UploadCycleTest {
     fun raising_the_cutoff_does_not_prune_an_already_uploaded_row() = runTest {
         val backend = InMemoryLedgerStore()
         // Already contributed under the old, lower cutoff.
-        backend.put(
+        backend.recordUnlessSettled(
             LedgerEntry(
                 key = "old-primary.jpg", assetId = "old", state = LedgerState.COMPLETED,
                 attempt = 0, eventId = TEST_EVENT, creationDate = "2026-07-01T00:00:00Z",
@@ -1658,7 +1719,7 @@ class UploadCycleTest {
     @Test
     fun turning_the_direction_off_does_not_prune_the_events_rows() = runTest {
         val backend = InMemoryLedgerStore()
-        backend.put(
+        backend.recordUnlessSettled(
             LedgerEntry(
                 key = "old-primary.jpg", assetId = "old", state = LedgerState.COMPLETED,
                 attempt = 0, eventId = TEST_EVENT, creationDate = IN_SCOPE_DATE,

@@ -26,53 +26,18 @@ import kotlinx.coroutines.test.runTest
 /**
  * The storage-seam contract every [LedgerStore] must satisfy (sync-ledger spec). Concrete
  * backends bind [createBackend]; the same scenarios run unchanged against each.
+ *
+ * Its guarded-write and presence scenarios live in the base, [LedgerRecordGuardContract] — a split for
+ * size only (the harness tier's `LargeClass` ceiling), so every binding still runs both halves once.
  */
-/** One canonical capture date for every row the contract builds. */
-private const val CREATION_DATE = "2026-06-27T10:00:00Z"
-
-abstract class LedgerStoreContract {
-
-    protected abstract fun createBackend(): LedgerStore
-
-    // assetId defaults to the key, so a test that doesn't care about grouping gets one photo per
-    // row (the historical per-row behaviour); multi-resource-photo tests pass an explicit assetId.
-    // eventId defaults to the pre-provenance sentinel "" so tests that are not about provenance
-    // stay readable; provenance tests pass an explicit eventId.
-    private fun entry(
-        key: String = "cloud-1-ios.photo.heic",
-        assetId: String = key,
-        state: LedgerState = LedgerState.REQUESTED,
-        attempt: Int = 0,
-        eventId: String = "",
-        destinationPath: String? = null,
-    ) = LedgerEntry(
-        key, assetId, state, attempt, eventId,
-        creationDate = CREATION_DATE,
-        role = ResourceRole.PRIMARY,
-        contentType = "image/heic",
-        originalFilename = "IMG_0001.HEIC",
-        destinationPath = destinationPath,
-    )
-
-    /** The resource whose recording produces [entry] — the writer takes resources now, not bare keys. */
-    private fun res(key: String = "cloud-1-ios.photo.heic", assetId: String = key) = Resource(
-        filename = key,
-        assetId = assetId,
-        contentType = "public.heic",
-        metadata = mapOf(
-            RESOURCE_META_CREATION_DATE to CREATION_DATE,
-            RESOURCE_META_MIME to "image/heic",
-            RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.HEIC",
-        ),
-        data = Unit,
-    )
+abstract class LedgerStoreContract : LedgerRecordGuardContract() {
 
     @Test
-    fun `put then get round-trips field for field`() = runTest {
+    fun `a recorded entry round-trips field for field`() = runTest {
         val backend = createBackend()
         val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3, eventId = "E1")
 
-        backend.put(entry)
+        assertTrue(backend.recordUnlessSettled(entry), "a new key always applies")
 
         assertEquals(entry, backend.get(entry.key))
     }
@@ -82,7 +47,7 @@ abstract class LedgerStoreContract {
         val backend = createBackend()
         val path = "/api/v2/files/devices/D/cloud-1/primary"
 
-        backend.put(entry(destinationPath = path))
+        backend.recordUnlessSettled(entry(destinationPath = path))
 
         assertEquals(entry().key, backend.entryForDestination(path)?.key)
     }
@@ -94,7 +59,7 @@ abstract class LedgerStoreContract {
         // A row written before the ledger kept a destination — the state every device carries after an
         // upgrade. It must read back normally and simply not answer a destination lookup, because the
         // tier that reads it falls back to the older recovery for exactly these rows.
-        backend.put(entry())
+        backend.recordUnlessSettled(entry())
 
         assertNull(backend.entryForDestination("/api/v2/files/devices/D/cloud-1/primary"))
         assertEquals(entry(), backend.get(entry().key))
@@ -109,21 +74,11 @@ abstract class LedgerStoreContract {
     @Test
     fun `eventId is stored verbatim including the pre-provenance sentinel`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a", eventId = "E1"))
-        backend.put(entry(key = "b", eventId = "")) // the 4.sqm migration default
+        backend.recordUnlessSettled(entry(key = "a", eventId = "E1"))
+        backend.recordUnlessSettled(entry(key = "b", eventId = "")) // the 4.sqm migration default
 
         assertEquals("E1", backend.get("a")?.eventId)
         assertEquals("", backend.get("b")?.eventId)
-    }
-
-    @Test
-    fun `put overwrites unconditionally - no precedence in the backend`() = runTest {
-        val backend = createBackend()
-        backend.put(entry(state = LedgerState.COMPLETED, attempt = 2))
-
-        backend.put(entry(state = LedgerState.REQUESTED, attempt = 0))
-
-        assertEquals(entry(state = LedgerState.REQUESTED, attempt = 0), backend.get(entry().key))
     }
 
     @Test
@@ -139,10 +94,10 @@ abstract class LedgerStoreContract {
     @Test
     fun `photos count by asset - one photo per distinct asset`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a", state = LedgerState.REQUESTED))
-        backend.put(entry(key = "b", state = LedgerState.FAILED))
-        backend.put(entry(key = "c", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "d", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "a", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "b", state = LedgerState.FAILED))
+        backend.recordUnlessSettled(entry(key = "c", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "d", state = LedgerState.COMPLETED))
 
         assertEquals(LedgerAggregates(pending = 2, completed = 2), backend.aggregates())
     }
@@ -150,8 +105,8 @@ abstract class LedgerStoreContract {
     @Test
     fun `a photo counts complete only when all its resources are`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "P-photo.jpg", assetId = "P", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "P-video.mov", assetId = "P", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "P-photo.jpg", assetId = "P", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "P-video.mov", assetId = "P", state = LedgerState.REQUESTED))
 
         assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
     }
@@ -159,10 +114,10 @@ abstract class LedgerStoreContract {
     @Test
     fun `mixed photos - one complete and one partial`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED))
 
         assertEquals(LedgerAggregates(pending = 1, completed = 1), backend.aggregates())
     }
@@ -170,10 +125,10 @@ abstract class LedgerStoreContract {
     @Test
     fun `pendingResources returns only non-COMPLETED rows paired with their asset`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.REQUESTED))
-        backend.put(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED))
 
         assertEquals(
             setOf(PendingResource("B", "B-photo.jpg"), PendingResource("B", "B-edit.jpg")),
@@ -184,20 +139,20 @@ abstract class LedgerStoreContract {
     @Test
     fun `pendingResources is empty when every row is complete`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
 
         assertEquals(emptyList(), backend.pendingResources())
     }
 
     @Test
-    fun `put dings an active changes collector`() = runTest {
+    fun `an applied record dings an active changes collector`() = runTest {
         val backend = createBackend()
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
             backend.changes.collect { dings++ }
         }
 
-        backend.put(entry())
+        backend.recordUnlessSettled(entry())
         runCurrent()
 
         assertEquals(1, dings)
@@ -222,9 +177,9 @@ abstract class LedgerStoreContract {
     fun `backfillEventId rewrites only the pre-provenance sentinel and nothing else`() = runTest {
         val backend = createBackend()
         // Two sentinel rows (as the 4.sqm migration leaves them) and one row another event recorded.
-        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, attempt = 2, eventId = ""))
-        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.REQUESTED, attempt = 0, eventId = ""))
-        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, attempt = 1, eventId = "OLD"))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, attempt = 2, eventId = ""))
+        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.REQUESTED, attempt = 0, eventId = ""))
+        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, attempt = 1, eventId = "OLD"))
 
         backend.backfillEventId("E1")
 
@@ -247,7 +202,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `backfillEventId is idempotent`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a", eventId = ""))
+        backend.recordUnlessSettled(entry(key = "a", eventId = ""))
 
         backend.backfillEventId("E1")
         backend.backfillEventId("E2") // a later sweep finds no sentinel rows — nothing changes
@@ -258,7 +213,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `backfillEventId dings an active changes collector`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a", eventId = ""))
+        backend.recordUnlessSettled(entry(key = "a", eventId = ""))
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
@@ -282,9 +237,9 @@ abstract class LedgerStoreContract {
     @Test
     fun `markAbsent flags only that asset's rows and keeps them readable`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A"))
-        backend.put(entry(key = "A-video.mov", assetId = "A"))
-        backend.put(entry(key = "B-photo.jpg", assetId = "B"))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A"))
+        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A"))
+        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B"))
 
         backend.markAbsent("A")
 
@@ -299,7 +254,7 @@ abstract class LedgerStoreContract {
     fun `markAbsent preserves every other field of the row`() = runTest {
         val backend = createBackend()
         val before = entry(key = "A-photo.jpg", assetId = "A")
-        backend.put(before)
+        backend.recordUnlessSettled(before)
 
         backend.markAbsent("A")
 
@@ -313,7 +268,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `markAbsent is idempotent`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A"))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A"))
 
         backend.markAbsent("A")
         backend.markAbsent("A")
@@ -324,7 +279,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `markAbsent dings an active changes collector`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A"))
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A"))
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
@@ -337,8 +292,8 @@ abstract class LedgerStoreContract {
     @Test
     fun `resetTo replaces every row with the baseline verbatim`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "old-1", assetId = "old"))
-        backend.put(entry(key = "old-2", assetId = "old"))
+        backend.recordUnlessSettled(entry(key = "old-1", assetId = "old"))
+        backend.recordUnlessSettled(entry(key = "old-2", assetId = "old"))
 
         val seed = listOf(
             entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED),
@@ -368,9 +323,9 @@ abstract class LedgerStoreContract {
     @Test
     fun `clearRequested removes only REQUESTED rows leaving COMPLETED and FAILED`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
-        backend.put(entry(key = "C-photo.jpg", assetId = "C", state = LedgerState.COMPLETED))
-        backend.put(entry(key = "F-photo.jpg", assetId = "F", state = LedgerState.FAILED))
+        backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "C-photo.jpg", assetId = "C", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "F-photo.jpg", assetId = "F", state = LedgerState.FAILED))
 
         backend.clearRequested()
 
@@ -382,7 +337,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `clearRequested dings an active changes collector`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
@@ -395,8 +350,8 @@ abstract class LedgerStoreContract {
     @Test
     fun `resetTo with an empty baseline empties the store`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a", assetId = "a"))
-        backend.put(entry(key = "b", assetId = "b"))
+        backend.recordUnlessSettled(entry(key = "a", assetId = "a"))
+        backend.recordUnlessSettled(entry(key = "b", assetId = "b"))
 
         backend.resetTo(emptyList())
 
@@ -417,6 +372,11 @@ abstract class LedgerStoreContract {
         assertEquals(true, writer.entry("X-photo.jpg")?.absent)
         assertEquals(true, writer.entry("X-video.mov")?.absent)
         assertEquals(false, writer.entry("Y-photo.jpg")?.absent)
+
+        writer.markPresent(listOf("X"))
+
+        assertEquals(false, writer.entry("X-photo.jpg")?.absent)
+        assertEquals(false, writer.entry("X-video.mov")?.absent)
     }
 
     @Test
@@ -494,7 +454,7 @@ abstract class LedgerStoreContract {
         // A row the re-join reconcile seeded from a filename listing: COMPLETED, but no capture date.
         // The read no longer excludes it — the membership's policy does, because an empty capture date
         // sorts before every real cutoff (capability `photo-selection-policy`).
-        backend.put(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 0, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 0, eventId = "E1"))
 
         assertEquals(
             listOf("done.heic", "failed.heic", "found.heic", "inflight.heic", "seeded.heic"),
@@ -619,7 +579,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `the backfill fills a bare row and leaves an enriched one alone`() = runTest {
         val backend = createBackend()
-        backend.put(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 3, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 3, eventId = "E1"))
 
         backend.backfillManifestDetail(res("seeded.heic", "C").toLedgerRow(LedgerState.COMPLETED, 0, "E1"))
         val filled = backend.get("seeded.heic")!!
@@ -640,11 +600,11 @@ abstract class LedgerStoreContract {
     @Test
     fun `rowsNeedingJob returns DISCOVERED and FAILED rows and nothing else`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
-        backend.put(entry(key = "b.heic", assetId = "B", state = LedgerState.FAILED))
-        backend.put(entry(key = "c.heic", assetId = "C", state = LedgerState.REQUESTED))
-        backend.put(entry(key = "d.heic", assetId = "D", state = LedgerState.UPLOADED))
-        backend.put(entry(key = "e.heic", assetId = "E", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(entry(key = "b.heic", assetId = "B", state = LedgerState.FAILED))
+        backend.recordUnlessSettled(entry(key = "c.heic", assetId = "C", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "d.heic", assetId = "D", state = LedgerState.UPLOADED))
+        backend.recordUnlessSettled(entry(key = "e.heic", assetId = "E", state = LedgerState.COMPLETED))
 
         // DISCOVERED and FAILED are the same fact to a producer: no live job, no bytes on the backend.
         // REQUESTED has a job, UPLOADED has bytes, COMPLETED is settled — none of them is work.
@@ -657,7 +617,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `rowsNeedingJob excludes rows whose asset left the library`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "gone.heic", assetId = "G", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(entry(key = "gone.heic", assetId = "G", state = LedgerState.DISCOVERED))
         backend.markAbsent("G")
 
         // A departed asset has no bytes left to read, so there is nothing to upload from. This is the one
@@ -670,7 +630,7 @@ abstract class LedgerStoreContract {
     fun `rowsNeedingJob returns every needing row unbounded in a stable key order`() = runTest {
         val backend = createBackend()
         for (k in listOf("c.heic", "a.heic", "d.heic", "b.heic")) {
-            backend.put(entry(key = k, assetId = k, state = LedgerState.DISCOVERED))
+            backend.recordUnlessSettled(entry(key = k, assetId = k, state = LedgerState.DISCOVERED))
         }
 
         // Ordered so a caller's slice is deterministic rather than whatever the storage returned — and
@@ -687,7 +647,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `a DISCOVERED row is backlog and declared but no stranding candidate`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
 
         // Counted as outstanding everywhere...
         assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
@@ -703,7 +663,7 @@ abstract class LedgerStoreContract {
     @Test
     fun `a guarded terminal write cannot touch a DISCOVERED row`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(entry(key = "a.heic", assetId = "A", state = LedgerState.DISCOVERED))
 
         // `markTerminal` is guarded on REQUESTED, which is what lets the walk write a row without racing
         // the platform's delegate for a key it has never issued a job for.

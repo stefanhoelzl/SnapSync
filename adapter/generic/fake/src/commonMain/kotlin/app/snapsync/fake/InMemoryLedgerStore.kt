@@ -14,7 +14,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 
 /**
  * The honest in-memory [LedgerStore]: the dumbest possible row store. Mirrors the backend contract
- * exactly — verbatim storage, last write wins, no interpretation, a ding after every put. The world
+ * exactly — verbatim storage, no interpretation, the record write's done-state guard (a settled row is
+ * never overwritten, and a declined write does not ding), a ding after every write that changed it. The world
  * harness's real `SyncEngine`/`UploadCycle` write to this (it replaced the world's byte-identical
  * `WorldLedgerStore` copy at migration step 10, when this class moved out of `:domain:engine`'s
  * `commonTest` — a test source set no other module could depend on).
@@ -35,9 +36,11 @@ internal class InMemoryLedgerStore : LedgerStore {
     override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
         rows.values.firstOrNull { it.destinationPath == destinationPath }
 
-    override suspend fun put(entry: LedgerEntry) {
+    override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+        if (rows[entry.key]?.state?.isDone == true) return false
         rows[entry.key] = entry
         dings.tryEmit(Unit)
+        return true
     }
 
     override suspend fun clear() {
@@ -65,6 +68,18 @@ internal class InMemoryLedgerStore : LedgerStore {
             if (row.assetId == assetId && !row.absent) rows[key] = row.markedAbsent()
         }
         dings.tryEmit(Unit)
+    }
+
+    override suspend fun markPresent(assetIds: Collection<String>) {
+        val wanted = assetIds.toSet()
+        var cleared = false
+        for ((key, row) in rows) {
+            if (row.absent && row.assetId in wanted) {
+                rows[key] = row.markedPresent()
+                cleared = true
+            }
+        }
+        if (cleared) dings.tryEmit(Unit)
     }
 
     override suspend fun aggregates(): LedgerAggregates {

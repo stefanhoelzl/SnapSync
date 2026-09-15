@@ -22,7 +22,9 @@ import co.touchlab.kermit.Logger
  *
  * Write-after-act: the ledger changes only on the three lifecycle observations — [SyncEvent.UploadStarted]
  * → `REQUESTED`, [SyncEvent.UploadFailed] → `FAILED`, [SyncEvent.UploadCompleted] → `COMPLETED` —
- * each an unconditional idempotent per-key upsert. Because `REQUESTED` is recorded only *after* the
+ * each an idempotent per-key upsert that never overwrites a settled row (the ledger's guard, not a
+ * decision of this engine: a late `UploadFailed` over a `COMPLETED` key still answers `Retry`, and the
+ * record is simply declined). Because `REQUESTED` is recorded only *after* the
  * platform reports it created the job, a `REQUESTED` entry always implies a real in-flight job, which
  * is what makes skipping it safe. A provider failure during minting throws before any write, so the
  * event counts as unprocessed; replayed/at-least-once reports converge instead of drifting.

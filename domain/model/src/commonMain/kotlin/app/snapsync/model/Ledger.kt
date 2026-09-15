@@ -78,7 +78,12 @@ class LedgerEntry(
         absent == other.absent && destinationPath == other.destinationPath
 
     /** The same row, recorded as having left the library. Pure: nothing else about the row changes. */
-    fun markedAbsent(): LedgerEntry = LedgerEntry(
+    fun markedAbsent(): LedgerEntry = withAbsent(true)
+
+    /** The same row, recorded as being in the library again. Pure: nothing else about the row changes. */
+    fun markedPresent(): LedgerEntry = withAbsent(false)
+
+    private fun withAbsent(absent: Boolean): LedgerEntry = LedgerEntry(
         key = key,
         assetId = assetId,
         state = state,
@@ -88,7 +93,7 @@ class LedgerEntry(
         role = role,
         contentType = contentType,
         originalFilename = originalFilename,
-        absent = true,
+        absent = absent,
         destinationPath = destinationPath,
     )
 

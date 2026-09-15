@@ -5,6 +5,7 @@ import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
+import app.snapsync.model.isDone
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.UploadExtensionRegistry
@@ -80,7 +81,11 @@ class OsDrivenUploadMechanismTest {
         }
 
         override suspend fun get(key: String): LedgerEntry? = rows[key]
-        override suspend fun put(entry: LedgerEntry) { rows[entry.key] = entry }
+        override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+            if (rows[entry.key]?.state?.isDone == true) return false
+            rows[entry.key] = entry
+            return true
+        }
     }
 
     /**
@@ -105,6 +110,7 @@ class OsDrivenUploadMechanismTest {
         override suspend fun clear() = TODO("not reached by this mechanism")
         override suspend fun resetTo(entries: List<LedgerEntry>) = TODO("not reached by this mechanism")
         override suspend fun markAbsent(assetId: String) = TODO("not reached by this mechanism")
+        override suspend fun markPresent(assetIds: Collection<String>) = TODO("not reached by this mechanism")
         override suspend fun backfillEventId(eventId: String) = TODO("not reached by this mechanism")
     }
 

@@ -318,7 +318,15 @@ class UploadCycle(
                             "candidate(s) → ${it.size} resource(s)"
                     }
                 }
-            Decided.Planned(ready, CyclePlan(liveResources, discovery.removedAssetIds, discovery.nextToken))
+            Decided.Planned(
+                ready,
+                CyclePlan(
+                    liveResources,
+                    discovery.removedAssetIds,
+                    discovery.nextToken,
+                    presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId },
+                ),
+            )
         }
     }
 
@@ -350,6 +358,15 @@ class UploadCycle(
                 log.i { "asset $assetId left the library — marking its rows absent" }
                 ledger.markAbsent(assetId)
             }
+
+            // And the inverse: every asset the walk just returned is in the library NOW, so none of its rows
+            // is absent (capability `sync-ledger`). This is the only thing that brings back a restored photo
+            // whose rows are settled — the engine writes nothing for an already-uploaded resource, so without it
+            // the photo would stay out of the device manifest for good. After the removals, so an asset named by
+            // both in one change window ends present: the candidate fetch is the later fact. Over the whole
+            // walk, not the admitted set — presence has nothing to do with scope. Writes nothing unless a
+            // returned asset was actually marked.
+            ledger.markPresent(plan.presentAssetIds)
 
             // RECORD what the walk found; do not act on it. Every admitted resource the engine judges to
             // be new work gets a `DISCOVERED` row (capability `sync-ledger`), and every already-recorded
@@ -598,6 +615,8 @@ class UploadCycle(
         val liveResources: List<Resource>,
         val removedAssetIds: List<String>,
         val nextToken: ByteArray,
+        /** Every asset the walk returned, BEFORE admission: being in the library is not a question of scope. */
+        val presentAssetIds: Set<String>,
     )
 
     /** The enumeration audit's operands (capability `diagnostic-logging`). */
@@ -782,7 +801,9 @@ class UploadCycle(
      * The engine is still the thing that decides: `UploadFailed` records `FAILED` at the incremented
      * attempt and answers a freshly-minted request. That the row is already `FAILED` from the adapter's
      * guarded write is harmless — the record is an idempotent upsert, and the attempt bump is exactly what
-     * a re-created job wants.
+     * a re-created job wants. The record never reaches a settled row either way: the store's record write is
+     * guarded on the done states, so the skip below is an early exit that saves the job, not the ledger's
+     * only protection.
      *
      * Creates no job for work not already begun, writes no manifest, enumerates nothing, and touches no
      * discovery cursor — which is what lets a direction-declined cycle run it. The only jobs it can create
