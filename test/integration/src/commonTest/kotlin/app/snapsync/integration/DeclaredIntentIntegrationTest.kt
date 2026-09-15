@@ -46,7 +46,7 @@ class DeclaredIntentIntegrationTest {
         // slot, so the asset is genuinely half-uploaded.
         val first = w.platform.created.single().filename
         w.platform.completeJob(first)
-        w.runUploadCycle() // settle the terminal, promote, and publish
+        w.runUploadCycle() // settle the terminal and publish
 
         val declared = w.store.manifestOf("E", w.ownDeviceId)?.assets.orEmpty()
         assertEquals(1, declared.size, "the asset is declared even though it is not fully uploaded")
@@ -68,7 +68,7 @@ class DeclaredIntentIntegrationTest {
         w.platform.jobLimit = 8
         w.runUploadCycle()
         w.platform.created.map { it.filename }.filter { it != first }.forEach { w.platform.completeJob(it) }
-        w.runUploadCycle() // settle the terminal, promote, and publish
+        w.runUploadCycle() // settle the terminal and publish
 
         assertEquals(2, w.store.objectsOf(w.ownDeviceId).size)
         val served = w.store.union("E").orEmpty().single { it.assetId == "LIVE" }

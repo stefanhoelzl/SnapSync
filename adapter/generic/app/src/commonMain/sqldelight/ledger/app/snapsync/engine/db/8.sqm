@@ -1,0 +1,25 @@
+-- v8 -> v9: retire the `UPLOADED` state (capability `sync-ledger`).
+--
+-- `UPLOADED` meant "the bytes are stored, and the work a completion triggers has not run". That work is gone
+-- from the completion path — the device manifest is the announcement, and own-photo album placement happens
+-- when the upload is first enqueued — so a successful upload is now recorded `COMPLETED` directly, and an
+-- `UPLOADED` row records exactly what `COMPLETED` does.
+--
+-- DATA-ONLY, the first ledger migration that is: no schema changes, so the SQLDelight verify task (migrated
+-- schema vs created schema) cannot tell a wrong rewrite from a right one. The migration test in
+-- `SqlDelightLedgerStoreTest` is what asserts it.
+--
+-- REQUIRED, not tidy-up. `state` decodes through an enum that no longer names `UPLOADED`, and the state-scoped
+-- reads compare stored text against bound state sets — so an unrewritten row would either fail to decode or
+-- count as pending forever, with no error anywhere.
+--
+-- A STATE REWRITE ONLY. It places nothing in an event album (SQL cannot reach PhotoKit, and a backfill that
+-- re-places a library on first launch is the failure the `UPLOADED` state's own decision record warned
+-- against) and creates no upload work: a converted row is simply settled.
+--
+-- DOWNGRADE: the native driver refuses a database newer than the binary's schema, so a revert of this change
+-- keeps this file and reverts only the Kotlin. Re-applying the change after such a revert needs a further
+-- migration carrying the same rewrite, because this one has already run.
+--
+-- Decision record: `changes/retire-uploaded-state` (D3, D4).
+UPDATE ledgerRow SET state = 'COMPLETED' WHERE state = 'UPLOADED';

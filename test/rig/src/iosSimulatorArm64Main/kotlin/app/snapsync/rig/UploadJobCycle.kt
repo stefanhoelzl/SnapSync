@@ -95,7 +95,7 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
 
 /**
  * Every unrecognised token is refused with what would have been accepted, rather than resolved to a
- * default. A `state` that quietly became `succeeded` would record `UPLOADED` for a job the caller meant to
+ * default. A `state` that quietly became `succeeded` would record `COMPLETED` for a job the caller meant to
  * fail, and the scenario would pass having asserted the opposite of what it drove.
  */
 private fun refusal(field: String, was: String, accepted: List<String>): String =

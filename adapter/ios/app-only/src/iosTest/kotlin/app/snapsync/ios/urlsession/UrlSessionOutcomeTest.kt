@@ -110,7 +110,7 @@ class UrlSessionOutcomeTest {
 
     /**
      * The candidate set is what keeps a settled row out, and that is the caller's contract to honour: this
-     * function subtracts live tasks and nothing else, so handing it a `FAILED` or `UPLOADED` key would
+     * function subtracts live tasks and nothing else, so handing it a `FAILED` or `COMPLETED` key would
      * surface it as lost. The narrowing is pinned where the read happens — `LedgerStoreContract`'s
      * "requestedKeys is REQUESTED only" — because that is where it can actually be got wrong.
      */

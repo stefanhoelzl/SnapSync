@@ -47,13 +47,6 @@ sealed interface SyncEvent {
     class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent
 
     /**
-     * A previously issued upload was observed to have succeeded; [job] is the newest retained
-     * job for it. Reported at the platform's acknowledge edge, BEFORE acknowledging — the
-     * write-then-act ordering makes the report duplicable rather than losable.
-     */
-    class UploadCompleted(val job: UploadJob) : SyncEvent
-
-    /**
      * The platform created (or retried) the upload [job] — reported AFTER the create/retry call
      * succeeds (write-after-act). This is the *only* event that records `REQUESTED`: a
      * [ResourceChanged] decision mints the work but never records, so a `REQUESTED` entry always
@@ -123,8 +116,7 @@ sealed interface SyncDecision {
     /**
      * Nothing for the platform to do. Returned when the ledger already proves the content backed
      * up or in flight (a `COMPLETED`/`REQUESTED` entry — an uploaded resource is immutable), and
-     * also as the (ignored) answer to the recording-only [SyncEvent.UploadCompleted] and
-     * [SyncEvent.UploadStarted] reports.
+     * also as the (ignored) answer to the recording-only [SyncEvent.UploadStarted] report.
      */
     data object AlreadyUploaded : SyncDecision
 }

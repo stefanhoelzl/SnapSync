@@ -188,8 +188,8 @@ private class SimulatorUploadJobQueue(
             SimulatorUploadJobs.inSet(SimulatorJobAction.ACKNOWLEDGE).mapNotNull { job ->
                 val resource = resourceForKey(job.key)
                 val disposition = terminalDisposition(job.state, resourceIsLive = resource != null)
-                if (!ledger.markTerminal(job.key, disposition.ledgerState)) {
-                    log.i { "terminal ${job.key} -> ${disposition.ledgerState} applied to no row" }
+                if (!ledger.markTerminal(job.key, disposition.outcome)) {
+                    log.i { "terminal ${job.key} -> ${disposition.outcome} applied to no row" }
                 }
                 if (disposition.reCreate) job.asPlatformJob(resource) else null
             }

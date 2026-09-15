@@ -162,29 +162,38 @@ enum class LedgerState {
     REQUESTED,
 
     /**
-     * The bytes are durably stored, and the work a completion triggers has not run yet.
+     * The platform observed and reported a successful upload — a fact about the world, and a settled one:
+     * nothing further is owed for the key.
      *
      * Written by whichever party the platform tells that the upload terminated, **at the moment it is
-     * told** — the `URLSession` delegate on the app-driven tier, the adapter's drain on the PhotoKit one —
-     * and promoted to [COMPLETED] by the upload cycle once the event-album placement and the completion
-     * notify have run. It exists because iOS delivers a background-`URLSession` completion exactly once
-     * (`URLSessionTask.State.completed`: *"the task's delegate receives no further callbacks"*), so a fact
-     * held in memory for a later cycle to collect is unrecoverable after process death — and the row, still
-     * `REQUESTED` with no live task, then reads as lost and re-uploads bytes that already landed.
+     * told** ([TerminalOutcome], through the ledger's guarded terminal write), by the re-join seed for a
+     * resource the device listing already holds, and by the `8.sqm` migration for rows an earlier build
+     * left `UPLOADED`. Nothing a completion used to trigger remains: the device manifest declared the
+     * resource at discovery, and the event-album placement happened when its upload was first enqueued.
      *
-     * It is **not** a done state ([isDone]): the bytes are safe but the photo has not been announced, so it
-     * counts toward the backlog everywhere. Like every other state it IS declared in the device manifest,
-     * which projects intent rather than progress (capability `device-manifest`).
-     *
-     * Decision record: `changes/fix-lost-upload-acks` (D1, D3).
+     * Decision record: `changes/retire-uploaded-state` (D1), superseding the `UPLOADED` state of
+     * `changes/archive/2026-08-26-fix-lost-upload-acks`.
      */
-    UPLOADED,
-
-    /** The platform observed and reported a successful upload — a fact about the world. */
     COMPLETED,
 
     /** The platform reported a failed attempt; a retry was answered alongside. */
     FAILED,
+}
+
+/**
+ * How an upload **terminated** — the only states a platform callback may record through the ledger's guarded
+ * terminal write (capability `sync-ledger`).
+ *
+ * A type rather than a [LedgerState] because that write is the one record operation reachable outside the
+ * single writer's type-level protection: the party the platform tells is a callback holding only the key.
+ * Fixing the recordable set in the parameter's type makes recording `DISCOVERED` or `REQUESTED` through it a
+ * compile error instead of a convention.
+ *
+ * Decision record: `changes/retire-uploaded-state` (D6).
+ */
+enum class TerminalOutcome(val state: LedgerState) {
+    COMPLETED(LedgerState.COMPLETED),
+    FAILED(LedgerState.FAILED),
 }
 
 /**
@@ -195,15 +204,15 @@ enum class LedgerState {
  * to a literal, so adding a fourth state cannot land silently on one side of a query: this `when` has no
  * `else` and stops compiling until the new value is classified.
  *
- * That is not hypothetical caution. Three `.sq` predicates read `state != 'COMPLETED'` / `state =
+ * That is not hypothetical caution. Three `.sq` predicates used to read `state != 'COMPLETED'` / `state =
  * 'COMPLETED'`, and while the Kotlin readers fail loudly on a new enum value (`SyncEngine`'s `when` has no
- * `else` either), those three would simply have filed [UPLOADED] as outstanding-and-unpromotable with no
- * error anywhere.
+ * `else` either), those three would simply have filed a new state on one side of a string comparison with
+ * no error anywhere.
  */
 val LedgerState.isDone: Boolean
     get() = when (this) {
         LedgerState.COMPLETED -> true
-        LedgerState.DISCOVERED, LedgerState.UPLOADED, LedgerState.REQUESTED, LedgerState.FAILED -> false
+        LedgerState.DISCOVERED, LedgerState.REQUESTED, LedgerState.FAILED -> false
     }
 
 /** The settled states, bound into every state-scoped storage read. See [isDone]. */
@@ -215,9 +224,8 @@ val DONE_STATES: List<LedgerState> = LedgerState.entries.filter { it.isDone }
  *
  * The second, independent classification alongside [isDone], and the one that makes the ledger the
  * cycle's source of work: a producer asks for these rows rather than asking the library. The two axes do
- * not imply each other — [LedgerState.REQUESTED] and [LedgerState.UPLOADED] are neither done nor in need
- * of a job — so every state is classified on both, and this `when` has no `else` for the same reason
- * [isDone] has none.
+ * not imply each other — [LedgerState.REQUESTED] is neither done nor in need of a job — so every state is
+ * classified on both, and this `when` has no `else` for the same reason [isDone] has none.
  *
  * [LedgerState.DISCOVERED] and [LedgerState.FAILED] are the same fact to a producer, differing only in
  * whether an attempt was already made. Collapsing them here is what makes the never-retried `FAILED` row
@@ -228,7 +236,7 @@ val DONE_STATES: List<LedgerState> = LedgerState.entries.filter { it.isDone }
 val LedgerState.needsJob: Boolean
     get() = when (this) {
         LedgerState.DISCOVERED, LedgerState.FAILED -> true
-        LedgerState.REQUESTED, LedgerState.UPLOADED, LedgerState.COMPLETED -> false
+        LedgerState.REQUESTED, LedgerState.COMPLETED -> false
     }
 
 /** The states needing an upload job, bound into the work-source read. See [needsJob]. */
@@ -241,22 +249,23 @@ val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJ
  *
  * The third classification alongside [isDone] and [needsJob], and independent of both: the two axes above
  * answer "is anything still owed?" and "should a job be made?", neither of which is the same question as
- * "does this row assert that the upload landed?". [LedgerState.UPLOADED] separates them — it is neither
- * done nor in need of a job, and it is precisely a claim that the bytes are stored.
+ * "does this row assert that the upload landed?".
  *
- * [LedgerState.UPLOADED] is included, and that inclusion is the point rather than an edge case. On the
- * OS-driven tier the returned upload job carries no HTTP status (`PHAssetResourceUploadJob` has no
- * `statusCode`), so the adapter writes `UPLOADED` on a job the OS reports as finished without being able
- * to tell a stored `201` from a `502`. A comparison that skipped `UPLOADED` would skip the tier where a
- * wrong belief is most likely.
+ * Today it classifies every state exactly as [isDone] does, and it stays a separate decision on purpose: a
+ * comparison against the backend must not depend on what "settled" means, and a future state may separate
+ * the two. The belief matters most on the OS-driven tier, where the returned upload job carries no HTTP
+ * status (`PHAssetResourceUploadJob` has no `statusCode`), so a [LedgerState.COMPLETED] recorded there
+ * cannot tell a stored `201` from a `502`.
  *
  * Exhaustive with no `else`, for the reason [isDone] has none: a state added without classifying it must
  * stop the compile rather than land silently on one side of a comparison that decides whether a lost
  * photo is ever noticed.
+ *
+ * Decision record: `changes/retire-uploaded-state` (D5).
  */
 val LedgerState.bytesBelievedStored: Boolean
     get() = when (this) {
-        LedgerState.UPLOADED, LedgerState.COMPLETED -> true
+        LedgerState.COMPLETED -> true
         LedgerState.DISCOVERED, LedgerState.REQUESTED, LedgerState.FAILED -> false
     }
 

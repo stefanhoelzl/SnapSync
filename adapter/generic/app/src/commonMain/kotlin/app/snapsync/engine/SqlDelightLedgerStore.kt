@@ -8,6 +8,7 @@ import app.snapsync.model.DONE_STATES
 import app.snapsync.model.NEEDS_JOB_STATES
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
+import app.snapsync.model.TerminalOutcome
 
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
@@ -135,29 +136,17 @@ class SqlDelightLedgerStore(
      * Non-suspending, and it dings only when it applied: a write that matched nothing changed no truth,
      * so waking every watcher to re-read an unchanged store would be noise.
      */
-    override fun markTerminal(key: String, state: LedgerState): Boolean {
+    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
         val applied = queries.transactionWithResult {
-            queries.markTerminal(state, key)
+            queries.markTerminal(outcome.state, key)
             queries.changedRows().executeAsOne() > 0L
         }
         if (applied) dings.tryEmit(Unit)
         return applied
     }
-
-    override suspend fun uploadedRows(): List<LedgerEntry> =
-        queries.selectUploaded(::toEntry).executeAsList()
 
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         queries.selectNeedingJob(NEEDS_JOB_STATES, ::toEntry).executeAsList()
-
-    override suspend fun promoteUploaded(key: String): Boolean {
-        val applied = queries.transactionWithResult {
-            queries.promoteUploaded(key)
-            queries.changedRows().executeAsOne() > 0L
-        }
-        if (applied) dings.tryEmit(Unit)
-        return applied
-    }
 
     override suspend fun requestedKeys(): Set<String> =
         queries.selectRequestedKeys().executeAsList().toSet()

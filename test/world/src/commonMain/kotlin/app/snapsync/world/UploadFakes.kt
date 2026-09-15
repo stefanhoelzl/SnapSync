@@ -13,7 +13,7 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.LedgerStore
-import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 
 /**
  * An operator-driven, **inspectable** [BackgroundTransfer] (capability `harness-world-model`): the
@@ -24,7 +24,7 @@ import app.snapsync.model.LedgerState
  *   cap is reached (`LIMIT_EXCEEDED`) or [failCreate] is set (`FAILED`).
  * - [completeJob] deposits the object key into the [store] **store-direct** (byte transfer is not
  *   routed through ktor) and moves the job to the terminal bucket, so the next `drainTerminals` records
- *   it `UPLOADED` — and the cycle's promotion pass then places, notifies and promotes it.
+ *   it `COMPLETED`.
  * - [failJob] moves a job to the retry bucket carrying a chosen [UploadError], driving the real engine
  *   retry chain (attempt++). A first failure surfaces via `fetchRetryJobs` (the system's single free
  *   retry); a second failure of the same job is recorded `FAILED` by [drainTerminals] and handed back
@@ -108,8 +108,7 @@ class FakeBackgroundTransfer(
     /**
      * Record what the "OS" has finished, settle it, and hand back only the retry-spent failures.
      *
-     * A succeeded job becomes `UPLOADED`, never `COMPLETED` — the cycle's promotion pass owes it an
-     * album placement and a notify, and it finds that work by reading `UPLOADED` rows.
+     * A succeeded job becomes `COMPLETED`, exactly as both adapters record it.
      */
     override suspend fun drainTerminals(): List<PlatformUploadJob> {
         val terminal = jobs.filter {
@@ -118,7 +117,7 @@ class FakeBackgroundTransfer(
         val out = mutableListOf<PlatformUploadJob>()
         for (j in terminal) {
             val succeeded = j.state == FakeJobState.SUCCEEDED
-            ledger.markTerminal(j.key, if (succeeded) LedgerState.UPLOADED else LedgerState.FAILED)
+            ledger.markTerminal(j.key, if (succeeded) TerminalOutcome.COMPLETED else TerminalOutcome.FAILED)
             if (!succeeded) out += j.view()
         }
         jobs.removeAll(terminal) // settled with the "OS", exactly as both adapters acknowledge in place

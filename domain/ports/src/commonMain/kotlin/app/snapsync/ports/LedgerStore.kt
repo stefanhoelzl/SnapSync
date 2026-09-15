@@ -2,14 +2,14 @@ package app.snapsync.ports
 
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
+import app.snapsync.model.TerminalOutcome
 import kotlinx.coroutines.flow.Flow
 
 /**
  * The ledger's storage seam — a dumb row store. Backends store the fields of an applied write verbatim: no
  * interpretation, no clocks of their own. The only precedence a backend applies is the one each guarded
- * write names ([recordUnlessSettled], [markTerminal], [promoteUploaded]), and each enforces it inside its
+ * write names ([recordUnlessSettled], [markTerminal]), and each enforces it inside its
  * own statement; the reset family applies none. Record semantics live above, in `LedgerWriter`, written once
  * for every backend. [changes] dings after every write that changed the store — no payload, the only promise
  * is "re-read the truth", so conflation and missed signals are harmless by construction. The ding
@@ -66,7 +66,9 @@ interface LedgerStore {
     suspend fun pendingResources(): List<PendingResource>
 
     /**
-     * Flip one row's state, but **only while that row is still `REQUESTED`**; answers whether it applied.
+     * Record how one upload terminated — [outcome] becomes the row's state — but **only while that row is
+     * still `REQUESTED`**; answers whether it applied. [TerminalOutcome] admits only `COMPLETED` and
+     * `FAILED`, so no other state can be recorded through this verb.
      *
      * The guard is the operation's purpose. Two writers reach a row holding no shared lock — a platform
      * callback recording that an upload terminated, on the platform's own queue, and the upload cycle's
@@ -92,27 +94,7 @@ interface LedgerStore {
      * record-writing process, and the invariant is that exactly one *process* records. See `sync-ledger`,
      * "Reader and writer capability split". Do not add a second record operation here on this argument.
      */
-    fun markTerminal(key: String, state: LedgerState): Boolean
-
-    /**
-     * The rows whose bytes are stored but whose completion work has not run — what the cycle's promotion
-     * pass consumes (capability `upload-completion-notify`). Whole entries: the pass needs `assetId` for
-     * the event-album placement, and the manifest detail rides along so promoting a row cannot blank it.
-     */
-    suspend fun uploadedRows(): List<LedgerEntry>
-
-    /**
-     * Settle one `UPLOADED` row once the work a completion triggers has run; answers whether it applied.
-     *
-     * Guarded like [markTerminal], and preserving every other column the same way — by being an update of
-     * one column rather than a re-statement of the row. That is not fastidiousness: the row carries
-     * provenance, an attempt, the manifest detail and whether the asset has since left the library, and a
-     * caller that re-stated them would drop whichever one it had not been taught about.
-     *
-     * Nothing competes for an `UPLOADED` row — [markTerminal] is guarded on `REQUESTED`, so the platform
-     * callback cannot touch one — but the guard costs nothing and keeps both transitions the same shape.
-     */
-    suspend fun promoteUploaded(key: String): Boolean
+    fun markTerminal(key: String, outcome: TerminalOutcome): Boolean
 
     /**
      * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
@@ -143,8 +125,6 @@ interface LedgerStore {
      * returns the whole non-settled backlog. A `FAILED` row has already been adjudicated; re-surfacing it
      * every cycle re-writes the row, signals a change, and reports a loss that did not happen — a device
      * log shows one key "stranded" twelve times inside a single process, seven within sixteen seconds.
-     * After `UPLOADED` exists the same read would also hand a freshly-uploaded row to the stranded pass,
-     * which would then write it back to `FAILED` and destroy the fact this whole change makes durable.
      */
     suspend fun requestedKeys(): Set<String>
 

@@ -207,30 +207,6 @@ WHERE key = :key AND state = 'REQUESTED';
 changedRows:
 SELECT changes();
 
--- The rows whose bytes are stored but whose completion work has not run — what the cycle's promotion
--- pass consumes. Whole rows, not keys: the pass needs `assetId` for the event-album placement, and the
--- manifest detail travels with the row so promoting it cannot blank what it already carries.
---
--- Deliberately NOT filtered by `absent`. An asset can leave the library between the upload landing and
--- the cycle that promotes it, and the row is still true — the bytes are on the backend, which is the one
--- thing `absent` does not change. Excluding it would leave the row resting `UPLOADED` for good, invisible
--- to every other read (they all filter `absent`), and never settled. The album placement it triggers is
--- best-effort and simply finds no asset to add.
-selectUploaded:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
-FROM ledgerRow
-WHERE state = 'UPLOADED';
-
--- Settle an UPLOADED row once the work a completion triggers has run. Guarded like `markTerminal`, and
--- for the same reason: it is an UPDATE of ONE column, so every other fact about the row — provenance,
--- attempt, the manifest detail, and whether the asset has since left the library — survives by
--- construction rather than by a caller remembering to re-state it. The earlier version re-stated the row
--- in full and would have dropped `absent` the moment that column arrived.
-promoteUploaded:
-UPDATE ledgerRow
-SET state = 'COMPLETED'
-WHERE key = :key AND state = 'UPLOADED';
-
 -- The REQUESTED keys — the candidates for stranded reconciliation (capability
 -- `ios-url-session-upload`). Deliberately NOT the whole non-settled backlog: a FAILED row has already
 -- been adjudicated, and re-surfacing it every cycle re-writes the row, signals a change, and reports a
@@ -247,10 +223,8 @@ WHERE state = 'REQUESTED';
 -- silently on one side of a string comparison, and this query is the one that decides whether the cycle
 -- ever looks at it again.
 --
--- Filtered by `absent`, unlike `selectUploaded`: a departed asset has no bytes left to read, so there is
--- nothing to upload from. `selectUploaded` keeps its absent rows because their bytes ARE on the backend
--- and the row still owes a promotion; a row that needs a job owes an upload, which a departed asset can
--- no longer supply.
+-- Filtered by `absent`: a departed asset has no bytes left to read, so there is nothing to upload from. A
+-- row that needs a job owes an upload, which a departed asset can no longer supply.
 --
 -- Ordered by key, and deliberately UNLIMITED. The cycle bounds what it RESOLVES, not what it reads: a row
 -- needing a job records that the policy admitted its asset when the row was written, not that the

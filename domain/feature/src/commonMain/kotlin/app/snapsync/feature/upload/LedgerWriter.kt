@@ -56,9 +56,6 @@ class LedgerWriter(
         destinationPath: String? = null,
     ) = record(resource, LedgerState.REQUESTED, attempt, eventId, destinationPath)
 
-    suspend fun recordCompleted(resource: Resource, attempt: Int, eventId: String) =
-        record(resource, LedgerState.COMPLETED, attempt, eventId)
-
     suspend fun recordFailed(resource: Resource, attempt: Int, eventId: String) =
         record(resource, LedgerState.FAILED, attempt, eventId)
 
@@ -98,9 +95,6 @@ class LedgerWriter(
     /** The rows the device manifest projects from — every non-absent row, whatever its state. */
     suspend fun manifestRows(): List<LedgerEntry> = backend.manifestRows()
 
-    /** The rows the platform recorded `UPLOADED` — what the cycle's promotion pass consumes. */
-    suspend fun uploadedRows(): List<LedgerEntry> = backend.uploadedRows()
-
     /**
      * Every row that needs an upload job — the cycle's **source of work** (capability `sync-ledger`),
      * spanning `DISCOVERED` and `FAILED`, in a stable key order.
@@ -109,21 +103,10 @@ class LedgerWriter(
      * **resolves**, because a bound on the read would starve admitted work behind excluded rows (see the
      * port's KDoc).
      *
-     * A read on the writer's face, like [manifestRows] and [uploadedRows] beside it, because
-     * the cycle that consumes it is the single writer and asks through this one seam.
+     * A read on the writer's face, like [manifestRows] beside it, because the cycle that consumes it is
+     * the single writer and asks through this one seam.
      */
     suspend fun rowsNeedingJob(): List<LedgerEntry> = backend.rowsNeedingJob()
-
-    /**
-     * Promote one `UPLOADED` row to `COMPLETED` — the cycle's half of the two-phase completion, run once
-     * the event-album placement and the notify have been dealt with.
-     *
-     * Delegates to the store's guarded update rather than writing the row back: a re-statement would have
-     * to name every column, and would silently drop whichever one it had not been taught about. This is
-     * the write that makes a row eligible for the device manifest, so blanking its detail here would drop
-     * the photo out of the event union at the exact moment it became listable.
-     */
-    suspend fun promote(key: String): Boolean = backend.promoteUploaded(key)
 
     /**
      * Record a state transition, carrying the manifest detail off the resource that caused it — and
@@ -131,10 +114,10 @@ class LedgerWriter(
      *
      * The preservation is load-bearing, not defensive. A terminal job comes back from the platform as a
      * key, and the cycle rebuilds its `Resource` from that key alone (`UploadCycle.reconstruct`) with
-     * empty metadata, because completion needs nothing else. So the COMPLETED write — the only write
-     * that ever produces a row the manifest projects from — carries no capture date. Overwriting with it
-     * would blank every row at the exact moment it became eligible for the manifest, and the device's
-     * photos would vanish from the event union while its bytes sat in storage.
+     * empty metadata, because adjudicating a failure needs nothing else. So the `FAILED` write — and the
+     * `REQUESTED` write of the job re-created from it — carries no capture date. Overwriting with it would
+     * blank the row's manifest detail, and the device manifest projects every row whatever its state, so
+     * the photo would drop out of the event union while its upload was still being retried.
      *
      * The detail is a property of the **resource**, not of the transition: it was written when the row
      * was first recorded from a real discovered resource, and a later state change has nothing new to

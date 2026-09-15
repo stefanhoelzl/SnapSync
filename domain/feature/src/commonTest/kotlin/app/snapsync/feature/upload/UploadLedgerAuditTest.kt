@@ -138,17 +138,6 @@ class UploadLedgerAuditTest {
     }
 
     @Test
-    fun `an UPLOADED row is believed landed - the tier whose job carries no HTTP status`() = runTest {
-        val ledger = ledgerWith(row("A-primary.heic", state = LedgerState.UPLOADED))
-        val recorder = Recorder()
-
-        val findings = audit(FakeFiles(Result.success(emptyList())), ledger, log = recorder.logger()).check("E1")
-
-        assertEquals(1, findings?.missing)
-        assertEquals(1, recorder.errors().size)
-    }
-
-    @Test
     fun `a row that is not believed landed is outside the comparison set`() = runTest {
         val ledger = ledgerWith(
             row("A-primary.heic", state = LedgerState.DISCOVERED),

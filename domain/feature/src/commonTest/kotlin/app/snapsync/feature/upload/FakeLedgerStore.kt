@@ -6,6 +6,7 @@ import app.snapsync.model.isDone
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.PendingResource
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
@@ -68,14 +69,14 @@ class FakeLedgerStore : LedgerStore {
 
     override suspend fun backfillManifestDetail(entry: LedgerEntry) = Unit
 
-    override fun markTerminal(key: String, state: LedgerState): Boolean {
+    override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
         val current = rows[key] ?: return false
         if (current.state != LedgerState.REQUESTED) return false
         // Every other column preserved, exactly as the targeted UPDATE preserves it — `absent` included.
         // A fake that re-stated only the columns it knew about would let a green suite hide a store that
         // silently resets a row's other facts at the moment an upload lands.
         rows[key] = LedgerEntry(
-            key = current.key, assetId = current.assetId, state = state,
+            key = current.key, assetId = current.assetId, state = outcome.state,
             attempt = current.attempt, eventId = current.eventId,
             creationDate = current.creationDate, role = current.role,
             contentType = current.contentType, originalFilename = current.originalFilename,
@@ -84,9 +85,6 @@ class FakeLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
         return true
     }
-
-    override suspend fun uploadedRows(): List<LedgerEntry> =
-        rows.values.filter { it.state == LedgerState.UPLOADED }
 
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         rows.values.filter { it.state.needsJob && !it.absent }
@@ -94,19 +92,4 @@ class FakeLedgerStore : LedgerStore {
 
     override suspend fun requestedKeys(): Set<String> =
         rows.values.filter { it.state == LedgerState.REQUESTED }.mapTo(mutableSetOf()) { it.key }
-
-    override suspend fun promoteUploaded(key: String): Boolean {
-        val current = rows[key] ?: return false
-        if (current.state != LedgerState.UPLOADED) return false
-        // One field changes; every other fact about the row is carried over — see the port's KDoc.
-        rows[key] = LedgerEntry(
-            key = current.key, assetId = current.assetId, state = LedgerState.COMPLETED,
-            attempt = current.attempt, eventId = current.eventId,
-            creationDate = current.creationDate, role = current.role,
-            contentType = current.contentType, originalFilename = current.originalFilename,
-            absent = current.absent,
-        )
-        dings.tryEmit(Unit)
-        return true
-    }
 }

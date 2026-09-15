@@ -12,16 +12,18 @@ import co.touchlab.kermit.Logger
 /**
  * The decision core (spec: sync-engine): platforms drive it with [SyncEvent] observations, it
  * answers with [SyncDecision]s. Its only state is the [ledger] — the durable per-key memory of
- * what was requested, completed, and failed, written exclusively by this engine.
+ * what was requested, completed, and failed. The engine records requests and failures; a completion is
+ * recorded by the platform itself, where it is told, through the ledger's guarded terminal write
+ * (capability `sync-ledger`).
  *
  * Decision rules ([SyncEvent.ResourceChanged] is a **pure query** — it reads the ledger and mints a
  * request for `Work` answers, but writes nothing): a key is skipped when the ledger holds it
  * `COMPLETED` **or** `REQUESTED` (an uploaded resource is immutable, so a `COMPLETED` key is never
- * re-uploaded; `REQUESTED` means a job is in flight — see write-after-act below); only a `FAILED` or
- * absent entry yields `Work`.
+ * re-uploaded; `REQUESTED` means a job is in flight — see write-after-act below); a `DISCOVERED`,
+ * `FAILED` or absent entry yields `Work`.
  *
- * Write-after-act: the ledger changes only on the three lifecycle observations — [SyncEvent.UploadStarted]
- * → `REQUESTED`, [SyncEvent.UploadFailed] → `FAILED`, [SyncEvent.UploadCompleted] → `COMPLETED` —
+ * Write-after-act: the engine changes the ledger only on its two lifecycle observations —
+ * [SyncEvent.UploadStarted] → `REQUESTED`, [SyncEvent.UploadFailed] → `FAILED` —
  * each an idempotent per-key upsert that never overwrites a settled row (the ledger's guard, not a
  * decision of this engine: a late `UploadFailed` over a `COMPLETED` key still answers `Retry`, and the
  * record is simply declined). Because `REQUESTED` is recorded only *after* the
@@ -51,8 +53,8 @@ class SyncEngine(
     /**
      * Logging (spec: diagnostic-logging, field diagnostics — the headless iOS extension's only observability):
      * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key +
-     * attempt, and the [SyncEvent.UploadStarted] / [SyncEvent.UploadCompleted] confirmations INFO
-     * "started" / "completed". The skip on re-enumeration ([SyncDecision.AlreadyUploaded] for
+     * attempt, and the [SyncEvent.UploadStarted] confirmation INFOs "started". The skip on
+     * re-enumeration ([SyncDecision.AlreadyUploaded] for
      * [SyncEvent.ResourceChanged]) is silent — it fires per change-cycle and would drown the signal.
      * Logs are diagnostics, never asserted: the decision methods stay pure, all logging lives here at
      * the dispatch seam.
@@ -65,14 +67,12 @@ class SyncEngine(
         val decision = when (event) {
             is SyncEvent.ResourceChanged -> decide(event.resource)
             is SyncEvent.UploadFailed -> retry(event.job)
-            is SyncEvent.UploadCompleted -> complete(event.job)
             is SyncEvent.UploadStarted -> started(event.job)
         }
         when (decision) {
             is SyncDecision.Upload -> logWork("Upload", decision)
             is SyncDecision.Retry -> logWork("Retry", decision)
             SyncDecision.AlreadyUploaded -> when (event) {
-                is SyncEvent.UploadCompleted -> logLifecycle("completed", event.job)
                 is SyncEvent.UploadStarted -> logLifecycle("started", event.job)
                 else -> Unit
             }
@@ -93,14 +93,12 @@ class SyncEngine(
     /** Pure query: read the ledger, mint for `Work`, write nothing (recording is [started]). */
     private suspend fun decide(resource: Resource): SyncDecision {
         val entry = ledger.entry(resource.filename)
-        // COMPLETED/UPLOADED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
-        // UPLOADED skips for the same reason COMPLETED does — its bytes ARE stored; what it still owes is
-        // the album placement and the notify, which the cycle's promotion pass performs, never a re-upload.
+        // COMPLETED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
         // DISCOVERED, FAILED or absent → fresh upload. DISCOVERED is a row the walk wrote for a resource
         // nothing has attempted, so re-deriving it must answer `Work` exactly as an absent row does —
         // otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
         return when (entry?.state) {
-            LedgerState.COMPLETED, LedgerState.UPLOADED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
+            LedgerState.COMPLETED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
             LedgerState.DISCOVERED, LedgerState.FAILED, null -> SyncDecision.Upload(mint(resource, attempt = 0))
         }
     }
@@ -112,12 +110,6 @@ class SyncEngine(
         // UploadStarted for the freshly created retry job (write-after-act).
         ledger.recordFailed(resource, failed.attempt, eventId)
         return SyncDecision.Retry(job)
-    }
-
-    private suspend fun complete(job: UploadJob): SyncDecision {
-        val resource = job.request.resource
-        ledger.recordCompleted(resource, job.attempt, eventId)
-        return SyncDecision.AlreadyUploaded
     }
 
     /** The sole site that records REQUESTED: the platform created/retried the job (write-after-act). */

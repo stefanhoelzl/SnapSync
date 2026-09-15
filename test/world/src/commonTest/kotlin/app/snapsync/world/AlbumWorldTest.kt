@@ -6,13 +6,13 @@ import kotlin.test.assertTrue
 
 /**
  * Event-album placement over the REAL upload cycle (capability `event-album`): a `saveToAlbum`
- * membership's genuinely-completed own photos are added to the event album at cycle completion, in the
- * process that ran the cycle. Asserted through the recording [FakeAlbumManager] — no PhotoKit.
+ * membership's own photos are added to the event album when their upload is first enqueued, in the process
+ * that ran the cycle. Asserted through the recording [FakeAlbumManager] — no PhotoKit.
  */
 class AlbumWorldTest {
 
     @Test
-    fun completed_uploads_are_added_to_the_album_when_opted_in() = worldTest {
+    fun enqueued_uploads_are_added_to_the_album_when_opted_in() = worldTest {
         val w = World(this)
         w.provision("E", name = "Party", saveToAlbum = true)
         // The app is the sole creator; the world stands in for that by ensuring the album up front.
@@ -20,13 +20,17 @@ class AlbumWorldTest {
         w.addOwnAsset("A")
         w.addOwnAsset("B")
 
-        w.runUploadCycle()                       // create jobs
+        w.runUploadCycle()                       // placeInAlbum fires, then the jobs are created
+
+        // Both assets landed in the event album (raw ids recovered by the cycle's reversal) before either
+        // upload finished.
+        assertEquals(setOf("A", "B"), w.albumManager.assetsIn(albumId).toSet())
+
         w.platform.completeJob("A-primary.jpg")
         w.platform.completeJob("B-primary.jpg")
-        w.runUploadCycle()                       // ack → COMPLETED → placeInAlbum fires
+        w.runUploadCycle()                       // ack → COMPLETED, and nothing is placed again
 
-        // Both completed assets landed in the event album (raw ids recovered by the cycle's reversal).
-        assertEquals(setOf("A", "B"), w.albumManager.assetsIn(albumId).toSet())
+        assertEquals(2, w.albumManager.assetsIn(albumId).size, "a completion places nothing a second time")
     }
 
     @Test

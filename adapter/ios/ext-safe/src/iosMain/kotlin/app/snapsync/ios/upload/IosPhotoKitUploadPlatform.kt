@@ -7,7 +7,6 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.model.LedgerState
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.LedgerStore
 import app.snapsync.logging.invocation
@@ -82,9 +81,8 @@ class IosPhotoKitUploadPlatform(
      * Record every terminal job into the ledger and acknowledge it **in place**; return only the
      * retry-spent failures whose resource is still live, so the cycle can re-create them this cycle.
      *
-     * A succeeded job becomes `UPLOADED`, not `COMPLETED`: the cycle's promotion pass owes it an
-     * event-album placement and a completion notify, and it finds that work by reading `UPLOADED` rows.
-     * Writing `COMPLETED` here would present the pass with an already-settled row and skip both.
+     * A succeeded job is recorded `COMPLETED`: nothing a completion used to trigger is still owed, so no
+     * later pass reads the row again.
      *
      * **Every** presented job is acknowledged, whatever its guarded write did — a write that applies to
      * nothing (the row was pruned, or already settled) is still a job the system expects back, and
@@ -121,9 +119,9 @@ class IosPhotoKitUploadPlatform(
                         // The adjudication is `terminalDisposition` (beside the other per-job decisions in
                         // PhotoKitJobMapping.kt, where it is tested); this body supplies only the effect.
                         val disposition = terminalDisposition(classified.state, resourceIsLive = resource != null)
-                        if (!ledger.markTerminal(key, disposition.ledgerState)) {
+                        if (!ledger.markTerminal(key, disposition.outcome)) {
                             // Not silent: the row was not REQUESTED — already settled, or pruned.
-                            log.i { "terminal $key -> ${disposition.ledgerState} applied to no row" }
+                            log.i { "terminal $key -> ${disposition.outcome} applied to no row" }
                         }
                         // Only a retry-spent failure that can still be re-created is the cycle's business.
                         if (disposition.reCreate) {

@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CreateResult
 import kotlinx.cinterop.BetaInteropApi
@@ -197,16 +197,14 @@ class PhotoKitJobMappingTest {
     // ── terminalDisposition: what a terminal job means for the ledger ──────────────────────────────
 
     /**
-     * The success case is the one with a second consequence attached: `UPLOADED`, never `COMPLETED`,
-     * because the cycle's promotion pass finds its album placement and its completion notify by reading
-     * `UPLOADED` rows. A `COMPLETED` written here would present the pass with a settled row and skip both,
-     * silently.
+     * A success is recorded settled: nothing a completion used to trigger is still owed, so no later pass
+     * reads the row — and a succeeded job, whose `resource` is nil, has nothing to re-create.
      */
     @Test
-    fun `a succeeded job is UPLOADED and is never re-created`() {
+    fun `a succeeded job is COMPLETED and is never re-created`() {
         for (live in listOf(true, false)) {
             val disposition = terminalDisposition(PhotoKitJobState.SUCCEEDED, resourceIsLive = live)
-            assertEquals(LedgerState.UPLOADED, disposition.ledgerState, "resourceIsLive=$live")
+            assertEquals(TerminalOutcome.COMPLETED, disposition.outcome, "resourceIsLive=$live")
             assertEquals(false, disposition.reCreate, "a succeeded job has nothing to re-create (live=$live)")
         }
     }
@@ -221,8 +219,8 @@ class PhotoKitJobMappingTest {
     fun `every non-succeeded terminal state records FAILED`() {
         for (state in PhotoKitJobState.entries.filter { it != PhotoKitJobState.SUCCEEDED }) {
             assertEquals(
-                LedgerState.FAILED,
-                terminalDisposition(state, resourceIsLive = true).ledgerState,
+                TerminalOutcome.FAILED,
+                terminalDisposition(state, resourceIsLive = true).outcome,
                 "state=$state",
             )
         }
