@@ -5,7 +5,7 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.TransferRecord
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -61,9 +61,9 @@ class IosPhotoKitUploadPlatform(
     private val log: Logger,
     // This adapter RECORDS terminal outcomes, rather than handing them to the cycle to record. The OS
     // job queue here IS durable — a succeeded job stays in the `.acknowledge` set until acknowledged —
-    // so this tier never had the app-driven tier's loss. What it gains is one state machine across both:
-    // the cycle's promotion pass is the single place album placement and the notify fire from.
-    private val ledger: LedgerStore,
+    // so this tier never had the app-driven tier's loss; recording in place keeps one state machine across
+    // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the destination lookup.
+    private val ledger: TransferRecord,
 ) : BackgroundTransfer {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
@@ -216,7 +216,7 @@ class IosPhotoKitUploadPlatform(
             // The system job is looked up again rather than carried on [PlatformUploadJob]: the seam no
             // longer passes an opaque handle, because the only other thing that needed one — the
             // acknowledge — now happens inside the drain, next to the fetch that produced it.
-            val systemJob = jobWithKey(PHAssetResourceUploadJobActionRetry, job.key) ?: run {
+            val systemJob = retryJobFor(job.key) ?: run {
                 log.w { "retryJob: no live .retry job for ${job.key} — it settled underneath us" }
                 return@invocation
             }
@@ -230,17 +230,29 @@ class IosPhotoKitUploadPlatform(
             )
         }
 
-    /** The system job currently offered for [action] whose destination names [key], if it is still there. */
-    private fun jobWithKey(action: PHAssetResourceUploadJobAction, key: String): PHAssetResourceUploadJob? {
-        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
+    /**
+     * The system job currently offered for `.retry` whose destination resolves to [key] — by the SAME route
+     * the drain resolves rows by ([resolveKey]: the recorded destination path, then the v1 last-segment
+     * fallback), so a retry and a drain can never disagree about which row a job belongs to.
+     *
+     * It used to compare the destination's last path segment to the key, which under the identity-in-path
+     * byte route is the resource's ROLE and matches no key: every free retry found nothing, the OS spent it,
+     * and the job came back only once its retry was gone. The selection is [retryJobMatching], beside the
+     * other per-job decisions in `PhotoKitJobMapping.kt`, where it is tested.
+     */
+    private suspend fun retryJobFor(key: String): PHAssetResourceUploadJob? {
+        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(PHAssetResourceUploadJobActionRetry, options = null)
+        val candidates = ArrayList<Pair<PHAssetResourceUploadJob, FetchedJob>>(jobs.count.toInt())
         var index = 0uL
         while (index < jobs.count) {
             val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
             index++
+            // Captured as a nullable local FIRST — cinterop declares it non-null and it is nil at runtime
+            // (see the class KDoc).
             val destination: NSURLRequest? = job.destination
-            if (destination?.URL?.lastPathComponent == key) return job
+            candidates += job to classifyPhotoKitJob(destination, job.state, job.error)
         }
-        return null
+        return retryJobMatching(candidates, key, ::resolveKey)
     }
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
@@ -292,4 +304,11 @@ class IosPhotoKitUploadPlatform(
      * mechanism has nothing to give, answered with a constant rather than faked.
      */
     override suspend fun remainingCapacity(): Int? = null
+
+    /**
+     * No set — the honest answer for a durable OS queue. The system exposes exactly two job sets, `.retry` and
+     * `.acknowledge`, and no set of jobs still in flight; a job it holds survives this process, so this tier
+     * has no stranded population for the cycle to reconcile.
+     */
+    override suspend fun liveKeys(): Set<String>? = null
 }

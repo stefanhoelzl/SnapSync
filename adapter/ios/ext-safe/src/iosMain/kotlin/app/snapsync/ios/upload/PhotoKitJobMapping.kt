@@ -257,3 +257,20 @@ fun createResultFor(errorCode: Long?): CreateResult = when (errorCode) {
 @OptIn(ExperimentalForeignApi::class)
 fun photoKitUploadError(error: NSError): UploadError =
     UploadError.Unknown("${error.domain}:${error.code}")
+
+/**
+ * The `.retry` job to re-point for [key]: the first candidate whose classified destination resolves to [key]
+ * through [resolve] — the drain's own route (the recorded destination path, then the v1 last-segment fallback)
+ * — or null when none does, including a candidate with no destination at all.
+ *
+ * Generic over the job so it can be exercised without a `PHAssetResourceUploadJob`, which no host can
+ * construct. It never compares a destination's last path segment to [key]: under the identity-in-path byte
+ * route that segment is the resource's role and matches no key, which is how every free retry was lost.
+ */
+suspend fun <J> retryJobMatching(
+    candidates: List<Pair<J, FetchedJob>>,
+    key: String,
+    resolve: suspend (FetchedJob.Emit) -> String?,
+): J? = candidates.firstOrNull { (_, classified) ->
+    classified is FetchedJob.Emit && resolve(classified) == key
+}?.first

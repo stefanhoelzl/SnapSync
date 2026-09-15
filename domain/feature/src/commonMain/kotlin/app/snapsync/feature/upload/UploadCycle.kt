@@ -815,7 +815,10 @@ class UploadCycle(
      */
     private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {
         var capHit = false
-        for (job in platform.drainTerminals()) {
+        val returned = platform.drainTerminals()
+        // The transport reported what it still holds; which in-flight rows it has lost is decided here.
+        reconcileStranded()
+        for (job in returned) {
             // At-least-once: the platform can hand back a failure for a key that has since settled (its
             // own guarded write already declined to touch it). Adjudicating anyway would drive the engine
             // to record FAILED over a COMPLETED row and re-upload bytes that are stored — the failure
@@ -830,6 +833,36 @@ class UploadCycle(
             }
         }
         return capHit
+    }
+
+    /**
+     * Record `FAILED` every `REQUESTED` row whose transfer the transport no longer holds (capability
+     * `ios-url-session-upload`, "Precise in-flight reconciliation replaces blanket clear").
+     *
+     * A transfer the OS dropped, or a force-quit cancelled, delivers no completion at all, so nothing else will
+     * ever move that row — and the engine never re-issues a `REQUESTED` key, so without this the photo is
+     * abandoned silently. The transport answers only what it holds ([BackgroundTransfer.liveKeys]); a
+     * transport whose queue is durable answers `null`, and nothing is reconciled.
+     *
+     * Two things this deliberately does NOT do. It considers nothing but `REQUESTED` rows: a `FAILED` row has
+     * already been adjudicated, and re-reporting it every cycle claimed a loss that did not happen (a field log
+     * showed one key "stranded" twelve times inside a single process). And it does not ask storage whether the
+     * bytes landed: with the terminal outcome recorded when the platform reports it, what is left here
+     * genuinely did not land, and a re-PUT is idempotent and cheaper than a listing.
+     *
+     * The candidates are read before the write and the two are not atomic; the guard in the write, not the
+     * read, is what keeps a row that settled in between from being clobbered.
+     */
+    private suspend fun reconcileStranded() {
+        val live = platform.liveKeys() ?: return
+        for (key in strandedKeys(pending = ledger.requestedKeys(), live = live)) {
+            if (ledger.markStranded(key)) {
+                log.i { "reconcile: stranded REQUESTED $key (no live task) — recorded FAILED to re-upload" }
+            } else {
+                // Not silent: the row moved on under us, which is a different fact from "recorded".
+                log.i { "reconcile: stranded $key settled underneath this pass — left as it stands" }
+            }
+        }
     }
 
 }

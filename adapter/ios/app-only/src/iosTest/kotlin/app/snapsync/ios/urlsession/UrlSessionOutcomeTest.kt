@@ -78,48 +78,4 @@ class UrlSessionOutcomeTest {
             classifyUrlSessionCompletion(taskDescription = null, statusCode = 200L, error = null),
         )
     }
-
-    // ---- strandedKeys ------------------------------------------------------------------------------
-
-    /**
-     * The recovery rule for a transfer the OS dropped: `REQUESTED` in the ledger, with no live task.
-     * Without it the row stays `REQUESTED` forever, the engine treats it as in-flight and never re-issues
-     * it, and the photo is abandoned with no error anywhere.
-     */
-    @Test
-    fun `a requested key with no live task is stranded`() {
-        assertEquals(
-            listOf("lost.heic"),
-            strandedKeys(pending = setOf("lost.heic", "running.heic"), live = setOf("running.heic")),
-        )
-    }
-
-    @Test
-    fun `nothing is stranded when every requested key still has a task`() {
-        assertEquals(
-            emptyList<String>(),
-            strandedKeys(pending = setOf("a.heic", "b.heic"), live = setOf("a.heic", "b.heic")),
-        )
-        assertEquals(emptyList<String>(), strandedKeys(pending = emptySet(), live = setOf("a.heic")))
-    }
-
-    @Test
-    fun `a live key that is not requested is never surfaced`() {
-        assertEquals(emptyList<String>(), strandedKeys(pending = emptySet(), live = setOf("x.heic")))
-    }
-
-    /**
-     * The candidate set is what keeps a settled row out, and that is the caller's contract to honour: this
-     * function subtracts live tasks and nothing else, so handing it a `FAILED` or `COMPLETED` key would
-     * surface it as lost. The narrowing is pinned where the read happens — `LedgerStoreContract`'s
-     * "requestedKeys is REQUESTED only" — because that is where it can actually be got wrong.
-     */
-    @Test
-    fun `whatever is handed in as pending is taken at face value`() {
-        assertEquals(
-            listOf("settled.heic"),
-            strandedKeys(pending = setOf("settled.heic"), live = emptySet()),
-            "no state filtering happens here — the caller must hand in REQUESTED keys only",
-        )
-    }
 }

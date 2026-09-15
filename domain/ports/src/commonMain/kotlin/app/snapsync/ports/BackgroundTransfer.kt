@@ -65,6 +65,22 @@ interface BackgroundTransfer {
      */
     suspend fun remainingCapacity(): Int?
 
+    /**
+     * The ledger keys of the transfers this transport still holds, or `null` where it cannot enumerate them
+     * (capability `ios-url-session-upload`, "The transport reports the transfers it still holds").
+     *
+     * A **read the cycle asks for**, never a call into the core: the cycle subtracts this set from the
+     * `REQUESTED` rows and records the remainder `FAILED`, because a transfer the transport no longer holds
+     * delivers no completion and nothing else will ever move its row. The decision and the write are the
+     * cycle's; the transport reads no ledger state to answer.
+     *
+     * **`null` is an answer, not a failure** — the same shape as [remainingCapacity]. A transport whose queue
+     * is the OS's durable job store (it exposes a `.retry` and an `.acknowledge` set, and no set of jobs still
+     * in flight) has no stranded population to reconcile, and an absent set makes the cycle reconcile nothing
+     * rather than treat every `REQUESTED` row as lost.
+     */
+    suspend fun liveKeys(): Set<String>?
+
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
 }

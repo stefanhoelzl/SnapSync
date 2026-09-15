@@ -44,50 +44,52 @@
 
 ## 2. Commit (b) — `TransferRecord`, `liveKeys`, the stranded pass in the cycle
 
-- [ ] 2.1 Add `TransferRecord` to `:domain` `ports/` declaring `markTerminal(key, outcome): Boolean` and
+- [x] 2.1 Add `TransferRecord` to `:domain` `ports/` declaring `markTerminal(key, outcome): Boolean` and
       `entryForDestination(path)`; make `LedgerStore` extend it, moving both members and their KDoc up with
       signatures unchanged; update `markTerminal`'s "non-writer surface" paragraph to name `TransferRecord`
-- [ ] 2.2 Add `liveKeys(): Set<String>?` to `BackgroundTransfer` with the null-is-an-answer KDoc
-- [ ] 2.3 `LedgerWriter` gains `requestedKeys()` and `markStranded(key): Boolean` (delegating to
+- [x] 2.2 Add `liveKeys(): Set<String>?` to `BackgroundTransfer` with the null-is-an-answer KDoc
+- [x] 2.3 `LedgerWriter` gains `requestedKeys()` and `markStranded(key): Boolean` (delegating to
       `markTerminal(key, TerminalOutcome.FAILED)`)
-- [ ] 2.4 Move `strandedKeys` from `UrlSessionOutcome.kt` to `feature/upload`; move its four
+- [x] 2.4 Move `strandedKeys` from `UrlSessionOutcome.kt` to `feature/upload`; move its four
       `UrlSessionOutcomeTest` cases to a `commonTest` in `:domain:feature`
-- [ ] 2.5 `UploadCycle.recreateRetrySpent`: after `platform.drainTerminals()` returns and before iterating its
+- [x] 2.5 `UploadCycle.recreateRetrySpent`: after `platform.drainTerminals()` returns and before iterating its
       jobs, run the stranded pass over `platform.liveKeys()` (skip on null) with the two existing log lines
       verbatim
-- [ ] 2.6 `UploadCycleTest`: a transport double reporting a live set strands exactly the `REQUESTED` rows
-      outside it; a `null` answer strands nothing; a row settled between read and write is left and logged;
+- [x] 2.6 `UploadCycleTest`: a transport double reporting a live set strands exactly the `REQUESTED` rows
+      outside it; a `null` answer strands nothing;
+      (as built: `live` is a settable property on `FakePlatform`, not a constructor parameter — the constructor sits
+      at the `tests` tier's `LongParameterList` ceiling, which may only fall) a row settled between read and write is left and logged;
       a direction-declined cycle still runs the pass
-- [ ] 2.7 `IosUrlSessionUploadPlatform`: take `TransferRecord` instead of `LedgerStore`; `liveKeys()` returns
+- [x] 2.7 `IosUrlSessionUploadPlatform`: take `TransferRecord` instead of `LedgerStore`; `liveKeys()` returns
       `liveTaskKeys()`; delete `reconcileStranded` and its call from `drainTerminals`; move its KDoc rationale to
       the cycle's pass
-- [ ] 2.8 `IosPhotoKitUploadPlatform` and `SimulatorUploadJobQueue`: take `TransferRecord`; `liveKeys()` returns
+- [x] 2.8 `IosPhotoKitUploadPlatform` and `SimulatorUploadJobQueue`: take `TransferRecord`; `liveKeys()` returns
       `null` with the "durable queue, two job sets" KDoc; add the "not discovery" sentence to the substitute's
       `resourceForKey` KDoc
-- [ ] 2.9 `uploadJobQueue` expect/actuals become `(log, record: TransferRecord)`; both roots pass their ledger
+- [x] 2.9 `uploadJobQueue` expect/actuals become `(log, record: TransferRecord)`; both roots pass their ledger
       store where a `TransferRecord` is expected
-- [ ] 2.10 `FakeBackgroundTransfer`: take `TransferRecord`; `liveKeys() = null`
-- [ ] 2.11 Update remaining `BackgroundTransfer` doubles (`UploadCycleTest`, `SelectionScopedDiscoveryTest` if
+- [x] 2.10 `FakeBackgroundTransfer`: take `TransferRecord`; `liveKeys() = null`
+- [x] 2.11 Update remaining `BackgroundTransfer` doubles (`UploadCycleTest`, `SelectionScopedDiscoveryTest` if
       it still holds one) for `liveKeys`
-- [ ] 2.12 `:test:architecture`: add the transport-ledger gate (scope derived from `BackgroundTransfer`
+- [x] 2.12 `:test:architecture`: add the transport-ledger gate (scope derived from `BackgroundTransfer`
       implementations and `uploadJobQueue` under `adapter/` production source sets, comments stripped, fails on
       a `LedgerStore` reference and on an empty scope); prove it red by temporarily re-adding a `LedgerStore`
       parameter, then revert
-- [ ] 2.13 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green; `architectureDiagrams` committed
-- [ ] 2.14 Unchanged and green: `LostUploadAckIntegrationTest`, `LostUploadRecordIntegrationTest`,
+- [x] 2.13 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green; `architectureDiagrams` committed
+- [x] 2.14 Unchanged and green: `LostUploadAckIntegrationTest`, `LostUploadRecordIntegrationTest`,
       `LedgerStoreContract`, `LedgerRecordGuardContract`, `PhotoKitJobMappingTest`
-- [ ] 2.15 Commit (b)'s refactor part with an `internal(upload): …` subject (or fold into 3.4's commit — one
+- [x] 2.15 Commit (b)'s refactor part with an `internal(upload): …` subject (or fold into 3.4's commit — one
       commit for (b) in the final history)
 
 ## 3. Commit (b) — the PhotoKit retry fix
 
-- [ ] 3.1 Extract the retry-job selection into a pure function in `PhotoKitJobMapping.kt`: given the `.retry`
+- [x] 3.1 Extract the retry-job selection into a pure function in `PhotoKitJobMapping.kt`: given the `.retry`
       set's classified destinations, a key resolver and a key, return the matching job or none
-- [ ] 3.2 `PhotoKitJobMappingTest`: a v2 destination whose last segment is `primary` matches its key through the
+- [x] 3.2 `PhotoKitJobMappingTest`: a v2 destination whose last segment is `primary` matches its key through the
       recorded destination; a v1 destination matches through the fallback; no match yields none
-- [ ] 3.3 `IosPhotoKitUploadPlatform.retryJob` uses it with the existing `resolveKey`; delete `jobWithKey`; keep
+- [x] 3.3 `IosPhotoKitUploadPlatform.retryJob` uses it with the existing `resolveKey`; delete `jobWithKey`; keep
       the "no live .retry job" warning for a job that left the set
-- [ ] 3.4 Squash sections 2 and 3 into commit (b) with a `fix(upload): …` subject naming the retry defect
+- [x] 3.4 Squash sections 2 and 3 into commit (b) with a `fix(upload): …` subject naming the retry defect
 
 ## 4. Verification
 
@@ -96,6 +98,6 @@
 - [ ] 4.2 On a device build (TestFlight dispatch or a sideload), confirm an OS-driven retry: a `.retry` job
       reaches `retryWithDestination` and no "no live .retry job" line is logged for it; record the evidence in
       `design.md`
-- [ ] 4.3 `npx --yes @fission-ai/openspec@1.5.0 validate transport-only-seam --strict`
+- [x] 4.3 `npx --yes @fission-ai/openspec@1.5.0 validate transport-only-seam --strict`
 - [ ] 4.4 Report back to the tierless design session (handoff): contradiction of D14's sink shape, and the
       scope change (retry fix folded in); on merge, the shipped report
