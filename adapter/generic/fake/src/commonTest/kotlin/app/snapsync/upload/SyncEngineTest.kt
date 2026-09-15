@@ -201,6 +201,32 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `a late failure over a completed key still retries but never un-completes it`() = runTest {
+        val resource = resource()
+        val job = completeUpload(resource)
+        val before = ledger.entry(resource.filename)
+
+        val decision = engine.handle(SyncEvent.UploadFailed(job, UploadError.Network))
+
+        // The engine's answer does not depend on the ledger's guard; the record is simply declined.
+        assertIs<SyncDecision.Retry>(decision)
+        assertEquals(before, ledger.entry(resource.filename))
+        assertEquals(LedgerState.COMPLETED, ledger.entry(resource.filename)?.state)
+    }
+
+    @Test
+    fun `a late start over a completed key never un-completes it`() = runTest {
+        val resource = resource()
+        val job = completeUpload(resource)
+        val before = ledger.entry(resource.filename)
+
+        val decision = engine.handle(SyncEvent.UploadStarted(UploadJob(job.request, job.attempt + 1)))
+
+        assertIs<SyncDecision.AlreadyUploaded>(decision)
+        assertEquals(before, ledger.entry(resource.filename))
+    }
+
+    @Test
     fun `provider failure propagates and leaves no trace in the ledger`() = runTest {
         val event = SyncEvent.ResourceChanged(resource())
         val failure = IllegalStateException("mint failed")

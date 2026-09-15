@@ -72,12 +72,19 @@ complexity:
     # 18, down from 90 — and the fall is the baseline's `@Test` reading, not a code change. The 90 was
     # the largest test class in the tree; what it measured was how many behaviours that suite pinned.
     # With test functions no longer counted as surface, the largest real surface here is 17.
+    #
+    # RAISED to 19 (change `record-never-overwrites-settled-row`). FORCING PROOF: the `LedgerStore` port
+    # now declares 18 functions (`recordUnlessSettled` replaced `put`, and `markPresent` was added), and a
+    # test double of a Kotlin interface must implement every one of them — so no complete `LedgerStore`
+    # double can measure below 18, and the old ceiling rejected exactly the size the port forces. The two
+    # doubles it hit (`domain/feature` commonTest `InMemoryLedgerStore`, `FakeLedgerStore`) declare nothing
+    # beyond the port. Lower it again if the port shrinks.
     active: true
-    thresholdInFiles: 18
-    thresholdInClasses: 18
-    thresholdInInterfaces: 18
-    thresholdInObjects: 18
-    thresholdInEnums: 18
+    thresholdInFiles: 19
+    thresholdInClasses: 19
+    thresholdInInterfaces: 19
+    thresholdInObjects: 19
+    thresholdInEnums: 19
   LargeClass:
     active: true
     threshold: 1300

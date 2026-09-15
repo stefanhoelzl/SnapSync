@@ -43,8 +43,42 @@ SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, o
 FROM ledgerRow
 WHERE key = :key;
 
-put:
-INSERT OR REPLACE INTO ledgerRow (
+-- The record write (capability `sync-ledger`, "Record operations"): upsert one complete row, EXCEPT over a
+-- row whose state is done. There is no unconditional per-row upsert any more — this is the only one.
+--
+-- The guard lives in the statement because a read-then-write is not atomic against a second writer, and a
+-- late record over a settled row (a stale FAILED, a duplicate REQUESTED) would demand a job for bytes the
+-- backend already holds. `:doneStates` is bound from Kotlin's `LedgerState.isDone`, never written as a
+-- literal, for the same reason every state-scoped read binds it.
+--
+-- `absent` is in the SET on purpose: a record over a non-settled row is also how that row's absence mark
+-- is cleared when its asset is discovered again. A settled row is un-marked by `markPresent` instead.
+recordUnlessSettled:
+INSERT INTO ledgerRow (
+    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent,
+    destinationPath
+)
+VALUES (
+    :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename,
+    :absent, :destinationPath
+)
+ON CONFLICT(key) DO UPDATE SET
+    assetId = excluded.assetId,
+    state = excluded.state,
+    attempt = excluded.attempt,
+    eventId = excluded.eventId,
+    creationDate = excluded.creationDate,
+    role = excluded.role,
+    contentType = excluded.contentType,
+    originalFilename = excluded.originalFilename,
+    absent = excluded.absent,
+    destinationPath = excluded.destinationPath
+WHERE ledgerRow.state NOT IN :doneStates;
+
+-- A plain insert, for `resetTo` only: it runs after `deleteAll` inside one transaction, so no row can
+-- conflict, and the reset family applies no precedence.
+insert:
+INSERT INTO ledgerRow (
     key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent,
     destinationPath
 )
@@ -116,6 +150,19 @@ markAbsent:
 UPDATE ledgerRow
 SET absent = 1
 WHERE assetId = :assetId;
+
+-- The assets currently marked absent — the one read `markPresent` intersects with what a walk saw, so that
+-- the common cycle (nothing restored) writes nothing at all.
+selectAbsentAssetIds:
+SELECT DISTINCT assetId FROM ledgerRow
+WHERE absent = 1;
+
+-- Clear the absence mark of the given assets, whatever their rows' state: a settled row is exactly the one
+-- no record write reaches again. One column, so every other fact about the row survives by construction.
+markPresent:
+UPDATE ledgerRow
+SET absent = 0
+WHERE absent = 1 AND assetId IN :assetIds;
 
 -- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
 -- photo in Kotlin to intersect outstanding resources with observed completions, without

@@ -106,7 +106,7 @@ class UploadLedgerAuditTest {
     )
 
     private suspend fun ledgerWith(vararg rows: LedgerEntry) =
-        InMemoryLedgerStore().also { store -> rows.forEach { store.put(it) } }
+        InMemoryLedgerStore().also { store -> store.resetTo(rows.toList()) }
 
     @Test
     fun `a believed-landed row the listing lacks is reported at Error with counts and the mechanism`() = runTest {

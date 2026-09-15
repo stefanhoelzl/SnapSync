@@ -44,7 +44,7 @@ class IosLedgerStoreTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { iosLedgerStore(basePath = dir).put(entry("photo-1.heic")) }
+            runBlocking { iosLedgerStore(basePath = dir).recordUnlessSettled(entry("photo-1.heic")) }
 
             assertTrue(
                 fileExists("$dir/ledger.db"),
@@ -59,7 +59,7 @@ class IosLedgerStoreTest {
             val store = iosLedgerStore(basePath = dir)
 
             runBlocking {
-                store.put(entry("photo-1.heic"))
+                store.recordUnlessSettled(entry("photo-1.heic"))
 
                 val row = assertNotNull(store.get("photo-1.heic"))
                 assertEquals(LedgerState.COMPLETED, row.state)
@@ -88,7 +88,7 @@ class IosLedgerStoreTest {
     fun `a store reopened over the same container sees what was written`() {
         withTempDirectory { dir ->
             runBlocking {
-                iosLedgerStore(basePath = dir).put(entry("photo-1.heic"))
+                iosLedgerStore(basePath = dir).recordUnlessSettled(entry("photo-1.heic"))
 
                 val reopened = iosLedgerStore(basePath = dir)
                 assertNotNull(
@@ -105,7 +105,7 @@ class IosLedgerStoreTest {
         withTempDirectory { first ->
             withTempDirectory { second ->
                 runBlocking {
-                    iosLedgerStore(basePath = first).put(entry("photo-1.heic"))
+                    iosLedgerStore(basePath = first).recordUnlessSettled(entry("photo-1.heic"))
 
                     assertNull(
                         iosLedgerStore(basePath = second).get("photo-1.heic"),

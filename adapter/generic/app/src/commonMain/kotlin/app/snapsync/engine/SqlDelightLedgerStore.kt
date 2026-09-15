@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 
 /**
  * [LedgerStore] over the SQLDelight [LedgerDatabase] (schema: `Ledger.sq` — one table, key
- * primary key, an index on `assetId`). [put] is the single `INSERT OR REPLACE` statement, atomic on
+ * primary key, an index on `assetId`). [recordUnlessSettled] is one guarded upsert statement, atomic on
  * its own; [aggregates] is one SQL round-trip, so its counts are mutually consistent. The driver
  * decides where the database lives (JVM sqlite for tests today; native driver with an App-Group path
  * is the iOS slice's).
@@ -71,13 +71,22 @@ class SqlDelightLedgerStore(
         destinationPath = destinationPath,
     )
 
-    override suspend fun put(entry: LedgerEntry) {
-        queries.put(
-            entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
-            entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
-            if (entry.absent) 1L else 0L, entry.destinationPath,
-        )
-        dings.tryEmit(Unit)
+    /**
+     * The guarded record write: the upsert and a `changes()` read in ONE transaction, the same shape as
+     * [markTerminal] — the statement carries the done-state guard, and the database says whether it applied.
+     * Dings only when it did: a declined write changed no truth.
+     */
+    override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+        val applied = queries.transactionWithResult {
+            queries.recordUnlessSettled(
+                entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
+                entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
+                if (entry.absent) 1L else 0L, entry.destinationPath, DONE_STATES,
+            )
+            queries.changedRows().executeAsOne() > 0L
+        }
+        if (applied) dings.tryEmit(Unit)
+        return applied
     }
 
     override suspend fun manifestRows(): List<LedgerEntry> =
@@ -166,11 +175,12 @@ class SqlDelightLedgerStore(
     override suspend fun resetTo(entries: List<LedgerEntry>) {
         // One transaction: delete-all then insert each. If any statement throws, SQLDelight rolls
         // back the whole transaction, so the store is left unchanged and the ding below is skipped —
-        // a partial baseline is never observable. One ding on success, like clear()/put().
+        // a partial baseline is never observable. One ding on success, like clear(). A plain insert: after
+        // deleteAll nothing can conflict, and the reset family applies no precedence.
         queries.transaction {
             queries.deleteAll()
             entries.forEach {
-                queries.put(
+                queries.insert(
                     it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId,
                     it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
                     if (it.absent) 1L else 0L, it.destinationPath,
@@ -187,6 +197,25 @@ class SqlDelightLedgerStore(
         dings.tryEmit(Unit)
     }
 
+    override suspend fun markPresent(assetIds: Collection<String>) {
+        if (assetIds.isEmpty()) return
+        // Read the marked assets first and update only the intersection: this runs every cycle over every
+        // asset the walk saw, and in the common case — nothing restored — it must not open a write at all.
+        // One transaction, so the read and the update see the same rows. Chunked, because an IN list is one
+        // bind variable per id and a full enumeration can name more assets than a driver will bind.
+        val cleared = queries.transactionWithResult {
+            val marked = queries.selectAbsentAssetIds().executeAsList().toSet()
+            val matches = assetIds.filterTo(linkedSetOf()) { it in marked }
+            matches.chunked(MARK_PRESENT_CHUNK).forEach { queries.markPresent(it) }
+            matches.size
+        }
+        if (cleared > 0) {
+            // Positively observable, like the eventId backfill: the steady-state no-op stays silent.
+            log.i { "absence cleared for $cleared asset(s) seen in the library again" }
+            dings.tryEmit(Unit)
+        }
+    }
+
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
     private fun roleOrNull(wire: String): ResourceRole? =
         ResourceRole.entries.firstOrNull { it.wire == wire }
@@ -201,6 +230,9 @@ class SqlDelightLedgerStore(
         dings.tryEmit(Unit)
     }
 }
+
+/** Asset ids per `markPresent` UPDATE — well under every driver's bind-variable limit. */
+private const val MARK_PRESENT_CHUNK = 500
 
 /**
  * Constructs the generated database with its column adapters wired — the single place that

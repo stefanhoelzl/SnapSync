@@ -11,7 +11,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 
-/** A minimal in-memory [LedgerStore] test double — a last-write-wins map plus a put ding. */
+/** A minimal in-memory [LedgerStore] test double — a map honouring the record guard, plus a ding per change. */
 class InMemoryLedgerStore : LedgerStore {
 
     private val entries = mutableMapOf<String, LedgerEntry>()
@@ -28,9 +28,11 @@ class InMemoryLedgerStore : LedgerStore {
     override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
         entries.values.firstOrNull { it.destinationPath == destinationPath }
 
-    override suspend fun put(entry: LedgerEntry) {
+    override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+        if (entries[entry.key]?.state?.isDone == true) return false
         entries[entry.key] = entry
         dings.tryEmit(Unit)
+        return true
     }
 
     override suspend fun clear() {
@@ -55,6 +57,18 @@ class InMemoryLedgerStore : LedgerStore {
             if (row.assetId == assetId && !row.absent) entries[key] = row.markedAbsent()
         }
         dings.tryEmit(Unit)
+    }
+
+    override suspend fun markPresent(assetIds: Collection<String>) {
+        val wanted = assetIds.toSet()
+        var cleared = false
+        for ((key, row) in entries) {
+            if (row.absent && row.assetId in wanted) {
+                entries[key] = row.markedPresent()
+                cleared = true
+            }
+        }
+        if (cleared) dings.tryEmit(Unit)
     }
 
     override suspend fun aggregates(): LedgerAggregates {
@@ -121,6 +135,7 @@ class InMemoryLedgerStore : LedgerStore {
             attempt = current.attempt, eventId = current.eventId,
             creationDate = current.creationDate, role = current.role,
             contentType = current.contentType, originalFilename = current.originalFilename,
+            absent = current.absent,
         )
         dings.tryEmit(Unit)
         return true

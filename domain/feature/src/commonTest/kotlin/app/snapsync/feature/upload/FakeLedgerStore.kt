@@ -11,7 +11,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 
-/** A minimal in-memory [LedgerStore] for the join tests (last-write-wins map, atomic resetTo). */
+/** A minimal in-memory [LedgerStore] for the join tests (guarded record writes, atomic resetTo). */
 class FakeLedgerStore : LedgerStore {
     val rows = mutableMapOf<String, LedgerEntry>()
     private val dings = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -21,7 +21,11 @@ class FakeLedgerStore : LedgerStore {
 
     override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
         rows.values.firstOrNull { it.destinationPath == destinationPath }
-    override suspend fun put(entry: LedgerEntry) { rows[entry.key] = entry; dings.tryEmit(Unit) }
+    override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
+        if (rows[entry.key]?.state?.isDone == true) return false
+        rows[entry.key] = entry; dings.tryEmit(Unit)
+        return true
+    }
     override suspend fun clear() { rows.clear(); dings.tryEmit(Unit) }
     override suspend fun clearRequested() { rows.values.removeAll { it.state == LedgerState.REQUESTED }; dings.tryEmit(Unit) }
 
@@ -32,6 +36,13 @@ class FakeLedgerStore : LedgerStore {
 
     override suspend fun markAbsent(assetId: String) {
         for ((key, row) in rows) if (row.assetId == assetId && !row.absent) rows[key] = row.markedAbsent()
+    }
+
+    override suspend fun markPresent(assetIds: Collection<String>) {
+        val wanted = assetIds.toSet()
+        var cleared = false
+        for ((key, row) in rows) if (row.absent && row.assetId in wanted) { rows[key] = row.markedPresent(); cleared = true }
+        if (cleared) dings.tryEmit(Unit)
     }
 
     override suspend fun aggregates(): LedgerAggregates {

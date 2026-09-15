@@ -100,7 +100,8 @@ sqldelight {
         create("LedgerDatabase") {
             packageName.set("app.snapsync.engine.db")
             srcDirs.setFrom("src/commonMain/sqldelight/ledger")
-            // SQLite 3.18: the default dialect rejects ALTER TABLE … DROP COLUMN (2.sqm needs it).
+            // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (2.sqm needs it), and the
+            // record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
             dialect(libs.sqldelight.dialect.sqlite)
         }
         create("DownloadDatabase") {
