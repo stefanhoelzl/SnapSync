@@ -25,14 +25,10 @@ The **Re-provision resets sync state** requirement was scoped explicitly to this
 The change-token advance was re-conditioned in `changes/archive/2026-08-27-fix-cap-truncation-loop` — from *every job was created* to *every fact
 the walk produced is durable* — which replaced the requirement that the token not advance on a
 cap-truncated cycle.
-
-
 ## Requirements
-
 ### Requirement: Background upload extension target
 
-
-On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The platform-agnostic upload **orchestration** — the upload cycle (`UploadCycle`, `:domain` `feature/upload`), the fine-grained OS-verb platform seam (`BackgroundTransfer`, `:domain` `ports/`), and the config assembly (`UploadConfig`/`buildUploadConfig`, `:domain` `feature/upload`) — SHALL live in `:domain` (migration step 5; formerly `:capability:upload`), which declares **`jvm()`** alongside `iosArm64`/`iosSimulatorArm64` — no Compose/UI — so the orchestration tests run on JVM (and the iOS simulator) per capability `testing-architecture` ("Every test runs on every target its module declares"). The extension SHALL assemble its cycle through the **shared composition** `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition"): the root supplies only its ports and platform reads — the file-backed `ConfigReader`, the device-identity thunk, the compile-time host read, the PhotoKit platform adapter, and the generic HTTP adapters (`:adapter:generic:app`'s `HttpEnrollment` is the device-manifest uploader; there is no extension-local uploader copy). The **PhotoKit platform adapter** (`IosPhotoKitUploadPlatform`, the `BackgroundTransfer` impl) SHALL live in the extension-safe adapter module `:adapter:ios:ext-safe` — an adapter is placed by linkage and MAY branch on technology vocabulary (spec `module-architecture`; seated there at the migration finale — its former shell seat put adapter branching inside the zero-decision shell gate's scope), beside the shared PhotoKit discovery it delegates to (the `IosDiscovery` change-token walk + request builder + token archiver and the `IosDiscoveryStore` cursor store, shared with the `ios-url-session-upload` adapter) and the file-backed `ConfigSource`. The **compile-time host read** (`bakedUploadBase`, the `uploadBase` value read from the bundled `Deployment.plist`) SHALL live in `:adapter:ios:ext-safe` beside the build-version read the boot banner uses, for the same two reasons: **both processes** read it (each `NSBundle.mainBundle` being its own bundle), and its absent-key defaulting is a **decision**, which the zero-decision shell gate forbids a wiring-only root to hold — the same reasoning that seated `IosPhotoKitUploadPlatform` there at the migration finale. The composition root (`UploadExtensionRoot`) SHALL live in a lean `:app:ios:extension` module that **composes** `:domain` (which also carries the upload receive seam in `feature/upload`), `:adapter:ios:ext-safe`, and `:adapter:generic:app`, and is packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension bundle SHALL carry the generated `Deployment.plist` (capability `deployment-configuration`), whose `uploadBase` is the compile-time edge host the app and the extension **read** when they build upload requests. The extension `Info.plist` SHALL **additionally** declare `BackgroundUploadURLBase`, carrying that same base URL: it is read not by this app but by **`assetsd`**, which validates the registration insert against the value in the bundle's own `Info.plist` and can see no resource the app bundles. With the key absent, `setUploadJobExtensionEnabled(true)` SHALL be expected to fail with a bare `PHPhotosErrorDomain -1` and empty `userInfo`, the OS never launches the extension, and nothing uploads on this tier. Because an `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an xcconfig line with no escape, the value SHALL be **composed** in the `Info.plist` from build settings that cannot themselves contain `//` — a scheme enum and a bare host — rather than carried as one URL-valued build setting. The app bundle SHALL carry the key on the same terms: the registration call is made by the app process, and which bundle the daemon reads has not been established. What IS established is a device A/B (SE2, iOS 26.6, 2026-08-28, one variable): key absent → enable fails `-1`, disable fails `3201`; key present as `https://<domain>/api/v1` → both succeed and the read-back is `true`. The daemon's **matching rule** — whether it compares host, origin or prefix — is NOT established, and this spec SHALL NOT assert one. ⏰ Re-measure at the next iOS major, with the other PhotoKit platform facts. The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
+On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The platform-agnostic upload **orchestration** — the upload cycle (`UploadCycle`, `:domain` `feature/upload`), the fine-grained OS-verb platform seam (`BackgroundTransfer`, `:domain` `ports/`), the library-read seam (`UploadDiscovery`, `:domain` `ports/`), and the config assembly (`UploadConfig`/`buildUploadConfig`, `:domain` `feature/upload`) — SHALL live in `:domain` (migration step 5; formerly `:capability:upload`), which declares **`jvm()`** alongside `iosArm64`/`iosSimulatorArm64` — no Compose/UI — so the orchestration tests run on JVM (and the iOS simulator) per capability `testing-architecture` ("Every test runs on every target its module declares"). The extension SHALL assemble its cycle through the **shared composition** `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition"): the root supplies only its ports and platform reads — the file-backed `ConfigReader`, the device-identity thunk, the compile-time host read, the PhotoKit platform adapter, the PhotoKit discovery (`IosDiscovery`, bound once as the `UploadDiscovery`), and the generic HTTP adapters (`:adapter:generic:app`'s `HttpEnrollment` is the device-manifest uploader; there is no extension-local uploader copy). The **PhotoKit platform adapter** (`IosPhotoKitUploadPlatform`, the `BackgroundTransfer` impl) SHALL live in the extension-safe adapter module `:adapter:ios:ext-safe` — an adapter is placed by linkage and MAY branch on technology vocabulary (spec `module-architecture`; seated there at the migration finale — its former shell seat put adapter branching inside the zero-decision shell gate's scope), beside the shared PhotoKit discovery the roots bind (the `IosDiscovery` change-token walk + token archiver, implementing `UploadDiscovery`), the shared upload-request builder, and the `IosDiscoveryStore` cursor store, all shared with the `ios-url-session-upload` adapter, and the file-backed `ConfigSource`. The **compile-time host read** (`bakedUploadBase`, the `uploadBase` value read from the bundled `Deployment.plist`) SHALL live in `:adapter:ios:ext-safe` beside the build-version read the boot banner uses, for the same two reasons: **both processes** read it (each `NSBundle.mainBundle` being its own bundle), and its absent-key defaulting is a **decision**, which the zero-decision shell gate forbids a wiring-only root to hold — the same reasoning that seated `IosPhotoKitUploadPlatform` there at the migration finale. The composition root (`UploadExtensionRoot`) SHALL live in a lean `:app:ios:extension` module that **composes** `:domain` (which also carries the upload receive seam in `feature/upload`), `:adapter:ios:ext-safe`, and `:adapter:generic:app`, and is packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension bundle SHALL carry the generated `Deployment.plist` (capability `deployment-configuration`), whose `uploadBase` is the compile-time edge host the app and the extension **read** when they build upload requests. The extension `Info.plist` SHALL **additionally** declare `BackgroundUploadURLBase`, carrying that same base URL: it is read not by this app but by **`assetsd`**, which validates the registration insert against the value in the bundle's own `Info.plist` and can see no resource the app bundles. With the key absent, `setUploadJobExtensionEnabled(true)` SHALL be expected to fail with a bare `PHPhotosErrorDomain -1` and empty `userInfo`, the OS never launches the extension, and nothing uploads on this tier. Because an `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an xcconfig line with no escape, the value SHALL be **composed** in the `Info.plist` from build settings that cannot themselves contain `//` — a scheme enum and a bare host — rather than carried as one URL-valued build setting. The app bundle SHALL carry the key on the same terms: the registration call is made by the app process, and which bundle the daemon reads has not been established. What IS established is a device A/B (SE2, iOS 26.6, 2026-08-28, one variable): key absent → enable fails `-1`, disable fails `3201`; key present as `https://<domain>/api/v1` → both succeed and the read-back is `true`. The daemon's **matching rule** — whether it compares host, origin or prefix — is NOT established, and this spec SHALL NOT assert one. ⏰ Re-measure at the next iOS major, with the other PhotoKit platform facts. The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
 
 #### Scenario: Extension declares the PhotoKit background-upload point
 - **WHEN** the extension target is built
@@ -44,11 +40,11 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
 
 #### Scenario: Orchestration is JVM-reachable
 - **WHEN** the upload orchestration's tests are run
-- **THEN** because `UploadCycle`/`BackgroundTransfer`/`UploadConfig` live in `:domain` (a `jvm()`-enabled module), the tests execute on JVM **and** `iosSimulatorArm64`, not on the iOS targets alone
+- **THEN** because `UploadCycle`/`BackgroundTransfer`/`UploadDiscovery`/`UploadConfig` live in `:domain` (a `jvm()`-enabled module), the tests execute on JVM **and** `iosSimulatorArm64`, not on the iOS targets alone
 
 #### Scenario: Extension adapters compose the capability
 - **WHEN** the extension's composition root assembles a cycle
-- **THEN** the iOS adapters (`IosPhotoKitUploadPlatform`, `IosDiscoveryStore`) implement the upload seams — sharing the `IosDiscovery` walk from `:adapter:ios:ext-safe` — and the root supplies them as `UploadPorts` to `uploadCore`, which constructs the `:domain` `feature/upload` `UploadCycle`, with the download-store / rejoin / manifest edges answered in the ports bundle rather than inside the feature
+- **THEN** the iOS adapters (`IosPhotoKitUploadPlatform`, `IosDiscovery`, `IosDiscoveryStore`) implement the upload seams — `IosDiscovery` shared with the app-driven tier from `:adapter:ios:ext-safe` and bound once as the `UploadDiscovery` — and the root supplies them as `UploadPorts` to `uploadCore`, which constructs the `:domain` `feature/upload` `UploadCycle`, with the download-store / rejoin / manifest edges answered in the ports bundle rather than inside the feature
 
 #### Scenario: The app-driven tier applies below 26.1
 - **WHEN** the app runs on iOS 18–26.0 (below the `PHBackgroundResourceUploadExtension` floor)
@@ -73,7 +69,6 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
   single build setting carries a value containing `//`, which the xcconfig grammar would truncate silently
 
 ### Requirement: In-extension discovery via persistent change token
-
 
 On each `process()` invocation, the extension SHALL discover work itself (the system does not
 enumerate). On first run (no token) it SHALL enumerate the whole library via `PHAsset.fetchAssets`
@@ -136,7 +131,6 @@ the ledger rather than by re-deriving it.
 
 ### Requirement: Resource identity and fan-out
 
-
 For each discovered asset the extension SHALL fan the asset out to its **original** `PHAssetResource`s
 only, mapping each to a generic role and wrapping it as an engine `Resource` with
 `filename = "<assetId>-<role>.<ext>"`, where `assetId` is the PHAsset's `localIdentifier` with `/`
@@ -170,7 +164,6 @@ resolve `PHCloudIdentifier` and SHALL NOT skip any asset for an unresolved cloud
 - **THEN** assets are still discovered and keyed by their `localIdentifier`, and uploads proceed — none are skipped for a missing cloud id
 
 ### Requirement: Device manifest projection and side-channel upload
-
 
 The extension SHALL project the current event's `device.json` from the **upload ledger's `COMPLETED`
 rows** (capability `sync-ledger`), which carry the manifest's presentation detail (per `device-manifest`:
@@ -231,7 +224,6 @@ manifest wiring in the app; the app reads no manifest state.
 
 ### Requirement: Extension owns the single ledger writer
 
-
 **On iOS ≥26.1** (the two-process PhotoKit tier) the extension process SHALL be the single holder of the `LedgerWriter` over the App-Group ledger, and the host app SHALL NOT construct a `LedgerWriter`. This binds the ledger's single-record-writer invariant (see `sync-ledger`) to the extension process on this tier. On iOS 18–26.0 there is no extension process and the **app** holds the writer (see `ios-url-session-upload`); the invariant is preserved on both tiers, only its process binding differs.
 
 #### Scenario: Only the extension writes on ≥26.1
@@ -240,7 +232,6 @@ manifest wiring in the app; the app reads no manifest state.
 
 ### Requirement: iOS 26.1 deployment deviation
 
-
 The extension SHALL target iOS 26.1 and use the deprecated `PHBackgroundResourceUploadExtension` protocol (the only one runnable on current GM devices), accepting deprecation in exchange for on-device verification now. Because all logic is Kotlin, a later migration to the iOS 27 `PHBackgroundResourceUploadJobExtension` async API SHALL be confined to the Swift shell and the deployment target.
 
 #### Scenario: Deviation is contained to the shell
@@ -248,7 +239,6 @@ The extension SHALL target iOS 26.1 and use the deprecated `PHBackgroundResource
 - **THEN** only the Swift principal class and the deployment target change, and the Kotlin discovery/engine/ledger core is unaffected
 
 ### Requirement: Engine-gated real upload-job creation
-
 
 For each discovered `Resource` the extension SHALL drive the shared `SyncEngine` with
 `ResourceChanged` and act on the decision. On a `Work` decision (`Upload`) it SHALL build the
@@ -279,7 +269,6 @@ drain (see "Completion and retry adjudication"), so `COMPLETED` and `FAILED` are
 - **THEN** the ledger has no `REQUESTED` for that key, so a later re-derivation re-issues the create
 
 ### Requirement: Extension registration is a disable→enable toggle
-
 
 **On iOS ≥26.1**, on a full photo-access grant the app SHALL register the background-upload extension with a
 **disable→enable toggle** — `setUploadJobExtensionEnabled(false)` then `setUploadJobExtensionEnabled(true)` — rather than a bare enable. The system's `AssetResourceUploadJobConfiguration` is keyed by bundle id and **persists across app delete/reinstall and device reboot**; a stale record (e.g. left by a differently-signed build) makes a bare `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record"), after which the system never launches the extension. The leading `enable(false)` deletes the stale record so `enable(true)` re-creates it cleanly for the currently-installed extension. On iOS 18–26.0 there is no such OS toggle; "enable" starts the app-driven pump and "disable" cancels it (see `ios-url-session-upload`).
@@ -327,7 +316,6 @@ a target's host cannot hold such a record, the port's binding for that target an
 
 ### Requirement: Device-visible (un-redacted) logging
 
-
 Both the app and the extension SHALL route Kermit through a log writer whose messages appear **un-redacted** in the device unified log / `idevicesyslog` (the default os_log path redacts dynamic content as `<private>`), so on-device discovery/decision/upload logs are readable without a Mac.
 
 #### Scenario: Log content is readable on device
@@ -336,14 +324,14 @@ Both the app and the extension SHALL route Kermit through a log writer whose mes
 
 ### Requirement: Completion and retry adjudication
 
-
 The extension SHALL adjudicate the system's returned upload jobs each cycle, **before** discovering
 new work (so completed/failed slots are freed first). It SHALL recover a returned
 `PHAssetResourceUploadJob`'s ledger row by matching the job's **destination URL path** against the
-`destinationPath` recorded for that row when the job was created (capability `sync-ledger`). The
-destination is the only field reliably present for every job state, since `resource` is **nil for
-succeeded jobs** (the system releases it after upload) — but under the v2 byte route its last path
-segment is the resource's **role**, not the ledger key, so the key SHALL NOT be read from it.
+`destinationPath` recorded for that row when the job was created (capability `sync-ledger`), read through the
+`TransferRecord` the adapter is given. The destination is the only field reliably present for every job
+state, since `resource` is **nil for succeeded jobs** (the system releases it after upload) — but under the v2
+byte route its last path segment is the resource's **role**, not the ledger key, so the key SHALL NOT be read
+from it.
 
 For a job whose destination path matches no recorded row — including one created by a build that predates
 the recorded path — the extension SHALL fall back to recovering the key from the destination URL's **last
@@ -373,14 +361,18 @@ unrecoverable — or the system reports `appex failed to acknowledge jobs for pr
 - **`fetchJobsWithAction(.retry)` (first failures):** map `job.error` → `UploadError`, report
   `UploadFailed` (engine records `FAILED`, answers `Retry` with a rebuilt edge URL — stable, no
   expiry, nothing to re-mint), call `retryWithDestination(:)`, then report `UploadStarted` (records
-  `REQUESTED` at the incremented attempt).
+  `REQUESTED` at the incremented attempt). The system job `retryWithDestination(:)` is applied to SHALL be
+  found by the **same route** the job's key was recovered by — its destination path against the recorded
+  `destinationPath`, then the v1 last-segment fallback — and SHALL NOT be found by comparing the destination's
+  last path segment to the ledger key, which under the v2 route is the resource's role and matches no key.
+  A retry whose system job is no longer in the `.retry` set SHALL be logged and SHALL NOT be silent.
 - **`fetchJobsWithAction(.acknowledge)` (terminal):** the adapter SHALL record the outcome into the ledger
-  itself, through the guarded `markTerminal` (`sync-ledger`), and acknowledge the job **in place** —
-  `state == Succeeded` → record `COMPLETED`, then acknowledge; a key already in a terminal state → acknowledge
-  (the guard applies to nothing, an idempotent no-op); otherwise (a retry-spent `Failed`/`Cancelled` job) →
-  record `FAILED`, then acknowledge. The job SHALL be acknowledged **regardless** of whether its guarded
-  write applied and regardless of any re-create outcome (never leave a presented job un-acknowledged). Retry
-  has no attempt budget (retry forever).
+  itself, through the guarded `markTerminal` of its `TransferRecord` (`sync-ledger`), and acknowledge the job
+  **in place** — `state == Succeeded` → record `COMPLETED`, then acknowledge; a key already in a terminal
+  state → acknowledge (the guard applies to nothing, an idempotent no-op); otherwise (a retry-spent
+  `Failed`/`Cancelled` job) → record `FAILED`, then acknowledge. The job SHALL be acknowledged **regardless** of
+  whether its guarded write applied and regardless of any re-create outcome (never leave a presented job
+  un-acknowledged). Retry has no attempt budget (retry forever).
 
 A succeeded job SHALL become `COMPLETED` directly. Nothing a completion used to trigger is still owed: the
 device manifest declared the resource when it was discovered (capability `device-manifest`), and the
@@ -432,6 +424,12 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
   destination (byte-identical to the original — no expiry), calls `retryWithDestination(:)`, and
   reports `UploadStarted` so the ledger holds `REQUESTED` at the incremented attempt
 
+#### Scenario: A v2-route retry reaches its system job
+- **WHEN** a job is returned in the `.retry` set whose destination is the v2 byte route, so its last path
+  segment is the resource's role
+- **THEN** the system job whose destination path resolves to that key is the one `retryWithDestination(:)`
+  is applied to, and no "no live retry job" line is logged for it
+
 #### Scenario: Retry-spent failure re-creates from the job's resource
 - **WHEN** a `Failed` job appears in the `.acknowledge` set (its one system retry is spent) and its
   `resource` is still available
@@ -458,7 +456,6 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
   reconstructed for a re-create carries the `assetId` parsed from the recovered key by `assetIdFromUploadKey`
 
 ### Requirement: Cap-aware creation and tri-state processing result
-
 
 When `creationRequestForJob` raises `PHPhotosErrorLimitExceeded`, the extension SHALL stop creating
 jobs for the remainder of the cycle and surface a **processing** result so the system re-invokes it
@@ -519,7 +516,6 @@ stops compiling instead.
   than reporting a successful cycle that cannot be trusted
 
 ### Requirement: Persisted change-token cursor
-
 
 The discovery cursor SHALL be persisted in the shared App-Group store written by the extension. The
 extension SHALL archive the `PHPersistentChangeToken` (via its `NSSecureCoding` support) to `Data`
@@ -587,7 +583,6 @@ ledger they leave intact is what knows the work is already done.
 - **THEN** `setUploadJobExtensionEnabled` is not called, and the app-driven producer's `start()` runs instead
 
 ### Requirement: Discovery prunes ledger rows for deleted assets
-
 
 The extension SHALL record that an asset has left the library by **marking** its ledger rows absent, and
 SHALL NOT delete them (capability `sync-ledger`). A row states that a resource's bytes are on the
@@ -658,7 +653,6 @@ and the upload decision is unchanged.
   and the next projection lists it again
 
 ### Requirement: Disabling the extension clears orphaned REQUESTED rows
-
 
 The app SHALL recover the in-flight jobs wiped by a disable. Disabling the upload extension
 (`setUploadJobExtensionEnabled(false)`) deletes the system's `AssetResourceUploadJobConfiguration` and
@@ -742,7 +736,6 @@ reset-family operation.
 
 ### Requirement: Discovery suppresses downloaded assets
 
-
 The upload cycle's discovery SHALL consult the download store's suppression projection (the set of
 `createdLocalId`s of foreign assets this device downloaded and imported) and SHALL drop every
 discovered resource whose `assetId` — **normalized `'/'→'_'` to match the stored `createdLocalId`
@@ -779,7 +772,6 @@ statement that those bytes are on the backend.
 
 ### Requirement: The extension root contains only what is tier-specific
 
-
 `process()` SHALL contain only the two concerns that cannot be shared with another upload tier:
 
 - **The synchronous OS contract** — the cycle is driven to completion and its result returned, because the
@@ -815,7 +807,6 @@ gate, and the membership read each shipped on one tier and not the other.
 
 ### Requirement: The extension root's skip diagnostic survives the move
 
-
 The forensics for a skipped cycle SHALL remain a single log line carrying why the read failed — the
 membership read's status and whether the device identity resolved. The skip decision is made in shared
 code, which cannot see either; the root SHALL therefore supply the detail with the decision, and the cycle
@@ -831,7 +822,6 @@ it, and one line in one file is the readable form.
   that this was not treated as a leave
 
 ### Requirement: Extension assembles config from the shared config store and compile-time host
-
 
 The extension SHALL assemble the inputs it hands to `EdgeUploadRequestProvider` from three sources:
 the runtime `EventConfig` (`eventId`) read through the shared three-state config store —
@@ -875,7 +865,6 @@ writing nothing — never crashing.
   event — it does not keep uploading to the event it read at process construction
 
 ### Requirement: The registration cannot be changed under a partial grant
-
 
 The OS-driven tier SHALL be treated as **unavailable** while the containing app holds a partial
 (`.limited`) photo grant, because a partially-granted process **cannot change its upload-job registration
@@ -936,7 +925,6 @@ places the app-driven mechanism (`upload-lifecycle`).
 - **THEN** the call is refused with `PHPhotosErrorAccessUserDenied` and no configuration record is created
 
 ### Requirement: A failed extension-registration change is reported, not discarded
-
 
 `PHPhotoLibrary.setUploadJobExtensionEnabled` returns a `Boolean` and takes an `NSError**`. Both SHALL be
 captured. A registration change that fails SHALL be reported with the error's domain and code, not
@@ -1016,7 +1004,6 @@ wiring only").
 
 ### Requirement: The OS's own view of the registration is reported as what it reports
 
-
 Where a diagnostic surface reports whether the upload-job extension is registered, it SHALL report the OS's
 answer (`PHPhotoLibrary.isUploadJobExtensionEnabled()`) as **what the OS reports**, and SHALL NOT present it
 as what the OS holds.
@@ -1052,7 +1039,6 @@ access was granted — one install, one variable, minutes apart. So `false` coll
 
 ### Requirement: The registration reports exactly what the platform returned
 
-
 A registration change SHALL be reported by its classified outcome and by nothing else. No line SHALL claim
 that a registration was applied unless that claim is derived from the value the platform returned for that
 change.
@@ -1080,7 +1066,6 @@ that the shell renders without deciding. A shell that asserts is a shell that de
 
 ### Requirement: The upload-job subsystem binding is fixed by the compilation target
 
-
 The **OS upload-job subsystem** SHALL be reached through seams whose implementation is chosen by
 **compilation target**, never by a runtime check. That subsystem is the registration record
 (`setUploadJobExtensionEnabled` / `isUploadJobExtensionEnabled`), the job sets (`fetchJobsWithAction`), and
@@ -1107,9 +1092,13 @@ The extension's composition root SHALL obtain its `BackgroundTransfer` from the 
 than constructing a named implementation, and SHALL be otherwise identical on every target. No caller SHALL
 duplicate the root's port bundle in order to substitute one port: a second assembly of that bundle is a
 second composition, and the host that most needs the real one is the host that would be running the copy.
+The seam SHALL take the ledger only as a `TransferRecord` (`sync-ledger`).
 
-A substituted subsystem SHALL delegate resource discovery to the real PhotoKit discovery, exactly as the
-PhotoKit implementation does. Discovery is not part of the subsystem and works on every target.
+Resource discovery is not part of the subsystem, and SHALL NOT be reached through either binding: the root
+binds the real PhotoKit discovery (`UploadDiscovery`) once, beside the target-bound job queue, identically on
+every target. A substituted queue that must recover the live resource the OS would have handed back on a job
+object MAY fetch it by identifier; that stand-in for a job field is not discovery, and SHALL NOT be routed
+through `UploadDiscovery`.
 
 This does not widen the closed and measured expected-code enumeration in "A failed extension-registration
 change is reported, not discarded". A `PHPhotosErrorDomain:-1` reaching a device build remains an
@@ -1126,11 +1115,13 @@ unexpected, terminal failure reported at `Error`.
   `creationRequestForJobWithDestination` is not called
 
 #### Scenario: Discovery is unaffected by the substitution
-- **WHEN** a substituted subsystem is asked to discover resources
-- **THEN** it delegates to the real PhotoKit change-token walk and the real selection policy, and the
-  candidates it yields are the platform's own
+- **WHEN** the upload cycle discovers resources on a target whose job queue is substituted
+- **THEN** it reads the root-bound PhotoKit change-token walk and the real selection policy, not the
+  substituted queue, and the candidates it yields are the platform's own
 
 #### Scenario: One composition serves every target
 - **WHEN** the extension root assembles its upload cycle on any target
-- **THEN** it builds one port bundle, whose `BackgroundTransfer` is whatever that target's seam yields, and
-  no second assembly of that bundle exists anywhere
+- **THEN** it builds one port bundle, whose `BackgroundTransfer` is whatever that target's seam yields and
+  whose `UploadDiscovery` is the same PhotoKit discovery on every target, and no second assembly of that
+  bundle exists anywhere
+

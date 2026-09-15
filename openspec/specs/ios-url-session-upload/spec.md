@@ -39,7 +39,6 @@ The **App-driven lifecycle** requirement (re-provision, leave) and the tier-forc
 "cancel in-flight tasks for the old event" and "leave clears the ledger" bullets. Prefer that record for
 those decisions.
 ## Requirements
-
 ### Requirement: App-driven upload host below iOS 26.1
 
 On iOS versions below 26.1 the **host app process** SHALL perform background uploads (there is no
@@ -101,10 +100,16 @@ there SHALL be no cross-process write contention on this tier.
 
 The app-driven tier SHALL reconcile stranded `REQUESTED` rows **precisely** rather than using the
 blanket `clearRequested` recovery the PhotoKit tier needs, because a background `URLSession` **can
-enumerate** its tasks (`getAllTasks`). At cycle start the adapter SHALL match live tasks to ledger rows by
-`taskDescription == key`; a row that is **`REQUESTED`**, has **no** live task, and had **no** terminal
-outcome delivered this round SHALL be recorded `FAILED` so a later enumeration re-uploads it. The tier SHALL
-NOT depend on `clearRequested`.
+enumerate** its tasks (`getAllTasks`). In each cycle, immediately after the transport's terminal jobs are
+drained, the **cycle** SHALL ask the transport for the ledger keys of the transfers it still holds (see "The
+transport reports the transfers it still holds" — on this tier, the live tasks' `taskDescription`); a row that
+is **`REQUESTED`** and has **no** live transfer SHALL be recorded `FAILED` so a later enumeration re-uploads
+it. The tier SHALL NOT depend on `clearRequested`.
+
+The recovery decision SHALL be the cycle's, not the adapter's. The adapter reports what it holds and reads no
+ledger state; the cycle reads the `REQUESTED` keys, subtracts the reported set, and writes. Placing the rule in
+`:domain` `feature/upload` is what makes it testable on every target the module declares rather than only on a
+device.
 
 The candidate set SHALL be the **`REQUESTED`** rows, never the whole non-done backlog. A `FAILED` row has
 already been adjudicated; re-surfacing it every cycle re-writes the row, signals a change, and reports a
@@ -134,6 +139,11 @@ re-join reconciliation, where the ledger genuinely has no memory — see `upload
 - **WHEN** the stranded candidates are read while a row is `REQUESTED`, and the delegate records that row
   `COMPLETED` before the pass performs its write
 - **THEN** the guarded write applies to nothing and the row remains `COMPLETED`
+
+#### Scenario: The stranded rule is exercised without a device
+- **WHEN** the shared cycle runs over a transport double that reports a live set, while the ledger holds
+  `REQUESTED` rows inside and outside that set
+- **THEN** exactly the rows outside it are recorded `FAILED`, on JVM and on `iosSimulatorArm64`
 
 ### Requirement: Per-slot temp-file staging
 
@@ -381,7 +391,8 @@ The app-driven adapters (`IosUrlSessionUploadPlatform`, `IosBackgroundScheduler`
 app-only adapter module `:adapter:ios:app-only` — linked only by the main app process, never the
 extension (before migration step 4 they lived in `:app:ios:url-session-upload`, deleted by that
 step) — depending on the extension-safe adapter module `:adapter:ios:ext-safe` for the shared
-`IosDiscovery` walk. The
+upload-request builder. The shared `IosDiscovery` walk is bound by the app's composition root as the
+`UploadDiscovery` port, not held by the adapter. The
 `BackgroundUploadPump` and `BackgroundScheduler` pump logic SHALL live in `:domain` — the pump in
 `feature/upload`, the scheduler seam in `ports/` (seated by migration step 5; formerly
 `:capability:upload`) — `jvm()`-enabled and harness-covered. The pump and scheduler logic SHALL be
@@ -401,6 +412,7 @@ behaviour remain device-only.
 - **WHEN** the transport is exercised end-to-end on a simulator
 - **THEN** the bytes move and the outcome path is exercised, and the run is recorded as evidencing neither
   suspension survival nor OS relaunch
+
 ### Requirement: Pump triggers an in-process status refresh after each cycle
 
 On the app-driven tier the pump SHALL, after **each** `UploadCycle.run()` (it runs in the main
@@ -492,14 +504,20 @@ background-`URLSession`-backed adapter (`IosUrlSessionUploadPlatform`) — **not
   SHALL return `FAILED`.
 - `fetchRetryJobs()` SHALL return an **empty** list — this platform grants no OS-sponsored single
   retry; a terminal failure is recorded `FAILED` by the delegate and re-uploaded from a later enumeration.
-- `drainTerminals()` SHALL return an **empty** list on this tier. Terminal outcomes are recorded into the
-  ledger by the delegate as they are delivered (see "The delegate records the terminal fact before it
-  returns"), so no terminal fact crosses the port, and this tier has nothing for the cycle to re-create
-  in-cycle. It SHALL delete the resource's staged temp file when the transfer terminates — the file is
-  unusable from that moment, and the launch-time orphan sweep covers whatever a killed process leaves.
+- `drainTerminals()` SHALL return an **empty** list on this tier and SHALL perform no reconciliation of its
+  own. Terminal outcomes are recorded into the ledger by the delegate as they are delivered (see "The delegate
+  records the terminal fact before it returns"), so no terminal fact crosses the port, and this tier has
+  nothing for the cycle to re-create in-cycle. It SHALL delete the resource's staged temp file when the
+  transfer terminates — the file is unusable from that moment, and the launch-time orphan sweep covers
+  whatever a killed process leaves.
 - `retryJob(job, request)` SHALL be implemented as cancel-and-recreate.
-- `discoverResources(sinceToken)` SHALL reuse the shared change-token walk (`IosDiscovery`), identical
-  to the PhotoKit tier.
+- `liveKeys()` SHALL report the `taskDescription` of every task the session currently holds (see "The
+  transport reports the transfers it still holds").
+
+The adapter SHALL NOT serve the cycle's library reads: discovery and key resolution are the shared
+`UploadDiscovery` port the composition root binds (see "Ledger keys resolve to uploadable resources"). It
+SHALL receive the ledger only as a `TransferRecord` (`sync-ledger`, "Reader and writer capability split"),
+never as a `LedgerStore`.
 
 Correctness SHALL rely on **at-least-once** delivery: keys are deterministic and the edge PUT is
 idempotent (a re-PUT overwrites the same object), so a duplicate send is harmless. At-least-once bounds what
@@ -527,6 +545,11 @@ reality until the re-upload completes — which is a defect, not an accepted con
 #### Scenario: A terminated transfer's staged file is deleted
 - **WHEN** a task reaches a terminal outcome
 - **THEN** the resource's staged temp file is deleted, making no OS call
+
+#### Scenario: The adapter holds no ledger store and reads no library
+- **WHEN** the app-driven adapter is constructed
+- **THEN** it is given a `TransferRecord` and no `LedgerStore` or discovery, and the cycle's walk and key
+  resolution reach the library only through the root-bound `UploadDiscovery`
 
 ### Requirement: The app-driven tier serves limited memberships with selection-driven triggers
 
@@ -726,10 +749,10 @@ tiers are never simultaneously live and the `sync-ledger` single-record-writer i
 ### Requirement: The delegate records the terminal fact before it returns
 
 The `URLSession` task-completion delegate SHALL record the terminal outcome into the ledger —
-`COMPLETED` on success, `FAILED` otherwise — through the guarded, non-suspending `markTerminal`
-(`sync-ledger`), **synchronously, before the callback returns**. It SHALL NOT hold the outcome in process
-memory for a later cycle to collect. Success is recorded as the settled state: nothing a completion used to
-trigger is still owed, so no later cycle reads or re-settles the row.
+`COMPLETED` on success, `FAILED` otherwise — through the guarded, non-suspending `markTerminal` of the
+`TransferRecord` it is given (`sync-ledger`), **synchronously, before the callback returns**. It SHALL NOT
+hold the outcome in process memory for a later cycle to collect. Success is recorded as the settled state:
+nothing a completion used to trigger is still owed, so no later cycle reads or re-settles the row.
 
 The forcing fact: iOS delivers a background-`URLSession` completion **once**.
 `URLSessionTask.State.completed` is documented as *"the task has completed (without being canceled), and the
@@ -782,6 +805,7 @@ the cap allows.
 
 - **WHEN** a staged file must be located for a key in a process that did not create it
 - **THEN** its path is derived from the key alone
+
 ### Requirement: The producer tops up from the ledger, not from the walk's output
 
 On this tier the upload cycle SHALL enqueue work from the ledger's rows that need a job (capability
@@ -790,7 +814,7 @@ return value: the walk's job is to **record** what it found, and creating jobs f
 be holding is what made the cycle unable to resume work it had already seen.
 
 A cycle SHALL still consult the change feed, because that is the only way to learn what the library
-did — there is no cheaper oracle, and the cursor is not one: `discoverResources(token)` **is** the
+did — there is no cheaper oracle, and the cursor is not one: `UploadDiscovery.discover(token)` **is** the
 question. What changes is the cost of asking. Because the cursor now advances once the walk's facts are
 durable, that consultation is an incremental change-token fetch rather than a full enumeration.
 
@@ -870,10 +894,12 @@ on.
 
 ### Requirement: Ledger keys resolve to uploadable resources
 
-The adapter SHALL expose a seam that resolves a set of ledger keys to uploadable resources — the
-platform handles `createJob` requires, which a ledger row cannot carry — scoped to those keys and
-never by walking the library. Both upload tiers SHALL implement it, since both consume the shared
-cycle.
+The `UploadDiscovery` port (`:domain` `ports/`) SHALL resolve a set of ledger keys to uploadable resources —
+the platform handles `createJob` requires, which a ledger row cannot carry — scoped to those keys and
+never by walking the library. It SHALL be bound **once** per composition root to the shared PhotoKit
+discovery (`IosDiscovery`), identically on both upload tiers, since both consume the shared cycle; no
+transport SHALL implement or forward it. The same port carries the change-token walk, so the two reads the
+cycle makes of the library share one binding.
 
 The resolution SHALL be **partial-tolerant**: a key whose asset is no longer in the library resolves to
 nothing, and the cycle SHALL treat that as the asset having departed rather than as a failure to
@@ -882,8 +908,8 @@ in hand, so it performs no library read (capability `limited-photo-access`).
 
 #### Scenario: Keys resolve without a library walk
 
-- **WHEN** the cycle asks the adapter to resolve a set of ledger keys
-- **THEN** the adapter fetches only those assets' resources, and enumerates nothing else
+- **WHEN** the cycle asks `UploadDiscovery` to resolve a set of ledger keys
+- **THEN** only those assets' resources are fetched, and nothing else is enumerated
 
 #### Scenario: A departed asset resolves to nothing
 
@@ -895,6 +921,12 @@ in hand, so it performs no library read (capability `limited-photo-access`).
 
 - **WHEN** photo permission is `LIMITED` and the cycle resolves ledger keys
 - **THEN** the resolution is served from the current selection snapshot, with no platform read
+
+#### Scenario: One binding serves both tiers
+
+- **WHEN** either tier's composition root assembles its cycle
+- **THEN** it binds `IosDiscovery` as the cycle's `UploadDiscovery`, and its transport neither implements
+  nor forwards discovery
 
 ### Requirement: The platform reports the capacity it will accept
 
@@ -933,3 +965,33 @@ today. Nothing SHALL depend on it being exact.
 
 - **WHEN** the OS-driven adapter is asked for its free capacity
 - **THEN** it reports the absence of a number, and the cycle falls back to its fixed batch
+
+### Requirement: The transport reports the transfers it still holds
+
+The `BackgroundTransfer` seam SHALL expose `liveKeys()` — the ledger keys of the transfers the transport
+currently holds — or the **absence** of that set for a transport that cannot enumerate them. Both upload tiers
+SHALL implement it, since both consume the shared cycle.
+
+It SHALL be a **read the cycle asks for**, never a call from the transport into the core: the transport
+decides nothing about the ledger, and the recovery that uses this set runs in the cycle (see "Precise
+in-flight reconciliation replaces blanket clear").
+
+The app-driven tier SHALL report the `taskDescription` of every task its session holds — the same live set
+its concurrency cap and its cancellation already read, so the three cannot disagree.
+
+The OS-driven tier, and any substituted job queue, SHALL report the absence of a set. Its queue is the OS's
+durable job store, which exposes exactly two job sets — `.retry` and `.acknowledge` — and no set of jobs still
+in flight; a transfer it holds is not lost when the process dies, so it has no stranded population to
+reconcile. An absent answer SHALL cause the cycle to run no stranded reconciliation at all, rather than to
+treat every `REQUESTED` row as stranded.
+
+#### Scenario: The app-driven tier reports its live tasks
+
+- **WHEN** the app-driven adapter is asked for its live keys while its session holds tasks
+- **THEN** it reports exactly those tasks' `taskDescription` values
+
+#### Scenario: A durable queue reports no set, and nothing is stranded
+
+- **WHEN** the OS-driven adapter is asked for its live keys, and the ledger holds `REQUESTED` rows
+- **THEN** it reports the absence of a set, and the cycle records none of those rows `FAILED`
+
