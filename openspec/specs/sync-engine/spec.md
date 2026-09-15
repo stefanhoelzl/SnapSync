@@ -3,9 +3,11 @@
 ## Purpose
 
 The shared decision core of the sync backend: platform adapters drive it with observation events
-(a resource exists with this content state, an upload failed, an upload completed) and act on the
+(a resource exists with this content state, an upload was started, an upload failed) and act on the
 decisions it answers with. The engine's only state is its ledger — the durable per-key memory of
-what was requested, completed, and failed — written exclusively by the engine. The sync domain
+what was requested, completed, and failed. The engine records requests and failures; a completed upload
+is recorded by the platform itself, where the platform reports it, through the ledger's guarded terminal
+write (capability `sync-ledger`). The sync domain
 transports resources grouped by an opaque `assetId` — the engine carries the `assetId` through to
 the ledger but does not interpret it; richer asset handling lives in a later layer above the seam;
 encoding and placement of identity live below it, in the upload-request provider.
@@ -20,8 +22,9 @@ is impossible and reports are at-least-once by construction.
 
 Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
-The resource-changed decision gained `DISCOVERED` → `Upload`, and the `UPLOADED` entry the
-enumeration had never named, in `changes/archive/2026-08-27-fix-cap-truncation-loop`.
+The resource-changed decision gained `DISCOVERED` → `Upload` in
+`changes/archive/2026-08-27-fix-cap-truncation-loop`. The `UPLOADED` state and the engine's completion
+recording were removed in `changes/archive/2026-09-15-retire-uploaded-state`.
 ## Requirements
 ### Requirement: Resource-changed decision
 When a platform submits `ResourceChanged(resource)`, the engine SHALL answer one `SyncDecision`
@@ -29,12 +32,11 @@ derived from the ledger entry for `resource.filename`, and SHALL **write nothing
 `ResourceChanged` is a pure query (it reads the ledger and mints a request for `Work` answers, but
 recording `REQUESTED` happens only on a later `UploadStarted`, see "Upload-started recording"):
 
-- entry `COMPLETED`, `UPLOADED` or `REQUESTED` → `AlreadyUploaded` (no job). An uploaded resource is
-  **immutable**, so a `COMPLETED` key is backed up for good and never re-uploaded; an `UPLOADED` key's
-  bytes are already stored and what it still owes is the promotion pass, never a re-upload
-  (capability `sync-ledger`); a `REQUESTED` key
-  has a job in flight whose eventual `UploadStarted`/`UploadFailed`/`UploadCompleted` the engine
-  relies on. In none of the three SHALL the engine re-issue work.
+- entry `COMPLETED` or `REQUESTED` → `AlreadyUploaded` (no job). An uploaded resource is
+  **immutable**, so a `COMPLETED` key is backed up for good and never re-uploaded; a `REQUESTED` key
+  has a job in flight whose outcome is either reported to the engine (`UploadStarted` for a re-created job,
+  `UploadFailed`) or recorded by the platform through the ledger's guarded terminal write (capability
+  `sync-ledger`). In neither SHALL the engine re-issue work.
 - entry `DISCOVERED`, entry `FAILED`, or entry absent → `Upload` carrying an `UploadJob` with
   `attempt = 0`
 
@@ -63,11 +65,6 @@ without classifying it here fails to compile rather than falling into whichever 
 - **WHEN** the ledger entry is `COMPLETED`
 - **THEN** `AlreadyUploaded` is returned, no provider call is made, and the ledger entry is
   unchanged
-
-#### Scenario: Uploaded key skips
-- **WHEN** the ledger entry is `UPLOADED`
-- **THEN** `AlreadyUploaded` is returned and nothing is written — its bytes are stored, and the
-  promotion pass owes it an album placement and a notify, never another upload
 
 #### Scenario: In-flight request skips on re-submission
 - **WHEN** the ledger entry is `REQUESTED` and the same resource is re-submitted as `ResourceChanged`
@@ -145,24 +142,6 @@ recording is an idempotent per-key upsert.
 - **THEN** the caller receives the provider's exception unswallowed, the ledger still has no entry
   for the key, and a subsequent `handle` of the same event succeeds when the provider does
 
-### Requirement: Completion recording
-When a platform submits `UploadCompleted(job)`, the engine SHALL record `COMPLETED` for the key
-(with the job's attempt) and answer `AlreadyUploaded`. The report is made at the platform's
-acknowledge edge, before acknowledging. Completion reports arrive at-least-once; duplicates SHALL
-converge to the same ledger entry.
-
-#### Scenario: Completion marks the key done
-- **WHEN** `handle(UploadCompleted(job))` is called
-- **THEN** `AlreadyUploaded` is returned and the ledger entry is `COMPLETED` with the job's attempt
-
-#### Scenario: Duplicate completion is a no-op
-- **WHEN** the same `UploadCompleted(job)` is handled twice
-- **THEN** the second answer is also `AlreadyUploaded` and the ledger entry is unchanged
-
-#### Scenario: Completed key skips thereafter
-- **WHEN** a completion is recorded and the same resource is later re-submitted as `ResourceChanged`
-- **THEN** the answer is `AlreadyUploaded`
-
 ### Requirement: Upload-started recording (write-after-act)
 The engine SHALL accept a `SyncEvent.UploadStarted(job)` observation, reported by the platform
 **after** it has created (or retried) the upload job for `job`. On `UploadStarted` the engine SHALL
@@ -211,4 +190,3 @@ solely from the ledger entry for `filename`.
 - **WHEN** a `ResourceChanged` is handled for a resource whose key is absent from the ledger
 - **THEN** the answer is `Upload` regardless of the resource's `assetId` (the decision reads only
   `filename`)
-

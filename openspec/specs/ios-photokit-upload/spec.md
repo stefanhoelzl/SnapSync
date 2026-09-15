@@ -376,15 +376,16 @@ unrecoverable — or the system reports `appex failed to acknowledge jobs for pr
   `REQUESTED` at the incremented attempt).
 - **`fetchJobsWithAction(.acknowledge)` (terminal):** the adapter SHALL record the outcome into the ledger
   itself, through the guarded `markTerminal` (`sync-ledger`), and acknowledge the job **in place** —
-  `state == Succeeded` → record `UPLOADED`, then acknowledge; a key already in a terminal state → acknowledge
+  `state == Succeeded` → record `COMPLETED`, then acknowledge; a key already in a terminal state → acknowledge
   (the guard applies to nothing, an idempotent no-op); otherwise (a retry-spent `Failed`/`Cancelled` job) →
   record `FAILED`, then acknowledge. The job SHALL be acknowledged **regardless** of whether its guarded
   write applied and regardless of any re-create outcome (never leave a presented job un-acknowledged). Retry
   has no attempt budget (retry forever).
 
-A succeeded job SHALL become `UPLOADED`, not `COMPLETED`: the cycle's shared promotion pass performs the
-work a completion triggers — event-album placement and the completion notify — and then promotes. Recording
-`COMPLETED` here would make that pass see a settled row and skip both.
+A succeeded job SHALL become `COMPLETED` directly. Nothing a completion used to trigger is still owed: the
+device manifest declared the resource when it was discovered (capability `device-manifest`), and the
+event-album placement happened when its upload was first enqueued (capability `event-album`). No later pass
+reads or re-settles the row.
 
 Only **retry-spent failures whose `resource` is still available** SHALL be returned from the drain, so the
 cycle can re-create them in the same cycle from a live resource. No succeeded job and no terminal fact SHALL
@@ -414,11 +415,10 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
 - **WHEN** a cycle presents one or more jobs whose rows cannot be recovered by either route
 - **THEN** the count is reported at `Error` severity, and every such job is still acknowledged
 
-#### Scenario: Succeeded job records UPLOADED
+#### Scenario: Succeeded job records COMPLETED
 - **WHEN** a job in the `.acknowledge` set has `state == Succeeded`
-- **THEN** the extension resolves its row from the job's destination path, records that row `UPLOADED`, and
-  acknowledges the job — and the cycle's promotion pass later places it in the album, notifies, and promotes
-  it to `COMPLETED`
+- **THEN** the extension resolves its row from the job's destination path, records that row `COMPLETED`, and
+  acknowledges the job — and no later pass of the cycle reads or writes that row again
 
 #### Scenario: A retried upload keeps its original content type
 - **WHEN** a job is returned for retry or re-creation, so its `Resource` is rebuilt from the key alone
@@ -437,6 +437,10 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
   `resource` is still available
 - **THEN** the extension records that row `FAILED`, acknowledges the job, and returns it from the drain so
   the cycle creates a fresh job from the live resource
+
+#### Scenario: A failure handed back for a completed key re-uploads nothing
+- **WHEN** a retry-spent failure is returned from the drain for a key whose row is already `COMPLETED`
+- **THEN** the cycle skips it as settled, writes nothing, and creates no job
 
 #### Scenario: Every presented job is acknowledged
 - **WHEN** a returned job's row cannot be recovered, or its guarded write applies to nothing, or its

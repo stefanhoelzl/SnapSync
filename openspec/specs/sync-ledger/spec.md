@@ -29,15 +29,17 @@ The guarded record write that never overwrites a settled row (replacing the unco
 `changes/archive/2026-09-15-record-never-overwrites-settled-row` — the `ON CONFLICT` precedence re-examination the
 original decision record's D7 deferred to the arrival of a second writer.
 
+The `UPLOADED` state and its promotion (added in `changes/archive/2026-08-26-fix-lost-upload-acks`) were
+retired, the guarded terminal write narrowed to a `TerminalOutcome`, and the `8.sqm` rewrite added in
+`changes/archive/2026-09-15-retire-uploaded-state`.
+
 ## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerStore` interface with the row
 read `get(key): LedgerEntry?`, the guarded record write `recordUnlessSettled(entry): Boolean` (see
 "Record operations" — a single-row upsert that never overwrites a row in a done state, and answers whether
 it applied), the guarded terminal write
-`markTerminal(key, state): Boolean` (see "Guarded terminal write"), the guarded promotion
-`promoteUploaded(key): Boolean` (see "Guarded promotion"), the state-scoped read of `UPLOADED` rows
-(see "Uploaded-row read"), the state-scoped read of `REQUESTED` keys, the bounded state-scoped read of
+`markTerminal(key, outcome): Boolean` (see "Guarded terminal write"), the state-scoped read of `REQUESTED` keys, the bounded state-scoped read of
 rows that **need a job** (see "The DISCOVERED state and the ledger as the upload work source"), the
 manifest projection read and its detail backfill, the aggregate read
 `aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
@@ -51,15 +53,19 @@ There is deliberately **no** unconditional per-row upsert (`put`). It was remove
 guarded: with no production caller left, it could only serve as an unguarded door for the next production
 write. Tests seed a store through the guarded record write or `resetTo`, exactly as production writes it.
 
+There is deliberately **no** promotion and **no** uploaded-row read. A successful upload is recorded
+`COMPLETED` at the moment the platform reports it, so no state exists between "the bytes are stored" and
+"nothing further is owed".
+
 Backends SHALL store the fields of an applied write verbatim (no interpretation, no clocks of their own). The
 **only** precedence a backend applies is the one each named guarded operation states — the record write's
-done-state guard, `markTerminal`'s `REQUESTED` guard, `promoteUploaded`'s `UPLOADED` guard — and each SHALL be
+done-state guard and `markTerminal`'s `REQUESTED` guard — and each SHALL be
 enforced inside the storage statement itself, never by a read followed by a write. The reset family SHALL
 apply no precedence at all. A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`DISCOVERED` |
-`REQUESTED` | `UPLOADED` | `COMPLETED` | `FAILED`), `attempt`, and `eventId` — the event that was
+`REQUESTED` | `COMPLETED` | `FAILED`), `attempt`, and `eventId` — the event that was
 joined when the row was recorded. `clear()`, `clearRequested()`, `resetTo`, `markAbsent`, an applied record
-write, an applied `markPresent`, an applied
-`markTerminal` and an applied `promoteUploaded` SHALL each remove (and, for `resetTo`, then insert) or
+write, an applied `markPresent`, and an applied
+`markTerminal` SHALL each remove (and, for `resetTo`, then insert) or
 update the matching rows and signal `changes` **once** (so watchers re-read the
 now-current truth).
 `clear()`, `clearRequested()`, `resetTo`, `markAbsent`, and `markPresent` are **reset/bulk** operations, not the
@@ -117,9 +123,10 @@ have value equality.
 - **WHEN** asset `A` has two `COMPLETED` rows and asset `B` has one `COMPLETED` and one `FAILED` row
 - **THEN** `aggregates()` answers `pending = 1, completed = 1` (A complete, B pending)
 
-#### Scenario: An uploaded-but-unpromoted photo counts pending
-- **WHEN** one asset has one `COMPLETED` row and one `UPLOADED` row
-- **THEN** `aggregates()` answers `pending = 1, completed = 0`
+#### Scenario: A photo counts complete as soon as its last upload is recorded
+- **WHEN** an asset's only `REQUESTED` row is recorded `COMPLETED` through `markTerminal`, and no cycle has
+  run since
+- **THEN** `aggregates()` counts that asset completed
 
 ### Requirement: Change signal
 
@@ -187,7 +194,7 @@ operation belongs on the writer.
 - **THEN** both are inside the single record-writing process for that tier, and no second process records
 
 ### Requirement: Record operations
-`LedgerWriter` SHALL provide `recordDiscovered`, `recordRequested`, `recordCompleted`, and
+`LedgerWriter` SHALL provide `recordDiscovered`, `recordRequested`, and
 `recordFailed`. Each SHALL
 upsert a complete, self-contained entry for the key (assetId, state, attempt, eventId as supplied
 by the caller) through the backend's guarded record write, `recordUnlessSettled` — one storage
@@ -210,8 +217,12 @@ already holds. Transitions between non-done states (a retry `FAILED → REQUESTE
 `REQUESTED → FAILED`) SHALL still apply. A record the guard declined SHALL NOT be silent: the writer SHALL log
 it, naming the key and the refused state.
 
+There is **no** writer operation that records `COMPLETED`. A completed upload is a fact the platform reports,
+recorded through the guarded `markTerminal` (see "Guarded terminal write"); a resource already known to be
+stored is seeded `COMPLETED` by the re-join reconciliation's `resetTo`.
+
 `recordDiscovered` SHALL NOT overwrite a row that already exists in any other state: a resource that
-is `REQUESTED`, `UPLOADED` or `COMPLETED` is not new work, and re-recording it would either duplicate
+is `REQUESTED` or `COMPLETED` is not new work, and re-recording it would either duplicate
 an in-flight job or discard a fact about the world.
 
 #### Scenario: Discovered entry
@@ -220,16 +231,12 @@ an in-flight job or discard a fact about the world.
   and carries the manifest detail the resource was discovered with
 
 #### Scenario: Discovering an already-recorded key changes nothing
-- **WHEN** `recordDiscovered` is called for a key whose row is `REQUESTED`, `UPLOADED` or `COMPLETED`
+- **WHEN** `recordDiscovered` is called for a key whose row is `REQUESTED` or `COMPLETED`
 - **THEN** the row is unchanged
 
 #### Scenario: Requested entry
 - **WHEN** `recordRequested(key, assetId, attempt, eventId)` is called
 - **THEN** `entry(key)` has state `REQUESTED` with that assetId, attempt, and eventId
-
-#### Scenario: Completed entry
-- **WHEN** `recordCompleted(key, assetId, attempt, eventId)` is called
-- **THEN** `entry(key)` has state `COMPLETED` with that assetId, attempt, and eventId
 
 #### Scenario: Failed entry
 - **WHEN** `recordFailed(key, assetId, attempt, eventId)` is called
@@ -240,7 +247,7 @@ an in-flight job or discard a fact about the world.
 - **THEN** `entry(key)` has the same assetId, state, attempt, and eventId as after one application
 
 #### Scenario: A settled row survives every record operation
-- **WHEN** `recordRequested`, `recordFailed` or `recordCompleted` is called — with any attempt and eventId — for a
+- **WHEN** `recordRequested` or `recordFailed` is called — with any attempt and eventId — for a
   key whose row is `COMPLETED`
 - **THEN** the row is unchanged, field for field, and the backend reports the write as not applied
 
@@ -255,6 +262,10 @@ an in-flight job or discard a fact about the world.
 #### Scenario: The reset family still replaces settled rows
 - **WHEN** `resetTo` is called with entries for keys whose rows are `COMPLETED`
 - **THEN** the store holds exactly the supplied entries, whatever the replaced rows' states were
+
+#### Scenario: The writer cannot record a completion
+- **WHEN** a component holds a `LedgerWriter`
+- **THEN** it has no operation that records `COMPLETED` for a key
 
 ### Requirement: SQLDelight backend
 
@@ -331,6 +342,22 @@ SHALL land with `absent` unset, which is correct by construction: a row recorded
 existed was not marked absent. The `DEFAULT 0` SHALL be present in **both** the migration and the CREATE
 statement, so the migration-verify task finds the two schemas identical.
 
+The migration that retires the `UPLOADED` state (`8.sqm`, v8 -> v9) SHALL be a **data-only** rewrite:
+`UPDATE ledgerRow SET state = 'COMPLETED' WHERE state = 'UPLOADED'`, touching no schema and no other
+column. An `UPLOADED` row recorded that the bytes are stored, which is exactly what `COMPLETED` now records,
+so the rewrite loses nothing. It is required rather than optional: `state` decodes through an enum that no
+longer names `UPLOADED`, and the state-scoped reads compare the stored text against bound state sets, so an
+unrewritten row would either fail to decode or count as pending forever with no error. The migration SHALL
+NOT place anything in an event album and SHALL NOT create upload work: a converted row is simply settled.
+Because it changes no schema, the migration-verify task cannot detect a wrong rewrite, so its effect SHALL be
+asserted by a test that migrates a database holding an `UPLOADED` row.
+
+**Downgrade stance (recorded as contract):** a revert of the `UPLOADED` retirement SHALL be **staged** —
+keep `8.sqm`, revert only the Kotlin — because the native driver refuses a database newer than the binary's
+compiled schema. The reverted build understands `COMPLETED`. Re-applying the retirement after such a revert
+SHALL ship a further migration carrying the same rewrite, because `8.sqm` has already run on every device
+the revert reached. Decision record: `changes/archive/2026-09-15-retire-uploaded-state` (D3).
+
 A fresh install SHALL create the current schema (no
 timestamp column, `eventId` present with its DEFAULT) directly.
 
@@ -357,6 +384,15 @@ timestamp column, `eventId` present with its DEFAULT) directly.
 - **WHEN** a v6 database holding a `COMPLETED` row is migrated to the current schema
 - **THEN** the row survives with its `key`, `assetId`, `state`, `eventId` and manifest detail intact and
   its `absent` unset, so it still suppresses re-upload and still projects into the manifest
+
+#### Scenario: An UPLOADED row is settled by the migration
+- **WHEN** a v8 database holding a row whose stored state is `UPLOADED` is migrated to the current schema
+- **THEN** that row reads back `COMPLETED` with every other column intact, and `aggregates()` counts its
+  asset completed
+
+#### Scenario: The rewrite touches nothing else
+- **WHEN** a v8 database holding `DISCOVERED`, `REQUESTED`, `COMPLETED` and `FAILED` rows is migrated
+- **THEN** every one of those rows keeps its state
 
 ### Requirement: Prune operations are writer-only
 
@@ -420,11 +456,6 @@ a single query taking that set as a bound parameter (`SELECT assetId, key FROM l
 
 - **WHEN** every row is `COMPLETED`
 - **THEN** the pending-resource read returns no rows
-
-#### Scenario: An uploaded row is outstanding
-
-- **WHEN** a row is `UPLOADED`
-- **THEN** the pending-resource read returns it
 
 ### Requirement: Atomic baseline reset
 
@@ -693,47 +724,6 @@ is therefore not required. An asset the walk sees in the library again SHALL hav
 - **WHEN** an asset marked absent is restored to the library and discovered again
 - **THEN** its `COMPLETED` row still suppresses re-upload of the same key, and its absence mark is cleared
 
-### Requirement: The UPLOADED state and its promotion
-
-`LedgerState` SHALL carry a fourth value, `UPLOADED`: **the resource's bytes are durably stored, and the
-work that a completion triggers has not yet run.** It is written by whichever party the platform tells that
-the upload terminated, at the moment it is told; it is promoted to `COMPLETED` by the upload cycle once that
-work has run.
-
-`UPLOADED` SHALL be a **non-done** state (see "The done-state set is decided in Kotlin"): it counts toward
-the backlog in every read. It SHALL, however, appear in the device-manifest projection like every other
-state — the manifest declares what this device intends to provide, and a resource whose bytes are already
-stored is intended by any reading (capability `device-manifest`). Only the cycle's promotion pass treats it
-as outstanding work rather than as pending upload.
-
-The engine's per-key decision SHALL treat `UPLOADED` as **already uploaded** (skip), like `COMPLETED` and
-`REQUESTED`: its bytes are stored, so re-uploading them would be waste.
-
-Adding this value SHALL require **no schema migration**: `state` is stored as text mapped to the enum, so a
-database written by an earlier build simply contains no rows in the new state.
-
-#### Scenario: A terminal upload is recorded before any cycle runs
-
-- **WHEN** the platform reports that an upload for a `REQUESTED` key succeeded
-- **THEN** that row's state becomes `UPLOADED`, and it remains `UPLOADED` across process death until a cycle
-  promotes it
-
-#### Scenario: An UPLOADED row is not re-uploaded
-
-- **WHEN** discovery re-derives a resource whose row is `UPLOADED`
-- **THEN** the engine answers already-uploaded and creates no upload job
-
-#### Scenario: An UPLOADED row counts as outstanding but is still declared
-
-- **WHEN** an asset has one `UPLOADED` row and no other rows
-- **THEN** `aggregates()` counts that asset as pending, the pending-resource read returns its key, and the
-  device-manifest projection **includes** it
-
-#### Scenario: An older database needs no migration
-
-- **WHEN** a build carrying `UPLOADED` opens a ledger written by a build that predates it
-- **THEN** the schema is unchanged, every existing row decodes, and no migration step runs
-
 ### Requirement: The done-state set is decided in Kotlin
 
 Which `LedgerState` values count as **done** SHALL be decided by a single exhaustive `when` in `:domain`
@@ -766,10 +756,16 @@ silently on one side of a string comparison.
 
 ### Requirement: Guarded terminal write
 
-`LedgerStore` SHALL expose `markTerminal(key, state): Boolean` — a **single guarded statement** that sets a
+`LedgerStore` SHALL expose `markTerminal(key, outcome): Boolean` — a **single guarded statement** that sets a
 row's state **only while that row is still `REQUESTED`**, and answers whether it applied. On the SQLDelight
 backend it SHALL be one `UPDATE … WHERE key = :key AND state = 'REQUESTED'` whose applied/not-applied answer
 is read inside that statement's own transaction.
+
+`outcome` SHALL be a `TerminalOutcome` — `COMPLETED` or `FAILED`, declared in `:domain` `model/` — and not a
+`LedgerState`, so the only states this write can record are the two an upload can terminate in. This is the
+one record operation a platform callback reaches through `LedgerStore` rather than through the writer (see
+"Reader and writer capability split"), which is why the set it may record is fixed by its type rather than by
+convention. `COMPLETED` means the platform reported the upload succeeded; no further work is owed for the key.
 
 It SHALL be **non-suspending**, so a platform callback that cannot call a suspending function may record
 through it directly.
@@ -785,8 +781,8 @@ on" and "this fact was recorded" have different consequences.
 
 #### Scenario: A REQUESTED row is flipped
 
-- **WHEN** `markTerminal(key, UPLOADED)` is called for a row whose state is `REQUESTED`
-- **THEN** the row becomes `UPLOADED`, every other column is unchanged, and the call answers that it applied
+- **WHEN** `markTerminal(key, COMPLETED)` is called for a row whose state is `REQUESTED`
+- **THEN** the row becomes `COMPLETED`, every other column is unchanged, and the call answers that it applied
 
 #### Scenario: A row that moved on is not clobbered
 
@@ -798,44 +794,10 @@ on" and "this fact was recorded" have different consequences.
 - **WHEN** `markTerminal` is called for a key with no row
 - **THEN** no row is created and the call answers that it did not apply
 
-### Requirement: Guarded promotion
+#### Scenario: A non-terminal state cannot be recorded
 
-`LedgerStore` SHALL expose a promotion that sets a row `COMPLETED` **only while that row is still
-`UPLOADED`**, and answers whether it applied. On the SQLDelight backend it SHALL be one guarded `UPDATE`
-of the state column alone.
-
-Updating one column rather than re-stating the row is required, not stylistic: a row carries provenance, an
-attempt, the manifest detail and whether its asset has left the library, and a caller that re-stated them
-would drop whichever column it had not been taught about — at the exact moment the row becomes eligible for
-the device-manifest projection.
-
-#### Scenario: An UPLOADED row is promoted with every other column intact
-
-- **WHEN** a row that carries manifest detail, provenance and an attempt is promoted
-- **THEN** its state becomes `COMPLETED`, every other column is unchanged, and the call answers that it
-  applied
-
-#### Scenario: A row that is not UPLOADED is not promoted
-
-- **WHEN** promotion is called for a row in any other state, or for an absent key
-- **THEN** no row is changed and the call answers that it did not apply
-
-### Requirement: Uploaded-row read
-
-`LedgerStore` SHALL expose a read of the rows whose state is `UPLOADED`, returning whole entries — so the
-promotion pass has each row's `assetId` for album placement and its manifest detail for the promoting write.
-The read SHALL return exactly those rows and interpret nothing else.
-
-#### Scenario: Returns only uploaded rows
-
-- **WHEN** the store holds a `REQUESTED`, an `UPLOADED`, a `FAILED` and a `COMPLETED` row and the
-  uploaded-row read is called
-- **THEN** it returns only the `UPLOADED` row, as a whole entry
-
-#### Scenario: Survives the process that wrote it
-
-- **WHEN** a row is marked `UPLOADED`, the process ends, and a new process reads the store
-- **THEN** the uploaded-row read returns that row
+- **WHEN** a caller attempts to record `DISCOVERED` or `REQUESTED` through `markTerminal`
+- **THEN** the build fails, because the parameter's type admits only `COMPLETED` and `FAILED`
 
 ### Requirement: The DISCOVERED state and the ledger as the upload work source
 
@@ -914,19 +876,21 @@ happen.
 Which `LedgerState` values **need an upload job** SHALL be decided by a single exhaustive `when` in
 `:domain` `model/`, and bound into the work-source read as a parameter — never written as a literal
 inside a query. It is one of several independent classifications over the same state set: a state may
-be neither done nor in need of a job (`REQUESTED`, `UPLOADED`), and every state SHALL be classified on
+be neither done nor in need of a job (`REQUESTED`), and every state SHALL be classified on
 **every** axis.
 
 Each axis answers a different question, and no axis implies another:
 
 - **done** — is anything still owed for this key?
 - **needs a job** — is nothing in flight and are the bytes not on the backend?
-- **bytes believed stored** — does this row assert that the upload landed? `UPLOADED` and `COMPLETED`
-  both do. This is the axis a comparison against the backend's own listing takes (capability
-  `upload-state-reconciliation`), and it includes `UPLOADED` deliberately: on the OS-driven tier the
-  returned upload job carries no HTTP status, so that state is recorded without the device being able to
-  distinguish a stored `201` from a `502` — which makes it the tier where a wrong belief is most likely
-  and the one an axis that skipped it could not see.
+- **bytes believed stored** — does this row assert that the upload landed? `COMPLETED` does. This is the axis
+  a comparison against the backend's own listing takes (capability `upload-state-reconciliation`). On the
+  OS-driven tier the returned upload job carries no HTTP status, so a `COMPLETED` recorded there is a belief
+  the device cannot distinguish from a stored `502` — which is why this axis exists at all.
+
+Today **done** and **bytes believed stored** classify every state identically. They SHALL nonetheless remain
+separate decisions: they answer different questions, a future state may separate them, and a comparison
+against the backend SHALL NOT depend on what "settled" means.
 
 A state added without classifying it on **every** axis SHALL fail to compile, rather than landing
 silently on one side of any of them. The axes are therefore open-ended by construction: adding one is
@@ -940,9 +904,9 @@ a decision.
 
 #### Scenario: The classifications are independent
 
-- **WHEN** the classifications are applied to `REQUESTED` and `UPLOADED`
-- **THEN** neither is done and neither needs a job, and `UPLOADED` alone is believed stored — so a read
-  of one set never implies another
+- **WHEN** the classifications are applied to `REQUESTED` and `COMPLETED`
+- **THEN** `REQUESTED` is neither done, nor in need of a job, nor believed stored, while `COMPLETED` is done
+  and believed stored and needs no job — so a read of one set never implies another
 
 ### Requirement: The ledger records the destination a job was sent to
 
@@ -990,4 +954,3 @@ no expiry, so a row's recorded destination stays valid for as long as the row do
 
 - **WHEN** a row carrying a destination path is read
 - **THEN** its key is still the bare, event-independent object name, unchanged by the addition
-
