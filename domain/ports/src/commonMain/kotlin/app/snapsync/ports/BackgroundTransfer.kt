@@ -227,3 +227,32 @@ suspend fun CycleResult.requeueWhilePending(
     onRequeue(open)
     return CycleResult.PROCESSING
 }
+
+/**
+ * One OS-driven `process()` invocation — [run] the cycle, then [requeueWhilePending] — as a function
+ * that **never throws** (capability `ios-photokit-upload`). The extension root forwards its result
+ * across the ObjC boundary, where a Kotlin throwable is not a failed cycle but a Kotlin/Native
+ * `abort()` of the whole extension process: no result reaches the OS and nothing is reported.
+ *
+ * A throw from the cycle is reported through [onCycleFailed]; a throw from anything after it — the
+ * [pending] ledger read, or a hook — through [onLateFailure]. Both answer [CycleResult.FAILED]: a
+ * cycle whose bookkeeping could not be completed cannot claim `COMPLETED` (it may rest with jobs in
+ * flight), and `PROCESSING` means "more work", not "error". The one path left unguarded is
+ * [onLateFailure] itself, the last resort.
+ *
+ * Guarding the whole body rather than the one known read is the point: the defect was a shape — any
+ * line after the cycle's own guard could abort the process — not a single bad call.
+ */
+suspend fun runProcessCycle(
+    run: suspend () -> CycleResult,
+    pending: suspend () -> Int,
+    onCycleFinished: (CycleResult) -> Unit = {},
+    onCycleFailed: (Throwable) -> Unit = {},
+    onRequeue: (Int) -> Unit = {},
+    onLateFailure: (Throwable) -> Unit = {},
+): CycleResult = runCatching {
+    runCatching { run() }
+        .onSuccess(onCycleFinished)
+        .getOrElse { onCycleFailed(it); CycleResult.FAILED }
+        .requeueWhilePending(pending, onRequeue)
+}.getOrElse { onLateFailure(it); CycleResult.FAILED }

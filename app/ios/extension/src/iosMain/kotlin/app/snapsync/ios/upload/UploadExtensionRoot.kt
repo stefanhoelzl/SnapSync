@@ -21,7 +21,7 @@ import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.processingResultRawValue
-import app.snapsync.ports.requeueWhilePending
+import app.snapsync.ports.runProcessCycle
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
@@ -255,18 +255,17 @@ object UploadExtensionRoot {
      * 12 — the app's foreground-gated `aggregates()` poll replaced it; spec `sync-status`.)
      */
     fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
-        val result = runCatching { cycle.run() }
-            .onSuccess { log.i { "process: cycle finished — $it" } }
-            .getOrElse {
-                log.e(it) { "process cycle failed" }
-                CycleResult.FAILED
-            }
-        // The pending→PROCESSING requeue rule is `requeueWhilePending` (`:domain` ports/, beside
-        // the raw-value mapping — drained there at the migration finale so it is tested); this
-        // wiring supplies only the ledger read and the debug.log line.
-        result.requeueWhilePending(
+        // The cycle, the pending→PROCESSING requeue, and the never-throw guard around both are
+        // `runProcessCycle` (`:domain` ports/, beside the raw-value mapping, so they are tested): a
+        // throwable escaping here crosses the ObjC boundary and aborts the extension process. This
+        // wiring supplies only the cycle, the ledger read, and the debug.log lines.
+        runProcessCycle(
+            run = { cycle.run() },
             pending = { ledgerStore.aggregates().pending },
+            onCycleFinished = { log.i { "process: cycle finished — $it" } },
+            onCycleFailed = { log.e(it) { "process cycle failed" } },
             onRequeue = { open -> log.i { "process: $open pending — requesting re-invocation" } },
+            onLateFailure = { log.e(it) { "process failed after the cycle — reporting FAILED" } },
         )
     } }
 
