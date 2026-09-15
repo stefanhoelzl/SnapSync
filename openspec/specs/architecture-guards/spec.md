@@ -32,7 +32,6 @@ pins and the pending zone gates: `changes/archive/2026-07-17-pin-runtime-identit
 ## Requirements
 ### Requirement: Architecture guards are executable and gate the build
 
-
 The project SHALL enforce, mechanically, structural invariants that the compiler cannot express. The
 guards SHALL live in a test-only module (`:test:architecture`) and SHALL run as part of the canonical
 check (`./gradlew build`), so a violation fails the build locally and in CI rather than relying on
@@ -51,7 +50,6 @@ pass by inspecting nothing.
 - **THEN** the guard fails rather than reporting success
 
 ### Requirement: Keychain access is confined to one module
-
 
 All Keychain access SHALL be confined to a single module (`:adapter:ios:ext-safe` — the
 extension-safe adapter module, where the migration seated the Keychain impls; before migration
@@ -82,7 +80,6 @@ withhold.
 - **THEN** the guard passes
 
 ### Requirement: The data-protection entitlement never raises the default protection class
-
 
 Neither target's entitlements (`iosApp.entitlements`, `BackgroundUploadExtension.entitlements`) SHALL
 set `com.apple.developer.default-data-protection` to `NSFileProtectionComplete`.
@@ -152,7 +149,6 @@ instead of the app — indistinguishable, from the outside, from a user who has 
 - **THEN** the guard passes
 
 ### Requirement: The Swift shell keeps the event link's delivery seam
-
 
 A test-only JVM guard SHALL assert that the iOS Swift shell still carries **every** event-link delivery
 path and forwards each to the Kotlin entry point (capability `ios-app-shell`). There are two, fed by
@@ -466,7 +462,6 @@ handler.
 
 ### Requirement: Runtime identity is pinned
 
-
 `:test:architecture` SHALL pin every runtime-identity literal — a string the OS or the installed
 base holds on its side, so that changing it strands or corrupts state on devices already in the
 field. Each pin SHALL assert the literal appears **exactly once** in production Kotlin source
@@ -684,7 +679,6 @@ the text gates, not by `buildHealth` (no upstream iOS-target support).
 
 ### Requirement: The upload producers are never both started
 
-
 A `:test:architecture` guard SHALL pin the invariants of `upload-lifecycle` that the compiler cannot,
 at the two places the risk lives once exclusion is structural again:
 
@@ -721,7 +715,6 @@ none. The guard follows the risk rather than the original wording.
 
 ### Requirement: The main lane is contained to platform UI
 
-
 A gate SHALL fail the build when a main-thread dispatcher is named outside an allowlist of platform-UI
 adapters. The watched forms SHALL cover both languages, because either can put work back on the main
 thread: in Kotlin `Dispatchers.Main`, `MainScope()`, `dispatch_get_main_queue`, and
@@ -748,7 +741,6 @@ documented execution model rather than a call inside the core.
 - **THEN** the gate fails
 
 ### Requirement: Every user command declares its dispatcher lane
-
 
 A gate SHALL fail the build when any field of the user-command bundle is built without a lane-declaring
 decorator. Two decorators SHALL exist — one for commands that present platform UI and must run on the main
@@ -823,7 +815,6 @@ by the platform, not accessing it, and is out of scope.
 
 ### Requirement: Every runbook pointer resolves to a skill that exists
 
-
 A test-only JVM guard SHALL assert that every skill named in `CLAUDE.md`'s runbook pointer block
 resolves to an existing `.claude/skills/<name>/SKILL.md`, and that every such skill file carries a
 `name:` field in its frontmatter equal to the directory it lives in.
@@ -877,7 +868,6 @@ that demanded a pointer for each would make `openspec update`'s regenerated outp
 - **THEN** the guard fails rather than passing while inspecting nothing
 
 ### Requirement: The platform-vocabulary pin
-
 
 For every Apple enumeration an adapter decodes with a **fallback arm**, `:test:architecture` SHALL
 pin the complete set of constants that enumeration declares, with their exact values, and SHALL fail
@@ -976,7 +966,6 @@ failure mode these gates exist to remove.
 
 ### Requirement: OS completion handlers are held in one type
 
-
 Holding an OS-supplied completion handler SHALL be confined to the single `:domain` `ports/` type that
 bounds the hold and releases every outstanding handler (`BackgroundEventsReceipts`, capability
 `ios-app-shell`). No other production source SHALL declare a **mutable** property whose type is a
@@ -1044,7 +1033,6 @@ rather than an exception added.
 
 ### Requirement: Production Kotlin declares no launch triggers
 
-
 A test-only JVM guard SHALL assert that production Kotlin source declares **no** `"SNAPSYNC_*"` string
 literal at all.
 
@@ -1090,7 +1078,6 @@ condition, and a scan that resolves zero Kotlin files SHALL fail rather than pas
 
 ### Requirement: The transport-binding gate
 
-
 `:test:architecture` SHALL pin, by source text, which `URLSession` configuration each iOS target's
 transport-session seam yields (`ios-url-session-upload`, "The transport binding is fixed by the compilation
 target"). The gate SHALL assert, **exactly in both directions**:
@@ -1133,7 +1120,6 @@ factory, never that the resulting session behaves; only a device run shows that.
 - **THEN** the gate fails rather than passing vacuously
 
 ### Requirement: The simulator transport binding is asserted where it can be executed
-
 
 `:adapter:ios:app-only` SHALL carry an `iosSimulatorArm64` test asserting that the seam yields a
 configuration with a **nil** session identifier on that target, and that the reported binding names the
@@ -1225,7 +1211,6 @@ found, so it cannot pass by scanning nothing.
 
 ### Requirement: The upload-job subsystem binding gate
 
-
 `:test:architecture` SHALL pin, by source text, which implementation each iOS target binds for the **OS
 upload-job subsystem** — the registration record and the job queue (`ios-photokit-upload`, "The upload-job
 subsystem binding is fixed by the compilation target"). The gate SHALL assert, **exactly in both
@@ -1309,3 +1294,38 @@ act on while naming their event.
 #### Scenario: A screen restates the cap as a literal
 - **WHEN** a name field's `maxLength` is written as a number instead of the shared constant
 - **THEN** the gate fails, naming the file and line
+
+### Requirement: The transport-ledger gate
+
+`:test:architecture` SHALL assert, by source text, that **no transport adapter references `LedgerStore`**
+(`sync-ledger`, "Reader and writer capability split"). A transport adapter is any production source file under
+`adapter/` that declares an implementation of `BackgroundTransfer` or the target-bound `uploadJobQueue`
+factory; the scope SHALL be derived from that text rather than from a list of paths, so a new transport is
+covered the moment it declares the supertype. The gate SHALL read **code**, with comments and KDoc stripped,
+so a transport's documentation may still explain why it holds no ledger store.
+
+A source-text gate is the mechanism because neither the compiler nor the module graph can withhold the type.
+`LedgerStore` is declared in `:domain` `ports/`, the same module every transport must depend on to implement
+`BackgroundTransfer`, and `:adapter:ios:ext-safe` additionally depends on `:domain` `feature/`. Narrowing what a
+transport is *handed* to a `TransferRecord` makes the boundary visible in each constructor; only this gate
+stops the next edit from widening it back.
+
+The gate SHALL fail on an empty scope, so a regression in how transports are recognised cannot make it pass by
+inspecting nothing.
+
+#### Scenario: A transport takes a LedgerStore again
+- **WHEN** a production file under `adapter/` that implements `BackgroundTransfer` names `LedgerStore` in code
+- **THEN** the gate fails and names the file
+
+#### Scenario: Documentation may name the store
+- **WHEN** a transport's KDoc or comment mentions `LedgerStore`, and its code does not
+- **THEN** the gate passes
+
+#### Scenario: A new transport is covered without editing the gate
+- **WHEN** a new adapter file declares an implementation of `BackgroundTransfer`
+- **THEN** it is inside the gate's scope with no change to the gate
+
+#### Scenario: A gate that finds no transport fails
+- **WHEN** the gate's scope resolves to no file
+- **THEN** it fails rather than reporting success
+

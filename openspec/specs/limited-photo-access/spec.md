@@ -35,7 +35,6 @@ the earlier reading, that registration *succeeds and lies* under `.limited`, is 
 measurement: both directions are refused, and the enable was reached only through a development
 mechanism override. Evidence: one device, one OS point release; re-measure at the iOS 27 GM
 re-assessment.
-
 ## Requirements
 ### Requirement: A limited grant is a working membership whose scope is the selection
 
@@ -418,8 +417,9 @@ trigger. This is the same failure shape `upload-lifecycle` records for the direc
 direction gate lives at the choke point, never at the invoker"), and the same remedy applies.
 
 The mechanism is also the only component that **knows the answer**: whether a cycle walks the library or
-consumes the in-memory selection snapshot (`SelectionScopedTransfer`) is a property of the mechanism, and
-it differs between mechanisms on the same OS and the same grant.
+consumes the in-memory selection snapshot (`SelectionScopedDiscovery`, which wraps the cycle's
+`UploadDiscovery`) is a property of the mechanism, and it differs between mechanisms on the same OS and the
+same grant.
 
 Relocating this gate SHALL preserve the behaviour it currently produces. It SHALL NOT be widened as a
 side effect of the move — if the relocated gate would admit a trigger the fan-out currently refuses, that
@@ -495,3 +495,4 @@ dependence, whether or not the platform honours the attempt.
 - **WHEN** that relinquish attempt is refused because the grant is partial
 - **THEN** the surviving registration is left in place, the app-driven mechanism pumps regardless, and
   exactly one process writes ledger records
+

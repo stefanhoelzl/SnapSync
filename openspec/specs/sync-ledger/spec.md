@@ -32,7 +32,6 @@ original decision record's D7 deferred to the arrival of a second writer.
 The `UPLOADED` state and its promotion (added in `changes/archive/2026-08-26-fix-lost-upload-acks`) were
 retired, the guarded terminal write narrowed to a `TerminalOutcome`, and the `8.sqm` rewrite added in
 `changes/archive/2026-09-15-retire-uploaded-state`.
-
 ## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerStore` interface with the row
@@ -167,14 +166,21 @@ through a writer instance.
 **The invariant is that exactly one PROCESS records**, and its process placement is a platform binding — the
 extension on iOS ≥26.1, the app on iOS 18–26.0. Handing a writer instance only where recording is intended is
 the **mechanism** that codifies it, not the invariant itself. That mechanism is deliberately relaxed for one
-operation: `markTerminal` (see "Guarded terminal write") is reachable through `LedgerStore`, because the
-party the platform tells that an upload terminated is a platform callback inside the record-writing process,
-and it cannot suspend. The invariant holds — that callback belongs to the one recording process — while the
-type-level codification does not cover it. A spec or a review that reads the type-level rule as the
-invariant will reach the wrong conclusion about this call, which is why both are stated.
+operation: `markTerminal` (see "Guarded terminal write") is declared on **`TransferRecord`** — a narrow
+interface `LedgerStore` extends, carrying only `markTerminal` and the read `entryForDestination` (see "The
+ledger records the destination a job was sent to") — because the party the platform tells that an upload
+terminated is a platform callback inside the record-writing process, and it cannot suspend. The invariant
+holds — that callback belongs to the one recording process — while the type-level codification does not cover
+it. A spec or a review that reads the type-level rule as the invariant will reach the wrong conclusion about
+this call, which is why both are stated.
 
-No operation other than `markTerminal` SHALL be added to `LedgerStore` on this argument; a further record
-operation belongs on the writer.
+A **transport** — an implementation of the upload transfer lifecycle (`BackgroundTransfer`) — SHALL receive a
+`TransferRecord` and SHALL NOT receive a `LedgerStore`. What a transport may touch in the ledger is therefore
+exactly the one guarded terminal write and the one destination lookup; every other read and write, including
+the decision which in-flight rows a transport has lost, belongs to the cycle.
+
+No record operation other than `markTerminal` SHALL be added to `TransferRecord` or to `LedgerStore` on this
+argument; a further record operation belongs on the writer.
 
 #### Scenario: Writer reads what it wrote
 
@@ -189,9 +195,14 @@ operation belongs on the writer.
 
 #### Scenario: One process records
 
-- **WHEN** the platform callback records a terminal upload through `LedgerStore` and the cycle records
+- **WHEN** the platform callback records a terminal upload through `TransferRecord` and the cycle records
   through the `LedgerWriter`
 - **THEN** both are inside the single record-writing process for that tier, and no second process records
+
+#### Scenario: A transport holds only the narrow surface
+
+- **WHEN** a transport adapter is composed
+- **THEN** it is handed a `TransferRecord`, and no other ledger read or write is reachable from it
 
 ### Requirement: Record operations
 `LedgerWriter` SHALL provide `recordDiscovered`, `recordRequested`, and
@@ -756,14 +767,15 @@ silently on one side of a string comparison.
 
 ### Requirement: Guarded terminal write
 
-`LedgerStore` SHALL expose `markTerminal(key, outcome): Boolean` — a **single guarded statement** that sets a
-row's state **only while that row is still `REQUESTED`**, and answers whether it applied. On the SQLDelight
-backend it SHALL be one `UPDATE … WHERE key = :key AND state = 'REQUESTED'` whose applied/not-applied answer
-is read inside that statement's own transaction.
+`TransferRecord` — which `LedgerStore` extends — SHALL declare `markTerminal(key, outcome): Boolean` — a
+**single guarded statement** that sets a row's state **only while that row is still `REQUESTED`**, and answers
+whether it applied. On the SQLDelight backend it SHALL be one
+`UPDATE … WHERE key = :key AND state = 'REQUESTED'` whose applied/not-applied answer is read inside that
+statement's own transaction.
 
 `outcome` SHALL be a `TerminalOutcome` — `COMPLETED` or `FAILED`, declared in `:domain` `model/` — and not a
 `LedgerState`, so the only states this write can record are the two an upload can terminate in. This is the
-one record operation a platform callback reaches through `LedgerStore` rather than through the writer (see
+one record operation a platform callback reaches through `TransferRecord` rather than through the writer (see
 "Reader and writer capability split"), which is why the set it may record is fixed by its type rather than by
 convention. `COMPLETED` means the platform reported the upload succeeded; no further work is owed for the key.
 
@@ -954,3 +966,4 @@ no expiry, so a row's recorded destination stays valid for as long as the row do
 
 - **WHEN** a row carrying a destination path is read
 - **THEN** its key is still the bare, event-independent object name, unchanged by the addition
+

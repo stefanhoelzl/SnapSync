@@ -24,17 +24,14 @@ The world composes attestation because `AppPorts` requires the seams, and leaves
 extension and on a simulator. An opt-in lever turns it on for the tests that need a credential *change* to
 happen at all. Two backend behaviours it still does not model, stated so they are not assumed: the token
 gate itself, and the `401` a device-scoped write answers when the backend holds no attestation record.
-
-
 ## Requirements
-
 ### Requirement: Controllable in-memory world module
 
 The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that runs the
 **real** platform-agnostic stack against controllable in-memory infrastructure: the honest
 in-memory port implementations SHALL live in `:adapter:generic:fake` (package `app.snapsync.fake`; spec
 `module-architecture`), and `:test:world` SHALL hold the **operator rigging** around them — the
-backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`,
+backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`, `FakeUploadDiscovery`,
 `FakeDownloadTransport`, `FakePhotoLibraryImporter`, `FakeAlbumManager`,
 `MutablePhotoAccessStatusSource`) and the wrappers that own the honest fakes' state cells
 (`WorldGallery`, `RecordingDownloadStore`) — per the fake-honesty gate (`architecture-guards`).
@@ -227,21 +224,18 @@ every seam that does not yet declare a version, which is all of them until the c
 ### Requirement: Operator-driven, inspectable upload-job lifecycle
 
 The world SHALL provide a fake `BackgroundTransfer` that models the OS upload-job lifecycle as an
-operator-driven, **inspectable** queue implementing every seam method, including the resolution of
-ledger keys to uploadable resources (capability `ios-url-session-upload`). `createJob` SHALL enqueue
-a PENDING job and return `CREATED`, unless a **settable job-limit** is reached (returning
-`LIMIT_EXCEEDED`) or a forced create-failure is set (returning `FAILED`). An operator **complete**
+operator-driven, **inspectable** queue implementing every seam method. Like the device transports, it SHALL
+receive the ledger only as a `TransferRecord` (`sync-ledger`) and SHALL record each terminal outcome through
+its guarded `markTerminal`; it SHALL serve no library read. Like the OS-driven queue it models, it SHALL
+report the absence of a live set from `liveKeys()`, so the world runs no stranded reconciliation.
+`createJob` SHALL enqueue a PENDING job and return `CREATED`, unless a **settable job-limit** is reached
+(returning `LIMIT_EXCEEDED`) or a forced create-failure is set (returning `FAILED`). An operator **complete**
 action SHALL deposit the job's object key into the backend object store **store-direct** (byte transfer
 is not routed through ktor) and move the job to the acknowledge bucket, so the next cycle records it
 `COMPLETED`. An operator **fail** action SHALL move the job to the retry bucket carrying a chosen engine
 `UploadError` (`Network`, `Http`, `Cancelled`, or `Unknown`), driving the real engine retry chain with
 an incremented attempt. The queue's pending/retry/acknowledge buckets and per-job attempt SHALL be
 inspectable so tests assert the lifecycle, not only the final outcome.
-
-The key resolution SHALL be served from the world's in-memory gallery and SHALL be observable, so a
-test can assert **which keys** a cycle resolved — the evidence that it enqueued from the ledger rather
-than from the walk's output. The discovery feed's consumption SHALL be observable for the same reason.
-A key whose asset the operator has removed from the gallery SHALL resolve to nothing.
 
 #### Scenario: Complete deposits the object and the ledger records COMPLETED
 
@@ -260,26 +254,25 @@ A key whose asset the operator has removed from the gallery SHALL resolve to not
   resources hold `DISCOVERED` rows, the discovery cursor **has** advanced, and the cycle still
   published its device manifest
 
-#### Scenario: A later cycle enqueues the remainder from the ledger
+#### Scenario: The fake queue holds no ledger store
 
-- **WHEN** a job-limited cycle is followed by another cycle with no gallery change in between
-- **THEN** the remainder is enqueued by resolving its `DISCOVERED` rows' keys, not from anything the
-  change feed returned — which reports nothing, since nothing changed
-
-#### Scenario: A removed asset resolves to nothing
-
-- **WHEN** the operator removes an asset from the gallery and a cycle resolves a ledger key for it
-- **THEN** the resolution returns nothing for that key
+- **WHEN** the world constructs its fake job queue
+- **THEN** it is given the world's ledger as a `TransferRecord`, exactly as a device transport is
 
 ### Requirement: Token-delta discovery feed driven by the in-memory gallery
 
-The world's fake `BackgroundTransfer.discoverResources(sinceToken, policy)` SHALL derive its change feed
+The world SHALL provide a fake `UploadDiscovery` whose `discover(sinceToken, policy)` derives its change feed
 from the in-memory gallery — the honest `InMemoryCandidateSource`, which answers the single
 `CandidateSource.candidates(policy)` read over the world-owned asset cell and whose candidates map their
 resources through the real shared fan-out when the cycle asks for them. Adding an asset SHALL surface it
 as a new `Candidate` in `Discovery.candidates`; removing an asset SHALL surface its id in
 `Discovery.removedAssetIds`; and an operator **expire-token** action SHALL return
 `Discovery.fullEnumeration = true` carrying the whole current key-set (the routine token-expiry path).
+
+The same fake SHALL resolve ledger keys to uploadable resources (capability `ios-url-session-upload`) from the
+world's in-memory gallery, and both reads SHALL be observable, so a test can assert **which keys** a cycle
+resolved and **whether** it consumed the feed — the evidence that it enqueued from the ledger rather than from
+the walk's output. A key whose asset the operator has removed from the gallery SHALL resolve to nothing.
 
 **A removal SHALL mean the asset left the LIBRARY, never that the policy stopped admitting it.**
 `Discovery.removedAssetIds` SHALL therefore be derived by diffing the **unscoped** gallery — the same raw
@@ -331,6 +324,17 @@ different observable outcomes.
   `removedAssetIds` signal is ever produced for it, and a full enumeration then runs
 - **THEN** its ledger rows survive unmarked — the world can therefore demonstrate that an unreported
   deletion leaves the asset listed rather than silently retracted
+
+#### Scenario: A later cycle enqueues the remainder from the ledger
+
+- **WHEN** a job-limited cycle is followed by another cycle with no gallery change in between
+- **THEN** the remainder is enqueued by resolving its `DISCOVERED` rows' keys, not from anything the
+  change feed returned — which reports nothing, since nothing changed
+
+#### Scenario: A removed asset resolves to nothing
+
+- **WHEN** the operator removes an asset from the gallery and a cycle resolves a ledger key for it
+- **THEN** the resolution returns nothing for that key
 
 ### Requirement: Operator-driven download seams exercising echo-suppression
 
@@ -552,19 +556,20 @@ The world SHALL assemble its upload cycle through the **same shared composition 
 call** — `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition") over
 the world's fakes — not through a world-local mirror of a composition root: the world supplies its
 in-memory ports (`ConfigReader` over the config cell and the `membershipUnreadable` lever, the fake
-`BackgroundTransfer`, the `:adapter:generic:fake` ledger/discovery/manifest/marker stores, the mini-edge HTTP
-seams) and `uploadCore` builds the real `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` +
-`UploadReconciler` + `DeviceManifestProducer` graph, exactly as it does for the device roots. The
-app-side graph — download, status, membership, creation, the command bundle — SHALL come from the
-composed `AppCore` (see "The world composes the app graph through snapSyncApp"). Only the platform
-edges (`BackgroundTransfer`, `DownloadTransport`, `PhotoLibraryImporter`), the storage seams, and the
-HTTP client SHALL be fakes; everything above them SHALL be the shipped production code.
+`BackgroundTransfer`, the fake `UploadDiscovery`, the `:adapter:generic:fake`
+ledger/discovery/manifest/marker stores, the mini-edge HTTP seams) and `uploadCore` builds the real
+`SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` + `UploadReconciler` + `DeviceManifestProducer`
+graph, exactly as it does for the device roots. The app-side graph — download, status, membership, creation,
+the command bundle — SHALL come from the composed `AppCore` (see "The world composes the app graph through
+snapSyncApp"). Only the platform edges (`BackgroundTransfer`, `UploadDiscovery`, `DownloadTransport`,
+`PhotoLibraryImporter`), the storage seams, and the HTTP client SHALL be fakes; everything above them SHALL
+be the shipped production code.
 
 #### Scenario: The composed upload path exercises the real cycle
 
 - **WHEN** the world's `uploadCore`-assembled cycle is invoked
 - **THEN** the real `SyncEngine`, `EdgeUploadRequestProvider`, and `UploadCycle` run, and only the job
-  platform, discovery store, ledger backend, and HTTP client are fakes
+  platform, library discovery, discovery store, ledger backend, and HTTP client are fakes
 
 #### Scenario: A wiring difference from production is impossible
 
@@ -829,3 +834,4 @@ and takes the same posture as every other one in this project: supplied explicit
 
 - **WHEN** the world's importer is constructed
 - **THEN** the marker write must be supplied, rather than defaulting to a no-op
+
