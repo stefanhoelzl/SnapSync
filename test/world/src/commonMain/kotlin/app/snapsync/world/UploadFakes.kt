@@ -13,6 +13,7 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.UploadDiscovery
 import app.snapsync.model.TerminalOutcome
 
 /**
@@ -34,30 +35,15 @@ import app.snapsync.model.TerminalOutcome
  * handing them up — that is the seam's contract now, and a fake that returned them instead would let a
  * green suite hide the very defect this models.
  *
- * The change feed ([discoverResources]) is derived from the in-memory gallery via the real
- * [enumerator]: additions ride in `Discovery.resources`, removals in `removedAssetIds`, and an operator
- * [expireToken] returns `fullEnumeration = true` with the whole current key-set.
+ * It serves no library read. The change feed and the key resolve are [FakeUploadDiscovery]'s, bound beside
+ * this queue exactly as a device root binds `IosDiscovery` beside its transport.
  */
 class FakeBackgroundTransfer(
     private val store: BackendStore,
     private val ownDeviceId: String,
-    private val source: CandidateSource,
     /** The same ledger the composed cycle writes — this adapter records terminal outcomes into it. */
     private val ledger: LedgerStore,
-    /**
-     * The gallery's raw contents, unscoped — the world's stand-in for "fetch these assets by identifier".
-     *
-     * A thunk over [WorldGallery.current] rather than the [CandidateSource] beside it, because that seam
-     * takes a policy and there is no policy to supply here: this models "fetch these assets by
-     * identifier", which is what the real adapters do. The admission over ledger rows belongs to the
-     * CYCLE, which applies it before it asks (capability `photo-selection-policy`) — a fake that admitted
-     * here too would hide whether the cycle ever did.
-     */
-    private val rawAssets: () -> List<RawAsset>,
 ) : BackgroundTransfer {
-
-    /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
-    var resolvedKeyCount = 0
 
     /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
     var jobLimit: Int = Int.MAX_VALUE
@@ -65,22 +51,11 @@ class FakeBackgroundTransfer(
     /** Failure lever: `createJob` returns `FAILED` (a malformed destination / unusable payload). */
     var failCreate: Boolean = false
 
-    private var tokenCounter = 0
-    private var forceFull = false
-    private var knownAssetIds: Set<String> = emptySet()
-
     private var handleSeq = 0
     private val jobs = mutableListOf<FakeJob>()
 
     /** Inspection: every resource a job was created for (retry chains visible via repeated keys). */
     val created = mutableListOf<Resource>()
-
-    /** Inspection: how many times the discovery feed was consumed — 0 proves a cycle enqueued from the ledger. */
-    var discoverCalls = 0
-        private set
-
-    /** Inspection: every ledger key the cycle asked this fake to resolve. */
-    val resolvedKeys = mutableSetOf<String>()
 
     /**
      * The OS job states this fake models. Private on purpose: the platform-neutral enum moved into the
@@ -152,15 +127,72 @@ class FakeBackgroundTransfer(
         return CreateResult.CREATED
     }
 
+    // ---- operator actions -----------------------------------------------------------------------
+
+    /** Complete a created job: deposit its object store-direct and move it to the acknowledge bucket. */
+    fun completeJob(key: String) {
+        val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
+        j.state = FakeJobState.SUCCEEDED
+        store.deposit(ownDeviceId, key)
+    }
+
+    /** Fail a created job with a chosen [error], driving the real retry chain next cycle. */
+    fun failJob(key: String, error: UploadError) {
+        val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
+        j.state = FakeJobState.FAILED
+        j.error = error
+    }
+
+    /** Inspection: the keys of every live (in-flight/terminal-unacked) job. */
+    fun liveJobKeys(): List<String> = jobs.map { it.key }
+}
+
+/**
+ * The world's [UploadDiscovery] (capability `harness-world-model`): the cycle's change feed and key resolve
+ * over the in-memory gallery, **observable** so a test can tell a cycle that walked from one that enqueued from
+ * the ledger.
+ *
+ * The change feed ([discover]) is derived from the in-memory gallery via the real [source]: additions ride in
+ * `Discovery.candidates`, removals in `removedAssetIds`, and an operator [expireToken] returns
+ * `fullEnumeration = true` with the whole current key-set.
+ */
+class FakeUploadDiscovery(
+    private val source: CandidateSource,
+    /**
+     * The gallery's raw contents, unscoped — the world's stand-in for "fetch these assets by identifier".
+     *
+     * A thunk over [WorldGallery.current] rather than the [CandidateSource] beside it, because that seam
+     * takes a policy and there is no policy to supply here: this models "fetch these assets by
+     * identifier", which is what the real discovery does. The admission over ledger rows belongs to the
+     * CYCLE, which applies it before it asks (capability `photo-selection-policy`) — a fake that admitted
+     * here too would hide whether the cycle ever did.
+     */
+    private val rawAssets: () -> List<RawAsset>,
+) : UploadDiscovery {
+
+    /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
+    var resolvedKeyCount = 0
+
+    private var tokenCounter = 0
+    private var forceFull = false
+    private var knownAssetIds: Set<String> = emptySet()
+
+    /** Inspection: how many times the discovery feed was consumed — 0 proves a cycle enqueued from the ledger. */
+    var discoverCalls = 0
+        private set
+
+    /** Inspection: every ledger key the cycle asked this fake to resolve. */
+    val resolvedKeys = mutableSetOf<String>()
+
     /**
      * Resolve ledger keys from the world's gallery — id-scoped, and **observable**: [resolvedKeys] is
      * how a test asserts that a cycle enqueued from the ledger rather than from the discovery feed
      * (capability `sync-ledger`).
      *
-     * Deliberately unscoped by the policy, unlike [discoverResources] — as the real adapters are: this
-     * resolves the keys it is handed. The cycle admits its rows against the membership's *current* policy
-     * before it gets here (capability `photo-selection-policy`), so a key that reaches this fake is one
-     * the policy already allowed; admitting again here would make the cycle's own admission untestable.
+     * Deliberately unscoped by the policy, unlike [discover] — as the real discovery is: this resolves the
+     * keys it is handed. The cycle admits its rows against the membership's *current* policy before it gets
+     * here (capability `photo-selection-policy`), so a key that reaches this fake is one the policy already
+     * allowed; admitting again here would make the cycle's own admission untestable.
      *
      * An asset the operator removed from the gallery resolves to nothing — the port's partial contract,
      * and the case a test needs in order to construct "the asset left between the row and the send".
@@ -173,7 +205,7 @@ class FakeBackgroundTransfer(
         return resourcesFrom(rawAssets()).filter { it.filename in keys }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+    override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
         discoverCalls++
         // Scoped by the POLICY, exactly as the PhotoKit walk is (capability `photo-selection-policy`);
         // the cycle's own admission still runs over whatever comes back.
@@ -214,21 +246,4 @@ class FakeBackgroundTransfer(
     fun expireToken() {
         forceFull = true
     }
-
-    /** Complete a created job: deposit its object store-direct and move it to the acknowledge bucket. */
-    fun completeJob(key: String) {
-        val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
-        j.state = FakeJobState.SUCCEEDED
-        store.deposit(ownDeviceId, key)
-    }
-
-    /** Fail a created job with a chosen [error], driving the real retry chain next cycle. */
-    fun failJob(key: String, error: UploadError) {
-        val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
-        j.state = FakeJobState.FAILED
-        j.error = error
-    }
-
-    /** Inspection: the keys of every live (in-flight/terminal-unacked) job. */
-    fun liveJobKeys(): List<String> = jobs.map { it.key }
 }

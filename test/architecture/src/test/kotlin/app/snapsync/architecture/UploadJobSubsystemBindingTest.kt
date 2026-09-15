@@ -75,7 +75,7 @@ class UploadJobSubsystemBindingTest {
      * The file's **code**, with KDoc and comments stripped.
      *
      * Necessary, not tidy: a substitute's KDoc legitimately names the implementation it stands in for
-     * ("delegates discovery exactly as `IosPhotoKitUploadPlatform` does"), and a substitute's rationale
+     * ("Discovery is not here, exactly as it is not in `IosPhotoKitUploadPlatform`"), and a substitute's rationale
      * legitimately quotes the very selector its host refuses. A guard that read prose would forbid the
      * documentation that makes these seams comprehensible, and would be silenced by deleting it — which is
      * precisely backwards.

@@ -1,11 +1,8 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadRequest
-import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ports.CreateResult
-import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.LedgerStore
@@ -31,9 +28,9 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit (iOS ≥26.1) implementation of [BackgroundTransfer] — the OS-owned upload-job queue:
- * fetch/retry/acknowledge system jobs and create jobs. Discovery, request-building, and change-token
- * archiving are identical across both upload tiers and delegated to the shared [IosDiscovery]
- * (same module); only the job lifecycle differs and stays here. All *domain* decisions live in
+ * fetch/retry/acknowledge system jobs and create jobs. Discovery and change-token archiving are not this
+ * class's: the root binds the shared `IosDiscovery` as the cycle's `UploadDiscovery`, and the upload request
+ * is built by the shared [uploadUrlRequest]; only the job lifecycle differs and stays here. All *domain* decisions live in
  * `UploadCycle`; the branches here are technology-vocabulary mappings (job state, error class, the
  * per-job key recovery), which is exactly what an adapter may hold (spec `module-architecture`,
  * "Ports are the I/O boundary named for the need": adapters are named for the technology, placed by
@@ -62,7 +59,6 @@ import platform.Photos.PHPhotoLibrary
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoKitUploadPlatform(
     private val log: Logger,
-    private val discovery: IosDiscovery,
     // This adapter RECORDS terminal outcomes, rather than handing them to the cycle to record. The OS
     // job queue here IS durable — a succeeded job stays in the `.acknowledge` set until acknowledged —
     // so this tier never had the app-driven tier's loss. What it gains is one state machine across both:
@@ -225,7 +221,7 @@ class IosPhotoKitUploadPlatform(
                 return@invocation
             }
             val url = NSURL.URLWithString(request.url) ?: return@invocation
-            val urlRequest = discovery.buildRequest(url, request)
+            val urlRequest = uploadUrlRequest(url, request)
             library.performChangesAndWait(
                 changeBlock = {
                     PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.retryWithDestination(urlRequest)
@@ -257,7 +253,7 @@ class IosPhotoKitUploadPlatform(
             log.w { "createJob: malformed destination URL — not creating" }
             return@invocation CreateResult.FAILED
         }
-        val urlRequest = discovery.buildRequest(url, request)
+        val urlRequest = uploadUrlRequest(url, request)
         memScoped {
             val errorVar = alloc<ObjCObjectVar<NSError?>>()
             library.performChangesAndWait(
@@ -284,13 +280,6 @@ class IosPhotoKitUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
-        log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
-            discovery.discover(sinceToken, policy)
-        }
-
-    // Shared with the other tier: the id-scoped resolve lives in `IosDiscovery` beside the walk, because
-    // both are PhotoKit fetches and only the job lifecycle differs between the tiers.
     /**
      * No number — and that is the honest answer here, not a gap.
      *
@@ -303,9 +292,4 @@ class IosPhotoKitUploadPlatform(
      * mechanism has nothing to give, answered with a constant rather than faked.
      */
     override suspend fun remainingCapacity(): Int? = null
-
-    override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
-        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
-            discovery.resourcesFor(keys)
-        }
 }

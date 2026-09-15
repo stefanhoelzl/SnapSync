@@ -48,7 +48,7 @@ count, so do not justify anything as alert suppression (the read discipline is k
 partial grant the selection IS the scope, and it saves round-trips); and **every photo the member takes
 costs one system prompt**, which no read strategy avoids — only the full-access upgrade does. Reads still
 happen ONLY on the cold-launch baseline and the `PhotoSelectionChangeSource` observer emissions, and every
-upload cycle's discovery is fed the in-memory snapshot (`SelectionScopedTransfer` in `uploadCore`), never a
+upload cycle's discovery is fed the in-memory snapshot (`SelectionScopedDiscovery` in `uploadCore`), never a
 walk. ⏰ Re-measure at the next iOS major; evidence is one device, one point release, n=1 change.
 ② **the ≥26.1 PhotoKit
 extension cannot be REGISTERED under `.limited`** (`setUploadJobExtensionEnabled` is refused in *both*

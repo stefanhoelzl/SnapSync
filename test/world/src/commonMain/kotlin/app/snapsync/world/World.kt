@@ -189,8 +189,10 @@ class World(
     val downloadStore: RecordingDownloadStore = RecordingDownloadStore(inMemoryDownloadStore())
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
     // as both device adapters do, so the world exercises the real two-phase completion.
-    val platform: FakeBackgroundTransfer =
-        FakeBackgroundTransfer(store, ownDeviceId, enumerator, ledgerBackend, gallery::current)
+    val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(store, ownDeviceId, ledgerBackend)
+    // The cycle's library reads — the change feed and the id-scoped key resolve — over the in-memory gallery,
+    // bound once beside the job queue exactly as the device roots bind `IosDiscovery`.
+    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(enumerator, gallery::current)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.
@@ -804,6 +806,7 @@ class World(
                 host = { host },
                 ledger = ledgerBackend,
                 transfer = platform,
+                discovery = discovery,
                 selectionScope = { core.selectionScope() },
                 discoveryStore = discoveryStore,
                 deviceFiles = deviceFiles,

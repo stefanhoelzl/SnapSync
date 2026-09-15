@@ -53,7 +53,7 @@ class CapTruncatedPublishIntegrationTest {
         w.addOwnAsset("B")
 
         assertEquals(CycleResult.PROCESSING, w.runUploadCycle())
-        val walksAfterFirstCycle = w.platform.discoverCalls
+        val walksAfterFirstCycle = w.discovery.discoverCalls
 
         // Nothing changes in the gallery. Under the old design this is the dead spot: an incremental walk
         // reports nothing, so "B" was reachable only by a full re-enumeration — which is exactly why the
@@ -62,11 +62,11 @@ class CapTruncatedPublishIntegrationTest {
         w.runUploadCycle()
 
         assertTrue(
-            "B-primary.jpg" in w.platform.resolvedKeys,
+            "B-primary.jpg" in w.discovery.resolvedKeys,
             "the leftover was resolved by key from the ledger, not re-derived by a walk",
         )
         assertTrue(
-            w.platform.discoverCalls > walksAfterFirstCycle,
+            w.discovery.discoverCalls > walksAfterFirstCycle,
             "the cycle still consults the change feed — the cursor is not a change oracle",
         )
         assertEquals(

@@ -35,7 +35,7 @@ import app.snapsync.model.SelectionPolicy
  *
  * It carries no cursor. A resumable incremental walk needs `nextToken` / `removedAssetIds` /
  * `fullEnumeration`, which a count has no use for and a snapshot cannot honestly supply — that lives on
- * the upload seam (`BackgroundTransfer.discoverResources`). The app side cannot use a cursor anyway: a
+ * the upload cycle's own port (`UploadDiscovery.discover`). The app side cannot use a cursor anyway: a
  * cursor yields *changes*, while the status total needs a *count of the current set*, and maintaining that
  * from a change feed would require durable state — which is what the ledger already is.
  */

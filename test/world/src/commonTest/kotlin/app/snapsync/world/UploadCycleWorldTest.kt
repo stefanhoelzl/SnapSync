@@ -91,7 +91,7 @@ class UploadCycleWorldTest {
         // bytes are still on the backend, so a member still downloads it — the photo simply stays in the
         // event, as it does when a member leaves.
         w.removeAsset("A")
-        w.platform.expireToken()
+        w.discovery.expireToken()
         w.runUploadCycle()
 
         val row = w.ledgerBackend.get("A-primary.jpg")

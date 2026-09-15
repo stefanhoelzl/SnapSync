@@ -15,7 +15,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
 | `BackgroundScheduler` | `:domain:ports` | `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler | yes |
-| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedTransfer; `:test:world` FakeBackgroundTransfer | yes |
+| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer | yes |
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates, Switchable; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource | yes |
@@ -93,6 +93,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource | yes |
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
+| `UploadDiscovery` | `:domain:ports` | `:adapter:ios:ext-safe` IosDiscovery; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedDiscovery; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
 | `UploadMechanismRuntime` | `:domain:feature` | `:adapter:generic:fake` RecordingMechanism; `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, Recording, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |

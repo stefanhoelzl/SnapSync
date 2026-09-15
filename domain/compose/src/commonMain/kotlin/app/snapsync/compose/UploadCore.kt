@@ -7,7 +7,7 @@ import app.snapsync.feature.upload.UploadReconciler
 import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
-import app.snapsync.feature.upload.SelectionScopedTransfer
+import app.snapsync.feature.upload.SelectionScopedDiscovery
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
 import app.snapsync.model.SelectionScope
@@ -17,6 +17,7 @@ import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.UploadDiscovery
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.DiagnosticsReporter
@@ -53,6 +54,11 @@ class UploadPorts(
     val host: () -> String?,
     val ledger: LedgerStore,
     val transfer: BackgroundTransfer,
+    /**
+     * The cycle's photo-library reads (capability `ios-url-session-upload`, "Ledger keys resolve to uploadable
+     * resources"): bound once per root — `IosDiscovery` on both device tiers — and never by a transport.
+     */
+    val discovery: UploadDiscovery,
     /** Crash/error reporting (capability `crash-reporting`). Required on both tiers — see AppPorts. */
     val diagnosticsReporter: DiagnosticsReporter,
     /**
@@ -149,9 +155,10 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
             )
         },
         ledger = ledger,
+        platform = ports.transfer,
         // The read-discipline gate (capability `limited-photo-access`): the ONE shared assembly wraps
-        // the platform, so every tier and the world get the same walk-vs-snapshot decision.
-        platform = SelectionScopedTransfer(ports.transfer, ports.selectionScope),
+        // the library reads, so every tier and the world get the same walk-vs-snapshot decision.
+        library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope),
         store = ports.discoveryStore,
         log = ports.log,
         reconcile = { eventId -> reconciler.reconcile(eventId) },

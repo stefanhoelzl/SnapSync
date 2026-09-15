@@ -48,7 +48,7 @@ class BoundedTopUpIntegrationTest {
         // platform round-trip again for the same leftovers on the next cycle, and again on the one after.
         assertEquals(
             w.platform.created.size,
-            w.platform.resolvedKeyCount,
+            w.discovery.resolvedKeyCount,
             "no row was resolved for a job the platform would not take",
         )
         assertTrue(rounds > 1, "the backlog really did span several cycles")
@@ -63,13 +63,13 @@ class BoundedTopUpIntegrationTest {
         w.addOwnAsset("B")
 
         assertEquals(CycleResult.PROCESSING, w.runUploadCycle())
-        val resolvedWhileFilling = w.platform.resolvedKeyCount
+        val resolvedWhileFilling = w.discovery.resolvedKeyCount
 
         // The one slot is occupied and nothing has completed. The ledger still holds B.
         assertEquals(CycleResult.PROCESSING, w.runUploadCycle(), "backpressure, not an absence of work")
         assertEquals(
             resolvedWhileFilling,
-            w.platform.resolvedKeyCount,
+            w.discovery.resolvedKeyCount,
             "a full platform costs no platform round-trip at all",
         )
     }

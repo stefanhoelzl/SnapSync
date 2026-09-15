@@ -7,7 +7,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLRequest
 // Kotlin/Native exposes this ObjC member as an extension, so it needs an explicit import (the same
-// shape as `platform.Foundation.setValue` in IosDiscovery).
+// shape as `platform.Foundation.setValue` in uploadUrlRequest).
 import platform.Foundation.allHTTPHeaderFields
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceUploadJobState

@@ -6,6 +6,7 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.UploadDiscovery
 
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -30,7 +31,7 @@ import kotlinx.coroutines.withTimeout
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
  * retry), then discover new/changed resources and create jobs — all gated by the [engine]. This is
  * the testable core: it depends only on the [engine], the [ledger] (to reconstruct lifecycle jobs
- * and to prune rows for deleted assets), the [BackgroundTransfer] port, and the [DiscoveryStore]
+ * and to prune rows for deleted assets), the [BackgroundTransfer] and [UploadDiscovery] ports, and the [DiscoveryStore]
  * cursor, so a fake platform + a real engine exercise the whole flow on the simulator without
  * touching PhotoKit.
  *
@@ -68,6 +69,9 @@ class UploadCycle(
     private val engineFor: (UploadConfig) -> SyncEngine,
     private val ledger: LedgerWriter,
     private val platform: BackgroundTransfer,
+    // What the cycle reads from the photo library — the change feed and the id-scoped key resolve. Not the
+    // transport's: both tiers read the library identically, and only the transfer lifecycle differs.
+    private val library: UploadDiscovery,
     private val store: DiscoveryStore,
     // Re-join reconciliation (capability `upload-state-reconciliation`): the marker-gated seed that makes
     // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /
@@ -296,7 +300,7 @@ class UploadCycle(
             // already requested. The cutoff came in with the contribution and is passed down, so a full
             // enumeration is scoped at the platform fetch rather than walked whole and filtered afterwards
             // (capability `photo-selection-policy`).
-            val discovery = platform.discoverResources(store.loadToken(), ready.policy)
+            val discovery = library.discover(store.loadToken(), ready.policy)
             log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
 
             // THE ADMISSION (capability `photo-selection-policy`): one policy, applied once, deciding the
@@ -484,7 +488,7 @@ class UploadCycle(
         if (bound <= 0) return Enqueued(created = 0, truncated = true)
         val rows = eligible.take(bound)
 
-        val byKey = platform.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
+        val byKey = library.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
         placeFirstEnqueued(ready, rows, byKey)
         var created = 0
         for (row in rows) {

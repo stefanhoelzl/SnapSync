@@ -1,16 +1,15 @@
 package app.snapsync.ports
 
-import app.snapsync.model.Candidate
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 
 /**
- * The platform seam for one background-upload cycle — everything PhotoKit-specific lives behind it.
+ * The transfer lifecycle of one background-upload cycle — creating, retrying and settling upload jobs.
  * The iOS implementations (`IosPhotoKitUploadPlatform` on the OS-driven tier,
- * `IosUrlSessionUploadPlatform` on the app-driven one) are the only places that touch PhotoKit, so the
- * orchestration in [UploadCycle] stays pure and testable on the simulator with a fake.
+ * `IosUrlSessionUploadPlatform` on the app-driven one) keep each platform's job vocabulary behind it, so the
+ * orchestration in [UploadCycle] stays pure and testable on the simulator with a fake. What the cycle reads
+ * from the photo library is not this seam's: that is [UploadDiscovery], bound once beside it.
  *
  * Returned system jobs are surfaced as [PlatformUploadJob]s whose [PlatformUploadJob.key] the
  * platform reads from the job's **destination URL** (its last path segment) — the only field
@@ -43,22 +42,10 @@ interface BackgroundTransfer {
     suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest)
 
     /**
-     * Enumerate the asset resources changed since [sinceToken] (null / expired → a full enumeration),
-     * returning them plus the cursor to persist once the cycle fully drains.
-     *
-     * [since] is the membership's capture-date cutoff (capability `photo-selection-policy`). A full enumeration
-     * SHALL be scoped by it — walking the whole library costs one synchronous platform round-trip per
-     * asset. An implementation MAY return assets captured before [since] (the cycle filters), but MUST NOT
-     * omit any at or after it. The incremental change-token walk is already bounded by the change feed and
-     * ignores [since]; the cycle filters its output the same way.
-     */
-    suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery
-
-    /**
      * How many upload jobs this platform will accept **right now**, or `null` where it cannot say.
      *
      * The bound on the cycle's work-source read. Resolving a ledger row to a [Resource] costs a
-     * synchronous platform round-trip that nothing can interrupt (see [resourcesFor]), so a row resolved
+     * synchronous platform round-trip that nothing can interrupt (see [UploadDiscovery.resourcesFor]), so a row resolved
      * beyond what the platform will take is uninterruptible time spent on a job that is never created.
      * Asking the platform is the only way to avoid that: it is the one party that knows its own limit.
      *
@@ -77,26 +64,6 @@ interface BackgroundTransfer {
      * clamps at zero rather than reporting the overshoot.
      */
     suspend fun remainingCapacity(): Int?
-
-    /**
-     * Resolve ledger [keys] to uploadable [Resource]s — **id-scoped, never a walk**.
-     *
-     * This is what lets the ledger be the cycle's source of work (capability `sync-ledger`). A row records
-     * that a resource needs uploading, but it cannot carry the platform handle `createJob` requires, so a
-     * producer enqueueing from the ledger asks for exactly the keys it intends to send. A key is
-     * `<assetId>-<role>.<ext>`, so an implementation has everything it needs to fetch those assets by
-     * identifier and pick the matching resource.
-     *
-     * **Partial-tolerant, and that is the contract, not a convenience.** A key whose asset has left the
-     * library resolves to nothing — the caller learns the asset departed, which is a different fact from
-     * an upload failing, and the two must not be collapsed (`module-architecture`, "Absence is never
-     * silent"). An implementation MUST NOT throw for a missing key and MUST NOT substitute another
-     * resource for it.
-     *
-     * Each returned resource's `filename` is the key it was resolved for, so a caller can pair them back
-     * up without a second lookup.
-     */
-    suspend fun resourcesFor(keys: Set<String>): List<Resource>
 
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
@@ -132,27 +99,6 @@ class PlatformUploadJob(
  * NOT created, so the caller must NOT record `REQUESTED` for a job that does not exist.
  */
 enum class CreateResult { CREATED, LIMIT_EXCEEDED, FAILED }
-
-/**
- * Discovered resources plus the opaque cursor to persist once the cycle fully drains.
- *
- * [removedAssetIds] are the asset identifiers reported removed by the change feed this cycle
- * (normalized `/`→`_` to match the key scheme), used to prune their ledger rows incrementally;
- * empty on a full enumeration (the change feed isn't consulted). [fullEnumeration] is true when
- * this discovery enumerated the whole library (no/expired token), so [resources] holds **every**
- * current resource key — the live key-set the cycle reconciles the ledger against.
- */
-class Discovery(
-    /**
-     * The assets the platform returned — **candidates**, not yet admitted. Each carries cheap facts and
-     * fetches its own resources on demand, so the cycle pays the per-asset round-trip only for the ones
-     * its admission keeps (capability `gallery-status`).
-     */
-    val candidates: List<Candidate>,
-    val nextToken: ByteArray,
-    val removedAssetIds: List<String> = emptyList(),
-    val fullEnumeration: Boolean = false,
-)
 
 /**
  * The terminal disposition of one cycle; the Swift shell maps it to the system result.
