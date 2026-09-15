@@ -13,7 +13,6 @@ membership's one selection policy. No in-app consumer reads it; it is read by th
 completeness check is what distinguishes a declared asset from a fetchable one, and a publish wakes the
 other members only when it makes an asset newly fetchable (capability `upload-completion-notify`).
 ## Requirements
-
 ### Requirement: Per-event device manifest document
 
 For each (event, device) pair it backs up, the producer SHALL publish exactly one device manifest **as the
@@ -280,6 +279,12 @@ change feed's precise removal signal — so the next projection stops listing th
 themselves SHALL be retained: their bytes are still on the backend, so the record that suppresses
 re-upload stays true and a restored asset does not re-upload.
 
+When an asset whose rows are marked absent is seen in the library again by the upload cycle's walk, its
+rows SHALL be **un-marked** (capability `sync-ledger`, "Prune operations are writer-only"), so the next
+projection lists it again — whatever the rows' upload state, and without re-uploading a byte. Presence is a
+fact about the library, not about scope: the un-mark SHALL NOT depend on the membership's selection policy,
+which the projection still applies on its own.
+
 There SHALL be **no** full-enumeration retain-live reconcile. The change feed's removal signal is the only
 deletion input. A deletion the feed missed — because the change token expired — leaves the asset listed for
 the event's remaining life; its bytes are still present, so a member downloads it successfully and the photo
@@ -300,6 +305,12 @@ state a scope change has no business touching.
 
 - **WHEN** an asset's rows have been marked absent
 - **THEN** those rows are still readable and still `COMPLETED`, so restoring the asset re-uploads nothing
+
+#### Scenario: A restored asset is listed again
+
+- **WHEN** an asset whose `COMPLETED` rows are marked absent is returned by a later walk of the library
+- **THEN** its rows are no longer marked absent, the next manifest projection lists it (when the current
+  policy admits it), and no upload job is created for it
 
 #### Scenario: A missed deletion leaves the asset listed
 
@@ -404,3 +415,4 @@ not an opportunistic sweep.
   jobs early
 - **THEN** its seeded rows learn their capture dates on those cycles, so its manifest lists them and
   the event union offers its photos again
+

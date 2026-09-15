@@ -22,9 +22,7 @@ Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
 The resource-changed decision gained `DISCOVERED` → `Upload`, and the `UPLOADED` entry the
 enumeration had never named, in `changes/archive/2026-08-27-fix-cap-truncation-loop`.
-
 ## Requirements
-
 ### Requirement: Resource-changed decision
 When a platform submits `ResourceChanged(resource)`, the engine SHALL answer one `SyncDecision`
 derived from the ledger entry for `resource.filename`, and SHALL **write nothing** — `handle` of a
@@ -116,7 +114,9 @@ fresh `UploadJob` with `attempt` incremented by one and a request newly minted v
 `provide(job.request.resource)` — for every `UploadError` variant, with no attempt budget — and
 SHALL record `FAILED` (the failed attempt) for the key. The engine SHALL NOT record `REQUESTED` for
 the retry here; the ledger is left in `FAILED` until the platform creates the retry job and reports
-`UploadStarted` (write-after-act). Recording `FAILED` is an unconditional idempotent upsert.
+`UploadStarted` (write-after-act). Recording `FAILED` is an idempotent **guarded** upsert: it SHALL NOT
+overwrite a row in a done state (capability `sync-ledger`, "Record operations"). The answer SHALL be
+`Retry` whether or not the record applied — the engine's decision does not depend on the guard.
 
 #### Scenario: Fresh request on retry, ledger left FAILED
 - **WHEN** `handle(UploadFailed(job, Http(403)))` is called
@@ -127,6 +127,11 @@ the retry here; the ledger is left in `FAILED` until the platform creates the re
 #### Scenario: Every error kind retries
 - **WHEN** failures with `Network`, `Http(500)`, `Cancelled`, and `Unknown("x")` are each handled
 - **THEN** each yields exactly one `Retry` — none is dropped
+
+#### Scenario: A late failure never un-completes a key
+- **WHEN** `handle(UploadFailed(job, Network))` is called for a key whose ledger entry is `COMPLETED`
+- **THEN** `Retry` is still returned, and the ledger entry is unchanged — still `COMPLETED` with its prior
+  attempt
 
 ### Requirement: Provider failures rethrow
 If the request provider throws, the engine SHALL NOT catch it: `handle` fails with that exception
@@ -163,8 +168,10 @@ The engine SHALL accept a `SyncEvent.UploadStarted(job)` observation, reported b
 **after** it has created (or retried) the upload job for `job`. On `UploadStarted` the engine SHALL
 record `REQUESTED` for the key with `job.attempt`, and SHALL answer `AlreadyUploaded` (there is
 nothing further for the platform to do). `REQUESTED` SHALL be recorded **only** on `UploadStarted` —
-never on `ResourceChanged` or `UploadFailed`. Recording is an unconditional idempotent per-key upsert,
-so a duplicated or replayed `UploadStarted` converges to the same entry; a dropped `UploadStarted`
+never on `ResourceChanged` or `UploadFailed`. Recording is an idempotent per-key **guarded** upsert that
+SHALL NOT overwrite a row in a done state (capability `sync-ledger`, "Record operations"),
+so a duplicated or replayed `UploadStarted` converges to the same entry and a late one never un-completes a key;
+a dropped `UploadStarted`
 (the platform created the job but died before reporting) leaves no `REQUESTED`, which a later
 `ResourceChanged` re-derivation safely re-issues as `Work`.
 
@@ -184,6 +191,10 @@ so a duplicated or replayed `UploadStarted` converges to the same entry; a dropp
 - **THEN** the engine returns `Work` again (the key has no `REQUESTED`), so the create is retried
   rather than skipped
 
+#### Scenario: A late start never un-completes a key
+- **WHEN** `handle(UploadStarted(job))` is called for a key whose ledger entry is `COMPLETED`
+- **THEN** `AlreadyUploaded` is returned and the ledger entry is unchanged
+
 ### Requirement: Resource asset identity
 `Resource` SHALL carry `assetId: String` — an opaque grouping identifier for the asset a resource
 belongs to (several resources of one photo share it). The engine SHALL carry `assetId` through to
@@ -200,3 +211,4 @@ solely from the ledger entry for `filename`.
 - **WHEN** a `ResourceChanged` is handled for a resource whose key is absent from the ledger
 - **THEN** the answer is `Upload` regardless of the resource's `assetId` (the decision reads only
   `filename`)
+

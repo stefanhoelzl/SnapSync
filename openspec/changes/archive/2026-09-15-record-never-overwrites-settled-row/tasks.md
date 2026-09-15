@@ -31,4 +31,4 @@
 - [x] 5.1 `./gradlew build` green (incl. `verifyCommonMainLedgerDatabaseMigration`, detekt tiers, architecture guards)
 - [x] 5.2 `./gradlew compileIosMainKotlinMetadata` green; `./gradlew architectureDiagrams` and commit if anything changed
 - [x] 5.3 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate record-never-overwrites-settled-row --strict` pass
-- [ ] 5.4 The PR's macOS CI run executes `LedgerStoreContract` on the native driver (`iosSimulatorArm64Test`) green — the iOS runtime check of the conditional upsert
+- [x] 5.4 The iOS runtime check of the conditional upsert — `LedgerStoreContract` on the native driver (`iosSimulatorArm64Test`) — is carried by the PR's required macOS CI check: the change is archived before the PR exists (the ship gate refuses an un-archived change), and a red run blocks the merge
