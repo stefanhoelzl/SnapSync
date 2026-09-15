@@ -132,8 +132,8 @@ re-join reconciliation, where the ledger genuinely has no memory — see `upload
 
 #### Scenario: A row recorded terminal mid-pass is not overwritten
 - **WHEN** the stranded candidates are read while a row is `REQUESTED`, and the delegate records that row
-  `UPLOADED` before the pass performs its write
-- **THEN** the guarded write applies to nothing and the row remains `UPLOADED`
+  `COMPLETED` before the pass performs its write
+- **THEN** the guarded write applies to nothing and the row remains `COMPLETED`
 
 ### Requirement: Per-slot temp-file staging
 
@@ -726,9 +726,10 @@ tiers are never simultaneously live and the `sync-ledger` single-record-writer i
 ### Requirement: The delegate records the terminal fact before it returns
 
 The `URLSession` task-completion delegate SHALL record the terminal outcome into the ledger —
-`UPLOADED` on success, `FAILED` otherwise — through the guarded, non-suspending `markTerminal`
+`COMPLETED` on success, `FAILED` otherwise — through the guarded, non-suspending `markTerminal`
 (`sync-ledger`), **synchronously, before the callback returns**. It SHALL NOT hold the outcome in process
-memory for a later cycle to collect.
+memory for a later cycle to collect. Success is recorded as the settled state: nothing a completion used to
+trigger is still owed, so no later cycle reads or re-settles the row.
 
 The forcing fact: iOS delivers a background-`URLSession` completion **once**.
 `URLSessionTask.State.completed` is documented as *"the task has completed (without being canceled), and the
@@ -748,12 +749,13 @@ process. A write whose guard applies to no row SHALL be logged and SHALL NOT be 
 
 - **WHEN** an upload completes, its delegate callback returns, and the process is killed before any cycle
   runs
-- **THEN** the next process reads the row as `UPLOADED`, and no upload job is created for that key
+- **THEN** the next process reads the row as `COMPLETED`, counts its photo completed, and creates no upload
+  job for that key
 
 #### Scenario: The recorded state distinguishes success from failure
 
 - **WHEN** a task completes with a transport error or a non-2xx status
-- **THEN** the row is recorded `FAILED`, not `UPLOADED`
+- **THEN** the row is recorded `FAILED`, not `COMPLETED`
 
 #### Scenario: A guarded write that applies to nothing is reported
 
