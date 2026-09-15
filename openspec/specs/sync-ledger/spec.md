@@ -24,11 +24,17 @@ The **Lifecycle transitions never clear the ledger** requirement was added in
 The `DISCOVERED` state, the `needsJob` classification beside `isDone`, and the bounded work-source
 read that together make the ledger the upload cycle's source of work were added in `changes/archive/2026-08-27-fix-cap-truncation-loop`.
 
-## Requirements
+The guarded record write that never overwrites a settled row (replacing the unconditional `put`), and
+`markPresent`, which lists a restored photo again, were added in
+`changes/archive/2026-09-15-record-never-overwrites-settled-row` — the `ON CONFLICT` precedence re-examination the
+original decision record's D7 deferred to the arrival of a second writer.
 
+## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerStore` interface with the row
-operations `get(key): LedgerEntry?` and `put(entry)` (a single-row upsert), the guarded terminal write
+read `get(key): LedgerEntry?`, the guarded record write `recordUnlessSettled(entry): Boolean` (see
+"Record operations" — a single-row upsert that never overwrites a row in a done state, and answers whether
+it applied), the guarded terminal write
 `markTerminal(key, state): Boolean` (see "Guarded terminal write"), the guarded promotion
 `promoteUploaded(key): Boolean` (see "Guarded promotion"), the state-scoped read of `UPLOADED` rows
 (see "Uploaded-row read"), the state-scoped read of `REQUESTED` keys, the bounded state-scoped read of
@@ -37,16 +43,26 @@ manifest projection read and its detail backfill, the aggregate read
 `aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
 delete-all reset, `clearRequested()` — delete every `REQUESTED` row, `resetTo(entries)` — an **atomic**
 delete-all-then-insert-all replacement, the asset-targeted bulk mark `markAbsent(assetId)` — mark
-every row whose `assetId` equals the argument as absent, **keeping** the rows — and the provenance
-sweep `backfillEventId(eventId)` (see "Event provenance and the backfill sweep").
-Backends SHALL store entries verbatim (no interpretation, no precedence logic, last write wins, no
-clocks of their own). A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`DISCOVERED` |
+every row whose `assetId` equals the argument as absent, **keeping** the rows — its inverse
+`markPresent(assetIds)` — clear the absence mark of every row whose `assetId` is among the arguments — and
+the provenance sweep `backfillEventId(eventId)` (see "Event provenance and the backfill sweep").
+
+There is deliberately **no** unconditional per-row upsert (`put`). It was removed when the record path became
+guarded: with no production caller left, it could only serve as an unguarded door for the next production
+write. Tests seed a store through the guarded record write or `resetTo`, exactly as production writes it.
+
+Backends SHALL store the fields of an applied write verbatim (no interpretation, no clocks of their own). The
+**only** precedence a backend applies is the one each named guarded operation states — the record write's
+done-state guard, `markTerminal`'s `REQUESTED` guard, `promoteUploaded`'s `UPLOADED` guard — and each SHALL be
+enforced inside the storage statement itself, never by a read followed by a write. The reset family SHALL
+apply no precedence at all. A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`DISCOVERED` |
 `REQUESTED` | `UPLOADED` | `COMPLETED` | `FAILED`), `attempt`, and `eventId` — the event that was
-joined when the row was recorded. `clear()`, `clearRequested()`, `resetTo`, `markAbsent`, an applied
+joined when the row was recorded. `clear()`, `clearRequested()`, `resetTo`, `markAbsent`, an applied record
+write, an applied `markPresent`, an applied
 `markTerminal` and an applied `promoteUploaded` SHALL each remove (and, for `resetTo`, then insert) or
-update the matching rows and signal `changes` **once** like a `put` (so watchers re-read the
+update the matching rows and signal `changes` **once** (so watchers re-read the
 now-current truth).
-`clear()`, `clearRequested()`, `resetTo`, and `markAbsent` are **reset/bulk** operations, not the
+`clear()`, `clearRequested()`, `resetTo`, `markAbsent`, and `markPresent` are **reset/bulk** operations, not the
 per-key **record** operations; recording per-upload facts remains the single record-writer's job, so a
 non-writer holder of the backend may reset the store without breaching the
 single-record-writer invariant. `markTerminal` is a **record** operation and is exposed here deliberately —
@@ -63,13 +79,18 @@ retention stopped being driven by the selection policy (see "The ledger is never
 selection policy"): a departed asset's rows are **marked**, never deleted, because their bytes are
 still on the backend and the rows are what stop a restored asset re-uploading.
 
-#### Scenario: Put then get round-trips
-- **WHEN** `put(entry)` is called and then `get(entry.key)`
-- **THEN** the returned entry equals the one put, field for field — including `assetId` and `eventId`
+#### Scenario: A recorded entry round-trips
+- **WHEN** `recordUnlessSettled(entry)` is called for a key with no row, and then `get(entry.key)`
+- **THEN** the write reports applied, and the returned entry equals the one recorded, field for field —
+  including `assetId` and `eventId`
 
-#### Scenario: A guarded terminal write signals like a put
+#### Scenario: A guarded terminal write signals like a record
 - **WHEN** `markTerminal` applies to a row
-- **THEN** `changes` signals exactly once, as it would for a `put`
+- **THEN** `changes` signals exactly once, as it would for an applied record write
+
+#### Scenario: There is no unconditional upsert
+- **WHEN** the `LedgerStore` interface is inspected
+- **THEN** it declares no per-row write that replaces a row regardless of the row's state
 
 #### Scenario: There is no delete-by-asset
 - **WHEN** an asset leaves the device's library
@@ -102,21 +123,28 @@ have value equality.
 
 ### Requirement: Change signal
 
-`LedgerStore.changes` SHALL emit `Unit` after every successful `put`. A ding carries no payload and
+`LedgerStore.changes` SHALL emit `Unit` after every write that changed the store — every applied record
+write, applied guarded write, and reset/bulk operation. A record write the guard declined changed nothing and
+SHALL NOT signal. A ding carries no payload and
 promises nothing beyond "re-read the truth" — consumers MUST treat it as a level trigger (conflation,
 duplicate dings, and signals missed while busy are all safe because every re-read queries current state).
 The signal is **in-process only**: the ledger is the extension's private upload memory and has no
 cross-process watcher, so the backend SHALL NOT post any cross-process (Darwin) notification, and there is
 no app-process observer to merge. The seam itself does not change.
 
-#### Scenario: Put dings
+#### Scenario: An applied record dings
 
-- **WHEN** a collector is active on `changes` and `put` completes
+- **WHEN** a collector is active on `changes` and a record write applies
 - **THEN** the collector receives an emission
+
+#### Scenario: A declined record does not ding
+
+- **WHEN** a collector is active on `changes` and a record write is declined because the row is in a done state
+- **THEN** the collector receives no emission
 
 #### Scenario: No cross-process notification is posted
 
-- **WHEN** the extension process performs `put`s within a `process()` cycle
+- **WHEN** the extension process records within a `process()` cycle
 - **THEN** no cross-process (Darwin) notification is posted, because no other process observes the ledger
 
 ### Requirement: Reader and writer capability split
@@ -162,7 +190,8 @@ operation belongs on the writer.
 `LedgerWriter` SHALL provide `recordDiscovered`, `recordRequested`, `recordCompleted`, and
 `recordFailed`. Each SHALL
 upsert a complete, self-contained entry for the key (assetId, state, attempt, eventId as supplied
-by the caller) — no operation depends on a prior read, and each maps to a single backend `put`.
+by the caller) through the backend's guarded record write, `recordUnlessSettled` — one storage
+statement per record.
 `assetId` and `eventId` are supplied positionally as `recordX(key, assetId, attempt, eventId)` (the
 writer stays on primitives, decoupled from the engine's `Resource`; the eventId is per-call because
 the writer outlives any one membership — it is constructed at composition time, while the joined
@@ -171,6 +200,15 @@ manifest detail, because the walk is the only reader of a capture date and a row
 is excluded from every projection until a later walk backfills it. The writer records no timestamp and reads
 no clock — the engine, writer, and backends are all clock-free. Duplicate record operations with
 identical arguments SHALL converge on assetId, state, attempt, and eventId.
+
+A record operation SHALL NOT overwrite a row whose current state is in the **done-state set** (see "The
+done-state set is decided in Kotlin"). The guard SHALL be enforced **inside the storage statement** — on the
+SQLDelight backend one `INSERT … ON CONFLICT(key) DO UPDATE … WHERE state NOT IN :doneStates`, with the set
+bound as a parameter — and SHALL NOT depend on a read the writer made first. A read-then-write is not atomic
+against a second writer, and a late record over a settled row would require a job for bytes the backend
+already holds. Transitions between non-done states (a retry `FAILED → REQUESTED`, a stranded transfer
+`REQUESTED → FAILED`) SHALL still apply. A record the guard declined SHALL NOT be silent: the writer SHALL log
+it, naming the key and the refused state.
 
 `recordDiscovered` SHALL NOT overwrite a row that already exists in any other state: a resource that
 is `REQUESTED`, `UPLOADED` or `COMPLETED` is not new work, and re-recording it would either duplicate
@@ -201,6 +239,23 @@ an in-flight job or discard a fact about the world.
 - **WHEN** the same record operation is applied twice with identical arguments
 - **THEN** `entry(key)` has the same assetId, state, attempt, and eventId as after one application
 
+#### Scenario: A settled row survives every record operation
+- **WHEN** `recordRequested`, `recordFailed` or `recordCompleted` is called — with any attempt and eventId — for a
+  key whose row is `COMPLETED`
+- **THEN** the row is unchanged, field for field, and the backend reports the write as not applied
+
+#### Scenario: A retry still re-requests a failed row
+- **WHEN** `recordRequested` is called for a key whose row is `FAILED`
+- **THEN** `entry(key)` has state `REQUESTED` with the supplied attempt
+
+#### Scenario: A stranded transfer still fails a requested row
+- **WHEN** `recordFailed` is called for a key whose row is `REQUESTED`
+- **THEN** `entry(key)` has state `FAILED` with the supplied attempt
+
+#### Scenario: The reset family still replaces settled rows
+- **WHEN** `resetTo` is called with entries for keys whose rows are `COMPLETED`
+- **THEN** the store holds exactly the supplied entries, whatever the replaced rows' states were
+
 ### Requirement: SQLDelight backend
 
 A SQLDelight-backed `LedgerStore` SHALL be provided in `:adapter:generic:app` commonMain (SQLDelight
@@ -208,7 +263,7 @@ package `app.snapsync.engine.db`; moved from `:domain:engine` at migration step 
 died at step 10) with the schema
 `key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL,
 eventId TEXT NOT NULL DEFAULT '', absent INTEGER NOT NULL DEFAULT 0`
-plus an index on `assetId` (backing `markAbsent` and the `assetId`-grouped aggregate). The `absent`
+plus an index on `assetId` (backing `markAbsent`, `markPresent` and the `assetId`-grouped aggregate). The `absent`
 column records that an asset has left the library; its `DEFAULT 0` SHALL be present in **both** the
 migration and the CREATE statement, like `eventId`'s, and it is the correct resting value for a row
 written before the column existed. Reads that answer *what does this device hold or share* SHALL
@@ -218,13 +273,17 @@ SHALL be hidden in a single factory function so construction sites never see it.
 no timestamp column. The `eventId` column's `DEFAULT ''` SHALL be present in **both** the migration
 and the CREATE statement (the SQLDelight migration-verify task proves the two schemas identical),
 and SHALL NOT be removed while any shipped build may write a 4-column row (see "Event provenance
-and the backfill sweep", staged revert). `put` SHALL be a single SQL upsert statement;
+and the backfill sweep", staged revert). The record write SHALL be a single guarded SQL upsert statement
+whose applied/not-applied answer is read inside that statement's own transaction, like `markTerminal`'s;
+`resetTo` SHALL insert with a plain `INSERT` inside its delete-all transaction;
 `aggregates()` SHALL be a single
 SQL round-trip (an `assetId`-grouped query). Every `LedgerStore` implementation SHALL satisfy the
 shared `LedgerStoreContract` (hosted in `:test:world` commonMain since step 10): the JVM/sqlite and
 native (simulator) driver tests extend it from `:adapter:generic:app`'s test source sets, and
 `:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — extends it
-from `:test:world`'s own tests. The native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
+from `:test:world`'s own tests. Every other `LedgerStore` test double SHALL honour the record guard and
+`markPresent` the same way, so no test passes against a store that does something the device does not. The
+native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
 factory over the App-Group container.
 
 #### Scenario: Backend contract holds on SQLite
@@ -287,7 +346,7 @@ timestamp column, `eventId` present with its DEFAULT) directly.
   the schema version that adds `eventId`
 - **THEN** the `ALTER TABLE … ADD COLUMN eventId` migration runs without error, every row's
   `key`, `assetId`, `state`, and `attempt` are preserved, every row reads `eventId = ''`, and a
-  subsequent `put` carrying a real `eventId` round-trips
+  subsequent record carrying a real `eventId` for a new key round-trips
 
 #### Scenario: Fresh database is created at the current schema
 - **WHEN** a database is created from scratch
@@ -301,12 +360,22 @@ timestamp column, `eventId` present with its DEFAULT) directly.
 
 ### Requirement: Prune operations are writer-only
 
-The asset-keyed bulk mark (`markAbsent`) SHALL be exposed on
+The asset-keyed bulk mark (`markAbsent`) and its inverse (`markPresent`) SHALL be exposed on
 `LedgerWriter` (delegating to the backend) and SHALL NOT be exposed on any other app-facing ledger
-surface. It is a sync write by the single ledger writer, not the app-side `clear()` reset, and at
+surface. Each is a sync write by the single ledger writer, not the app-side `clear()` reset, and at
 the writer layer it consults no engine state first. Because only the engine's
 composition root constructs a `LedgerWriter`, mark access is confined to the single-writer process,
 preserving the single-writer invariant.
+
+`markPresent(assetIds)` SHALL clear the absence mark of every row whose `assetId` is among the arguments,
+**whatever the row's state** — a settled row is exactly the one no record write will ever reach again. It
+SHALL leave every other field untouched, and SHALL write nothing when no supplied asset has a marked row: the
+common case, since it runs every cycle over every asset the walk saw. It SHALL signal `changes` only when it
+cleared a mark.
+
+The upload cycle SHALL call `markPresent` with the asset ids of **every** candidate its walk returned — before
+the selection policy's admission, because being in the library is not a question of scope — and SHALL do so
+after applying the change feed's removals for the same walk, so an asset named by both is left present.
 
 #### Scenario: Writer marks an asset absent
 
@@ -314,11 +383,22 @@ preserving the single-writer invariant.
   `markAbsent("X")`
 - **THEN** `entry("X-photo.jpg")` returns a row whose `absent` is set
 
+#### Scenario: Writer marks a settled asset present again
+
+- **WHEN** assetId `X` has a `COMPLETED` row marked absent, and the writer calls `markPresent({"X", "Y"})`
+- **THEN** `entry("X-photo.jpg")` is still `COMPLETED` with every other field unchanged and `absent` unset, and
+  `changes` signals once
+
+#### Scenario: Marking present an asset that is not absent writes nothing
+
+- **WHEN** `markPresent` is called with asset ids none of whose rows is marked absent
+- **THEN** no row changes and `changes` does not signal
+
 #### Scenario: The mark is absent from the non-writer surface
 
 - **WHEN** a component holds the ledger only as a `LedgerStore` reader (no writer)
-- **THEN** `markAbsent` is not part of its sanctioned surface — it reaches the backend only through the
-  root-constructed `LedgerWriter`
+- **THEN** `markAbsent` and `markPresent` are not part of its sanctioned surface — they reach the backend only
+  through the root-constructed `LedgerWriter`
 
 ### Requirement: Pending-resource read
 
@@ -589,7 +669,8 @@ platform change feed reports removed — and SHALL mark the rows absent rather t
 SHALL be no full-enumeration retain-live reconcile: a deletion the change feed missed leaves a row
 listed, whose bytes are still on the backend, so a member still downloads it successfully. The photo
 remains in the event, which is what already happens when a member leaves. Exhaustive deletion-tracking
-is therefore not required.
+is therefore not required. An asset the walk sees in the library again SHALL have its rows un-marked (see
+"Prune operations are writer-only").
 
 #### Scenario: A narrowing scope removes no rows
 - **WHEN** the membership's capture cutoff is raised and a fully-drained full enumeration then runs
@@ -610,7 +691,7 @@ is therefore not required.
 
 #### Scenario: A restored asset does not re-upload
 - **WHEN** an asset marked absent is restored to the library and discovered again
-- **THEN** its `COMPLETED` row still suppresses re-upload of the same key
+- **THEN** its `COMPLETED` row still suppresses re-upload of the same key, and its absence mark is cleared
 
 ### Requirement: The UPLOADED state and its promotion
 
@@ -656,8 +737,9 @@ database written by an earlier build simply contains no rows in the new state.
 ### Requirement: The done-state set is decided in Kotlin
 
 Which `LedgerState` values count as **done** SHALL be decided by a single exhaustive `when` in `:domain`
-`model/`, and bound into every state-scoped storage read as a parameter — never written as a literal inside a
-query. On the SQLDelight backend the pending-resource read, the aggregate read, and the manifest projection
+`model/`, and bound into every state-scoped storage statement as a parameter — never written as a literal inside a
+query. On the SQLDelight backend the pending-resource read, the aggregate read, the manifest projection, and the
+guarded record write
 SHALL each take the done-state set as a bound parameter (`state NOT IN :doneStates` / `state IN
 :doneStates`) rather than comparing `state` to `'COMPLETED'`.
 
@@ -675,6 +757,12 @@ silently on one side of a string comparison.
 - **WHEN** the pending-resource read, the aggregate read, and the manifest projection run over the same rows
 - **THEN** each classifies every row by the same done-state set, with no query carrying a state literal of
   its own
+
+#### Scenario: The record guard agrees with the reads
+
+- **WHEN** a row counts as done in the aggregate read
+- **THEN** the guarded record write declines to overwrite it, and a row the aggregate counts as pending is
+  overwritten
 
 ### Requirement: Guarded terminal write
 
@@ -748,6 +836,7 @@ The read SHALL return exactly those rows and interpret nothing else.
 
 - **WHEN** a row is marked `UPLOADED`, the process ends, and a new process reads the store
 - **THEN** the uploaded-row read returns that row
+
 ### Requirement: The DISCOVERED state and the ledger as the upload work source
 
 `LedgerState` SHALL carry a `DISCOVERED` value meaning **the discovery walk found this resource, the
@@ -901,3 +990,4 @@ no expiry, so a row's recorded destination stays valid for as long as the row do
 
 - **WHEN** a row carrying a destination path is read
 - **THEN** its key is still the bare, event-independent object name, unchanged by the addition
+

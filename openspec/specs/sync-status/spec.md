@@ -336,7 +336,7 @@ The seam and its general implementation SHALL live in `feature/status` and take 
 (the ledger-independence rule of "Module placement plugs the engine leak" holds) and the
 read-failure behavior is testable platform-free. The iOS composition root SHALL supply a read
 that reads the shared App-Group ledger **read-only** — calling only the backend's aggregate read
-(`iosLedgerStore().aggregates()`), never `put`/`clear`/`resetTo` — so the **extension remains
+(`iosLedgerStore().aggregates()`), never a record write, `clear` or `resetTo` — so the **extension remains
 the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The cross-process read
 is safe under the ledger driver's WAL mode (one writer plus concurrent readers). `refresh()`
 SHALL be invoked on **foreground entry**, on each **foreground-gated poll tick**, and, on
@@ -551,3 +551,4 @@ A failure in any one refresh SHALL NOT cancel its siblings.
 - **WHEN** the gallery enumeration throws during a foreground status refresh
 - **THEN** the ledger counts, the download projection, the download reconcile and the membership
   refresh still complete, and the failure is logged at `Error` severity
+
