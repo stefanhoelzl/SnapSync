@@ -76,8 +76,8 @@ object IdleUploadMechanism : UploadMechanismRuntime {
  *
  * |            | `start()`                                   | `stop()`                                              |
  * |------------|---------------------------------------------|-------------------------------------------------------|
- * | PhotoKit   | the `PHPhotosError 3202` disable→enable dance | `enable(false)` + `clearRequested` + clear the cursor |
- * | URLSession | sweep staging + pump a cycle + arm the heartbeat | cancel transfers + cancel the heartbeat           |
+ * | PhotoKit   | disable → demote `REQUESTED` rows → enable   | `enable(false)`                                       |
+ * | URLSession | signal a restart + pump a cycle + arm the heartbeat | cancel transfers + cancel the heartbeat        |
  *
  * There are **two** verbs and no destructive third. This is deliberate and load-bearing: the tier-blind
  * `enableBackgroundUpload()` that this seam replaces composed a PhotoKit-only "toggle off, toggle on"
@@ -90,12 +90,10 @@ object IdleUploadMechanism : UploadMechanismRuntime {
  * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
  * reconciliation's `resetTo` ever re-baselines it (`upload-state-reconciliation`).
  *
- * The **cursor** is not dedup state, which is why the PhotoKit column above may clear it: the OS's
- * extension-disable wipes every in-flight job, and `clearRequested()` alone leaves those photos behind a
- * settled cursor that would never re-surface them (`ios-photokit-upload`). Clearing it costs one full
- * re-enumeration, which creates no job for anything already `COMPLETED` — the ledger it did not touch
- * still knows. A tier may clear its own cursor only to repair its own mechanism, and only while dedup
- * survives (`upload-lifecycle`).
+ * `stop()` repairs nothing either, and clears no discovery cursor. What a stop can leave behind is
+ * `REQUESTED` rows no transfer will settle; each mechanism repairs those in its **`start()`**, by demoting
+ * them to `FAILED` — which the ledger's work read returns without a walk — because a start is the one
+ * moment a mechanism knows no other transfer is carrying them (`upload-lifecycle`).
  */
 interface UploadProducer {
     /** Begin or resume uploading for the currently-configured membership. Idempotent. */
@@ -170,12 +168,10 @@ class UploadArm(
     /**
      * Move to [kind], **stop-then-start** — with the hand-over performed by the *incoming* mechanism.
      *
-     * The arm does not tear the outgoing one down itself, because the right teardown depends on where
-     * control is going: relinquishing the OS-driven mechanism on the way to the app-driven one must be
-     * deregistration **only**, while its full `stop()` (deregister plus a blanket ledger clear and a
-     * shared-cursor reset) is right on a leave, where nothing runs afterwards. Only the incoming cell
-     * knows which it needs, so [RelinquishThenRun] does it first and this stays a hand-over rather than a
-     * decision table the arm would have to carry.
+     * The arm does not tear the outgoing one down itself: the incoming cell knows what the other mechanism
+     * can have left behind — including leftovers of a process that never started it — so
+     * [RelinquishThenRun] gives that up first and this stays a hand-over rather than a decision table the
+     * arm would have to carry.
      *
      * A resolution that yields the kind already held is **not** a teardown: it is the same instance, and
      * `start()` — idempotent by contract — simply re-arms it.
@@ -251,9 +247,8 @@ class UploadArm(
      * later join re-uploads nothing already in this device's byte partition. The reconciler clears the
      * `joinedEventId` marker on the next cycle.
      *
-     * The mechanism's own `stop()` may clear its discovery cursor here (the OS-driven one does, to repair
-     * the jobs the OS wiped). That costs a re-enumeration, not a re-upload — and a rejoin would have
-     * cleared it anyway, since a mismatched marker forces the reconciler to re-baseline.
+     * No mechanism's `stop()` repairs or resets anything here: rows a stop leaves `REQUESTED` are demoted by
+     * the next mechanism start, and nothing uploads before one.
      */
     suspend fun onLeave() = log.invocation(logScope, "arm.onLeave") {
         stopAll()

@@ -38,7 +38,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:adapter:ios:ext-safe` IosDeviceLogSource | yes |
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
-| `DiscoveryStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiscoveryStore; `:adapter:ios:ext-safe` IosDiscoveryStore; `:domain:feature` FakeStore, RecordingCursor | yes |
+| `DiscoveryStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiscoveryStore; `:adapter:ios:ext-safe` IosDiscoveryStore; `:domain:feature` FakeStore | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
 | `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` DrainSpyStore, InMemoryDownloadStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |

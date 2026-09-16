@@ -136,11 +136,12 @@ WHERE eventId = '';
 deleteAll:
 DELETE FROM ledgerRow;
 
--- Delete the REQUESTED rows: the recovery after an extension disable wipes the OS's in-flight upload
--- jobs. Those resources are orphaned (the engine never re-issues a REQUESTED key), so dropping them
--- lets the next discovery re-create the not-yet-stored ones. COMPLETED/FAILED rows are untouched.
-deleteRequested:
-DELETE FROM ledgerRow
+-- Demote the REQUESTED rows to FAILED: the recovery for rows no transfer can settle any more (canonically
+-- after an extension disable wipes the OS's in-flight upload jobs). The engine never re-issues a REQUESTED
+-- key; a FAILED row needs a job, so the work read returns it without a walk. Other rows are untouched.
+demoteRequested:
+UPDATE ledgerRow
+SET state = 'FAILED'
 WHERE state = 'REQUESTED';
 
 -- Record that one asset has left the library (rides the assetId index). An UPDATE, never a DELETE: the

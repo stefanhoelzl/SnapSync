@@ -156,8 +156,8 @@ class SqlDelightLedgerStore(
         dings.tryEmit(Unit)
     }
 
-    override suspend fun clearRequested() {
-        queries.deleteRequested()
+    override suspend fun demoteRequested() {
+        queries.demoteRequested()
         dings.tryEmit(Unit)
     }
 

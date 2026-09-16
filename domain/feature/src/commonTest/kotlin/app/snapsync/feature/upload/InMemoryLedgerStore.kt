@@ -41,8 +41,10 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun clearRequested() {
-        entries.values.removeAll { it.state == LedgerState.REQUESTED }
+    override suspend fun demoteRequested() {
+        for (row in entries.entries) {
+            if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.FAILED))
+        }
         dings.tryEmit(Unit)
     }
 

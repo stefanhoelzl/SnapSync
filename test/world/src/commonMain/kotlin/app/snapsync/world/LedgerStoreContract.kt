@@ -319,27 +319,41 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     }
 
     @Test
-    fun `clearRequested removes only REQUESTED rows leaving COMPLETED and FAILED`() = runTest {
+    fun `demoteRequested marks only REQUESTED rows FAILED and keeps their detail`() = runTest {
         val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
+        val requested = entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED)
+        backend.recordUnlessSettled(entry(key = "D-photo.jpg", assetId = "D", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(requested)
         backend.recordUnlessSettled(entry(key = "C-photo.jpg", assetId = "C", state = LedgerState.COMPLETED))
         backend.recordUnlessSettled(entry(key = "F-photo.jpg", assetId = "F", state = LedgerState.FAILED))
 
-        backend.clearRequested()
+        backend.demoteRequested()
 
-        assertNull(backend.get("R-photo.jpg")) // the orphaned REQUESTED row is dropped
+        // The orphaned REQUESTED row is kept, demoted, and otherwise field-for-field what was recorded.
+        assertEquals(requested.withState(LedgerState.FAILED), backend.get("R-photo.jpg"))
+        assertEquals(LedgerState.DISCOVERED, backend.get("D-photo.jpg")?.state)
         assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state) // dedup truth kept
-        assertEquals(LedgerState.FAILED, backend.get("F-photo.jpg")?.state) // FAILED self-heals via retry
+        assertEquals(LedgerState.FAILED, backend.get("F-photo.jpg")?.state)
     }
 
     @Test
-    fun `clearRequested dings an active changes collector`() = runTest {
+    fun `a demoted row is returned by the work read without a walk`() = runTest {
+        val backend = createBackend()
+        backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
+
+        backend.demoteRequested()
+
+        assertTrue(backend.rowsNeedingJob().any { it.key == "R-photo.jpg" })
+    }
+
+    @Test
+    fun `demoteRequested dings an active changes collector`() = runTest {
         val backend = createBackend()
         backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
-        backend.clearRequested()
+        backend.demoteRequested()
         runCurrent()
 
         assertEquals(1, dings)

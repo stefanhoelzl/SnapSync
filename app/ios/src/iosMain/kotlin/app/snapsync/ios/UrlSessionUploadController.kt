@@ -246,8 +246,13 @@ class UrlSessionUploadController(
     // (`:domain` `feature/upload`). This class supplies only this tier's MECHANISM.
 
     /**
-     * Begin/resume uploading: sweep staging temp files orphaned by a prior killed process, **arm the
-     * heartbeat**, then pump a cycle.
+     * Begin/resume uploading: **signal a restart** to the cycle, **arm the heartbeat**, then pump a cycle.
+     *
+     * The restart makes the next cycle to reach its stranded pass demote every `REQUESTED` row with no live
+     * task, once (`ios-url-session-upload`, "Stranded reconciliation: scoped each cycle, complete at a start").
+     * It is a flag the cycle consumes, not a pass run here: this call sits outside the pump's single flight.
+     * There is no staging sweep any more — it deleted the lost-transfer marker the per-cycle pass reads; the
+     * cycle discards lost transfers itself, after its pass.
      *
      * `pump.onStart()` (not `onForeground()`) is what arms the heartbeat: it is the only trigger whose
      * re-arm is unconditional, and therefore the only one that can submit the FIRST `BGProcessingTask`.
@@ -256,7 +261,7 @@ class UrlSessionUploadController(
      * the tested pump, not here — this shell is wiring-only.
      */
     override suspend fun start() = log.invocation("url-session.start") {
-        runCatching { platform.sweepStaging() }.onFailure { log.w(it) { "sweepStaging failed" } }
+        cycle.signalRestart()
         pump.onStart()
     }
 
@@ -316,8 +321,8 @@ class UrlSessionUploadController(
      * already stored on the next join, which is exactly what the old `leave()` did. Only a triggered
      * reconciliation's `resetTo` ever re-baselines the ledger, from the authoritative device listing.
      *
-     * No `clearRequested` recovery is needed here either: stranded `REQUESTED` rows are already reconciled
-     * precisely from `getAllTasks` (see `fetchAckJobs`) — that is this tier's D5.
+     * No ledger repair runs here either: a cancelled transfer's `REQUESTED` row is recorded by its completion
+     * if one is delivered, and otherwise demoted by the next mechanism start's restart rule.
      */
     override suspend fun stop() = log.invocation("url-session.stop") {
         platform.cancelAll()

@@ -81,6 +81,29 @@ interface BackgroundTransfer {
      */
     suspend fun liveKeys(): Set<String>?
 
+    /**
+     * The ledger keys of the transfers this transport **began and no longer holds** — including ones begun by
+     * a process that has since died — or `null` where it cannot tell (capability `ios-url-session-upload`,
+     * "The transport reports the transfers it still holds").
+     *
+     * What lets the cycle scope its per-cycle stranded pass to this transport's own transfers without the
+     * ledger carrying an owner: a `REQUESTED` row outside this set may belong to another transport still
+     * carrying it, so the per-cycle rule never touches it. Like [liveKeys] it is a read the cycle asks for, and
+     * the transport reads no ledger state to answer.
+     *
+     * `null` is an answer, exactly as for [liveKeys]: a durable OS queue loses nothing when the process dies,
+     * and an absent set makes the per-cycle rule reconcile nothing.
+     */
+    suspend fun lostKeys(): Set<String>?
+
+    /**
+     * Drop whatever this transport kept for the lost transfers [keys] — an **instruction the cycle issues**
+     * after its stranded pass, once none of their rows can still be `REQUESTED`. The transport cannot decide
+     * that moment itself: it reads no ledger state, and what it kept is the very marker that makes a lost
+     * transfer findable. A transport that keeps nothing does nothing.
+     */
+    suspend fun discard(keys: Set<String>)
+
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
 }

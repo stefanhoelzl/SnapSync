@@ -138,6 +138,9 @@ class UploadCycle(
     // unbounded read on a platform that will not say how many it wants would try to resolve them all.
     private val enqueueBatchSize: Int = 16,
 ) {
+    /** Set by [signalRestart], cleared by the stranded pass that applies the restart rule. */
+    private var restartSignalled = false
+
     /**
      * One cycle, in four stages: **settle** establishes what is true, **decide** reads, **update**
      * writes what is ours, **publish** writes what the event can see.
@@ -836,13 +839,15 @@ class UploadCycle(
     }
 
     /**
-     * Record `FAILED` every `REQUESTED` row whose transfer the transport no longer holds (capability
-     * `ios-url-session-upload`, "Precise in-flight reconciliation replaces blanket clear").
+     * Record `FAILED` every `REQUESTED` row whose transfer was lost (capability `ios-url-session-upload`,
+     * "Stranded reconciliation: scoped each cycle, complete at a start"), then have the transport discard what
+     * it kept for its lost transfers.
      *
      * A transfer the OS dropped, or a force-quit cancelled, delivers no completion at all, so nothing else will
      * ever move that row — and the engine never re-issues a `REQUESTED` key, so without this the photo is
-     * abandoned silently. The transport answers only what it holds ([BackgroundTransfer.liveKeys]); a
-     * transport whose queue is durable answers `null`, and nothing is reconciled.
+     * abandoned silently. Which rule applies is [strandedEachCycle] normally and [strandedAtStart] once after
+     * [signalRestart]; a transport that answers `null` for the set a rule needs reconciles nothing, and a
+     * pending restart then stays pending.
      *
      * Two things this deliberately does NOT do. It considers nothing but `REQUESTED` rows: a `FAILED` row has
      * already been adjudicated, and re-reporting it every cycle claimed a loss that did not happen (a field log
@@ -851,18 +856,46 @@ class UploadCycle(
      * genuinely did not land, and a re-PUT is idempotent and cheaper than a listing.
      *
      * The candidates are read before the write and the two are not atomic; the guard in the write, not the
-     * read, is what keeps a row that settled in between from being clobbered.
+     * read, is what keeps a row that settled in between from being clobbered. The discard comes last and reads
+     * the lost set afresh: by then none of those rows can still be `REQUESTED`, and no transfer is begun until
+     * this same single-flight cycle creates jobs.
      */
     private suspend fun reconcileStranded() {
-        val live = platform.liveKeys() ?: return
-        for (key in strandedKeys(pending = ledger.requestedKeys(), live = live)) {
+        val atStart = restartSignalled
+        val candidates = strandedCandidates(atStart) ?: return
+        if (atStart) restartSignalled = false
+        for (key in candidates) {
             if (ledger.markStranded(key)) {
-                log.i { "reconcile: stranded REQUESTED $key (no live task) — recorded FAILED to re-upload" }
+                val why = if (atStart) "no live task at a start" else "transfer lost"
+                log.i { "reconcile: stranded REQUESTED $key ($why) — recorded FAILED to re-upload" }
             } else {
                 // Not silent: the row moved on under us, which is a different fact from "recorded".
                 log.i { "reconcile: stranded $key settled underneath this pass — left as it stands" }
             }
         }
+        platform.lostKeys()?.takeIf { it.isNotEmpty() }?.let { platform.discard(it) }
+    }
+
+    /** The keys the applicable rule selects, or `null` where the transport cannot answer the set it needs. */
+    private suspend fun strandedCandidates(atStart: Boolean): List<String>? =
+        if (atStart) {
+            platform.liveKeys()?.let { live -> strandedAtStart(pending = ledger.requestedKeys(), live = live) }
+        } else {
+            platform.lostKeys()?.let { lost -> strandedEachCycle(pending = ledger.requestedKeys(), lost = lost) }
+        }
+
+    /**
+     * A mechanism start happened: the next stranded pass applies [strandedAtStart] once, instead of the
+     * per-cycle rule.
+     *
+     * A flag rather than a pass run here, because the caller — a mechanism's `start()` — sits outside the
+     * pump's single flight, where reading live transfers and `REQUESTED` rows could interleave with a job
+     * creation and demote a transfer that is live. Consumed by whichever cycle next reaches its stranded pass,
+     * so a start that coalesces into a running drain still gets its repair. Process state by design: a process
+     * that dies before a cycle consumes it loses it, and the next process's start signals it again.
+     */
+    fun signalRestart() {
+        restartSignalled = true
     }
 
 }

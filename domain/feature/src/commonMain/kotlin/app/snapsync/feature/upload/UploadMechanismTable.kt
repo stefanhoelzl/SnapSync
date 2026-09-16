@@ -7,10 +7,9 @@ import app.snapsync.model.UploadMechanism
  * is resolved, never selected") — the second half of resolution, and the half that carries policy.
  *
  * `resolveUploadMechanism` in `model/` answers *which kind*; this answers *which object*, and the
- * mapping is not mechanical: each cell wraps the other mechanism's relinquish, with deliberately
- * asymmetric content (see [RelinquishThenRun]). Giving up the OS-driven mechanism is **deregistration
- * only** — its full `stop()` would wipe ledger rows the incoming mechanism is about to reconcile
- * precisely — while giving up the app-driven one is exactly its ordinary `stop()`.
+ * mapping is not mechanical: each cell wraps the other mechanism's relinquish (see [RelinquishThenRun]).
+ * Giving up either mechanism is its ordinary `stop()`; neither `stop()` repairs ledger rows, because each
+ * mechanism's repair runs in its own `start()`.
  *
  * **It lives here rather than in `compose/` because the guard has to be able to drive the real thing.**
  * `ProducerExclusivityTest` used to hold a hand-typed copy of this table, described in its own doc as
@@ -35,8 +34,8 @@ fun uploadMechanismTable(
     /** The app-driven mechanism — always present (it serves iOS 18–26.0 fully, and every OS under a
      *  partial grant). */
     appDriven: UploadMechanismRuntime,
-    /** Deregister a surviving OS-driven registration — **deregistration only**, no ledger clear and no
-     *  cursor reset. Inert where no such registration can exist. */
+    /** Deregister a surviving OS-driven registration — that mechanism's ordinary `stop()`, which repairs no
+     *  ledger row. Inert where no such registration can exist. */
     relinquishOsRegistration: suspend () -> Unit,
 ): (UploadMechanism) -> UploadMechanismRuntime {
     val appDrivenHere =

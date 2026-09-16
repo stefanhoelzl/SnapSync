@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.ports.LogScope
@@ -15,7 +14,7 @@ import co.touchlab.kermit.Logger
  * Named for the need rather than the technology, because it lives in the platform-free core: what this
  * mechanism *is* is "the one where the OS does the uploading", and PhotoKit is merely how iOS spells that.
  * It reaches the platform through two ports — [UploadExtensionRegistry] for the registration record, and
- * [DiscoveryStore] for the cursor — so it names no platform API at all.
+ * [LedgerStore] for the repair — so it names no platform API at all.
  *
  * It used to be `PhotoKitUploadProducer` in `:app:ios`, which is wiring-only and **untested by rule**. That
  * placement is what made the ritual below unverifiable anywhere: the two things it exists to get right —
@@ -35,7 +34,6 @@ import co.touchlab.kermit.Logger
 class OsDrivenUploadMechanism(
     private val ledgerStore: LedgerStore,
     private val registry: UploadExtensionRegistry,
-    private val discoveryStore: DiscoveryStore,
     private val log: Logger = Logger.withTag("OsDrivenUploadMechanism"),
     private val logScope: LogScope = LogScope.NoOp,
 ) : UploadMechanismRuntime {
@@ -50,18 +48,32 @@ class OsDrivenUploadMechanism(
      * `enable(true)` re-creates it cleanly — and the re-register is what reliably prompts the OS to
      * schedule `process()`. Idempotent-safe to repeat.
      *
+     * Between the disable and the enable it **repairs** the `REQUESTED` rows the disable orphaned, demoting
+     * them to `FAILED` (see the body). This is the only place this mechanism touches the ledger.
+     *
      * This ritual is **specific to this tier**: it exists to fix an OS registration record. The app-driven
      * tier has no such record, which is why applying this shape to it — the tier-blind
      * `enableBackgroundUpload()` this producer replaces — resolved to a destructive teardown followed by a
      * no-op.
      */
     override suspend fun start() = log.invocation(logScope, "photokit.start") {
-        stop() // awaited: the off-main REQUESTED clear completes BEFORE the re-enable below
+        registry.setEnabled(false)
+        // THE REPAIR (capability `ios-photokit-upload`, "Re-registering the extension demotes orphaned REQUESTED
+        // rows"). The disable above wiped every in-flight OS job and no API surfaces a vanished one, so their
+        // `REQUESTED` rows would never move again. Every `REQUESTED` row is unsettleable right now: this tier's
+        // jobs are gone, and wherever the app-driven mechanism exists its `stop()` ran before this start. So the
+        // whole set is demoted — through the reset family, because on this tier the extension is the one
+        // recording process — and a `FAILED` row returns through the ledger's work read with no walk, which is
+        // why no discovery-cursor reset accompanies it.
+        //
+        // Awaited, off-main: it completes BEFORE the re-enable below, so a row the re-registered extension
+        // records can never be demoted by a repair still running.
+        demoteRequestedOffMain({ ledgerStore.demoteRequested() }, log = log) // Boolean; the seam returns Unit
         // The outcome IS the report. There used to be an `Info` line here claiming the extension had been
         // re-registered, logged unconditionally — so a device whose enable had just failed terminally at
         // `Error` also carried a plain statement that it had succeeded, in the one capability whose stated
         // failure mode is that "nothing else will report it". Both halves of that claim were already made
-        // by the code that performed them: the enable by its own outcome, the REQUESTED clear by the clear.
+        // by the code that performed them: the enable by its own outcome, the repair by its own lines.
         //
         // Deleted rather than made conditional, and the shell gate is what forces that: this module is held
         // at `CyclomaticComplexMethod` threshold 2, so a branch on the outcome is a decision it may not
@@ -72,31 +84,18 @@ class OsDrivenUploadMechanism(
     }
 
     /**
-     * Deregister the extension AND recover the jobs the disable wipes (capability `ios-photokit-upload`).
-     * `setUploadJobExtensionEnabled(false)` deletes the OS upload-job configuration, wiping every in-flight
-     * job. Two clears make that recoverable:
+     * Deregister the extension — **and nothing else**, on a leave and on a relinquish to the app-driven
+     * mechanism alike (capability `upload-lifecycle`).
      *
-     * - `clearRequested()` — drop the now-orphaned `REQUESTED` rows. The engine never re-issues a
-     *   `REQUESTED` key and no API surfaces the vanished job, so without this they stay `REQUESTED`
-     *   forever. Awaited **off-main with a bounded retry** so it completes before any re-enable (a
-     *   fire-and-forget clear raced the immediate re-enable and could delete the re-enabled extension's
-     *   fresh rows).
-     * - reset the discovery cursor — `clearRequested` only makes the keys ABSENT; a settled cursor would
-     *   scan incrementally and never re-surface them, so force a full re-enumeration next cycle.
-     *
-     * Both are **repairs for damage this tier's OS disable causes**, not lifecycle intent — which is why
-     * they have no counterpart on the app-driven tier (whose `stop()` cancels transfers and nothing else:
-     * a background `URLSession` can enumerate its tasks, so stranded rows are reconciled precisely).
-     *
-     * `COMPLETED` rows are untouched, so stored files never re-upload. This destroys no dedup state.
+     * The disable wipes every in-flight OS job, and this deliberately repairs none of the `REQUESTED` rows it
+     * leaves: the repair belongs to whichever mechanism **starts** next, the one moment it is known that no
+     * other transfer is carrying those rows. On a leave nothing uploads until a start; on a relinquish the
+     * app-driven mechanism's start repairs them. That is also why there is no narrower hand-off verb: this
+     * `stop()` used to carry a ledger-wide delete and a cursor reset a hand-off had to avoid, so a separate
+     * `deregister()` existed — with the repair moved into [start], the two were the same call.
      */
     override suspend fun stop() = log.invocation(logScope, "photokit.stop") {
         registry.setEnabled(false)
-        // Through the port, not a second raw `NSUserDefaults` write. `DiscoveryStore.clearToken()` is the
-        // same key in the same App-Group suite, and open-coding it here meant the cursor had two writers —
-        // one of which no test, fake or harness could observe or substitute.
-        discoveryStore.clearToken()
-        clearRequestedOffMain({ ledgerStore.clearRequested() }, log = log) // Boolean; the seam returns Unit
         Unit
     }
 
@@ -123,24 +122,4 @@ class OsDrivenUploadMechanism(
     /** A selection change is a partial-grant signal, and this mechanism is never the resolved one under a
      *  partial grant. Reachable only if it were pinned there deliberately, where declining is correct. */
     override suspend fun onSelectionChanged() = Unit
-
-    /**
-     * Deregister the extension and **nothing else** — the narrow verb the tier switch takes.
-     *
-     * [stop] means "deregister **and** repair the jobs the disable vanished". That pairing is right when
-     * this tier runs again afterwards (its re-register, and the leave path), and wrong when the disable is
-     * a hand-off to the app-driven mechanism: `clearRequested()` is ledger-wide and the discovery cursor is
-     * shared, so the repair would delete in-flight rows belonging to the mechanism about to start, and force
-     * it into a full re-enumeration it does not need. That mechanism reconciles stranded rows precisely from
-     * `getAllTasks` and by contract "SHALL NOT depend on `clearRequested`" (`ios-url-session-upload`).
-     *
-     * So the repair is not dropped, it is *scoped*: it belongs to re-registering this tier, where no API can
-     * enumerate the vanished jobs, and it stays on [stop] for the leave path where nothing runs afterwards.
-     * This method exists because the two-verb lifecycle seam has no room for a third verb, and should not
-     * gain one — the composition site binds this as `RelinquishThenRun`'s relinquish lambda instead.
-     */
-    suspend fun deregister() = log.invocation(logScope, "photokit.deregister") {
-        registry.setEnabled(false)
-        Unit
-    }
 }

@@ -490,10 +490,9 @@ object SnapSyncRoot {
                 appDrivenUpload = { urlSessionUpload },
                 osDrivenUpload = osDrivenUploadThunk,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                // Deregistration ONLY — deliberately narrower than the OS-driven mechanism's `stop()`,
-                // whose ledger clear and cursor reset would wipe rows the incoming mechanism reconciles
-                // precisely (`upload-lifecycle`, `RelinquishThenRun`).
-                relinquishOsRegistration = { photoKitProducer.deregister() },
+                // The OS-driven mechanism's ordinary `stop()` — the disable alone. It repairs no ledger row;
+                // the incoming mechanism's own start does (`upload-lifecycle`, `RelinquishThenRun`).
+                relinquishOsRegistration = { photoKitProducer.stop() },
                 uploadMechanismOverride = uploadMechanismOverrideSource,
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
@@ -581,8 +580,8 @@ object SnapSyncRoot {
 
     // The app-side handle on the extension's shared App-Group ledger, used for two narrow things only:
     // a READ-ONLY aggregates read (`completed`/`pending`, via the composed counts source) and a
-    // reset-family `clearRequested()` on extension disable (recover jobs the disable wiped, capability
-    // `ios-background-upload`). No per-key record writes here — on the OS-driven tier the extension
+    // reset-family `demoteRequested()` inside the extension re-register (recover jobs the disable wiped,
+    // capability `ios-photokit-upload`). No per-key record writes here — on the OS-driven tier the extension
     // stays the sole record writer. WAL permits the concurrent cross-process read.
     private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
 
@@ -1147,7 +1146,7 @@ object SnapSyncRoot {
     // (The tier-neutral `UploadArm` — which verb fires on which membership transition — is composed in
     // the app graph as `app.uploadArm`, over the resolved mechanism.)
     private val photoKitProducer: OsDrivenUploadMechanism by lazy {
-        OsDrivenUploadMechanism(ledgerStore, extensionRegistry, IosDiscoveryStore(), log, IosLogScope)
+        OsDrivenUploadMechanism(ledgerStore, extensionRegistry, log, IosLogScope)
     }
 
     // The registration port's adapter, chosen by compilation target (capability `ios-photokit-upload`).
