@@ -28,7 +28,12 @@ class FakeLedgerStore : LedgerStore {
         return true
     }
     override suspend fun clear() { rows.clear(); dings.tryEmit(Unit) }
-    override suspend fun clearRequested() { rows.values.removeAll { it.state == LedgerState.REQUESTED }; dings.tryEmit(Unit) }
+    override suspend fun demoteRequested() {
+        for (row in rows.entries) {
+            if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.FAILED))
+        }
+        dings.tryEmit(Unit)
+    }
 
     override suspend fun resetTo(entries: List<LedgerEntry>) {
         val next = entries.associateByTo(mutableMapOf()) { it.key }

@@ -212,8 +212,8 @@ class AppPorts(
      *  fact rather than derived from [osDrivenUpload] so resolving never has the side effect of
      *  constructing a mechanism it is only asking about. */
     val osSupportsOsDrivenUpload: Boolean = false,
-    /** Deregister a surviving OS-driven registration — **deregistration only**, no ledger clear and no
-     *  cursor reset (`upload-lifecycle`, `RelinquishThenRun`). Inert where no such registration exists. */
+    /** Deregister a surviving OS-driven registration — that mechanism's ordinary `stop()`, which repairs no
+     *  ledger row (`upload-lifecycle`, `RelinquishThenRun`). Inert where no such registration exists. */
     val relinquishOsRegistration: suspend () -> Unit = {},
     /** A development pin on the resolved mechanism, read fresh at every resolution. **Always `null` in a
      *  production build**: its source exists only in a build made with the rig, so the mechanism a

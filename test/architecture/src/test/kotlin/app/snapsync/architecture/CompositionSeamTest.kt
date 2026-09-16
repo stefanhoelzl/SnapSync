@@ -104,10 +104,10 @@ class CompositionSeamTest {
                 "carries so the mechanism is never constructed where its registration selector does " +
                 "not exist",
             "relinquishOsRegistration" to
-                "a platform effect: it deregisters the OS's upload-job configuration record. " +
-                "Deliberately NARROWER than that mechanism's own `stop()`, whose ledger clear and " +
-                "cursor reset would wipe rows the incoming mechanism reconciles precisely — which is " +
-                "why it is a lambda bound at the composition site and not a second seam verb",
+                "a platform effect: it deregisters the OS's upload-job configuration record. It is " +
+                "that mechanism's own `stop()`, bound at the composition site because the table is " +
+                "handed the OS-driven mechanism only where the OS carries it, while the app-driven " +
+                "cell must name its relinquish regardless",
             "uploadMechanismOverride" to
                 "reads a development pin on the resolved mechanism, re-read per resolution so the pin " +
                 "can change without rebuilding the graph. `null` in a production build not by " +

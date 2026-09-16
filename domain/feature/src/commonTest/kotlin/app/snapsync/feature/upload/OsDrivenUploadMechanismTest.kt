@@ -7,7 +7,6 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.PendingResource
 import app.snapsync.model.isDone
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.UploadExtensionRegistry
 import kotlinx.coroutines.flow.Flow
@@ -57,14 +56,15 @@ class OsDrivenUploadMechanismTest {
 
 
     /**
-     * A ledger holding only what this class touches: `REQUESTED` rows and the clear that drops them.
+     * A ledger holding only what this class touches: `REQUESTED` rows and the demote that repairs them. The
+     * demote is recorded into the shared [log], so its order against the registration calls is asserted.
      *
      * Local rather than `:adapter:generic:fake`'s honest double, because that module depends on `:domain`
      * and this test lives inside it. Everything unreached is `TODO()` rather than a quiet default — a fake
      * that silently answered a call this class was not supposed to make would hide exactly the regression
      * worth catching.
      */
-    private class RequestedRowsLedger : UnreachedLedgerStore() {
+    private class RequestedRowsLedger(private val log: MutableList<String>) : UnreachedLedgerStore() {
         private val rows = mutableMapOf<String, LedgerEntry>()
 
         fun requested(key: String) {
@@ -77,8 +77,13 @@ class OsDrivenUploadMechanismTest {
             completed = rows.values.count { it.state == LedgerState.COMPLETED },
         )
 
-        override suspend fun clearRequested() {
-            rows.values.removeAll { it.state == LedgerState.REQUESTED }
+        fun stateOf(key: String): LedgerState? = rows[key]?.state
+
+        override suspend fun demoteRequested() {
+            log += "demote"
+            for (row in rows.entries) {
+                if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.FAILED))
+            }
         }
 
         override suspend fun get(key: String): LedgerEntry? = rows[key]
@@ -113,25 +118,11 @@ class OsDrivenUploadMechanismTest {
         override suspend fun backfillEventId(eventId: String) = TODO("not reached by this mechanism")
     }
 
-    private class RecordingCursor(private val log: MutableList<String>) : DiscoveryStore {
-        var token: ByteArray? = byteArrayOf(1, 2, 3)
-        override fun loadToken(): ByteArray? = token
-        override fun saveToken(token: ByteArray) {
-            this.token = token
-        }
-
-        override fun clearToken() {
-            log += "clearCursor"
-            token = null
-        }
-    }
-
     private fun mechanism(
         log: MutableList<String>,
-        ledger: RequestedRowsLedger = RequestedRowsLedger(),
+        ledger: RequestedRowsLedger = RequestedRowsLedger(log),
         registry: RecordingRegistry = RecordingRegistry(log),
-        cursor: RecordingCursor = RecordingCursor(log),
-    ) = Triple(OsDrivenUploadMechanism(ledger, registry, cursor), registry, cursor)
+    ) = OsDrivenUploadMechanism(ledger, registry) to registry
 
     // ── The ritual ────────────────────────────────────────────────────────────────────────────────
 
@@ -143,28 +134,26 @@ class OsDrivenUploadMechanismTest {
     @Test
     fun `start disables before it enables`() = runTest {
         val log = mutableListOf<String>()
-        val (mechanism, _, _) = mechanism(log)
+        val (mechanism, _) = mechanism(log)
         mechanism.start()
         assertEquals(listOf("disable", "enable"), log.filter { it == "disable" || it == "enable" })
     }
 
     /**
-     * The ordering the class's own KDoc records as a fixed defect: a fire-and-forget clear raced the
-     * immediate re-enable and could delete the *re-enabled* extension's fresh rows. So the repair must be
-     * complete before the enable, not merely started before it.
+     * The ordering the class's own KDoc records as a fixed defect: a fire-and-forget repair raced the
+     * immediate re-enable and could reach the *re-enabled* extension's fresh rows. So the repair must sit
+     * between the disable that orphans the rows and the enable that could record new ones, and be complete
+     * before the enable, not merely started before it.
      */
     @Test
-    fun `the REQUESTED clear completes before the re-enable`() = runTest {
+    fun `the REQUESTED demote runs between the disable and the re-enable`() = runTest {
         val log = mutableListOf<String>()
-        val ledger = RequestedRowsLedger()
+        val ledger = RequestedRowsLedger(log)
         ledger.requested("a.jpg")
-        val (mechanism, _, _) = mechanism(log, ledger)
+        val (mechanism, _) = mechanism(log, ledger)
         mechanism.start()
-        assertTrue(
-            log.indexOf("clearCursor") < log.indexOf("enable"),
-            "the cursor reset must precede the re-enable, not race it: $log",
-        )
-        assertEquals(0, ledger.aggregates().pending, "the orphaned REQUESTED row survived the repair")
+        assertEquals(listOf("disable", "demote", "enable"), log, "the repair must sit inside the toggle, in order")
+        assertEquals(LedgerState.FAILED, ledger.stateOf("a.jpg"), "the orphaned row must be demoted, not dropped")
     }
 
     /** A stale record is replaced rather than rejected: the disable finds one, the enable re-creates it. */
@@ -172,7 +161,7 @@ class OsDrivenUploadMechanismTest {
     fun `a stale record is removed and replaced`() = runTest {
         val log = mutableListOf<String>()
         val registry = RecordingRegistry(log, registered = true)
-        val (mechanism, _, _) = mechanism(log, registry = registry)
+        val (mechanism, _) = mechanism(log, registry = registry)
         mechanism.start()
         assertTrue(registry.isEnabled(), "the ritual must leave a live registration behind")
     }
@@ -190,65 +179,45 @@ class OsDrivenUploadMechanismTest {
             log,
             refuseWith = true to RegistrationOutcome.Failed(enabling = true, domain = "PHPhotosErrorDomain", code = 3202L),
         )
-        val (mechanism, _, _) = mechanism(log, registry = registry)
+        val (mechanism, _) = mechanism(log, registry = registry)
         mechanism.start()
         assertTrue(!registry.isEnabled(), "a refused enable must not leave the app believing it registered")
     }
 
-    // ── The repair ────────────────────────────────────────────────────────────────────────────────
+    // ── The repair belongs to the start ───────────────────────────────────────────────────────────
 
     /**
-     * `stop()` deregisters **and** repairs. Both clears exist because the OS disable wipes in-flight jobs:
-     * `clearRequested` drops rows no API could otherwise resurface, and the cursor reset is what makes them
-     * re-surface at all — `clearRequested` only makes the keys absent, and a settled cursor would scan
-     * incrementally straight past them.
+     * `stop()` is the disable **and nothing else** — on a leave and on a relinquish to the app-driven
+     * mechanism alike. The rows the disable orphans are repaired by whichever mechanism starts next, the one
+     * moment no other transfer can be carrying them; a repair here would reach rows a starting app-driven
+     * mechanism owns. There is no narrower hand-off verb any more because there is nothing left to narrow.
      */
     @Test
-    fun `stop deregisters and repairs both halves`() = runTest {
+    fun `stop deregisters and repairs nothing`() = runTest {
         val log = mutableListOf<String>()
-        val ledger = RequestedRowsLedger()
+        val ledger = RequestedRowsLedger(log)
+        val (mechanism, registry) = mechanism(log, ledger)
+        // Seeded AFTER the ritual, deliberately: `start()` repairs, so a row planted before it would be
+        // demoted by the verb that is not under test.
+        mechanism.start()
         ledger.requested("a.jpg")
-        val (mechanism, registry, cursor) = mechanism(log, ledger)
-        mechanism.start() // leave a live registration to stop
         log.clear()
         mechanism.stop()
         assertTrue(!registry.isEnabled(), "stop must deregister")
-        assertEquals(null, cursor.loadToken(), "a settled cursor would never re-surface the cleared rows")
-        assertEquals(0, ledger.aggregates().pending, "orphaned REQUESTED rows must not survive the disable")
-    }
-
-    /**
-     * `deregister()` is the narrow verb the tier switch takes: deregister and **nothing else**. The repair
-     * is ledger-wide and the cursor is shared, so applying it when handing off to the app-driven mechanism
-     * would delete rows belonging to the mechanism about to start, and force it into a re-enumeration it
-     * does not need.
-     */
-    @Test
-    fun `deregister repairs nothing`() = runTest {
-        val log = mutableListOf<String>()
-        val ledger = RequestedRowsLedger()
-        val (mechanism, registry, cursor) = mechanism(log, ledger)
-        // Seeded AFTER the ritual, deliberately: `start()` runs `stop()` first, so a row planted before it
-        // would be cleared by the repair under test rather than by the verb under test.
-        mechanism.start()
-        ledger.requested("a.jpg")
-        cursor.saveToken(byteArrayOf(9))
-        mechanism.deregister()
-        assertTrue(!registry.isEnabled(), "deregister must still deregister")
-        assertEquals(1, ledger.aggregates().pending, "deregister must not clear rows the next mechanism owns")
-        assertTrue(cursor.loadToken() != null, "deregister must not force a full re-enumeration")
+        assertEquals(listOf("disable"), log, "stop must touch nothing but the registration")
+        assertEquals(LedgerState.REQUESTED, ledger.stateOf("a.jpg"), "stop must leave the repair to the next start")
     }
 
     /** Every app-side kick is declined: the OS owns scheduling on this tier, and there is nothing to top up. */
     @Test
     fun `every app-side trigger is declined`() = runTest {
         val log = mutableListOf<String>()
-        val (mechanism, _, _) = mechanism(log)
+        val (mechanism, _) = mechanism(log)
         log.clear()
         mechanism.onForeground()
         mechanism.onSilentPush("event")
         mechanism.onBackgroundTask()
         mechanism.onSelectionChanged()
-        assertEquals(emptyList(), log, "an app-side trigger must touch neither the registration nor the cursor")
+        assertEquals(emptyList(), log, "an app-side trigger must touch neither the registration nor the ledger")
     }
 }

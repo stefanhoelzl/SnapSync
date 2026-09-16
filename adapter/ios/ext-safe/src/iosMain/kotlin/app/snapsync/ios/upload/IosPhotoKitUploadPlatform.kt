@@ -311,4 +311,10 @@ class IosPhotoKitUploadPlatform(
      * has no stranded population for the cycle to reconcile.
      */
     override suspend fun liveKeys(): Set<String>? = null
+
+    /** No set, for the same reason: a job the system holds is not lost when this process dies. */
+    override suspend fun lostKeys(): Set<String>? = null
+
+    /** Nothing to drop: this tier keeps no per-transfer state of its own — the system holds the jobs. */
+    override suspend fun discard(keys: Set<String>) = Unit
 }

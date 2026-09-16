@@ -83,7 +83,15 @@ class LedgerEntry(
     /** The same row, recorded as being in the library again. Pure: nothing else about the row changes. */
     fun markedPresent(): LedgerEntry = withAbsent(false)
 
-    private fun withAbsent(absent: Boolean): LedgerEntry = LedgerEntry(
+    /**
+     * The same row in [state], every other field unchanged — what a bulk state change such as
+     * `LedgerStore.demoteRequested` does to each row it matches.
+     */
+    fun withState(state: LedgerState): LedgerEntry = rebuilt(state = state, absent = absent)
+
+    private fun withAbsent(absent: Boolean): LedgerEntry = rebuilt(state = state, absent = absent)
+
+    private fun rebuilt(state: LedgerState, absent: Boolean): LedgerEntry = LedgerEntry(
         key = key,
         assetId = assetId,
         state = state,

@@ -120,14 +120,17 @@ interface LedgerStore : TransferRecord {
     suspend fun clear()
 
     /**
-     * Delete every `REQUESTED` row, leaving `COMPLETED` and `FAILED` rows untouched — an **app-side
-     * reset-family** op (alongside [clear]), not a writer-only prune. The recovery for jobs the OS
-     * wiped when the extension was disabled: those resources stay `REQUESTED`, the engine never
-     * re-issues a `REQUESTED` key, and no API surfaces the vanished job — so clearing `REQUESTED` is
-     * what lets the next discovery re-create them. Clearing **all** `REQUESTED` is correct because a
-     * disable wipes **all** in-flight jobs at once. Dings [changes] once, like [clear].
+     * Mark every `REQUESTED` row `FAILED`, changing nothing else on those rows and leaving every other row
+     * untouched — an **app-side reset-family** op (alongside [clear]), not a per-key record, so a non-writer
+     * may run it (on iOS ≥26.1 the app, while the extension is the one recording process).
+     *
+     * The recovery for `REQUESTED` rows no transfer can settle any more — canonically the jobs the OS wiped
+     * when the extension was disabled: the engine never re-issues a `REQUESTED` key and no API surfaces the
+     * vanished job. It demotes rather than deletes because a `FAILED` row needs a job, so the ledger's own
+     * work read ([rowsNeedingJob]) returns it on the next cycle — no walk, and so no discovery-cursor reset.
+     * Dings [changes] once, like [clear] (capability `sync-ledger`, "Requested-state reset").
      */
-    suspend fun clearRequested()
+    suspend fun demoteRequested()
 
     /**
      * Atomically replace the entire store with [entries] (delete-all then insert-all in one

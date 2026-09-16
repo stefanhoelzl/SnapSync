@@ -162,6 +162,12 @@ private class SimulatorUploadJobQueue(
      */
     override suspend fun liveKeys(): Set<String>? = null
 
+    /** No set, matching the durable queue this substitutes for, which loses nothing when a process dies. */
+    override suspend fun lostKeys(): Set<String>? = null
+
+    /** Nothing to drop, like the host it substitutes for: the queue itself is the only state it holds. */
+    override suspend fun discard(keys: Set<String>) = Unit
+
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
             SimulatorUploadJobs.inSet(SimulatorJobAction.RETRY).map { it.asPlatformJob() }

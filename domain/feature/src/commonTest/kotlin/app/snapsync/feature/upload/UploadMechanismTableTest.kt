@@ -35,8 +35,8 @@ class UploadMechanismTableTest {
         val table = uploadMechanismTable(
             osDriven = os.takeIf { osSupported },
             appDriven = app,
-            // Deregistration ONLY — narrower than the OS-driven mechanism's own `stop()`, which would
-            // also wipe ledger rows the incoming mechanism is about to reconcile precisely.
+            // The composition binds this to the OS-driven mechanism's own `stop()`; recorded under its own
+            // name so the test sees the relinquish, not a stop of a cell the table was not handed.
             relinquishOsRegistration = { log += "os.deregister" },
         )
     }
@@ -63,7 +63,7 @@ class UploadMechanismTableTest {
         f.table(UploadMechanism.URL_SESSION).start()
         assertEquals(
             listOf("os.deregister", "app.start"), f.log,
-            "the app-driven cell DEREGISTERS rather than running the OS-driven mechanism's full stop",
+            "the app-driven cell relinquishes the OS registration before it starts",
         )
     }
 

@@ -39,11 +39,10 @@ import kotlin.coroutines.resume
  *   starts a background `uploadTask(fromFile:)` tagged with the ledger key via `taskDescription`.
  * - [fetchRetryJobs] is always **empty** — this platform grants no OS single retry; failures come back
  *   through [fetchAckJobs] as retry-spent and `UploadCycle` recreates them.
- * - [fetchAckJobs] drains delivered `URLSession` completions AND reconciles precisely: a ledger
- *   `REQUESTED` key ([pendingKeys]) with no live task and no completion this round is surfaced as a
- *   terminal FAILED job, flipping the row `REQUESTED`→`FAILED` so a later full enumeration re-uploads
- *   it (replacing the PhotoKit tier's blanket `clearRequested`).
- * - [acknowledge] is local cleanup (drop the record, delete the staged temp file) — no OS call.
+ * - The delegate records each terminal outcome the moment iOS delivers it, and deletes the staged file.
+ * - [liveKeys] and [lostKeys] report what the session holds and what this transport began and lost (a staged
+ *   file with no task); the cycle decides from them which `REQUESTED` rows are stranded, and then tells this
+ *   adapter to [discard] the lost transfers' files.
  *
  * Correctness is **at-least-once**: keys are deterministic and the edge PUT is idempotent, so a
  * re-send overwrites the same object. The ledger is the only durable state; the `URLSession` task list
@@ -55,7 +54,7 @@ import kotlin.coroutines.resume
  * **What is tested and what is not.** The decision this tier makes — how a delivered task completion maps
  * to a ledger outcome — lives in `UrlSessionOutcome.kt` beside this file and is exercised by
  * `UrlSessionOutcomeTest`; which `REQUESTED` rows count as stranded is the cycle's, over [liveKeys]. What remains
- * here is mechanism: the lock, the in-flight registry, byte staging, the orphan sweep, and the
+ * here is mechanism: the lock, the in-flight registry, byte staging, the lost-transfer listing, and the
  * session/delegate lifecycle. Those are device-verified and faked in the harness; their correctness is
  * concurrency and filesystem behaviour, which extraction does not make more provable.
  */
@@ -232,6 +231,37 @@ class IosUrlSessionUploadPlatform(
     override suspend fun liveKeys(): Set<String> = liveTaskKeys()
 
     /**
+     * Every key with a staged file and no live task — the transfers this transport began and lost.
+     *
+     * The file is written before the task is created and deleted wherever a transfer ends inside a living
+     * process (the delegate's terminal record, a cancel, a failed create), so a file with no task is exactly a
+     * transfer that ended with no completion: the OS dropped it, or the process died under it. A `PhotoKit` job
+     * never stages, which is what keeps its rows out of the cycle's per-cycle pass.
+     *
+     * `null` when the staging directory or its listing is unavailable (no App-Group container, or a listing
+     * error): "cannot tell" is not "nothing lost", and an empty set would claim the second.
+     */
+    override suspend fun lostKeys(): Set<String>? {
+        val dir = stagingDir ?: return null
+        val live = liveTaskKeys()
+        val files = NSFileManager.defaultManager.contentsOfDirectoryAtURL(
+            dir, includingPropertiesForKeys = null, options = 0u, error = null,
+        ) ?: return null
+        return files.mapNotNull { (it as? NSURL)?.lastPathComponent }.filterTo(HashSet()) { it !in live }
+    }
+
+    /**
+     * Delete the staged files of [keys] — on the cycle's instruction, after its stranded pass.
+     *
+     * This replaces the start-time orphan sweep, which deleted every staged file with no live task before any
+     * cycle ran — destroying the very marker [lostKeys] reads. Only the cycle knows when a lost transfer's row
+     * can no longer be `REQUESTED`, so only the cycle says when its file may go.
+     */
+    override suspend fun discard(keys: Set<String>) {
+        keys.forEach { key -> stagedFileFor(key)?.let(::deleteFile) }
+    }
+
+    /**
      * Force the (lazy) background session to be adopted for this process — on a
      * `handleEventsForBackgroundURLSession` relaunch, this re-attaches the session by its identifier so
      * it re-delivers the completion callbacks for transfers finished while the app was suspended.
@@ -245,8 +275,10 @@ class IosUrlSessionUploadPlatform(
      *
      * Asks the SESSION which tasks exist rather than a registry of our own, so it also cancels transfers
      * this process never started — the ones a relaunch inherited, which are exactly the ones a leave must
-     * stop. Ledger rows are deliberately untouched: a cancelled task delivers no completion, so its
-     * `REQUESTED` row is picked up by the stranded pass on the next cycle.
+     * stop. Ledger rows are deliberately untouched here. Whether a cancelled task's completion is delivered
+     * is not measured and nothing depends on it: if it is, the delegate records the row; if it is not, the
+     * row stays `REQUESTED` until the next mechanism start demotes it (`ios-url-session-upload`, "Stranded
+     * reconciliation: scoped each cycle, complete at a start").
      */
     suspend fun cancelAll() {
         liveTasks().forEach { task ->
@@ -258,24 +290,6 @@ class IosUrlSessionUploadPlatform(
     private suspend fun cancelKey(key: String) {
         liveTasks().filter { it.taskDescription == key }.forEach { it.cancel() }
         stagedFileFor(key)?.let(::deleteFile)
-    }
-
-    /**
-     * Delete staged temp files orphaned by a prior killed process — but NEVER a file still referenced
-     * by a live background task (the OS may still be uploading from it across the relaunch), so only
-     * files whose key is absent from the session's live task set are removed. Call once at startup.
-     */
-    suspend fun sweepStaging() {
-        val dir = stagingDir ?: return
-        val live = liveTaskKeys()
-        val files = NSFileManager.defaultManager.contentsOfDirectoryAtURL(
-            dir, includingPropertiesForKeys = null, options = 0u, error = null,
-        ) ?: return
-        files.forEach { entry ->
-            val fileUrl = entry as? NSURL ?: return@forEach
-            val name = fileUrl.lastPathComponent
-            if (name != null && name !in live) deleteFile(fileUrl)
-        }
     }
 
     /**
@@ -300,7 +314,7 @@ class IosUrlSessionUploadPlatform(
      * [TransferRecord.markTerminal] is non-suspending for this reason.
      *
      * The staged file goes at the same moment: the transfer is over, so it can never be uploaded from
-     * again, and the launch-time sweep covers whatever a killed process leaves behind.
+     * again. Whatever a killed process leaves behind, the cycle discards after its stranded pass.
      */
     private fun recordTerminal(key: String, success: Boolean, error: UploadError?) {
         val state = if (success) TerminalOutcome.COMPLETED else TerminalOutcome.FAILED

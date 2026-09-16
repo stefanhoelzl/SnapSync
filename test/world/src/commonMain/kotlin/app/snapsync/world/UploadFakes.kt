@@ -133,6 +133,12 @@ class FakeBackgroundTransfer(
      */
     override suspend fun liveKeys(): Set<String>? = null
 
+    /** No lost set either, for the same reason (capability `harness-world-model`). */
+    override suspend fun lostKeys(): Set<String>? = null
+
+    /** Nothing to drop: the fake queue keeps no per-transfer state beyond its operator-visible buckets. */
+    override suspend fun discard(keys: Set<String>) = Unit
+
     // ---- operator actions -----------------------------------------------------------------------
 
     /** Complete a created job: deposit its object store-direct and move it to the acknowledge bucket. */

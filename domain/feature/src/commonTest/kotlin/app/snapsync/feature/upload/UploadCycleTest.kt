@@ -117,6 +117,12 @@ class UploadCycleTest {
          * constructor parameter: the constructor sits at the `tests` tier's parameter ceiling.
          */
         var live: Set<String>? = null
+        /** What this platform says it began and lost. `null` — the default — is a queue that cannot say. */
+        var lost: Set<String>? = null
+        /** Every `discard` instruction the cycle issued, in order. */
+        val discarded = mutableListOf<Set<String>>()
+        /** Runs at each `discard`, so a test can observe the ledger at the moment the instruction arrives. */
+        var onDiscard: suspend (Set<String>) -> Unit = {}
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
@@ -138,6 +144,8 @@ class UploadCycleTest {
         override suspend fun fetchRetryJobs() = retryJobs
         override suspend fun remainingCapacity(): Int? = capacity
         override suspend fun liveKeys(): Set<String>? = live
+        override suspend fun lostKeys(): Set<String>? = lost
+        override suspend fun discard(keys: Set<String>) { onDiscard(keys); discarded += keys }
         override suspend fun drainTerminals(): List<PlatformUploadJob> {
             drained = true
             succeeded.forEach { ledger?.markTerminal(it, TerminalOutcome.COMPLETED) }
@@ -854,32 +862,114 @@ class UploadCycleTest {
     }
 
     // ---- The stranded reconciliation (capability `ios-url-session-upload`) -----------------------------
-    // Decided HERE, over the set the transport reports it still holds — no longer inside the app-driven
-    // adapter, where no host test could reach it.
+    // Decided HERE, over the sets the transport reports — the transfers it holds and the ones it began and lost —
+    // no longer inside the app-driven adapter, where no host test could reach it.
 
     @Test
-    fun a_requested_row_the_transport_no_longer_holds_is_recorded_failed() = runTest {
+    fun a_requested_row_the_transport_lost_is_recorded_failed() = runTest {
         val backend = InMemoryLedgerStore()
         backend.inFlight("lost-primary.heic")
         backend.inFlight("running-primary.heic")
 
-        cycleOver(backend, FakePlatform().apply { live = setOf("running-primary.heic") }).run()
+        cycleOver(backend, FakePlatform().apply { lost = setOf("lost-primary.heic") }).run()
 
         assertEquals(
             LedgerState.FAILED, backend.get("lost-primary.heic")?.state,
             "no completion will ever arrive for a transfer the transport lost, so the cycle records it",
         )
-        assertEquals(LedgerState.REQUESTED, backend.get("running-primary.heic")?.state, "still held: untouched")
+        assertEquals(LedgerState.REQUESTED, backend.get("running-primary.heic")?.state, "not lost: untouched")
+    }
+
+    @Test
+    fun a_requested_row_the_transport_never_began_is_left_to_whoever_carries_it() = runTest {
+        // No live transfer here and not lost here: another transport may be carrying it. Only a start may
+        // demote it, never an ordinary cycle.
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("other-primary.heic")
+
+        cycleOver(backend, FakePlatform().apply { live = emptySet(); lost = emptySet() }).run()
+
+        assertEquals(LedgerState.REQUESTED, backend.get("other-primary.heic")?.state)
     }
 
     @Test
     fun a_transport_that_cannot_enumerate_strands_nothing() = runTest {
         val backend = InMemoryLedgerStore()
         backend.inFlight("a-primary.heic")
+        val platform = FakePlatform().apply { live = null; lost = null }
 
-        cycleOver(backend, FakePlatform().apply { live = null }).run()
+        cycleOver(backend, platform).run()
 
         assertEquals(LedgerState.REQUESTED, backend.get("a-primary.heic")?.state, "a durable queue loses nothing")
+        assertEquals(emptyList<Set<String>>(), platform.discarded, "nothing to discard where nothing can be lost")
+    }
+
+    @Test
+    fun a_start_demotes_every_row_without_a_live_transfer_once() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("unstaged-primary.heic") // e.g. left by the other mechanism, or by an older build
+        backend.inFlight("running-primary.heic")
+        val platform = FakePlatform().apply { live = setOf("running-primary.heic"); lost = emptySet() }
+        val cycle = cycleOver(backend, platform)
+
+        cycle.signalRestart()
+        cycle.run()
+
+        assertEquals(LedgerState.FAILED, backend.get("unstaged-primary.heic")?.state, "the restart rule needs no marker")
+        assertEquals(LedgerState.REQUESTED, backend.get("running-primary.heic")?.state, "a live transfer is untouched")
+
+        backend.inFlight("later-primary.heic")
+        cycle.run()
+
+        assertEquals(
+            LedgerState.REQUESTED, backend.get("later-primary.heic")?.state,
+            "the restart applies once; the next cycle is back on the per-cycle rule",
+        )
+    }
+
+    @Test
+    fun a_restart_waits_for_a_cycle_that_reaches_its_stranded_pass() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("unstaged-primary.heic")
+        var readable = false
+        val cycle = cycle(
+            backend,
+            FakePlatform().apply { live = emptySet(); lost = emptySet() },
+            readGate = {
+                if (readable) {
+                    CycleGate.Run(
+                        UploadConfig(host = TEST_HOST, eventId = TEST_EVENT),
+                        JoinedMembership(eventId = TEST_EVENT, policy = { admitting(TEST_CUTOFF) }, saveToAlbum = true),
+                    )
+                } else {
+                    CycleGate.Skip("protected data unavailable")
+                }
+            },
+        )
+
+        cycle.signalRestart()
+        cycle.run()
+        assertEquals(LedgerState.REQUESTED, backend.get("unstaged-primary.heic")?.state, "an unreadable cycle repairs nothing")
+
+        readable = true
+        cycle.run()
+        assertEquals(LedgerState.FAILED, backend.get("unstaged-primary.heic")?.state, "the restart was still pending")
+    }
+
+    @Test
+    fun lost_transfers_are_discarded_only_after_their_rows_left_requested() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("lost-primary.heic")
+        val statesAtDiscard = mutableListOf<LedgerState?>()
+        val platform = FakePlatform().apply {
+            lost = setOf("lost-primary.heic")
+            onDiscard = { keys -> for (key in keys) statesAtDiscard += backend.get(key)?.state }
+        }
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(listOf(setOf("lost-primary.heic")), platform.discarded)
+        assertEquals(listOf<LedgerState?>(LedgerState.FAILED), statesAtDiscard, "the marker must outlive REQUESTED")
     }
 
     @Test
@@ -892,7 +982,7 @@ class UploadCycleTest {
             override suspend fun requestedKeys(): Set<String> = setOf("done-primary.heic")
         }
 
-        cycle(stale, FakePlatform().apply { live = emptySet() }).run()
+        cycle(stale, FakePlatform().apply { lost = setOf("done-primary.heic") }).run()
 
         assertEquals(
             LedgerState.COMPLETED, backend.get("done-primary.heic")?.state,
@@ -905,7 +995,7 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         backend.inFlight("lost-primary.heic")
 
-        val result = decliningCycle(backend, FakePlatform().apply { live = emptySet() }, FakeStore()).run()
+        val result = decliningCycle(backend, FakePlatform().apply { lost = setOf("lost-primary.heic") }, FakeStore()).run()
 
         assertEquals(CycleResult.SKIPPED, result)
         assertEquals(
