@@ -227,7 +227,8 @@ The world SHALL provide a fake `BackgroundTransfer` that models the OS upload-jo
 operator-driven, **inspectable** queue implementing every seam method. Like the device transports, it SHALL
 receive the ledger only as a `TransferRecord` (`sync-ledger`) and SHALL record each terminal outcome through
 its guarded `markTerminal`; it SHALL serve no library read. Like the OS-driven queue it models, it SHALL
-report the absence of a live set from `liveKeys()`, so the world runs no stranded reconciliation.
+report the absence of a live set from `liveKeys()` and of a lost set from `lostKeys()`, and hold nothing for
+`discard` to drop, so the world runs no stranded reconciliation.
 `createJob` SHALL enqueue a PENDING job and return `CREATED`, unless a **settable job-limit** is reached
 (returning `LIMIT_EXCEEDED`) or a forced create-failure is set (returning `FAILED`). An operator **complete**
 action SHALL deposit the job's object key into the backend object store **store-direct** (byte transfer
@@ -253,6 +254,11 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 - **THEN** `createJob` returns `LIMIT_EXCEEDED`, the cycle returns `PROCESSING`, the un-enqueued
   resources hold `DISCOVERED` rows, the discovery cursor **has** advanced, and the cycle still
   published its device manifest
+
+#### Scenario: The fake queue reports neither live nor lost transfers
+
+- **WHEN** the world's upload cycle reaches its stranded pass
+- **THEN** the fake queue reports no live set and no lost set, so no row is recorded `FAILED` by that pass
 
 #### Scenario: The fake queue holds no ledger store
 

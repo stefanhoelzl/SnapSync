@@ -276,12 +276,11 @@ drain (see "Completion and retry adjudication"), so `COMPLETED` and `FAILED` are
 The registration change SHALL be made through a **port** in `:domain` `ports/`, named for the need, whose
 iOS adapter — the only implementation that calls `PHPhotoLibrary.setUploadJobExtensionEnabled` or
 `isUploadJobExtensionEnabled` — lives in `:adapter:ios:app-only`, because only the app process ever
-registers. The mechanism that performs the ritual SHALL hold no platform call of its own — including the
-discovery-cursor reset its repair performs, which SHALL go through the cursor's own port rather than a
-second direct write to the same key — and SHALL therefore live in `:domain` `feature/upload` beside the
+registers. The mechanism that performs the ritual SHALL hold no platform call of its own — its repair reaches
+the ledger through the ledger's own port (see "Re-registering the extension demotes orphaned REQUESTED rows") — and SHALL therefore live in `:domain` `feature/upload` beside the
 app-driven tier's mechanism, named for the need rather than for the platform. This is the ports law applied where it was not: the call sat in
 `:app:ios`, which is wiring-only and gated at `CyclomaticComplexMethod` threshold 2, so it could report the
-platform's raw facts but could hold no decision about them. Behind a port, the ritual, its `stop()` repair,
+platform's raw facts but could hold no decision about them. Behind a port, the ritual, its repair,
 and every arm of the outcome classification become executable on any host that can implement the port,
 including JVM.
 
@@ -296,7 +295,7 @@ a target's host cannot hold such a record, the port's binding for that target an
 #### Scenario: The mechanism holds no platform call
 - **WHEN** the mechanism that performs the disable→enable ritual is compiled
 - **THEN** it names no platform API at all — the registration change and its read-back are reached through
-  the registration port, and the cursor reset through the discovery-cursor port — so it compiles for every
+  the registration port, and the repair through the ledger port — so it compiles for every
   target the platform-free core does
 
 #### Scenario: The ritual is executable off a device
@@ -306,13 +305,13 @@ a target's host cannot hold such a record, the port's binding for that target an
 
 #### Scenario: The repair completes before the re-enable
 - **WHEN** the ritual runs while the ledger holds orphaned `REQUESTED` rows
-- **THEN** the rows are cleared and the discovery cursor reset **before** the enable is attempted, so the
-  repair cannot delete rows belonging to the registration it is about to re-create
+- **THEN** the rows are demoted to `FAILED` **before** the enable is attempted, and the discovery cursor is
+  left untouched, so the repair cannot demote rows belonging to the registration it is about to re-create
 
-#### Scenario: The narrow deregister repairs nothing
-- **WHEN** the tier switch deregisters the OS-driven mechanism in order to hand off to the app-driven one
-- **THEN** the registration is removed and neither the ledger rows nor the discovery cursor is touched,
-  because both belong to the mechanism about to start
+#### Scenario: Stopping is the disable alone
+- **WHEN** the OS-driven mechanism's `stop()` runs — on a leave, or to relinquish it to the app-driven one
+- **THEN** the registration is removed (or, under a partial grant, the attempt is refused) and neither the
+  ledger rows nor the discovery cursor is touched; the next mechanism start repairs any row left `REQUESTED`
 
 ### Requirement: Device-visible (un-redacted) logging
 
@@ -557,10 +556,9 @@ valid payload; the authoritative decode/validate/persist still happens in the sh
 
 The re-provision itself SHALL NOT clear the **ledger** (`upload-lifecycle`): only the reconciliation's
 `resetTo` re-baselines it, from the authoritative per-device listing. The **discovery cursor** is cleared
-twice over on this path, both deliberately and neither by the provisioning logic: by the re-register's
-disable half (see "Disabling the extension clears orphaned REQUESTED rows", which requires it on **every**
-disable) and by the reconciliation itself. Both are repairs, and both cost only a re-enumeration — the
-ledger they leave intact is what knows the work is already done.
+on this path by the reconciliation itself — not by the provisioning logic, and not by the re-register, whose
+repair demotes rows instead (see "Re-registering the extension demotes orphaned REQUESTED rows"). The clear costs only a re-enumeration — the ledger it leaves intact
+is what knows the work is already done.
 
 #### Scenario: Valid re-scan reconciles and re-projects to the new event
 - **WHEN** a valid `https://<link domain>/join#…` event link is opened for a different event on iOS ≥26.1
@@ -652,86 +650,74 @@ and the upload decision is unchanged.
 - **THEN** discovery finds its `COMPLETED` ledger entry, the engine returns no work, no job is created,
   and the next projection lists it again
 
-### Requirement: Disabling the extension clears orphaned REQUESTED rows
+### Requirement: Re-registering the extension demotes orphaned REQUESTED rows
 
-The app SHALL recover the in-flight jobs wiped by a disable. Disabling the upload extension
+The app SHALL recover the in-flight jobs a disable wipes. Disabling the upload extension
 (`setUploadJobExtensionEnabled(false)`) deletes the system's `AssetResourceUploadJobConfiguration` and
-therefore **wipes every in-flight OS upload job**. Whenever
-the app disables the extension **and this tier runs again afterwards**, it SHALL, immediately after the
-disable, **both** (a) call the ledger's
-`clearRequested()` (`sync-ledger`) to drop the now-orphaned `REQUESTED` rows, and (b) **reset the
-discovery cursor** (clear the App-Group change-token) so the next cycle does a **full re-enumeration**.
-Both are required: `clearRequested()` only makes the keys *absent*, but a settled cursor scans
-incrementally and would never re-surface them — so without the cursor reset the cleared photos are
-re-discovered only when the library next changes. This SHALL apply to the disable half of the
-`disable→enable` re-register, and to the leave use-case's extension-disable.
+therefore **wipes every in-flight OS upload job**, and no API surfaces a vanished job. Without a recovery the
+rows stay `REQUESTED` forever: the engine treats `REQUESTED` as in-flight and never re-issues it, and a
+same-event cycle never reconciles — so the photos that were mid-upload are permanently abandoned.
 
-The repair SHALL NOT run when the disable is a **switch to the app-driven tier**. That tier reconciles
-stranded `REQUESTED` rows precisely from `getAllTasks` and, by its own contract, "SHALL NOT depend on
-`clearRequested`" (`ios-url-session-upload`, "Precise in-flight reconciliation replaces blanket clear"),
-so the blanket clear is redundant there **and blunter than the reconciliation that immediately follows
-it**: `clearRequested()` is ledger-wide and the discovery cursor is shared, so running it would delete
-in-flight rows belonging to the tier about to start and force it into a full re-enumeration it does not
-need. The repair belongs to **re-registering** this tier — where no API can enumerate the vanished jobs —
-not to every disable.
+The recovery SHALL run in this mechanism's **`start()`** — the disable→enable re-register — **between** the
+disable and the enable, and SHALL be the ledger's reset-family `demoteRequested()` (`sync-ledger`): every
+`REQUESTED` row becomes `FAILED`. Every one of them is unsettleable at that moment: the disable has just wiped
+this tier's jobs, and wherever the app-driven mechanism also exists, starting this mechanism is preceded by the
+app-driven mechanism's `stop()` (`upload-lifecycle`, "The upload mechanism is resolved, never selected"), so
+no app-driven transfer is carrying a row either.
 
-The disable-and-clear SHALL be **awaited off the main thread and completed before any re-enable**. The
-`clearRequested()` write SHALL run on `Dispatchers.Default` (Kotlin/Native has no `Dispatchers.IO`),
-never on the `Dispatchers.Main` scope — it is a synchronous SQLite `DELETE` that on the main thread is
-a hang risk under cross-process WAL contention — and SHALL use a small bounded retry around the write.
-The `disable→enable` re-register SHALL NOT call `setUploadJobExtensionEnabled(true)` until the clear
-has completed, so the re-enabled extension's freshly recorded `REQUESTED` rows can never be deleted by
-a still-running clear. The clear SHALL NOT be fire-and-forget. The bounded-retry, off-main clear is
-pure logic and SHALL live in a tested `:domain` helper (`feature/upload`) injected into both disable paths,
-not in the untested app shell; only the sequencing of the two iOS platform calls remains in the shell.
+The recovery SHALL NOT reset the discovery cursor. A `FAILED` row needs a job, so the ledger's work read
+returns it on the next cycle with no re-enumeration; the reset existed only because the former recovery
+*deleted* the rows, which a settled cursor would never re-surface.
 
-Without `clearRequested()`, the rows stay `REQUESTED` forever: the engine treats `REQUESTED` as
-in-flight and never re-issues it, there is no API to enumerate live jobs to detect that the job is
-gone, and a same-event cycle never reconciles — so the photos that were mid-upload at the disable are
-permanently abandoned. With both clears, the next full enumeration re-discovers the cleared keys and
-re-creates exactly the not-yet-stored jobs (stored files remain `COMPLETED` and are skipped). The app
-SHALL route both disable paths through a single helper so they cannot diverge, and SHALL use the
-`LedgerStore` directly (constructing no `LedgerWriter`), since `clearRequested` is an app-side
-reset-family operation.
+This mechanism's **`stop()`** SHALL be the disable alone and SHALL repair nothing — on a leave and on a
+relinquish to the app-driven mechanism alike. On a leave nothing uploads until a mechanism starts again, and
+that start repairs; on a relinquish, the app-driven mechanism's own start repairs (`ios-url-session-upload`,
+"Stranded reconciliation: scoped each cycle, complete at a start"). There SHALL therefore be no narrower
+teardown verb for a hand-off.
+
+The demote SHALL be **awaited off the main thread and completed before the enable**. The write SHALL run on
+`Dispatchers.Default` (Kotlin/Native has no `Dispatchers.IO`), never on the `Dispatchers.Main` scope — it is a
+synchronous SQLite write that on the main thread is a hang risk under cross-process WAL contention — and SHALL
+use a small bounded retry around the write. `setUploadJobExtensionEnabled(true)` SHALL NOT be called until the
+demote has completed, so a `REQUESTED` row the re-enabled extension records can never be demoted by a
+still-running repair. The demote SHALL NOT be fire-and-forget. The bounded-retry, off-main helper is pure logic
+and SHALL live in a tested `:domain` helper (`feature/upload`), not in the untested app shell.
+
+The app SHALL use the `LedgerStore` directly (constructing no `LedgerWriter`): on this tier the extension is
+the one recording process, and `demoteRequested` is a reset-family operation that a non-writer may perform.
 
 #### Scenario: A re-register self-heals instead of orphaning
 
 - **WHEN** photos are mid-upload (`REQUESTED` rows, OS jobs registered, the discovery cursor settled)
   and the app re-registers the extension (disable→enable)
-- **THEN** the disable wipes the OS jobs, `clearRequested()` drops the `REQUESTED` rows, and the
-  discovery cursor is reset — so the next cycle's full re-enumeration re-discovers and re-creates the
-  not-yet-stored jobs (bytes resume landing), with no permanently-stuck `REQUESTED`
+- **THEN** the disable wipes the OS jobs, `demoteRequested()` marks the rows `FAILED`, and the discovery
+  cursor is untouched — so the next cycle's work read re-creates the not-yet-stored jobs (bytes resume
+  landing), with no permanently-stuck `REQUESTED` and no re-enumeration
 
-#### Scenario: The re-enable does not race the clear
+#### Scenario: The re-enable does not race the repair
 
 - **WHEN** the app re-registers the extension (disable→enable)
-- **THEN** `clearRequested()` runs off-main and completes **before** `setUploadJobExtensionEnabled(true)`
-  is called, so no `REQUESTED` row recorded by the re-enabled extension is deleted by the clear
+- **THEN** `demoteRequested()` runs off-main and completes **before** `setUploadJobExtensionEnabled(true)`
+  is called, so no `REQUESTED` row recorded by the re-enabled extension is demoted by the repair
 
-#### Scenario: The clear runs off the main thread
+#### Scenario: The repair runs off the main thread
 
-- **WHEN** a disable triggers `clearRequested()`
-- **THEN** the SQLite delete executes on `Dispatchers.Default` (not the `Dispatchers.Main` scope) with
+- **WHEN** a re-register triggers `demoteRequested()`
+- **THEN** the SQLite write executes on `Dispatchers.Default` (not the `Dispatchers.Main` scope) with
   a bounded retry, and is awaited rather than launched fire-and-forget
 
-#### Scenario: A switch to the app-driven tier does not run the blanket repair
+#### Scenario: A stop repairs nothing
 
-- **WHEN** the extension is disabled as part of a switch to the app-driven tier (a mechanism override, or
-  a downgrade to a limited grant) while `REQUESTED` rows exist
-- **THEN** the extension is deregistered, `clearRequested()` and the cursor reset do **not** run, and the
-  app-driven tier's own `getAllTasks` reconciliation surfaces each stranded row as terminal `FAILED` so it
-  is recreated — leaving rows whose transfers are still live untouched
+- **WHEN** the extension is disabled by this mechanism's `stop()` — a leave, or a relinquish to the app-driven
+  mechanism — while `REQUESTED` rows exist
+- **THEN** no ledger row changes and the cursor is untouched, and the rows are demoted by the next mechanism
+  start
 
-#### Scenario: Leave clears REQUESTED
+#### Scenario: Completed rows survive the repair
 
-- **WHEN** the leave use-case disables the extension while resources are `REQUESTED`
-- **THEN** `clearRequested()` runs as part of the disable, leaving no orphaned `REQUESTED` rows behind
-
-#### Scenario: Completed rows survive the clear
-
-- **WHEN** a disable triggers `clearRequested()` and the ledger holds `COMPLETED` rows for
+- **WHEN** a re-register triggers `demoteRequested()` and the ledger holds `COMPLETED` rows for
   already-stored files
-- **THEN** those `COMPLETED` rows are retained, so a subsequent reconcile/discovery does not re-upload
+- **THEN** those `COMPLETED` rows are unchanged, so a subsequent reconcile/discovery does not re-upload
   already-stored bytes
 
 ### Requirement: Discovery suppresses downloaded assets
