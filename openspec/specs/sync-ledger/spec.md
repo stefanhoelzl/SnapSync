@@ -42,7 +42,7 @@ it applied), the guarded terminal write
 rows that **need a job** (see "The DISCOVERED state and the ledger as the upload work source"), the
 manifest projection read and its detail backfill, the aggregate read
 `aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
-delete-all reset, `clearRequested()` — delete every `REQUESTED` row, `resetTo(entries)` — an **atomic**
+delete-all reset, `demoteRequested()` — mark every `REQUESTED` row `FAILED` (see "Requested-state reset"), `resetTo(entries)` — an **atomic**
 delete-all-then-insert-all replacement, the asset-targeted bulk mark `markAbsent(assetId)` — mark
 every row whose `assetId` equals the argument as absent, **keeping** the rows — its inverse
 `markPresent(assetIds)` — clear the absence mark of every row whose `assetId` is among the arguments — and
@@ -62,12 +62,12 @@ done-state guard and `markTerminal`'s `REQUESTED` guard — and each SHALL be
 enforced inside the storage statement itself, never by a read followed by a write. The reset family SHALL
 apply no precedence at all. A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`DISCOVERED` |
 `REQUESTED` | `COMPLETED` | `FAILED`), `attempt`, and `eventId` — the event that was
-joined when the row was recorded. `clear()`, `clearRequested()`, `resetTo`, `markAbsent`, an applied record
+joined when the row was recorded. `clear()`, `demoteRequested()`, `resetTo`, `markAbsent`, an applied record
 write, an applied `markPresent`, and an applied
 `markTerminal` SHALL each remove (and, for `resetTo`, then insert) or
 update the matching rows and signal `changes` **once** (so watchers re-read the
 now-current truth).
-`clear()`, `clearRequested()`, `resetTo`, `markAbsent`, and `markPresent` are **reset/bulk** operations, not the
+`clear()`, `demoteRequested()`, `resetTo`, `markAbsent`, and `markPresent` are **reset/bulk** operations, not the
 per-key **record** operations; recording per-upload facts remains the single record-writer's job, so a
 non-writer holder of the backend may reset the store without breaching the
 single-record-writer invariant. `markTerminal` is a **record** operation and is exposed here deliberately —
@@ -96,6 +96,11 @@ still on the backend and the rows are what stop a restored asset re-uploading.
 #### Scenario: There is no unconditional upsert
 - **WHEN** the `LedgerStore` interface is inspected
 - **THEN** it declares no per-row write that replaces a row regardless of the row's state
+
+#### Scenario: There is no bulk delete of requested rows
+- **WHEN** the `LedgerStore` interface is inspected
+- **THEN** it declares no operation that deletes rows by state; the only bulk operation over `REQUESTED` rows
+  is `demoteRequested()`, which keeps them
 
 #### Scenario: There is no delete-by-asset
 - **WHEN** an asset leaves the device's library
@@ -555,43 +560,46 @@ state. It SHALL return every row that is not marked absent, leaving admission to
 
 ### Requirement: Requested-state reset
 
-`LedgerStore` SHALL provide `clearRequested()`: a bulk delete of **every row whose state is
-`REQUESTED`**, leaving `COMPLETED` and `FAILED` rows untouched. It SHALL emit exactly one `changes`
-signal on success (like `clear`/`resetTo`). On the SQLDelight backend it SHALL be a single indexed-by
--state `DELETE … WHERE state = 'REQUESTED'`.
+`LedgerStore` SHALL provide `demoteRequested()`: a bulk state change of **every row whose state is
+`REQUESTED`** to `FAILED`, leaving every other field of those rows, and every `DISCOVERED`, `COMPLETED` and
+`FAILED` row, untouched. It SHALL emit exactly one `changes` signal on success (like `clear`/`resetTo`). On the
+SQLDelight backend it SHALL be a single `UPDATE … SET state = 'FAILED' WHERE state = 'REQUESTED'`. There SHALL
+be no operation that deletes rows by state: `clearRequested()` is removed.
 
-`clearRequested` is an **app-side reset-family** operation — in the same family as `clear()` and
-`resetTo()`, **not** the writer-only mark (`markAbsent`). It SHALL be
-callable on the `LedgerStore` **without** a `LedgerWriter`, so a non-writer holder of the backend may
-invoke it without breaching the **single-record-writer invariant** (exactly one holder records per-key
-upload facts; *which process* holds that writer is a platform binding, not a ledger concern).
+`demoteRequested` is an **app-side reset-family** operation — in the same family as `clear()` and `resetTo()`,
+**not** a per-key record operation. It SHALL be callable on the `LedgerStore` **without** a `LedgerWriter`, so a
+non-writer holder of the backend — the app process on iOS ≥26.1, where the extension is the one recording
+process — may invoke it without breaching the **single-record-writer invariant**. It applies no precedence and
+reads nothing first; it is one storage statement.
 
-`clearRequested` is a **blanket** recovery for stranded `REQUESTED` rows on a platform that **cannot
-enumerate its in-flight jobs**: those resources remain `REQUESTED` in the ledger, the engine never
-re-issues a `REQUESTED` key, and with no way to detect which are genuinely in flight a bulk `REQUESTED`
-clear is the only way to let the next discovery re-create them. Its canonical use is the iOS ≥26.1
-PhotoKit tier, where disabling the extension wipes **all** in-flight OS jobs at once (so no
-genuinely-in-flight row is lost by clearing all `REQUESTED`) — see `ios-photokit-upload`. A platform
-whose upload queue **is** enumerable (e.g. the iOS 18–26.0 background-`URLSession` tier, which can list
-its live tasks) MAY instead reconcile stranded rows **precisely** and need not use this blanket clear;
-`clearRequested` remains available but is not required on such a platform.
+It is the recovery for `REQUESTED` rows that **no transfer can settle any more**: the engine never re-issues a
+`REQUESTED` key, so without it such a photo is abandoned. Its canonical use is the iOS ≥26.1 PhotoKit tier's
+re-register, after a disable has wiped every in-flight OS job at once (`ios-photokit-upload`). A platform whose
+transfers can be enumerated recovers precisely instead (`ios-url-session-upload`).
 
-#### Scenario: clearRequested removes only REQUESTED rows
+It demotes rather than deletes because a `FAILED` row **needs a job** (see "The DISCOVERED state and the ledger
+as the upload work source"): the ledger's own work read returns it on the next cycle, so the recovery needs no
+re-enumeration and no discovery-cursor reset. A deleted row could only return through discovery, which a
+settled cursor never re-surfaces. Demoting also keeps the row's recorded detail — `assetId`, role, content
+type, provenance — which a deletion discarded and a rediscovery had to re-derive.
 
-- **WHEN** the store holds a `REQUESTED` row, a `COMPLETED` row, and a `FAILED` row, and
-  `clearRequested()` is called
-- **THEN** the `REQUESTED` row is gone and the `COMPLETED` and `FAILED` rows are unchanged
+#### Scenario: demoteRequested marks only REQUESTED rows FAILED
 
-#### Scenario: clearRequested emits one change signal
+- **WHEN** the store holds a `DISCOVERED`, a `REQUESTED`, a `COMPLETED`, and a `FAILED` row, and
+  `demoteRequested()` is called
+- **THEN** the `REQUESTED` row is now `FAILED` with every other field unchanged, and the other three rows are
+  unchanged
 
-- **WHEN** `clearRequested()` succeeds over a store containing at least one `REQUESTED` row
-- **THEN** exactly one `changes` signal is emitted, so a watcher re-reads the now-cleared truth
+#### Scenario: demoteRequested emits one change signal
 
-#### Scenario: A re-created key uploads again after a clear
+- **WHEN** `demoteRequested()` succeeds over a store containing at least one `REQUESTED` row
+- **THEN** exactly one `changes` signal is emitted, so a watcher re-reads the now-current truth
 
-- **WHEN** a key is `REQUESTED`, `clearRequested()` drops it, and the next discovery re-derives that
-  key (`ResourceChanged`)
-- **THEN** the engine answers `Work` (the key is now absent), not `AlreadyUploaded`
+#### Scenario: A demoted row is returned by the work read without a walk
+
+- **WHEN** a key is `REQUESTED`, `demoteRequested()` runs, and the work source is read with no discovery
+- **THEN** the row is among the rows needing a job, so the next cycle re-creates its upload without
+  re-enumerating the library
 
 ### Requirement: Lifecycle transitions never clear the ledger
 
@@ -606,8 +614,8 @@ and a re-join — and clearing it would force a re-upload of every already-store
 join.
 
 The discovery cursor is **not** part of this prohibition, because it is not dedup state. It records where
-an incremental scan resumes; a tier may clear it to repair its own mechanism (`upload-lifecycle`), and a
-reconciliation clears it whenever it re-baselines (`upload-state-reconciliation`). What that costs is a
+an incremental scan resumes, and a reconciliation clears it whenever it re-baselines
+(`upload-state-reconciliation`). What that costs is a
 full re-enumeration whose every resource is already `COMPLETED` here — which is precisely why the ledger
 is the thing that must not be cleared, and the cursor is not.
 
@@ -622,7 +630,7 @@ by test and harness backends), but it SHALL have no membership-lifecycle caller.
 #### Scenario: Leaving an event preserves every ledger row
 
 - **WHEN** the user leaves the currently-joined event
-- **THEN** the ledger retains every row, so joining any event afterwards re-uploads nothing already in the device's byte partition — whether or not the tier's `stop()` cleared its discovery cursor
+- **THEN** the ledger retains every row, so joining any event afterwards re-uploads nothing already in the device's byte partition
 
 #### Scenario: Re-provisioning preserves every ledger row
 

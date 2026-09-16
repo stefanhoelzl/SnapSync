@@ -63,14 +63,17 @@ re-uploads a member's whole post-cutoff library — the failure this project exi
 `COMPLETED` rows and the stored bytes are that proof; the **discovery cursor is not**. A cleared cursor
 costs one full re-enumeration, which finds nothing new, because dedup lives in the ledger it did not touch.
 
-A tier's `stop()` MAY therefore clear its **discovery cursor**, but **only** as a repair for damage its own
-mechanism causes, **only** where `COMPLETED` rows survive so nothing already stored re-uploads, and
-**only** where the mechanism that runs next cannot repair that damage itself. The conditions are the rule,
-not the tier: clearing a cursor for tidiness, where dedup state would not survive it, or where the incoming
-mechanism reconciles precisely, remains forbidden. (The PhotoKit tier is the standing instance — the OS's
-extension-disable wipes every in-flight job, and `clearRequested()` alone leaves the cleared photos
-un-rediscoverable behind a settled cursor. That repair is required by `ios-photokit-upload`, which owns it,
-and is scoped there to the re-register.)
+`stop()` SHALL NOT clear the discovery cursor either. That is not because the cursor is dedup state — it is
+not — but because no mechanism needs it: the damage a stop can leave behind is `REQUESTED` rows no transfer
+will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `FAILED`
+(`ios-photokit-upload`, `ios-url-session-upload`), which the ledger's work read returns without a walk. A
+repair belongs to the start because the start is the one moment a mechanism knows no other transfer is still
+carrying those rows, and because every path back to uploading passes through one.
+
+(This seam previously permitted a `stop()` to clear its cursor as a repair for jobs its own mechanism wiped.
+Its only instance was the PhotoKit disable, whose bulk *delete* of `REQUESTED` rows could not be recovered
+without a re-enumeration. With the rows demoted instead of deleted, the permission has no use and is
+withdrawn rather than kept.)
 
 Each tier SHALL supply one `UploadProducer` implementation binding these verbs to its own mechanism.
 
@@ -84,20 +87,16 @@ Each tier SHALL supply one `UploadProducer` implementation binding these verbs t
 - **WHEN** `stop()` is called on either tier
 - **THEN** in-flight uploads cease, but every ledger row and every stored object is left intact
 
-#### Scenario: A tier may clear its own cursor to repair its own mechanism
+#### Scenario: Stopping clears no cursor
 
-- **WHEN** a tier's `stop()` clears its discovery cursor as a repair for jobs its own mechanism wiped, its `COMPLETED` ledger rows survive, and the mechanism that runs next cannot repair those jobs itself
-- **THEN** that is permitted: the next cycle re-enumerates fully and creates no upload job for anything already stored
+- **WHEN** `stop()` is called on either tier, including as part of a switch or a leave
+- **THEN** the discovery cursor is left exactly where it was
 
-#### Scenario: Clearing a cursor that dedup depends on is still forbidden
+#### Scenario: Rows a stop leaves stranded are repaired by the next start
 
-- **WHEN** a tier's `stop()` would clear a cursor without its `COMPLETED` rows surviving, or for any reason other than repairing damage no incoming mechanism can repair
-- **THEN** that is forbidden — the carve-out is conditioned on dedup surviving and on the repair being needed, not on which tier is asking
-
-#### Scenario: The repair does not fire when the incoming mechanism reconciles precisely
-
-- **WHEN** a `stop()` is part of a switch to a mechanism that reconciles stranded in-flight rows precisely from its own enumeration
-- **THEN** the blanket clear and the cursor reset do not run, and the incoming mechanism's own reconciliation recovers the stranded rows
+- **WHEN** a `stop()` leaves `REQUESTED` rows that no transfer will settle, and a mechanism is later started
+- **THEN** that start demotes those rows to `FAILED`, and the next cycle re-creates their uploads without
+  re-enumerating the library
 
 ### Requirement: Lifecycle orchestration is tier-neutral and tested
 
@@ -496,9 +495,9 @@ Where an OS carries more than one mechanism, **each** resolved mechanism SHALL r
 leaves behind, before it starts. Both leave state the OS keeps across process death — the OS-driven one a
 configuration record keyed by bundle id, the app-driven one in-flight background transfers and a submitted
 background task — so a process that has just launched may be running behind work it never started.
-Relinquishing the OS-driven mechanism on the way to the app-driven one SHALL be **deregistration only**
-(see the repair carve-out in "Upload producer seam has no destructive verb"); relinquishing the app-driven
-mechanism SHALL be its ordinary `stop()`.
+Relinquishing either mechanism SHALL be its ordinary `stop()`. Neither `stop()` repairs ledger state — each
+mechanism's repair runs in its own `start()` (see "Upload producer seam has no destructive verb") — so there is
+no teardown narrower than `stop()` for a hand-off to need, and none SHALL exist.
 
 Stopping the arm SHALL likewise stop **every** mechanism the composition can yield, not only the one
 currently held: a mechanism this process never started can still have work outstanding on its behalf.
@@ -508,6 +507,12 @@ currently held: a mechanism this process never started can still have work outst
 - **WHEN** the OS-driven mechanism is resolved on a device where a previous process left in-flight
   app-driven transfers or a submitted background task
 - **THEN** those are cancelled before the OS-driven mechanism starts, so only one process writes records
+
+#### Scenario: A hand-off relinquishes with the ordinary stop
+
+- **WHEN** either mechanism is resolved on an OS carrying both, while the other may have left work behind
+- **THEN** the other mechanism's ordinary `stop()` is what relinquishes it, and no narrower teardown verb is
+  invoked or exists
 
 #### Scenario: A forced build on an OS-driven-capable device relinquishes the registration
 
@@ -539,6 +544,7 @@ currently held: a mechanism this process never started can still have work outst
 - **WHEN** the resolved kind changes away from the app-driven mechanism and later back to it
 - **THEN** the same instance is obtained, its session was never invalidated, and uploads
   resume without aborting the process
+
 ### Requirement: A mechanism override is a runtime input a shipped build cannot carry
 
 Resolution SHALL accept an optional **override** naming a mechanism kind, read fresh at every resolution
