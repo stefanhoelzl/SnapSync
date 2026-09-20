@@ -6,4 +6,19 @@
 -- extension from re-uploading downloaded photos). Dropping it would lose echo-suppression, so we add
 -- the column in place. Pre-migration rows get an empty creationDate (harmless: they are already
 -- IMPORTED and are never re-imported). Migration SQL is raw (no `AS DownloadState` annotation).
+--
+-- ⚠️ KNOWN, DELIBERATE DIVERGENCE FROM `DownloadStore.sq` — decided, not overlooked. This statement gives
+-- `creationDate` a `DEFAULT ''`; the CREATE statement declares it `TEXT NOT NULL` with no default. The
+-- migrated column also lands LAST, where the CREATE statement puts it before `createdLocalId`. So a
+-- migrated `downloadAsset` and a created one differ in two ways.
+--
+-- NEITHER IS REACHABLE. Every statement in `DownloadStore.sq` names its columns, so ordinal position never
+-- leaks; the column is NOT NULL and every insert supplies it, so the default is never applied.
+--
+-- IT IS NOT FIXED because fixing it means REBUILDING the table — SQLite can neither reorder a column nor
+-- alter a default in place — which puts real suppression rows through a copy to erase a difference nothing
+-- can observe. The committed schema snapshot (`databases/3.db`) is generated from the CREATE statements,
+-- so it neither detects nor repairs this; it verifies migrations from v3 forward. Decision record:
+-- `changes/archive/2026-09-20-repair-unrun-checks` (D4). If you are replaying the chain by hand and
+-- found this: you have found the known one, and the ledger's chain is clean.
 ALTER TABLE downloadAsset ADD COLUMN creationDate TEXT NOT NULL DEFAULT '';

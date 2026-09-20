@@ -1,5 +1,16 @@
 import app.snapsync.model.LedgerState;
 
+-- THE "MUST MATCH <n>.sqm EXACTLY" NOTES BELOW ARE NOW ENFORCED, and were not always. They cite
+-- `verifyCommonMainLedgerDatabaseMigration`, which applies every migration to the committed schema
+-- snapshot (`databases/9.db`) and diffs the result against these CREATE statements. Before that snapshot
+-- existed the task had nothing to compare and passed on anything — measured: a migration adding a column
+-- absent from this file was green. It cost a build gate to say nothing, and it hid a real divergence for
+-- as long as it existed (see the `destinationPath` index below). The snapshot and the contract that keeps
+-- it honest live in `adapter/generic/app/build.gradle.kts`; read that before touching either.
+--
+-- WHAT IT STILL DOES NOT COVER: schema only. A data-only migration changes no schema and is invisible to
+-- it, which is why 8.sqm's effect is asserted by `SqlDelightLedgerStoreTest` instead.
+
 -- `eventId` is provenance, not dedup state: the event that was joined when the row was recorded.
 -- `DEFAULT ''` must match 4.sqm exactly (the verify task compares migrated vs created schemas);
 -- `''` is the pre-provenance sentinel the writer's per-cycle backfill sweeps to the live event id.
@@ -33,6 +44,13 @@ CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 
 -- The ack path resolves a returned upload job to its row through this index; without it every returned
 -- job would scan the table, on a path the OS invokes with a deadline.
+--
+-- ⚠️ AN INDEX MUST BE CREATED BY BOTH ROUTES — this file AND the migration chain. This is the exact line
+-- where that was got wrong: `7.sqm` added `destinationPath` with ALTER TABLE ... ADD COLUMN, which creates
+-- NO index, while this statement was added here in the same change. The result was two schemas both called
+-- current — a fresh install indexed, every device that upgraded through 7.sqm scanning the table on a
+-- deadline path — and it stood until `9.sqm` repaired it. Adding a column here and indexing it is
+-- therefore TWO obligations, not one. The verify task now catches a missed second one.
 CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
 
 -- Deliberately does NOT filter `absent`: a row for a departed asset still records that its bytes are on

@@ -16,7 +16,8 @@
 -- COMPLETED row is what stops the next cycle re-uploading an already-stored resource.
 -- `ALTER TABLE ... ADD COLUMN` is catalog-only, so no row is touched.
 --
--- `DEFAULT 0` must match Ledger.sq exactly (the verify task compares migrated vs created schemas). It is
+-- `DEFAULT 0` must match Ledger.sq exactly (the verify task compares migrated vs created schemas — a
+-- comparison that only became real when the schema snapshot was committed; see Ledger.sq's header). It is
 -- the correct resting value for every existing row: a row recorded before this column existed was, by
 -- construction, not marked absent.
 ALTER TABLE ledgerRow ADD COLUMN absent INTEGER NOT NULL DEFAULT 0;
