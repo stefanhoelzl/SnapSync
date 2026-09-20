@@ -62,12 +62,16 @@
   an album they previously would not have.
 - [ ] 5.2 `/ship`.
 
-## 6. Sync (only on the user's word, after the tasks land)
+## 6. Sync (only on the user's word)
 
-- [ ] 6.1 Sync the `event-album` delta into `openspec/specs/event-album/spec.md`.
-- [ ] 6.2 Hand-edit the Purpose, which a delta cannot reach: "An **opt-in**, per-membership album"
+Ordering correction: this section originally said "after the tasks land". The repo's convention is the
+opposite and the git log shows it — an `internal(openspec): sync and archive <id>` commit rides in the
+SAME PR as its implementation commit, so the sync happens before the merge, not after it.
+
+- [x] 6.1 Sync the `event-album` delta into `openspec/specs/event-album/spec.md`.
+- [x] 6.2 Hand-edit the Purpose, which a delta cannot reach: "An **opt-in**, per-membership album"
   now misstates the default. Reword to a declinable default-on album, keeping the rest of the
   Purpose (why it exists, who creates it, that identity survives leave) untouched.
-- [ ] 6.3 Run the archive gates from `openspec/config.yaml` before archiving — placeholder Purposes,
+- [x] 6.3 Run the archive gates from `openspec/config.yaml` before archiving — placeholder Purposes,
   delta completeness against the touched modules (`:ui:presentation`, `:ui:screens`,
   `:test:integration`), and removed type declarations (this change removes none).

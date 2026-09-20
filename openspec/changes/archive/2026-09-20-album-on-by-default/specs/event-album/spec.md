@@ -1,5 +1,43 @@
 ## MODIFIED Requirements
 
+### Requirement: Opt-in album mirroring per membership
+The system SHALL mirror an event's synced photos into a single PhotoKit album on the device — titled
+after the event's (non-null) `name` — when that membership's persisted `EventConfig.saveToAlbum` is
+`true` (capability `event-link`). The set placed into the album SHALL be **every** photo the membership
+syncs in its participation direction: the **foreign photos it downloads** and/or the **own photos it
+enqueues for upload** (capability `join-event` direction). When `saveToAlbum` is `false` the
+system SHALL create no album and place no photos. `false` is no longer what a join defaults to — the
+join surface seeds the choice **on** (see *The album opt-in is a direction-independent join-surface
+affordance*) — but it remains the value a config persisted before the field existed reads as
+(capability `event-link`), and the value a member who declines commits. The choice SHALL be a **forward-only runtime toggle**,
+changeable in place after join via `reconfigure-membership`: turning it **on** SHALL ensure the album and
+mirror, from that point onward, the foreign photos imported and the own photos whose upload is first
+enqueued — photos already imported or already enqueued SHALL NOT be retroactively gathered; turning it
+**off** SHALL stop further placement but SHALL NOT delete the album or clear its
+identity map (see *Album identity is remembered per event and survives leave*), so a later on reuses the
+same album. Album placement SHALL be **best-effort**: a failure to create the album or to add a given
+photo SHALL be logged and SHALL NOT fail, block, or retry the underlying sync (upload or import).
+
+#### Scenario: Album-on mirrors both directions
+- **WHEN** a membership has `saveToAlbum = true` and direction `Both`, and the device both downloads a foreign photo and enqueues the upload of its own photo
+- **THEN** both photos are present in the event's album
+
+#### Scenario: Album-off creates nothing
+- **WHEN** a membership has `saveToAlbum = false`
+- **THEN** no album is created and no photo is placed, for either direction
+
+#### Scenario: Turning the album on adds only photos synced thereafter
+- **WHEN** a membership with `saveToAlbum = false` and already-uploaded photos is reconfigured to `saveToAlbum = true`
+- **THEN** the album is ensured and own photos whose upload is first enqueued from that point onward are added, while the already-uploaded photos are not retroactively gathered
+
+#### Scenario: Turning the album off stops placement without deleting
+- **WHEN** a membership with `saveToAlbum = true` is reconfigured to `saveToAlbum = false`
+- **THEN** no further photos are placed, and the album and its `eventId → albumLocalId` map entry are left intact
+
+#### Scenario: A placement failure never breaks sync
+- **WHEN** adding a photo to the album fails (e.g. the asset was deleted, or the album no longer resolves)
+- **THEN** the failure is logged and the upload/import it rode on still proceeds
+
 ### Requirement: The album opt-in is a direction-independent join-surface affordance
 
 The join surface (capability `join-event`) SHALL present the album opt-in as a **standalone** affordance,
