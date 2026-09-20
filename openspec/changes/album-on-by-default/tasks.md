@@ -36,15 +36,25 @@
 
 ## 4. Marketing screenshots
 
-- [ ] 4.1 `gh workflow run screenshots.yml --ref <branch>`, download `screenshots-raw`, and diff
+- [x] 4.0 Unblock `screenshots.yml`, which could not build at all: `Config.xcconfig` #includes the
+  generated, gitignored `Deployment.xcconfig`, and this workflow — alone among the iOS-building
+  ones — never ran `scripts/resolve-deployment.py`. Broken on every dispatch since `3a93f5f4`
+  (2026-08-25), two days after its last green run, so nothing had caught it. Pre-existing and
+  independent of this change; folded in here because task 4.1 cannot run without it.
+- [x] 4.1 `gh workflow run screenshots.yml --ref <branch>`, download `screenshots-raw`, and diff
   against the committed raws.
-- [ ] 4.2 Expect `create` to re-diff only in the 90×32 px wall-clock region. A `joining` diff IS this
+- [x] 4.2 Expect `create` to re-diff only in the 90×32 px wall-clock region. A `joining` diff IS this
   change (that raw is normally byte-identical); an `in_sync` diff means something else moved and
   needs explaining before it is committed.
-- [ ] 4.3 Eyeball every changed capture for a stray system notification (it hit 1 of 2 runs) and
+- [x] 4.3 Eyeball every changed capture for a stray system notification (it hit 1 of 2 runs) and
   re-dispatch if one landed.
-- [ ] 4.4 Commit the moved raws in this PR, or record in the PR that `joining` did not move and
-  nothing was committed.
+- [x] 4.4 NOTHING COMMITTED — `joining` and `in_sync` came back byte-identical in both appearances,
+  because the album row sits below the fold: the 6.9" frame at scroll-top ends inside the Receive
+  section, clipped by the pinned Join/Cancel. Verified by opening the capture, not inferred from the
+  byte-compare. `create` moved in exactly two regions and nowhere else (diff bbox of the remainder is
+  empty): the wall-clock date line it legitimately renders, and the status-bar clock/battery glyphs —
+  capture noise in both cases, so committing them would be churn against an equally arbitrary older
+  capture.
 
 ## 5. Land it
 
