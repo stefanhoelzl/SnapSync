@@ -40,15 +40,21 @@ Listed here so `sync` does not have to rediscover them.
 
 ## 5. Screenshots
 
-- [ ] 5.1 Push the branch, then `gh workflow run screenshots.yml --ref <branch>` (~11-19 min).
-- [ ] 5.2 `RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')` then
+- [x] 5.1 Push the branch, then `gh workflow run screenshots.yml --ref <branch>` (~11-19 min).
+- [x] 5.2 `RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')` then
       `gh run download "$RID" -n screenshots-raw -D screenshots`.
-- [ ] 5.3 **Look at all six raws.** Confirm the new two-line caption reads well in light and dark and
+- [x] 5.3 **Look at all six raws.** Confirm the new two-line caption reads well in light and dark and
       the taller card has not crowded the status line. Re-dispatch if a "Ready for Apple Intelligence"
       system notification landed in any capture — it cannot be detected automatically.
-- [ ] 5.4 Confirm the diff is confined to `in_sync-{light,dark}` plus `create`'s 90x32px clock region;
+- [x] 5.4 Confirm the diff is confined to `in_sync-{light,dark}` plus `create`'s wall-clock region;
       `joining` should come back byte-identical. A diff anywhere else means the UI really moved.
-- [ ] 5.5 `git add screenshots/ && git commit`. No store or site action follows — the listing derives
+      **Measured (run 35536202440):** `joining` byte-identical. `create` re-diffs in one band,
+      y 966..1004 — the event date range, which derives from the capture instant. The runbook's
+      "90x32px" is stale: the create screen was redesigned to render a full range, so the region is
+      566x39. `in_sync` diffs only in the hero, y 1083..1875. No notification banner in any of the six.
+      Incidentally, the committed `create-dark` had a dimmed, mid-transition status bar unlike every
+      sibling; the new capture is fully rendered.
+- [x] 5.5 `git add screenshots/ && git commit`. No store or site action follows — the listing derives
       from these raws at release time and `site/` on merge.
 
 ## 6. Ship
