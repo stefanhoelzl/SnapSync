@@ -45,9 +45,15 @@ internal fun JoinedLayer(
         // JUST DID, and it self-clears on its own; without it a bad scan while joined said nothing at all.
         state.notice?.let { AppErrorBanner(it) }
         // The invite hero: sharing the event IS the point, so the QR is the tallest object on the screen.
-        // A tracked accent eyebrow names what the code is FOR to the current member (share it to add
-        // guests), while the card's own caption instructs the person scanning it — two audiences, one
-        // statement each, so neither line repeats the other.
+        // BOTH lines — the tracked accent eyebrow and the card's caption — address the member holding the
+        // device. There is no second audience: a person scanning the code is looking through their own
+        // camera, not reading 14sp type on someone else's phone. The caption used to be written at that
+        // scanner ("Scan to join this event"), which made it invisible to its intended reader and false to
+        // its actual one — a member who is already joined, told to go scan something. One asked "what do I
+        // need to do here?" in front of exactly that line.
+        // So the caption may name NO noun the reader could be: "guests" fails as badly, because host and
+        // guest see this identical screen and the confused member WAS a guest. Hence "someone else", and
+        // hence "let" — permission the member grants, not a task they owe. Capability `event-invite-qr`.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -55,7 +61,7 @@ internal fun JoinedLayer(
             AppEyebrow("Share this event", EyebrowTone.Accent)
             // Always rendered: the joined state carries the invite URL non-null, so there is no longer a
             // "joined but no link yet" frame for the hero to be missing in.
-            AppQrCode(content = state.inviteUrl, caption = "Scan to join this event")
+            AppQrCode(content = state.inviteUrl, caption = "Let someone else scan this to join")
         }
         // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
         // card under a white QR card read as a second competing surface; the screen's second fixation
