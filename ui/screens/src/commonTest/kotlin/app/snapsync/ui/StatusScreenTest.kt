@@ -373,7 +373,7 @@ class StatusScreenTest {
         onNodeWithText("In sync").assertDoesNotExist()
         onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
         onNodeWithContentDescription("Leave event").assertDoesNotExist()
-        onNodeWithText("Scan to join this event").assertDoesNotExist()
+        onNodeWithText("Let someone else scan this to join").assertDoesNotExist()
     }
 
     @Test
@@ -600,7 +600,7 @@ class StatusScreenTest {
              cutoff = fixedCutoff())
         }
         onNodeWithContentDescription("Leave event").assertExists()
-        onNodeWithText("Scan to join this event").assertExists()
+        onNodeWithText("Let someone else scan this to join").assertExists()
         onNodeWithContentDescription("Share invite link").assertExists()
     }
 
@@ -662,7 +662,7 @@ class StatusScreenTest {
     @Test
     fun `joined shows the invite QR and share action`() = runComposeUiTest {
         setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
-        onNodeWithText("Scan to join this event").assertExists()
+        onNodeWithText("Let someone else scan this to join").assertExists()
         onNodeWithContentDescription("Share invite link").assertExists()
     }
 
