@@ -75,6 +75,22 @@ jobs:
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
 
+      # Render the deployment BEFORE xcodebuild reads it. `Config.xcconfig` hard-`#include`s the
+      # GENERATED, gitignored `Deployment.xcconfig` (capability `deployment-configuration`), so a build
+      # without this step fails at CONFIGURATION time — "could not find included file" — rather than
+      # falling through to stale values. Every iOS-building workflow resolves first for that reason; this
+      # one never did. The include landed in 3a93f5f4, two days after this workflow's last green run, and
+      # because this workflow is dispatch-only and NON-GATING nothing reported it: every dispatch for the
+      # following month failed here. Keep this step ahead of any xcodebuild added below.
+      #
+      # WHICH deployment does not matter here — this target needs the file to EXIST, nothing more. The
+      # forge binary links no adapters and no backend client, and its bundle substitutes none of the
+      # resolved values (`SnapSyncForge` pins `PRODUCT_BUNDLE_IDENTIFIER = app.snapsync.forge` literally
+      # rather than reading `$(BUNDLE_ID)`, and its Info.plist references no other). `prod` is used anyway
+      # so that "which deployment did CI resolve?" has one answer across every workflow.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
       # Build the app for the simulator SDK. UNSIGNED (a simulator .app needs no code signing —
       # ios-app-shell "No code signing required for the simulator build"). Debug so the Kotlin/Native
       # framework link skips the LLVM optimizer — a screenshot needs no optimization.
