@@ -7,7 +7,9 @@
 --
 -- DATA-ONLY, the first ledger migration that is: no schema changes, so the SQLDelight verify task (migrated
 -- schema vs created schema) cannot tell a wrong rewrite from a right one. The migration test in
--- `SqlDelightLedgerStoreTest` is what asserts it.
+-- `SqlDelightLedgerStoreTest` is what asserts it. That remains true now that the verify task actually
+-- compares something (the schema snapshot, see Ledger.sq's header): it gained the power to catch schema
+-- drift and still has none over a row rewrite, so this file's coverage is the test and only the test.
 --
 -- REQUIRED, not tidy-up. `state` decodes through an enum that no longer names `UPLOADED`, and the state-scoped
 -- reads compare stored text against bound state sets — so an unrewritten row would either fail to decode or

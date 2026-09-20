@@ -95,11 +95,34 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
 // technology, so the two SQLDelight schemas share it, each from its own source dir (two `create`
 // blocks may not share srcDirs). Generated packages are unchanged from their pre-migration homes —
 // they are not runtime identity (the pinned db *filenames* are).
+//
+// ---- The schema snapshots (capability `sync-ledger`) --------------------------------------------
+//
+// `schemaOutputDirectory` is what makes `verifyCommonMain<Db>Migration` MEAN anything. That task is
+// registered either way and runs inside `./gradlew build` either way — but it verifies by applying
+// every migration later than a committed `.db` snapshot's version and comparing the result with the
+// schema the CREATE statements produce. With no snapshot there is nothing to apply migrations to, so
+// the task executes, compares nothing, and reports success. Measured before this was set: a probe
+// migration adding a column absent from Ledger.sq left the task GREEN. The check cost a build gate to
+// say nothing, and the drift it was cited as proving had been in the tree for as long as it had.
+//
+// Setting the directory also registers `generate<SourceSet><Db>Schema`, which emits the snapshot.
+//
+// A SNAPSHOT'S STALENESS IS NOT A DEFECT, and this is the opposite of the usual worry about a
+// generated artifact committed beside its source. An OLDER snapshot has MORE migrations applied to it
+// before the comparison, so it verifies more of the chain than a newer one. Forgetting to regenerate
+// after adding a migration therefore weakens nothing, which is why there is no freshness gate here
+// and none is wanted — unlike `architecture/`, where staleness is a real failure and IS gated.
+// Regenerate a snapshot when you want a later starting point checked, never out of hygiene.
+//
+// WHAT IT DOES NOT COVER: schema only. A data-only migration (8.sqm) changes no schema, so this task
+// cannot tell a right rewrite from a wrong one — `SqlDelightLedgerStoreTest` asserts those.
 sqldelight {
     databases {
         create("LedgerDatabase") {
             packageName.set("app.snapsync.engine.db")
             srcDirs.setFrom("src/commonMain/sqldelight/ledger")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/ledger/databases"))
             // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (2.sqm needs it), and the
             // record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
             dialect(libs.sqldelight.dialect.sqlite)
@@ -107,6 +130,7 @@ sqldelight {
         create("DownloadDatabase") {
             packageName.set("app.snapsync.downloadstore.db")
             srcDirs.setFrom("src/commonMain/sqldelight/download")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/download/databases"))
             dialect(libs.sqldelight.dialect.sqlite)
         }
     }

@@ -268,7 +268,8 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         )
 
         // The data-only rewrite. The migration-verify task compares schemas and cannot see a wrong one of
-        // these, which is why this test exists.
+        // these, which is why this test exists — and still cannot, now that the committed schema snapshot
+        // has made that comparison real: it gained drift detection and no power at all over a row rewrite.
         LedgerDatabase.Schema.migrate(driver, 8L, LedgerDatabase.Schema.version).await()
 
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
@@ -286,4 +287,110 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         // bound done set, so an unrewritten row would have counted pending forever.
         assertEquals(LedgerAggregates(pending = 3, completed = 2), backend.aggregates())
     }
+
+    // ---- 9.sqm: the destinationPath index -------------------------------------------------------
+    //
+    // TWO tests, because 9.sqm meets TWO shapes of v9 database and only one of them is reachable from the
+    // committed schema snapshot. `7.sqm` added `destinationPath` with ALTER TABLE ... ADD COLUMN, which
+    // creates no index, while `Ledger.sq` has always carried one — so a device that MIGRATED through 7.sqm
+    // lacks the index and a device CREATED FRESH at v7/v8/v9 has it. The verify task's snapshot is a fresh
+    // database, so it checks the second shape only; the first — the one that does the work, and the whole
+    // reason this migration exists — is asserted here.
+
+    @Test
+    fun `migration v9 to v10 adds the destinationPath index an upgraded device lacks`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // Stand up v9 as an UPGRADE through 7.sqm left it: every column of the current schema, the assetId
+        // index, and — the defect — no index on destinationPath.
+        driver.execute(null, V9_LEDGER_ROW, 0)
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow VALUES " +
+                "('D-photo.jpg', 'D', 'DISCOVERED', 0, 'E1', '2026-07-10T00:00:00Z', 'PRIMARY', " +
+                "'image/jpeg', 'IMG_D.JPG', 0, NULL), " +
+                "('R-photo.jpg', 'R', 'REQUESTED', 1, 'E1', '2026-07-10T00:00:00Z', 'PRIMARY', " +
+                "'image/jpeg', 'IMG_R.JPG', 0, '/v2/files/R'), " +
+                "('C-photo.jpg', 'C', 'COMPLETED', 0, 'E1', '2026-07-10T00:00:00Z', 'PRIMARY', " +
+                "'image/jpeg', 'IMG_C.JPG', 0, '/v2/files/C')",
+            0,
+        )
+        assertEquals(emptyList(), driver.indexNames().filter { it == DESTINATION_INDEX })
+
+        LedgerDatabase.Schema.migrate(driver, 9L, LedgerDatabase.Schema.version).await()
+
+        // The repair itself: the lookup the acknowledgement path runs on an OS deadline is now indexed on a
+        // device that upgraded, exactly as on one created fresh.
+        assertEquals(listOf(DESTINATION_INDEX), driver.indexNames().filter { it == DESTINATION_INDEX })
+
+        // CREATE INDEX builds a b-tree over the rows and rewrites none of them: nothing settles, nothing
+        // becomes upload work. Two pending + one completed going in, the same coming out.
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        assertEquals(LedgerState.DISCOVERED, backend.get("D-photo.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
+        val completed = backend.get("C-photo.jpg")
+        assertEquals(LedgerState.COMPLETED, completed?.state)
+        assertEquals("/v2/files/C", completed?.destinationPath, "the indexed column itself is untouched")
+        assertEquals("E1", completed?.eventId)
+        assertEquals(LedgerAggregates(pending = 2, completed = 1), backend.aggregates())
+    }
+
+    @Test
+    fun `migration v9 to v10 does not fail on a device created fresh with the index`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // The other shape: created from Ledger.sq's CREATE statements, which have always carried the index.
+        // A bare `CREATE INDEX` would fail here with "index ledgerRow_destinationPath already exists" — a
+        // crash on update for every recent install, which is why 9.sqm says IF NOT EXISTS.
+        driver.execute(null, V9_LEDGER_ROW, 0)
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(null, "CREATE INDEX $DESTINATION_INDEX ON ledgerRow(destinationPath)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow VALUES " +
+                "('C-photo.jpg', 'C', 'COMPLETED', 0, 'E1', '2026-07-10T00:00:00Z', 'PRIMARY', " +
+                "'image/jpeg', 'IMG_C.JPG', 0, '/v2/files/C')",
+            0,
+        )
+
+        LedgerDatabase.Schema.migrate(driver, 9L, LedgerDatabase.Schema.version).await()
+
+        // Present exactly once — the migration is idempotent, not additive.
+        assertEquals(listOf(DESTINATION_INDEX), driver.indexNames().filter { it == DESTINATION_INDEX })
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
+        assertEquals(LedgerAggregates(pending = 0, completed = 1), backend.aggregates())
+    }
 }
+
+private const val DESTINATION_INDEX = "ledgerRow_destinationPath"
+
+/** The v9 table: every column of the current schema, since 9.sqm adds none. */
+private val V9_LEDGER_ROW =
+    """
+    CREATE TABLE ledgerRow (
+        key TEXT NOT NULL PRIMARY KEY,
+        assetId TEXT NOT NULL,
+        state TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        eventId TEXT NOT NULL DEFAULT '',
+        creationDate TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT '',
+        contentType TEXT NOT NULL DEFAULT '',
+        originalFilename TEXT NOT NULL DEFAULT '',
+        absent INTEGER NOT NULL DEFAULT 0,
+        destinationPath TEXT
+    )
+    """.trimIndent()
+
+/** The index names SQLite actually holds — the thing under test, which no generated query exposes. */
+private fun JdbcSqliteDriver.indexNames(): List<String> =
+    executeQuery(
+        null,
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        { cursor ->
+            val names = mutableListOf<String>()
+            while (cursor.next().value) names += cursor.getString(0)!!
+            app.cash.sqldelight.db.QueryResult.Value(names.toList())
+        },
+        0,
+    ).value
