@@ -611,9 +611,24 @@ class JoinScreenTest {
     // ---- the standalone album minor section (capability `event-album`) ---------------------------------
 
     @Test
-    fun `the album row is a checkbox — off by default — stating no album`() = runComposeUiTest {
+    fun `the album row is a checkbox — on by default — stating what is collected`() = runComposeUiTest {
+        // The default is what an UNTOUCHED gate commits: the album is the only on-device statement
+        // that a set of photos belongs to this event, so deciding nothing gets you the grouping.
         setScreen { StatusScreen(joining(ready()), cutoff = fixedCutoff()) }
-        onNodeWithText("Create an album").assertIsCheckbox().assertToggle(ToggleableState.Off)
+        onNodeWithText("Create an album").assertIsCheckbox().assertToggle(ToggleableState.On)
+        onNodeWithText(
+            "Photos you share and photos you receive are collected in an album named after the event.",
+        ).assertExists()
+    }
+
+    @Test
+    fun `the album row states no album once it is unchecked`() = runComposeUiTest {
+        // Reachable only after a deliberate uncheck now that the row starts on — which is exactly when
+        // the line informs, and the only remaining assertion that it is rendered at all.
+        setScreen {
+            StatusScreen(joining(ready(), form = RangeForm(saveToAlbum = false)), cutoff = fixedCutoff())
+        }
+        onNodeWithText("Create an album").assertToggle(ToggleableState.Off)
         onNodeWithText("No album is created.").assertExists()
     }
 
@@ -643,9 +658,11 @@ class JoinScreenTest {
     @Test
     fun `tapping the album opt-in reports the choice`() = runComposeUiTest {
         var saveToAlbum: Boolean? = null
+        // Seeded OFF so the tap under test is the one that turns the album ON — the callback is what
+        // this asserts, and reading it off the default would make the test restate the seed instead.
         setScreen {
             StatusScreen(
-                joining(ready()),
+                joining(ready(), form = RangeForm(saveToAlbum = false)),
                 cutoff = fixedCutoff(),
                 actions = StatusActions(participation = participationActions(onSaveToAlbum = { saveToAlbum = it })),
             )
@@ -653,6 +670,20 @@ class JoinScreenTest {
         // The album row is at the bottom, below the expanded range selector — scroll it into view first.
         onNodeWithText("Create an album").performScrollTo().performClick()
         assertEquals(true, saveToAlbum)
+    }
+
+    @Test
+    fun `tapping the album opt-in from the default reports declining it`() = runComposeUiTest {
+        var saveToAlbum: Boolean? = null
+        setScreen {
+            StatusScreen(
+                joining(ready()),
+                cutoff = fixedCutoff(),
+                actions = StatusActions(participation = participationActions(onSaveToAlbum = { saveToAlbum = it })),
+            )
+        }
+        onNodeWithText("Create an album").performScrollTo().performClick()
+        assertEquals(false, saveToAlbum, "a tap from the on-by-default row declines the album")
     }
 
     // ---- the photo-access explainer names the event (capability `join-event`) -------------------------

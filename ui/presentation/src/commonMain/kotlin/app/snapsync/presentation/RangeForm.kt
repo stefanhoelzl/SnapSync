@@ -23,12 +23,18 @@ import kotlinx.serialization.Serializable
  * resolved instant. Resolution happens against the event window on every reduction ([resolve]), so a
  * window that arrives late (the details fetch resolving after the surface mounts) is picked up rather
  * than baked in.
+ *
+ * The defaults are what an UNTOUCHED gate commits, so each is a stance. All three participation values
+ * start on — including [saveToAlbum], because the album is the only on-device statement that a set of
+ * photos belongs to this event, and a member who decides nothing should get that grouping (capability
+ * `event-album`). The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own
+ * album default off; see `StatusContainerHost.autoConfirm`.
  */
 @Serializable
 data class RangeForm(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
-    val saveToAlbum: Boolean = false,
+    val saveToAlbum: Boolean = true,
     val fromPreset: FromChoice = FromChoice.EVENT_START,
     val fromCustom: LocalDateTime? = null,
     val untilPreset: UntilChoice = UntilChoice.EVENT_END,
