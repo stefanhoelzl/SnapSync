@@ -28,14 +28,14 @@
 These edit `openspec/specs/`, which is `sync`'s job, and each is a phase boundary the user opens.
 Listed here so `sync` does not have to rediscover them.
 
-- [ ] 4.1 Apply the `event-invite-qr` delta.
-- [ ] 4.2 Apply the `desktop-test-harness` delta.
-- [ ] 4.3 Fix the **purpose** line of `openspec/specs/event-invite-qr/spec.md`, which also quotes
+- [x] 4.1 Apply the `event-invite-qr` delta.
+- [x] 4.2 Apply the `desktop-test-harness` delta.
+- [x] 4.3 Fix the **purpose** line of `openspec/specs/event-invite-qr/spec.md`, which also quotes
       `("Scan to join this event")`. A delta cannot reach a Purpose section, so this must be edited by
       hand at sync or the spec will contradict its own requirement inside one file.
-- [ ] 4.4 Replace the `Decision record: changes/archive/<this change>` placeholder in the delta with
+- [x] 4.4 Replace the `Decision record: changes/archive/<this change>` placeholder in the delta with
       the real archived id once `archive` assigns it.
-- [ ] 4.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` — structure only; it does
+- [x] 4.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` — structure only; it does
       not read Kotlin, so it proves well-formedness, not truth.
 
 ## 5. Screenshots

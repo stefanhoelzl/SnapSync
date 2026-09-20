@@ -12,7 +12,7 @@ The caption SHALL be addressed to the **member looking at the screen**, and SHAL
 **someone else** scans this code in order to join. It SHALL NOT be an instruction to scan directed at
 whoever is reading it: the reader is already joined, and a scan imperative beneath a scannable code
 tells them to perform an act that is not theirs to perform. Decision record:
-`changes/archive/<this change>`.
+`changes/archive/2026-09-20-clarify-invite-qr-caption`.
 
 The exact wording is **not** pinned by this spec — it is owned by the joined-layer screen and pinned
 mechanically by that screen's tests, so the copy may be tuned without a spec change. What is pinned

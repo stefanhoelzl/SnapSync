@@ -4,8 +4,8 @@
 
 Inviting others to the joined event from within the app. A joined device already holds the
 join capability — the `eventId` in the persisted config — so it re-encodes the same event link
-(`encodeEventUrl`, capability `event-link`) and displays it as a scannable QR ("Scan to join this event") with
-a share action, in the joined layer only. Covers the deterministic invite-URL derivation, the
+(`encodeEventUrl`, capability `event-link`) and displays it as a scannable QR — captioned for the
+member, not for whoever scans it — with a share action, in the joined layer only. Covers the deterministic invite-URL derivation, the
 joined-layer visibility rule, the QR display, the fire-and-forget share over a bare
 `share: (String) -> Unit` lambda (no-op default), and the explicit acknowledgement that the
 displayed QR is the full join capability (any scanner becomes an uploader; an existing member
@@ -79,18 +79,32 @@ access. The gate SHALL be the same config-present predicate that scopes the leav
 - **THEN** no invite QR, caption, or share action is presented, even if an event is being created
 
 ### Requirement: The status screen displays the join QR with a caption
-In the joined layer the screen SHALL display a **scannable** QR encoding the invite link, with the
-caption "Scan to join this event", rendered through the design system's QR component (the QR-rendering
-library is contained to the components module; the screen passes only the link string and the
-caption text). The QR SHALL render the invite URL verbatim so another device's camera joins the same
-event. The QR SHALL render **dark modules on a light card in both light and dark themes** (the design
-system SHALL NOT render an inverted light-on-dark QR, which does not scan reliably — see
-`design-system`).
+In the joined layer the screen SHALL display a **scannable** QR encoding the invite link, with a
+caption, rendered through the design system's QR component (the QR-rendering library is contained to
+the components module; the screen passes only the link string and the caption text). The QR SHALL
+render the invite URL verbatim so another device's camera joins the same event. The QR SHALL render
+**dark modules on a light card in both light and dark themes** (the design system SHALL NOT render an
+inverted light-on-dark QR, which does not scan reliably — see `design-system`).
+
+The caption SHALL be addressed to the **member looking at the screen**, and SHALL state that
+**someone else** scans this code in order to join. It SHALL NOT be an instruction to scan directed at
+whoever is reading it: the reader is already joined, and a scan imperative beneath a scannable code
+tells them to perform an act that is not theirs to perform. Decision record:
+`changes/archive/2026-09-20-clarify-invite-qr-caption`.
+
+The exact wording is **not** pinned by this spec — it is owned by the joined-layer screen and pinned
+mechanically by that screen's tests, so the copy may be tuned without a spec change. What is pinned
+is the audience and the claim.
 
 #### Scenario: The QR encodes the invite link
 - **WHEN** the joined-layer screen renders the QR
-- **THEN** the QR encodes exactly the derived invite link and carries the "Scan to join this event"
-  caption
+- **THEN** the QR encodes exactly the derived invite link and carries a caption
+
+#### Scenario: The caption tells the member that someone else scans the code
+- **WHEN** a joined member — host or guest, who see the identical screen — reads the caption beneath
+  the QR
+- **THEN** it tells them that someone else scans this code to join, and does not instruct them to
+  scan anything
 
 #### Scenario: Scanning the displayed QR joins the same event
 - **WHEN** another device that has SnapSync installed scans the displayed QR
