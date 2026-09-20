@@ -335,6 +335,32 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    fun an_untouched_gate_commits_the_album() = worldTest {
+        // The seed is only a claim until it crosses `JoinEvent`. Every other join case here sets the
+        // album explicitly through `confirmJoinAs`, so without this one nothing covers the default
+        // actually reaching the persisted membership (capability `event-album`).
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            val host = joinHost(w, scope)
+
+            host.onOpenUrl(deeplink(EVENT_E))
+            host.await {
+                ((it as UiState).layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready
+            }
+
+            // Touch nothing — confirm the surface exactly as it loaded.
+            host.onConfirmJoin()
+            host.await { it.layer is Layer.Joined }
+
+            assertEquals(true, w.configSource.config.value?.saveToAlbum)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun autoJoin_auto_confirms_without_a_confirmation() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
@@ -347,6 +373,10 @@ class JoinGateIntegrationTest {
 
             assertEquals(EVENT_E, w.configSource.config.value?.eventId)
             assertTrue(w.store.manifestOf(EVENT_E, w.ownDeviceId) != null)
+            // The headless path does NOT inherit the surface's seeds wholesale: the cutoff and direction
+            // above mirror them, but the album stays off unless the link says otherwise (capability
+            // `event-album`). A default-on here would have every dev/test launch write an album.
+            assertEquals(false, w.configSource.config.value?.saveToAlbum)
         } finally {
             scope.cancel()
         }

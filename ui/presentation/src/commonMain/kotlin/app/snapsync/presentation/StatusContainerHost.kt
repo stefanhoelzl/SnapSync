@@ -862,7 +862,10 @@ class StatusContainerHost(
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
         // The album choice defaults to off, unless the event link supplied an explicit dev/test override
-        // (capability `event-album`).
+        // (capability `event-album`). This is the ONE default that deliberately does NOT mirror the
+        // interactive surface, where `RangeForm.saveToAlbum` starts ON: the cutoff and direction above
+        // match their seeds, but a headless launch should do the minimal, side-effect-free thing, and
+        // the link's explicit `saveToAlbum` already exercises album placement without a tap.
         val saveToAlbum = explicitSaveToAlbum ?: false
         val commit = commands.commitJoin(
             eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction,
