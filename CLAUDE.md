@@ -39,8 +39,11 @@ implementation, and violating any of them reads as "mysteriously broken" with no
 ① **the app never raises iOS's limited-library prompt itself — and nothing may be designed on when iOS
 does.** The prompt is iOS's automatic *"Select More Photos… / Keep Current Selection"* nudge to widen a
 partial selection; it is **not** a guard on reads (the app can only ever read the selection). The app
-suppresses it (`PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true` in `iosApp/iosApp/Info.plist`)
-and owns the route instead — the status screen's "Choose more photos" picker. **Settled** on the SE2
+suppresses it (`PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true` in `iosApp/iosApp/Info.plist`
+**and** `iosApp/BackgroundUploadExtension/Info.plist` — the key is read from each process's own bundle, and
+the extension, launched by the OS under `.limited` when a full-grant registration survived, evaluates the
+prompt at launch before any of our code runs: measured 2026-09-21, and one such launch showed it) and owns the
+route instead — the status screen's "Choose more photos" picker. **Settled** on the SE2
 across probes: reads of an unchanged library, however many, and the app's own creations (imports, album
 creation and adds — created assets join the selection) raise none. **Not settled**: a photo taken
 *outside* the selection. The key **leaked** on iOS 26.5 and 26.5.2 (July and August probes: queued

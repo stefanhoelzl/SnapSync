@@ -60,8 +60,8 @@ sealed interface RegistrationOutcome {
      *
      * Under a partial grant iOS refuses `setUploadJobExtensionEnabled` outright, in both directions, with
      * `PHPhotosErrorAccessUserDenied` (3311) — measured on an SE2 (iOS 26.6). Switching Photos to Limited
-     * Access is a supported user action in a capability built on partial grants being first-class, and the
-     * arm attempts this disable on every membership-lifecycle action taken while that grant is held. At
+     * Access is a supported user action in a capability built on partial grants being first-class, and a
+     * leave or a download-only join attempts this disable (it is forced there) while that grant is held. At
      * `Error` it would put a reporting event on each of them, which is the self-inflicted noise the 3201
      * carve-out above already exists to prevent.
      *
@@ -71,16 +71,17 @@ sealed interface RegistrationOutcome {
      * breadcrumb, never an event.
      *
      * The record **survives** the refusal — proven by the write's own return on the next full grant, since
-     * the read-back is grant-dependent — and that is safe: the OS does not invoke the extension under a
-     * partial grant, and a return to full re-registers through the ritual anyway. So the app's model of the
-     * registration is knowingly wrong here, and harmlessly so; the line says both halves.
+     * the read-back is grant-dependent — and the OS **does** invoke the extension under the partial grant
+     * (measured, SE2 / iOS 26.6, 2026-09-21). That is safe because the extension's own entry gate withholds
+     * without a full grant, and its Info.plist suppresses the automatic limited-library prompt it would
+     * otherwise evaluate at launch. The line says so, rather than the "inert, never invoked" it used to claim.
      */
     data object DisableRefusedByGrant : RegistrationOutcome {
         override val severity = Severity.Warn
         override val message =
             "extension disable refused under a partial photo grant (3311) — the configuration record " +
-                "survives and is inert: the OS does not invoke the extension under this grant, and a " +
-                "return to full access re-registers it"
+                "survives; the OS may still invoke the extension, whose entry gate withholds without a full " +
+                "grant, and a return to full access re-registers it"
     }
 
     /**

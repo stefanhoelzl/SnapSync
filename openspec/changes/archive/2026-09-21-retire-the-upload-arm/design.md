@@ -267,3 +267,13 @@ naming one is `upload-lifecycle`, whose "Membership transitions have no destruct
 **Found during device verification, after proposal:** a `NotJoined` cycle now reports `SKIPPED` (an unjoined
 device's foreground would otherwise arm a heartbeat for no event), and the OS was measured to invoke a
 surviving extension registration under a partial grant (SE2, iOS 26.6) — both reflected in the synced specs.
+
+**Found after archive, fixed in the same PR:** the member saw iOS's automatic limited-library prompt after
+the partial-grant device check. Syslog attributed it: the OS launched the extension under `LIMITED` (the
+surviving registration), and the extension's `PhotoLibraryServicesCore` evaluated the prompt at launch,
+~50 ms before `process()` began — the app process, which carries
+`PHPhotoLibraryPreventAutomaticLimitedAccessAlert`, never did. The extension bundle now carries the key too
+(`limited-photo-access`, "The app owns the limited-library picker"), and `RegistrationOutcome.DisableRefusedByGrant`
+no longer claims the surviving record is never invoked. Not caused by this change — the invocation predates
+it — but only its device run observed it.
+
