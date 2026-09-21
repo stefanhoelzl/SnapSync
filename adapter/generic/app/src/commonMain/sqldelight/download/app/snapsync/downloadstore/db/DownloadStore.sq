@@ -143,6 +143,13 @@ suppressedLocalIds:
 SELECT createdLocalId FROM downloadAsset
 WHERE createdLocalId IS NOT NULL;
 
+-- Every IMPORTED row's source ref and created local id, for the event album's gather (capability
+-- `event-album`). The caller filters by the refs of ONE event's union: this store is event-blind and stays
+-- so. An unconfirmed row (non-terminal, carrying a marker) is excluded — its asset is not adjudicated yet.
+selectImportedLocalIds:
+SELECT sourceDeviceId, sourceAssetId, createdLocalId FROM downloadAsset
+WHERE state = 'IMPORTED' AND createdLocalId IS NOT NULL;
+
 -- The download projection's three counts in ONE statement, so they come from one snapshot of the
 -- database rather than three reads taken at different instants (capability `download-store`; the
 -- `sync-status` group requires each of its members to be internally consistent). SQLite evaluates the

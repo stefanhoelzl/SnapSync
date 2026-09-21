@@ -66,9 +66,9 @@ import app.snapsync.ui.components.DialogCopy
  * floor on the far side, in `ReconfigureEvent`.
  *
  * Consequences are surfaced as **inline helper text**, never a blocking dialog (Save is the confirmation):
- * turning the album on states it is forward-only (no backfill), and a standing line states what narrowing
- * does: it stops listing the affected photos to the event, while anyone who already received them keeps
- * them and the member's own received photos are untouched. Both switches off disables Save with a reason,
+ * turning the album on states that it also collects the photos already synced, and a standing line states
+ * what narrowing does: it stops listing the affected photos to the event, while anyone who already received
+ * them keeps them and the member's own received photos are untouched. Both switches off disables Save with a reason,
  * exactly as the join surface disables Join.
  */
 @Composable
@@ -233,11 +233,11 @@ private fun reconfigureNotes(
         // against the member's own ceiling, but naming an event end we do not know would be a guess.
         "Pick when to stop sharing."
     },
-    // Forward-only (capability `reconfigure-membership`): already-synced photos are not retroactively
-    // gathered, so the on-note says so plainly.
+    // Turning the album on gathers what the device already holds (capabilities `reconfigure-membership`,
+    // `event-album`), so the on-note says the already-synced photos are included. "Synced", not "shared and
+    // received": this note does not vary with the switches, and must not name a feed the membership lacks.
     album = if (saveToAlbum) {
-        "Photos are collected in an album named after the event. Only photos synced " +
-            "from now on are added."
+        "Photos are collected in an album named after the event, including the ones already synced."
     } else {
         "No album is created."
     },

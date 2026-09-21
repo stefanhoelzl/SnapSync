@@ -221,8 +221,9 @@ class ParticipationActions(
  * bounds against the member's own ceiling but naming an event end nobody knows would be a guess.
  *
  * [album] differs in meaning, not wording. At the join gate it states what WILL be collected, and varies
- * over which switches are on; at reconfigure it states that the album is **forward-only** — already-synced
- * photos are not retroactively gathered (capability `reconfigure-membership`).
+ * over which switches are on; at reconfigure it states that turning the album on also collects the photos
+ * already synced, because the album gathers what the device already holds (capabilities
+ * `reconfigure-membership`, `event-album`).
  */
 class ParticipationNotes(
     val fromFloor: String,

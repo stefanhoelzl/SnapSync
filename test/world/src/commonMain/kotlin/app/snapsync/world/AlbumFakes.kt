@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.ports.AlbumManager
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * A recording [AlbumManager] for the world (capability `event-album`): tracks created albums and every
@@ -40,7 +41,22 @@ class FakeAlbumManager : AlbumManager {
 
     override suspend fun exists(albumLocalId: String): Boolean = albumLocalId in live
 
+    private var addsHeld: CompletableDeferred<Unit>? = null
+
+    /**
+     * Operator lever: every `add` waits until [releaseAdds]. During a join or a reconfigure Save only the event
+     * album's gather adds, so this is how a test shows the act that started a gather never waits on it
+     * (capability `event-album`).
+     */
+    fun holdAdds() { addsHeld = CompletableDeferred() }
+
+    fun releaseAdds() {
+        addsHeld?.complete(Unit)
+        addsHeld = null
+    }
+
     override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
+        addsHeld?.await()
         added.add(albumLocalId to rawLocalIds)
     }
 

@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.album.AlbumCoordinator
+import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.feature.creation.EventCreator
 import app.snapsync.feature.creation.MutableCreationStatusSource
@@ -462,6 +463,11 @@ class AppCore internal constructor(
         AlbumCoordinator(ports.albumManager, ports.albumMapStore)
     }
 
+    // The event album's gather (capability `event-album`): place what the device already holds for the event.
+    // Built HERE and nowhere in the extension's graph, so "the extension never gathers" holds by
+    // construction. Started, never awaited, by the act that triggered it.
+    val albumGather: AlbumGather by lazy { albumGather(ports, albumCoordinator, scope, ::selectionPolicyForMembership) }
+
     // The tier-neutral upload lifecycle (capability `upload-lifecycle`): which producer verb fires on
     // which membership transition. The root defaults nothing — an absent membership is `null`, and
     // the decision lives in the tested arm.
@@ -559,6 +565,8 @@ class AppCore internal constructor(
                     granted = ports.photoAccess.permission.value.grantsPhotoAccess,
                 )
             },
+            // Detached: `tap.reconfigure` is awaited by Save, and a gather's cost grows with what is held.
+            gatherAlbum = { cfg -> albumGather.start("reconfigure", cfg.eventId) },
             // On its own escaping launch (like Provision's reconcile), so a slow union read never blocks
             // the command's return.
             startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
@@ -577,7 +585,14 @@ class AppCore internal constructor(
             deviceId = ports.deviceId,
             details = ports.directory,
             enroller = ManifestDeviceEnroller(ports.eventJoin),
-            provision = ports.provision,
+            // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
+            // join gate — passes here, so the album gather is started once the provision returns. It starts
+            // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
+            // outlives its own run"), and the gather must not hold up the join (capability `event-album`).
+            provision = { cfg ->
+                ports.provision(cfg)
+                albumGather.start("provision", cfg.eventId)
+            },
         )
     }
 
@@ -1087,21 +1102,8 @@ class AppCore internal constructor(
                 uploadArm.triggers.onSelectionChanged()
             }
         }
-        scope.launch {
-            ports.photoAccess.permission.collect { status ->
-                // The app is the sole album creator, and sync needs the same grant, so the album exists
-                // before the first synced photo — both processes then only ADD (capability `event-album`).
-                // Unconditional call: the membership's opt-in/name gate is the coordinator's own guard.
-                // Usable access (`grantsPhotoAccess`): album creation works under a LIMITED grant
-                // (measured — capability `limited-photo-access`), so a limited member's opted-in album
-                // exists before their first import lands.
-                if (status.grantsPhotoAccess) {
-                    ports.configSource.config.value?.let { cfg ->
-                        albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
-                    }
-                }
-            }
-        }
+        // The event album's grant subscription: ensure the album, then let the gather judge the emission.
+        scope.launchAlbumGrantSubscription(ports, albumCoordinator, albumGather)
         scope.launch {
             // THE ONE ADJUDICATION CALL SITE (capability `photo-download`). Once per process, here, and
             // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a

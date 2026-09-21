@@ -456,4 +456,52 @@ abstract class DownloadStoreContract {
         assertEquals(1, s.unconfirmedImports().size, "it stays adjudicable")
         assertEquals(setOf("LOCAL-1"), s.suppressedLocalIds(), "and stays suppressed")
     }
+
+    // --- imported local identifiers by ref (capability `download-store`; read by the event album's gather) ---
+
+    @Test
+    fun imported_local_ids_answers_an_imported_ref() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markImported(ref, "LOCAL-1")
+        assertEquals(mapOf(ref to "LOCAL-1"), s.importedLocalIds(listOf(ref)))
+    }
+
+    @Test
+    fun imported_local_ids_omits_a_pending_ref() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        assertTrue(s.importedLocalIds(listOf(ref)).isEmpty())
+    }
+
+    @Test
+    fun imported_local_ids_omits_an_unconfirmed_ref() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+        assertTrue(
+            s.importedLocalIds(listOf(ref)).isEmpty(),
+            "a marker without a confirmed import is not yet known to name an asset",
+        )
+    }
+
+    @Test
+    fun imported_local_ids_omits_unimportable_and_unknown_refs() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.settleUnimportable(ref)
+        val unknown = AssetRef("DEVICE-Z", "NEVER-PLANNED")
+        assertTrue(s.importedLocalIds(listOf(ref, unknown)).isEmpty())
+    }
+
+    @Test
+    fun imported_local_ids_answers_only_the_asked_refs() = runTest {
+        val s = createStore()
+        val other = AssetRef("DEVICE-B", "ASSET-R")
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.plan(other, "2026-06-30T11:00:00Z", resources())
+        s.markImported(ref, "LOCAL-A")
+        s.markImported(other, "LOCAL-B")
+        assertEquals(mapOf(ref to "LOCAL-A"), s.importedLocalIds(listOf(ref)))
+    }
 }

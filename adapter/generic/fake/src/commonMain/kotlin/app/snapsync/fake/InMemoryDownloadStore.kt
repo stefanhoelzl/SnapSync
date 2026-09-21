@@ -34,6 +34,14 @@ internal class InMemoryDownloadStore : DownloadStore {
         assets.values.mapNotNull { it.createdLocalId }.toSet()
     }
 
+    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String> = lock.withLock {
+        refs.mapNotNull { ref ->
+            val row = assets[ref] ?: return@mapNotNull null
+            val localId = row.createdLocalId
+            if (row.state == DownloadState.IMPORTED && localId != null) ref to localId else null
+        }.toMap()
+    }
+
     override suspend fun isSettled(ref: AssetRef): Boolean = lock.withLock {
         assets[ref]?.state?.isTerminal == true
     }

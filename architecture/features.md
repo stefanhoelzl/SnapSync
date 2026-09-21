@@ -8,8 +8,8 @@ on drift; regenerate instead.
 
 ## `feature/album`
 
-- files: `AlbumCoordinator.kt`, `AlbumMapMigration.kt`
-- top-level types: `AlbumCoordinator (class)`, `AlbumMapSource (interface)`
+- files: `AlbumCoordinator.kt`, `AlbumGather.kt`, `AlbumMapMigration.kt`
+- top-level types: `AlbumCoordinator (class)`, `AlbumGather (class)`, `AlbumMapSource (interface)`
 
 ## `feature/creation`
 
