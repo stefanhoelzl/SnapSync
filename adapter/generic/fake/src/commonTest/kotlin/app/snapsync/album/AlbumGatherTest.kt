@@ -98,7 +98,7 @@ class AlbumGatherTest {
 
         suspend fun own(assetId: String, creationDate: String, eventId: String = "E1") {
             ledger.recordUnlessSettled(
-                LedgerEntry("$assetId.HEIC", assetId, LedgerState.COMPLETED, 0, eventId, creationDate = creationDate),
+                LedgerEntry("$assetId.HEIC", assetId, LedgerState.COMPLETED, creationDate = creationDate),
             )
         }
 

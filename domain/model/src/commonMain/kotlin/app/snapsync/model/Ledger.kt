@@ -3,16 +3,14 @@ package app.snapsync.model
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
  * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping
- * id, several resources of one photo share it), the last recorded lifecycle [state], the
- * [attempt] it belongs to, and the [eventId] that was joined when the row was recorded. An
+ * id, several resources of one photo share it) and the last recorded lifecycle [state]. An
  * uploaded resource is immutable, so a `COMPLETED` entry's mere existence is the proof of upload;
  * there is no content version, and the ledger keeps no timestamp.
  *
- * [eventId] is **provenance, not dedup state**: the key stays the bare event-independent filename,
- * no read consults [eventId], and a `COMPLETED` row stays valid across an event switch (spec
- * `sync-ledger`, "Event-independent key"). `""` is the pre-provenance sentinel — a row recorded
- * before the ledger carried the column (the 4.sqm migration default, or a staged-revert build's
- * writes) — which the single writer's per-cycle backfill sweeps to the then-live event id.
+ * The row keeps **no attempt count, no event provenance and no absence mark** — `10.sqm` dropped all three,
+ * because nothing read them (decision record `changes/shrink-the-ledger-row`). The key is the bare,
+ * event-independent filename, so a `COMPLETED` row stays valid across an event switch (spec `sync-ledger`,
+ * "Event-independent key").
  *
  * The last four fields carry the **device manifest's presentation detail** (capability
  * `sync-ledger`): the asset's [creationDate] and, per resource, its [role], [contentType] and human
@@ -29,26 +27,10 @@ class LedgerEntry(
     val key: String,
     val assetId: String,
     val state: LedgerState,
-    val attempt: Int,
-    val eventId: String,
     val creationDate: String = "",
     val role: ResourceRole? = null,
     val contentType: String = "",
     val originalFilename: String = "",
-    /**
-     * The **retired** absence mark: an earlier build set it when an asset left the library, instead of
-     * deleting the row. Nothing sets it any more — a departed asset's rows are deleted by the walk that
-     * shows it gone (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk") —
-     * and the cycle's per-cycle sweep clears what an earlier build left, because every read that answers
-     * "what does this device hold or share" still excludes a marked row. The column goes with the migration
-     * that drops it; until then this field only carries what storage holds.
-     *
-     * The mark once replaced a `DELETE` for a reason that still holds, and holds for the deletion that
-     * replaced the mark: a prune fed the policy-admitted set conflated "gone from the library" with "outside
-     * the current capture window", so raising a cutoff discarded the `COMPLETED` rows of photos still in the
-     * library. The walk's deletion is judged by presence and by the rows' own window, never by admission.
-     */
-    val absent: Boolean = false,
     /**
      * The destination this row's upload was addressed to, or `null` for a row recorded before the
      * ledger kept it.
@@ -71,43 +53,29 @@ class LedgerEntry(
 
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
         key == other.key && assetId == other.assetId && state == other.state &&
-        attempt == other.attempt && eventId == other.eventId &&
         creationDate == other.creationDate && role == other.role &&
         contentType == other.contentType && originalFilename == other.originalFilename &&
-        absent == other.absent && destinationPath == other.destinationPath
-
-    /** The same row, recorded as having left the library. Pure: nothing else about the row changes. */
-    fun markedAbsent(): LedgerEntry = withAbsent(true)
-
-    /** The same row, recorded as being in the library again. Pure: nothing else about the row changes. */
-    fun markedPresent(): LedgerEntry = withAbsent(false)
+        destinationPath == other.destinationPath
 
     /**
      * The same row in [state], every other field unchanged — what a bulk state change such as
      * `LedgerStore.demoteRequested` does to each row it matches.
      */
-    fun withState(state: LedgerState): LedgerEntry = rebuilt(state = state, absent = absent)
-
-    private fun withAbsent(absent: Boolean): LedgerEntry = rebuilt(state = state, absent = absent)
-
-    private fun rebuilt(state: LedgerState, absent: Boolean): LedgerEntry = LedgerEntry(
+    fun withState(state: LedgerState): LedgerEntry = LedgerEntry(
         key = key,
         assetId = assetId,
         state = state,
-        attempt = attempt,
-        eventId = eventId,
         creationDate = creationDate,
         role = role,
         contentType = contentType,
         originalFilename = originalFilename,
-        absent = absent,
         destinationPath = destinationPath,
     )
 
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
-        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, eventId=$eventId)"
+        "LedgerEntry($key, assetId=$assetId, $state)"
 }
 
 /**
@@ -120,15 +88,11 @@ class LedgerEntry(
  */
 fun Resource.toLedgerRow(
     state: LedgerState,
-    attempt: Int,
-    eventId: String,
     destinationPath: String? = null,
 ): LedgerEntry = LedgerEntry(
     key = filename,
     assetId = assetId,
     state = state,
-    attempt = attempt,
-    eventId = eventId,
     creationDate = metadata[RESOURCE_META_CREATION_DATE] ?: "",
     role = roleFromUploadKey(filename),
     contentType = metadata[RESOURCE_META_MIME] ?: contentType,
@@ -138,8 +102,11 @@ fun Resource.toLedgerRow(
 
 enum class LedgerState {
     /**
-     * The discovery walk found this resource, the membership's policy admitted it, and nothing has been
-     * attempted for it.
+     * This resource **needs an upload job**: the discovery walk found it, the membership's policy admitted it,
+     * and nothing is in flight for it — either nothing has been attempted yet, or an attempt failed and
+     * returned the row here. Those were once two states (`DISCOVERED`, `FAILED`); they were one fact to a
+     * producer, and `10.sqm` rewrote the second into the first (decision record
+     * `changes/shrink-the-ledger-row`, D3).
      *
      * The only state named for the **walk** rather than for an upload attempt, and the reason the ledger
      * can be the cycle's source of work at all: without it, the sole record of "this needs uploading"
@@ -180,25 +147,24 @@ enum class LedgerState {
      * `changes/archive/2026-08-26-fix-lost-upload-acks`.
      */
     COMPLETED,
-
-    /** The platform reported a failed attempt; a retry was answered alongside. */
-    FAILED,
 }
 
 /**
- * How an upload **terminated** — the only states a platform callback may record through the ledger's guarded
- * terminal write (capability `sync-ledger`).
+ * How an upload **terminated**, as the platform reported it, and the state the ledger's guarded terminal write
+ * records for each (capability `sync-ledger`): a success is [LedgerState.COMPLETED]; a failure returns the row
+ * to [LedgerState.DISCOVERED], so the ledger's work read offers it again.
  *
  * A type rather than a [LedgerState] because that write is the one record operation reachable outside the
  * single writer's type-level protection: the party the platform tells is a callback holding only the key.
- * Fixing the recordable set in the parameter's type makes recording `DISCOVERED` or `REQUESTED` through it a
- * compile error instead of a convention.
+ * Fixing the recordable set in the parameter's type makes claiming a job exists — recording `REQUESTED` —
+ * through it a compile error instead of a convention. The cases name what the **platform** reported: `FAILED`
+ * is still what happened, although the ledger no longer has a state of that name.
  *
- * Decision record: `changes/retire-uploaded-state` (D6).
+ * Decision records: `changes/retire-uploaded-state` (D6), `changes/shrink-the-ledger-row` (D3).
  */
 enum class TerminalOutcome(val state: LedgerState) {
     COMPLETED(LedgerState.COMPLETED),
-    FAILED(LedgerState.FAILED),
+    FAILED(LedgerState.DISCOVERED),
 }
 
 /**
@@ -217,7 +183,7 @@ enum class TerminalOutcome(val state: LedgerState) {
 val LedgerState.isDone: Boolean
     get() = when (this) {
         LedgerState.COMPLETED -> true
-        LedgerState.DISCOVERED, LedgerState.REQUESTED, LedgerState.FAILED -> false
+        LedgerState.DISCOVERED, LedgerState.REQUESTED -> false
     }
 
 /** The settled states, bound into every state-scoped storage read. See [isDone]. */
@@ -232,15 +198,13 @@ val DONE_STATES: List<LedgerState> = LedgerState.entries.filter { it.isDone }
  * not imply each other — [LedgerState.REQUESTED] is neither done nor in need of a job — so every state is
  * classified on both, and this `when` has no `else` for the same reason [isDone] has none.
  *
- * [LedgerState.DISCOVERED] and [LedgerState.FAILED] are the same fact to a producer, differing only in
- * whether an attempt was already made. Collapsing them here is what makes the never-retried `FAILED` row
- * and the never-enqueued remainder one defect with one fix: before this, both were reachable only by a
- * walk that re-derived their resource, which an incremental walk does not do for an asset that has not
- * changed.
+ * Only [LedgerState.DISCOVERED] needs one. A failed upload returns its row there, so the never-retried
+ * failure and the never-enqueued remainder are one fact found by one read — which is why the separate
+ * `FAILED` state could be retired (decision record `changes/shrink-the-ledger-row`).
  */
 val LedgerState.needsJob: Boolean
     get() = when (this) {
-        LedgerState.DISCOVERED, LedgerState.FAILED -> true
+        LedgerState.DISCOVERED -> true
         LedgerState.REQUESTED, LedgerState.COMPLETED -> false
     }
 
@@ -271,7 +235,7 @@ val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJ
 val LedgerState.bytesBelievedStored: Boolean
     get() = when (this) {
         LedgerState.COMPLETED -> true
-        LedgerState.DISCOVERED, LedgerState.REQUESTED, LedgerState.FAILED -> false
+        LedgerState.DISCOVERED, LedgerState.REQUESTED -> false
     }
 
 /**

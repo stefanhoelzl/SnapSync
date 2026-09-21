@@ -32,9 +32,10 @@ interface TransferRecord {
     suspend fun entryForDestination(destinationPath: String): LedgerEntry?
 
     /**
-     * Record how one upload terminated — [outcome] becomes the row's state — but **only while that row is
-     * still `REQUESTED`**; answers whether it applied. [TerminalOutcome] admits only `COMPLETED` and
-     * `FAILED`, so no other state can be recorded through this verb.
+     * Record how one upload terminated — [outcome]'s state becomes the row's (`COMPLETED` for a success; a
+     * failure returns the row to `DISCOVERED`) — but **only while that row is still `REQUESTED`**; answers
+     * whether it applied. [TerminalOutcome] fixes that set, so a callback can never claim a job exists
+     * (`REQUESTED`) through this verb.
      *
      * The guard is the operation's purpose. Two writers reach a row holding no shared lock — a platform
      * callback recording that an upload terminated, on the platform's own queue, and the upload cycle's
@@ -44,7 +45,7 @@ interface TransferRecord {
      * reason: *"the guard SHALL live in the store's write rather than in a caller's preceding read"*.)
      *
      * Every other column is preserved by the backend rather than re-supplied here: the caller is a delegate
-     * that holds only the key and cannot re-state `assetId`, `attempt`, `eventId` or the manifest detail.
+     * that holds only the key and cannot re-state `assetId`, the destination or the manifest detail.
      *
      * **Non-suspending**, because its caller cannot suspend — an ObjC completion block is not a coroutine —
      * and because the write must land *before* that callback returns. After it returns the process's

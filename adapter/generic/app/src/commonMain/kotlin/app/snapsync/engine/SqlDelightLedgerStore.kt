@@ -14,7 +14,6 @@ import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.engine.db.LedgerDatabase
 import app.snapsync.engine.db.LedgerRow
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -28,9 +27,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  */
 class SqlDelightLedgerStore(
     database: LedgerDatabase,
-    // Defaulted, unlike the required ports elsewhere: a logger has a safe default (this tag), and
-    // the parameter exists only so tests may silence or capture the store's diagnostics.
-    private val log: Logger = Logger.withTag("SqlDelightLedgerStore"),
 ) : LedgerStore {
 
     private val queries = database.ledgerQueries
@@ -54,21 +50,17 @@ class SqlDelightLedgerStore(
         key: String,
         assetId: String,
         state: LedgerState,
-        attempt: Long,
-        eventId: String,
         creationDate: String,
         role: String,
         contentType: String,
         filename: String,
-        absent: Long,
         destinationPath: String?,
     ) = LedgerEntry(
-        key, assetId, state, attempt.toInt(), eventId,
+        key, assetId, state,
         creationDate = creationDate,
         role = roleOrNull(role),
         contentType = contentType,
         originalFilename = filename,
-        absent = absent != 0L,
         destinationPath = destinationPath,
     )
 
@@ -80,9 +72,9 @@ class SqlDelightLedgerStore(
     override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
         val applied = queries.transactionWithResult {
             queries.recordUnlessSettled(
-                entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
+                entry.key, entry.assetId, entry.state,
                 entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
-                if (entry.absent) 1L else 0L, entry.destinationPath, DONE_STATES,
+                entry.destinationPath, DONE_STATES,
             )
             queries.changedRows().executeAsOne() > 0L
         }
@@ -100,9 +92,9 @@ class SqlDelightLedgerStore(
         val applied = queries.transactionWithResult {
             entries.count { entry ->
                 queries.recordUnlessSettled(
-                    entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
+                    entry.key, entry.assetId, entry.state,
                     entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
-                    if (entry.absent) 1L else 0L, entry.destinationPath, DONE_STATES,
+                    entry.destinationPath, DONE_STATES,
                 )
                 queries.changedRows().executeAsOne() > 0L
             }
@@ -119,8 +111,6 @@ class SqlDelightLedgerStore(
                 key = key,
                 assetId = assetId,
                 state = state,
-                attempt = 0,
-                eventId = "", // provenance is irrelevant to the projection; the window decides
                 creationDate = creationDate,
                 role = roleOrNull(role),
                 contentType = contentType,
@@ -191,9 +181,9 @@ class SqlDelightLedgerStore(
             queries.deleteAll()
             entries.forEach {
                 queries.insert(
-                    it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId,
+                    it.key, it.assetId, it.state,
                     it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
-                    if (it.absent) 1L else 0L, it.destinationPath,
+                    it.destinationPath,
                 )
             }
         }
@@ -213,31 +203,10 @@ class SqlDelightLedgerStore(
         if (deleted > 0L) dings.tryEmit(Unit)
     }
 
-    override suspend fun clearAbsenceMarks() {
-        val cleared = queries.transactionWithResult {
-            queries.clearAbsenceMarks()
-            queries.changedRows().executeAsOne()
-        }
-        if (cleared > 0L) {
-            // Positively observable, like the eventId backfill: the steady-state no-op stays silent.
-            log.i { "absence marks cleared on $cleared row(s) an earlier build marked" }
-            dings.tryEmit(Unit)
-        }
-    }
-
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
     private fun roleOrNull(wire: String): ResourceRole? =
         ResourceRole.entries.firstOrNull { it.wire == wire }
 
-    override suspend fun backfillEventId(eventId: String) {
-        // One UPDATE matching the '' sentinel only — rows already carrying a real eventId are
-        // untouched by the WHERE clause, so the sweep is idempotent by construction. The swept
-        // count is logged when non-zero so the sweep is POSITIVELY observable on device
-        // (`debug.log` is the extension's only observability); the steady-state no-op stays silent.
-        val swept = queries.backfillEventId(eventId).value
-        if (swept > 0) log.i { "eventId backfill: swept $swept row(s)" }
-        dings.tryEmit(Unit)
-    }
 }
 
 /** Keys per `deleteKeys` statement — well under every driver's bind-variable limit. */

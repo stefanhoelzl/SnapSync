@@ -174,7 +174,7 @@ class AlbumWorldTest {
 
     private suspend fun World.seedCompletedOwnRow(assetId: String) {
         ledgerBackend.recordUnlessSettled(
-            LedgerEntry("$assetId-primary.jpg", assetId, LedgerState.COMPLETED, 0, "E0", creationDate = World.DEFAULT_DATE),
+            LedgerEntry("$assetId-primary.jpg", assetId, LedgerState.COMPLETED, creationDate = World.DEFAULT_DATE),
         )
     }
 

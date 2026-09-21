@@ -60,7 +60,7 @@ class CeilingReachesEveryConsumerTest {
 
     /** The COMPLETED ledger rows those resources would have produced — what the manifest projects from. */
     private fun ledgerRows(): List<LedgerEntry> =
-        discovered.map { it.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId = "E") }
+        discovered.map { it.toLedgerRow(LedgerState.COMPLETED) }
 
     private val discovered = listOf(
         resource("IN", inWindow),

@@ -21,13 +21,10 @@ class LedgerEntryEqualityTest {
         key = "A-primary.jpg",
         assetId = "A",
         state = LedgerState.COMPLETED,
-        attempt = 1,
-        eventId = "E",
         creationDate = "2026-08-28T10:00:00Z",
         role = ResourceRole.PRIMARY,
         contentType = "image/jpeg",
         originalFilename = "IMG_0042.JPG",
-        absent = false,
         destinationPath = "/api/v2/files/devices/D/A/primary",
     )
 
@@ -43,13 +40,10 @@ class LedgerEntryEqualityTest {
             "key" to base.copyWith(key = "B-primary.jpg"),
             "assetId" to base.copyWith(assetId = "B"),
             "state" to base.copyWith(state = LedgerState.REQUESTED),
-            "attempt" to base.copyWith(attempt = 2),
-            "eventId" to base.copyWith(eventId = "E2"),
             "creationDate" to base.copyWith(creationDate = "2026-08-29T10:00:00Z"),
             "role" to base.copyWith(role = ResourceRole.LIVE),
             "contentType" to base.copyWith(contentType = "image/heic"),
             "originalFilename" to base.copyWith(originalFilename = "IMG_0043.JPG"),
-            "absent" to base.copyWith(absent = true),
             "destinationPath" to base.copyWith(destinationPath = "/api/v2/files/devices/D/B/primary"),
         )
         for ((field, variant) in variants) {
@@ -69,27 +63,16 @@ class LedgerEntryEqualityTest {
         assertTrue(!base.equals("A-primary.jpg"), "equality must not reduce to the key alone")
     }
 
-    @Test
-    fun marking_absent_changes_only_absent() {
-        val marked = base.markedAbsent()
-        assertTrue(marked.absent)
-        assertEquals(base, marked.copyWith(absent = false), "nothing else about the row may move")
-    }
-
     private fun LedgerEntry.copyWith(
         key: String = this.key,
         assetId: String = this.assetId,
         state: LedgerState = this.state,
-        attempt: Int = this.attempt,
-        eventId: String = this.eventId,
         creationDate: String = this.creationDate,
         role: ResourceRole? = this.role,
         contentType: String = this.contentType,
         originalFilename: String = this.originalFilename,
-        absent: Boolean = this.absent,
         destinationPath: String? = this.destinationPath,
     ) = LedgerEntry(
-        key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename,
-        absent, destinationPath,
+        key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath,
     )
 }

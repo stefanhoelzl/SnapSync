@@ -134,8 +134,8 @@ the **ledger**. That is device-global dedup — it stays valid across events, an
 reconciliation's `resetTo` re-baselines it. **No `stop()` repairs anything either** — not the ledger, not
 the discovery cursor. What a stop can leave behind is `REQUESTED` rows no transfer will settle (the OS's
 extension-disable wipes every in-flight PhotoKit job; a cancelled `URLSession` task may deliver no
-completion), and each mechanism demotes those to `FAILED` in its own **`start()`** — the one moment no other
-transfer can be carrying them. A `FAILED` row comes back through the ledger's work read, so no re-enumeration
+completion), and each mechanism demotes those to `DISCOVERED` in its own **`start()`** — the one moment no
+other transfer can be carrying them. A `DISCOVERED` row comes back through the ledger's work read, so no re-enumeration
 is needed (`upload-lifecycle`, `ios-photokit-upload`, `ios-url-session-upload`).
 
 This structure is load-bearing, not tidiness. The lifecycle *used* to live here as a pile of

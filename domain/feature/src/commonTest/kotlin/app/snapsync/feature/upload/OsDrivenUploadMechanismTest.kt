@@ -68,7 +68,7 @@ class OsDrivenUploadMechanismTest {
         private val rows = mutableMapOf<String, LedgerEntry>()
 
         fun requested(key: String) {
-            rows[key] = LedgerEntry(key = key, assetId = key, state = LedgerState.REQUESTED, attempt = 0, eventId = "event")
+            rows[key] = LedgerEntry(key = key, assetId = key, state = LedgerState.REQUESTED)
         }
 
         override val changes: Flow<Unit> = emptyFlow()
@@ -82,7 +82,7 @@ class OsDrivenUploadMechanismTest {
         override suspend fun demoteRequested() {
             log += "demote"
             for (row in rows.entries) {
-                if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.FAILED))
+                if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.DISCOVERED))
             }
         }
 
@@ -115,8 +115,6 @@ class OsDrivenUploadMechanismTest {
         override suspend fun resetTo(entries: List<LedgerEntry>) = TODO("not reached by this mechanism")
         override suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int = TODO("not reached by this mechanism")
         override suspend fun deleteKeys(keys: Collection<String>) = TODO("not reached by this mechanism")
-        override suspend fun clearAbsenceMarks() = TODO("not reached by this mechanism")
-        override suspend fun backfillEventId(eventId: String) = TODO("not reached by this mechanism")
     }
 
     private fun mechanism(
@@ -154,7 +152,7 @@ class OsDrivenUploadMechanismTest {
         val (mechanism, _) = mechanism(log, ledger)
         mechanism.start()
         assertEquals(listOf("disable", "demote", "enable"), log, "the repair must sit inside the toggle, in order")
-        assertEquals(LedgerState.FAILED, ledger.stateOf("a.jpg"), "the orphaned row must be demoted, not dropped")
+        assertEquals(LedgerState.DISCOVERED, ledger.stateOf("a.jpg"), "the orphaned row must be demoted, not dropped")
     }
 
     /** A stale record is replaced rather than rejected: the disable finds one, the enable re-creates it. */

@@ -128,7 +128,7 @@ class AlbumGather(
 
     private suspend fun ownSet(cfg: EventConfig): List<String> {
         val rows = ledger.manifestRows()
-        val admitted = admittedAssetIds(rows.filterNot { it.absent }, policyFor(cfg))
+        val admitted = admittedAssetIds(rows, policyFor(cfg))
         return admitted.sorted().map(::denormalizeAssetId)
     }
 

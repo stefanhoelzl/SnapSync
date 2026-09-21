@@ -128,10 +128,8 @@ class UploadReconciler(
         // listing (global, event-independent) preserves cross-event dedup: a switch re-seeds the same
         // files COMPLETED, so nothing still stored re-uploads; a deleted or never-stored resource is
         // absent from the listing and uploads.
-        // Seeds carry the reconciled event as provenance (`sync-ledger`): the seed IS this join's
-        // write, so no seeded row ever needs the pre-provenance backfill sweep.
         val seeds = filenames.map {
-            LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED, attempt = 0, eventId = configuredEventId)
+            LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED)
         }
         ledger.resetTo(seeds)
         marker.set(configuredEventId) // settle even when the listing is empty → the next cycle does not re-loop

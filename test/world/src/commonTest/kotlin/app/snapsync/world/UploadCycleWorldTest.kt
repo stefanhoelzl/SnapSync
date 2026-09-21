@@ -29,17 +29,22 @@ class UploadCycleWorldTest {
     }
 
     @Test
-    fun fail_drives_real_retry_with_incremented_attempt() = worldTest {
+    fun fail_drives_real_retry_that_re_creates_the_job() = worldTest {
         val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
-        w.runUploadCycle() // REQUESTED, attempt 0
-        assertEquals(0, w.ledgerBackend.get("A-primary.jpg")?.attempt)
+        w.runUploadCycle() // REQUESTED, first creation
+        assertEquals(1, w.platform.created.count { it.filename == "A-primary.jpg" })
 
         w.platform.failJob("A-primary.jpg", UploadError.Network)
-        w.runUploadCycle() // retry → REQUESTED, attempt 1
+        w.runUploadCycle() // first failure → the single free retry re-points the job, still REQUESTED
         assertEquals(LedgerState.REQUESTED, w.ledgerBackend.get("A-primary.jpg")?.state)
-        assertEquals(1, w.ledgerBackend.get("A-primary.jpg")?.attempt)
+        assertEquals(1, w.platform.created.count { it.filename == "A-primary.jpg" })
+
+        w.platform.failJob("A-primary.jpg", UploadError.Network)
+        w.runUploadCycle() // retry-spent → back to DISCOVERED, then re-created in the same cycle
+        assertEquals(LedgerState.REQUESTED, w.ledgerBackend.get("A-primary.jpg")?.state)
+        assertEquals(2, w.platform.created.count { it.filename == "A-primary.jpg" })
     }
 
     @Test

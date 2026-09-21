@@ -49,7 +49,7 @@ class OsDrivenUploadMechanism(
      * schedule `process()`. Idempotent-safe to repeat.
      *
      * Between the disable and the enable it **repairs** the `REQUESTED` rows the disable orphaned, demoting
-     * them to `FAILED` (see the body). This is the only place this mechanism touches the ledger.
+     * them to `DISCOVERED` (see the body). This is the only place this mechanism touches the ledger.
      *
      * This ritual is **specific to this tier**: it exists to fix an OS registration record. The app-driven
      * tier has no such record, which is why applying this shape to it — the tier-blind
@@ -63,7 +63,7 @@ class OsDrivenUploadMechanism(
         // `REQUESTED` rows would never move again. Every `REQUESTED` row is unsettleable right now: this tier's
         // jobs are gone, and wherever the app-driven mechanism exists its `stop()` ran before this start. So the
         // whole set is demoted — through the reset family, because on this tier the extension is the one
-        // recording process — and a `FAILED` row returns through the ledger's work read with no walk.
+        // recording process — and a `DISCOVERED` row returns through the ledger's work read with no walk.
         //
         // Awaited, off-main: it completes BEFORE the re-enable below, so a row the re-registered extension
         // records can never be demoted by a repair still running.

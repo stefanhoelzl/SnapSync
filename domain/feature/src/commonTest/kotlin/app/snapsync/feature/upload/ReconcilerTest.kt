@@ -75,7 +75,6 @@ class ReconcilerTest {
         val primary = ledger.get("A-primary.heic")!!
         assertEquals(LedgerState.COMPLETED, primary.state)
         assertEquals("A", primary.assetId) // assetId recovered from the filename
-        assertEquals("E1", primary.eventId) // seeds carry the reconciled event as provenance
         assertEquals(LedgerState.COMPLETED, ledger.get("A-live.mov")!!.state)
         assertEquals("E1", marker.read())
     }
@@ -214,7 +213,7 @@ class ReconcilerTest {
         // (a reset), not transiently un-listed. So the ledger must be wiped to empty, so the next walk finds no
         // row for anything and re-uploads everything — NOT deferred (which hung the device forever).
         val ledger = FakeLedgerStore().apply {
-            recordUnlessSettled(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0, eventId = ""))
+            recordUnlessSettled(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED))
         }
         val files = FakeFiles(Result.success(emptyList()))
         val marker = FakeMarker("OLD")
@@ -229,8 +228,8 @@ class ReconcilerTest {
         // Listing reports a strict SUBSET of the ledger's prior COMPLETED files (some objects deleted
         // from storage). resetTo seeds only the still-stored files; the deleted one drops out and re-uploads.
         val ledger = FakeLedgerStore().apply {
-            recordUnlessSettled(LedgerEntry("kept-primary.heic", "kept", LedgerState.COMPLETED, 0, eventId = ""))
-            recordUnlessSettled(LedgerEntry("gone-primary.heic", "gone", LedgerState.COMPLETED, 0, eventId = "")) // deleted from storage
+            recordUnlessSettled(LedgerEntry("kept-primary.heic", "kept", LedgerState.COMPLETED))
+            recordUnlessSettled(LedgerEntry("gone-primary.heic", "gone", LedgerState.COMPLETED)) // deleted from storage
         }
         val files = FakeFiles(Result.success(listOf("kept-primary.heic"))) // only the survivor is listed
         val marker = FakeMarker("OLD")
@@ -257,8 +256,8 @@ class ReconcilerTest {
         // Dedup: a file still in the device listing stays COMPLETED (no re-upload). But resetTo also
         // CLEARS a phantom row whose job never materialized — otherwise the engine skips it forever.
         val ledger = FakeLedgerStore().apply {
-            recordUnlessSettled(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0, eventId = "")) // really in /files
-            recordUnlessSettled(LedgerEntry("phantom-primary.heic", "phantom", LedgerState.REQUESTED, 0, eventId = "")) // job never created
+            recordUnlessSettled(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED)) // really in /files
+            recordUnlessSettled(LedgerEntry("phantom-primary.heic", "phantom", LedgerState.REQUESTED)) // job never created
         }
         val files = FakeFiles(Result.success(listOf("stored-primary.heic", "new-primary.heic")))
         val marker = FakeMarker("OLD")
@@ -273,7 +272,7 @@ class ReconcilerTest {
 
     @Test
     fun `leaving clears the marker but keeps the ledger intact`() = runTest {
-        val ledger = FakeLedgerStore().apply { recordUnlessSettled(LedgerEntry("k-primary.heic", "k", LedgerState.COMPLETED, 0, eventId = "")) }
+        val ledger = FakeLedgerStore().apply { recordUnlessSettled(LedgerEntry("k-primary.heic", "k", LedgerState.COMPLETED)) }
         val files = FakeFiles(Result.success(emptyList()))
         val marker = FakeMarker("E1")
 
@@ -299,7 +298,7 @@ class ReconcilerTest {
         val ledger = FakeLedgerStore()
         reconciler(FakeFiles(Result.success(listOf("A-primary.heic"))), ledger, FakeMarker(null)).reconcile("E1")
 
-        val engine = SyncEngine(FakeProvider, LedgerWriter(ledger), eventId = "E1")
+        val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))
         assertEquals(
             SyncDecision.AlreadyUploaded,
             engine.handle(SyncEvent.ResourceChanged(res("A-primary.heic", "A"))),

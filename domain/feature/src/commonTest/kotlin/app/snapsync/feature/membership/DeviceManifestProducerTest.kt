@@ -58,8 +58,6 @@ class DeviceManifestProducerTest {
         key = "$id-${role.wire}.jpg",
         assetId = id,
         state = state,
-        attempt = 0,
-        eventId = "E",
         creationDate = date,
         role = role,
         contentType = "image/jpeg",
@@ -161,12 +159,12 @@ class DeviceManifestProducerTest {
 
     @Test
     fun a_failing_resource_does_not_change_the_declaration() = runTest {
-        // Why FAILED is declared like any other state: the engine retries forever with no attempt budget,
-        // so FAILED means "attempted, still owed". Excluding it would make the declared role set
+        // Why a failed resource stays declared: the engine retries forever, and a failure returns the row to
+        // DISCOVERED — "still owed". Excluding it would make the declared role set
         // oscillate as a resource fails and retries — and each flip is a manifest write and a member wake.
         val policy = policyFrom("0001-01-01T00:00:00Z")
         val discovered = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
-        val failed = listOf(row("A"), row("A", state = LedgerState.FAILED, role = ResourceRole.LIVE))
+        val failed = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
         val retried = listOf(row("A"), row("A", state = LedgerState.REQUESTED, role = ResourceRole.LIVE))
 
         val json = projectDeviceManifest("dev", discovered, policy).encodeToJson()
@@ -197,7 +195,7 @@ class DeviceManifestProducerTest {
         // full enumeration backfills it. It is excluded by the POLICY, not by a predicate in the
         // projection or its storage read: an empty capture date sorts before every real cutoff
         // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.
-        val bare = LedgerEntry("Z-primary.jpg", "Z", LedgerState.COMPLETED, attempt = 0, eventId = "E")
+        val bare = LedgerEntry("Z-primary.jpg", "Z", LedgerState.COMPLETED)
         val m = projectDeviceManifest("dev", listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
         assertEquals(listOf("A"), m.assets.map { it.assetId })
     }

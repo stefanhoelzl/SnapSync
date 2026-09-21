@@ -40,8 +40,8 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val thrown = runCatching {
             backend.recordAllUnlessSettled(
                 listOf(
-                    LedgerEntry("X-primary.heic", "X", LedgerState.DISCOVERED, 0, eventId = "E1"),
-                    LedgerEntry("X-live.mov", "X", LedgerState.DISCOVERED, 0, eventId = "E1"),
+                    LedgerEntry("X-primary.heic", "X", LedgerState.DISCOVERED),
+                    LedgerEntry("X-live.mov", "X", LedgerState.DISCOVERED),
                 ),
             )
         }
@@ -76,7 +76,7 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
         assertNull(backend.get("old-key")) // 1.sqm is destructive — pre-migration rows are not preserved
         // The assetId column exists and version/updatedAt are gone: a put/get round-trips.
-        backend.recordUnlessSettled(LedgerEntry("k", "A", LedgerState.REQUESTED, 0, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("k", "A", LedgerState.REQUESTED))
         assertEquals("A", backend.get("k")?.assetId)
     }
 
@@ -108,7 +108,6 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val survived = SqlDelightLedgerStore(LedgerDatabase(driver)).get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals("A", survived?.assetId)
-        assertEquals(0, survived?.attempt)
     }
 
     @Test
@@ -134,19 +133,18 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         // Run only the v3 -> v4 migration (3.sqm: ALTER TABLE … DROP COLUMN updatedAt, row-preserving).
         LedgerDatabase.Schema.migrate(driver, 3L, LedgerDatabase.Schema.version).await()
 
-        // The COMPLETED row survives, now without an updatedAt column; key/assetId/state/attempt intact.
+        // The COMPLETED row survives, now without an updatedAt column; key/assetId/state intact.
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals("A", survived?.assetId)
-        assertEquals(0, survived?.attempt)
         // The generated schema no longer binds updatedAt — a fresh put/get round-trips.
-        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED))
         assertEquals("B", backend.get("B-photo.jpg")?.assetId)
     }
 
     @Test
-    fun `migration v4 to v5 adds eventId as the sentinel and preserves COMPLETED rows`() = runTest {
+    fun `migration from v4 preserves COMPLETED rows`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         // Stand up the v4 schema (key, assetId, state, attempt — no eventId) holding a COMPLETED row.
         driver.execute(
@@ -167,50 +165,20 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         // Run only the v4 -> v5 migration (4.sqm: ALTER TABLE … ADD COLUMN eventId, row-preserving).
         LedgerDatabase.Schema.migrate(driver, 4L, LedgerDatabase.Schema.version).await()
 
-        // The COMPLETED row survives (the 2.sqm house invariant: a surviving COMPLETED row is what
-        // stops re-upload) and carries the pre-provenance sentinel — the true eventId lives in
-        // config, unreachable from SQL, so the migration cannot fill it.
+        // The COMPLETED row survives the whole chain (the 2.sqm house invariant: a surviving COMPLETED row is
+        // what stops re-upload) — through 4.sqm adding `eventId` and 10.sqm dropping it again.
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals("A", survived?.assetId)
-        assertEquals(0, survived?.attempt)
-        assertEquals("", survived?.eventId)
 
-        // The single writer's first post-migration cycle sweeps the sentinel to the live event.
-        backend.backfillEventId("E1")
-        assertEquals("E1", backend.get("A-photo.jpg")?.eventId)
-        assertEquals(LedgerState.COMPLETED, backend.get("A-photo.jpg")?.state)
-
-        // And a fresh put on the migrated schema round-trips the new column.
-        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
-        assertEquals("E1", backend.get("B-photo.jpg")?.eventId)
+        // And a fresh put on the migrated schema round-trips.
+        backend.recordUnlessSettled(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED))
+        assertEquals(LedgerState.REQUESTED, backend.get("B-photo.jpg")?.state)
     }
 
     @Test
-    fun `a v4-shaped column-explicit insert still works on the v5 schema`() = runTest {
-        // The staged-revert guarantee: a reverted build ships the OLD generated queries — a
-        // column-explicit 4-column INSERT OR REPLACE — against the already-migrated 5-column table.
-        // `DEFAULT ''` is what lets that insert succeed (the row lands as a sentinel row, swept by
-        // the next post-re-update cycle's backfill). This is the INSERT-level half of the downgrade
-        // stance; the driver-level half (SQLiter refuses to OPEN a newer-versioned DB) is design.md's.
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        LedgerDatabase.Schema.create(driver)
-
-        driver.execute(
-            null,
-            "INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt) VALUES ('r', 'R', 'COMPLETED', 0)",
-            0,
-        )
-
-        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
-        val row = backend.get("r")
-        assertEquals(LedgerState.COMPLETED, row?.state)
-        assertEquals("", row?.eventId) // the DEFAULT filled the omitted column
-    }
-
-    @Test
-    fun `migration v6 to v7 adds absent unset and preserves COMPLETED rows`() = runTest {
+    fun `migration from v6 preserves COMPLETED rows and their manifest detail`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         // Stand up the v6 schema (manifest detail present, no `absent` column) holding a COMPLETED row.
         driver.execute(
@@ -248,22 +216,21 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val survived = backend.get("A-photo.jpg")
         assertEquals(LedgerState.COMPLETED, survived?.state)
         assertEquals("A", survived?.assetId)
-        assertEquals("E1", survived?.eventId)
         assertEquals("2026-07-10T00:00:00Z", survived?.creationDate)
-        // Unset is the correct resting value: a row recorded before this column existed was, by
-        // construction, not marked absent.
-        assertEquals(false, survived?.absent)
-        // And it still projects into the manifest, which filters on that column.
+        // And it still projects into the manifest — 6.sqm's `absent` column came and went (10.sqm) without
+        // ever hiding a row nobody marked.
         assertEquals(listOf("A"), backend.manifestRows().map { it.assetId })
     }
 
     @Test
     fun `migration v8 to v9 settles UPLOADED rows and touches nothing else`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        // 8.sqm changes no schema, so the v8 schema IS the current one: create it, then plant rows exactly
-        // as a build that still wrote `UPLOADED` left them. The raw INSERT is the point — the current enum
-        // cannot express that state, so no Kotlin write could put it there.
-        LedgerDatabase.Schema.create(driver)
+        // 8.sqm changes no schema, so the v8 schema is the v10 one (9.sqm adds only an index): stand it up,
+        // then plant rows exactly as a build that still wrote `UPLOADED` left them. The raw INSERT is the
+        // point — the current enum cannot express that state, so no Kotlin write could put it there.
+        driver.execute(null, V9_LEDGER_ROW, 0)
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(null, "CREATE INDEX $DESTINATION_INDEX ON ledgerRow(destinationPath)", 0)
         driver.execute(
             null,
             "INSERT INTO ledgerRow (key, assetId, state, attempt, eventId, creationDate, role, contentType, " +
@@ -285,14 +252,12 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
         val settled = backend.get("U-primary.jpg")
         assertEquals(LedgerState.COMPLETED, settled?.state, "an UPLOADED row decodes, and decodes settled")
-        assertEquals(2, settled?.attempt)
-        assertEquals("E1", settled?.eventId)
         assertEquals("2026-07-10T00:00:00Z", settled?.creationDate)
         assertEquals("/v2/files/U", settled?.destinationPath)
         assertEquals(LedgerState.DISCOVERED, backend.get("D-primary.jpg")?.state)
         assertEquals(LedgerState.REQUESTED, backend.get("R-primary.jpg")?.state)
         assertEquals(LedgerState.COMPLETED, backend.get("C-primary.jpg")?.state)
-        assertEquals(LedgerState.FAILED, backend.get("F-primary.jpg")?.state)
+        assertEquals(LedgerState.DISCOVERED, backend.get("F-primary.jpg")?.state, "and 10.sqm rewrites FAILED")
         // The half a decode alias could never have fixed: the aggregate compares the STORED text against the
         // bound done set, so an unrewritten row would have counted pending forever.
         assertEquals(LedgerAggregates(pending = 3, completed = 2), backend.aggregates())
@@ -341,7 +306,6 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val completed = backend.get("C-photo.jpg")
         assertEquals(LedgerState.COMPLETED, completed?.state)
         assertEquals("/v2/files/C", completed?.destinationPath, "the indexed column itself is untouched")
-        assertEquals("E1", completed?.eventId)
         assertEquals(LedgerAggregates(pending = 2, completed = 1), backend.aggregates())
     }
 
@@ -370,11 +334,72 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
         assertEquals(LedgerAggregates(pending = 0, completed = 1), backend.aggregates())
     }
+
+    // ---- 10.sqm: three states, and no attempt, provenance or absence columns ----------------------
+    //
+    // The schema half (three drops) is checked by the verify task against the committed snapshot. The row
+    // rewrite is not — it changes no schema — so this test is its coverage, exactly as for 8.sqm.
+
+    @Test
+    fun `migration v10 to v11 rewrites FAILED rows to DISCOVERED and drops the three columns`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // v10 as both routes leave it (9.sqm made them agree): every retired column, both indexes.
+        driver.execute(null, V9_LEDGER_ROW, 0)
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(null, "CREATE INDEX $DESTINATION_INDEX ON ledgerRow(destinationPath)", 0)
+        // Raw INSERTs: the current enum cannot write FAILED, and the current schema has no absent/eventId.
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow VALUES " +
+                "('F-photo.jpg', 'F', 'FAILED', 3, 'E1', '2026-07-10T00:00:00Z', 'primary', " +
+                "'image/jpeg', 'IMG_F.JPG', 0, '/v2/files/F'), " +
+                "('D-photo.jpg', 'D', 'DISCOVERED', 0, 'E1', '2026-07-10T00:00:00Z', 'primary', " +
+                "'image/jpeg', 'IMG_D.JPG', 0, NULL), " +
+                "('R-photo.jpg', 'R', 'REQUESTED', 1, 'E1', '2026-07-10T00:00:00Z', 'primary', " +
+                "'image/jpeg', 'IMG_R.JPG', 0, '/v2/files/R'), " +
+                "('C-photo.jpg', 'C', 'COMPLETED', 0, 'E1', '2026-07-10T00:00:00Z', 'primary', " +
+                "'image/jpeg', 'IMG_C.JPG', 0, '/v2/files/C'), " +
+                // An earlier build's absence mark, on a row whose provenance was never swept.
+                "('A-photo.jpg', 'A', 'COMPLETED', 0, '', '2026-07-10T00:00:00Z', 'primary', " +
+                "'image/jpeg', 'IMG_A.JPG', 1, '/v2/files/A')",
+            0,
+        )
+
+        LedgerDatabase.Schema.migrate(driver, 10L, LedgerDatabase.Schema.version).await()
+
+        // The schema half: no retired column survives (the verify task checks this too, from the snapshot).
+        assertEquals(
+            listOf(
+                "key", "assetId", "state", "creationDate", "role", "contentType", "originalFilename",
+                "destinationPath",
+            ),
+            driver.columnNames(),
+        )
+
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        // The rewrite: FAILED decodes — as DISCOVERED — with every surviving column untouched.
+        val failed = backend.get("F-photo.jpg")!!
+        assertEquals(LedgerState.DISCOVERED, failed.state)
+        assertEquals("2026-07-10T00:00:00Z", failed.creationDate)
+        assertEquals("IMG_F.JPG", failed.originalFilename)
+        assertEquals("/v2/files/F", failed.destinationPath)
+        // Nothing else moves: a COMPLETED row is still what stops a re-upload.
+        assertEquals(LedgerState.DISCOVERED, backend.get("D-photo.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get("A-photo.jpg")?.state)
+        // The half a decode alias could never have fixed: the work read compares STORED text against the
+        // bound needs-job set, so an unrewritten FAILED row would never have been offered a job.
+        assertEquals(listOf("D-photo.jpg", "F-photo.jpg"), backend.rowsNeedingJob().map { it.key })
+        // The formerly marked row is reachable again, exactly as the retired per-cycle sweep would have left it.
+        assertTrue("A-photo.jpg" in backend.manifestRows().map { it.key })
+        assertEquals(LedgerAggregates(pending = 3, completed = 2), backend.aggregates())
+    }
 }
 
 private const val DESTINATION_INDEX = "ledgerRow_destinationPath"
 
-/** The v9 table: every column of the current schema, since 9.sqm adds none. */
+/** The v9 (and v10) table: 9.sqm adds no column, so this is also the shape 10.sqm meets. */
 private val V9_LEDGER_ROW =
     """
     CREATE TABLE ledgerRow (
@@ -397,6 +422,19 @@ private fun JdbcSqliteDriver.indexNames(): List<String> =
     executeQuery(
         null,
         "SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        { cursor ->
+            val names = mutableListOf<String>()
+            while (cursor.next().value) names += cursor.getString(0)!!
+            app.cash.sqldelight.db.QueryResult.Value(names.toList())
+        },
+        0,
+    ).value
+
+/** The ledger table's columns in declaration order, as SQLite holds them. */
+private fun JdbcSqliteDriver.columnNames(): List<String> =
+    executeQuery(
+        null,
+        "SELECT name FROM pragma_table_info('ledgerRow') ORDER BY cid",
         { cursor ->
             val names = mutableListOf<String>()
             while (cursor.next().value) names += cursor.getString(0)!!

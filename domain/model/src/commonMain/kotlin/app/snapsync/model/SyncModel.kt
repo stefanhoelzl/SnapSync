@@ -43,24 +43,23 @@ sealed interface SyncEvent {
     /** A resource exists with this content state (newly discovered, changed, or re-enumerated). */
     class ResourceChanged(val resource: Resource) : SyncEvent
 
-    /** A previously issued upload failed; [job] is the newest retained job for it. */
-    class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent
+    /** A previously issued upload failed; [request] is the newest retained request for it. */
+    class UploadFailed(val request: UploadRequest, val error: UploadError) : SyncEvent
 
     /**
-     * The platform created (or retried) the upload [job] — reported AFTER the create/retry call
+     * The platform created (or retried) the upload for [request] — reported AFTER the create/retry call
      * succeeds (write-after-act). This is the *only* event that records `REQUESTED`: a
      * [ResourceChanged] decision mints the work but never records, so a `REQUESTED` entry always
      * implies a real in-flight job. A dropped report (created the job, died before reporting)
      * leaves no `REQUESTED`, which the next [ResourceChanged] re-derivation safely re-issues as a
      * bounded, idempotent duplicate — never a stranded key.
      */
-    class UploadStarted(val job: UploadJob) : SyncEvent
+    class UploadStarted(val request: UploadRequest) : SyncEvent
 }
 
 /**
- * An upload failure, mapped from the platform's raw error at the seam. v1 policy ignores the
- * distinction (retry forever) — the taxonomy exists for logging today and for a future
- * attempt-budget policy.
+ * An upload failure, mapped from the platform's raw error at the seam. The policy ignores the
+ * distinction (retry forever) — the taxonomy exists for logging.
  */
 sealed interface UploadError {
     data object Network : UploadError
@@ -70,9 +69,18 @@ sealed interface UploadError {
 }
 
 /**
- * A complete, executable upload: PUT the resource's bytes to [url] with exactly [headers].
- * Minted by an [UploadRequestProvider]. Carries its [resource] whole so a failed upload can
- * round-trip through [SyncEvent.UploadFailed] and be re-minted without any engine state.
+ * A complete, executable upload: PUT the resource's bytes to [url] with exactly [headers] — the one unit of
+ * platform work (spec: sync-engine), carried by the [SyncDecision.Work] arms. Minted by an
+ * [UploadRequestProvider]. Carries its [resource] whole so a failed upload can round-trip through
+ * [SyncEvent.UploadFailed] and be re-minted without any engine state.
+ *
+ * Retention rule: the platform must be able to produce the newest request for each platform job on demand —
+ * persist the serializable fields, re-attach [Resource.data] on rehydration (minting reads only the string
+ * fields; only execution needs the payload).
+ *
+ * There is no attempt count and no job wrapper: the engine retries forever, so a count would limit nothing,
+ * and which platform call executes the work (create, or retry an existing job) is decided by where the work
+ * came from, never by a number on it (decision record `changes/shrink-the-ledger-row`, D4).
  */
 class UploadRequest(
     val url: String,
@@ -81,37 +89,22 @@ class UploadRequest(
 )
 
 /**
- * One unit of platform work (spec: sync-engine), carried by the [SyncDecision.Work] arms.
- *
- * [attempt] discriminates execution: `0` → create a new platform upload job; `> 0` → retry the
- * existing one (or acknowledge-and-recreate it, the platform's choice).
- *
- * Retention rule: the platform must be able to produce the newest [UploadJob] for each platform
- * job on demand — persist the serializable fields, re-attach [Resource.data] on rehydration
- * (minting reads only the string fields; only execution needs the payload).
- */
-class UploadJob(
-    val request: UploadRequest,
-    val attempt: Int,
-)
-
-/**
  * The engine's answer to an event: what, if anything, the platform should do. The arms name
- * their provenance — platforms treat every [Work] identically (execute the job); the
+ * their provenance — platforms treat every [Work] identically (execute the request); the
  * distinction exists for logs, the harness journal, and future policy.
  */
 sealed interface SyncDecision {
 
-    /** The decision carries a job to execute. */
+    /** The decision carries a request to execute. */
     sealed interface Work : SyncDecision {
-        val job: UploadJob
+        val request: UploadRequest
     }
 
     /** Not (provably) uploaded yet — includes re-answers for unconfirmed hopes. */
-    class Upload(override val job: UploadJob) : Work
+    class Upload(override val request: UploadRequest) : Work
 
-    /** The answer to a failure: the same resource, attempt + 1, freshly minted request. */
-    class Retry(override val job: UploadJob) : Work
+    /** The answer to a failure: the same resource, a freshly minted request. */
+    class Retry(override val request: UploadRequest) : Work
 
     /**
      * Nothing for the platform to do. Returned when the ledger already proves the content backed

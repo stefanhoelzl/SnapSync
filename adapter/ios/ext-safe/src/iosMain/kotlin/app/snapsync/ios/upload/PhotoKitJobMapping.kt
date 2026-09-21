@@ -146,7 +146,7 @@ internal fun legacyKeyOf(path: String): String? {
  * its upload was first enqueued (`changes/retire-uploaded-state`).
  *
  * Every non-succeeded terminal state — `FAILED`, `CANCELLED`, and the `PENDING` an untaught state maps to
- * — is recorded `FAILED` and re-created **iff its resource is still live**. `resourceIsLive` is a fact
+ * — returns its row to `DISCOVERED` and is re-created **iff its resource is still live**. `resourceIsLive` is a fact
  * about the platform's job object rather than a policy: `resource` is nil for every succeeded job, and nil
  * for a failure whose asset has since been deleted, and neither can be re-created from nothing.
  *
@@ -177,7 +177,7 @@ fun terminalDisposition(state: PhotoKitJobState, resourceIsLive: Boolean): Termi
  * All five states the SDK declares are named. The `else` therefore means exactly one thing — a value no
  * SDK header carries — rather than doubling as the arm that handles `Pending`. It maps to
  * [PhotoKitJobState.PENDING], which the terminal-job drain adjudicates as a retry-spent failure: the
- * key is recorded `FAILED`, a fresh job is created if the resource survives, and the job is
+ * key's row returns to `DISCOVERED`, a fresh job is created if the resource survives, and the job is
  * acknowledged either way. That is safe (the edge PUT is idempotent and keys are deterministic, so a
  * re-send overwrites the same object) but it is a guess, which is why the declared set is pinned at
  * build time by `:test:architecture`'s platform-vocabulary pin — a case Apple adds fails the

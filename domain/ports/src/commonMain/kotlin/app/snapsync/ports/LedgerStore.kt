@@ -35,7 +35,7 @@ interface LedgerStore : TransferRecord {
      *
      * The guard is the operation's purpose, and it lives in the storage statement, not in a caller's
      * preceding read: a read-then-write is not atomic against a second writer, and a late record over a
-     * settled row — a stale `FAILED`, a duplicate `REQUESTED` — would demand a job for bytes the backend
+     * settled row — a stale failure, a duplicate `REQUESTED` — would demand a job for bytes the backend
      * already holds. Transitions between non-done states still apply.
      *
      * Dings [changes] only when it applied. `false` means the row was settled, which is a different fact from
@@ -70,9 +70,9 @@ interface LedgerStore : TransferRecord {
      * (capability `sync-ledger`).
      *
      * Returns exactly the rows whose state is in [app.snapsync.model.NEEDS_JOB_STATES], interpreting
-     * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set spans
-     * `DISCOVERED` and `FAILED`, which are the same fact to a producer — a key with no live job and no
-     * bytes on the backend — differing only in whether an attempt was already made.
+     * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set is
+     * `DISCOVERED` — a key with no live job and no bytes on the backend, whether never attempted or returned
+     * there by a failure.
      *
      * **Unbounded, deliberately.** A cycle does bound its work — a first walk on a large library records a
      * row per outstanding resource, and enqueuing all of them would stage every one to disk — but it
@@ -81,8 +81,6 @@ interface LedgerStore : TransferRecord {
      * stable key order, so rows the membership's current policy excludes, sorting ahead of admitted ones,
      * would fill the slice on every cycle and the admitted work further down would never be reached. The
      * scan is local and indexed; the platform round-trip the bound protects is the caller's to make.
-     *
-     * Absent rows are excluded: the asset has left the library, so there is nothing to upload from.
      */
     suspend fun rowsNeedingJob(): List<LedgerEntry>
 
@@ -91,15 +89,15 @@ interface LedgerStore : TransferRecord {
      * (`ios-url-session-upload`).
      *
      * Deliberately narrower than [pendingResources], which that tier used to read for this and which
-     * returns the whole non-settled backlog. A `FAILED` row has already been adjudicated; re-surfacing it
-     * every cycle re-writes the row, signals a change, and reports a loss that did not happen — a device
+     * returns the whole non-settled backlog. A `DISCOVERED` row is already back in the work read; re-surfacing
+     * it every cycle re-writes the row, signals a change, and reports a loss that did not happen — a device
      * log shows one key "stranded" twelve times inside a single process, seven within sixteen seconds.
      */
     suspend fun requestedKeys(): Set<String>
 
     /**
-     * The rows the **device manifest** projects from (capability `device-manifest`): every row this
-     * device has not marked absent, whatever its upload state.
+     * The rows the **device manifest** projects from (capability `device-manifest`): every row,
+     * whatever its upload state.
      *
      * Deliberately **not state-scoped**, and deliberately carrying no state adjective in its name. The
      * manifest declares what this member *intends to provide*, and that does not depend on how far a
@@ -108,8 +106,8 @@ interface LedgerStore : TransferRecord {
      * decision behind it: `api-endpoints` came to describe a manifest that declares intent while
      * `device-manifest` still required the completed projection.
      *
-     * It filters on a fact about the ROW (`absent` — the asset left the library, so this device no longer
-     * shares it) and on nothing else. **Admission is the policy's**, applied by the projection: the
+     * It filters on nothing: a departed asset's rows are deleted by the walk that shows it gone, so every row
+     * is one this device still holds. **Admission is the policy's**, applied by the projection: the
      * capture-date bounds, and with them the exclusion of a row whose `creationDate` is still bare, whose
      * empty value sorts before every real cutoff. Restating that here would be a second copy of an
      * admission rule (capability `photo-selection-policy`).
@@ -117,12 +115,12 @@ interface LedgerStore : TransferRecord {
     suspend fun manifestRows(): List<LedgerEntry>
 
     /**
-     * Fill the manifest detail of one already-recorded row **without touching its state or attempt**,
+     * Fill the manifest detail of one already-recorded row **without touching its state**,
      * and only while the row is still bare — so re-running is free and can never clobber a good value.
      *
      * The sweep for the two ways a row rests bare: it predates the 5.sqm migration, or the re-join
      * reconcile seeded it from a stored-file listing (filenames carry no capture date). A writer-family
-     * operation like the prunes and [backfillEventId]: only the single writer's cycle runs it.
+     * operation like [deleteKeys]: only the single writer's cycle runs it.
      */
     suspend fun backfillManifestDetail(entry: LedgerEntry)
 
@@ -133,13 +131,13 @@ interface LedgerStore : TransferRecord {
     suspend fun clear()
 
     /**
-     * Mark every `REQUESTED` row `FAILED`, changing nothing else on those rows and leaving every other row
+     * Return every `REQUESTED` row to `DISCOVERED`, changing nothing else on those rows and leaving every other row
      * untouched — an **app-side reset-family** op (alongside [clear]), not a per-key record, so a non-writer
      * may run it (on iOS ≥26.1 the app, while the extension is the one recording process).
      *
      * The recovery for `REQUESTED` rows no transfer can settle any more — canonically the jobs the OS wiped
      * when the extension was disabled: the engine never re-issues a `REQUESTED` key and no API surfaces the
-     * vanished job. It demotes rather than deletes because a `FAILED` row needs a job, so the ledger's own
+     * vanished job. It demotes rather than deletes because a `DISCOVERED` row needs a job, so the ledger's own
      * work read ([rowsNeedingJob]) returns it on the next cycle — no walk, and so no discovery-cursor reset.
      * Dings [changes] once, like [clear] (capability `sync-ledger`, "Requested-state reset").
      */
@@ -172,30 +170,4 @@ interface LedgerStore : TransferRecord {
      * statement binds. A writer-family operation: only the single writer's cycle runs it.
      */
     suspend fun deleteKeys(keys: Collection<String>)
-
-    /**
-     * Clear the retired absence mark from every row an earlier build marked, touching nothing else.
-     *
-     * No operation sets the mark any more — a departed asset's rows are deleted, not marked — but every read
-     * that answers "what does this device hold or share" still excludes marked rows, so a row an earlier
-     * build marked would be unreachable forever without this. Cleared, it heals itself: a row that still
-     * needs a job is offered again, fails to resolve, and is deleted by key; a settled one is deleted by the
-     * next authoritative walk if its asset is gone.
-     *
-     * One idempotent statement, run once per cycle beside [backfillEventId]; it matches nothing on every cycle
-     * after the first. Deliberately NOT a schema migration: a migration raises the schema version, which an
-     * older binary refuses to open. Removed with the column by the migration that drops it. Dings [changes]
-     * only when it cleared a mark.
-     */
-    suspend fun clearAbsenceMarks()
-
-    /**
-     * Rewrite the [LedgerEntry.eventId] of every row whose value is the pre-provenance sentinel
-     * `""` to [eventId], leaving every other field — and every row already carrying a real
-     * eventId — untouched. The backend matches the sentinel by equality and interprets nothing.
-     * Idempotent (a sweep that matches no rows is a no-op) and cheap, so the writer runs it once
-     * per cycle entry. Dings [changes] once, like the other bulk operations — provenance is
-     * invisible to today's watchers, but the ding keeps the level-trigger contract uniform.
-     */
-    suspend fun backfillEventId(eventId: String)
 }

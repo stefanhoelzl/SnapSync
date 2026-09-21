@@ -168,8 +168,8 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `the ledger section is five labelled counts and no rows`() = runTest {
         val ledger = InMemoryLedgerStore()
-        ledger.recordUnlessSettled(LedgerEntry("a.jpg", "asset-1", LedgerState.COMPLETED, attempt = 1, eventId = "e"))
-        ledger.recordUnlessSettled(LedgerEntry("b.jpg", "asset-2", LedgerState.REQUESTED, attempt = 1, eventId = "e"))
+        ledger.recordUnlessSettled(LedgerEntry("a.jpg", "asset-1", LedgerState.COMPLETED))
+        ledger.recordUnlessSettled(LedgerEntry("b.jpg", "asset-2", LedgerState.REQUESTED))
 
         val dump = collector(ledger = ledger).collect(NOTE, SCREEN)
 
