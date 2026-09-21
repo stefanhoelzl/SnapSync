@@ -3,8 +3,8 @@
 ## Purpose
 
 The **tier-neutral upload arm**: which producer verb fires on which membership transition (provision,
-event switch, permission grant, direction change, leave), and the invariant that **no transition ever
-destroys durable dedup state**. Each upload tier supplies the mechanism behind a two-verb `UploadProducer`
+event switch, permission grant, direction change, leave), and which transitions replace the upload ledger.
+Each upload tier supplies the mechanism behind a two-verb `UploadProducer`
 seam (`start` / `stop`); this capability owns the decision, and it owns it in one tested, platform-free
 place.
 
@@ -17,20 +17,22 @@ heartbeat, wiping the ledger **and** the discovery cursor) while its *enable* ha
 26.1. Joining an event therefore tore the upload arm down, started nothing, and re-uploaded the user's
 whole post-cutoff library on the next cycle — on the tier every current user runs.
 
-The two-verb seam is the fix, and it is a **structural** one. With no destructive verb to reach, there is
-no edge from *provision* to *destruction* to get wrong: the bug is unrepresentable rather than merely
-absent. Durable state is device-global dedup (`sync-ledger`, "Event-independent key") and stays true across
-a leave, a switch, and a re-join; only a triggered reconciliation's `resetTo` ever re-baselines it
-(`upload-state-reconciliation`). Selecting exactly one producer per process likewise makes the two tiers'
+The two-verb seam is the fix, and it is a **structural** one: the seam that starts and stops a mechanism
+has no destructive verb, so no mechanism call can wipe anything. What replaces the upload ledger is a
+membership decision, made by the membership use-cases and nowhere else: the ledger is the current
+membership's share set (`sync-ledger`), so a leave clears it, and a first join or a switch — after stopping
+the previous membership's uploads — loads it from the device's stored-file listing
+(`upload-state-reconciliation`). Nothing already stored is uploaded again unless that listing fails. This
+reversed the earlier rule that no transition destroys dedup state, in `changes/archive/2026-09-21-join-loads-leave-clears`. Selecting exactly one producer per process likewise makes the two tiers'
 mutual exclusion structural — the non-selected tier's mechanism is never constructed, so it cannot run and
 cannot become a second `LedgerWriter`.
 
 The transition table is written against the **current single-active-membership contract** (capability
 `join-event`): *provision* and *switch* assume one configured event, and no membership means no arm.
-Concurrent multi-event membership is a named future direction; the durable pieces already compose with
-it (the ledger key is event-independent, bytes are device-partitioned), so that future reworks the
-arm's decision table, not the dedup state — and until then, new work SHALL NOT deepen the
-single-membership assumption beyond what this table already encodes.
+Concurrent multi-event membership is a named future direction. The ledger key stays event-independent and
+bytes stay device-partitioned, but a ledger scoped to the current membership (`changes/archive/2026-09-21-join-loads-leave-clears`) deepens the
+single-membership assumption: that future now needs per-membership ledgers or a membership column as well
+as a reworked decision table — and new work SHALL NOT deepen the assumption further.
 
 Decision record: `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
 
@@ -47,18 +49,37 @@ The system SHALL express the upload arm's **lifecycle** as a platform-free `Uplo
 - `stop()` — cease uploading. It SHALL NOT destroy **dedup state**: it SHALL NOT clear the ledger and
   SHALL NOT delete stored bytes.
 
-There SHALL be **no** destructive verb on the seam. No lifecycle transition — provision, re-provision,
-event switch, permission change, direction change, or leave — SHALL clear the ledger. Durable dedup state
-is device-global (`sync-ledger`), and divergence from storage is repaired by reconciliation
-(`upload-state-reconciliation`), never by a lifecycle wipe.
+There SHALL be **no** destructive verb on the seam. Neither verb clears the ledger, and no caller can
+clear it through the seam.
+
+**The ledger is cleared at exactly two membership transitions, and never by the seam.** The upload ledger
+is the **current membership's share set** (`sync-ledger`): empty while unjoined, loaded at a join, cleared
+at a leave. This **reverses** this requirement's earlier rule that no lifecycle transition — provision,
+re-provision, event switch, permission change, direction change, or leave — clears the ledger, and the
+reversal covers a **provision** as well as a leave:
+
+- a **leave** stops uploads and then clears the upload ledger (`leave-event`);
+- a **provision into a new membership** — a first join, or a switch (a provision of a different event while
+  one is joined) — clears the ledger and loads it from the device's stored-file listing before its config is
+  saved, and a switch first **stops uploads** before that load (`join-event`). A provision therefore now carries a stop (on
+  a switch) and a ledger reset (on a first join or a switch), which this requirement previously forbade.
+
+Every other transition — a **re-provision of the joined event**, a permission change, a direction change,
+a reconfigure — SHALL NOT clear or reset the ledger. The clear and the load are performed by the membership
+use-cases over the ledger store (`LeaveEvent`, the join-time share-set load), never by a producer verb and
+never by the orchestrator, which holds no ledger. The download store is not cleared by any of them
+(`download-store`).
 
 The trigger surface ("Triggers are delivered to the mechanism and declined explicitly") SHALL be a
 **separate** seam on the same object, so this lifecycle seam keeps exactly the two verbs above and the
 orchestrator is given no trigger to invoke.
 
-The property being defended is **dedup**: the proof that a photo is already in the event. Destroying it
-re-uploads a member's whole post-cutoff library — the failure this project exists to prevent. The ledger's
-`COMPLETED` rows and the stored bytes are that proof, and nothing else a mechanism persists is.
+The property being defended is **dedup**: the proof that a photo is already in the event. Losing it
+re-uploads a member's whole in-window library — the failure this project exists to prevent. The stored
+bytes are that proof. The ledger's `COMPLETED` rows are this membership's **local copy** of it, rebuilt at
+each join from the per-device listing, which is why a leave and a join may clear them and nothing else may:
+a clear anywhere a load does not follow would lose the copy with nothing to restore it. Nothing else a
+mechanism persists is part of that proof.
 
 No mechanism needs a destructive verb as a repair either: the damage a stop can leave behind is
 `REQUESTED` rows no transfer will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `DISCOVERED`
@@ -86,7 +107,28 @@ Each tier SHALL supply one `UploadProducer` implementation binding these verbs t
 #### Scenario: Stopping touches no ledger row
 
 - **WHEN** `stop()` is called on either tier, including as part of a switch or a leave
-- **THEN** every ledger row is left exactly as it was
+- **THEN** the stop itself leaves every ledger row exactly as it was; any clear that follows is the leave's
+  or the join-time load's own step, not the stop's
+
+#### Scenario: A leave clears the upload ledger after stopping
+
+- **WHEN** the user leaves the event
+- **THEN** uploads are stopped first and the upload ledger is then cleared, while the download store's rows
+  are left untouched
+
+#### Scenario: A switch provision stops, then replaces the ledger
+
+- **WHEN** a provision configures an event different from the joined one
+- **THEN** uploads are stopped, the ledger is then cleared and loaded from the device's stored-file listing,
+  and only then is the new config saved, so the new membership never sits over the previous membership's
+  rows
+
+#### Scenario: A re-provision of the joined event touches no ledger row
+
+- **WHEN** the event that is already joined is provisioned again, or photo permission or the membership's
+  direction changes
+- **THEN** no ledger row is cleared, reset, or loaded — the producer verbs the orchestration table assigns
+  to that transition are the only effect on the upload arm
 
 #### Scenario: Rows a stop leaves stranded are repaired by the next start
 
@@ -101,8 +143,10 @@ The decision of **which verb fires on which transition** SHALL live in a tier-ne
 (running on both JVM and `iosSimulatorArm64`) against fake `UploadProducer`s, so it is exercised on JVM
 **and** `iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate
 membership and permission transitions into `start()`/`stop()` and nothing else: it holds no ledger and
-no storage handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives
-it no verb that could.
+no storage handle, and the seam gives it no verb that could reach one. The upload ledger's clear at a leave
+and its clear-then-load at a provision into a new membership are the membership use-cases' own steps
+(`leave-event`, `join-event`; see "Upload producer seam has no destructive verb"), sequenced around the
+orchestrator's verbs, never performed by it.
 
 Photo access is **usable** when it is `GRANTED` or `LIMITED`. A producer SHALL be started only when an
 event is configured **and** photo access is usable **and** the membership's direction includes upload.
@@ -124,9 +168,13 @@ bind the transitions as follows, where the upload arm is enabled exactly when ph
 | transition to usable access (`GRANTED` or `LIMITED`), arm enabled | `start()` on the permission-selected producer |
 | transition between usable states (`GRANTED` ↔ `LIMITED`), arm enabled | re-resolve; if the kind changed, `stop()` the outgoing producer, then `start()` the incoming one |
 | transition to usable access, **no event configured** | neither |
+| switch (provision of a different event while one is joined) | `stop()` first, before the join-time load and the save of the new config; then the provision row that applies |
 | leave | `stop()` |
 
-Leave SHALL be `stop()` plus clearing the configured event, and nothing more.
+Leave SHALL be `stop()`, then clearing the upload ledger, then clearing the configured event (then the
+best-effort backend notify, capability `leave-event`), and nothing more. A switch SHALL be a leave followed
+by a join: its `stop()` comes first, then the join's clear-then-load of the ledger replaces the previous
+membership's share set, and only then is the new config saved (capability `join-event`).
 
 **No membership, no arm.** "The *configured membership's* direction includes upload" is false when there
 is no configured membership, so a transition to usable access with no event configured SHALL fire **neither**
@@ -157,7 +205,7 @@ cycles then skip on the absent config, so the work is inert but the wake is not.
 #### Scenario: A download-only membership stops the producer
 
 - **WHEN** an event is provisioned while photo access is usable and the direction is download-only
-- **THEN** the orchestrator calls `stop()`, and the ledger is left intact
+- **THEN** the orchestrator calls `stop()`, and the stop itself leaves every ledger row intact
 
 #### Scenario: Provisioning without access defers to the grant
 
@@ -184,10 +232,18 @@ cycles then skip on the absent config, so the work is inert but the wake is not.
 - **WHEN** photo access transitions to usable access with no event configured, and the user then confirms a join whose direction includes upload
 - **THEN** the provision transition calls `start()` — the producer is armed at the join, not at the grant
 
-#### Scenario: Leaving stops without wiping
+#### Scenario: Leaving stops, then clears the upload ledger
 
 - **WHEN** the user leaves the event
-- **THEN** the orchestrator calls `stop()` and the configured event is cleared, while the ledger remains intact so a later join re-uploads nothing already stored
+- **THEN** the orchestrator calls `stop()`, the upload ledger is then cleared, and the configured event is
+  then cleared — and a later join re-uploads nothing already stored, because that join loads the ledger from
+  the device's stored-file listing
+
+#### Scenario: A switch stops before the new membership is saved
+
+- **WHEN** a provision configures an event different from the joined one
+- **THEN** the orchestrator's `stop()` runs before the join-time load and before the new config is saved,
+  and the provision row for the new membership then applies
 
 ### Requirement: The arm's direction gate lives at the choke point, never at the invoker
 
@@ -225,21 +281,19 @@ creates no upload job, enumerates no library and issues no network request —
 so it takes nothing the gate exists to withhold — and it is the only way the platform's acknowledgement
 obligation can be discharged on a tier whose extension is still registered.
 
-**The re-join reconciliation SHALL likewise run ahead of the gate.** It establishes which of this device's
-uploaded resources are already on the backend — a fact about bytes, which this system defines as
-independent of the selection policy (capability `sync-ledger`) — so gating it on direction would make a
-policy-independent fact wait on a policy-dependent branch. It is marker-gated and a no-op on a settled
-join, so the cost is bounded to the first cycle after a join, switch, or reinstall. Running it early also
-means a member who later re-enables their direction re-uploads nothing.
+**The cycle holds no re-join reconciliation.** Which of this device's uploaded resources are already on the
+backend — a fact about bytes, independent of the selection policy (capability `sync-ledger`) — is
+established once, at the join, by the join-time load of the ledger from the device's stored-file listing
+(capability `join-event`), for every direction. No cycle re-derives it, so nothing about it runs ahead of
+the gate or behind it, and a member who later re-enables their direction still re-uploads nothing already
+stored.
 
 What SHALL remain behind the gate: upload job creation, the retry pass, and the discovery walk.
 
-For a **contributing** membership the acknowledgement pass SHALL keep its existing position, after the
-re-join reconciliation has settled. Its ledger writes record the membership this cycle runs under, and a
-reconciliation that has not yet settled may still re-baseline (a switch's `resetTo`), so hoisting the pass
-above the reconcile for every cycle would risk labelling rows against the wrong event. The declined cycle
-has no such hazard: the drained jobs it settles were created under the same event by the same membership,
-whose direction — not whose identity — changed.
+For a **contributing** membership the acknowledgement pass SHALL keep its existing position, behind the
+direction gate and after the retry pass. The declined cycle runs it before returning: the drained jobs it
+settles were created under the same event by the same membership, whose direction — not whose identity —
+changed.
 
 Placing the acknowledgement behind the gate was justified by the premise that a non-contributing
 membership's extension has been deregistered, so the OS presents nothing. That premise SHALL NOT be relied
@@ -290,15 +344,11 @@ enforcement is how this capability's own history records the lifecycle shipping 
 - **THEN** every presented job is acknowledged and its outcome settled in the ledger, and the cycle still
   creates no upload job and performs no library enumeration
 
-#### Scenario: A declined cycle still reconciles the re-join
-- **WHEN** a cycle runs for a membership whose direction excludes upload on the first cycle after a re-join,
-  switch, or reinstall
-- **THEN** the re-join reconciliation runs and seeds the ledger, so re-enabling the direction later
-  re-uploads nothing
-
-#### Scenario: A declined cycle whose reconcile defers writes no manifest
-- **WHEN** a cycle for a non-contributing membership runs while the re-join reconciliation defers
-- **THEN** no manifest is written that cycle, so an unseeded ledger is never published as an empty one
+#### Scenario: A declined cycle fetches no listing
+- **WHEN** a cycle runs for a membership whose direction excludes upload, on the first cycle after a join or
+  a switch
+- **THEN** the cycle fetches no stored-file listing and resets no ledger row — the ledger was already loaded
+  at the join, so re-enabling the direction later re-uploads nothing already stored
 
 #### Scenario: A declined cycle reports no fault
 - **WHEN** a cycle is declined because the membership's direction excludes upload
@@ -313,20 +363,20 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly th
 - **Skip** — a required input could not be read (protected data unavailable, or — since migration
   step 11a — config-file content this build cannot positively interpret; capability `event-link`,
   *An unreadable config is not an absent config*). Unreadable content includes a foreign envelope
-  version and an undecodable current-version payload. The cycle SHALL touch nothing: no reconcile, no
-  marker clear, no ledger write, no jobs. It SHALL complete cleanly; the next cycle retries.
+  version and an undecodable current-version payload. The cycle SHALL touch nothing: no ledger write, no
+  jobs. It SHALL complete cleanly; the next cycle retries.
 - **Not joined** — there is definitively no usable membership (no config file by the not-found
   error class and — while the read-only fallback lasts — no legacy Keychain item, or a legacy
   item that does not decode (the legacy-item rule, Keychain-side only), or no baked
-  host). The cycle SHALL run the
-  leave-side reconciliation, which clears the `joinedEventId` marker (capability
-  `upload-state-reconciliation`), and SHALL create no upload job.
+  host). The cycle SHALL create no upload job and SHALL write, clear, or reset no ledger row. Clearing
+  the upload ledger belongs to the leave itself (capability `leave-event`), an explicit app action; the
+  cycle does not detect or repair a membership change, and there is no leave-side step for it to run.
 - **Run** — joined and configured. The cycle SHALL proceed to its contribution gate and phases.
 
 A composition root SHALL NOT make this decision. A root SHALL supply only the platform reads the decision
 consumes — the membership read, the device-identity probe, and the build-time host — and the shared,
-tested decision function SHALL combine them. This is the same containment `reconcile` and the
-`SelectionPolicy` already have, and for the same reason: an upload tier's root is wiring-only and
+tested decision function SHALL combine them. This is the same containment the `SelectionPolicy` already
+has, and for the same reason: an upload tier's root is wiring-only and
 untested by project rule,
 so a decision placed there reaches whichever tiers its author happened to enumerate.
 
@@ -353,17 +403,16 @@ not "no identity" (capability `device-identity`, which never reports absence: an
 
 #### Scenario: An unreadable membership skips without touching state
 - **WHEN** the cycle's membership read reports unreadable
-- **THEN** the cycle completes cleanly, having created no upload job, run no reconciliation, cleared no
-  marker, and written no ledger row
+- **THEN** the cycle completes cleanly, having created no upload job and written no ledger row
 
 #### Scenario: An unresolvable device identity skips, and does not read as a leave
 - **WHEN** the device identity cannot be resolved because protected data is unavailable
-- **THEN** the cycle skips, the `joinedEventId` marker is left intact, and the identity is not re-minted
+- **THEN** the cycle skips, no ledger row is written, and the identity is not re-minted
 
-#### Scenario: A definitely-absent membership reconciles the leave side
+#### Scenario: A definitely-absent membership creates and clears nothing
 - **WHEN** the cycle's membership read reports definitively no usable membership
-- **THEN** the leave-side reconciliation runs, the `joinedEventId` marker is cleared, and no upload job is
-  created
+- **THEN** no upload job is created and no ledger row is written, cleared, or reset — the cycle runs no
+  leave-side step
 
 #### Scenario: The decision holds on every tier
 - **WHEN** any tier runs a cycle from any trigger with an unreadable membership
@@ -383,8 +432,9 @@ not "no identity" (capability `device-identity`, which never reports absence: an
 
 The upload cycle SHALL require each port that shapes what a member contributes or what a completed cycle
 emits — the device-manifest hook, the echo-suppression source, the denylisted-album source, the
-completion-notify hook, the membership read, the reconciliation, and the contribution. None SHALL carry a
-default.
+completion-notify hook, the membership read, and the contribution. None SHALL carry a default. (The cycle
+formerly also required a re-join reconciliation port; it has none, because the ledger is loaded at the
+join rather than reconciled in a cycle — capability `join-event`.)
 
 A permissive default on such a port is an unstated answer: it is how a tier ships without a policy the
 other tier has, and the resulting failure is the invisible kind this project is built against — a photo
@@ -634,26 +684,17 @@ that OS wake, so no mechanism can fail to release one.
 
 The upload cycle SHALL settle with the platform — drain the outcomes it is holding and adjudicate them
 — on **every** cycle that reaches a usable membership, before and independently of every later
-decision the cycle makes. In particular it SHALL do so when the re-join reconciliation defers, exactly
-as it already does when the direction gate declines.
+decision the cycle makes. In particular it SHALL do so when the direction gate declines.
 
 The obligation is owed to the platform for work it has already presented, and it does not depend on
-whether this membership still contributes, or on whether the ledger has been seeded yet. Measured on
+whether this membership still contributes. Measured on
 iOS 26.6: with the extension still registered and jobs outstanding, a cycle that returned before the
 acknowledgement pass caused the system to report `com.apple.photos.error Code=50008` ("appex failed to
 acknowledge jobs for processing state"), **discard** the outstanding jobs, and record a failed attempt
 against the upload-job configuration that defers the extension by ~300 seconds and escalates with the
 attempt count. Expiry: re-measure at the next iOS major.
 
-Settling creates no upload work and publishes nothing: it enumerates nothing and writes no manifest. Suppressing the manifest write on a deferred reconciliation stays
-required (capability `device-manifest`) and is unaffected by this.
-
-#### Scenario: A deferred reconciliation still settles
-
-- **WHEN** the re-join reconciliation defers because the device's stored-file listing failed or timed
-  out, on a contributing membership
-- **THEN** the cycle still settles with the platform, and still writes no manifest, creates no upload
-  job, and enumerates nothing
+Settling creates no upload work and publishes nothing: it enumerates nothing and writes no manifest.
 
 #### Scenario: A declined direction still settles
 
@@ -692,8 +733,8 @@ with a backlog takes on every cycle withheld them permanently, with no error and
 
 #### Scenario: Every exit publishes
 
-- **WHEN** a cycle ends by any route — unreadable membership, no membership, deferred reconciliation,
-  declined direction, job limit reached, or fully drained
+- **WHEN** a cycle ends by any route — unreadable membership, no membership, declined direction, job limit
+  reached, or fully drained
 - **THEN** the publication decision runs for that outcome, publishing exactly what that outcome calls
   for
 

@@ -146,7 +146,7 @@ compensate for a terminal outcome that was not durably recorded; with the outcom
 delivers it, the remaining stranded population is transfers the OS dropped or a force-quit cancelled — for
 which no completion is delivered and the bytes did not land — so the check would pay a full per-device
 listing to be told so. A re-upload is idempotent and cheaper. (The device listing remains the seed for
-re-join reconciliation, where the ledger genuinely has no memory — see `upload-state-reconciliation`.)
+the join-time ledger load, where the ledger genuinely has no memory — see `join-event`.)
 
 A transfer that finishes and leaves the session's task list before its completion is delivered can be demoted by
 either rule first; its success then applies to nothing and the photo is uploaded again. That duplicate SHALL be
@@ -369,31 +369,38 @@ producer's **mechanism**:
   background session" below. `stop()` SHALL NOT clear the ledger. `stop()` SHALL repair no ledger row: a cancelled transfer's `REQUESTED` row
   is recorded by its own completion when one is delivered, and otherwise by the restart repair of whichever
   mechanism starts next (see "Stranded reconciliation: scoped each cycle, complete at a start").
-- **re-provision** (a valid event link for a **different** event; re-confirming the
-  already-joined event is a no-op that never reaches provisioning): persist the new `eventId` and
-  `start()`. In-flight transfers SHALL **NOT** be cancelled and their staged temp files SHALL **NOT**
-  be deleted — the byte destination is the device's event-independent partition
-  (`/files/devices/<deviceId>/<filename>`), so an in-flight upload remains valid across the switch and
-  cancelling it would re-upload identical bytes to an identical URL. The cycle re-reads config each
-  run, and its marker-gated reconciliation (`upload-state-reconciliation`) seeds already-stored
-  resources as `COMPLETED` before any upload job is created. There
-  SHALL be no disable→enable toggle, no ledger wipe, and no cross-process race.
-- **leave**: `stop()` (cancel the in-flight tasks and the scheduled task, leaving the session intact) and
-  clear the stored `eventId`. The ledger SHALL be **kept** — it is device-global dedup state that stays
-  valid across events (`sync-ledger`, "Event-independent key"), and clearing it would force a re-upload of
-  every already-stored resource on the next join. The
-  `joinedEventId` marker is cleared by the reconciliation gate on the next cycle
-  (`upload-state-reconciliation`).
+- **re-provision** (a valid event link for a **different** event — a switch; re-confirming the
+  already-joined event is not a switch, and neither stops the tier nor resets the ledger): a switch is a
+  leave followed by a join (capabilities `upload-lifecycle`, `join-event`). This tier SHALL be
+  **`stop()`ped first** — cancelling the in-flight tasks, deleting their staged temp files, and cancelling
+  the scheduled task, with the session left intact — then the provision's **join-time load** clears the
+  ledger and re-seeds it from the per-device listing (`resetTo` on a successful fetch, `clear()` on a failed
+  one — capability `join-event`), then the new `eventId` is persisted, and only then does the arm `start()`
+  the tier. The first cycle `start()` runs therefore already sees the seeded rows, so already-stored
+  resources are `COMPLETED` before any upload job is created; the cycle itself seeds nothing and consults
+  no join marker. Cancelling costs at most a re-upload of what was in flight — to the same
+  device-partitioned, event-independent destination (`/files/devices/<deviceId>/<filename>`), so it is an
+  idempotent overwrite — and whatever landed before the cancel is in the listing the load reads. A
+  completion delivered after the load finds no row (or a seeded one) and changes nothing the load did not
+  already account for. There SHALL be no disable→enable toggle and no cross-process race.
+- **leave**: `stop()` (cancel the in-flight tasks and the scheduled task, leaving the session intact),
+  then **clear the upload ledger**, then clear the stored `eventId` (the order is `LeaveEvent`'s —
+  capability `leave-event`). The clear is the leave's, not `stop()`'s. The ledger is the current
+  membership's share set, so a device that has left holds none; the next join re-seeds it from the
+  per-device listing, so nothing already stored re-uploads unless that fetch fails. A completion delivered
+  after the clear finds no row, and its outcome is acknowledged and discarded — its bytes are on the backend,
+  where the next join's listing finds them. The cycle holds no leave-side action: after the leave it reads
+  the membership as absent and uploads nothing.
 
 #### Scenario: Re-provision is an in-process ordered sequence
 
 - **WHEN** a new valid event link for a different event is scanned on iOS 18–26.0
-- **THEN** the app persists the new event and runs a cycle whose reconciliation seeds already-stored resources to `COMPLETED` before any upload job is created — with no OS toggle, no ledger wipe, and no cross-process timing hazard
+- **THEN** the app stops the tier, clears the ledger and re-seeds it from the per-device listing, persists the new event, and only then starts the tier — so the first cycle finds already-stored resources `COMPLETED` before any upload job is created, with no OS toggle and no cross-process timing hazard
 
-#### Scenario: Re-provision does not cancel in-flight transfers
+#### Scenario: A switch cancels in-flight transfers before the ledger is reset
 
 - **WHEN** an event switch occurs while uploads are in flight on iOS 18–26.0
-- **THEN** those transfers are left running and their staged temp files are retained, because their destination URL is device-partitioned and event-independent and so remains valid after the switch
+- **THEN** those transfers are cancelled and their staged temp files deleted before the ledger is cleared and re-seeded; what landed before the cancel is seeded `COMPLETED` from the listing, and the rest re-uploads to the same device-partitioned destination
 
 #### Scenario: Enabling arms the heartbeat
 
@@ -405,10 +412,10 @@ producer's **mechanism**:
 - **WHEN** the app-driven producer's `stop()` runs (access revoked or a download-only membership)
 - **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, while every ledger row is left intact
 
-#### Scenario: Leave cancels transfers and keeps dedup
+#### Scenario: Leave cancels transfers and clears the ledger
 
 - **WHEN** the user leaves the event on iOS 18–26.0
-- **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled and the stored `eventId` is cleared, while the ledger is kept — so joining any event afterwards re-uploads nothing already in the device's byte partition
+- **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, then the upload ledger is cleared, then the stored `eventId` is cleared — and joining any event afterwards re-seeds the ledger from the per-device listing, so nothing already in the device's byte partition re-uploads unless that fetch fails
 
 #### Scenario: Disable cancels tasks without destroying the session
 - **WHEN** photo access is revoked on iOS 18–26.0
@@ -509,7 +516,7 @@ effect is not part of the entry gate and is owned by the app shell's protected-d
 
 This tier invokes its own cycles from the app process, from four triggers (start, foreground, background
 task, session events) plus silent push. Each SHALL produce **Skip** on an unreadable membership: no
-reconciliation, no `joinedEventId` marker clear, no upload job. The exposure is
+ledger write, clear or reset, and no upload job. The exposure is
 narrow — the membership item is stored `AfterFirstUnlock`, so an unreadable read needs a boot with no
 unlock — and the requirement stands regardless: the accessibility attribute makes a false leave
 improbable, the three-state read makes it impossible.
@@ -523,20 +530,21 @@ its process dies each cycle.
 #### Scenario: A background task on an unreadable membership does not leave the event
 - **WHEN** the app-driven tier runs a cycle from its background task and the membership read fails because
   protected data is unavailable
-- **THEN** the cycle skips, the `joinedEventId` marker is intact, and the device is still joined on the
-  next readable cycle
+- **THEN** the cycle skips, the ledger is untouched, and the device is still joined on the next readable
+  cycle
 
 #### Scenario: An unresolvable device identity skips rather than throwing
 - **WHEN** the app-driven tier runs a cycle and the device identity cannot be resolved
 - **THEN** the cycle skips cleanly and no error escapes the cycle
 
-#### Scenario: A definitely-absent membership still clears the marker on this tier
+#### Scenario: A definitely-absent membership uploads nothing on this tier
 - **WHEN** the app-driven tier runs a cycle after a leave, and the membership read reports no item
-- **THEN** the leave-side reconciliation runs and the `joinedEventId` marker is cleared
+- **THEN** the cycle takes the not-joined path: it uploads nothing and writes nothing to the ledger —
+  the leave itself already cleared it
 
 #### Scenario: The tier's cycle is the shared composition
 - **WHEN** `UrlSessionUploadController` assembles its upload cycle
-- **THEN** it calls `uploadCore` over its ports — it constructs no gate, cycle, reconciler, or
+- **THEN** it calls `uploadCore` over its ports — it constructs no gate, cycle, join marker, or
   device-manifest producer of its own, and its device-manifest uploader is `:adapter:generic:app`'s
   `HttpEnrollment`
 

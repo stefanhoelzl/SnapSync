@@ -7,7 +7,9 @@ invokes on its own cadence, discovers newly-qualifying photos, drives the shared
 OS perform the uploads — power- and network-aware, across suspension and lock. It exists because photos
 must reach the event without the user ever opening the app, and only the OS can schedule that.
 
-The extension is the **sole `LedgerWriter`** on this tier; the app reads the ledger read-only. The
+The extension is the **sole `LedgerWriter`** on this tier. The app reads the ledger, and at membership
+transitions invokes only the store's reset family — the leave's clear and the join-time load (`changes/archive/2026-09-21-join-loads-leave-clears`) —
+never a record write. The
 platform-agnostic orchestration deliberately lives in `:domain`'s `feature/upload` zone (which declares a `jvm()` target
 so the upload cycle is harness- and JVM-tested); what this capability covers is the iOS side of that seam —
 the PhotoKit adapter, the thin Swift pass-through shell, discovery by full enumeration (there is no persisted
@@ -45,7 +47,7 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
 
 #### Scenario: Extension adapters compose the capability
 - **WHEN** the extension's composition root assembles a cycle
-- **THEN** the iOS adapters (`IosPhotoKitUploadPlatform`, `IosDiscovery`) implement the upload seams — `IosDiscovery` shared with the app-driven tier from `:adapter:ios:ext-safe` and bound once as the `UploadDiscovery` — and the root supplies them as `UploadPorts` to `uploadCore`, which constructs the `:domain` `feature/upload` `UploadCycle`, with the download-store / rejoin / manifest edges answered in the ports bundle rather than inside the feature
+- **THEN** the iOS adapters (`IosPhotoKitUploadPlatform`, `IosDiscovery`) implement the upload seams — `IosDiscovery` shared with the app-driven tier from `:adapter:ios:ext-safe` and bound once as the `UploadDiscovery` — and the root supplies them as `UploadPorts` to `uploadCore`, which constructs the `:domain` `feature/upload` `UploadCycle`, with the download-store / manifest edges answered in the ports bundle rather than inside the feature
 
 #### Scenario: The app-driven tier applies below 26.1
 - **WHEN** the app runs on iOS 18–26.0 (below the `PHBackgroundResourceUploadExtension` floor)
@@ -53,7 +55,7 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
 
 #### Scenario: The extension's cycle is the shared composition
 - **WHEN** `UploadExtensionRoot` assembles its upload cycle
-- **THEN** it calls `uploadCore` over its ports — it constructs no cycle, gate, reconciler, or
+- **THEN** it calls `uploadCore` over its ports — it constructs no cycle, gate, join marker, or
   device-manifest producer of its own, and its device-manifest uploader is `:adapter:generic:app`'s
   `HttpEnrollment`
 
@@ -462,38 +464,47 @@ by persisting the config and driving the upload arm through the tier-neutral lif
 the app-driven tier, which has no OS registration record to re-create (see `ios-url-session-upload`,
 "App-driven lifecycle").
 
-On this tier the re-provision's `start()` SHALL re-register the extension (the disable→enable toggle).
-On its next cycle the extension reconciles against the per-device file listing (capability
-`api-endpoints`, see `upload-state-reconciliation`): it **`resetTo`s** (atomic clear-and-seed)
-the ledger to one already-uploaded row per stored file. The device-global listing re-seeds the same files
-as already-uploaded, so **nothing already stored re-uploads**, while the clear drops stale/phantom rows and
-the cycle's walk, a full enumeration like every walk, finds genuinely-unstored work. The re-baselined ledger
-is then **re-projected** to the
-**new** event's `device.json` path, and the joined-event marker is set. Rows seeded from the listing are
+A **switch** (a re-provision into a different event) is a leave followed by a join (capabilities
+`upload-lifecycle`, `join-event`). On this tier it SHALL run in the app, in this order: the arm **stops**
+this mechanism (the disable alone — see "Re-registering the extension demotes orphaned REQUESTED rows"),
+the provision's **join-time load** re-baselines the ledger — it fetches the
+per-device file listing (capability `api-endpoints`) and **`resetTo`s** (atomic clear-and-seed) the ledger
+to one already-uploaded row per stored file, or `clear()`s it when the fetch fails — through the app's
+`LedgerStore`, with no `LedgerWriter` (see `ios-app-shell`, "The app resets the upload ledger at membership
+transitions on every tier"), the new config is then saved, and only then does the arm's `start()`
+re-register the extension (the
+disable→enable toggle). A first join takes the same load before the first registration. The extension
+therefore never re-baselines the ledger itself: it constructs no join marker and runs no in-cycle
+reconciliation, and its first cycle after the re-register already reads the loaded ledger.
+
+The device-global listing seeds the stored files as already-uploaded, so **nothing already stored
+re-uploads**, while the clear drops every row from before the provision and the cycle's walk, a full
+enumeration like every walk, finds genuinely-unstored work. The extension's next cycle **re-projects**
+the re-baselined ledger to the **new** event's `device.json` path. Rows seeded from the listing are
 **bare** (a filename carries no capture date) and are therefore not listed until the walk backfills their
 manifest detail; a bare row is always re-read by the walk (capability `sync-ledger`, "A walk re-reads only
 the assets the ledger does not fully know"). The app decodes the event link only to gate this on a
 valid payload; the authoritative decode/validate/persist still happens in the shared container intent.
 
-The re-provision itself SHALL NOT clear the **ledger** (`upload-lifecycle`): only the reconciliation's
-`resetTo` re-baselines it, from the authoritative per-device listing. The re-register's repair demotes rows
-instead (see "Re-registering the extension demotes orphaned REQUESTED rows").
+A re-provision of the **already-joined** event SHALL NOT reset the ledger: only a provision that changes
+the membership loads it. The re-register's repair demotes rows instead (see "Re-registering the extension
+demotes orphaned REQUESTED rows").
 
-#### Scenario: Valid re-scan reconciles and re-projects to the new event
+#### Scenario: Valid re-scan re-baselines and re-projects to the new event
 - **WHEN** a valid `https://<link domain>/join#…` event link is opened for a different event on iOS ≥26.1
-- **THEN** the extension is re-registered (disable→enable), and the next cycle `resetTo`s the ledger
-  from the per-device file listing and re-projects `device.json` from
-  that ledger to the new event path with the joined-event marker set
+- **THEN** the app disables the extension, `resetTo`s the ledger from the per-device file listing, saves
+  the new config, and re-registers the extension (disable→enable), and the extension's next
+  cycle re-projects `device.json` from that ledger to the new event path
 
 #### Scenario: Already-stored photos do not re-upload on a switch
 - **WHEN** the device switches to an event whose photos are already present in its device
   byte-partition (capability `api-endpoints`)
-- **THEN** the clear-and-seed reconcile re-seeds them as already-uploaded and the extension creates no
+- **THEN** the join-time load's clear-and-seed seeds them as already-uploaded and the extension creates no
   new upload jobs for them
 
 #### Scenario: Invalid event link does not re-provision
 - **WHEN** an opened URL fails config decoding
-- **THEN** no re-provision occurs (the ledger and the joined-event marker are untouched)
+- **THEN** no re-provision occurs (the ledger and the config are untouched)
 
 #### Scenario: The disable→enable toggle is confined to this tier
 - **WHEN** the app re-provisions an event on iOS 18–26.0
@@ -562,8 +573,8 @@ suppresses the upload. The backend re-stores the role idempotently and wakes nob
 The app SHALL recover the in-flight jobs a disable wipes. Disabling the upload extension
 (`setUploadJobExtensionEnabled(false)`) deletes the system's `AssetResourceUploadJobConfiguration` and
 therefore **wipes every in-flight OS upload job**, and no API surfaces a vanished job. Without a recovery the
-rows stay `REQUESTED` forever: the engine treats `REQUESTED` as in-flight and never re-issues it, and a
-same-event cycle never reconciles — so the photos that were mid-upload are permanently abandoned.
+rows stay `REQUESTED` forever: the engine treats `REQUESTED` as in-flight and never re-issues it, and no
+cycle re-baselines the ledger — so the photos that were mid-upload are permanently abandoned.
 
 The recovery SHALL run in this mechanism's **`start()`** — the disable→enable re-register — **between** the
 disable and the enable, and SHALL be the ledger's reset-family `demoteRequested()` (`sync-ledger`): every
@@ -578,7 +589,8 @@ resources could re-surface; a demoted row needs no such walk.
 
 This mechanism's **`stop()`** SHALL be the disable alone and SHALL repair nothing — on a leave and on a
 relinquish to the app-driven mechanism alike. On a leave nothing uploads until a mechanism starts again, and
-that start repairs; on a relinquish, the app-driven mechanism's own start repairs (`ios-url-session-upload`,
+the leave's own ledger clear — `LeaveEvent`'s, after this `stop()`, never this verb's (capability
+`leave-event`) — leaves no row to repair; on a relinquish, the app-driven mechanism's own start repairs (`ios-url-session-upload`,
 "Stranded reconciliation: scoped each cycle, complete at a start"). There SHALL therefore be no narrower
 teardown verb for a hand-off.
 
@@ -617,13 +629,14 @@ the one recording process, and `demoteRequested` is a reset-family operation tha
 
 - **WHEN** the extension is disabled by this mechanism's `stop()` — a leave, or a relinquish to the app-driven
   mechanism — while `REQUESTED` rows exist
-- **THEN** no ledger row changes, and the rows are demoted by the next mechanism start
+- **THEN** the `stop()` itself changes no ledger row, and the rows are demoted by the next mechanism start
+  (or removed by a leave's subsequent ledger clear)
 
 #### Scenario: Completed rows survive the repair
 
 - **WHEN** a re-register triggers `demoteRequested()` and the ledger holds `COMPLETED` rows for
   already-stored files
-- **THEN** those `COMPLETED` rows are unchanged, so a subsequent reconcile/discovery does not re-upload
+- **THEN** those `COMPLETED` rows are unchanged, so a subsequent discovery does not re-upload
   already-stored bytes
 
 ### Requirement: Discovery suppresses downloaded assets
@@ -677,7 +690,7 @@ statement that those bytes are on the backend.
 (The cross-process liveness notification this list used to carry is deleted — migration step 12:
 the app's foreground-gated `aggregates()` poll replaced it; see `sync-status`.)
 
-Everything else the root does today — the membership read's decision, the leave-side reconciliation, the
+Everything else the root does today — the membership read's decision, the
 engine and cycle assembly, the manifest and notify hooks, the cutoff and contribution derivation — SHALL
 move to the shared cycle (capability `upload-lifecycle`). What remains SHALL be translation: mapping this
 platform's storage and bundle into the shared decision function's arguments, with no branch a second tier
@@ -691,7 +704,7 @@ gate, and the membership read each shipped on one tier and not the other.
 #### Scenario: The skip decision is not made in the root
 - **WHEN** the extension is invoked and its membership is unreadable
 - **THEN** the skip is decided by the shared cycle, and the root neither branches on the read nor
-  reconciles
+  touches the ledger
 
 #### Scenario: A drained cycle with pending jobs still asks for re-invocation
 - **WHEN** the cycle would otherwise report completed and the ledger still holds pending rows

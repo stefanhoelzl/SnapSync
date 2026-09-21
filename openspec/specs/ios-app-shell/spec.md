@@ -345,11 +345,14 @@ adapters (`:adapter:generic:app`'s `SystemClock`/`SystemTimeZone`) into the **on
 `CutoffFormatter` (its now/zone arrive injected — the through-ports repayment of step 9) handed to
 the host and the screen. The composed graph SHALL construct the iOS
 `LedgerCountsSource` as a **read-only** reader of the shared App-Group ledger — supplying a
-`suspend () -> LedgerCounts` that calls only `iosLedgerStore().aggregates()` (never a write) — and
+`suspend () -> LedgerCounts` that calls only `iosLedgerStore().assetProgress()` (never a write;
+capability `sync-status`) — and
 SHALL issue **no** storage LIST for upload status. While the **OS-driven mechanism** is the resolved
 one the composed graph SHALL construct **no `LedgerWriter`** (the ledger read is read-only; the
-extension is the sole writer) and **no `EventStatusSource`** (the ledger is private to the extension,
-which also owns reconciliation — see `upload-state-reconciliation`). Constructing the app-driven
+extension is the sole writer) and **no `EventStatusSource`**. The app's only ledger touches on that
+tier are the read-only status read and the reset family at membership transitions (see "The app resets
+the upload ledger at membership transitions on every tier") — the extension holds no reconciliation of
+its own. Constructing the app-driven
 mechanism is what brings a writer into this process, so the single-writer invariant (`sync-ledger`)
 holds by which mechanism is resolved, not by which OS this is.
 
@@ -447,9 +450,9 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 - **WHEN** the user confirms the leave action in the joined layer
 - **THEN** `MainViewController` invokes `host.onLeaveEvent`, which fires the bundle's `leave`
   command — cancelling in-flight downloads, then running the composed `LeaveEvent` (stopping the
-  producer via the tier-neutral arm and clearing the persisted config — the App-Group file; no
-  ledger or `EventStatus`
-  operation) — and the screen returns to the setup gate
+  producer via the tier-neutral arm, then clearing the upload ledger through the `LedgerStore`'s reset
+  family, then clearing the persisted config — the App-Group file; no `LedgerWriter` is constructed
+  for it and no `EventStatus` operation runs) — and the screen returns to the setup gate
 
 #### Scenario: The share action flows through the command bundle into the platform share
 
@@ -476,7 +479,7 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 
 ### Requirement: On-disk native ledger on iOS
 
-The `:adapter:ios:ext-safe` module SHALL provide an `iosLedgerStore()` factory (iOS-only source) that constructs the shared `SqlDelightLedgerStore` (`:adapter:generic:app`) over a `NativeSqliteDriver`, persisting the ledger database **on disk in the `group.app.snapsync` App-Group container** so its contents survive process death and are shared between the app and the background-upload extension. (Before migration step 4 the factory and store lived in `:domain:engine`.) This factory SHALL be the single site that names the database location, SHALL open the database in WAL mode (one cross-process writer plus concurrent readers), and SHALL wire the backend's cross-process change notification (post-on-write / observe-in-`changes`, per `sync-ledger`). The same factory SHALL serve both processes; on the OS-driven tier the app process constructs no `LedgerWriter` — it holds the ledger only as a `LedgerStore` for its read-only aggregates read and the reset-family operations (per `sync-ledger`).
+The `:adapter:ios:ext-safe` module SHALL provide an `iosLedgerStore()` factory (iOS-only source) that constructs the shared `SqlDelightLedgerStore` (`:adapter:generic:app`) over a `NativeSqliteDriver`, persisting the ledger database **on disk in the `group.app.snapsync` App-Group container** so its contents survive process death and are shared between the app and the background-upload extension. (Before migration step 4 the factory and store lived in `:domain:engine`.) This factory SHALL be the single site that names the database location, SHALL open the database in WAL mode (one cross-process writer plus concurrent readers), and SHALL wire the backend's cross-process change notification (post-on-write / observe-in-`changes`, per `sync-ledger`). The same factory SHALL serve both processes; on the OS-driven tier the app process constructs no `LedgerWriter` — it holds the ledger only as a `LedgerStore` for its read-only per-asset progress read (`assetProgress()`, capability `sync-status`) and the reset-family operations it invokes at membership transitions — `clear` at a leave, `resetTo`/`clear` at the join-time load (per `sync-ledger`).
 
 #### Scenario: The ledger persists across launches
 - **WHEN** the app writes ledger state, terminates, and relaunches
@@ -494,21 +497,24 @@ The `:adapter:ios:ext-safe` module SHALL provide an `iosLedgerStore()` factory (
 
 When photo-library access is (or becomes) full (`.readWrite` → `GRANTED`), the app SHALL enable the
 background-upload extension (`PHPhotoLibrary.setUploadJobExtensionEnabled(true)`) so the system can
-invoke it. The app SHALL **not** run any join, fetch, enumeration, or seed, and SHALL **not** disable the
-extension around a join — reconciliation runs **inside the extension**, gated by its `joinedEventId`
-marker (see `upload-state-reconciliation`). The app creates no upload jobs, performs no uploads, and
-constructs no ledger type. The enable call SHALL be idempotent-safe to repeat on each grant/foreground.
+invoke it. A grant SHALL **not** run any join, listing fetch, enumeration, or seed. The ledger is loaded
+at the **join** — by the provision, before the arm starts this mechanism (capability `join-event`; see
+"The app resets the upload ledger at membership transitions on every tier") — so the extension's first
+cycle after the enable already sees it, and the extension holds no reconciliation of its own. The app
+creates no upload jobs, performs no uploads, and constructs no `LedgerWriter`. The enable call SHALL be
+idempotent-safe to repeat on each grant/foreground.
 
 #### Scenario: Granting full access enables the extension directly
 
 - **WHEN** photo-library permission transitions to `GRANTED` with a configured event
 - **THEN** the app calls `setUploadJobExtensionEnabled(true)` without fetching, enumerating, or seeding —
-  the extension self-reconciles on its next cycle
+  the ledger the extension's next cycle reads is the one the join already loaded
 
-#### Scenario: The app never uploads or seeds
+#### Scenario: The app never uploads, and seeds only at a join
 
-- **WHEN** the app is running with a configured event
-- **THEN** it creates no upload jobs, performs no library enumeration for a seed, and constructs no ledger type
+- **WHEN** the app is running with a configured event on iOS ≥26.1 under a full grant
+- **THEN** it creates no upload jobs, performs no library enumeration, and constructs no `LedgerWriter` —
+  its only ledger writes are the reset family at a join, a switch, or a leave
 
 ### Requirement: Remote-notification capability declaration
 
@@ -880,4 +886,88 @@ linked only into the app process — the background-upload extension SHALL NOT l
 
 - **WHEN** the background-upload extension process runs
 - **THEN** it links no process-metric platform surface and registers no subscriber
+
+### Requirement: The app resets the upload ledger at membership transitions on every tier
+
+The app process SHALL perform the upload ledger's membership-transition writes **itself, on every upload
+tier** — iOS 18–26.0, iOS ≥26.1 under a partial grant, and iOS ≥26.1 under a full grant, where the
+extension holds the only `LedgerWriter`. They are the ledger's **reset family** (`sync-ledger`), which a
+holder of the `LedgerStore` that is not the record writer MAY invoke:
+
+- **At a join or a switch** — the provision's join-time load (capability `join-event`): `resetTo` the
+  per-device listing on a successful fetch, `clear()` on a failed one. It runs in the app, before the
+  config is saved and before the upload arm starts a mechanism, and only when the membership changes
+  (never on a re-provision of the joined event).
+- **At a leave** — `LeaveEvent`'s `clear()` of the upload ledger, after the producer is stopped and before
+  the config is cleared (capability `leave-event`).
+
+The extension SHALL hold no membership-transition logic: it constructs no join marker, runs no in-cycle
+reconciliation against the listing, and has no leave-side action — a membership change is always an
+explicit app action, and the app is the process that performs it. Holding these writes in the app on the
+OS-driven tier SHALL NOT bring a `LedgerWriter` into the app process: the reset family goes through the
+`LedgerStore` directly, so the single-record-writer invariant (`sync-ledger`) is unchanged.
+
+Decision record: `changes/archive/2026-09-21-join-loads-leave-clears` (D1–D4).
+
+#### Scenario: A join on the OS-driven tier is loaded by the app
+
+- **WHEN** the device joins an event on iOS ≥26.1 under a full grant
+- **THEN** the app fetches the per-device listing and `resetTo`s the ledger through the `LedgerStore`
+  before the arm registers the extension, constructing no `LedgerWriter`, and the extension's first cycle
+  reads the loaded ledger
+
+#### Scenario: A failed listing fetch clears instead
+
+- **WHEN** the join-time listing fetch fails or times out, on any tier
+- **THEN** the app `clear()`s the ledger and the join completes — nothing gates the upload mechanism
+
+#### Scenario: A leave clears the ledger on the OS-driven tier
+
+- **WHEN** the user leaves the event on iOS ≥26.1 under a full grant
+- **THEN** the app disables the extension, then `clear()`s the ledger through the `LedgerStore`, then
+  clears the config — the extension runs no leave-side reconciliation
+
+#### Scenario: A re-provision of the joined event does not reset
+
+- **WHEN** a provision reaches the app for the event the device is already joined to
+- **THEN** the ledger is neither cleared nor loaded
+
+### Requirement: The app removes the orphaned join-marker key at process start
+
+The app SHALL remove the App-Group `NSUserDefaults` key `rejoin.joinedEventId` on every process start. The
+key was the retired join marker's persistence (the in-cycle re-join reconciliation compared it with the
+configured event); no code reads or writes it any more. The removal SHALL be idempotent —
+`removeObjectForKey` on an absent key is a no-op — so it SHALL carry **no bookkeeping**: no "done" flag,
+no version check, and no ordering against any other start-up work. A removal that fails or does not take
+effect SHALL be tolerated silently; the next process start repeats it. The literal SHALL survive only at
+this removal site, beside the other App-Group constants in `:adapter:ios:ext-safe`, where it stays a
+pinned runtime-identity literal (capability `architecture-guards`) so that a drifted key fails the build
+instead of silently removing nothing. The extension SHALL NOT read or write
+the key.
+
+The reason is **rollback**, not tidiness. A build from before this change compares the configured event
+with the marker on every cycle. With the key removed it finds no marker, runs its reconciliation once and
+`resetTo`s the ledger from the per-device listing — correct whatever this build left behind (an empty
+ledger after a leave, a loaded one after a join). Left in place, a device that left and re-joined the
+**same** event under this build would present a matching marker to a reverted build, which would then skip
+its seed and re-upload the device's whole window.
+
+Decision record: `changes/archive/2026-09-21-join-loads-leave-clears` (D8).
+
+#### Scenario: The orphaned key is removed at start
+
+- **WHEN** the app process starts on a device whose App-Group `NSUserDefaults` holds `rejoin.joinedEventId`
+- **THEN** the key is removed, and nothing records that the removal happened
+
+#### Scenario: The removal is a no-op when the key is absent
+
+- **WHEN** the app process starts and the key is absent
+- **THEN** the removal completes without effect
+
+#### Scenario: A reverted build re-seeds rather than trusting a stale marker
+
+- **WHEN** a device left and re-joined the same event under this build and is then updated to a build
+  that predates it
+- **THEN** the older build finds no join marker, reconciles once, and `resetTo`s the ledger from the
+  per-device listing instead of re-uploading the window
 

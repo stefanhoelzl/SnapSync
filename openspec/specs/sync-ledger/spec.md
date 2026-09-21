@@ -10,14 +10,17 @@ skipping provable, reports absorbable (at-least-once), full re-enumeration harml
 a read-only projection.
 
 **Single record-writer is the load-bearing invariant**, and its process placement is a platform binding, not
-a property of this seam: on iOS ≥26.1 the upload extension is the sole writer and the app holds only a reader
-and a watcher; on iOS 18–26.0 no extension exists, so the app holds it. Codifying the split as three
+a property of this seam: on iOS ≥26.1 the upload extension is the sole writer and the app holds a reader, a
+watcher, and the reset family it invokes at membership transitions (which records nothing); on iOS 18–26.0
+no extension exists, so the app holds it. Codifying the split as three
 capabilities — reader, writer, watcher — makes the invariant a compile-time fact rather than a convention.
 
 Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
 The **Lifecycle transitions never clear the ledger** requirement was added in
-`changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`. The `eventId` provenance column, the
+`changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` and reversed in `changes/archive/2026-09-21-join-loads-leave-clears`: the ledger is the current
+membership's share set — a leave clears it, a first join or a switch loads it from the device's stored-file
+listing — and the per-asset progress read that lets status count only admitted photos was added there too. The `eventId` provenance column, the
 `4.sqm` migration, and the backfill sweep were added in
 `changes/archive/2026-07-18-add-ledger-event-provenance` (migration step 11b), and removed again — see below.
 
@@ -48,7 +51,8 @@ it applied), the guarded terminal write
 `markTerminal(key, outcome): Boolean` (see "Guarded terminal write"), the state-scoped read of `REQUESTED` keys, the bounded state-scoped read of
 rows that **need a job** (see "The DISCOVERED state and the ledger as the upload work source"), the
 manifest projection read and its detail backfill, the aggregate read
-`aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
+`aggregates(): LedgerAggregates`, the per-asset done-ness read `assetProgress()` (see "Per-asset
+progress read"), a change signal `changes: Flow<Unit>`, `clear()` — a
 delete-all reset, `demoteRequested()` — return every `REQUESTED` row to `DISCOVERED` (see "Requested-state reset"), `resetTo(entries)` — an **atomic**
 delete-all-then-insert-all replacement, the key-targeted delete `deleteKeys(keys)` — delete exactly the
 rows whose `key` is among the arguments and no other — and the batch record write `recordAllUnlessSettled(entries)`
@@ -139,6 +143,11 @@ decided in Kotlin"). The counts
 are PHOTOS (assets), not resource rows. The aggregate carries no timestamp. `LedgerAggregates` SHALL
 have value equality.
 
+`aggregates()` counts **every** row the ledger holds, whatever the membership admits. It serves the callers
+that ask about the ledger as a whole — the extension's decision whether work remains, and the diagnostic
+dump. Status does not count from it: it counts from the sibling `assetProgress()` read, intersected with the
+membership's admitted set (see "Per-asset progress read").
+
 #### Scenario: Empty ledger aggregates
 - **WHEN** `aggregates()` is called on an empty store
 - **THEN** it answers `pending = 0, completed = 0`
@@ -189,8 +198,11 @@ per-key query (`entry(key): LedgerEntry?`). Record and query semantics SHALL be 
 this shared class, delegating storage to the injected `LedgerStore`. There SHALL be no separate
 reader type: the writer is constructed only by the composition root that owns the engine (one per
 platform), and components that must not record are simply never handed a writer — app-side read
-access goes through `LedgerStore`'s read operations (`aggregates()`, per `sync-status`), never
-through a writer instance.
+access goes through `LedgerStore`'s read operations (`assetProgress()`, per `sync-status`), never
+through a writer instance. The app also invokes the **reset family** (`clear()`, `resetTo`) on the
+`LedgerStore` at membership transitions — a leave clears, a join loads (see "The ledger is the current
+membership's share set") — on **every** tier, including iOS ≥26.1, where it holds no writer. Those are not
+record operations (see "Storage seam — dumb row store"), so this does not breach the invariant below.
 
 **The invariant is that exactly one PROCESS records**, and its process placement is a platform binding — the
 extension on iOS ≥26.1, the app on iOS 18–26.0. Handing a writer instance only where recording is intended is
@@ -220,7 +232,7 @@ argument; a further record operation belongs on the writer.
 
 - **WHEN** a component is composed without receiving the root's `LedgerWriter`
 - **THEN** it has no record operation available beyond `markTerminal` — it can otherwise read the ledger
-  only through `LedgerStore`'s read operations
+  only through `LedgerStore`'s read operations, and write it only through the reset family
 
 #### Scenario: One process records
 
@@ -232,6 +244,13 @@ argument; a further record operation belongs on the writer.
 
 - **WHEN** a transport adapter is composed
 - **THEN** it is handed a `TransferRecord`, and no other ledger read or write is reachable from it
+
+#### Scenario: The app resets the ledger without a writer
+
+- **WHEN** the app leaves an event or loads a join on iOS ≥26.1, where the extension is the one recording
+  process
+- **THEN** it calls `clear()` or `resetTo` on its `LedgerStore`, holds no `LedgerWriter`, and records no
+  per-key fact
 
 ### Requirement: Record operations
 `LedgerWriter` SHALL provide `recordDiscovered`, `recordRequested`, and
@@ -260,7 +279,7 @@ it, naming the key and the refused state.
 
 There is **no** writer operation that records `COMPLETED`. A completed upload is a fact the platform reports,
 recorded through the guarded `markTerminal` (see "Guarded terminal write"); a resource already known to be
-stored is seeded `COMPLETED` by the re-join reconciliation's `resetTo`.
+stored is seeded `COMPLETED` by the join-time load's `resetTo` (capability `upload-state-reconciliation`).
 
 `recordDiscovered` SHALL NOT overwrite a row that already exists in any other state: a resource that
 is `REQUESTED` or `COMPLETED` is not new work, and re-recording it would either duplicate
@@ -638,13 +657,16 @@ exactly one `changes` signal on success. Entries are stored verbatim (the caller
 `resetTo` performs no clock stamping of its own. On the SQLDelight backend it SHALL execute as one
 transaction.
 
-The atomic baseline reset (`resetTo`, the clear-then-seed primitive) **is what rejoin reconciliation
-invokes on a re-join** (an event switch, reinstall, or fresh provision). Reconciliation `resetTo`s the
-ledger to exactly one `COMPLETED` row per filename in the **per-device** listing, so the clear is what
-drops stale/phantom rows (e.g. a `REQUESTED` row whose job never materialized) while the
-device-global, event-independent listing re-seeds the same files `COMPLETED` — preserving cross-event
-dedup so globally-stored resources never re-upload after a switch. The bare-filename key is what makes
-this safe: a re-seeded `COMPLETED` row keys identically across events.
+The atomic baseline reset (`resetTo`, the clear-then-seed primitive) **is what the join-time load
+invokes** at a provision into a new membership — a first join or a switch (capability
+`upload-state-reconciliation`, "A join loads the ledger from the per-device listing"). The load
+`resetTo`s the ledger to exactly one `COMPLETED` row per resource in the **per-device** listing, so the
+clear is what drops every row from before the membership (a previous membership's `DISCOVERED` and
+`REQUESTED` rows, or a leftover `COMPLETED` row that would suppress a needed upload) while the
+event-independent listing seeds every stored file `COMPLETED` — preserving cross-event dedup so stored
+resources never re-upload after a switch, or after a leave and a later join. The bare-filename key is what
+makes this safe: a seeded `COMPLETED` row keys identically across events. Being atomic, the reset never
+exposes the membership to a half-loaded ledger.
 
 #### Scenario: Interrupted reset leaves the store unchanged
 - **WHEN** a `resetTo` transaction fails partway (e.g. an insert errors)
@@ -658,9 +680,9 @@ this safe: a re-seeded `COMPLETED` row keys identically across events.
 - **WHEN** the reset scenarios run against the SQLDelight backend on a JVM sqlite driver
 - **THEN** they pass unchanged (a single-transaction replacement, one change signal)
 
-#### Scenario: A re-join resetTo seed preserves cross-event dedup
-- **WHEN** the store holds `COMPLETED` rows from a prior event plus a stale non-`COMPLETED` row, and reconciliation `resetTo`s the new event from the device-global per-device listing
-- **THEN** the listing re-seeds the still-stored files `COMPLETED` (so none re-upload) and the stale row is dropped by the clear, leaving the ledger as exactly the device's stored files
+#### Scenario: A join-time resetTo seed preserves cross-event dedup
+- **WHEN** the store holds `COMPLETED` rows from a prior membership plus a stale non-`COMPLETED` row, and a switch's join-time load `resetTo`s from the event-independent per-device listing
+- **THEN** the listing seeds the still-stored files `COMPLETED` (so none re-upload) and the stale row is dropped by the clear, leaving the ledger as exactly the device's stored files
 
 ### Requirement: Event-independent key
 
@@ -668,8 +690,10 @@ The ledger key SHALL be the **bare resource filename** (`<assetId>-<role>.<ext>`
 scoping. Because the key is event-independent, a `COMPLETED` row recorded while one event is
 configured stays valid and continues to read as `COMPLETED` after the configured event changes — the
 ledger neither keys, **reads**, nor **records** by event: no dedup decision, aggregate, backlog read, or skip
-consults an event, and a row carries no event id at all. This is what lets cross-event dedup come purely from the reconcile seed source (a `resetTo`
-clear-and-seed from the device-global per-device listing) without any ledger key change.
+consults an event, and a row carries no event id at all. This is what lets cross-event dedup come purely from the join-time load's seed source (a `resetTo`
+clear-and-seed from the event-independent per-device listing) without any ledger key change, even though
+the ledger itself is cleared at every leave and replaced at every switch (see "The ledger is the current
+membership's share set").
 
 #### Scenario: A COMPLETED row stays valid after the configured event changes
 - **WHEN** a resource is recorded `COMPLETED` under one event and the configured event later changes
@@ -754,41 +778,6 @@ deletion discarded and a rediscovery had to re-derive.
 - **THEN** the row is among the rows needing a job, so the next cycle re-creates its upload without
   re-reading the asset's resources
 
-### Requirement: Lifecycle transitions never clear the ledger
-
-`clear()` SHALL NOT be used as a membership-lifecycle mechanism. No provision, re-provision, event
-switch, permission change, direction change, or **leave** SHALL call `clear()` on the ledger
-(`upload-lifecycle`, "Upload producer seam has no destructive verb").
-
-The ledger is **device-global dedup state**, not event state: its key is the bare resource filename
-with no event scoping (see "Event-independent key"), and leaving an event does not remove the device's
-bytes from its storage partition. A `COMPLETED` row therefore stays **true** across a leave, a switch,
-and a re-join — and clearing it would force a re-upload of every already-stored resource on the next
-join.
-
-The **only** operation that re-baselines the ledger SHALL be `resetTo`, invoked by a triggered
-reconciliation against the authoritative per-device listing (`upload-state-reconciliation`). Ledger and
-storage may diverge only at a (re)join, and reconciliation — not a lifecycle wipe — is what closes that
-divergence.
-
-`clear()` SHALL remain on the `LedgerStore` seam (it is the semantic basis of `resetTo` and is used
-by test and harness backends), but it SHALL have no membership-lifecycle caller.
-
-#### Scenario: Leaving an event preserves every ledger row
-
-- **WHEN** the user leaves the currently-joined event
-- **THEN** the ledger retains every row, so joining any event afterwards re-uploads nothing already in the device's byte partition
-
-#### Scenario: Re-provisioning preserves every ledger row
-
-- **WHEN** the device switches to a different event
-- **THEN** the switch itself clears nothing; only the reconciliation's `resetTo` re-baselines the ledger, from the per-device listing
-
-#### Scenario: Only reconciliation re-baselines the ledger
-
-- **WHEN** the ledger is re-baselined
-- **THEN** the re-baseline is a `resetTo` from an authoritative per-device listing, never a lifecycle-driven `clear()`
-
 ### Requirement: The ledger is never pruned by the selection policy
 
 The ledger SHALL record every resource whose bytes are on the backend for an event, and that record
@@ -837,8 +826,8 @@ policy moves rows **out** of the set it may delete rather than into it.
 
 Which `LedgerState` values count as **done** SHALL be decided by a single exhaustive `when` in `:domain`
 `model/`, and bound into every state-scoped storage statement as a parameter — never written as a literal inside a
-query. On the SQLDelight backend the pending-resource read, the aggregate read, the manifest projection, and the
-guarded record write
+query. On the SQLDelight backend the pending-resource read, the aggregate read, the per-asset progress read, the
+manifest projection, and the guarded record write
 SHALL each take the done-state set as a bound parameter (`state NOT IN :doneStates` / `state IN
 :doneStates`) rather than comparing `state` to `'COMPLETED'`.
 
@@ -853,7 +842,8 @@ silently on one side of a string comparison.
 
 #### Scenario: Reads agree on what done means
 
-- **WHEN** the pending-resource read, the aggregate read, and the manifest projection run over the same rows
+- **WHEN** the pending-resource read, the aggregate read, the per-asset progress read, and the manifest
+  projection run over the same rows
 - **THEN** each classifies every row by the same done-state set, with no query carrying a state literal of
   its own
 
@@ -1026,14 +1016,12 @@ Each axis answers a different question, and no axis implies another:
 
 - **done** — is anything still owed for this key?
 - **needs a job** — is nothing in flight and are the bytes not on the backend?
-- **bytes believed stored** — does this row assert that the upload landed? `COMPLETED` does. This is the axis
-  a comparison against the backend's own listing takes (capability `upload-state-reconciliation`). On the
-  OS-driven tier the returned upload job carries no HTTP status, so a `COMPLETED` recorded there is a belief
-  the device cannot distinguish from a stored `502` — which is why this axis exists at all.
 
-Today **done** and **bytes believed stored** classify every state identically. They SHALL nonetheless remain
-separate decisions: they answer different questions, a future state may separate them, and a comparison
-against the backend SHALL NOT depend on what "settled" means.
+The **bytes believed stored** axis is **retired**. It existed so a comparison against the backend's own
+listing could ask which rows assert that an upload landed, independently of what "settled" means. Its one
+reader, the read-only foreground check, is deleted (capability `upload-state-reconciliation`), and an axis
+nothing reads is a classification that can only drift. A future comparison against the backend SHALL
+re-introduce it as its own decision rather than borrow **done**.
 
 A state added without classifying it on **every** axis SHALL fail to compile, rather than landing
 silently on one side of any of them. The axes are therefore open-ended by construction: adding one is
@@ -1048,8 +1036,8 @@ a decision.
 #### Scenario: The classifications are independent
 
 - **WHEN** the classifications are applied to `REQUESTED` and `COMPLETED`
-- **THEN** `REQUESTED` is neither done, nor in need of a job, nor believed stored, while `COMPLETED` is done
-  and believed stored and needs no job — so a read of one set never implies another
+- **THEN** `REQUESTED` is neither done nor in need of a job, while `COMPLETED` is done and needs no job —
+  so a read of one set never implies another
 
 ### Requirement: The ledger records the destination a job was sent to
 
@@ -1110,8 +1098,9 @@ following hold:
    authoritative SHALL delete nothing.
 2. **The row is inside the walk's window.** The row's asset is admitted by the membership's policy through
    the same row-admission derivation the device manifest and the enqueue use (`admittedAssetIds`). The
-   ledger is device-global and the walk is bounded by the policy's capture range, so a row outside that
-   range is not evidence either way. A bare row (empty `creationDate`) is never admitted, so it is never
+   ledger holds rows outside the window — the join-time load seeds everything the device ever stored, for
+   any event — and the walk is bounded by the policy's capture range, so a row outside that range is not
+   evidence either way. A bare row (empty `creationDate`) is never admitted, so it is never
    deleted this way.
 3. **The asset is absent from the walk.** Presence SHALL be the asset ids of **every** candidate the walk
    returned, before admission. Being in the library is not a question of scope.
@@ -1135,8 +1124,8 @@ still needs a job, and deleting one costs a re-discovery, never a photo.
   longer lists `X`
 
 #### Scenario: A row outside the walk's window is kept
-- **WHEN** the ledger holds a `COMPLETED` row whose capture date is before the membership's cutoff (seeded by
-  a re-join, or left by an earlier event), and an authoritative walk does not return its asset
+- **WHEN** the ledger holds a `COMPLETED` row whose capture date is before the membership's cutoff (dated
+  while an earlier cutoff admitted it), and an authoritative walk does not return its asset
 - **THEN** the row is kept
 
 #### Scenario: A bare row is never deleted by the walk
@@ -1179,7 +1168,7 @@ applies each entry under the same done-state guard as the single record write, i
 transaction**, and signals `changes` once if any entry applied. A process death then leaves either all of a
 walk's new rows or none of them, never one role of a photo whose other role is skipped forever.
 
-A re-join seed produces bare rows, so an asset whose stored-file listing named only some of its roles is
+The join-time load produces bare rows, so an asset whose stored-file listing named only some of its roles is
 read again, and its missing roles are discovered.
 
 #### Scenario: A fully-known asset is not re-read
@@ -1197,7 +1186,130 @@ read again, and its missing roles are discovered.
   recorded asset or reads it again
 
 #### Scenario: A partial seed is completed by the walk
-- **WHEN** a re-join seed recorded only `X-primary.heic` (bare), and the walk returns `X`
+- **WHEN** a join-time load seeded only `X-primary.heic` (bare), and the walk returns `X`
 - **THEN** the cycle reads `X`'s resources, fills the primary row's detail, and records `X-live.mov`
   `DISCOVERED`
+
+### Requirement: The ledger is the current membership's share set
+
+The upload ledger SHALL hold the **current membership's share set**: nothing while the device is not
+joined, loaded at a join, cleared at a leave, and replaced at a switch. Every change of membership is an
+explicit app action, so the ledger is set at that action rather than detected afterwards:
+
+- a **leave** SHALL `clear()` the upload ledger, after uploads are stopped and before the config is cleared
+  (the order and its best-effort independence are owned by capability `leave-event`);
+- a **provision into a new membership** — a first join, or a switch to a different event — SHALL clear
+  and then load the ledger through the join-time load: `resetTo` from the per-device listing on success,
+  `clear()` on failure (capability `upload-state-reconciliation`, "A join loads the ledger from the
+  per-device listing"). A switch stops uploads first (capability `upload-lifecycle`), so it is a leave
+  followed by a join.
+
+No other membership transition SHALL clear, reset, or reload the ledger: a re-provision of the
+already-joined event, a permission change, a direction change, and a reconfigure of the joined event
+(including a widening one, which does not re-fetch the listing) leave every row in place.
+
+Only the **upload** ledger is cleared. The download store's handle-carrying rows stay permanent
+(capability `download-store`): they are what stops the device uploading its own imports back into an
+event.
+
+The leave's clear costs no dedup. The byte store is device-partitioned and event-independent, and the next
+join's load seeds every resource the backend holds for the device `COMPLETED` again, so nothing already
+stored re-uploads unless that load fails (whose cost, idempotent re-uploads bounded by the event window, is
+stated by capability `upload-state-reconciliation`). The clear at a join is what makes a leftover row
+harmless: a `COMPLETED` row from before the membership — kept by a leave under the earlier contract, or
+left when a leave's best-effort clear failed — would otherwise suppress a needed upload forever.
+
+Two late writers can reach a cleared ledger, and neither SHALL be treated as a fault:
+
+- a **completion** already in flight when the ledger was cleared finds no row: `entryForDestination`
+  answers nothing, the outcome is acknowledged and discarded, and the bytes are on the backend with no row.
+  The next join's listing includes them, so its load seeds them `COMPLETED`;
+- a **cycle already running** in the extension when the app clears checked membership once at its start and
+  may still record rows. Those can only be `DISCOVERED` or `REQUESTED` (no record operation writes
+  `COMPLETED`), they lie outside any membership so no deciding reader acts on them, and the next join's clear
+  removes them.
+
+The ledger **key** stays event-independent (see "Event-independent key"); only the ledger's contents are
+scoped to the membership. This deepens the single-active-membership assumption: concurrent multi-event
+membership, a named future, would need per-event ledgers or a membership column.
+
+`clear()` is also invoked by device-state reset (capability `device-state-reset`), which is not a membership
+transition of this list.
+
+#### Scenario: Leaving clears the upload ledger
+
+- **WHEN** the user leaves the currently-joined event on either tier
+- **THEN** after uploads are stopped the upload ledger holds no rows, and the download store's rows are
+  unchanged
+
+#### Scenario: A first join loads the ledger
+
+- **WHEN** a device with no membership joins an event and the per-device listing fetch succeeds
+- **THEN** the ledger holds exactly one bare `COMPLETED` row per resource the backend holds for the device
+
+#### Scenario: A switch clears and loads
+
+- **WHEN** the device switches to a different event while the ledger holds the previous membership's rows
+- **THEN** uploads are stopped, and the ledger then holds only what the join-time load wrote — the listing's
+  rows on success, nothing on failure
+
+#### Scenario: Other transitions keep every row
+
+- **WHEN** the joined event is re-provisioned, the photo permission changes, the direction changes, or the
+  joined event is reconfigured
+- **THEN** the ledger retains every row, in the state it had
+
+#### Scenario: A completion after the clear is discarded
+
+- **WHEN** an upload that was in flight at a leave completes after the ledger was cleared
+- **THEN** no row is found for its destination, nothing is written, and the next join's load seeds the stored
+  resource `COMPLETED`
+
+#### Scenario: A late extension cycle's rows are removed at the next join
+
+- **WHEN** an extension cycle that started before a leave records `DISCOVERED` rows after the app cleared the
+  ledger
+- **THEN** those rows are dropped by the next join's `resetTo` or `clear()`, and no upload is made for them
+  in between
+
+### Requirement: Per-asset progress read
+
+`LedgerStore` SHALL provide `assetProgress()`: one entry per `assetId` the ledger holds a row for, answering
+whether **every** row of that asset is in a **done** state (see "The done-state set is decided in Kotlin").
+It is the same per-asset collapse `aggregates()` performs, **un-counted**: an asset whose rows are all done is
+done, and an asset with at least one non-done row is not. It carries no timestamp and no key.
+
+It SHALL be computed in **one** snapshot-consistent read, so the done and not-done answers can never
+disagree with each other about a row that moved between two reads. On the SQLDelight backend it SHALL be a
+single `assetId`-grouped query taking the done-state set as a bound parameter, and every `LedgerStore`
+implementation SHALL satisfy it through the shared `LedgerStoreContract`.
+
+It exists because status counts only what the membership admits (capability `sync-status`): the ledger
+holds rows for every resource the device has stored for any event — the join-time load seeds them all —
+so a whole-ledger count would mask pending in-window photos behind historical completions. Status
+intersects this read with the admitted asset set the gallery counts for `N` (capability `gallery-status`),
+which needs no derivation of the policy on the status poll. The ledger interprets nothing about admission:
+the intersection is the caller's.
+
+#### Scenario: A photo is done only when all its resources are
+
+- **WHEN** asset `A` has two `COMPLETED` rows and asset `B` has one `COMPLETED` and one `DISCOVERED` row
+- **THEN** `assetProgress()` answers `A` done and `B` not done, and nothing else
+
+#### Scenario: An empty ledger answers nothing
+
+- **WHEN** `assetProgress()` is called on an empty store
+- **THEN** it answers no entries
+
+#### Scenario: It agrees with the aggregate read
+
+- **WHEN** `assetProgress()` and `aggregates()` run over the same rows
+- **THEN** the number of done entries equals `completed` and the number of not-done entries equals
+  `pending`
+
+#### Scenario: A photo is done as soon as its last upload is recorded
+
+- **WHEN** an asset's only `REQUESTED` row is recorded `COMPLETED` through `markTerminal`, and no cycle has
+  run since
+- **THEN** `assetProgress()` answers that asset done
 

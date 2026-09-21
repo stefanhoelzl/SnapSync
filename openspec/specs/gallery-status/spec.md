@@ -25,8 +25,17 @@ migration step 3a; born in the since-deleted `:domain:gallery` module) whose `si
 device photo library, used by the status projection as the sync total `N`. The current value SHALL
 always be available synchronously and SHALL always be a real, source-derived value: either a **counted**
 `Int`, or **`null`** meaning **the count has not been taken**. There SHALL be no placeholder count and
-no negative sentinel. The seam exposes the count only; it does not expose individual assets, identity,
-or per-asset state.
+no negative sentinel.
+
+Beside `N` the seam SHALL publish the **admitted own-asset set** it counted: the normalized `assetId`s of the
+assets `N` counts, and nothing else. The set exists so the status projection can count `completed` and
+`pending` over exactly the assets `N` counts (capability `sync-status`), rather than over every ledger row. It
+SHALL be published **together with `N`, as one value**, so that no consumer pairs a count from one refresh
+with a set from another, and `N` SHALL equal the set's size. Its un-counted rules SHALL be identical to `N`'s:
+before any count has been taken the set is **`null`**, never an empty set; a failed enumeration leaves the
+previous set in place; a non-contributing membership publishes a counted **empty** set, reached without a
+per-asset read. The seam exposes identity only — the set carries no capture date, no resource, and no
+per-asset upload state.
 
 **`null` and `0` are different answers and SHALL NOT be conflated.** `0` asserts that this membership
 contributes nothing; `null` asserts nothing at all. The distinction is load-bearing rather than
@@ -78,6 +87,17 @@ says nothing about whether a count could be taken. The distinction matters becau
 is expressed with a construct that catches cancellation like anything else, so it has to be excluded
 deliberately rather than by omission.
 
+#### Scenario: The admitted set is published beside the count
+
+- **WHEN** the count is refreshed for a contributing membership whose policy admits assets `A`, `B` and `C`
+- **THEN** `size.value` is `3` and the published admitted set is exactly `{A, B, C}` (normalized), taken in
+  the same refresh as the count
+
+#### Scenario: An un-counted admitted set is null, not empty
+
+- **WHEN** a `GalleryStatusSource` has never had its count refreshed
+- **THEN** its admitted set is `null`, distinguishable from a counted empty set
+
 #### Scenario: Current size is available synchronously
 
 - **WHEN** a consumer reads `size.value` immediately after obtaining a `GalleryStatusSource`
@@ -121,8 +141,8 @@ deliberately rather than by omission.
 #### Scenario: A failed enumeration does not become a count
 
 - **WHEN** an enumeration throws while the count has never successfully been taken
-- **THEN** `size.value` remains `null`, the failure is logged at `Error` severity, and no count is
-  published
+- **THEN** `size.value` and the admitted set remain `null`, the failure is logged at `Error` severity, and
+  no count is published
 
 #### Scenario: A cancelled enumeration is not reported as a failed count
 
@@ -139,10 +159,10 @@ deliberately rather than by omission.
 
 ### Requirement: Live re-emission on library change
 
-A `GalleryStatusSource` SHALL re-read and re-emit its `size` when the photo library changes
+A `GalleryStatusSource` SHALL re-read and re-emit its `size`, together with the admitted set it counted, when the photo library changes
 (`photoLibraryDidChange`), when the app enters the foreground, and when an event is (re)joined — the
-same invalidation-ding shape the status sources use. A re-emission carries the freshly read count; the
-source MUST NOT emit a count it computed from stale library state.
+same invalidation-ding shape the status sources use. A re-emission carries the freshly read count and set; the
+source MUST NOT emit a count or a set it computed from stale library state.
 
 #### Scenario: New photo bumps the count immediately
 
@@ -158,20 +178,23 @@ source MUST NOT emit a count it computed from stale library state.
 
 The iOS implementation SHALL back `size` with a PhotoKit count. `:adapter:generic:fake` SHALL provide the
 honest in-memory implementation (`InMemoryGalleryStatusSource`, re-homed from the deleted
-`:domain:gallery` at migration step 10), whose count is a **constructor-injected state cell** of the
-port's own nullable type — whoever owns the cell (a test, a `:test:world` wrapper) drives any total,
+`:domain:gallery` at migration step 10), whose admitted set is a **constructor-injected state cell** of the
+port's own nullable type, and whose count is that set's size, so the fake cannot publish a count and a set
+that disagree — whoever owns the cell (a test, a `:test:world` wrapper) drives any total,
 including **not-yet-counted** (`null`), discovery-lag (`N` greater than the ledger's completed count),
 overshoot (`N` less than the ledger's completed count) and counted-empty (`0`), without a device; the
 fake itself exposes only the port (the fake-honesty gate, `architecture-guards`).
 
-The fake SHALL default its cell to `null`, so a test that does not state a count reproduces the
+The fake SHALL default its cell to `null` (not counted, for both the count and the set), so a test that does not state a count reproduces the
 device's cold-launch state rather than a counted zero. A fake seeded with a count it was never given
 is what made the un-counted state unreachable in tests.
 
 #### Scenario: Fake count is driven through the owned cell
 
-- **WHEN** a test constructs the in-memory gallery source over its own cell and writes 47 to it
-- **THEN** `size.value` is `47` and a collector observes the new value
+- **WHEN** a test constructs the in-memory gallery source over its own cell and writes a set of 47
+  asset ids to it
+- **THEN** `size.value` is `47`, the published admitted set is those 47 ids, and a collector observes the new
+  value
 
 #### Scenario: Fake defaults to not-counted
 
@@ -239,7 +262,9 @@ This is the **single shared derivation** of those fields: the iOS background-upl
 full-enumeration path SHALL delegate to the same mapping, so the same `filename` is computed wherever
 enumeration happens (the join seed and the producer agree byte-for-byte). The **app-side status consumer**
 SHALL **also** consume this seam — but only to count the device's admitted assets, which is the status total
-`N` (capability `sync-status`). It SHALL NOT derive an expected-filename set and SHALL NOT read the
+`N` (capability `sync-status`), and to publish those assets' normalized `assetId`s beside it (see
+"GalleryStatusSource seam"); both are facts-only, so neither costs a resource read.
+It SHALL NOT derive an expected-filename set and SHALL NOT read the
 per-device listing: own-device completeness is ledger-backed, and the status path issues no storage LIST.
 What the shared seam guarantees is that the total counts exactly the assets the cycle would upload — so the
 screen can reach 100% — not that two derivations of "complete" agree. Presentation SHALL keep consuming
@@ -341,13 +366,16 @@ asset **before** reading its resources, using only the asset's own facts.
 
 `:domain`'s `model/` zone (seated by migration step 3a) SHALL own a **single** `assetIdFromUploadKey` parser — the exact inverse of its
 `uploadKey` derivation — that recovers a resource's `assetId` from a bare upload key
-(`<assetId>-<role>.<ext>`). It SHALL be the **only** implementation of that parse: both the
-extension-side upload-job reconstruction (`ios-photokit-upload`, "Completion and retry adjudication")
-and the re-join reconciler (`upload-state-reconciliation`) SHALL call this one function, replacing any
-private per-module copy. Because the parse is now load-bearing at the record path (a mis-parse writes a
+(`<assetId>-<role>.<ext>`). It SHALL be the **only** implementation of that parse: every site that holds
+only a key and needs its `assetId` — among them the extension-side upload-job reconstruction
+(`ios-photokit-upload`, "Completion and retry adjudication") and the platform discovery's reverse lookup of
+the assets behind a set of keys — SHALL call this one function, replacing any private per-module copy. The
+join-time ledger load (`upload-state-reconciliation`) is **not** such a site: it seeds each row with the
+`assetId` the per-device listing reports, and has no key to parse an identity out of.
+Because the parse is now load-bearing at the record path (a mis-parse writes a
 wrong or empty `assetId`), the round-trip SHALL be pinned by a test: for every key `uploadKey` produces,
 `assetIdFromUploadKey` SHALL recover the original `assetId`. The parser SHALL remain in `model/`,
-the one shared derivation both consumers import (per "Module placement keeps the
+the one shared derivation every such consumer imports (per "Module placement keeps the
 seam off presentation").
 
 #### Scenario: assetId round-trips through the upload key
@@ -356,11 +384,15 @@ seam off presentation").
 - **THEN** `assetIdFromUploadKey` applied to that key returns the original `assetId`, for assetIds with
   and without embedded `-`, on JVM and on the iOS simulator
 
-#### Scenario: Both consumers use the one parser
+#### Scenario: Every consumer uses the one parser
+- **WHEN** the upload-job reconstruction, or any other site holding only a key, recovers an `assetId` from it
+- **THEN** it calls `model/`'s `assetIdFromUploadKey`, with no private duplicate remaining in the upload
+  cycle or a platform adapter
 
-- **WHEN** the upload-job reconstruction and the re-join reconciler each recover an `assetId` from a key
-- **THEN** both call `model/`'s `assetIdFromUploadKey`, with no private duplicate remaining in
-  the reconciler or the upload cycle
+#### Scenario: The join-time load parses no key
+- **WHEN** the join-time load seeds the ledger from a successful per-device listing
+- **THEN** each seeded row carries the `assetId` the listing reported, and no identity is recovered by
+  parsing the recomposed key
 
 ### Requirement: The domain reads neutral asset facts, not platform ABI
 

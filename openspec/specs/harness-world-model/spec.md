@@ -3,7 +3,7 @@
 ## Purpose
 
 A controllable in-memory "world" (`:test:world`) that the REAL platform-agnostic stack — `SyncEngine`
-+ `UploadCycle`, `UploadReconciler`, `DeviceManifestProducer`, `DownloadController` +
++ `UploadCycle`, the join-time `ShareSetLoad`, `DeviceManifestProducer`, `DownloadController` +
 `QueuedPhotoDownloadJobs`, `OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource`,
 `CreateEvent` — runs against, so the whole system (upload AND download) is observable and testable on
 JVM + `iosSimulatorArm64` without a device. It provides a backend object store computing the edge's read-models faithfully (drift
@@ -12,7 +12,7 @@ operator-driven upload/download job fakes, a one-own-plus-injectable-foreign dev
 failure levers, and composition helpers mirroring the extension composition root. Consumed by BOTH the
 desktop full-stack harness (`:app:desktop`) and `:test:integration`.
 
-It exists because the code that most needs coverage — the upload cycle's adjudication, the rejoin reconcile,
+It exists because the code that most needs coverage — the upload cycle's adjudication, the join-time load,
 the download echo-suppression — is exactly the code that ran only inside an iOS extension that cannot be
 tested on a simulator. Faking the *execution edge* rather than the logic lets the real stack run anywhere,
 which is what makes the standing target rule (capability `testing-architecture`, "Every test runs on
@@ -72,9 +72,9 @@ device byte-partition (`files/devices/<deviceId>/<filename>`), and the **relatio
 backend keeps — events, per-`(eventId, deviceId)` memberships each carrying an `active`/`departed` state,
 each membership's asset set, and the device-scoped resources with their `uploaded` flag. From this state it
 SHALL compute the edge's read-models **faithfully in behavior** — the per-device file listing
-(`GET /files/devices/<id>`), the event-wide union (`GET /events/<id>/files`), and the reconcile-seed
-listing — where the reconcile-seed listing is the **same** per-device read-model consumed by the rejoin
-reconciler. Byte-level fidelity to the real Deno `api/` edge is **NOT** required: drift is **accepted**,
+(`GET /files/devices/<id>`), the event-wide union (`GET /events/<id>/files`), and the join-load
+listing — where the join-load listing is the **same** per-device read-model the join-time share-set load
+consumes (capability `upload-state-reconciliation`). Byte-level fidelity to the real Deno `api/` edge is **NOT** required: drift is **accepted**,
 there is **no golden fixture**, and the store SHALL NOT mint real presigned S3 URLs (each `url` is a
 synthetic in-memory handle the fake download seams resolve store-direct).
 
@@ -109,9 +109,10 @@ active/departed sibling objects, nor resolve membership from object timestamps.
 - **THEN** the read-model reports the event absent (a 404-equivalent that surfaces as a failed
   `union` `Result`), distinct from an existing event with no complete assets (an empty array)
 
-#### Scenario: The reconcile seed reads the per-device listing
+#### Scenario: The join-time load reads the per-device listing
 
-- **WHEN** the rejoin reconciler seeds already-stored photos for a device
+- **WHEN** a provision into a new membership loads the ledger with the photos the backend already stores for
+  a device
 - **THEN** it consumes the world's per-device listing read-model — the same one the backend serves, exposed once
 
 ### Requirement: MockEngine mini-edge over the four common-Ktor seams
@@ -355,7 +356,7 @@ own-device cycle.
 ### Requirement: Device model — one own device plus injectable foreign devices
 
 The world SHALL fix exactly **one** own `deviceId` — the id used by the upload cycle, the edge upload
-provider, the reconciler, and own-device status — and SHALL allow **injecting** any number of foreign
+provider, the join-time share-set load, and own-device status — and SHALL allow **injecting** any number of foreign
 devices, each with its own deposited byte objects and device manifest. The event-union SHALL return
 foreign devices' complete assets (each tagged by `deviceId`), and the download controller (configured
 with `myDeviceId` = the own device) SHALL skip own-device assets by id, so a foreign device's assets
@@ -375,7 +376,8 @@ flow through download → import → suppression while the own device's uploads 
 
 The world SHALL expose controllable failure levers that drive the real stack's failure paths: a
 **backend-offline** switch flipping the per-device listing and event-union routes to `502` (driving the
-reconcile-seed failure path and the download union-failure path), the **job-limit** (`LIMIT_EXCEEDED`),
+join-time load's failure path — the ledger cleared and the join completed regardless — and the download
+union-failure path), the **job-limit** (`LIMIT_EXCEEDED`),
 a **per-job `UploadError`** on the upload retry chain, an **import failure** (`ImportResult.Failed`),
 and a **gallery-enumeration failure** — the own-device walk that computes the status total `N` throwing
 as a platform walk can.
@@ -425,6 +427,13 @@ count.
 - **THEN** own-device upload status is unaffected — it is ledger-backed and issues no storage read, so
   there is no last-good set to keep and nothing to go stale — and the download union read
   returns a failed `Result` (no partial import)
+
+#### Scenario: A join while the backend is offline blocks nothing
+
+- **WHEN** the backend-offline switch is set and the world provisions into a new membership over a gallery
+  whose photos the backend already stores, and a cycle then runs with the switch cleared
+- **THEN** the provision completes with the config present and the upload ledger empty — no flag, gate, or
+  retry state is left behind — and the cycle re-uploads the in-window photos to the same destinations
 
 #### Scenario: Each lever drives its real path
 
@@ -488,9 +497,11 @@ call** — `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One s
 the world's fakes — not through a world-local mirror of a composition root: the world supplies its
 in-memory ports (`ConfigReader` over the config cell and the `membershipUnreadable` lever, the fake
 `BackgroundTransfer`, the fake `UploadDiscovery`, the `:adapter:generic:fake`
-ledger/discovery/manifest/marker stores, the mini-edge HTTP seams) and `uploadCore` builds the real
-`SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` + `UploadReconciler` + `DeviceManifestProducer`
-graph, exactly as it does for the device roots. The app-side graph — download, status, membership, creation,
+ledger/discovery/manifest stores, the mini-edge HTTP seams) and `uploadCore` builds the real
+`SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` + `DeviceManifestProducer`
+graph, exactly as it does for the device roots. The world composes **no** upload reconciler and **no**
+joined-event marker, because `uploadCore` has neither: the upload ledger is loaded at a join and cleared at a
+leave (capability `upload-lifecycle`), not reconciled inside a cycle. The app-side graph — download, status, membership, creation,
 the command bundle — SHALL come from the composed `AppCore` (see "The world composes the app graph through
 snapSyncApp"). Only the platform edges (`BackgroundTransfer`, `UploadDiscovery`, `DownloadTransport`,
 `PhotoLibraryImporter`), the storage seams, and the HTTP client SHALL be fakes; everything above them SHALL
@@ -506,7 +517,7 @@ be the shipped production code.
 
 - **WHEN** the world and a device tier each assemble an upload cycle
 - **THEN** both call the same `uploadCore` function over different port implementations, so the world
-  cannot carry gate, reconcile, manifest, or policy wiring production lacks (or vice versa)
+  cannot carry gate, manifest, or policy wiring production lacks (or vice versa)
 
 #### Scenario: Production seams are not duplicated
 
@@ -581,11 +592,14 @@ none of which is a `UiState`. This is the seam-to-UI-state integration surface o
 The world SHALL provide a `leave()` composition helper that runs the **real** leave edge —
 `DownloadController.onLeaveOrSwitch()` (cancel in-flight transfers, prune non-terminal download rows),
 the best-effort backend leave notify (`DELETE /events/<eventId>/devices/<deviceId>` against the world's
-mini-edge), then clearing the config cell and the joined-event marker — while **retaining** imported
-foreign photos and the ledger on the device side. It SHALL NOT be modelled by rebuilding the world
+mini-edge), then **clearing the upload ledger**, then clearing the config cell — while **retaining**
+imported foreign photos and the download store's rows on the device side. The upload ledger is cleared
+exactly as the real leave clears it (capability `leave-event`): after a leave it holds no share set, so a
+later provision starts from the join-time load and nothing from before it. It SHALL NOT be modelled by rebuilding the world
 (which would forge the outcome and wrongly discard imported photos). The backend leave SHALL mutate the
 world's state exactly as the real backend does — the membership's state becomes `departed` and nothing
-else moves — so integration tests can assert **both** the device outcome (join cleared, imports retained)
+else moves — so integration tests can assert **both** the device outcome (join cleared, upload ledger empty, imports
+retained)
 and the **world** outcome (the membership departed, its assets still in the union, the event and every
 byte still present because reclamation belongs to the nightly sweep alone). Because
 clearing the config cell is reactive, the status projection SHALL leave the joined layer
@@ -595,13 +609,22 @@ imported foreign assets suppressed (real cross-event dedup).
 #### Scenario: Leave keeps imported photos, clears the join, and notifies the backend
 
 - **WHEN** a foreign asset has been downloaded and imported, and `leave()` is then invoked
-- **THEN** the real `onLeaveOrSwitch()` runs, the backend leave is dispatched to the mini-edge, the config cell and joined-event marker are cleared, and the imported asset remains enumerable in the gallery
+- **THEN** the real `onLeaveOrSwitch()` runs, the backend leave is dispatched to the mini-edge, the upload
+  ledger and the config cell are cleared, and the imported asset remains enumerable in the gallery
+
+#### Scenario: Leave clears the upload ledger but not the download store
+
+- **WHEN** own photos have uploaded (their rows `COMPLETED`) and a foreign asset has been imported, and
+  `leave()` is then invoked
+- **THEN** the upload ledger holds no row, while the imported asset's download row is still present and its
+  local id is still suppressed
 
 #### Scenario: Re-provisioning after leave still suppresses the import
 
 - **WHEN** the same event is re-provisioned after `leave()`
 - **THEN** the previously imported foreign asset is still in `suppressedLocalIds()` and the own-device
-  cycle does not re-upload it
+  cycle does not re-upload it, and the own photos stored before the leave are loaded `COMPLETED` from the
+  per-device listing, so the cycle does not re-upload them either
 
 #### Scenario: Leaving as the last active device reaps the event in the world
 
@@ -673,11 +696,11 @@ because that is exactly what the real backend guarantees, and a world that emitt
 
 The world SHALL drive an upload cycle by constructing the real cycle and invoking it, supplying the same
 ports a composition root supplies. It SHALL NOT re-implement the roots' assembly — the membership decision,
-the leave-side reconciliation, the engine construction, and the hook wiring — in harness code.
+the engine construction, and the hook wiring — in harness code.
 
 A hand-written mirror of a composition root drifts from it, and drifts silently: before the app-driven
-tier's reconciliation was fixed, the world **already reconciled** on its mirrored path while the real tier
-did not. A mirror that is more correct than production is worse than one that is wrong, because it stays
+tier's since-retired leave-side reconciliation was fixed, the world **already reconciled** on its mirrored
+path while the real tier did not. A mirror that is more correct than production is worse than one that is wrong, because it stays
 green while the defect ships. What the world may keep is what the roots keep — translation from its own
 in-memory state into the shared decision's arguments — plus a tier's genuinely tier-specific residue, which
 it SHALL name as such (the OS-invoked tier's pending→processing requeue).
@@ -704,12 +727,12 @@ omits the state that breaks.
 
 #### Scenario: An unreadable membership is distinct from an absent one
 - **WHEN** the world's membership is set unreadable and a cycle runs
-- **THEN** the cycle skips, the joined-event marker is intact, and the ledger and object store are
-  untouched
+- **THEN** the cycle skips, and the ledger and object store are untouched
 
-#### Scenario: An absent membership still drives the leave path
+#### Scenario: An absent membership takes the not-joined outcome
 - **WHEN** the world's membership is cleared and a cycle runs
-- **THEN** the leave-side reconciliation runs and the joined-event marker is cleared
+- **THEN** the cycle takes its not-joined outcome and writes nothing: it fetches no listing and resets no
+  ledger, because clearing the ledger belongs to the leave, not to a cycle
 
 ### Requirement: The mini-edge answers the event rename
 
@@ -834,4 +857,46 @@ nothing.
 
 - **WHEN** the operator removes an asset from the gallery and a cycle resolves a ledger key for it
 - **THEN** the resolution returns nothing for that key
+
+### Requirement: The world's operator provision loads the share set as a join does
+
+The world's operator `provision()` SHALL itself perform the **join-time ledger load** a real join performs
+(capability `join-event`), because it writes the config cell directly and runs no `JoinEvent` and no
+`flow/Provision`. It SHALL perform it through the **same** composed share-set load `flow/Provision` runs,
+never a world-local re-implementation: when the provision enters a **new** membership (no current event, or a different one) it
+SHALL fetch the per-device listing from the mini-edge and, on success, `resetTo` the upload ledger from it —
+one bare `COMPLETED` row per stored resource — and on failure `clear()` the ledger. Either way the provision
+SHALL complete and SHALL leave no flag, gate, or retry state. A provision that re-provisions the **joined**
+event SHALL NOT load, exactly as `flow/Provision`'s `Stay` does not. The load SHALL run **before** the
+provision sets the config cell — the order `flow/Provision` uses (capability `join-event`) — so no cycle
+the world runs can see the new membership over the previous membership's ledger.
+
+Without this, every fixture that joins through the operator edge would start with a ledger no real join
+produces: unloaded after a join, or carrying a previous membership's rows after a switch. The world would then
+test a device state that cannot exist.
+
+#### Scenario: A provision into a new membership loads the stored set
+
+- **WHEN** the backend already stores own photos for the world's device and the world provisions an event
+  it is not joined to
+- **THEN** the ledger is loaded before the config cell is set, and on return the upload ledger holds one
+  `COMPLETED` row per stored resource and nothing else, and the next cycle creates no upload job for those
+  photos
+
+#### Scenario: A switch through the operator provision replaces the ledger
+
+- **WHEN** the world is joined to one event with rows in its upload ledger and provisions a different event
+- **THEN** the ledger holds exactly the per-device listing's rows, and none of the previous membership's
+  non-`COMPLETED` rows survive
+
+#### Scenario: Re-provisioning the joined event does not load
+
+- **WHEN** the world provisions the event it is already joined to while the ledger holds `DISCOVERED` or
+  `REQUESTED` rows
+- **THEN** no listing is fetched and those rows are untouched
+
+#### Scenario: A failed load clears and completes
+
+- **WHEN** the listing fetch fails while the world provisions into a new membership
+- **THEN** the provision completes with the config present and the upload ledger empty
 
