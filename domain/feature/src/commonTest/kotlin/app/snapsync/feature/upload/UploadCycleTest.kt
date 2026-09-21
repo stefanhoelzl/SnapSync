@@ -10,6 +10,7 @@ import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.UploadDiscovery
 
 import app.snapsync.model.candidatesFromResources
+import app.snapsync.model.Candidate
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
@@ -131,6 +132,8 @@ class UploadCycleTest {
         var discoverPolicyArg: SelectionPolicy? = null
         /** Keys the cycle asked to resolve — how a test asserts it enqueued from the ledger, not a walk. */
         val resolvedKeys = mutableSetOf<String>()
+        /** Assets whose resources the cycle read off a walk's candidates — the per-asset round-trip a skip saves. */
+        val readAssets = mutableListOf<String>()
 
         /**
          * Everything this fixture's "library" has ever held — what [resourcesFor] answers from.
@@ -175,7 +178,13 @@ class UploadCycleTest {
             // carried resources, which is the honest shape for an in-memory fixture. It deliberately
             // does NOT narrow by the policy — a fake that mirrored the real fetch predicate would hide
             // an admission relying on the fetch to have already excluded something.
-            return Discovery(candidatesFromResources(discovered), nextToken, removedAssetIds, fullEnumeration)
+            val candidates = candidatesFromResources(discovered).map { held ->
+                object : Candidate {
+                    override val facts = held.facts
+                    override suspend fun resources() = held.resources().also { readAssets += held.facts.assetId }
+                }
+            }
+            return Discovery(candidates, nextToken, removedAssetIds, fullEnumeration)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
             if (failCreate) return CreateResult.FAILED
@@ -1168,7 +1177,7 @@ class UploadCycleTest {
     @Test
     fun a_full_platform_resolves_nothing_and_reports_work_remaining() = runTest {
         val backend = InMemoryLedgerStore()
-        LedgerWriter(backend).recordDiscovered(resource("a"), TEST_EVENT)
+        LedgerWriter(backend).recordDiscovered(listOf(resource("a")), TEST_EVENT)
         // The change feed reports nothing new: the only work is what the ledger already holds.
         val platform = FakePlatform(discovered = emptyList(), capacity = 0)
 
@@ -1213,7 +1222,7 @@ class UploadCycleTest {
         // the cycle sees the same answer from `resourcesFor` either way.
         val backend = InMemoryLedgerStore()
         backend.completed(resource("X-primary.heic", "X"))
-        LedgerWriter(backend).recordDiscovered(resource("X-live.mov", "X"), TEST_EVENT)
+        LedgerWriter(backend).recordDiscovered(listOf(resource("X-live.mov", "X")), TEST_EVENT)
         val platform = FakePlatform(discovered = emptyList())
 
         val result = cycleOver(backend, platform).run()
@@ -1381,6 +1390,53 @@ class UploadCycleTest {
         assertEquals(CycleResult.PROCESSING, result)
         assertNull(backend.get("gone-photo.jpg"))
         assertEquals(LedgerState.DISCOVERED, backend.get("b-photo.jpg")?.state)
+    }
+
+    // ---- A walk re-reads only the assets the ledger does not fully know (capability `sync-ledger`) --------
+
+    @Test
+    fun a_fully_known_asset_is_not_re_read() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.completed(resource("known-photo.jpg", "known"))
+        val platform = FakePlatform(
+            discovered = listOf(resource("known-photo.jpg", "known"), resource("new-photo.jpg", "new")),
+            fullEnumeration = true,
+        )
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(listOf("new"), platform.readAssets, "the recorded, enriched asset costs no round-trip")
+        assertEquals(LedgerState.REQUESTED, backend.get("new-photo.jpg")?.state)
+    }
+
+    @Test
+    fun an_asset_with_a_bare_row_is_read_and_its_detail_filled() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.recordUnlessSettled(LedgerEntry("b-photo.jpg", "b", LedgerState.COMPLETED, attempt = 0, eventId = TEST_EVENT))
+        val platform = FakePlatform(discovered = listOf(resource("b-photo.jpg", "b")), fullEnumeration = true)
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(listOf("b"), platform.readAssets, "only the walk can fill a bare row")
+        assertEquals(IN_SCOPE_DATE, backend.get("b-photo.jpg")?.creationDate)
+        assertTrue(platform.created.isEmpty(), "and it is still already-uploaded")
+    }
+
+    @Test
+    fun a_seed_that_listed_one_role_is_completed_by_the_walk() = runTest {
+        // A re-join seed from the device listing that holds only the primary: the row is bare, so the walk reads
+        // the asset and finds the paired video the listing never had.
+        val backend = InMemoryLedgerStore()
+        backend.resetTo(listOf(LedgerEntry("X-primary.heic", "X", LedgerState.COMPLETED, attempt = 0, eventId = TEST_EVENT)))
+        val platform = FakePlatform(
+            discovered = listOf(resource("X-primary.heic", "X"), resource("X-live.mov", "X")),
+            fullEnumeration = true,
+        )
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(IN_SCOPE_DATE, backend.get("X-primary.heic")?.creationDate)
+        assertEquals(listOf("X-live.mov"), platform.created.map { it.filename }, "the missing role uploads")
     }
 
     @Test

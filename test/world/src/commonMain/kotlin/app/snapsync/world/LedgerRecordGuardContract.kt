@@ -240,4 +240,41 @@ abstract class LedgerRecordGuardContract {
         runCurrent()
         assertEquals(1, dings)
     }
+
+    @Test
+    fun `recordAllUnlessSettled applies each entry under the settled guard and dings once`() = runTest {
+        val backend = createBackend()
+        val settled = entry(key = "done", state = LedgerState.COMPLETED)
+        backend.recordUnlessSettled(settled)
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        val applied = backend.recordAllUnlessSettled(
+            listOf(
+                entry(key = "X-primary.heic", assetId = "X", state = LedgerState.DISCOVERED),
+                entry(key = "X-live.mov", assetId = "X", state = LedgerState.DISCOVERED),
+                entry(key = "done", state = LedgerState.DISCOVERED),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(2, applied, "the settled row declines, exactly as the single write would")
+        assertEquals(settled, backend.get("done"))
+        assertEquals(LedgerState.DISCOVERED, backend.get("X-live.mov")?.state)
+        assertEquals(1, dings, "one ding for the batch")
+    }
+
+    @Test
+    fun `recordAllUnlessSettled that applies nothing does not ding`() = runTest {
+        val backend = createBackend()
+        backend.recordUnlessSettled(entry(key = "done", state = LedgerState.COMPLETED))
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        assertEquals(0, backend.recordAllUnlessSettled(listOf(entry(key = "done", state = LedgerState.DISCOVERED))))
+        assertEquals(0, backend.recordAllUnlessSettled(emptyList()))
+        runCurrent()
+
+        assertEquals(0, dings)
+    }
 }

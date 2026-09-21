@@ -11,6 +11,7 @@ import app.snapsync.engine.db.LedgerDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class SqlDelightLedgerStoreTest : LedgerStoreContract() {
@@ -19,6 +20,34 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         LedgerDatabase.Schema.create(driver)
         return SqlDelightLedgerStore(LedgerDatabase(driver))
+    }
+
+    @Test
+    fun `a batch record that fails part-way records nothing from that batch`() = runTest {
+        // The walk skips an asset whose rows all exist, so a batch that landed one role of a Live Photo and not
+        // the other would leave the other unrecorded for good. Force a failure on the batch's second statement
+        // with a trigger — the real driver's rollback, not a fake's — and assert the first never landed.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        LedgerDatabase.Schema.create(driver)
+        driver.execute(
+            null,
+            "CREATE TRIGGER boom BEFORE INSERT ON ledgerRow WHEN NEW.key = 'X-live.mov' " +
+                "BEGIN SELECT RAISE(ABORT, 'boom'); END",
+            0,
+        )
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+
+        val thrown = runCatching {
+            backend.recordAllUnlessSettled(
+                listOf(
+                    LedgerEntry("X-primary.heic", "X", LedgerState.DISCOVERED, 0, eventId = "E1"),
+                    LedgerEntry("X-live.mov", "X", LedgerState.DISCOVERED, 0, eventId = "E1"),
+                ),
+            )
+        }
+
+        assertTrue(thrown.isFailure, "the injected failure surfaces")
+        assertNull(backend.get("X-primary.heic"), "the batch rolled back whole")
     }
 
     @Test

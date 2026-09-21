@@ -27,8 +27,8 @@ class LedgerWriter(
     suspend fun entry(key: String): LedgerEntry? = backend.get(key)
 
     /**
-     * Record that the walk found [resource] and the policy admitted it — **only when the key has no row
-     * yet**; answers whether it applied.
+     * Record that the walk found [resources] and the policy admitted them — **only for keys with no row
+     * yet**, all in one transaction; answers how many applied.
      *
      * The guard is the operation's purpose, and it is why this is not just `record(…, DISCOVERED, …)`.
      * A key the engine answers `Work` for is absent, `DISCOVERED`, or `FAILED`, and the last of those
@@ -40,9 +40,11 @@ class LedgerWriter(
      * does not take that lock — the platform's delegate, through `markTerminal` — is guarded on
      * `REQUESTED`, so it cannot touch a key that has no row.
      */
-    suspend fun recordDiscovered(resource: Resource, eventId: String): Boolean {
-        if (backend.get(resource.filename) != null) return false
-        return record(resource, LedgerState.DISCOVERED, attempt = 0, eventId)
+    suspend fun recordDiscovered(resources: Collection<Resource>, eventId: String): Int {
+        val fresh = resources.filter { backend.get(it.filename) == null }
+        // One batch, so the walk's discoveries land whole or not at all: a walk skips an asset whose rows
+        // all exist, so one role recorded without its sibling would leave the sibling unrecorded for good.
+        return backend.recordAllUnlessSettled(fresh.map { it.toLedgerRow(LedgerState.DISCOVERED, attempt = 0, eventId) })
     }
 
     /**

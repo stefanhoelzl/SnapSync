@@ -90,6 +90,27 @@ class SqlDelightLedgerStore(
         return applied
     }
 
+    /**
+     * Every entry through the same guarded upsert, inside ONE transaction, each applied/declined answer read in
+     * that transaction. A throw from any statement rolls back the whole batch, so a walk's discoveries are
+     * never partly recorded. One ding for the batch, and only if something applied.
+     */
+    override suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int {
+        if (entries.isEmpty()) return 0
+        val applied = queries.transactionWithResult {
+            entries.count { entry ->
+                queries.recordUnlessSettled(
+                    entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
+                    entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
+                    if (entry.absent) 1L else 0L, entry.destinationPath, DONE_STATES,
+                )
+                queries.changedRows().executeAsOne() > 0L
+            }
+        }
+        if (applied > 0) dings.tryEmit(Unit)
+        return applied
+    }
+
     override suspend fun manifestRows(): List<LedgerEntry> =
         // `state` is read from the row rather than asserted. Nothing is bound: the query is not
         // state-scoped, because the manifest declares intent (capability `device-manifest`).

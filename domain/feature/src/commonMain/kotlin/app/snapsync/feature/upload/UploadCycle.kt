@@ -327,11 +327,26 @@ class UploadCycle(
             // unable to change the admitted set. `resources()` pays the per-asset round-trip ONLY for the
             // assets it kept.
             val admitted = EventPhotoSet(ready.policy) { discovery.candidates }.assets()
-            val liveResources = admitted.flatMap { it.resources() }
+
+            // …and of those, only for the assets the ledger does not fully know (capability `sync-ledger`, "A
+            // walk re-reads only the assets the ledger does not fully know"). Every walk is a full enumeration,
+            // so without this each cycle would repeat one synchronous platform round-trip per photo already
+            // recorded — the member's whole in-window library, every cycle. An uploaded resource is immutable
+            // and the ledger keeps no content version, so re-reading a recorded asset could only answer
+            // "already uploaded"; a row that still needs a job is found by the ledger's work read, not by the
+            // walk. An asset with a BARE row is read, because only the walk can fill its detail — which is
+            // also what completes a re-join seed that listed only some of an asset's roles.
+            val rows = ledger.manifestRows()
+            val fullyKnown = rows.groupBy { it.assetId }
+                .filterValues { group -> group.none { it.needsManifestDetail } }
+                .keys
+            val toRead = admitted.filter { it.facts.assetId !in fullyKnown }
+            val liveResources = toRead.flatMap { it.resources() }
                 .also {
                     log.i {
                         "selection policy admitted ${admitted.size} of ${discovery.candidates.size} " +
-                            "candidate(s) → ${it.size} resource(s)"
+                            "candidate(s); ${admitted.size - toRead.size} fully known, ${toRead.size} read " +
+                            "→ ${it.size} resource(s)"
                     }
                 }
             val presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId }
@@ -339,11 +354,12 @@ class UploadCycle(
                 ready,
                 CyclePlan(
                     liveResources,
+                    skipped = admitted.size - toRead.size,
                     discovery.removedAssetIds,
                     discovery.nextToken,
                     presentAssetIds = presentAssetIds,
                     departedKeys = if (discovery.fullEnumeration) {
-                        departedKeys(presentAssetIds, ready.policy)
+                        departedKeys(rows, presentAssetIds, ready.policy)
                     } else {
                         // A selection snapshot, or a library the platform could not read: neither is the
                         // library, so neither is evidence that anything left it (capability `sync-ledger`).
@@ -373,9 +389,12 @@ class UploadCycle(
      * that write matches only a `REQUESTED` row — deleting it would turn a normal completion into a
      * reported "moved on". The first authoritative walk after it settles deletes it.
      */
-    private suspend fun departedKeys(present: Set<String>, policy: SelectionPolicy): List<String> {
+    private suspend fun departedKeys(
         // Every row the ledger holds; after the absence sweep none is excluded.
-        val rows = ledger.manifestRows()
+        rows: List<LedgerEntry>,
+        present: Set<String>,
+        policy: SelectionPolicy,
+    ): List<String> {
         val inWindow = admittedAssetIds(rows, policy)
         return rows
             .filter { it.assetId in inWindow && it.assetId !in present && it.state != LedgerState.REQUESTED }
@@ -436,12 +455,11 @@ class UploadCycle(
             // platform's job limit — so the resources past that point were never recorded anywhere, the
             // cursor could not advance past them, and the next cycle had to re-walk the whole library to
             // find them again. Nothing here can stop early, so the walk's facts are captured whole.
-            var newWork = 0
+            val newWork = mutableListOf<Resource>()
             var alreadyUploaded = 0
             for (resource in plan.liveResources) {
                 if (engine.handle(SyncEvent.ResourceChanged(resource)) is SyncDecision.Work) {
-                    newWork++
-                    ledger.recordDiscovered(resource, eventId)
+                    newWork += resource
                 } else {
                     alreadyUploaded++
                     // Enrich a row that predates the manifest detail, or that the re-join seed took from a
@@ -460,6 +478,10 @@ class UploadCycle(
                     ledger.backfillManifestDetail(resource, eventId)
                 }
             }
+            // ONE batch write for the walk's new work, so it lands whole or not at all. The walk skips an asset
+            // whose rows all exist, so recording a Live Photo's primary and then dying before its paired video
+            // would leave the video unrecorded for good; in one transaction there is no such gap.
+            ledger.recordDiscovered(newWork, eventId)
 
             // THE CURSOR ADVANCE (capability `ios-photokit-upload`). Every fact this walk produced is now
             // durable: the removals are marked, the new work is `DISCOVERED`, the bare rows are filled.
@@ -483,7 +505,14 @@ class UploadCycle(
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
             // not create everything the ledger holds. Both mean the same thing to the pump — work remains.
             val truncated = ready.capHit || enqueued.truncated
-            val audit = Enumeration(plan.liveResources.size, newWork, alreadyUploaded, plan.departedKeys.size, truncated)
+            val audit = Enumeration(
+                seen = plan.liveResources.size,
+                skipped = plan.skipped,
+                newWork = newWork.size,
+                alreadyUploaded = alreadyUploaded,
+                deleted = plan.departedKeys.size,
+                truncated = truncated,
+            )
             if (truncated) CycleOutcome.Truncated(ready, audit) else CycleOutcome.Drained(ready, audit)
         }
     }
@@ -666,8 +695,8 @@ class UploadCycle(
     private fun logEnumeration(audit: Enumeration) {
         log.i {
             val tail = if (audit.truncated) " — TRUNCATED, the platform took no more jobs this cycle" else ""
-            "enumeration: ${audit.seen} seen, ${audit.newWork} new, " +
-                "${audit.alreadyUploaded} already-uploaded, ${audit.deleted} deleted$tail"
+            "enumeration: ${audit.seen} seen, ${audit.skipped} asset(s) fully known and not re-read, " +
+                "${audit.newWork} new, ${audit.alreadyUploaded} already-uploaded, ${audit.deleted} deleted$tail"
         }
     }
 
@@ -676,6 +705,8 @@ class UploadCycle(
     /** What the walk saw, in the form the write stage consumes. */
     private class CyclePlan(
         val liveResources: List<Resource>,
+        /** Admitted assets the ledger already fully knows, whose resources the walk therefore did not read. */
+        val skipped: Int,
         val removedAssetIds: List<String>,
         val nextToken: ByteArray,
         /** Every asset the walk returned, BEFORE admission: being in the library is not a question of scope. */
@@ -687,6 +718,7 @@ class UploadCycle(
     /** The enumeration audit's operands (capability `diagnostic-logging`). */
     private class Enumeration(
         val seen: Int,
+        val skipped: Int,
         val newWork: Int,
         val alreadyUploaded: Int,
         val deleted: Int,

@@ -461,7 +461,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         val writer = LedgerWriter(backend)
         backend.seedCompleted(res("done.heic", "A"), eventId = "E1")
         writer.recordRequested(res("inflight.heic", "B"), attempt = 0, eventId = "E1")
-        writer.recordDiscovered(res("found.heic", "D"), eventId = "E1")
+        writer.recordDiscovered(listOf(res("found.heic", "D")), eventId = "E1")
         writer.recordFailed(res("failed.heic", "F"), attempt = 1, eventId = "E1")
         // A row the re-join reconcile seeded from a filename listing: COMPLETED, but no capture date.
         // The read no longer excludes it — the membership's policy does, because an empty capture date
@@ -481,7 +481,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
         backend.seedCompleted(res("kept.heic", "A"), eventId = "E1")
-        writer.recordDiscovered(res("gone.heic", "B"), eventId = "E1")
+        writer.recordDiscovered(listOf(res("gone.heic", "B")), eventId = "E1")
         backend.markAbsent("B")
 
         assertEquals(listOf("kept.heic"), backend.manifestRows().map { it.key })

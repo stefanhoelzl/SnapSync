@@ -43,6 +43,19 @@ interface LedgerStore : TransferRecord {
      */
     suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean
 
+    /**
+     * [recordUnlessSettled] for every entry of [entries], under the same done-state guard per entry, in **one
+     * storage transaction**: either every applicable entry lands or — on failure — none does. Answers how many
+     * applied, and dings [changes] once if any did.
+     *
+     * The atomicity is load-bearing, not an optimization. A walk re-reads only the assets the ledger does not
+     * fully know (capability `sync-ledger`), so an asset whose resources were recorded one write at a time
+     * could be left with one role recorded when the process died between them — and every later walk would
+     * then skip it as known, and its other role would never upload. Recorded together, a walk's discoveries
+     * land whole or not at all.
+     */
+    suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int
+
     suspend fun aggregates(): LedgerAggregates
 
     /**
