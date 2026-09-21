@@ -234,3 +234,36 @@ extension.
 
 - Should `onReconfigure()` be forced rather than compared, for symmetry with join? Compared suffices for the
   download-only → upload case (the record is absent after a download-only join). Recommendation: compared.
+
+## Archive gates (2026-09-21)
+
+**1. Placeholder Purpose** — none in the tree.
+
+**2. Delta completeness** — every module the diff touched, and its capability:
+
+| module | capability | accounting |
+|---|---|---|
+| `:domain:feature` (upload) | `upload-lifecycle` | delta |
+| `:domain:feature` (download KDoc) | `photo-download` | comment only — behaviour-preserving |
+| `:domain:compose` | `upload-lifecycle`, `ios-app-shell` | deltas (admission input, launch reconcile, transitions wiring) |
+| `:domain:flow` (`Provision`) | `upload-lifecycle`, `join-event` | `upload-lifecycle` delta; `join-event` needs none — its "the upload arm's leave/join transition" wording names the arm, which the new Purpose defines as exactly these transitions, and the order it states is unchanged |
+| `:domain:ports` (`BackgroundTransfer` KDoc) | `upload-lifecycle` | doc of `SKIPPED`'s widened meaning; the requirement is in the `upload-lifecycle` and `ios-url-session-upload` deltas |
+| `:adapter:ios:ext-safe` | `ios-photokit-upload` | delta ("The extension withholds its cycle without a full grant" — the shared grant read) |
+| `:adapter:ios:app-only` (`PhotoLibraryPermission`) | `limited-photo-access` | behaviour-preserving delegation to the same mapping — no delta |
+| `:adapter:generic:fake` (tests) | — | test-only rebinding |
+| `:app:ios` | `ios-app-shell`, `ios-url-session-upload` | deltas |
+| `:app:ios:extension` | `ios-photokit-upload` | delta |
+| `:test:world` | `harness-world-model` | no requirement names the world's upload stand-in; it takes the app's admission as the device app does — no delta |
+| `:test:architecture` | `architecture-guards` | delta |
+| `:test:integration` | `testing-architecture` | one expectation updated (`NotJoined` → `SKIPPED`) — no requirement change |
+| `:test:rig` | — | dev infra, no spec by design |
+| `CLAUDE.md`, `app/ios/CLAUDE.md` | — | docs |
+
+**3. Dead types** — removed and absent from the tree: `UploadArm`, `UploadProducer`, `UploadMechanismRuntime`,
+`IdleUploadMechanism`, `RelinquishThenRun`, `OperatorUploadProducer` and test fixtures. The only spec still
+naming one is `upload-lifecycle`, whose "Membership transitions have no destructive verb" states that it
+**replaces** the `UploadProducer` seam — a deliberate historical reference, accounted for.
+
+**Found during device verification, after proposal:** a `NotJoined` cycle now reports `SKIPPED` (an unjoined
+device's foreground would otherwise arm a heartbeat for no event), and the OS was measured to invoke a
+surviving extension registration under a partial grant (SE2, iOS 26.6) — both reflected in the synced specs.

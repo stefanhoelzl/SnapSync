@@ -56,7 +56,6 @@ HTTPS-only.
 - **THEN** the app process performs uploads over a background `URLSession` (no extension is invoked), PUTting each resource to its deterministic edge URL
 
 ### Requirement: Per-version tier selection
-
 Upload-mechanism selection SHALL be a pure **resolution**, not a branch in the app composition root, and
 the OS fact `backgroundUploadSupported()`
 (`NSProcessInfo.isOperatingSystemAtLeastVersion(major=26, minor=1, patch=0)`) SHALL be one of its inputs
@@ -64,13 +63,13 @@ the OS fact `backgroundUploadSupported()`
 app-driven mechanism (the `IosUrlSessionUploadPlatform`, the `BackgroundUploadPump`, and the
 `IosBackgroundScheduler`) is the only kind resolution may yield — it is the only mechanism that exists
 there, and the OS-driven registration selector does not exist to be called. Where it is `true`,
-resolution SHALL yield the PhotoKit kind under `GRANTED` and the app-driven kind under `LIMITED` (the OS
-never invokes the extension under a partial grant — capability `ios-photokit-upload`), and the app-driven
-kind resolved on such an OS SHALL relinquish any surviving OS-driven registration before it pumps.
+resolution SHALL yield the PhotoKit kind under `GRANTED` and the app-driven kind under `LIMITED` (capability
+`ios-photokit-upload`).
 
-The two mechanisms SHALL be mutually exclusive within one running process, and that exclusion SHALL be
-**structural**: the orchestrator holds one producer reference, so two cannot be started
-(`upload-lifecycle`, "Exactly one producer started per process").
+The two mechanisms SHALL be mutually exclusive as ledger writers, and that exclusion SHALL be **gated**: the
+app-driven engine's cycle declines as not resolved whenever resolution yields the PhotoKit kind, and the
+extension withholds without a `GRANTED` grant (`upload-lifecycle`, "Exactly one mechanism writes the ledger,
+enforced at each engine's entry gate").
 
 #### Scenario: Version gate selects the app-driven mechanism below 26.1
 - **WHEN** `backgroundUploadSupported()` returns false
@@ -78,12 +77,12 @@ The two mechanisms SHALL be mutually exclusive within one running process, and t
 
 #### Scenario: Full access on 26.1+ runs PhotoKit only
 - **WHEN** `backgroundUploadSupported()` returns true and photo access is `GRANTED`
-- **THEN** the PhotoKit extension is registered and the app-driven pump is not started
+- **THEN** the PhotoKit extension is registered, the app-driven engine is disarmed, and any app-driven cycle a
+  trigger drives declines as not resolved
 
 #### Scenario: Limited access on 26.1+ runs the app-driven pump only
 - **WHEN** `backgroundUploadSupported()` returns true and photo access is `LIMITED`
-- **THEN** the app-driven pump is started and the PhotoKit extension is deregistered rather than merely
-  left unregistered
+- **THEN** the app-driven engine is armed and its cycles run, and an extension invocation withholds
 
 ### Requirement: App holds the ledger record-writer below 26.1
 
@@ -109,19 +108,21 @@ SHALL apply two rules, each only where it is true:
   holds") and record `DISCOVERED` every `REQUESTED` row among them. A `REQUESTED` row this transport never began —
   on this tier, one it never staged — SHALL NOT be a candidate of this rule, however long it has had no live
   transfer: it may belong to another transport that is still carrying it.
-- **At a start** — the app-driven mechanism's `start()` SHALL signal a restart to the cycle, and the next cycle
+- **At a start** — arming the app-driven engine SHALL signal a restart to the cycle, and the next cycle
   to reach its stranded pass SHALL instead record `DISCOVERED` every `REQUESTED` row with **no live transfer**, once;
-  later cycles apply the per-cycle rule again. When this mechanism starts, no other transport is carrying rows —
-  the OS-driven registration has been relinquished, is inert under a partial grant, or does not exist — so a
+  later cycles apply the per-cycle rule again. When this engine is armed, no other transport is carrying rows —
+  the OS-driven registration has been deregistered, withholds under a partial grant, or does not exist — so a
   `REQUESTED` row without a live task will never be settled. This rule needs no staged file, so it also recovers
-  rows whose file is already gone: stranded before the per-cycle rule was scoped, or cancelled by `stop()` with no
+  rows whose file is already gone: stranded before the per-cycle rule was scoped, or cancelled by a disarm with no
   completion delivered.
 
-The restart SHALL be consumed **inside the cycle**, never applied by `start()` itself. `start()` runs outside the
+The restart SHALL be consumed **inside the cycle**, never applied by the arm itself. Arming runs outside the
 pump's single flight, where a pass reading the live transfers and the `REQUESTED` rows could interleave with a job
 creation and demote a transfer that is live. A cycle that does not reach its stranded pass (an unreadable or
-absent membership) SHALL leave the restart pending. The restart is process state: a process that dies before a
-cycle consumes it loses it, and the next process's `start()` signals it again.
+absent membership, or a cycle declined as not resolved) SHALL leave the restart pending. The restart is process
+state: a process that dies before a cycle consumes it loses it, and the next process's arm — at its launch
+reconcile or its next transition — signals it again. A cold background launch arms nothing and so signals no
+restart.
 
 After either rule the cycle SHALL instruct the transport to `discard` its lost transfers. By then no lost
 transfer's row can still be `REQUESTED` — the pass demoted it, or it was not `REQUESTED` to begin with — and no new
@@ -161,7 +162,7 @@ accepted — the upload is idempotent — rather than guarded against.
 - **THEN** that cycle does not record the row `DISCOVERED`
 
 #### Scenario: A start recovers every row without a live transfer
-- **WHEN** the app-driven mechanism starts while `REQUESTED` rows exist with no live task, some with a staged file
+- **WHEN** the app-driven engine is armed while `REQUESTED` rows exist with no live task, some with a staged file
   and some without
 - **THEN** the next cycle's stranded pass records all of them `DISCOVERED` and leaves rows with a live task untouched,
   and the cycle after it applies the per-cycle rule
@@ -169,12 +170,12 @@ accepted — the upload is idempotent — rather than guarded against.
 #### Scenario: A hand-off from the OS-driven mechanism leaves nothing stranded
 - **WHEN** photo access moves from `GRANTED` to `LIMITED` on an OS carrying the OS-driven mechanism while it has
   `REQUESTED` rows
-- **THEN** the app-driven mechanism's start makes the next cycle record those rows `DISCOVERED`, and they are
-  re-created by that mechanism
+- **THEN** arming the app-driven engine makes the next cycle record those rows `DISCOVERED`, and they are
+  re-created by that engine
 
 #### Scenario: A restart is never applied outside a cycle
-- **WHEN** the app-driven mechanism's `start()` runs while a cycle is already running
-- **THEN** no row is recorded `DISCOVERED` by `start()` itself; the restart rule is applied once, by the next cycle to
+- **WHEN** the app-driven engine is armed while a cycle is already running
+- **THEN** no row is recorded `DISCOVERED` by the arm itself; the restart rule is applied once, by the next cycle to
   reach its stranded pass
 
 #### Scenario: Lost transfers are discarded after the pass
@@ -226,7 +227,7 @@ deleting it first would hide a lost transfer from the per-cycle pass. Extraction
 
 The app-driven tier SHALL provide a `BackgroundUploadPump` (in `:domain` `feature/upload`, platform-free)
 that drives `UploadCycle.run()` — the in-app replacement for the OS-owned `process()` scheduler. The
-pump SHALL be invoked by six triggers: (a) producer start, (b) app foreground entry, (c) a
+pump SHALL be invoked by six triggers: (a) an arm at a membership transition or launch, (b) app foreground entry, (c) a
 `BGProcessingTask` handler, (d) background-`URLSession` completion relaunch
 (`handleEventsForBackgroundURLSession`), (e) a per-upload completion delegate callback, and (f) a
 **silent push for the active event**. The pump SHALL be **single-flight**: at most one
@@ -235,8 +236,11 @@ cycles write the ledger concurrently. On a `PROCESSING` result the pump SHALL re
 foreground it SHALL wait for the next completion (which frees a slot) rather than busy-looping the cap;
 in a background context it SHALL ensure the next `BGProcessingTask` is scheduled.
 
-On a `SKIPPED` result — the cycle declined because the membership contributes nothing (capability
-`upload-lifecycle`) — the pump SHALL schedule **nothing**, at every trigger. A non-contributing device
+On a `SKIPPED` result — the cycle declined because the membership contributes nothing, because there is no
+membership at all, or because this engine is not the resolved mechanism (capability `upload-lifecycle`) — the
+pump SHALL schedule **nothing**, at every trigger; the transition that makes the engine eligible again arms it.
+Every app-side trigger now reaches this engine whatever its state, so an unjoined device's foreground would
+otherwise submit a self-re-submitting heartbeat for no event. A non-contributing device
 SHALL therefore hold no `BGProcessingTask`, and SHALL stop waking once any outstanding one fires. Re-arming
 a device that will never upload would wake it forever to do nothing.
 
@@ -355,61 +359,65 @@ forwarding — SHALL live in the thin, untested Swift shell and forward into the
 - **THEN** it runs on JVM and `iosSimulatorArm64` against a fake `BackgroundScheduler` and a fake `UploadCycle`, with no `BGTaskScheduler` dependency
 
 ### Requirement: App-driven lifecycle
-On iOS 18–26.0 the enable / disable / re-provision / leave lifecycle SHALL be performed by the app
-in-process and ordered, with **no** `setUploadJobExtensionEnabled` toggle. The **decision** of which
-verb fires on which transition belongs to `upload-lifecycle`; this requirement binds the app-driven
-producer's **mechanism**:
+On iOS 18–26.0, and on iOS ≥26.1 under a partial grant, the membership lifecycle SHALL be performed by the app
+in-process and ordered, with **no** `setUploadJobExtensionEnabled` toggle on iOS 18–26.0. The **decision** of
+which verb fires on which transition belongs to `upload-lifecycle` ("Membership transitions reconcile the upload
+mechanisms in one tested place"); this requirement binds the app-driven engine's two verbs:
 
-- **`start()`** (the enable verb — a full photo-access grant, a provision, or a re-provision): signal a
-  **restart** to the cycle (see "Stranded reconciliation: scoped each cycle, complete at a start"), run a cycle immediately, and **schedule the first `BGProcessingTask`**
-  (the heartbeat is one-shot, so nothing else would arm it).
-- **`stop()`** (the disable verb — access revoked, or a download-only membership): cancel the in-flight
-  upload **tasks**, delete their staged temp files, and cancel the scheduled `BGProcessingTask`. The
-  background `URLSession` itself SHALL be left intact — see "Cancellation never invalidates the
-  background session" below. `stop()` SHALL NOT clear the ledger. `stop()` SHALL repair no ledger row: a cancelled transfer's `REQUESTED` row
-  is recorded by its own completion when one is delivered, and otherwise by the restart repair of whichever
-  mechanism starts next (see "Stranded reconciliation: scoped each cycle, complete at a start").
-- **re-provision** (a valid event link for a **different** event — a switch; re-confirming the
-  already-joined event is not a switch, and neither stops the tier nor resets the ledger): a switch is a
-  leave followed by a join (capabilities `upload-lifecycle`, `join-event`). This tier SHALL be
-  **`stop()`ped first** — cancelling the in-flight tasks, deleting their staged temp files, and cancelling
-  the scheduled task, with the session left intact — then the provision's **join-time load** clears the
-  ledger and re-seeds it from the per-device listing (`resetTo` on a successful fetch, `clear()` on a failed
-  one — capability `join-event`), then the new `eventId` is persisted, and only then does the arm `start()`
-  the tier. The first cycle `start()` runs therefore already sees the seeded rows, so already-stored
-  resources are `COMPLETED` before any upload job is created; the cycle itself seeds nothing and consults
-  no join marker. Cancelling costs at most a re-upload of what was in flight — to the same
-  device-partitioned, event-independent destination (`/files/devices/<deviceId>/<filename>`), so it is an
-  idempotent overwrite — and whatever landed before the cancel is in the listing the load reads. A
-  completion delivered after the load finds no row (or a seeded one) and changes nothing the load did not
-  already account for. There SHALL be no disable→enable toggle and no cross-process race.
-- **leave**: `stop()` (cancel the in-flight tasks and the scheduled task, leaving the session intact),
-  then **clear the upload ledger**, then clear the stored `eventId` (the order is `LeaveEvent`'s —
-  capability `leave-event`). The clear is the leave's, not `stop()`'s. The ledger is the current
-  membership's share set, so a device that has left holds none; the next join re-seeds it from the
-  per-device listing, so nothing already stored re-uploads unless that fetch fails. A completion delivered
-  after the clear finds no row, and its outcome is acknowledged and discarded — its bytes are on the backend,
-  where the next join's listing finds them. The cycle holds no leave-side action: after the leave it reads
-  the membership as absent and uploads nothing.
+- **arm** (a join, a reconfigure that enables upload, a permission change, or a launch, whenever resolution
+  yields this engine for an upload-inclusive membership): signal a **restart** to the cycle (see "Stranded
+  reconciliation: scoped each cycle, complete at a start"), run a cycle immediately, and **schedule the first
+  `BGProcessingTask`** (the heartbeat is one-shot, so nothing else would arm it after a force-quit until the next
+  foreground).
+- **disarm** (a leave, a download-only join, a revocation of usable access, or a transition to the PhotoKit
+  mechanism): cancel the in-flight upload **tasks**, delete their staged temp files, and cancel the scheduled
+  `BGProcessingTask`. The background `URLSession` itself SHALL be left intact — see "Cancellation never
+  invalidates the background session" below. Disarming SHALL NOT clear the ledger and SHALL repair no ledger
+  row: a cancelled transfer's `REQUESTED` row is recorded by its own completion when one is delivered, and
+  otherwise by the restart repair of the next arm, or by the PhotoKit ritual's demote.
+- **switch** (a valid event link for a **different** event; re-confirming the already-joined event is not a
+  switch, and neither disarms nor resets the ledger): a leave followed by a join (capabilities
+  `upload-lifecycle`, `join-event`). This engine SHALL be **disarmed first** — cancelling the in-flight tasks,
+  deleting their staged temp files, and cancelling the scheduled task, with the session left intact — then the
+  provision's **join-time load** clears the ledger and re-seeds it from the per-device listing (`resetTo` on a
+  successful fetch, `clear()` on a failed one — capability `join-event`), then the new `eventId` is persisted,
+  and only then does the join transition arm the engine. The first cycle the arm runs therefore already sees the
+  seeded rows, so already-stored resources are `COMPLETED` before any upload job is created; the cycle itself
+  seeds nothing and consults no join marker. Cancelling costs at most a re-upload of what was in flight — to the
+  same device-partitioned, event-independent destination (`/files/devices/<deviceId>/<filename>`), so it is an
+  idempotent overwrite — and whatever landed before the cancel is in the listing the load reads. A completion
+  delivered after the load finds no row (or a seeded one) and changes nothing the load did not already account
+  for. There SHALL be no disable→enable toggle and no cross-process race.
+- **leave**: disarm, then **clear the upload ledger**, then clear the stored `eventId` (the order is
+  `LeaveEvent`'s — capability `leave-event`). The clear is the leave's, not the disarm's. The ledger is the
+  current membership's share set, so a device that has left holds none; the next join re-seeds it from the
+  per-device listing, so nothing already stored re-uploads unless that fetch fails. A completion delivered after
+  the clear finds no row, and its outcome is acknowledged and discarded — its bytes are on the backend, where the
+  next join's listing finds them. The cycle holds no leave-side action: after the leave it reads the membership
+  as absent and uploads nothing.
+
+The four app-side triggers (foreground, silent push, heartbeat, selection change) reach this engine whether or
+not it is armed; its cycle's entry gate decides (`upload-lifecycle`, "Triggers are delivered to the mechanism
+and declined explicitly").
 
 #### Scenario: Re-provision is an in-process ordered sequence
 
 - **WHEN** a new valid event link for a different event is scanned on iOS 18–26.0
-- **THEN** the app stops the tier, clears the ledger and re-seeds it from the per-device listing, persists the new event, and only then starts the tier — so the first cycle finds already-stored resources `COMPLETED` before any upload job is created, with no OS toggle and no cross-process timing hazard
+- **THEN** the app disarms the engine, clears the ledger and re-seeds it from the per-device listing, persists the new event, and only then arms the engine — so the first cycle finds already-stored resources `COMPLETED` before any upload job is created, with no OS toggle and no cross-process timing hazard
 
 #### Scenario: A switch cancels in-flight transfers before the ledger is reset
 
 - **WHEN** an event switch occurs while uploads are in flight on iOS 18–26.0
 - **THEN** those transfers are cancelled and their staged temp files deleted before the ledger is cleared and re-seeded; what landed before the cancel is seeded `COMPLETED` from the listing, and the rest re-uploads to the same device-partitioned destination
 
-#### Scenario: Enabling arms the heartbeat
+#### Scenario: Arming arms the heartbeat
 
-- **WHEN** the app-driven producer's `start()` runs
+- **WHEN** the app-driven engine is armed
 - **THEN** a restart is signalled to the cycle, a cycle runs, and the first `BGProcessingTask` is submitted
 
-#### Scenario: Stopping preserves the ledger
+#### Scenario: Disarming preserves the ledger
 
-- **WHEN** the app-driven producer's `stop()` runs (access revoked or a download-only membership)
+- **WHEN** the app-driven engine is disarmed (access revoked or a download-only membership)
 - **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, while every ledger row is left intact
 
 #### Scenario: Leave cancels transfers and clears the ledger
@@ -417,7 +425,7 @@ producer's **mechanism**:
 - **WHEN** the user leaves the event on iOS 18–26.0
 - **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, then the upload ledger is cleared, then the stored `eventId` is cleared — and joining any event afterwards re-seeds the ledger from the per-device listing, so nothing already in the device's byte partition re-uploads unless that fetch fails
 
-#### Scenario: Disable cancels tasks without destroying the session
+#### Scenario: Disarm cancels tasks without destroying the session
 - **WHEN** photo access is revoked on iOS 18–26.0
 - **THEN** the in-flight upload tasks and the scheduled `BGProcessingTask` are cancelled and staged temp files deleted, while the background `URLSession` remains valid — so a later re-grant can run a cycle without rebuilding it
 

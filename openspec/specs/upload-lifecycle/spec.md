@@ -2,249 +2,46 @@
 
 ## Purpose
 
-The **tier-neutral upload arm**: which producer verb fires on which membership transition (provision,
-event switch, permission grant, direction change, leave), and which transitions replace the upload ledger.
-Each upload tier supplies the mechanism behind a two-verb `UploadProducer`
-seam (`start` / `stop`); this capability owns the decision, and it owns it in one tested, platform-free
-place.
+The **upload arm**: what each membership transition — join, reconfigure, permission change, launch, leave —
+does to the two upload mechanisms, which transitions replace the upload ledger, and how exactly one process
+comes to write it. The OS-driven mechanism is an extension **registration** (register through the
+disable → demote → enable ritual, or deregister); the app-driven mechanism is an **engine** (arm or disarm
+its heartbeat and restart signal). This capability owns the decision, in one tested, stateless, platform-free
+place (`UploadTransitions`), and owns the upload cycle's entry decision that every trigger funnels through.
 
 It exists because the upload lifecycle previously had **no owner**. It was smeared across the two tier
 specs and the iOS composition root — a file in `:app:ios`, which the project's own hard rule declares
-wiring-only and untested (capability `testing-architecture`) — so no contract described it and no test could reach it. When a second upload tier arrived, the
-app-driven tier (iOS 18–26.0) inherited a PhotoKit-shaped "disable→enable" re-registration ritual on every
-provision. Its *disable* half resolved to a full leave (cancelling transfers and the `BGProcessingTask`
-heartbeat, wiping the ledger **and** the discovery cursor) while its *enable* half was a no-op below iOS
-26.1. Joining an event therefore tore the upload arm down, started nothing, and re-uploaded the user's
-whole post-cutoff library on the next cycle — on the tier every current user runs.
+wiring-only and untested (capability `testing-architecture`) — so no contract described it and no test could
+reach it. When a second upload tier arrived, the app-driven tier (iOS 18–26.0) inherited a PhotoKit-shaped
+"disable→enable" ritual on every provision whose *disable* half resolved to a full leave while its *enable*
+half was a no-op below iOS 26.1: joining an event tore the arm down, started nothing, and re-uploaded the
+user's whole post-cutoff library on the tier every current user ran. The fix was structural and stays so: no
+verb a transition calls can wipe anything. What replaces the upload ledger is a membership decision made by
+the membership use-cases alone: the ledger is the current membership's share set (`sync-ledger`), so a leave
+clears it and a first join or a switch loads it from the device's stored-file listing
+(`upload-state-reconciliation`, `changes/archive/2026-09-21-join-loads-leave-clears`).
 
-The two-verb seam is the fix, and it is a **structural** one: the seam that starts and stops a mechanism
-has no destructive verb, so no mechanism call can wipe anything. What replaces the upload ledger is a
-membership decision, made by the membership use-cases and nowhere else: the ledger is the current
-membership's share set (`sync-ledger`), so a leave clears it, and a first join or a switch — after stopping
-the previous membership's uploads — loads it from the device's stored-file listing
-(`upload-state-reconciliation`). Nothing already stored is uploaded again unless that listing fails. This
-reversed the earlier rule that no transition destroys dedup state, in `changes/archive/2026-09-21-join-loads-leave-clears`. Selecting exactly one producer per process likewise makes the two tiers'
-mutual exclusion structural — the non-selected tier's mechanism is never constructed, so it cannot run and
-cannot become a second `LedgerWriter`.
+**Exactly one writer is gated, not structural.** An earlier design held one mechanism instance behind a
+kind → instance table, a relinquish wrapper and an idle stand-in, so a second writer had no expression. Those
+concepts carried no facts of their own and were retired; what remains is the resolution rule
+(`model/resolveUploadMechanism`), read fresh wherever it is needed, and a per-process **admission** at the
+cycle's entry gate: the app engine runs only when resolution yields it, the extension only under a full
+grant. Every app-side trigger therefore reaches the app engine and its gate declines — which is also what
+made a cold background wake do real work again, where it used to reach the idle stand-in and end the
+heartbeat chain. The weakening is stated: both engines' cycles can exist in one install, and a gate decision
+plus the OS's registration record keep them apart. The `:test:architecture` guard drives both.
 
-The transition table is written against the **current single-active-membership contract** (capability
-`join-event`): *provision* and *switch* assume one configured event, and no membership means no arm.
-Concurrent multi-event membership is a named future direction. The ledger key stays event-independent and
-bytes stay device-partitioned, but a ledger scoped to the current membership (`changes/archive/2026-09-21-join-loads-leave-clears`) deepens the
-single-membership assumption: that future now needs per-membership ledgers or a membership column as well
-as a reworked decision table — and new work SHALL NOT deepen the assumption further.
+The transitions are written against the **current single-active-membership contract** (capability
+`join-event`): no membership means no arm. Concurrent multi-event membership is a named future direction; a
+ledger scoped to the current membership deepens the single-membership assumption, and new work SHALL NOT
+deepen it further.
 
-Decision record: `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
+Decision records: `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` (the owner and the
+non-destructive verbs), `changes/archive/2026-08-27-fix-cap-truncation-loop` (settling is owed; publication
+is decided by outcome), `changes/archive/2026-09-21-retire-the-upload-arm` (the transitions, the gated
+exclusivity, the admission outcomes, launch-compares-join-forces).
 
-That settling with the platform is owed on every cycle reaching a usable membership, and that a
-cycle's publication is decided by its outcome rather than by where it returned, were added in
-`changes/archive/2026-08-27-fix-cap-truncation-loop`.
 ## Requirements
-### Requirement: Upload producer seam has no destructive verb
-
-The system SHALL express the upload arm's **lifecycle** as a platform-free `UploadProducer` seam in `:domain`'s
-`feature/upload` zone (package `app.snapsync.feature.upload`) with exactly **two** verbs:
-
-- `start()` — begin or resume uploading for the currently-configured membership.
-- `stop()` — cease uploading. It SHALL NOT destroy **dedup state**: it SHALL NOT clear the ledger and
-  SHALL NOT delete stored bytes.
-
-There SHALL be **no** destructive verb on the seam. Neither verb clears the ledger, and no caller can
-clear it through the seam.
-
-**The ledger is cleared at exactly two membership transitions, and never by the seam.** The upload ledger
-is the **current membership's share set** (`sync-ledger`): empty while unjoined, loaded at a join, cleared
-at a leave. This **reverses** this requirement's earlier rule that no lifecycle transition — provision,
-re-provision, event switch, permission change, direction change, or leave — clears the ledger, and the
-reversal covers a **provision** as well as a leave:
-
-- a **leave** stops uploads and then clears the upload ledger (`leave-event`);
-- a **provision into a new membership** — a first join, or a switch (a provision of a different event while
-  one is joined) — clears the ledger and loads it from the device's stored-file listing before its config is
-  saved, and a switch first **stops uploads** before that load (`join-event`). A provision therefore now carries a stop (on
-  a switch) and a ledger reset (on a first join or a switch), which this requirement previously forbade.
-
-Every other transition — a **re-provision of the joined event**, a permission change, a direction change,
-a reconfigure — SHALL NOT clear or reset the ledger. The clear and the load are performed by the membership
-use-cases over the ledger store (`LeaveEvent`, the join-time share-set load), never by a producer verb and
-never by the orchestrator, which holds no ledger. The download store is not cleared by any of them
-(`download-store`).
-
-The trigger surface ("Triggers are delivered to the mechanism and declined explicitly") SHALL be a
-**separate** seam on the same object, so this lifecycle seam keeps exactly the two verbs above and the
-orchestrator is given no trigger to invoke.
-
-The property being defended is **dedup**: the proof that a photo is already in the event. Losing it
-re-uploads a member's whole in-window library — the failure this project exists to prevent. The stored
-bytes are that proof. The ledger's `COMPLETED` rows are this membership's **local copy** of it, rebuilt at
-each join from the per-device listing, which is why a leave and a join may clear them and nothing else may:
-a clear anywhere a load does not follow would lose the copy with nothing to restore it. Nothing else a
-mechanism persists is part of that proof.
-
-No mechanism needs a destructive verb as a repair either: the damage a stop can leave behind is
-`REQUESTED` rows no transfer will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `DISCOVERED`
-(`ios-photokit-upload`, `ios-url-session-upload`), which the ledger's work read returns without a walk. A
-repair belongs to the start because the start is the one moment a mechanism knows no other transfer is still
-carrying those rows, and because every path back to uploading passes through one.
-
-(This seam previously permitted a `stop()` to clear its discovery cursor as a repair for jobs its own
-mechanism wiped. Its only instance was the PhotoKit disable, whose bulk *delete* of `REQUESTED` rows could
-not be recovered without a re-enumeration. With the rows demoted instead of deleted, the permission had no
-use and was withdrawn; the discovery cursor itself has since been removed.)
-
-Each tier SHALL supply one `UploadProducer` implementation binding these verbs to its own mechanism.
-
-#### Scenario: The seam exposes no way to destroy dedup state
-
-- **WHEN** the `UploadProducer` seam is inspected
-- **THEN** it exposes only `start()` and `stop()`, and no lifecycle caller can clear the ledger through it
-
-#### Scenario: Stopping preserves dedup state
-
-- **WHEN** `stop()` is called on either tier
-- **THEN** in-flight uploads cease, but every ledger row and every stored object is left intact
-
-#### Scenario: Stopping touches no ledger row
-
-- **WHEN** `stop()` is called on either tier, including as part of a switch or a leave
-- **THEN** the stop itself leaves every ledger row exactly as it was; any clear that follows is the leave's
-  or the join-time load's own step, not the stop's
-
-#### Scenario: A leave clears the upload ledger after stopping
-
-- **WHEN** the user leaves the event
-- **THEN** uploads are stopped first and the upload ledger is then cleared, while the download store's rows
-  are left untouched
-
-#### Scenario: A switch provision stops, then replaces the ledger
-
-- **WHEN** a provision configures an event different from the joined one
-- **THEN** uploads are stopped, the ledger is then cleared and loaded from the device's stored-file listing,
-  and only then is the new config saved, so the new membership never sits over the previous membership's
-  rows
-
-#### Scenario: A re-provision of the joined event touches no ledger row
-
-- **WHEN** the event that is already joined is provisioned again, or photo permission or the membership's
-  direction changes
-- **THEN** no ledger row is cleared, reset, or loaded — the producer verbs the orchestration table assigns
-  to that transition are the only effect on the upload arm
-
-#### Scenario: Rows a stop leaves stranded are repaired by the next start
-
-- **WHEN** a `stop()` leaves `REQUESTED` rows that no transfer will settle, and a mechanism is later started
-- **THEN** that start demotes those rows to `DISCOVERED`, and the next cycle re-creates their uploads from the
-  ledger's work read, without the walk re-deriving them
-
-### Requirement: Lifecycle orchestration is tier-neutral and tested
-
-The decision of **which verb fires on which transition** SHALL live in a tier-neutral orchestrator in
-`:domain`'s `feature/upload` zone, not in the app composition root, and SHALL be tested in `commonTest`
-(running on both JVM and `iosSimulatorArm64`) against fake `UploadProducer`s, so it is exercised on JVM
-**and** `iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate
-membership and permission transitions into `start()`/`stop()` and nothing else: it holds no ledger and
-no storage handle, and the seam gives it no verb that could reach one. The upload ledger's clear at a leave
-and its clear-then-load at a provision into a new membership are the membership use-cases' own steps
-(`leave-event`, `join-event`; see "Upload producer seam has no destructive verb"), sequenced around the
-orchestrator's verbs, never performed by it.
-
-Photo access is **usable** when it is `GRANTED` or `LIMITED`. A producer SHALL be started only when an
-event is configured **and** photo access is usable **and** the membership's direction includes upload.
-The orchestrator SHALL start the producer that **resolution** yielded for the current OS facts,
-permission, and override ("The upload mechanism is resolved, never selected") — which on an OS carrying
-more than one mechanism is the OS-driven one under `GRANTED` and the app-driven one under `LIMITED` (the
-OS never invokes the extension under a partial grant; capability `ios-photokit-upload`) — and SHALL hold
-the exactly-one-started invariant (see "Exactly one producer started per process"). It SHALL NOT choose
-among composed producers: it holds one reference, and a change of resolved kind is what makes it swap.
-The orchestrator SHALL
-bind the transitions as follows, where the upload arm is enabled exactly when photo access is usable
-**and** the configured membership's direction includes upload (`join-event`):
-
-| Transition | Action |
-| --- | --- |
-| provision / re-provision, arm enabled | `start()` on the permission-selected producer |
-| provision / re-provision, access usable but direction is download-only | `stop()` |
-| provision / re-provision, access not usable | neither (the grant transition will drive it) |
-| transition to usable access (`GRANTED` or `LIMITED`), arm enabled | `start()` on the permission-selected producer |
-| transition between usable states (`GRANTED` ↔ `LIMITED`), arm enabled | re-resolve; if the kind changed, `stop()` the outgoing producer, then `start()` the incoming one |
-| transition to usable access, **no event configured** | neither |
-| switch (provision of a different event while one is joined) | `stop()` first, before the join-time load and the save of the new config; then the provision row that applies |
-| leave | `stop()` |
-
-Leave SHALL be `stop()`, then clearing the upload ledger, then clearing the configured event (then the
-best-effort backend notify, capability `leave-event`), and nothing more. A switch SHALL be a leave followed
-by a join: its `stop()` comes first, then the join's clear-then-load of the ledger replaces the previous
-membership's share set, and only then is the new config saved (capability `join-event`).
-
-**No membership, no arm.** "The *configured membership's* direction includes upload" is false when there
-is no configured membership, so a transition to usable access with no event configured SHALL fire **neither**
-verb. The orchestrator SHALL therefore read the membership's upload posture as a **three-valued** seam —
-includes-upload / excludes-upload / **no membership** — collapsing it to a two-valued "enabled" flag in
-the composition root is what previously answered *enabled* for an absent membership. That decision is
-behavior and SHALL live in the tested orchestrator, like every other row of this table; the root SHALL
-contribute only a projection of the current config, with no defaulting of its own.
-
-This is not a nicety. Photo access can be usable while no event is configured — the join gate's
-photo-access explainer raises the system dialog **before** the join is confirmed (`join-event`), and a
-grant arriving there must not start a producer, because `join-event` requires that "no config is saved
-and **no upload producer is enabled** until the user confirms". The membership-less start is also
-reachable from a bare Settings grant after a leave. On the app-driven tier a start with no membership
-arms a self-re-submitting `BGProcessingTask` heartbeat for an event that does not exist; both tiers'
-cycles then skip on the absent config, so the work is inert but the wake is not.
-
-#### Scenario: Provisioning with access already granted starts the producer
-
-- **WHEN** an event is provisioned while photo access is `GRANTED` and the direction includes upload
-- **THEN** the orchestrator calls `start()` on the OS-driven producer where composed (else the app-driven one), and calls no verb that destroys dedup state
-
-#### Scenario: Provisioning under a limited grant starts the app-driven producer
-
-- **WHEN** an event is provisioned while photo access is `LIMITED` and the direction includes upload
-- **THEN** the orchestrator calls `start()` on the app-driven producer, and the OS-driven producer is not started
-
-#### Scenario: A download-only membership stops the producer
-
-- **WHEN** an event is provisioned while photo access is usable and the direction is download-only
-- **THEN** the orchestrator calls `stop()`, and the stop itself leaves every ledger row intact
-
-#### Scenario: Provisioning without access defers to the grant
-
-- **WHEN** an event is provisioned while photo access is neither `GRANTED` nor `LIMITED`
-- **THEN** the orchestrator calls neither verb, and a later transition to usable access calls `start()` on the permission-selected producer
-
-#### Scenario: A permission flip switches producers stop-first
-
-- **WHEN** photo access transitions from `GRANTED` to `LIMITED` (or back) while an upload-inclusive membership is configured
-- **THEN** the orchestrator stops the outgoing producer before starting the incoming one, and at no point are both started
-
-#### Scenario: A permission flip that does not change the resolved kind does not swap
-
-- **WHEN** photo access transitions between usable states on an OS carrying only the app-driven mechanism
-- **THEN** resolution yields the same kind, the orchestrator keeps its one producer, and no teardown occurs
-
-#### Scenario: A grant with no event configured arms nothing
-
-- **WHEN** photo access transitions to usable access while no event is configured
-- **THEN** the orchestrator calls neither `start()` nor `stop()`, and no background wake is armed
-
-#### Scenario: The join that follows such a grant is what arms the producer
-
-- **WHEN** photo access transitions to usable access with no event configured, and the user then confirms a join whose direction includes upload
-- **THEN** the provision transition calls `start()` — the producer is armed at the join, not at the grant
-
-#### Scenario: Leaving stops, then clears the upload ledger
-
-- **WHEN** the user leaves the event
-- **THEN** the orchestrator calls `stop()`, the upload ledger is then cleared, and the configured event is
-  then cleared — and a later join re-uploads nothing already stored, because that join loads the ledger from
-  the device's stored-file listing
-
-#### Scenario: A switch stops before the new membership is saved
-
-- **WHEN** a provision configures an event different from the joined one
-- **THEN** the orchestrator's `stop()` runs before the join-time load and before the new config is saved,
-  and the provision row for the new membership then applies
-
 ### Requirement: The arm's direction gate lives at the choke point, never at the invoker
 
 An upload arm's participation-direction gate SHALL live at the **choke point** — the one function every
@@ -297,8 +94,8 @@ changed.
 
 Placing the acknowledgement behind the gate was justified by the premise that a non-contributing
 membership's extension has been deregistered, so the OS presents nothing. That premise SHALL NOT be relied
-upon: it holds only where a producer's `stop()` ran, and a membership reconfigured to exclude upload
-deliberately does not stop its producer (capability `reconfigure-membership`, *A disabling change drains
+upon: it holds only where a transition deregistered the extension, and a membership reconfigured to exclude
+upload deliberately does not deregister it (capability `reconfigure-membership`, *A disabling change drains
 in-flight uploads*). Measured on iOS 26.6: with the extension still registered and jobs outstanding, a
 cycle that returned before the acknowledgement pass caused the system to report
 `com.apple.photos.error Code=50008` ("appex failed to acknowledge jobs for processing state"), **discard**
@@ -319,7 +116,7 @@ enforcement is how this capability's own history records the lifecycle shipping 
 
 #### Scenario: A download-only membership creates no upload job at any trigger
 - **WHEN** a cycle is driven for a membership whose direction excludes upload — by foreground entry, a
-  background task, a silent push, a producer start, or an upload completion
+  background task, a silent push, an arm at a membership transition, or an upload completion
 - **THEN** no upload job is created, for every one of those triggers
 
 #### Scenario: A download-only membership publishes an empty manifest
@@ -332,11 +129,11 @@ enforcement is how this capability's own history records the lifecycle shipping 
 - **THEN** the download-only membership still creates no upload job — the gate does not depend on which
   component invokes the cycle
 
-#### Scenario: Stopping the producer is not the gate
-- **WHEN** the producer has been stopped for a download-only membership and a trigger subsequently drives a
-  cycle
+#### Scenario: Standing the mechanisms down is not the gate
+- **WHEN** the mechanisms have been stood down for a download-only membership and a trigger subsequently
+  drives a cycle
 - **THEN** no upload job is created, because the gate is read at the choke point rather than inferred from
-  the producer having been stopped
+  the mechanisms having been stood down
 
 #### Scenario: A declined cycle still acknowledges the jobs the OS presented
 - **WHEN** the OS invokes the cycle for a membership whose direction excludes upload, presenting terminal
@@ -358,7 +155,7 @@ enforcement is how this capability's own history records the lifecycle shipping 
 ### Requirement: The upload cycle owns its entry decision
 
 The upload cycle SHALL read the membership itself and decide what the invocation does, before any library
-walk, upload job, device manifest, or notify. The decision SHALL have exactly three outcomes:
+walk, upload job, device manifest, or notify. The decision SHALL have exactly five outcomes:
 
 - **Skip** — a required input could not be read (protected data unavailable, or — since migration
   step 11a — config-file content this build cannot positively interpret; capability `event-link`,
@@ -371,19 +168,36 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly th
   host). The cycle SHALL create no upload job and SHALL write, clear, or reset no ledger row. Clearing
   the upload ledger belongs to the leave itself (capability `leave-event`), an explicit app action; the
   cycle does not detect or repair a membership change, and there is no leave-side step for it to run.
-- **Run** — joined and configured. The cycle SHALL proceed to its contribution gate and phases.
+- **Not resolved** — joined, but this process's engine is not the one resolution yields (the app
+  engine while the OS-driven kind is resolved). The cycle SHALL touch nothing: no settle, no ledger
+  write, no jobs, no manifest.
+- **Withheld** — joined, but the process may not read the library for want of a `GRANTED` grant (the
+  extension under any other grant). The cycle SHALL settle narrowly ("Settling with the platform is
+  owed regardless of the cycle's other outcomes") and SHALL create no job, walk nothing, and publish
+  nothing.
+- **Run** — joined, configured, and admitted. The cycle SHALL proceed to its contribution gate and phases.
+
+The two admission outcomes SHALL be decided **before** the membership's selection policy is built. Building
+the policy reads the denylisted-album structure, and a `PHAssetCollection` fetch under `NOT_DETERMINED`
+presents iOS's permission dialog (measured: simulator, iOS 26.4, `tccd` logs `AUTHREQ_PROMPTING`); a
+background wake must never raise it.
+
+**Admission is per process and asymmetric.** The app process SHALL admit exactly when resolution yields the
+app-driven kind — under `LIMITED` it runs, scoped to the selection snapshot. The extension SHALL admit exactly
+under `GRANTED`, read from its own process; it SHALL NOT infer admission from its selection scope, whose
+default (`Unrestricted`) is untrue under a partial grant.
 
 A composition root SHALL NOT make this decision. A root SHALL supply only the platform reads the decision
-consumes — the membership read, the device-identity probe, and the build-time host — and the shared,
-tested decision function SHALL combine them. This is the same containment the `SelectionPolicy` already
+consumes — the membership read, the device-identity probe, the build-time host, and the process's admission answer —
+and the shared, tested decision function SHALL combine them. This is the same containment the `SelectionPolicy` already
 has, and for the same reason: an upload tier's root is wiring-only and
 untested by project rule,
 so a decision placed there reaches whichever tiers its author happened to enumerate.
 
 The **translation** of those reads into the decision's inputs SHALL itself exist exactly once, in the
 shared composition (`uploadCore`, `:domain` `compose/`) — not once per root. It SHALL be **port-pure**:
-one fresh three-state `ConfigReader.read()` per cycle, the identity probe, and the host read, and
-nothing else. In particular it SHALL NOT refresh any adapter-held read-model state (such as the
+one fresh three-state `ConfigReader.read()` per cycle, the identity probe, the host read, and the
+admission answer, and nothing else. In particular it SHALL NOT refresh any adapter-held read-model state (such as the
 UI-facing `ConfigSource` `StateFlow`) as a side effect of gating a cycle: repairing a `StateFlow`
 seeded while protected data was unavailable is the app process's trigger flows' concern — every
 OS-callback flow re-reads the membership before acting (migration step 12; see `ios-app-shell`,
@@ -428,6 +242,20 @@ not "no identity" (capability `device-identity`, which never reports absence: an
   three-state read per cycle with no adapter read-model refresh — so no tier can carry gate semantics
   another tier lacks
 
+#### Scenario: A not-resolved cycle touches nothing
+- **WHEN** the app engine's cycle runs while resolution yields the OS-driven kind
+- **THEN** the outcome is Not resolved, no ledger row is written, no platform outcome is drained, and no
+  manifest is published
+
+#### Scenario: An undetermined grant never builds the policy
+- **WHEN** a cycle runs in either process while photo access is `NOT_DETERMINED`
+- **THEN** the gate declines before the selection policy is built, so no album structure is read and no
+  permission dialog is presented
+
+#### Scenario: A limited grant admits the app and withholds the extension
+- **WHEN** photo access is `LIMITED` on an OS carrying the OS-driven mechanism
+- **THEN** the app engine's cycle runs scoped to the selection snapshot, and an extension cycle withholds
+
 ### Requirement: Every selection and side-effect port is answered at the call site
 
 The upload cycle SHALL require each port that shapes what a member contributes or what a completed cycle
@@ -451,66 +279,13 @@ diff rather than inherited in silence.
 - **WHEN** a tier has no denylisted-album source and supplies an empty one explicitly
 - **THEN** the cycle runs, admitting all albums, and the choice is visible at the call site
 
-### Requirement: Exactly one producer started per process
-
-At most one `UploadProducer` SHALL be started at any time, and the tier-neutral orchestrator SHALL be the
-only component that starts or stops one. A mechanism switch SHALL be **stop-then-start**: the outgoing producer's
-`stop()` completes before the incoming producer's `start()` — the OS-driven producer's `stop()` is what
-deregisters the extension, which is what actually prevents a second `LedgerWriter` over the App-Group
-ledger (`sync-ledger`).
-
-The invariant SHALL be **structural**: because the orchestrator holds at most one producer reference
-("The upload mechanism is resolved, never selected"), starting two has no expression. Structural
-exclusion was the original guarantee and was given up when the mechanism choice became an input of
-**runtime** permission, which no once-per-process *construction* decision could express. Re-resolution
-expresses it, so the compile-time guarantee and the runtime dependence are no longer in tension.
-
-Because the invariant is structural, the `:test:architecture` guard (capability `architecture-guards`)
-SHALL be retargeted rather than retired, at the two places the risk moved: the resolver's cells, and the
-orchestrator's now-stateful transitions.
-
-The invariant holds **however** the app-driven tier comes to be selected: whenever it is the started
-producer on a device whose OS supports the OS-driven one, the PhotoKit extension SHALL NOT be registered.
-This was once stated against a development tier-force flag, which no longer exists — production Kotlin
-declares no launch triggers at all (capability `architecture-guards`). A **limited** photo grant reaches
-that state, and so does a development mechanism override ("A mechanism override is a runtime input a
-shipped build cannot carry"); the requirement is stated against the state rather than any mechanism that
-produces it, and survives the next mechanism too.
-
-Not registering is **not sufficient**. The OS's upload-job configuration record is keyed by bundle id and
-survives relaunch and reinstall, so a process that merely declines to register still runs behind a live
-extension a previous process or a previous installation left. Whenever the app-driven producer is the
-started one on an OS that supports the OS-driven mechanism, any surviving registration SHALL be
-**deregistered**.
-
-#### Scenario: Only the resolved producer runs
-- **WHEN** the app runs on an OS where more than one mechanism exists
-- **THEN** at most one producer is started at any time, it is the one resolution yielded, and the other
-  mechanism is not invoked
-
-#### Scenario: Starting both cannot be expressed
-- **WHEN** the orchestrator's producer field is inspected
-- **THEN** it names at most one producer, so no code path can start two
-
-#### Scenario: The switch is stop-then-start
-- **WHEN** the orchestrator switches producers on a resolution change
-- **THEN** the outgoing producer is stopped (the OS-driven one deregistering its extension) before the
-  incoming producer starts
-
-#### Scenario: The app-driven producer runs without the extension registered
-- **WHEN** the app-driven producer is the selected one on a device whose OS supports the OS-driven tier —
-  as a limited photo grant makes it
-- **THEN** the PhotoKit upload extension is not registered — and if a previous process or installation
-  registered it, it is deregistered before the app-driven producer starts — with only the app-driven
-  producer started
-
 ### Requirement: The upload mechanism is resolved, never selected
 
-The system SHALL determine which upload mechanism runs by a **pure, exhaustively-tested resolution**
-from OS facts, current photo permission, and whether the app-driven tier is forced, to a mechanism
-**kind**. A composition-supplied factory SHALL map a kind to an instance. The tier-neutral orchestrator
-SHALL hold **at most one** producer reference at any time, and SHALL obtain a new one only by
-re-resolving when a resolution input changes.
+The system SHALL determine which upload mechanism may run by a **pure, exhaustively-tested resolution** from
+OS facts, current photo permission, and an optional override, to a mechanism **kind**: no usable access →
+idle; the OS-driven mechanism present **and** a `GRANTED` grant → OS-driven; otherwise → app-driven. The
+resolved kind SHALL be read fresh wherever it is needed — by the transitions and by the app engine's entry gate
+— and SHALL NOT be held.
 
 The **transport binding** the app-driven mechanism uses is a different axis and SHALL NOT enter this
 resolution: it is fixed by the compilation target (`ios-url-session-upload`, "The transport binding is
@@ -523,73 +298,36 @@ mechanism's registration selector does not exist below iOS 26.1, so a cell yield
 and abort the process. The resolver — not a composition root — SHALL own this, because a root is
 wiring-only and untested by project rule.
 
-Presence and runnability are **separate facts**. "This OS has no such mechanism" and "the mechanism is
-present but this build must not run it" SHALL NOT share an encoding. Collapsing them is what previously
-left a present mechanism with no route to its own teardown on a forced build: the OS-driven producer was
-not constructed, so nothing could call the `stop()` that deregisters its extension, while the OS's
-upload-job configuration record — keyed by bundle id and surviving relaunch **and** reinstall — remained.
+Presence and runnability are **separate facts**. "This OS has no such mechanism" and "the mechanism is present
+but must not run now" SHALL NOT share an encoding. The composition SHALL construct the OS-driven registration
+only where its selector exists, so a lower system cannot reach a trapping call.
 
-The factory SHALL cache an instance whose platform demands a process-lifetime singleton. On every shipped
-binary the app-driven mechanism owns a background `URLSession` whose identifier must stay stable and whose
-invalidation is terminal (`ios-url-session-upload`, "Cancellation never invalidates the background
-session"), so re-resolving to that kind SHALL return the same instance rather than constructing a second
-one. The caching SHALL NOT be conditioned on the transport binding: on `iosSimulatorArm64`, where the
-session is a default one and its identifier is inert, a second instance would still mean two live sessions
-and two task registries for one mechanism, so the same single instance SHALL be returned there too.
+The app-driven engine SHALL be constructed once per process: on every shipped binary it owns a background
+`URLSession` whose identifier must stay stable and whose invalidation is terminal (`ios-url-session-upload`,
+"Cancellation never invalidates the background session"). This SHALL NOT be conditioned on the transport
+binding: on `iosSimulatorArm64`, where the session is a default one and its identifier is inert, a second
+instance would still mean two live sessions and two task registries.
 
-Where an OS carries more than one mechanism, **each** resolved mechanism SHALL relinquish what the other
-leaves behind, before it starts. Both leave state the OS keeps across process death — the OS-driven one a
-configuration record keyed by bundle id, the app-driven one in-flight background transfers and a submitted
-background task — so a process that has just launched may be running behind work it never started.
-Relinquishing either mechanism SHALL be its ordinary `stop()`. Neither `stop()` repairs ledger state — each
-mechanism's repair runs in its own `start()` (see "Upload producer seam has no destructive verb") — so there is
-no teardown narrower than `stop()` for a hand-off to need, and none SHALL exist.
-
-Stopping the arm SHALL likewise stop **every** mechanism the composition can yield, not only the one
-currently held: a mechanism this process never started can still have work outstanding on its behalf.
-
-#### Scenario: Starting the OS-driven mechanism cancels app-driven work left by an earlier process
-
-- **WHEN** the OS-driven mechanism is resolved on a device where a previous process left in-flight
-  app-driven transfers or a submitted background task
-- **THEN** those are cancelled before the OS-driven mechanism starts, so only one process writes records
-
-#### Scenario: A hand-off relinquishes with the ordinary stop
-
-- **WHEN** either mechanism is resolved on an OS carrying both, while the other may have left work behind
-- **THEN** the other mechanism's ordinary `stop()` is what relinquishes it, and no narrower teardown verb is
-  invoked or exists
-
-#### Scenario: A forced build on an OS-driven-capable device relinquishes the registration
-
-- **WHEN** the app-driven tier is forced on a device whose OS supports the OS-driven mechanism, and an
-  upload-inclusive membership is provisioned under usable access
-- **THEN** resolution yields the app-driven kind for that OS, whose producer deregisters the OS-driven
-  extension before it begins pumping — so the OS cannot invoke the extension behind the running tier
-
-#### Scenario: The same cell serves a downgrade to limited access
-
-- **WHEN** photo access transitions from `GRANTED` to `LIMITED` on a device whose OS supports the
-  OS-driven mechanism
-- **THEN** resolution yields that same app-driven kind, and the extension is deregistered by the same
-  mechanism rather than by a separate rule
+The resolved kind is also the single answer a diagnostic dump reports as its upload tier — the one value that
+tells an operator which process ran and so which log to read.
 
 #### Scenario: Resolution never yields an unrunnable mechanism
-
-- **WHEN** every combination of OS facts, permission, and forced state is resolved
+- **WHEN** every combination of OS facts, permission, and override is resolved
 - **THEN** no combination yields the OS-driven kind on an OS that lacks it
 
-#### Scenario: The transport binding is not a resolution input
+#### Scenario: A limited grant resolves the app-driven kind on every OS
+- **WHEN** photo access is `LIMITED`, on an OS with or without the OS-driven mechanism
+- **THEN** resolution yields the app-driven kind
 
+#### Scenario: The transport binding is not a resolution input
 - **WHEN** the resolver's inputs are enumerated
 - **THEN** the session kind the app-driven mechanism transfers over is not among them, and no cell varies
   by it
 
-#### Scenario: Re-resolving to the app-driven kind reuses its instance
-
+#### Scenario: The app engine is one instance for the process
 - **WHEN** the resolved kind changes away from the app-driven mechanism and later back to it
-- **THEN** the same instance is obtained, its session was never invalidated, and uploads
-  resume without aborting the process
+- **THEN** the same engine is used, its session was never invalidated, and uploads resume without aborting
+  the process
 
 ### Requirement: A mechanism override is a runtime input a shipped build cannot carry
 
@@ -615,6 +353,12 @@ binary that must not honour the value, there is nothing to refuse.
 
 It follows that the override SHALL NOT be persisted anywhere a build without the control channel reads.
 
+It follows too that the **extension cannot read the override**: it lives only in the app process's memory.
+Establishing or clearing an override SHALL therefore run the compared registration reconcile at once
+("Membership transitions reconcile the upload mechanisms in one tested place"), so a pin that resolves away
+from the OS-driven mechanism under `GRANTED` deregisters the extension instead of leaving its
+permission-only gate to admit a second writer.
+
 #### Scenario: A shipped build cannot be overridden
 
 - **WHEN** a build made without the control channel runs on any OS under any permission
@@ -632,59 +376,52 @@ It follows that the override SHALL NOT be persisted anywhere a build without the
 - **THEN** resolution proceeds from OS facts and permission alone, and yields a mechanism for every input
   combination
 
-### Requirement: A mechanism is always resolved
-
-Resolution SHALL yield a producer for **every** combination of inputs, including those under which no
-upload work may occur. Unusable photo access SHALL resolve to an **idle** mechanism — a producer that
-declines every trigger while honouring the platform contract of each — and SHALL NOT resolve to absence.
-
-An OS trigger carries a completion handler whose release the system waits on; an unanswered handler costs
-the app its future background wakes (`ios-app-shell`, "OS completion handlers are released only after
-their work completes"). Routing a trigger to an absent mechanism strands that handler. The idle mechanism
-is a deliberate collapse that names its consequence — nothing is uploaded, every handler is still
-released — rather than a silent one (`module-architecture`, "Absence is never silent").
-
-#### Scenario: A background wake with no usable access still completes
-
-- **WHEN** the OS delivers a background trigger while photo access is `NOT_DETERMINED` or `DENIED`
-- **THEN** no upload work is performed and the OS completion handler is still released
+#### Scenario: Pinning away from the OS-driven mechanism deregisters it
+- **WHEN** an override naming the app-driven or the idle kind is established under `GRANTED` on an OS that
+  carries the OS-driven mechanism, while the extension is registered
+- **THEN** the extension is deregistered by that request, without waiting for another transition
 
 ### Requirement: Triggers are delivered to the mechanism and declined explicitly
 
-App-side upload triggers SHALL be delivered to the resolved mechanism **unconditionally** — foreground
-entry, a silent push, a background-task heartbeat, and a photo selection change. The caller SHALL NOT
-decide which mechanism is interested; each mechanism SHALL state its own answer, and a mechanism that
-does nothing SHALL say so **explicitly at its definition site**.
+App-side upload triggers SHALL be delivered to the **app-driven engine unconditionally**, whatever mechanism is
+resolved — foreground entry, a silent push, a background-task heartbeat, and a photo selection change. The
+caller SHALL NOT decide whether the engine is interested: the engine's cycle decides at its entry gate ("The
+upload cycle owns its entry decision"), declining as **not resolved** when the OS-driven kind is resolved. The
+OS-driven mechanism receives no app-side trigger — the OS schedules it — so it states no declines.
 
-The trigger surface SHALL NOT carry defaults. A permissive default is an unstated answer, and a tier that
-inherits one has no reviewable record of the choice (see "Every selection and side-effect port is
-answered at the call site", which rules the same way for the cycle's ports).
-
-Deciding at the caller is an **invoker-gate**, and this capability has already ruled on that shape ("The
-arm's direction gate lives at the choke point, never at the invoker"): the enumeration of invokers is
-invalidated silently by a new tier or a new trigger. Whether a mechanism responds to a trigger — and
-whether responding would read the photo library at all — is a property only that mechanism knows.
+Deciding at the caller is an **invoker-gate**, and this capability has already ruled on that shape ("The arm's
+direction gate lives at the choke point, never at the invoker"): the enumeration of invokers is invalidated
+silently by a new tier or a new trigger.
 
 Each trigger SHALL be a `suspend` function that returns when its work is done and SHALL NOT accept an OS
-completion handler. The handler is held by the entry point that received it, for the deadline named for
-that OS wake, so no mechanism can fail to release one.
+completion handler. The handler is held by the entry point that received it, for the deadline named for that OS
+wake, so a declining cycle still returns and the handler is still released.
 
-#### Scenario: A mechanism the OS schedules declines an app-side pump
+**Cold background wakes run real cycles.** A trigger reaching a process whose host was never assembled — a
+`BGProcessingTask` or a silent push that launched it in the background — SHALL drive the app engine's cycle like
+any other. (It previously reached an idle stand-in held until a UI-launch transition moved it, so the heartbeat's
+re-submission never ran and the chain ended at the first cold wake: a customer-visible stall of background
+uploads, fixed by this requirement.)
 
-- **WHEN** a foreground trigger reaches a mechanism whose uploads the OS itself schedules
-- **THEN** the mechanism performs no pump, its declining answer is stated in its own implementation, and
-  the trigger completes
+#### Scenario: A cold heartbeat wake re-submits the heartbeat
+- **WHEN** a `BGProcessingTask` launches the app in the background on the app-driven mechanism, with an
+  upload-inclusive membership
+- **THEN** the app engine runs a cycle and the next `BGProcessingTask` is scheduled
 
-#### Scenario: A new mechanism cannot inherit silence
+#### Scenario: A trigger under the OS-driven mechanism declines at the gate
+- **WHEN** a foreground trigger reaches the app engine while the OS-driven kind is resolved
+- **THEN** the cycle declines as not resolved, schedules nothing, and the trigger completes
 
-- **WHEN** a mechanism is added without stating an answer for every trigger
-- **THEN** it does not compile
+#### Scenario: A background wake with no usable access still completes
+- **WHEN** the OS delivers a background trigger while photo access is `NOT_DETERMINED` or `DENIED`
+- **THEN** no upload work is performed, no permission dialog is raised, and the OS completion handler is still
+  released
 
 ### Requirement: Settling with the platform is owed regardless of the cycle's other outcomes
 
 The upload cycle SHALL settle with the platform — drain the outcomes it is holding and adjudicate them
-— on **every** cycle that reaches a usable membership, before and independently of every later
-decision the cycle makes. In particular it SHALL do so when the direction gate declines.
+— on **every** cycle that reaches a usable membership **in a process that may run**, before and independently
+of every later decision the cycle makes. In particular it SHALL do so when the direction gate declines.
 
 The obligation is owed to the platform for work it has already presented, and it does not depend on
 whether this membership still contributes. Measured on
@@ -696,16 +433,33 @@ attempt count. Expiry: re-measure at the next iOS major.
 
 Settling creates no upload work and publishes nothing: it enumerates nothing and writes no manifest.
 
-#### Scenario: A declined direction still settles
+A cycle **withheld for permission** (the extension without a `GRANTED` grant) SHALL settle **narrowly**: it
+SHALL drain the terminal jobs the platform presented and adjudicate their failures — discharging the
+acknowledgement obligation — but SHALL re-create no retry, create no job, and run no stranded pass. A retry or a
+stranded demotion there would write the ledger while another process may be its writer.
 
+A cycle that is **not resolved** in its process (the app engine while the OS-driven kind is resolved) SHALL
+settle **nothing**. Its transport holds no transfer for the rows the other process requested, so its stranded
+pass would demote them — a second ledger writer.
+
+#### Scenario: A declined direction still settles
 - **WHEN** the membership's direction excludes upload
 - **THEN** the cycle still settles with the platform
 
 #### Scenario: An unusable membership settles nothing
-
 - **WHEN** the entry gate reports the membership unreadable, or definitively absent
 - **THEN** the cycle settles with no platform at all, because settling requires the configuration the
   gate could not supply
+
+#### Scenario: A withheld cycle acknowledges without creating work
+- **WHEN** the extension is invoked without a `GRANTED` grant while the OS presents terminal jobs
+- **THEN** every presented job is acknowledged and its outcome recorded, and no retry is re-created, no job is
+  created, and no `REQUESTED` row is demoted by a stranded pass
+
+#### Scenario: A not-resolved cycle settles nothing
+- **WHEN** the app engine's cycle runs while the OS-driven kind is resolved and the ledger holds `REQUESTED`
+  rows the extension created
+- **THEN** no terminal job is drained, no retry is created, and every one of those rows is left `REQUESTED`
 
 ### Requirement: The cycle's publication is decided by its outcome
 
@@ -733,8 +487,8 @@ with a backlog takes on every cycle withheld them permanently, with no error and
 
 #### Scenario: Every exit publishes
 
-- **WHEN** a cycle ends by any route — unreadable membership, no membership, declined direction, job limit
-  reached, or fully drained
+- **WHEN** a cycle ends by any route — unreadable membership, no membership, not resolved, withheld for
+  permission, declined direction, job limit reached, or fully drained
 - **THEN** the publication decision runs for that outcome, publishing exactly what that outcome calls
   for
 
@@ -743,4 +497,255 @@ with a backlog takes on every cycle withheld them permanently, with no error and
 - **WHEN** a truncated or drained cycle publishes
 - **THEN** it writes the device manifest and the enumeration audit line, and changes the state of no ledger
   row
+
+#### Scenario: A temporary permission state publishes nothing
+- **WHEN** a cycle ends not resolved or withheld for permission
+- **THEN** no device manifest is written — not even an empty one — so a grant flip never removes this device's
+  photos from the event union
+
+### Requirement: Membership transitions have no destructive verb
+
+The upload arm SHALL be a set of **membership transitions** — join, reconfigure, permission change, leave —
+plus a **launch** reconcile, expressed as one stateless, platform-free object in `:domain`'s `feature/upload`
+zone (package `app.snapsync.feature.upload`). Each transition reconciles exactly two things: whether the
+OS-driven extension is **registered**, and whether the app-driven engine is **armed** (its heartbeat and its
+restart signal). No transition, and no mechanism verb it calls, SHALL destroy **dedup state**: none clears the
+ledger and none deletes stored bytes.
+
+The verbs the transitions call are:
+
+- on the OS-driven mechanism: **register** (the disable → demote → enable ritual, capability
+  `ios-photokit-upload`), **deregister** (the disable alone), and a read of the OS's own view of the
+  registration;
+- on the app-driven engine: **arm** (signal a restart to the cycle, drain, arm the first `BGProcessingTask`)
+  and **disarm** (cancel in-flight transfers and the scheduled task, leaving the session intact — capability
+  `ios-url-session-upload`).
+
+None of them clears the ledger. The demote the ritual performs is a repair — `REQUESTED` → `DISCOVERED` — and
+removes nothing already stored.
+
+**The ledger is cleared at exactly two membership transitions, and never by a mechanism verb.** The upload
+ledger is the **current membership's share set** (`sync-ledger`): empty while unjoined, loaded at a join,
+cleared at a leave.
+
+- a **leave** stands the mechanisms down and then clears the upload ledger (`leave-event`);
+- a **provision into a new membership** — a first join, or a switch — clears the ledger and loads it from the
+  device's stored-file listing before its config is saved, and a switch first **stands the previous
+  membership's mechanisms down** before that load (`join-event`).
+
+Every other transition — a **re-provision of the joined event**, a permission change, a reconfigure, a
+launch — SHALL NOT clear or reset the ledger. The clear and the load are performed by the membership
+use-cases over the ledger store (`LeaveEvent`, the join-time share-set load), never by a mechanism verb and
+never by the transitions object, which holds no ledger. The download store is not cleared by any of them
+(`download-store`).
+
+The property being defended is **dedup**: the proof that a photo is already in the event. Losing it
+re-uploads a member's whole in-window library — the failure this project exists to prevent. The stored bytes
+are that proof. The ledger's `COMPLETED` rows are this membership's **local copy** of it, rebuilt at each join
+from the per-device listing, which is why a leave and a join may clear them and nothing else may.
+
+No verb needs to be destructive as a repair either: what standing a mechanism down can leave behind is
+`REQUESTED` rows no transfer will settle, and those are demoted to `DISCOVERED` by whichever mechanism is next
+brought up — the OS-driven ritual's demote, or the app-driven engine's restart rule (`ios-photokit-upload`,
+`ios-url-session-upload`) — which the ledger's work read returns without a walk.
+
+This replaces the two-verb `UploadProducer` seam (`start` / `stop`), the orchestrator that held one producer,
+and the kind → instance table: the decisions they carried survive here, their indirection does not
+(decision record: `changes/archive/2026-09-21-retire-the-upload-arm`).
+
+#### Scenario: No transition destroys dedup state
+- **WHEN** any transition runs — join, reconfigure, permission change, launch, or leave
+- **THEN** no mechanism verb it calls clears a ledger row or deletes a stored object; any clear that follows is
+  the leave's or the join-time load's own step
+
+#### Scenario: A leave clears the upload ledger after standing the mechanisms down
+- **WHEN** the user leaves the event
+- **THEN** the extension is deregistered and the app engine disarmed first, and the upload ledger is then
+  cleared, while the download store's rows are left untouched
+
+#### Scenario: A switch stands down, then replaces the ledger
+- **WHEN** a provision configures an event different from the joined one
+- **THEN** the previous membership's mechanisms are stood down, the ledger is then cleared and loaded from the
+  device's stored-file listing, and only then is the new config saved
+
+#### Scenario: A re-provision of the joined event touches no ledger row
+- **WHEN** the event that is already joined is provisioned again, or photo permission or the membership's
+  direction changes, or the app launches
+- **THEN** no ledger row is cleared, reset, or loaded
+
+#### Scenario: Rows a stand-down leaves stranded are repaired by the next bring-up
+- **WHEN** standing a mechanism down leaves `REQUESTED` rows that no transfer will settle, and a mechanism is
+  later registered or armed
+- **THEN** that bring-up demotes those rows to `DISCOVERED`, and the next cycle re-creates their uploads from
+  the ledger's work read, without the walk re-deriving them
+
+### Requirement: Membership transitions reconcile the upload mechanisms in one tested place
+
+The decision of **what each transition does** SHALL live in the transitions object in `:domain`'s
+`feature/upload` zone, not in a composition root, and SHALL be tested in `commonTest` against a fake
+registration and a fake app-driven engine. It SHALL hold **no mutable state**: every decision is derived
+afresh from the resolved kind ("The upload mechanism is resolved, never selected"), the membership's upload
+posture, and — for the registration compare — the current photo permission.
+
+Photo access is **usable** when it is `GRANTED` or `LIMITED`. The **desired state** SHALL be derived from the
+resolved kind and the membership's **three-valued** upload posture — includes-upload / excludes-upload /
+**no membership**:
+
+| posture | resolved kind | extension registration | app engine |
+| --- | --- | --- | --- |
+| includes upload | OS-driven | wanted | disarmed |
+| includes upload | app-driven | not wanted | armed |
+| includes upload | idle, no usable access | left as it is | disarmed |
+| includes upload | idle, pinned under usable access | not wanted | disarmed |
+| excludes upload, or no membership | any | not wanted | disarmed |
+
+The transitions SHALL reach that state as follows:
+
+| Transition | Registration | App engine |
+| --- | --- | --- |
+| **join** (a first join or a switch, after the join-time load; or a re-provision) | **forced**: wanted → the ritual; not wanted → deregister | armed if wanted, else disarmed |
+| **reconfigure** (only when the new direction includes upload) | compared | armed if wanted, else disarmed |
+| **permission change** (a real change, not a replayed value) | compared | armed if wanted, else disarmed |
+| **launch** (host assembly) | compared | armed if wanted, else disarmed |
+| **leave** (a leave, or a switch leaving the previous membership) | forced deregister | disarmed |
+
+A **compared** reconcile SHALL read the OS's own view of the registration **only under a `GRANTED` grant**,
+and under that grant register (through the ritual) when wanted and absent, and deregister when present and not
+wanted. Under any other grant it SHALL change nothing: every registration write is refused under `LIMITED`
+(`ios-photokit-upload`, "The registration cannot be changed under a partial grant"), and the OS's read is not
+trustworthy under `NOT_DETERMINED`. **Every** enable, forced or compared, SHALL go through the ritual, never
+a bare enable, because a bare enable over a stale record fails with `3202`.
+
+Disarming whenever the app engine is not wanted — at launch too, not only at a change — is what cancels
+app-driven work a **previous process** left running: in-flight background transfers and a submitted
+`BGProcessingTask` survive process death, and their delegate would otherwise record outcomes from the app
+while the extension is the writer. Disarming an engine with nothing in flight is a no-op.
+
+A disabling reconfigure calls no transition: in-flight uploads drain and the cycle's direction gate withholds
+new work (`reconfigure-membership`).
+
+**No membership, no arm.** A permission change with no event configured SHALL arm nothing and register nothing
+(a surviving record it finds under `GRANTED` is deregistered, as for any unwanted registration).
+Photo access can be usable while no event is configured — the join gate's photo-access explainer raises the
+system dialog **before** the join is confirmed, and `join-event` requires that no upload mechanism is enabled
+until the user confirms. The three-valued posture SHALL be read by the transitions object, never collapsed to
+a two-valued flag in the composition root.
+
+Registration SHALL stay **after** the join-time load (`join-event`): a first join has no registered extension
+until the join transition runs, which is what prevents the load racing an extension cycle.
+
+#### Scenario: A join under a full grant registers through the ritual
+- **WHEN** an upload-inclusive event is joined while photo access is `GRANTED` on an OS carrying the OS-driven
+  mechanism
+- **THEN** the join transition runs the disable → demote → enable ritual and disarms the app engine
+
+#### Scenario: A join under a limited grant arms the app engine
+- **WHEN** an upload-inclusive event is joined while photo access is `LIMITED`
+- **THEN** the app engine is armed and no registration write is attempted beyond the forced deregistration,
+  whose refusal is tolerated
+
+#### Scenario: A download-only join stands everything down
+- **WHEN** an event is joined whose direction excludes upload
+- **THEN** the extension is deregistered and the app engine disarmed, and no ledger row is touched by either
+
+#### Scenario: Reconfiguring a download-only membership to upload registers the extension
+- **WHEN** a download-only membership on an OS carrying the OS-driven mechanism, under `GRANTED`, is
+  reconfigured to include upload
+- **THEN** the compared reconcile finds the extension unregistered and registers it through the ritual, so the
+  OS can invoke it
+
+#### Scenario: A permission flip moves the mechanisms stand-down first
+- **WHEN** photo access transitions from `LIMITED` to `GRANTED` while an upload-inclusive membership is
+  configured on an OS carrying the OS-driven mechanism
+- **THEN** the app engine is disarmed before the extension is registered through the ritual
+
+#### Scenario: A grant with no event configured arms nothing
+- **WHEN** photo access transitions to usable access while no event is configured
+- **THEN** the extension is not registered and the app engine is not armed
+
+#### Scenario: Bringing up the extension cancels app-driven work left by an earlier process
+- **WHEN** the app launches with the OS-driven kind resolved, on a device where a previous process left
+  in-flight app-driven transfers or a submitted background task
+- **THEN** the launch reconcile disarms the app engine, cancelling them, so only one process writes records
+
+#### Scenario: Revocation disarms the app engine
+- **WHEN** photo access transitions to `DENIED` or `NOT_DETERMINED` while an upload-inclusive membership is
+  configured
+- **THEN** the app engine is disarmed and the registration is left as it is
+
+### Requirement: Launch reconciles by comparison; only a join forces the repair
+
+The app process SHALL reconcile the upload mechanisms at **launch** through an explicit call from its
+host-assembly path, and SHALL NOT rely on the permission `StateFlow`'s replayed first value to do so. The
+permission subscription SHALL react to real changes only.
+
+At launch the registration SHALL be **compared**, not forced: the ritual SHALL run only when the extension is
+wanted and the OS (read under `GRANTED`) reports it absent; a deregistration only when it is present and not
+wanted. The forced ritual — the repair of a stale configuration record — SHALL run at **join**.
+
+The app engine SHALL be armed at launch when it is wanted, exactly as before, and disarmed when it is not: arming carries the restart signal
+of the start-time stranded rule (`ios-url-session-upload`) and arms the first `BGProcessingTask`, and neither
+duty is traded away.
+
+This is a deliberate trade. A stale record that still reads "enabled" is repaired only at the next join; in
+exchange, the extension's in-flight OS jobs survive app launches instead of being wiped and demoted on every
+one. A record that reads absent is still registered at the next launch, and a failing enable is still reported
+at `Error` (`ios-photokit-upload`).
+
+A cold background launch SHALL NOT run the launch reconcile: host assembly does not run there
+(`ios-app-shell`).
+
+#### Scenario: A launch with a live registration leaves the extension's jobs alone
+- **WHEN** the app launches with an upload-inclusive membership under `GRANTED` on an OS carrying the OS-driven
+  mechanism, and the OS reports the extension registered
+- **THEN** no registration write is made and no `REQUESTED` row is demoted
+
+#### Scenario: A launch with a missing registration registers through the ritual
+- **WHEN** the app launches under the same conditions but the OS reports the extension not registered
+- **THEN** the extension is registered through the disable → demote → enable ritual
+
+#### Scenario: A launch on the app-driven mechanism arms it
+- **WHEN** the app launches with an upload-inclusive membership and the resolved kind is the app-driven one
+- **THEN** a restart is signalled to the cycle and the first `BGProcessingTask` is armed
+
+#### Scenario: The replayed permission value is not a transition
+- **WHEN** the permission subscription is installed and receives the `StateFlow`'s current value
+- **THEN** no transition runs for that value; only a later, different value runs the permission-change
+  transition
+
+### Requirement: Exactly one mechanism writes the ledger, enforced at each engine's entry gate
+
+At most one process SHALL write ledger records at any time (`sync-ledger`, the single record writer). The
+guarantee SHALL be **gated**: each engine's upload cycle SHALL decline at its own entry gate whenever it is not
+the one that may run, and the transitions keep the OS's registration consistent with resolution.
+
+- The **app-driven** engine's cycle SHALL run only when resolution yields the app-driven kind; otherwise it SHALL
+  decline as **not resolved** and touch nothing ("The upload cycle owns its entry decision").
+- The **extension**'s cycle SHALL run only under a `GRANTED` photo grant; otherwise it SHALL **withhold**.
+- Whenever the app-driven kind is resolved under a `GRANTED` grant on an OS carrying the OS-driven mechanism —
+  which only a development override produces — the extension SHALL be **deregistered** by the transitions,
+  because the extension cannot read the override.
+
+**This is a weakening, stated as one.** Exclusion was structural: the arm held one mechanism reference, so a
+second writer had no expression. Both engines' cycles may now be constructed in one install, and what prevents
+two writers is a gate decision plus the registration state. The structural form was already porous — a
+background-`URLSession` relaunch reached the app engine's cycle directly, whatever mechanism was held — and the
+gate closes that path too. The `:test:architecture` guard (capability `architecture-guards`) SHALL be
+re-pointed at the gates and the registration state rather than retired.
+
+The gate SHALL live in the cycle — the choke point every trigger funnels through — never at a trigger's
+invoker ("The arm's direction gate lives at the choke point, never at the invoker").
+
+#### Scenario: The app engine declines under the OS-driven mechanism
+- **WHEN** any trigger drives the app engine's cycle while resolution yields the OS-driven kind
+- **THEN** the cycle declines as not resolved, settles nothing, writes no ledger row, and creates no transfer
+
+#### Scenario: The extension withholds without a full grant
+- **WHEN** the OS invokes the extension while photo access is `LIMITED`, `DENIED` or `NOT_DETERMINED`
+- **THEN** the extension's cycle withholds: it creates no job, walks nothing, and runs no stranded pass
+
+#### Scenario: A pinned app-driven mechanism deregisters the extension
+- **WHEN** a development override pins the app-driven kind under `GRANTED` on an OS carrying the OS-driven
+  mechanism
+- **THEN** the extension is deregistered, so the extension's permission-only gate cannot admit a second writer
 

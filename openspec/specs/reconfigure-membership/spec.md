@@ -142,20 +142,24 @@ so a change takes effect immediately rather than waiting for the OS's next sched
   (capability `event-album`, *Ensuring the album gathers what the device already holds*). The gather runs on
   every such Save, not only one that turns the album on: a lowered cutoff or a changed direction changes
   what the device holds for the event too;
-- when `direction` now **includes upload**, it SHALL arm the upload producer per the current photo
-  permission and **schedule** the upload pump;
+- when `direction` now **includes upload**, it SHALL run the upload **reconfigure transition**
+  (capability `upload-lifecycle`): the compared registration reconcile — registering the OS-driven
+  extension through its ritual when it is wanted and absent, as it is after a download-only join — and,
+  where resolution yields the app-driven engine, arming it, which **schedules** the upload pump;
 - when `direction` now **includes download**, it SHALL trigger a **download reconcile**.
 
 Save SHALL NOT wait for the gather. It is started detached, because its cost grows with the photos the
 device holds for the event, and the command that Save awaits must return when the settings are committed.
 
-These effects SHALL be **idempotent** (re-arming an already-armed producer, ensuring an existing album, or
+These effects SHALL be **idempotent** (re-arming an armed engine, finding a wanted registration already
+present, ensuring an existing album, or
 gathering photos already in the album, is a no-op). The command wiring these effects SHALL be built only in
 the shared composition (`compose/SnapSyncApp.kt`), over the existing album/upload-arm/download seams.
 
 #### Scenario: Enabling share kicks an upload immediately
 - **WHEN** a `DownloadOnly` membership is reconfigured to include upload and photo access is granted
-- **THEN** the upload producer is armed and the upload pump is scheduled without waiting for the OS cadence
+- **THEN** the upload mechanism resolution yields is brought up — the app engine armed and its pump
+  scheduled, or the extension registered — without waiting for the OS cadence
 
 #### Scenario: Enabling receive triggers a reconcile
 - **WHEN** an `UploadOnly` membership is reconfigured to include download
@@ -169,6 +173,11 @@ the shared composition (`compose/SnapSyncApp.kt`), over the existing album/uploa
 - **WHEN** a membership is saved with `saveToAlbum = true` and access is granted
 - **THEN** a gather into the event album is started after the album is ensured, and the Save command returns
   without waiting for that gather to finish
+
+#### Scenario: Enabling share on the OS-driven tier registers the extension
+- **WHEN** a `DownloadOnly` membership, joined under `GRANTED` on iOS ≥26.1 (so the extension was deregistered at
+  the join), is reconfigured to include upload
+- **THEN** the extension is registered through the disable → demote → enable ritual, so the OS can invoke it
 
 ### Requirement: A disabling change drains in-flight uploads but cancels in-flight downloads
 
@@ -189,8 +198,9 @@ bytes" rationale exists to avoid. Settling is also what discharges the platform'
 obligation on a tier whose extension the disable deliberately leaves registered; leaving it undischarged
 was measured to make the system discard the outstanding jobs and defer the extension.
 
-Turning a direction off SHALL NOT stop the upload producer, and therefore SHALL NOT deregister an
-OS-driven upload extension: stopping is what would cancel the in-flight work this requirement preserves.
+Turning a direction off SHALL run no upload transition: it SHALL NOT disarm the app-driven engine and SHALL
+NOT deregister an OS-driven upload extension, because either is what would cancel the in-flight work this
+requirement preserves.
 The obligations that follow from the extension remaining registered are the cycle's to discharge, per
 `upload-lifecycle`.
 

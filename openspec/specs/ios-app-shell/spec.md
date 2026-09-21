@@ -348,8 +348,12 @@ the host and the screen. The composed graph SHALL construct the iOS
 `suspend () -> LedgerCounts` that calls only `iosLedgerStore().assetProgress()` (never a write;
 capability `sync-status`) — and
 SHALL issue **no** storage LIST for upload status. While the **OS-driven mechanism** is the resolved
-one the composed graph SHALL construct **no `LedgerWriter`** (the ledger read is read-only; the
-extension is the sole writer) and **no `EventStatusSource`**. The app's only ledger touches on that
+one the app process SHALL write **no ledger record** (the extension is the sole writer) and construct
+**no `EventStatusSource`**. The app-driven engine — and the `LedgerWriter` its cycle holds — may be
+constructed there, because a trigger or a background-session relaunch reaches it; its entry gate declines
+as not resolved before any write (`upload-lifecycle`, "Exactly one mechanism writes the ledger, enforced
+at each engine's entry gate"). This is the gated form of what was a structural guarantee, and it was
+already porous: the session relaunch reached that cycle directly. The app's only ledger touches on that
 tier are the read-only status read and the reset family at membership transitions (see "The app resets
 the upload ledger at membership transitions on every tier") — the extension holds no reconciliation of
 its own. Constructing the app-driven
@@ -366,12 +370,14 @@ point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilent
 `runUploadHeartbeat` / `runDownloadBackstop` / `handleBackgroundUrlSession`) SHALL be a thin
 delegator to a single live shell delegate, re-checking no tier and re-resolving nothing.
 
-The permission-grant subscriptions (upload-arm start on grant; sole-creator album ensure — see
-`event-album`) SHALL be installed by an explicit `AppCore.installPermissionSubscriptions()`
-(`compose/`) invoked **only from the root's host-assembly path**: a cold background wake (the
-download backstop or a background-`URLSession` relaunch) that merely touches the composed graph
-SHALL NOT install them, so no producer start fires off the permission StateFlow's replay outside
-host assembly.
+The permission-grant subscriptions (the upload permission-change transition; sole-creator album ensure —
+see `event-album`) SHALL be installed by an explicit `AppCore.installPermissionSubscriptions()`
+(`compose/`) invoked **only from the root's host-assembly path**, which SHALL also run the upload
+**launch reconcile** explicitly (`upload-lifecycle`, "Launch reconciles by comparison; only a join forces
+the repair"). The upload subscription SHALL NOT treat the permission StateFlow's replayed value as a
+transition. A cold background wake (the download backstop, the upload heartbeat, a silent push, or a
+background-`URLSession` relaunch) that merely touches the composed graph SHALL NOT install them and SHALL
+run no launch reconcile.
 
 The root SHALL observe the app's foreground/background lifecycle **from Kotlin**: a plain
 `onLaunch()` entry — called by the Swift `AppDelegate` from `didFinishLaunchingWithOptions`, a
@@ -474,8 +480,8 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 
 - **WHEN** the process is launched in the background by the download backstop or a
   background-`URLSession` relaunch, without the host-assembly path running
-- **THEN** touching the composed graph installs no permission-grant collector, and no upload
-  producer starts off the permission StateFlow's replayed `GRANTED` value
+- **THEN** touching the composed graph installs no permission-grant collector and runs no launch
+  reconcile, so no registration is written and no engine is armed
 
 ### Requirement: On-disk native ledger on iOS
 
@@ -495,26 +501,29 @@ The `:adapter:ios:ext-safe` module SHALL provide an `iosLedgerStore()` factory (
 
 ### Requirement: Enable the background-upload extension on grant
 
-When photo-library access is (or becomes) full (`.readWrite` → `GRANTED`), the app SHALL enable the
-background-upload extension (`PHPhotoLibrary.setUploadJobExtensionEnabled(true)`) so the system can
-invoke it. A grant SHALL **not** run any join, listing fetch, enumeration, or seed. The ledger is loaded
-at the **join** — by the provision, before the arm starts this mechanism (capability `join-event`; see
-"The app resets the upload ledger at membership transitions on every tier") — so the extension's first
-cycle after the enable already sees it, and the extension holds no reconciliation of its own. The app
-creates no upload jobs, performs no uploads, and constructs no `LedgerWriter`. The enable call SHALL be
-idempotent-safe to repeat on each grant/foreground.
+The app SHALL ensure the background-upload extension is registered on iOS ≥26.1 so the system can invoke it,
+when photo-library access is (or becomes) full (`.readWrite` → `GRANTED`) for an upload-inclusive membership:
+forced through the disable→enable ritual at a join, and — at a permission change, a reconfigure, a launch or an
+override change — through the same ritual when the OS reports it absent (`upload-lifecycle`, "Membership
+transitions reconcile the upload mechanisms in one tested place"). A grant SHALL **not** run any join, listing
+fetch, enumeration, or seed. The ledger is loaded at the **join** — by the provision, before the join
+transition registers the extension (capability `join-event`; see "The app resets the upload ledger at membership
+transitions on every tier") — so the extension's first cycle after the enable already sees it, and the extension
+holds no reconciliation of its own. The app creates no upload jobs, performs no uploads, and writes no ledger
+record on this tier. Registration SHALL be idempotent-safe to repeat.
 
-#### Scenario: Granting full access enables the extension directly
+#### Scenario: Granting full access registers the extension directly
 
-- **WHEN** photo-library permission transitions to `GRANTED` with a configured event
-- **THEN** the app calls `setUploadJobExtensionEnabled(true)` without fetching, enumerating, or seeding —
+- **WHEN** photo-library permission transitions to `GRANTED` with an upload-inclusive configured event and the OS
+  reports the extension not registered
+- **THEN** the app registers it through the disable→enable ritual without fetching, enumerating, or seeding —
   the ledger the extension's next cycle reads is the one the join already loaded
 
 #### Scenario: The app never uploads, and seeds only at a join
 
 - **WHEN** the app is running with a configured event on iOS ≥26.1 under a full grant
-- **THEN** it creates no upload jobs, performs no library enumeration, and constructs no `LedgerWriter` —
-  its only ledger writes are the reset family at a join, a switch, or a leave
+- **THEN** it creates no upload jobs, performs no library enumeration, and writes no ledger record — its
+  only ledger writes are the reset family at a join, a switch, or a leave
 
 ### Requirement: Remote-notification capability declaration
 
@@ -818,27 +827,30 @@ treat a failed fetch as "keep last-good state", so a fast failure costs a retry 
 
 ### Requirement: OS entry points delegate upload triggers to the resolved mechanism
 
-Every OS entry point that drives upload work SHALL delegate to the **resolved upload mechanism**
-(`upload-lifecycle`, "The upload mechanism is resolved, never selected") rather than to a tier-dependent
-thunk bound at composition — foreground entry, a silent push, the upload heartbeat background task, and
-a photo-selection change. The root SHALL NOT bind per-tier upload behaviour, and no
-entry point SHALL re-check a tier.
+Every OS entry point that drives upload work SHALL delegate to the **app-driven engine**, unconditionally —
+foreground entry, a silent push, the upload heartbeat background task, and a photo-selection change — whatever
+mechanism is resolved (`upload-lifecycle`, "Triggers are delivered to the mechanism and declined explicitly").
+The engine's cycle decides at its entry gate whether this process may run. The root SHALL NOT bind per-tier
+upload behaviour, and no entry point SHALL re-check a tier or re-resolve a mechanism.
 
-A mechanism is always resolved, so an entry point always has a delegate ("A mechanism is always
-resolved"). The entry point SHALL construct the `OsReceipt` for its own OS wake, using the deadline
-named for that wake, and SHALL hold it across the delegated call — so the mechanism receives a plain
-`suspend` trigger and never holds a raw OS completion handler. This preserves "OS completion handlers
-are released only after their work completes" while removing every mechanism's ability to violate it.
+The entry point SHALL construct the `OsReceipt` for its own OS wake, using the deadline named for that wake, and
+SHALL hold it across the delegated call — so the engine receives a plain `suspend` trigger and never holds a raw
+OS completion handler. A cycle that declines still returns, so the handler is still released.
 
-Binding upload behaviour per tier in the root is what previously made a forced build unable to reach a
-mechanism it had not composed. Delegating to the resolved mechanism removes the root's opportunity to
-answer that question at all.
+A cold background launch reaches the engine like any other entry: nothing about the host having been assembled
+decides whether the trigger does work.
 
-#### Scenario: A background wake reaches the resolved mechanism
+#### Scenario: A background wake reaches the app engine
 
 - **WHEN** the OS invokes an upload-driving entry point
-- **THEN** the entry point holds a receipt for that wake's deadline, delegates to the resolved mechanism,
+- **THEN** the entry point holds a receipt for that wake's deadline, delegates to the app-driven engine,
   and releases the handler when the delegated work completes or the deadline expires
+
+#### Scenario: A cold heartbeat wake does real work
+
+- **WHEN** the upload heartbeat launches the app in the background, with no host assembled, on the app-driven
+  mechanism
+- **THEN** the engine runs a cycle and the next heartbeat is scheduled
 
 #### Scenario: No entry point re-checks a tier
 
@@ -896,16 +908,16 @@ holder of the `LedgerStore` that is not the record writer MAY invoke:
 
 - **At a join or a switch** — the provision's join-time load (capability `join-event`): `resetTo` the
   per-device listing on a successful fetch, `clear()` on a failed one. It runs in the app, before the
-  config is saved and before the upload arm starts a mechanism, and only when the membership changes
+  config is saved and before the join transition brings up a mechanism, and only when the membership changes
   (never on a re-provision of the joined event).
-- **At a leave** — `LeaveEvent`'s `clear()` of the upload ledger, after the producer is stopped and before
+- **At a leave** — `LeaveEvent`'s `clear()` of the upload ledger, after the mechanisms are stood down and before
   the config is cleared (capability `leave-event`).
 
 The extension SHALL hold no membership-transition logic: it constructs no join marker, runs no in-cycle
 reconciliation against the listing, and has no leave-side action — a membership change is always an
 explicit app action, and the app is the process that performs it. Holding these writes in the app on the
-OS-driven tier SHALL NOT bring a `LedgerWriter` into the app process: the reset family goes through the
-`LedgerStore` directly, so the single-record-writer invariant (`sync-ledger`) is unchanged.
+OS-driven tier SHALL NOT make the app a record writer: the reset family goes through the `LedgerStore`
+directly, so the single-record-writer invariant (`sync-ledger`) is unchanged.
 
 Decision record: `changes/archive/2026-09-21-join-loads-leave-clears` (D1–D4).
 
@@ -913,7 +925,7 @@ Decision record: `changes/archive/2026-09-21-join-loads-leave-clears` (D1–D4).
 
 - **WHEN** the device joins an event on iOS ≥26.1 under a full grant
 - **THEN** the app fetches the per-device listing and `resetTo`s the ledger through the `LedgerStore`
-  before the arm registers the extension, constructing no `LedgerWriter`, and the extension's first cycle
+  before the join transition registers the extension, writing only through the reset family, and the extension's first cycle
   reads the loaded ledger
 
 #### Scenario: A failed listing fetch clears instead
