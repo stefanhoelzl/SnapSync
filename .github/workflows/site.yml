@@ -1,0 +1,75 @@
+# The site's check gate (capability web-site). One job, `site-build`, building the Astro `site/` module
+# and running its full check set — type-check, formatting, self-containment — on EVERY ref.
+#
+# It is the site counterpart of api.yml, split from site-deploy.yml for the same reason api.yml is split
+# from api-deploy.yml:
+#
+# ① NO PATH FILTER, deliberately. GitHub treats a required status check that is never posted as
+# permanently PENDING, so a path-filtered required check freezes every PR whose diff falls outside the
+# filter — forever, with no error anywhere. site-deploy.yml IS path-filtered (it must be: it deploys), so
+# while the gate lived there its context came and went with the diff and could not be required — a PR
+# that broke the site build merged anyway, because `/ship`'s auto-merge waits on REQUIRED checks only.
+# Every required check in this repository comes from an unfiltered job for this reason. Do NOT add a
+# `paths:` filter here; the build is ~25s, so running it on a diff that cannot affect it is cheap.
+#
+# ② site-deploy.yml deliberately does not repeat `npm run check`: no commit can reach `main` without this
+# having passed. It still builds, because the deploy needs the output.
+#
+# It carries its own concurrency group rather than sharing build.yml's bare `github.ref` one, so neither
+# workflow cancels the other.
+name: site
+
+on:
+  push:
+    # EVERY branch, NO path filter. See ① above. `branches: ["**"]` excludes tags, matching build.yml,
+    # api.yml and ios.yml — a `vX.Y` tag is a release receipt and triggers nothing.
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site-build:
+    # This display name is the status-check context required by `main`'s branch ruleset,
+    # which `/ship` owns (there is no committed copy).
+    # Changing it without updating the ruleset would freeze merges (the required check would never
+    # be posted).
+    name: site-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # `check:selfcontained` runs under Deno (see site-deploy.yml's TWO RUNTIMES note).
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # The site reads the resolved deployment for its canonical URLs. Renderings are generated, never
+      # committed, so this step is required.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
+      - name: Install
+        working-directory: site
+        run: npm ci
+
+      # The build fails if astro:assets can't process the screenshots, so a broken capture or import is
+      # caught before main.
+      - name: Build
+        working-directory: site
+        run: npm run build
+
+      #   check:types        — astro check (real TS type-checking of the .astro pages + island)
+      #   check:fmt          — prettier --check (formatting)
+      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy)
+      - name: Check
+        working-directory: site
+        run: npm run check

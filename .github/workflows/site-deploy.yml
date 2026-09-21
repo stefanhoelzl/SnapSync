@@ -4,6 +4,11 @@ name: site-deploy
 # (capability web-site). The api Edge Script proxies that prefix (serveSiteObject), so this ships the
 # marketing landing and the /join page as static assets, OFF the api bundle.
 #
+# DEPLOY ONLY — the gate is site.yml. This workflow is path-filtered and main-only, so its context is
+# posted on no PR and must never be required (see site.yml ①). It does not repeat `npm run check`: no
+# commit reaches `main` without site.yml's required `site-build` having passed. It still builds, because
+# the deploy mirrors the build output.
+#
 # TWO RUNTIMES, deliberately: the site BUILD runs under NODE (astro:assets/rolldown fail under Deno's
 # npm-compat), while the deploy + self-containment scripts run under DENO — they reuse the api's own
 # storage client (api/src/{storage,config}.ts), matching the api's tooling. The api/ backend stays
@@ -16,6 +21,7 @@ name: site-deploy
 
 on:
   push:
+    branches: [main]
     paths:
       - "site/**"
       # The landing page's screenshots are processed from these raws at build time (astro:assets), so a
@@ -51,24 +57,12 @@ jobs:
         working-directory: site
         run: npm ci
 
-      # Build gate: runs on every branch. The build fails if astro:assets can't process the screenshots,
-      # so a broken capture or import is caught before main.
       - name: Build
         working-directory: site
         run: npm run build
 
-      # Gates (every branch, before deploy):
-      #   check:types        — astro check (real TS type-checking of the .astro pages + island)
-      #   check:fmt          — prettier --check (formatting)
-      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy)
-      - name: Check
-        working-directory: site
-        run: npm run check
-
-      # Mirror-deploy: main only. Feature-branch pushes build + check (the gate) but do not touch the live
-      # site/ prefix. Deno: uploads the new build, then deletes stale objects — never clears first.
+      # Mirror-deploy. Deno: uploads the new build, then deletes stale objects — never clears first.
       - name: Mirror-deploy to bunny storage
-        if: github.ref == 'refs/heads/main'
         working-directory: site
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
