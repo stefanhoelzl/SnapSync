@@ -269,6 +269,30 @@ No stack could be captured (DVT refuses SIGABRT/SIGQUIT, and a sysdiagnose needs
 After a SIGKILL and relaunch, the same drain ran to completion with no recurrence. The cause is not
 established, including whether it predates this change.
 
+One detail narrowed the hypothesis: the engine writes one log line per new-work decision, and only 31 of
+100 reached the file, yet all 100 rows were in the committed batch. So code kept running while log writes
+stopped landing, which is exactly what `FileLogWriter` does when `open()` fails (`fd < 0` returns
+silently). File-descriptor exhaustion would also explain a control channel that can no longer accept
+sockets, and an idle CPU.
+
+**A reproduction attempt found nothing.** Same device, now on iOS 26.6.2 (updated and rebooted in between),
+fresh process, 2026-09-21 11:47–11:54. The process's open-file count (`nfiles`, from DVT sysmon), control
+channel liveness and ledger were probed after every step:
+
+| step | `nfiles` |
+|---|---|
+| 30 `/device/state` polls, 3 gallery reads | 50 |
+| create + join a fresh event on the OS-driven tier | 50 |
+| pin `url_session`, reconfigure, seed 200, heartbeat, drain 100 | 50 |
+| back to OS-driven, seed 200, extension jobs in flight (pending 85) | 50 |
+| switch to `url_session` **mid-flight**, seed 200, heartbeat, drain 126 | 50 |
+
+`nfiles` never moved from its baseline of 50 (the default limit is 256), the channel answered throughout, and
+the log recorded all 196 app-driven cycles and every new-work line. Descriptor exhaustion is therefore not
+what this sequence produces, and the original hang did not recur in two attempts, the second replaying the
+mid-flight tier switch the first run had. What remains different is the OS state (26.6 before the update and
+reboot) and whatever that first process had accumulated, neither of which can now be recovered.
+
 ## Risks / Trade-offs
 
 - **[Cost on an older device under import load is unmeasured]** → D6 bounds the per-cycle resource reads to
@@ -319,8 +343,9 @@ established, including whether it predates this change.
 
 ## Open Questions
 
-- The app-driven hang recorded under "Measured on device" is unexplained and did not recur. Does it warrant a
-  reproduction attempt (with someone at the phone for a sysdiagnose) before merging, or a tracked follow-up?
+- The app-driven hang recorded under "Measured on device" is unexplained and did not recur in two targeted
+  reproduction attempts with the open-file count watched. Track it as a follow-up with a sysdiagnose trigger
+  ready, or accept it as a one-off?
 - The completion-driven walk measured ~80 ms on an idle SE2 (see "Measured on device"), so the walk-less
   top-up (see Risks) is not needed on that evidence. It stays the answer if an older device under load
   proves slow.
