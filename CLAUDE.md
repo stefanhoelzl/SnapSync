@@ -36,20 +36,22 @@ upload, the device manifest (or an excluded photo leaks into the event union), *
 `PermissionStatus.LIMITED`): the user's hand-picked selection IS the membership's own-photo scope — the
 policy then filters the selection exactly as it would a library. Three measured platform facts shape the
 implementation, and violating any of them reads as "mysteriously broken" with no error anywhere:
-① **the limited-access alert is armed by the LIBRARY CHANGING, not by reading** — measured on device
-(SE2, iOS 26.5.2; record: `changes/archive/2026-08-06-correct-limited-access-read-premise/PROBE-FINDINGS.md`, superseding
-the storm claim in the 2026-07-20 probe): a `PHAsset` fetch under `.limited` surfaces iOS's alert **iff
-the library gained content outside the app's selection since the app last looked** — armed **once per
-change**, not once per fetch, and merely surfaced by the first fetch after it. ~15 hammered walks against
-an unchanged library queued **zero**; one camera capture then a single read queued one, which survived
-SIGKILL onto the home screen. App-created assets join the selection at creation, so **an import, and any
-fetch resolving what it created, never arms it**. Consequences: read volume does NOT reduce the alert
-count, so do not justify anything as alert suppression (the read discipline is kept because under a
-partial grant the selection IS the scope, and it saves round-trips); and **every photo the member takes
-costs one system prompt**, which no read strategy avoids — only the full-access upgrade does. Reads still
-happen ONLY on the cold-launch baseline and the `PhotoSelectionChangeSource` observer emissions, and every
+① **the app never raises iOS's limited-library prompt itself — and nothing may be designed on when iOS
+does.** The prompt is iOS's automatic *"Select More Photos… / Keep Current Selection"* nudge to widen a
+partial selection; it is **not** a guard on reads (the app can only ever read the selection). The app
+suppresses it (`PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true` in `iosApp/iosApp/Info.plist`)
+and owns the route instead — the status screen's "Choose more photos" picker. **Settled** on the SE2
+across probes: reads of an unchanged library, however many, and the app's own creations (imports, album
+creation and adds — created assets join the selection) raise none. **Not settled**: a photo taken
+*outside* the selection. The key **leaked** on iOS 26.5 and 26.5.2 (July and August probes: queued
+prompts after a camera photo, surviving SIGKILL onto the home screen) and **held** on 26.6.2 (2026-09-21:
+one camera photo, 11 reads over 4 launch-and-kill cycles, zero prompts). So never assert "every photo costs
+a prompt", and never justify a read strategy as alert suppression. Record:
+`changes/archive/2026-09-21-correct-limited-access-alert-rule` (history table in its design). Reads still happen
+ONLY on the cold-launch baseline and the `PhotoSelectionChangeSource` observer emissions, and every
 upload cycle's discovery is fed the in-memory snapshot (`SelectionScopedDiscovery` in `uploadCore`), never a
-walk. ⏰ Re-measure at the next iOS major; evidence is one device, one point release, n=1 change.
+walk — because under a partial grant the selection IS the scope, and a walk is a round-trip that buys
+nothing. ⏰ Re-measure at the next iOS major; evidence is one device, and one probe on 26.6.x.
 ② **the ≥26.1 PhotoKit
 extension cannot be REGISTERED under `.limited`** (`setUploadJobExtensionEnabled` is refused in *both*
 directions with `PHPhotosErrorAccessUserDenied` 3311 — measured, SE2/26.6; the older "registration

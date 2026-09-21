@@ -87,7 +87,7 @@ class UrlSessionUploadController(
     // walk-vs-snapshot decision. **No default** for the same reason as the album lookup above — this
     // tier serves LIMITED memberships, and a composition that forgot the scope would walk the library
     // under a partial grant, where the selection IS the scope: it would discover photos the member never
-    // chose to share. (Not the alert: that is armed per out-of-scope library change, not per read.)
+    // chose to share. (Not the alert: reads of an unchanged library raise no limited-access prompt.)
     private val selectionScope: () -> SelectionScope,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
     // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).

@@ -569,8 +569,8 @@ class World(
         // would otherwise silently do nothing.
         selectionChangesCell.subscriptionCount.first { it > 0 }
         // The sanctioned read the real snapshot source makes: eager, WITH resources (capability
-        // `limited-photo-access` — deferring it would need a re-fetch by identifier later, which is the
-        // measured storm). Unscoped here because the selection IS the scope.
+        // `limited-photo-access` — deferring it would need a re-fetch by identifier later, an autonomous
+        // library fetch the read discipline forbids). Unscoped here because the selection IS the scope.
         val wanted = assetIds.toSet()
         selectionChangesCell.emit(
             gallery.current().filter { normalizeAssetId(it.assetId) in wanted }.flatMap { resourcesFrom(listOf(it)) },
