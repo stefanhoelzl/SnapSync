@@ -5,25 +5,25 @@ import app.snapsync.model.Resource
 import app.snapsync.model.destinationPathOf
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent
-import app.snapsync.model.UploadJob
+import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
 import co.touchlab.kermit.Logger
 
 /**
  * The decision core (spec: sync-engine): platforms drive it with [SyncEvent] observations, it
  * answers with [SyncDecision]s. Its only state is the [ledger] — the durable per-key memory of
- * what was requested, completed, and failed. The engine records requests and failures; a completion is
- * recorded by the platform itself, where it is told, through the ledger's guarded terminal write
- * (capability `sync-ledger`).
+ * what was requested, completed, and still needs a job. The engine records requests and failures; a
+ * completion is recorded by the platform itself, where it is told, through the ledger's guarded terminal
+ * write (capability `sync-ledger`).
  *
  * Decision rules ([SyncEvent.ResourceChanged] is a **pure query** — it reads the ledger and mints a
  * request for `Work` answers, but writes nothing): a key is skipped when the ledger holds it
  * `COMPLETED` **or** `REQUESTED` (an uploaded resource is immutable, so a `COMPLETED` key is never
- * re-uploaded; `REQUESTED` means a job is in flight — see write-after-act below); a `DISCOVERED`,
- * `FAILED` or absent entry yields `Work`.
+ * re-uploaded; `REQUESTED` means a job is in flight — see write-after-act below); a `DISCOVERED` or
+ * absent entry yields `Work`.
  *
  * Write-after-act: the engine changes the ledger only on its two lifecycle observations —
- * [SyncEvent.UploadStarted] → `REQUESTED`, [SyncEvent.UploadFailed] → `FAILED` —
+ * [SyncEvent.UploadStarted] → `REQUESTED`, [SyncEvent.UploadFailed] → back to `DISCOVERED` —
  * each an idempotent per-key upsert that never overwrites a settled row (the ledger's guard, not a
  * decision of this engine: a late `UploadFailed` over a `COMPLETED` key still answers `Retry`, and the
  * record is simply declined). Because `REQUESTED` is recorded only *after* the
@@ -35,25 +35,21 @@ import co.touchlab.kermit.Logger
  * sequential loops; a concurrent driver must serialize (or a future slice reintroduces the
  * guarantee it pays for).
  *
- * Policy (v1): **retry forever** — every failure yields [SyncDecision.Retry] with a newly
- * minted request, so expired destinations heal on retry. No attempt budget, no give-up.
+ * Policy: **retry forever** — every failure yields [SyncDecision.Retry] with a newly minted request,
+ * so expired destinations heal on retry. No attempt budget, no give-up, and so no attempt count
+ * (decision record `changes/shrink-the-ledger-row`).
  */
 class SyncEngine(
     private val provider: UploadRequestProvider,
     private val ledger: LedgerWriter,
-    // The joined event this engine records under (provenance on every written row — spec
-    // `sync-ledger`). Available by construction: the engine is minted per cycle from that cycle's
-    // config (`engineFor`), which is where the eventId arrives. Required, with **no default**: ""
-    // is the pre-provenance sentinel, and a defaulted "" would silently mint sentinel rows forever.
-    private val eventId: String,
 ) {
 
     private val log = Logger.withTag("SyncEngine")
 
     /**
      * Logging (spec: diagnostic-logging, field diagnostics — the headless iOS extension's only observability):
-     * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key +
-     * attempt, and the [SyncEvent.UploadStarted] confirmation INFOs "started". The skip on
+     * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key, and the
+     * [SyncEvent.UploadStarted] confirmation INFOs "started". The skip on
      * re-enumeration ([SyncDecision.AlreadyUploaded] for
      * [SyncEvent.ResourceChanged]) is silent — it fires per change-cycle and would drown the signal.
      * Logs are diagnostics, never asserted: the decision methods stay pure, all logging lives here at
@@ -61,64 +57,53 @@ class SyncEngine(
      */
     suspend fun handle(event: SyncEvent): SyncDecision {
         if (event is SyncEvent.UploadFailed) {
-            val resource = event.job.request.resource
-            log.w { "failed key=${resource.filename} attempt=${event.job.attempt} error=${event.error}" }
+            log.w { "failed key=${event.request.resource.filename} error=${event.error}" }
         }
         val decision = when (event) {
             is SyncEvent.ResourceChanged -> decide(event.resource)
-            is SyncEvent.UploadFailed -> retry(event.job)
-            is SyncEvent.UploadStarted -> started(event.job)
+            is SyncEvent.UploadFailed -> retry(event.request)
+            is SyncEvent.UploadStarted -> started(event.request)
         }
         when (decision) {
             is SyncDecision.Upload -> logWork("Upload", decision)
             is SyncDecision.Retry -> logWork("Retry", decision)
             SyncDecision.AlreadyUploaded -> when (event) {
-                is SyncEvent.UploadStarted -> logLifecycle("started", event.job)
+                is SyncEvent.UploadStarted -> log.i { "started key=${event.request.resource.filename}" }
                 else -> Unit
             }
         }
         return decision
     }
 
-    private fun logLifecycle(arm: String, job: UploadJob) {
-        val resource = job.request.resource
-        log.i { "$arm key=${resource.filename} attempt=${job.attempt}" }
-    }
-
     private fun logWork(arm: String, decision: SyncDecision.Work) {
-        val resource = decision.job.request.resource
-        log.i { "$arm key=${resource.filename} attempt=${decision.job.attempt}" }
+        log.i { "$arm key=${decision.request.resource.filename}" }
     }
 
     /** Pure query: read the ledger, mint for `Work`, write nothing (recording is [started]). */
     private suspend fun decide(resource: Resource): SyncDecision {
         val entry = ledger.entry(resource.filename)
         // COMPLETED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
-        // DISCOVERED, FAILED or absent → fresh upload. DISCOVERED is a row the walk wrote for a resource
-        // nothing has attempted, so re-deriving it must answer `Work` exactly as an absent row does —
-        // otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
+        // DISCOVERED or absent → fresh upload. DISCOVERED is a row the walk wrote, or one a failure returned,
+        // for a resource with nothing in flight, so re-deriving it must answer `Work` exactly as an absent row
+        // does — otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
         return when (entry?.state) {
             LedgerState.COMPLETED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
-            LedgerState.DISCOVERED, LedgerState.FAILED, null -> SyncDecision.Upload(mint(resource, attempt = 0))
+            LedgerState.DISCOVERED, null -> SyncDecision.Upload(provider.provide(resource))
         }
     }
 
-    private suspend fun retry(failed: UploadJob): SyncDecision {
-        val resource = failed.request.resource
-        val job = UploadJob(provider.provide(resource), failed.attempt + 1)
-        // Record FAILED only. The retry's REQUESTED is written when the platform reports
+    private suspend fun retry(failed: UploadRequest): SyncDecision {
+        val resource = failed.resource
+        val request = provider.provide(resource)
+        // Return the row to DISCOVERED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).
-        ledger.recordFailed(resource, failed.attempt, eventId)
-        return SyncDecision.Retry(job)
+        ledger.recordFailed(resource)
+        return SyncDecision.Retry(request)
     }
 
     /** The sole site that records REQUESTED: the platform created/retried the job (write-after-act). */
-    private suspend fun started(job: UploadJob): SyncDecision {
-        val resource = job.request.resource
-        ledger.recordRequested(resource, job.attempt, eventId, destinationPathOf(job.request.url))
+    private suspend fun started(request: UploadRequest): SyncDecision {
+        ledger.recordRequested(request.resource, destinationPathOf(request.url))
         return SyncDecision.AlreadyUploaded
     }
-
-    private suspend fun mint(resource: Resource, attempt: Int): UploadJob =
-        UploadJob(provider.provide(resource), attempt)
 }

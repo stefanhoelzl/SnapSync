@@ -135,8 +135,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the
         // eventId drives only the producer's event scope + the device-manifest write, not the byte URL.
         engineFor = { config ->
-            // The engine records under this cycle's joined event (ledger provenance, `sync-ledger`);
-            // like the host, the eventId arrives with the gate's config, not at composition time.
+            // Built per cycle because the host arrives with the gate's config, not at composition time.
             SyncEngine(
                 EdgeUploadRequestProvider(
                     config.host,
@@ -145,7 +144,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
                     ports.appVersion(),
                 ),
                 ledger,
-                config.eventId,
             )
         },
         ledger = ledger,

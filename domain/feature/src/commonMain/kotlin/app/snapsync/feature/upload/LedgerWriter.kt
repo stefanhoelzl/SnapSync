@@ -12,11 +12,10 @@ import co.touchlab.kermit.Logger
  * The ledger's single writer (one per platform, hosted with the engine), carrying the engine's
  * per-key read ([entry]). Each record operation upserts a complete, self-contained entry through the
  * backend's guarded [LedgerStore.recordUnlessSettled] — which never overwrites a settled row, and whose
- * guard does not depend on any read made here — so duplicate records converge per key on state and
- * attempt. The writer keeps no clock; the engine and backends are all
- * clock-free and store verbatim. Only the composition root that owns the engine ever constructs it.
- * Aggregates and change signals are deliberately absent from this per-key face; the extension's own
- * cycle reads them via [LedgerStore] directly.
+ * guard does not depend on any read made here — so duplicate records converge per key on state. The writer
+ * keeps no clock; the engine and backends are all clock-free and store verbatim. Only the composition root
+ * that owns the engine ever constructs it. Aggregates and change signals are deliberately absent from this
+ * per-key face; the extension's own cycle reads them via [LedgerStore] directly.
  */
 class LedgerWriter(
     private val backend: LedgerStore,
@@ -31,20 +30,20 @@ class LedgerWriter(
      * yet**, all in one transaction; answers how many applied.
      *
      * The guard is the operation's purpose, and it is why this is not just `record(…, DISCOVERED, …)`.
-     * A key the engine answers `Work` for is absent, `DISCOVERED`, or `FAILED`, and the last of those
-     * already needs a job: writing over it would reset an attempt count that a retry chain is counting
-     * on, to say something the row already says.
+     * A key with a row already has a state the walk has no business replacing: a `DISCOVERED` row already
+     * says what this write would say, and a `REQUESTED` one records a live job that a rewrite to
+     * `DISCOVERED` would orphan.
      *
      * The read-then-write is safe here where it would not be on a terminal transition: this cycle is the
      * ledger's only writer of non-terminal states and the pump is single-flight, and the one writer that
      * does not take that lock — the platform's delegate, through `markTerminal` — is guarded on
      * `REQUESTED`, so it cannot touch a key that has no row.
      */
-    suspend fun recordDiscovered(resources: Collection<Resource>, eventId: String): Int {
+    suspend fun recordDiscovered(resources: Collection<Resource>): Int {
         val fresh = resources.filter { backend.get(it.filename) == null }
         // One batch, so the walk's discoveries land whole or not at all: a walk skips an asset whose rows
         // all exist, so one role recorded without its sibling would leave the sibling unrecorded for good.
-        return backend.recordAllUnlessSettled(fresh.map { it.toLedgerRow(LedgerState.DISCOVERED, attempt = 0, eventId) })
+        return backend.recordAllUnlessSettled(fresh.map { it.toLedgerRow(LedgerState.DISCOVERED) })
     }
 
     /**
@@ -52,15 +51,15 @@ class LedgerWriter(
      * this row now exists at the platform", so it is the moment the address becomes true. Recording it
      * separately would open a window in which a job exists whose destination the ledger does not know.
      */
-    suspend fun recordRequested(
-        resource: Resource,
-        attempt: Int,
-        eventId: String,
-        destinationPath: String? = null,
-    ) = record(resource, LedgerState.REQUESTED, attempt, eventId, destinationPath)
+    suspend fun recordRequested(resource: Resource, destinationPath: String? = null) =
+        record(resource, LedgerState.REQUESTED, destinationPath)
 
-    suspend fun recordFailed(resource: Resource, attempt: Int, eventId: String) =
-        record(resource, LedgerState.FAILED, attempt, eventId)
+    /**
+     * Record that an upload failed: the row returns to `DISCOVERED`, so the ledger's work read offers it again.
+     * Named for why it is called; the state is what a failure means to the ledger (there is no `FAILED` state —
+     * decision record `changes/shrink-the-ledger-row`, D3).
+     */
+    suspend fun recordFailed(resource: Resource) = record(resource, LedgerState.DISCOVERED)
 
     /**
      * Delete exactly the rows keyed by [keys] — the cycle's one row deletion (capability `sync-ledger`,
@@ -71,20 +70,6 @@ class LedgerWriter(
     suspend fun deleteKeys(keys: Collection<String>) = backend.deleteKeys(keys)
 
     /**
-     * Clear the retired absence mark from every row an earlier build set it on, so the reads that still
-     * exclude marked rows can reach them again. Idempotent; the single writer's cycle runs it once per
-     * entry, beside [backfillEventId].
-     */
-    suspend fun clearAbsenceMarks() = backend.clearAbsenceMarks()
-
-    /**
-     * Sweep every pre-provenance row (`eventId = ""` — recorded before the ledger carried the
-     * column, or by a staged-revert build) to [eventId]. A writer-family operation like the
-     * prunes: only the single-writer's cycle runs it, once per entry, idempotently.
-     */
-    suspend fun backfillEventId(eventId: String) = backend.backfillEventId(eventId)
-
-    /**
      * Fill an already-recorded row's manifest detail from the freshly discovered [resource]
      * (capability `sync-ledger`). A no-op unless the row is still bare.
      *
@@ -93,15 +78,15 @@ class LedgerWriter(
      * and writes nothing, so without this the seeded rows would never learn their capture date and
      * the member's photos would silently drop out of the event union.
      */
-    suspend fun backfillManifestDetail(resource: Resource, eventId: String) =
-        backend.backfillManifestDetail(resource.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId))
+    suspend fun backfillManifestDetail(resource: Resource) =
+        backend.backfillManifestDetail(resource.toLedgerRow(LedgerState.COMPLETED))
 
-    /** The rows the device manifest projects from — every non-absent row, whatever its state. */
+    /** The rows the device manifest projects from — every row, whatever its state. */
     suspend fun manifestRows(): List<LedgerEntry> = backend.manifestRows()
 
     /**
-     * Every row that needs an upload job — the cycle's **source of work** (capability `sync-ledger`),
-     * spanning `DISCOVERED` and `FAILED`, in a stable key order.
+     * Every row that needs an upload job — the cycle's **source of work** (capability `sync-ledger`): the
+     * `DISCOVERED` rows, never attempted or returned there by a failure, in a stable key order.
      *
      * Unbounded: the caller admits these rows against the membership's current policy and bounds what it
      * **resolves**, because a bound on the read would starve admitted work behind excluded rows (see the
@@ -120,7 +105,7 @@ class LedgerWriter(
     suspend fun requestedKeys(): Set<String> = backend.requestedKeys()
 
     /**
-     * Record a stranded in-flight row `FAILED`, through the same guarded [LedgerStore.markTerminal] the
+     * Return a stranded in-flight row to `DISCOVERED`, through the same guarded [LedgerStore.markTerminal] the
      * platform's callback uses — so a row that settled between the caller's read and this write is never
      * clobbered. Answers whether it applied; `false` means the row moved on, which the caller reports.
      */
@@ -132,7 +117,7 @@ class LedgerWriter(
      *
      * The preservation is load-bearing, not defensive. A terminal job comes back from the platform as a
      * key, and the cycle rebuilds its `Resource` from that key alone (`UploadCycle.reconstruct`) with
-     * empty metadata, because adjudicating a failure needs nothing else. So the `FAILED` write — and the
+     * empty metadata, because adjudicating a failure needs nothing else. So the failure's write — and the
      * `REQUESTED` write of the job re-created from it — carries no capture date. Overwriting with it would
      * blank the row's manifest detail, and the device manifest projects every row whatever its state, so
      * the photo would drop out of the event union while its upload was still being retried.
@@ -149,11 +134,9 @@ class LedgerWriter(
     private suspend fun record(
         resource: Resource,
         state: LedgerState,
-        attempt: Int,
-        eventId: String,
         destinationPath: String? = null,
     ): Boolean {
-        val row = resource.toLedgerRow(state, attempt, eventId, destinationPath)
+        val row = resource.toLedgerRow(state, destinationPath)
         val prior = if (row.needsManifestDetail) backend.get(row.key) else null
         val applied = backend.recordUnlessSettled(
             if (prior == null || prior.needsManifestDetail) {
@@ -163,8 +146,6 @@ class LedgerWriter(
                     key = row.key,
                     assetId = row.assetId,
                     state = state,
-                    attempt = attempt,
-                    eventId = eventId,
                     creationDate = prior.creationDate,
                     role = prior.role,
                     contentType = prior.contentType,
@@ -176,7 +157,7 @@ class LedgerWriter(
                 )
             },
         )
-        if (!applied) log.w { "declined $state over a settled row key=${row.key} attempt=$attempt" }
+        if (!applied) log.w { "declined $state over a settled row key=${row.key}" }
         return applied
     }
 }

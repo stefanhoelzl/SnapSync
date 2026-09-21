@@ -59,7 +59,7 @@ class StrandedKeysTest {
 
     /**
      * The candidate set is what keeps a settled row out, and that is the caller's contract to honour: neither
-     * rule filters by state, so handing one a `FAILED` or `COMPLETED` key would surface it. The narrowing is
+     * rule filters by state, so handing one a `DISCOVERED` or `COMPLETED` key would surface it. The narrowing is
      * pinned where the read happens — `LedgerStoreContract`'s "requestedKeys is REQUESTED only" — because that
      * is where it can actually be got wrong.
      */

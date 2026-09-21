@@ -28,8 +28,6 @@ class NarrowingRetractionTest {
         key = "$id-primary.jpg",
         assetId = id,
         state = LedgerState.COMPLETED,
-        attempt = 0,
-        eventId = "E",
         creationDate = capturedAt,
         role = ResourceRole.PRIMARY,
         contentType = "image/jpeg",

@@ -170,10 +170,9 @@ class UploadLedgerAudit(
      * The comparison set: the keys the membership's **current** policy admits, intersected with the rows
      * the ledger records as landed.
      *
-     * [LedgerStore.manifestRows] is the read because it is already exactly "what this device still holds
-     * or shares" — it excludes rows marked `absent`, and an absent asset is not declared, therefore not
-     * referenced, therefore collectable. Admission is asked over the **whole** manifest read rather than
-     * over the landed subset, so this set is a slice of precisely what the manifest declares.
+     * [LedgerStore.manifestRows] is the read because it is exactly what the manifest projects from — every
+     * row the ledger holds. Admission is asked over the **whole** manifest read rather than over the landed
+     * subset, so this set is a slice of precisely what the manifest declares.
      */
     private suspend fun believedLanded(rows: List<LedgerEntry>, policy: SelectionPolicy): Set<String> {
         val admitted = admittedAssetIds(rows, policy)
@@ -184,11 +183,11 @@ class UploadLedgerAudit(
     /**
      * How many listed resources the ledger holds **no row at all** for.
      *
-     * The candidates are asked one by one rather than diffed against [LedgerStore.manifestRows], because
-     * that read excludes `absent` rows — and an asset that left the library still has its bytes on the
-     * backend and still appears in the listing. Diffing would count every deleted photo here, which is
-     * the ordinary case, and would drown the signal this direction exists to carry. The candidate set is
-     * empty on a healthy device, so the point reads cost nothing in the common case.
+     * The candidates are confirmed one by one with a point read. That once mattered because
+     * [LedgerStore.manifestRows] excluded rows carrying the absence mark; `10.sqm` dropped the mark, so the
+     * read now returns every row and the point read can no longer disagree with it. It is left in place for
+     * the change that reworks this audit (decision record `changes/shrink-the-ledger-row`). The candidate
+     * set is empty on a healthy device, so the point reads cost nothing in the common case.
      */
     private suspend fun countUnlisted(stored: Set<String>, rows: List<LedgerEntry>): Int {
         val known = rows.mapTo(mutableSetOf()) { it.key }

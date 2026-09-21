@@ -213,7 +213,8 @@ class IosUrlSessionUploadPlatform(
      *
      * A completion is recorded into the ledger by the delegate the moment iOS delivers it, so there is no
      * terminal fact left to hand up; and a failure carries no live resource here, so there is nothing the
-     * cycle could re-create in-cycle either — the engine re-uploads a `FAILED` key from a later discovery.
+     * cycle could re-create in-cycle either — a failed key's row returns to `DISCOVERED`, and a later cycle
+     * re-uploads it from the ledger's work read.
      * The stranded reconciliation this pass used to run is the cycle's now, over [liveKeys]. `acknowledge`
      * is gone too: the staged file is deleted where the transfer ends, which is also where it stops being
      * usable.

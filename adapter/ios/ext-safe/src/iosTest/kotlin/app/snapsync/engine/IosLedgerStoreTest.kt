@@ -35,8 +35,6 @@ class IosLedgerStoreTest {
         key = key,
         assetId = "asset-$key",
         state = state,
-        attempt = 1,
-        eventId = "event-1",
         creationDate = "2026-08-08T12:00:00Z",
     )
 

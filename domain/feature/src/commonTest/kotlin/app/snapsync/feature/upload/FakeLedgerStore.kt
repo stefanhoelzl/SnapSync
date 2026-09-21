@@ -30,7 +30,7 @@ class FakeLedgerStore : LedgerStore {
     override suspend fun clear() { rows.clear(); dings.tryEmit(Unit) }
     override suspend fun demoteRequested() {
         for (row in rows.entries) {
-            if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.FAILED))
+            if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.DISCOVERED))
         }
         dings.tryEmit(Unit)
     }
@@ -61,35 +61,15 @@ class FakeLedgerStore : LedgerStore {
         if (rows.keys.removeAll { it in wanted }) dings.tryEmit(Unit)
     }
 
-    override suspend fun clearAbsenceMarks() {
-        var cleared = false
-        for ((key, row) in rows) {
-            if (row.absent) {
-                rows[key] = row.markedPresent()
-                cleared = true
-            }
-        }
-        if (cleared) dings.tryEmit(Unit)
-    }
-
     override suspend fun aggregates(): LedgerAggregates {
-        val byAsset = rows.values.filterNot { it.absent }.groupBy { it.assetId }
+        val byAsset = rows.values.groupBy { it.assetId }
         val complete = byAsset.values.filter { g -> g.all { it.state.isDone } }
         return LedgerAggregates(byAsset.size - complete.size, complete.size)
     }
 
     override suspend fun pendingResources(): List<PendingResource> =
-        rows.values.filter { !it.state.isDone && !it.absent }
+        rows.values.filter { !it.state.isDone }
             .map { PendingResource(it.assetId, it.key) }
-
-    override suspend fun backfillEventId(eventId: String) {
-        for ((key, entry) in rows) {
-            if (entry.eventId.isEmpty()) {
-                rows[key] = LedgerEntry(entry.key, entry.assetId, entry.state, entry.attempt, eventId)
-            }
-        }
-        dings.tryEmit(Unit)
-    }
 
     override suspend fun manifestRows(): List<LedgerEntry> = emptyList()
 
@@ -98,22 +78,16 @@ class FakeLedgerStore : LedgerStore {
     override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
         val current = rows[key] ?: return false
         if (current.state != LedgerState.REQUESTED) return false
-        // Every other column preserved, exactly as the targeted UPDATE preserves it — `absent` included.
-        // A fake that re-stated only the columns it knew about would let a green suite hide a store that
-        // silently resets a row's other facts at the moment an upload lands.
-        rows[key] = LedgerEntry(
-            key = current.key, assetId = current.assetId, state = outcome.state,
-            attempt = current.attempt, eventId = current.eventId,
-            creationDate = current.creationDate, role = current.role,
-            contentType = current.contentType, originalFilename = current.originalFilename,
-            absent = current.absent,
-        )
+        // Every other column preserved, exactly as the targeted UPDATE preserves it. A fake that re-stated
+        // only the columns it knew about would let a green suite hide a store that silently resets a row's
+        // other facts at the moment an upload lands.
+        rows[key] = current.withState(outcome.state)
         dings.tryEmit(Unit)
         return true
     }
 
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
-        rows.values.filter { it.state.needsJob && !it.absent }
+        rows.values.filter { it.state.needsJob }
             .sortedBy { it.key }
 
     override suspend fun requestedKeys(): Set<String> =

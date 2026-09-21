@@ -8,17 +8,14 @@ import app.snapsync.model.LedgerState;
 -- as long as it existed (see the `destinationPath` index below). The snapshot and the contract that keeps
 -- it honest live in `adapter/generic/app/build.gradle.kts`; read that before touching either.
 --
--- WHAT IT STILL DOES NOT COVER: schema only. A data-only migration changes no schema and is invisible to
--- it, which is why 8.sqm's effect is asserted by `SqlDelightLedgerStoreTest` instead.
+-- WHAT IT STILL DOES NOT COVER: schema only. A data-only change changes no schema and is invisible to
+-- it, which is why the row rewrites of 8.sqm and 10.sqm are asserted by `SqlDelightLedgerStoreTest` instead.
 
--- `eventId` is provenance, not dedup state: the event that was joined when the row was recorded.
--- `DEFAULT ''` must match 4.sqm exactly (the verify task compares migrated vs created schemas);
--- `''` is the pre-provenance sentinel the writer's per-cycle backfill sweeps to the live event id.
--- The last four columns carry the DEVICE MANIFEST's presentation detail (capability `sync-ledger`),
--- `absent` records that the asset has LEFT the library; the row itself is kept, because its bytes are
--- still on the backend and that row is what suppresses re-upload if the asset is restored. `DEFAULT 0`
--- must match 6.sqm exactly. Reads that answer "what does this device currently hold or share" exclude
--- absent rows; `get` does NOT, so suppression survives a deletion.
+-- The row carries no attempt count, no event provenance and no absence mark: 10.sqm dropped all three, because
+-- nothing read them (decision record `changes/shrink-the-ledger-row`). The key is the bare, event-independent
+-- resource filename.
+--
+-- The four manifest columns carry the DEVICE MANIFEST's presentation detail (capability `sync-ledger`),
 -- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
 -- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
 -- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
@@ -28,13 +25,10 @@ CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,
     assetId TEXT NOT NULL,
     state TEXT AS LedgerState NOT NULL,
-    attempt INTEGER NOT NULL,
-    eventId TEXT NOT NULL DEFAULT '',
     creationDate TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT '',
     contentType TEXT NOT NULL DEFAULT '',
     originalFilename TEXT NOT NULL DEFAULT '',
-    absent INTEGER NOT NULL DEFAULT 0,
     -- The destination this row's upload was addressed to, or NULL for a row recorded before the column
     -- existed. NULLABLE must match 7.sqm exactly (the verify task compares migrated vs created schemas).
     destinationPath TEXT
@@ -53,11 +47,8 @@ CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 -- therefore TWO obligations, not one. The verify task now catches a missed second one.
 CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
 
--- Deliberately does NOT filter `absent`: a row for a departed asset still records that its bytes are on
--- the backend, which is what suppresses re-upload should the asset be restored (iOS keeps deleted photos
--- recoverable for 30 days - the same order as an event's life).
 get:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
 WHERE key = :key;
 
@@ -65,31 +56,23 @@ WHERE key = :key;
 -- row whose state is done. There is no unconditional per-row upsert any more — this is the only one.
 --
 -- The guard lives in the statement because a read-then-write is not atomic against a second writer, and a
--- late record over a settled row (a stale FAILED, a duplicate REQUESTED) would demand a job for bytes the
+-- late record over a settled row (a stale failure, a duplicate REQUESTED) would demand a job for bytes the
 -- backend already holds. `:doneStates` is bound from Kotlin's `LedgerState.isDone`, never written as a
 -- literal, for the same reason every state-scoped read binds it.
---
--- `absent` is in the SET because the statement writes the whole row. Nothing sets the retired mark any more,
--- so a record always writes it clear — which also clears a mark an earlier build left on a non-settled row.
 recordUnlessSettled:
 INSERT INTO ledgerRow (
-    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent,
-    destinationPath
+    key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 )
 VALUES (
-    :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename,
-    :absent, :destinationPath
+    :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
 )
 ON CONFLICT(key) DO UPDATE SET
     assetId = excluded.assetId,
     state = excluded.state,
-    attempt = excluded.attempt,
-    eventId = excluded.eventId,
     creationDate = excluded.creationDate,
     role = excluded.role,
     contentType = excluded.contentType,
     originalFilename = excluded.originalFilename,
-    absent = excluded.absent,
     destinationPath = excluded.destinationPath
 WHERE ledgerRow.state NOT IN :doneStates;
 
@@ -97,23 +80,21 @@ WHERE ledgerRow.state NOT IN :doneStates;
 -- conflict, and the reset family applies no precedence.
 insert:
 INSERT INTO ledgerRow (
-    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent,
-    destinationPath
+    key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 )
 VALUES (
-    :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename,
-    :absent, :destinationPath
+    :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
 );
 
 -- Resolve a row from the destination its upload was addressed to (capability `ios-photokit-upload`).
 -- A NULL column never matches, which is correct: such a row predates the write and is recovered by the
 -- tier's fallback instead.
 selectByDestinationPath:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
 WHERE destinationPath = :destinationPath;
 
--- Fill the manifest detail of ONE already-recorded row, without touching its state or attempt.
+-- Fill the manifest detail of ONE already-recorded row, without touching its state.
 -- The sweep for rows a migration could not fill and for rows the re-join reconcile seeded from a
 -- filename listing (which carries no capture date). Touches only bare rows: a row already enriched
 -- is never rewritten, so re-running is free and cannot clobber a good value with a worse one.
@@ -130,8 +111,8 @@ WHERE key = :key AND creationDate = '';
 -- depend on how far its bytes have got, and a state predicate here is what let the manifest and the
 -- backend's declaration model disagree.
 --
--- Absent rows are excluded because that is a fact about the ROW — the asset left the library, so this
--- device no longer shares it. Admission is NOT decided here: the membership's policy applies the
+-- No row filter at all: a departed asset's rows are deleted by the walk that shows it gone, so every row
+-- here is one this device still holds. Admission is NOT decided here: the membership's policy applies the
 -- capture-date bounds, including the exclusion of a bare row, whose empty `creationDate` sorts before
 -- every real cutoff (`SelectionRule.CaptureAfter` — "the one place a missing fact excludes rather than
 -- admits"). A `creationDate != ''` predicate here would be a second copy of that rule, which is the
@@ -140,26 +121,17 @@ WHERE key = :key AND creationDate = '';
 -- `state` is still selected because the mapper reads it rather than asserting it.
 selectManifestRows:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename
-FROM ledgerRow
-WHERE absent = 0;
-
--- Rewrite the provenance of every pre-provenance row (`eventId = ''` — rows recorded by a build
--- before 4.sqm, or by a staged-revert build) to the live event id. Touches ONLY the sentinel:
--- rows already carrying a real eventId are never rewritten.
-backfillEventId:
-UPDATE ledgerRow
-SET eventId = :eventId
-WHERE eventId = '';
+FROM ledgerRow;
 
 deleteAll:
 DELETE FROM ledgerRow;
 
--- Demote the REQUESTED rows to FAILED: the recovery for rows no transfer can settle any more (canonically
+-- Demote the REQUESTED rows to DISCOVERED: the recovery for rows no transfer can settle any more (canonically
 -- after an extension disable wipes the OS's in-flight upload jobs). The engine never re-issues a REQUESTED
--- key; a FAILED row needs a job, so the work read returns it without a walk. Other rows are untouched.
+-- key; a DISCOVERED row needs a job, so the work read returns it without a walk. Other rows are untouched.
 demoteRequested:
 UPDATE ledgerRow
-SET state = 'FAILED'
+SET state = 'DISCOVERED'
 WHERE state = 'REQUESTED';
 
 -- Delete exactly the named rows, by primary key (capability `sync-ledger`). KEY-scoped on purpose: every
@@ -170,20 +142,12 @@ deleteKeys:
 DELETE FROM ledgerRow
 WHERE key IN :keys;
 
--- Clear the retired absence mark from every row an earlier build set it on. Nothing sets the mark any
--- more; this makes such rows reachable again by the reads that still exclude marked rows. Idempotent, and
--- matches nothing on every run after the first.
-clearAbsenceMarks:
-UPDATE ledgerRow
-SET absent = 0
-WHERE absent = 1;
-
 -- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
 -- photo in Kotlin to intersect outstanding resources with observed completions, without
 -- materializing the (large, static) completed set. Shrinks as sync drains.
 selectPending:
 SELECT assetId, key FROM ledgerRow
-WHERE state NOT IN :doneStates AND absent = 0;
+WHERE state NOT IN :doneStates;
 
 -- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
 -- count. A photo is complete only when none of its rows is non-COMPLETED.
@@ -192,7 +156,6 @@ WITH perAsset AS (
     SELECT assetId,
            SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
     FROM ledgerRow
-    WHERE absent = 0
     GROUP BY assetId
 )
 SELECT
@@ -206,7 +169,7 @@ FROM perAsset;
 -- atomic against the one that does not take the lock, so the guard lives in the statement.
 --
 -- Every other column is preserved by construction — this is an UPDATE of one column, not an upsert, so
--- assetId, attempt, eventId and all four manifest columns cannot be blanked by a caller that does not
+-- assetId, destinationPath and all four manifest columns cannot be blanked by a caller that does not
 -- know them. That matters: the party that learns an upload terminated is a delegate holding only the key.
 markTerminal:
 UPDATE ledgerRow
@@ -222,8 +185,8 @@ changedRows:
 SELECT changes();
 
 -- The REQUESTED keys — the candidates for stranded reconciliation (capability
--- `ios-url-session-upload`). Deliberately NOT the whole non-settled backlog: a FAILED row has already
--- been adjudicated, and re-surfacing it every cycle re-writes the row, signals a change, and reports a
+-- `ios-url-session-upload`). Deliberately NOT the whole non-settled backlog: a DISCOVERED row is already
+-- back in the work read, and re-surfacing it every cycle re-writes the row, signals a change, and reports a
 -- loss that did not happen. That defect put one key in a device log as "stranded" twelve times inside a
 -- single process, seven of them within sixteen seconds.
 selectRequestedKeys:
@@ -237,9 +200,6 @@ WHERE state = 'REQUESTED';
 -- silently on one side of a string comparison, and this query is the one that decides whether the cycle
 -- ever looks at it again.
 --
--- Filtered by `absent`: a departed asset has no bytes left to read, so there is nothing to upload from. A
--- row that needs a job owes an upload, which a departed asset can no longer supply.
---
 -- Ordered by key, and deliberately UNLIMITED. The cycle bounds what it RESOLVES, not what it reads: a row
 -- needing a job records that the policy admitted its asset when the row was written, not that the
 -- membership's current policy admits it (capability `photo-selection-policy`). A LIMIT here would starve —
@@ -247,7 +207,7 @@ WHERE state = 'REQUESTED';
 -- further down would never be reached. This is a local indexed scan; the platform round-trip and the
 -- staged temp file the bound exists to protect follow the admitted rows, in the caller.
 selectNeedingJob:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent, destinationPath
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
-WHERE state IN :needsJobStates AND absent = 0
+WHERE state IN :needsJobStates
 ORDER BY key;

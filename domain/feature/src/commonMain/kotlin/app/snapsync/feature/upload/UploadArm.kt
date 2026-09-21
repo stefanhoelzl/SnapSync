@@ -92,7 +92,7 @@ object IdleUploadMechanism : UploadMechanismRuntime {
  *
  * `stop()` repairs nothing either. What a stop can leave behind is
  * `REQUESTED` rows no transfer will settle; each mechanism repairs those in its **`start()`**, by demoting
- * them to `FAILED` — which the ledger's work read returns without a walk — because a start is the one
+ * them to `DISCOVERED` — which the ledger's work read returns without a walk — because a start is the one
  * moment a mechanism knows no other transfer is carrying them (`upload-lifecycle`).
  */
 interface UploadProducer {

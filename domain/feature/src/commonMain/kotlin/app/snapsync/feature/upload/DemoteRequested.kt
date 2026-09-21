@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 private const val DEFAULT_DEMOTE_ATTEMPTS = 3
 
 /**
- * Demote the ledger's orphaned `REQUESTED` rows to `FAILED` **off the main thread**, **awaited to
+ * Demote the ledger's orphaned `REQUESTED` rows to `DISCOVERED` **off the main thread**, **awaited to
  * completion**, with a small bounded retry. Disabling the upload extension wipes every in-flight OS upload
  * job; the `REQUESTED` rows those jobs left must be demoted by [demote] (`LedgerStore.demoteRequested`)
  * **before** the extension is re-enabled — otherwise the re-enabled extension's fresh `REQUESTED` rows race

@@ -75,15 +75,11 @@ class UploadLedgerAuditTest {
         assetId: String = key.substringBefore('-'),
         state: LedgerState = LedgerState.COMPLETED,
         creationDate: String = inWindow,
-        absent: Boolean = false,
     ) = LedgerEntry(
         key = key,
         assetId = assetId,
         state = state,
-        attempt = 0,
-        eventId = "E1",
         creationDate = creationDate,
-        absent = absent,
     )
 
     private fun audit(
@@ -142,7 +138,7 @@ class UploadLedgerAuditTest {
         val ledger = ledgerWith(
             row("A-primary.heic", state = LedgerState.DISCOVERED),
             row("B-primary.heic", state = LedgerState.REQUESTED),
-            row("C-primary.heic", state = LedgerState.FAILED),
+            row("C-primary.heic", state = LedgerState.DISCOVERED),
         )
         val recorder = Recorder()
 
@@ -245,21 +241,6 @@ class UploadLedgerAuditTest {
         assertEquals(1, findings?.unlisted)
         assertEquals(0, findings?.missing)
         assertTrue(recorder.errors().isEmpty())
-    }
-
-    @Test
-    fun `a departed asset row is not counted as unknown - its bytes are still listed`() = runTest {
-        // `manifestRows` excludes absent rows, so diffing against it would count every deleted photo
-        // here. The point read behind the diff is what keeps this direction meaningful.
-        val ledger = ledgerWith(row("A-primary.heic"), row("GONE-primary.heic", absent = true))
-
-        val findings = audit(
-            FakeFiles(Result.success(listOf("A-primary.heic", "GONE-primary.heic"))),
-            ledger,
-        ).check("E1")
-
-        assertEquals(0, findings?.unlisted)
-        assertEquals(0, findings?.missing) // an absent row is outside the comparison set too
     }
 
     @Test

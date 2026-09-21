@@ -16,7 +16,6 @@ import app.snapsync.model.SyncDecision
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadError
-import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
@@ -247,33 +246,13 @@ class UploadCycle(
             return Settled.Short(CycleOutcome.SeedDeferred)
         }
 
-        // Provenance backfill (spec `sync-ledger`, migration 4.sqm): sweep every pre-provenance row
-        // (`eventId = ''` — recorded before the ledger carried the column, or by a staged-revert
-        // build) to this cycle's live event id. Seated HERE — after the seed succeeded — because
-        // this is the one point that runs on BOTH tiers' cycles (the shared cycle is the single
-        // writer's only entry) and never in a reader, and because a settled seed means the
-        // membership this cycle records under is the one the marker agrees with (a switch's
-        // `resetTo` has already re-baselined, so the sweep can never label another event's rows).
-        // Idempotent and cheap: one UPDATE matching nothing on every cycle after the first.
-        runCatching { ledger.backfillEventId(eventId) }
-            .onFailure { log.w(it) { "eventId backfill failed this cycle — retried next cycle" } }
-
-        // The retired absence mark (capability `sync-ledger`, "Prune operations are writer-only"). Nothing
-        // sets it any more, but the work read, the manifest and both status reads still exclude marked rows,
-        // so a row an earlier build marked would be unreachable for good. Cleared, each one heals: a row that
-        // needs a job fails to resolve below and is deleted by key; a settled one is deleted by the walk if
-        // its asset is gone. Same seat and posture as the provenance sweep, and it matches nothing on every
-        // cycle after the first.
-        runCatching { ledger.clearAbsenceMarks() }
-            .onFailure { log.w(it) { "absence-mark sweep failed this cycle — retried next cycle" } }
-
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
         // (stable, no expiry — the provider re-derives the identical destination locally). Below the
         // direction gate, because it creates jobs.
         for (job in platform.fetchRetryJobs()) {
             val retry = adjudicateFailure(engine, job) ?: continue
-            platform.retryJob(job, retry.job.request)
-            engine.handle(SyncEvent.UploadStarted(retry.job))
+            platform.retryJob(job, retry.request)
+            engine.handle(SyncEvent.UploadStarted(retry.request))
         }
 
         // Phase 2 — the outcomes the platform is holding, in its usual position for a contributing
@@ -285,7 +264,7 @@ class UploadCycle(
         // acted on here: the cycle walks anyway, because the walk is what produces the accounting a
         // backlogged device is otherwise invisible in, and because an authoritative walk is what retracts a
         // departed photo. What the cap costs is only that this cycle cannot enqueue more — and the
-        // work it could not re-create rests `FAILED`, which the ledger's work read returns next cycle
+        // work it could not re-create rests `DISCOVERED`, which the ledger's work read returns next cycle
         // without needing a walk to re-derive it.
         return Settled.Proceeding(Ready(eventId, policy, engine, membership.saveToAlbum, capHit))
     }
@@ -397,13 +376,12 @@ class UploadCycle(
     // --- stage 3: update -------------------------------------------------------------------------
 
     /**
-     * Write what is ours: the removal marks, the jobs the platform will accept, and the manifest detail
+     * Write what is ours: the walk's deletions, the jobs the platform will accept, and the manifest detail
      * of rows the walk can fill. Nothing here is visible to the event.
      */
     private suspend fun Decided.update(): CycleOutcome = when (this) {
         is Decided.Short -> outcome
         is Decided.Planned -> {
-            val eventId = ready.eventId
             val engine = ready.engine
 
             // The walk's own deletion (capability `sync-ledger`): the in-window rows of assets an authoritative
@@ -437,15 +415,14 @@ class UploadCycle(
                     // A capture date lives only in the photo library and only the walk reads it — which is
                     // why a bare row's asset is always read, never skipped as fully known.
                     //
-                    // Idempotent and bare-only, exactly like the `eventId` sentinel sweep: a row already
-                    // enriched is never rewritten.
-                    ledger.backfillManifestDetail(resource, eventId)
+                    // Idempotent and bare-only: a row already enriched is never rewritten.
+                    ledger.backfillManifestDetail(resource)
                 }
             }
             // ONE batch write for the walk's new work, so it lands whole or not at all. The walk skips an asset
             // whose rows all exist, so recording a Live Photo's primary and then dying before its paired video
             // would leave the video unrecorded for good; in one transaction there is no such gap.
-            ledger.recordDiscovered(newWork, eventId)
+            ledger.recordDiscovered(newWork)
 
             val enqueued = enqueue(ready)
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
@@ -469,8 +446,8 @@ class UploadCycle(
     /**
      * Create upload jobs from **the ledger**, not from the walk (capability `sync-ledger`).
      *
-     * The rows needing a job span `DISCOVERED` (seen, never attempted) and `FAILED` (attempted, came back) —
-     * one fact to a producer, differing only in history — so the remainder a truncated cycle left behind and
+     * The rows needing a job are the `DISCOVERED` ones — seen and never attempted, or attempted and returned
+     * there by a failure — so the remainder a truncated cycle left behind and
      * a failure that has been sitting for many cycles are picked up by the same read, on the next cycle, with
      * no walk re-deriving them (the walk skips assets the ledger already fully knows).
      *
@@ -536,9 +513,9 @@ class UploadCycle(
             // `AlreadyUploaded` and is skipped.
             val decision = ready.engine.handle(SyncEvent.ResourceChanged(resource))
             if (decision !is SyncDecision.Work) continue
-            when (platform.createJob(decision.job.request, resource)) {
+            when (platform.createJob(decision.request, resource)) {
                 CreateResult.CREATED -> {
-                    ready.engine.handle(SyncEvent.UploadStarted(decision.job))
+                    ready.engine.handle(SyncEvent.UploadStarted(decision.request))
                     created++
                 }
                 // Backpressure, not failure. The row stays as it was — it still needs a job — so the next
@@ -559,8 +536,8 @@ class UploadCycle(
     }
 
     /**
-     * Event-album placement (capability `event-album`) for the photos this pass is about to enqueue for the
-     * **first** time: the slice's rows still `DISCOVERED` whose resource resolved. One best-effort call.
+     * Event-album placement (capability `event-album`) for the photos this pass is about to enqueue: the
+     * slice's `DISCOVERED` rows whose resource resolved. One best-effort call.
      *
      * **Before** any job is created, deliberately. Creating a job records `REQUESTED` durably, so a process
      * death between that write and a later placement would leave a photo that no pass ever places — nothing
@@ -568,11 +545,12 @@ class UploadCycle(
      * interrupted leaves the row `DISCOVERED`, and the next cycle places it again for free: adding an asset
      * already in the collection is a no-op (measured, simulator, iOS 26.5 — `changes/fix-lost-upload-acks`).
      *
-     * A `FAILED` row being re-created is not placed again — its first attempt passed through here as
-     * `DISCOVERED` — and the slice has already been admitted by the membership's current policy, so a photo
-     * a narrowing change excluded is never placed. Placement never gates job creation.
+     * A failure the ledger returned to `DISCOVERED` is placed again when this pass re-creates it — harmless for
+     * the same reason, and the album gather already re-places the whole own set with no record, so nothing
+     * relies on "placed once". The slice has already been admitted by the membership's current policy, so a
+     * photo a narrowing change excluded is never placed. Placement never gates job creation.
      *
-     * Decision record: `changes/retire-uploaded-state` (D2).
+     * Decision records: `changes/retire-uploaded-state` (D2), `changes/shrink-the-ledger-row` (D5).
      */
     private suspend fun placeFirstEnqueued(ready: Ready, rows: List<LedgerEntry>, byKey: Map<String, Resource>) {
         if (!ready.saveToAlbum) return
@@ -675,7 +653,7 @@ class UploadCycle(
         /**
          * A retry the settle pass could not re-create because the platform's job limit was already
          * reached. It forces `PROCESSING` — there is outstanding work — but it withholds nothing else:
-         * the row rests `FAILED` and the ledger's work read returns it next cycle.
+         * the row rests `DISCOVERED` and the ledger's work read returns it next cycle.
          */
         val capHit: Boolean,
     )
@@ -746,8 +724,8 @@ class UploadCycle(
     }
 
     /**
-     * Report a failure to the engine and return its `Retry` (records `FAILED`; `REQUESTED` deferred).
-     * Takes the engine rather than reading a field: it is built per cycle from that cycle's config.
+     * Report a failure to the engine and return its `Retry` (returns the row to `DISCOVERED`; `REQUESTED`
+     * deferred). Takes the engine rather than reading a field: it is built per cycle from that cycle's config.
      */
     private suspend fun adjudicateFailure(engine: SyncEngine, job: PlatformUploadJob): SyncDecision.Retry? {
         if (job.key.isBlank()) return null // unrecoverable key — never record a phantom row
@@ -757,12 +735,11 @@ class UploadCycle(
     }
 
     /**
-     * Rebuild the engine [UploadJob] for a returned platform job from the ledger (attempt) and
-     * the job's own facts. The request URL/headers are placeholders — completion never reads them, and
-     * the retry path re-mints a fresh request via the provider.
+     * Rebuild the engine's [UploadRequest] for a returned platform job from the job's own facts. The URL and
+     * headers are placeholders — completion never reads them, and the retry path re-mints a fresh request via
+     * the provider.
      */
-    private suspend fun reconstruct(job: PlatformUploadJob): UploadJob {
-        val entry = ledger.entry(job.key)
+    private fun reconstruct(job: PlatformUploadJob): UploadRequest {
         val resource = Resource(
             filename = job.key,
             // Derive the assetId from the key (the shared inverse of `uploadKey`) rather than the ledger
@@ -774,7 +751,7 @@ class UploadCycle(
             metadata = emptyMap(),
             data = job.data ?: Unit, // engine [Resource.data] is non-null; payload unused for completion
         )
-        return UploadJob(UploadRequest(url = "", headers = emptyMap(), resource = resource), entry?.attempt ?: 0)
+        return UploadRequest(url = "", headers = emptyMap(), resource = resource)
     }
 
 
@@ -837,10 +814,9 @@ class UploadCycle(
      * only work the cycle must still do — a failure whose resource is still live, so it can be re-created
      * now instead of waiting for a discovery pass to re-derive it.
      *
-     * The engine is still the thing that decides: `UploadFailed` records `FAILED` at the incremented
-     * attempt and answers a freshly-minted request. That the row is already `FAILED` from the adapter's
-     * guarded write is harmless — the record is an idempotent upsert, and the attempt bump is exactly what
-     * a re-created job wants. The record never reaches a settled row either way: the store's record write is
+     * The engine is still the thing that decides: `UploadFailed` returns the row to `DISCOVERED` and answers a
+     * freshly-minted request. That the row is already `DISCOVERED` from the adapter's guarded write is
+     * harmless — the record is an idempotent upsert. The record never reaches a settled row either way: the store's record write is
      * guarded on the done states, so the skip below is an early exit that saves the job, not the ledger's
      * only protection.
      *
@@ -856,13 +832,13 @@ class UploadCycle(
         for (job in returned) {
             // At-least-once: the platform can hand back a failure for a key that has since settled (its
             // own guarded write already declined to touch it). Adjudicating anyway would drive the engine
-            // to record FAILED over a COMPLETED row and re-upload bytes that are stored — the failure
+            // to record a failure over a COMPLETED row and re-upload bytes that are stored — the failure
             // this whole change exists to stop, arriving by a different door.
             if (ledger.entry(job.key)?.state?.isDone == true) continue
             val retry = adjudicateFailure(engine, job) ?: continue
             if (job.data == null || capHit) continue
-            when (platform.createJob(retry.job.request, retry.job.request.resource)) {
-                CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.job))
+            when (platform.createJob(retry.request, retry.request.resource)) {
+                CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.request))
                 CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
                 CreateResult.FAILED -> Unit // not created → no UploadStarted
             }
@@ -871,7 +847,7 @@ class UploadCycle(
     }
 
     /**
-     * Record `FAILED` every `REQUESTED` row whose transfer was lost (capability `ios-url-session-upload`,
+     * Return to `DISCOVERED` every `REQUESTED` row whose transfer was lost (capability `ios-url-session-upload`,
      * "Stranded reconciliation: scoped each cycle, complete at a start"), then have the transport discard what
      * it kept for its lost transfers.
      *
@@ -881,8 +857,8 @@ class UploadCycle(
      * [signalRestart]; a transport that answers `null` for the set a rule needs reconciles nothing, and a
      * pending restart then stays pending.
      *
-     * Two things this deliberately does NOT do. It considers nothing but `REQUESTED` rows: a `FAILED` row has
-     * already been adjudicated, and re-reporting it every cycle claimed a loss that did not happen (a field log
+     * Two things this deliberately does NOT do. It considers nothing but `REQUESTED` rows: a `DISCOVERED` row
+     * is already back in the work read, and re-reporting it every cycle claimed a loss that did not happen (a field log
      * showed one key "stranded" twelve times inside a single process). And it does not ask storage whether the
      * bytes landed: with the terminal outcome recorded when the platform reports it, what is left here
      * genuinely did not land, and a re-PUT is idempotent and cheaper than a listing.
@@ -899,7 +875,7 @@ class UploadCycle(
         for (key in candidates) {
             if (ledger.markStranded(key)) {
                 val why = if (atStart) "no live task at a start" else "transfer lost"
-                log.i { "reconcile: stranded REQUESTED $key ($why) — recorded FAILED to re-upload" }
+                log.i { "reconcile: stranded REQUESTED $key ($why) — returned to DISCOVERED to re-upload" }
             } else {
                 // Not silent: the row moved on under us, which is a different fact from "recorded".
                 log.i { "reconcile: stranded $key settled underneath this pass — left as it stands" }

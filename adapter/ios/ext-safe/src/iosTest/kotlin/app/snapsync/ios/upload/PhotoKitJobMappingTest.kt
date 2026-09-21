@@ -211,8 +211,8 @@ class PhotoKitJobMappingTest {
     }
 
     /**
-     * Every non-success terminal state records `FAILED`. Stated over the whole enum rather than over the
-     * three states seen in practice: `PENDING` is where an untaught SDK value lands, and `CANCELLED` and
+     * Every non-success terminal state records the `FAILED` outcome, returning its row to `DISCOVERED`.
+     * Stated over the whole enum rather than over the three states seen in practice: `PENDING` is where an untaught SDK value lands, and `CANCELLED` and
      * `REGISTERED` are states no device reliably produces — so a `when` growing an arm that quietly changed
      * one of them is exactly the drift nothing else here would catch.
      */

@@ -27,9 +27,9 @@ import app.snapsync.model.TerminalOutcome
  *   routed through ktor) and moves the job to the terminal bucket, so the next `drainTerminals` records
  *   it `COMPLETED`.
  * - [failJob] moves a job to the retry bucket carrying a chosen [UploadError], driving the real engine
- *   retry chain (attempt++). A first failure surfaces via `fetchRetryJobs` (the system's single free
- *   retry); a second failure of the same job is recorded `FAILED` by [drainTerminals] and handed back
- *   for the cycle to re-create.
+ *   retry chain. A first failure surfaces via `fetchRetryJobs` (the system's single free retry); a
+ *   second failure of the same job returns its row to `DISCOVERED` through [drainTerminals] and is handed
+ *   back for the cycle to re-create.
  *
  * Like both real adapters, this one RECORDS terminal outcomes into the [ledger] itself rather than
  * handing them up — that is the seam's contract now, and a fake that returned them instead would let a

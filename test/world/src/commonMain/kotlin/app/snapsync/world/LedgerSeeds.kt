@@ -13,5 +13,5 @@ import app.snapsync.ports.LedgerStore
  * `resetTo` (capability `sync-ledger`). The row is built from the resource the same way the writer builds
  * one, so no call site re-states a row's columns by hand.
  */
-suspend fun LedgerStore.seedCompleted(resource: Resource, eventId: String, attempt: Int = 0) =
-    recordUnlessSettled(resource.toLedgerRow(LedgerState.COMPLETED, attempt, eventId))
+suspend fun LedgerStore.seedCompleted(resource: Resource) =
+    recordUnlessSettled(resource.toLedgerRow(LedgerState.COMPLETED))
