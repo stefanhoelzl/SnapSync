@@ -144,9 +144,11 @@ cycles write the ledger concurrently. On a `PROCESSING` result the pump SHALL re
 foreground it SHALL wait for the next completion (which frees a slot) rather than busy-looping the cap;
 in a background context it SHALL ensure the next `BGProcessingTask` is scheduled.
 
-On a `SKIPPED` result — the cycle declined because the membership contributes nothing, or because this
-engine is not the resolved mechanism (capability `upload-lifecycle`) — the pump SHALL schedule **nothing**, at
-every trigger; the transition that makes the engine eligible again arms it. A non-contributing device
+On a `SKIPPED` result — the cycle declined because the membership contributes nothing, because there is no
+membership at all, or because this engine is not the resolved mechanism (capability `upload-lifecycle`) — the
+pump SHALL schedule **nothing**, at every trigger; the transition that makes the engine eligible again arms it.
+Every app-side trigger now reaches this engine whatever its state, so an unjoined device's foreground would
+otherwise submit a self-re-submitting heartbeat for no event. A non-contributing device
 SHALL therefore hold no `BGProcessingTask`, and SHALL stop waking once any outstanding one fires. Re-arming
 a device that will never upload would wake it forever to do nothing.
 
