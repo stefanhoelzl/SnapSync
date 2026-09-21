@@ -55,6 +55,22 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int {
+        val batch = entries
+        // Build the next state fully before swapping — the SQL transaction's all-or-nothing, in memory.
+        val next = this.entries.toMutableMap()
+        var applied = 0
+        for (entry in batch) {
+            if (next[entry.key]?.state?.isDone == true) continue
+            next[entry.key] = entry
+            applied++
+        }
+        this.entries.clear()
+        this.entries.putAll(next)
+        if (applied > 0) dings.tryEmit(Unit)
+        return applied
+    }
+
     override suspend fun deleteKeys(keys: Collection<String>) {
         // Key-scoped, exactly like the backend's primary-key DELETE; dings only when a row went.
         val wanted = keys.toSet()

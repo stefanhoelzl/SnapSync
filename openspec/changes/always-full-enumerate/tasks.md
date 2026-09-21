@@ -44,19 +44,19 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
 
 ## 3. Read only what the ledger does not know
 
-- [ ] 3.1 Add `recordAllUnlessSettled(entries)` to `LedgerStore`: the guarded record statement applied
+- [x] 3.1 Add `recordAllUnlessSettled(entries)` to `LedgerStore`: the guarded record statement applied
   per entry inside one transaction, dinging once if any applied. Implement it in SQLDelight, the fake
   and the test doubles, and extend the contract, including an atomicity case (a failure mid-batch leaves
   no row from that batch).
-- [ ] 3.2 In `UploadCycle.decide`, read `resources()` only for admitted candidates whose asset has no row
+- [x] 3.2 In `UploadCycle.decide`, read `resources()` only for admitted candidates whose asset has no row
   or has a bare row, using the row read from 2.1 (spec `sync-ledger`, "A walk re-reads only the assets
   the ledger does not fully know").
-- [ ] 3.3 In `UploadCycle.update`, collect the engine's `Work` resources and record them through one
+- [x] 3.3 In `UploadCycle.update`, collect the engine's `Work` resources and record them through one
   `recordAllUnlessSettled`, replacing the per-resource `recordDiscovered` loop. The backfill of bare rows
   stays per row: it is idempotent and bare-only.
-- [ ] 3.4 Add the skipped count to the `Enumeration` audit line (seen / read / new / already-uploaded /
+- [x] 3.4 Add the skipped count to the `Enumeration` audit line (seen / read / new / already-uploaded /
   deleted).
-- [ ] 3.5 Cycle tests: a fully-known asset's `resources()` is never invoked; a bare-row asset and a
+- [x] 3.5 Cycle tests: a fully-known asset's `resources()` is never invoked; a bare-row asset and a
   row-less asset are read; a seed that listed only the primary is completed with the live role.
 
 ## 4. Remove the cursor
