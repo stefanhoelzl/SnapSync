@@ -92,14 +92,14 @@ projection reads: no second structure holding the same asset set exists, so none
 deletion-awareness comes from the ledger itself: a departed asset's rows are **deleted** once an
 authoritative walk shows it gone (see "Deletion-aware manifest").
 
-Upload state SHALL NOT be an input to the projection. In particular a `FAILED` row SHALL still be listed:
-the engine retries forever with no attempt budget, so `FAILED` means "attempted, still owed" rather than
-"abandoned", and excluding it would make the declared role set oscillate as a resource fails and retries —
-each flip a manifest write and a member wake.
+Upload state SHALL NOT be an input to the projection. In particular a resource whose upload **failed**
+SHALL still be listed: a failure returns its row to `DISCOVERED` (capability `sync-ledger`) and the engine
+retries forever with no attempt budget, so a failure means "still owed" rather than "abandoned", and excluding
+it would make the declared role set oscillate as a resource fails and retries — each flip a manifest write and
+a member wake.
 
-The projection SHALL additionally exclude rows marked **absent** — assets that have left the device's
-library (capability `sync-ledger`). Absence is a fact the row carries, so the projection can apply it; the
-row itself is retained, because its bytes are still on the backend.
+The projection SHALL apply **no row filter of its own** beyond the policy: the ledger carries no absence mark,
+because a departed asset's rows are deleted rather than marked (see "Deletion-aware manifest").
 
 The projection SHALL apply **no capture-date predicate of its own**, including no exclusion of rows whose
 capture date is unknown. The membership's policy already excludes an undated row — its lower bound sorts
@@ -138,7 +138,7 @@ protect a referenced byte from collection (capability `scheduled-cleanup`).
 
 #### Scenario: A failed resource stays declared
 
-- **WHEN** a resource's upload fails and the engine records `FAILED` alongside a retry
+- **WHEN** a resource's upload fails and the engine returns its row to `DISCOVERED` alongside a retry
 - **THEN** the manifest still declares that role, so the declared role set does not change and no member
   is woken by the failure
 

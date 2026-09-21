@@ -96,6 +96,7 @@ have an empty album; this is acceptable.
 #### Scenario: The extension never creates the album
 - **WHEN** the upload extension runs a cycle for a `saveToAlbum` membership whose album has not yet been created
 - **THEN** the extension adds nothing and does not create an album; creation is left to the app
+
 ### Requirement: Album identity is remembered per event and survives leave
 
 The system SHALL persist the created album's PhotoKit `localIdentifier` in a per-event
@@ -161,8 +162,13 @@ write and before a later placement would leave a photo no pass ever places; plac
 fails, hits the platform's limit, or is interrupted leaves the row `DISCOVERED`, and the next cycle's placement
 repeats harmlessly (adding an asset already in the collection is a no-op — measured, simulator, iOS 26.5).
 
-The placement SHALL NOT be repeated for a `FAILED` row being re-created — its first attempt was placed when it
-was still `DISCOVERED` — and SHALL NOT be attempted for a row the current policy excludes, for a row whose
+The same holds for a row an earlier upload **failed**: a failure returns its row to `DISCOVERED` (capability
+`sync-ledger`), so when the enqueue stage re-creates its job the placement covers it again, and the repeat is a
+no-op. The ledger records no first-attempt/retry distinction for this rule to lean on, and none is needed —
+placement is idempotent, as the gather below already relies on. A failure the cycle re-creates from the
+platform's returned jobs does not pass through the enqueue stage and is not placed there.
+
+The placement SHALL NOT be attempted for a row the current policy excludes, for a row whose
 resource no longer resolves, or on a cycle that creates no upload work (an unreadable or absent membership, a
 deferred re-join reconciliation, or a direction that excludes upload). Rows settled by the ledger migration
 that retired `UPLOADED` SHALL NOT be placed (capability `sync-ledger`).
@@ -187,9 +193,11 @@ the only affected path and MUST degrade to a best-effort skip, never a cycle fai
 - **WHEN** a `DISCOVERED` row's asset is no longer admitted by the membership's policy when the cycle enqueues
 - **THEN** that asset is not added to the album and no job is created for it
 
-#### Scenario: A re-created failure is not placed again
-- **WHEN** a `FAILED` row is re-created by a cycle
-- **THEN** no album add is made for it
+#### Scenario: A failure re-enqueued from the ledger is placed again, harmlessly
+- **WHEN** a photo's upload failed, returning its row to `DISCOVERED`, and a later cycle's enqueue stage
+  re-creates its job
+- **THEN** the asset is included in that cycle's placement, the add is a no-op because the album already holds
+  it, and the album holds the photo once
 
 #### Scenario: A job limit leaves the slice placed
 - **WHEN** job creation reports the platform's limit partway through a placed slice
@@ -215,7 +223,7 @@ listed in this event's device manifest, but they are never enqueued again, so no
 **What it places.** A gather SHALL place two sets, and only these:
 
 - **own photos**: the assets of the device's **manifest projection** for the membership. These are the
-  ledger's rows not marked absent, admitted by the membership's **current** selection policy (capabilities
+  ledger's rows, admitted by the membership's **current** selection policy (capabilities
   `device-manifest`, `photo-selection-policy`), with each normalized `assetId` reversed to its raw
   `localIdentifier`. A photo the current policy excludes SHALL NOT be gathered;
 - **foreign photos**: the assets in the **event union** (capability `photo-download`) owned by another
@@ -384,3 +392,4 @@ album is populated by whichever direction(s) sync).
 #### Scenario: An existing membership keeps its stored choice
 - **WHEN** a membership persisted with `saveToAlbum = false` before this default changed is loaded
 - **THEN** it stays `saveToAlbum = false` — no migration flips it — and the reconfigure surface seeds from the stored value
+

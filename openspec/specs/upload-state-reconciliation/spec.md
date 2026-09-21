@@ -153,9 +153,8 @@ cannot vouch for would suppress an upload that never happened.
 A triggered reconciliation (in the extension) SHALL: fetch the **per-device** file listing
 (`list(deviceId)`); **`resetTo`** (atomic clear-and-seed) the ledger to exactly one `COMPLETED` row
 per stored resource, each keyed by the **recomposed** `<assetId>-<role>.<ext>` key, carrying the
-`assetId` the listing reported and the **configured `eventId` as provenance** (`sync-ledger`, "Event
-provenance and the backfill sweep" — the seed is this join's own write, so no seeded row is ever a
-pre-provenance sentinel row); and **on success set the `joinedEventId` marker** to the configured
+`assetId` the listing reported (a ledger row carries no event provenance, capability `sync-ledger`); and
+**on success set the `joinedEventId` marker** to the configured
 `eventId`. The same cycle's walk, a full enumeration like every walk, then finds the genuinely-unstored
 work. The seed records no timestamp.
 
@@ -168,8 +167,7 @@ upload job never materialized, which the engine would otherwise read as in-fligh
 forever — leaving the ledger as exactly the device's stored files. Because the byte store is
 device-global and event-independent, this clear-and-seed both **restores** dedup after a reinstall
 (the seed repopulates every globally-stored resource as `COMPLETED`) and **preserves** it across an
-event switch (the global listing re-seeds the same files `COMPLETED`, carrying the **new** event's
-id — which is what keeps a switch's provenance truthful without any sweep). A resource that is not in the
+event switch (the global listing re-seeds the same files `COMPLETED`). A resource that is not in the
 device's byte store is absent from the listing, is not seeded, and is uploaded idempotently by the
 producer (last-write-wins). Setting the marker on success — even when zero rows were seeded — settles
 the join so it does not re-trigger.
@@ -194,7 +192,7 @@ surfaced as the permanent fault it is. The ledger is thus reset only ever on an 
 
 - **WHEN** the per-device listing reports resources `(a1, primary, IMG_0001.JPG)` and `(a1, live, IMG_0001.MOV)`
 - **THEN** the ledger holds a `COMPLETED` row keyed `a1-primary.jpg` and one keyed `a1-live.mov`, each
-  carrying the reported `assetId` and the configured event's id as provenance, and the marker is set
+  carrying the reported `assetId`, and the marker is set
 
 #### Scenario: The reset drops stale/phantom rows
 

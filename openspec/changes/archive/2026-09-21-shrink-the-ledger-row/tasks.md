@@ -115,9 +115,25 @@ green at the end of group 4 and at every group after it, not between groups 1 an
 - [x] 6.1 Run `./gradlew architectureDiagrams` and commit any change (flows or port sets may re-render).
 - [x] 6.2 Run `./gradlew build` green, including the detekt tiers. No tier ceiling may rise.
 - [x] 6.3 Run `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and validate this change.
-- [ ] 6.4 At sync/archive, hand-edit the `## Purpose` text, which a delta cannot carry:
+- [x] 6.4 At sync/archive, hand-edit the `## Purpose` text, which a delta cannot carry:
   - `sync-ledger`: the provenance and backfill history, and "the retired absence mark and its sweep". Record that
     this change retired `FAILED`, `attempt`, `eventId` and `absent` through `10.sqm`.
   - `sync-engine`: "requested, completed, and failed". The engine still records failures, but as `DISCOVERED`.
 - [ ] 6.5 Open the PR with the `internal` label. Its description states the one-way door and the roll-forward
   rollback.
+
+## Archive gate 2 — delta completeness
+
+Modules the diff touched, each resolved to its capability:
+
+- `:domain` `model/` + `ports/` + `feature/upload` + `compose/` → `sync-ledger`, `sync-engine`, `upload-lifecycle`,
+  `upload-state-reconciliation` (seed provenance); `feature/album` (`AlbumGather`) → `event-album`;
+  `model/DeviceManifest.kt` → `device-manifest`. All carry deltas.
+- `:adapter:generic:app` (`Ledger.sq`, `10.sqm`, `SqlDelightLedgerStore`) → `sync-ledger` (SQLDelight backend,
+  schema migration). Delta.
+- `:adapter:ios:ext-safe` (`PhotoKitJobMapping` KDoc, `IosLedgerStoreTest`) → `ios-photokit-upload`. Delta.
+- `:adapter:ios:app-only` (`IosUrlSessionUploadPlatform` KDoc) → `ios-url-session-upload`. Delta.
+- `:adapter:generic:fake` (`InMemoryLedgerStore`) → no capability of its own; it implements the `sync-ledger` port
+  contract, which carries the delta. It also now preserves `destinationPath` in `markTerminal` and
+  `backfillManifestDetail`, as the SQL always did, so it matches the contract more closely.
+- `:test:world` (ledger contracts, `UploadFakes` KDoc) → `harness-world-model`. Delta.

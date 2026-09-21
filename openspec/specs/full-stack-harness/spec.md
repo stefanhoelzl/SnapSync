@@ -135,7 +135,8 @@ lever is the armed import failure).
 #### Scenario: Fail drives the real retry chain
 
 - **WHEN** the operator fails a created upload job with a chosen `UploadError` and invokes the extension
-- **THEN** the real engine answers retry and the job's attempt increments — visible in the upload queue
+- **THEN** the real engine answers retry and the job is re-created — its creation count rises, visible in the upload
+  queue
 
 #### Scenario: A foreign asset flows download → import → suppression
 

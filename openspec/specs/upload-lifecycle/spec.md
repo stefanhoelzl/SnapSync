@@ -61,7 +61,7 @@ re-uploads a member's whole post-cutoff library — the failure this project exi
 `COMPLETED` rows and the stored bytes are that proof, and nothing else a mechanism persists is.
 
 No mechanism needs a destructive verb as a repair either: the damage a stop can leave behind is
-`REQUESTED` rows no transfer will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `FAILED`
+`REQUESTED` rows no transfer will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `DISCOVERED`
 (`ios-photokit-upload`, `ios-url-session-upload`), which the ledger's work read returns without a walk. A
 repair belongs to the start because the start is the one moment a mechanism knows no other transfer is still
 carrying those rows, and because every path back to uploading passes through one.
@@ -91,7 +91,7 @@ Each tier SHALL supply one `UploadProducer` implementation binding these verbs t
 #### Scenario: Rows a stop leaves stranded are repaired by the next start
 
 - **WHEN** a `stop()` leaves `REQUESTED` rows that no transfer will settle, and a mechanism is later started
-- **THEN** that start demotes those rows to `FAILED`, and the next cycle re-creates their uploads from the
+- **THEN** that start demotes those rows to `DISCOVERED`, and the next cycle re-creates their uploads from the
   ledger's work read, without the walk re-deriving them
 
 ### Requirement: Lifecycle orchestration is tier-neutral and tested

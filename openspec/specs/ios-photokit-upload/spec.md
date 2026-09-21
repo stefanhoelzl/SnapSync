@@ -185,13 +185,14 @@ For each discovered `Resource` the extension SHALL drive the shared `SyncEngine`
 destination request from the real `EdgeUploadRequestProvider` (a plain `PUT` to the locally-built,
 **event-independent** edge URL defined by `edge-upload-provider`, no signing), create a
 system upload job via `creationRequestForJob(destination:resource:)`, and **then** report
-`UploadStarted(job)` to the engine so the ledger records `REQUESTED` (write-after-act — `REQUESTED`
+`UploadStarted(request)` to the engine so the ledger records `REQUESTED` (write-after-act — `REQUESTED`
 is recorded only after the job exists, never before). The engine remains **event-blind** and keys by
 the bare `filename`; ack-path recovery reads the destination URL's **last path segment**, which is the
 unchanged `filename` (the byte URL's last segment; format per `edge-upload-provider`). On
 `AlreadyUploaded` it SHALL
 create no job and write nothing. Completion and failure outcomes are reduced into the ledger by the
-drain (see "Completion and retry adjudication"), so `COMPLETED` and `FAILED` are recorded.
+drain (see "Completion and retry adjudication"), so a success is recorded `COMPLETED` and a failure returns its
+row to `DISCOVERED`.
 
 #### Scenario: New resource emits a real device-partitioned edge destination, then records REQUESTED
 - **WHEN** the engine returns a `Work` decision for a discovered resource
@@ -245,7 +246,7 @@ a target's host cannot hold such a record, the port's binding for that target an
 
 #### Scenario: The repair completes before the re-enable
 - **WHEN** the ritual runs while the ledger holds orphaned `REQUESTED` rows
-- **THEN** the rows are demoted to `FAILED` **before** the enable is attempted, so the repair cannot demote
+- **THEN** the rows are demoted to `DISCOVERED` **before** the enable is attempted, so the repair cannot demote
   rows belonging to the registration it is about to re-create
 
 #### Scenario: Stopping is the disable alone
@@ -290,17 +291,16 @@ upload rebuilt its request as `application/octet-stream` and every object that h
 stored with that type. That the destination's headers survive the system's job store — not merely its URL —
 is measured on device (SE2 / iOS 26.6), on both the `.retry` and `.acknowledge` sets; re-measure if the tier
 moves to the iOS 27 `PHBackgroundResourceUploadJobExtension`.
-Version/attempt come from the
-ledger; the `resource`, when still present, is reused
+The `resource`, when still present, is reused
 only to re-create a
 retry-spent job. **Every presented job SHALL be acknowledged** — including one whose row is
 unrecoverable — or the system reports `appex failed to acknowledge jobs for processing state`
 (error 50008). The two phases:
 
 - **`fetchJobsWithAction(.retry)` (first failures):** map `job.error` → `UploadError`, report
-  `UploadFailed` (engine records `FAILED`, answers `Retry` with a rebuilt edge URL — stable, no
+  `UploadFailed` (engine records `DISCOVERED`, answers `Retry` with a rebuilt edge URL — stable, no
   expiry, nothing to re-mint), call `retryWithDestination(:)`, then report `UploadStarted` (records
-  `REQUESTED` at the incremented attempt). The system job `retryWithDestination(:)` is applied to SHALL be
+  `REQUESTED`). The system job `retryWithDestination(:)` is applied to SHALL be
   found by the **same route** the job's key was recovered by — its destination path against the recorded
   `destinationPath`, then the v1 last-segment fallback — and SHALL NOT be found by comparing the destination's
   last path segment to the ledger key, which under the v2 route is the resource's role and matches no key.
@@ -309,7 +309,7 @@ unrecoverable — or the system reports `appex failed to acknowledge jobs for pr
   itself, through the guarded `markTerminal` of its `TransferRecord` (`sync-ledger`), and acknowledge the job
   **in place** — `state == Succeeded` → record `COMPLETED`, then acknowledge; a key already in a terminal
   state → acknowledge (the guard applies to nothing, an idempotent no-op); otherwise (a retry-spent
-  `Failed`/`Cancelled` job) → record `FAILED`, then acknowledge. The job SHALL be acknowledged **regardless** of
+  `Failed`/`Cancelled` job) → record `DISCOVERED` (the failed outcome), then acknowledge. The job SHALL be acknowledged **regardless** of
   whether its guarded write applied and regardless of any re-create outcome (never leave a presented job
   un-acknowledged). Retry has no attempt budget (retry forever).
 
@@ -361,7 +361,7 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
 - **WHEN** a job is returned in the `.retry` set
 - **THEN** the extension reports `UploadFailed`, obtains a `Retry` with a locally rebuilt edge
   destination (byte-identical to the original — no expiry), calls `retryWithDestination(:)`, and
-  reports `UploadStarted` so the ledger holds `REQUESTED` at the incremented attempt
+  reports `UploadStarted` so the ledger holds `REQUESTED`
 
 #### Scenario: A v2-route retry reaches its system job
 - **WHEN** a job is returned in the `.retry` set whose destination is the v2 byte route, so its last path
@@ -372,7 +372,7 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
 #### Scenario: Retry-spent failure re-creates from the job's resource
 - **WHEN** a `Failed` job appears in the `.acknowledge` set (its one system retry is spent) and its
   `resource` is still available
-- **THEN** the extension records that row `FAILED`, acknowledges the job, and returns it from the drain so
+- **THEN** the extension records that row `DISCOVERED`, acknowledges the job, and returns it from the drain so
   the cycle creates a fresh job from the live resource
 
 #### Scenario: A failure handed back for a completed key re-uploads nothing
@@ -535,7 +535,7 @@ suppresses the upload. The backend re-stores the role idempotently and wakes nob
   neither `pending` nor `completed` and the next projected `device.json` omits it
 
 #### Scenario: Mid-upload deletion lets the extension rest
-- **WHEN** an asset deleted before its upload completed leaves a `DISCOVERED` or `FAILED` row
+- **WHEN** an asset deleted before its upload completed leaves a `DISCOVERED` row
 - **THEN** its key resolves to nothing at enqueue and that row is deleted, the ledger reaches no pending
   rows, and `process()` can return `completed` instead of looping on `processing`
 
@@ -567,12 +567,12 @@ same-event cycle never reconciles — so the photos that were mid-upload are per
 
 The recovery SHALL run in this mechanism's **`start()`** — the disable→enable re-register — **between** the
 disable and the enable, and SHALL be the ledger's reset-family `demoteRequested()` (`sync-ledger`): every
-`REQUESTED` row becomes `FAILED`. Every one of them is unsettleable at that moment: the disable has just wiped
+`REQUESTED` row becomes `DISCOVERED`. Every one of them is unsettleable at that moment: the disable has just wiped
 this tier's jobs, and wherever the app-driven mechanism also exists, starting this mechanism is preceded by the
 app-driven mechanism's `stop()` (`upload-lifecycle`, "The upload mechanism is resolved, never selected"), so
 no app-driven transfer is carrying a row either.
 
-A `FAILED` row needs a job, so the ledger's work read returns it on the next cycle without any walk
+A `DISCOVERED` row needs a job, so the ledger's work read returns it on the next cycle without any walk
 re-deriving it. The former recovery *deleted* the rows, which only a walk that re-read the asset's
 resources could re-surface; a demoted row needs no such walk.
 
@@ -597,7 +597,7 @@ the one recording process, and `demoteRequested` is a reset-family operation tha
 
 - **WHEN** photos are mid-upload (`REQUESTED` rows, OS jobs registered)
   and the app re-registers the extension (disable→enable)
-- **THEN** the disable wipes the OS jobs and `demoteRequested()` marks the rows `FAILED`, so the next
+- **THEN** the disable wipes the OS jobs and `demoteRequested()` marks the rows `DISCOVERED`, so the next
   cycle's work read re-creates the not-yet-stored jobs (bytes resume landing), with no permanently-stuck
   `REQUESTED` and no re-read of the assets' resources
 

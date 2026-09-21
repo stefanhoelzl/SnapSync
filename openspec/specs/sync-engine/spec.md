@@ -5,7 +5,8 @@
 The shared decision core of the sync backend: platform adapters drive it with observation events
 (a resource exists with this content state, an upload was started, an upload failed) and act on the
 decisions it answers with. The engine's only state is its ledger — the durable per-key memory of
-what was requested, completed, and failed. The engine records requests and failures; a completed upload
+what was requested, completed, and still needs a job. The engine records requests and failures (a failure
+returns the row to `DISCOVERED`); a completed upload
 is recorded by the platform itself, where the platform reports it, through the ledger's guarded terminal
 write (capability `sync-ledger`). The sync domain
 transports resources grouped by an opaque `assetId` — the engine carries the `assetId` through to
@@ -24,7 +25,9 @@ Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
 The resource-changed decision gained `DISCOVERED` → `Upload` in
 `changes/archive/2026-08-27-fix-cap-truncation-loop`. The `UPLOADED` state and the engine's completion
-recording were removed in `changes/archive/2026-09-15-retire-uploaded-state`.
+recording were removed in `changes/archive/2026-09-15-retire-uploaded-state`. The `FAILED` state, the
+attempt count and `UploadJob` (the engine now speaks `UploadRequest`) were removed in
+`changes/archive/2026-09-21-shrink-the-ledger-row`.
 ## Requirements
 ### Requirement: Resource-changed decision
 When a platform submits `ResourceChanged(resource)`, the engine SHALL answer one `SyncDecision`
@@ -37,15 +40,15 @@ recording `REQUESTED` happens only on a later `UploadStarted`, see "Upload-start
   has a job in flight whose outcome is either reported to the engine (`UploadStarted` for a re-created job,
   `UploadFailed`) or recorded by the platform through the ledger's guarded terminal write (capability
   `sync-ledger`). In neither SHALL the engine re-issue work.
-- entry `DISCOVERED`, entry `FAILED`, or entry absent → `Upload` carrying an `UploadJob` with
-  `attempt = 0`
+- entry `DISCOVERED`, or entry absent → `Upload` carrying a freshly minted `UploadRequest`
 
 A key yields `Work` when nothing is in flight for it and its bytes are not on the backend — an absent
-entry, a `DISCOVERED` one (the walk found it and nothing has been attempted), or a `FAILED` one. There
-is no content-version comparison and no re-upload of an existing key. `Upload` and `Retry` SHALL
-implement a common `Work` interface exposing the job, so platforms execute all work arms identically.
-For `AlreadyUploaded` the ledger SHALL be left untouched (the same as every `ResourceChanged` answer,
-which never writes).
+entry, or a `DISCOVERED` one (the walk found it and no job exists — either nothing has been attempted, or an
+attempt failed and returned the row to `DISCOVERED`). There is no content-version comparison and no re-upload
+of an existing key. `Upload` and `Retry` SHALL implement a common `Work` interface exposing the request, so
+platforms execute all work arms identically. There is no attempt counter: the engine carries no per-key
+history beyond the ledger's state. For `AlreadyUploaded` the ledger SHALL be left untouched (the same as every
+`ResourceChanged` answer, which never writes).
 
 `DISCOVERED` answering `Work` is what keeps the ledger usable as the cycle's record of its own backlog
 (capability `sync-ledger`): the state exists so a cycle can remember a resource it saw but could not
@@ -58,7 +61,7 @@ without classifying it here fails to compile rather than falling into whichever 
 #### Scenario: Unknown resource uploads without writing the ledger
 - **WHEN** `handle(ResourceChanged(resource))` is called and the ledger has no entry for its
   filename
-- **THEN** `Upload` is returned with `attempt == 0` and the ledger still has no entry for the key
+- **THEN** `Upload` is returned and the ledger still has no entry for the key
   (recording is deferred to `UploadStarted`)
 
 #### Scenario: Completed key skips
@@ -73,12 +76,13 @@ without classifying it here fails to compile rather than falling into whichever 
 
 #### Scenario: Discovered entry uploads
 - **WHEN** the ledger entry is `DISCOVERED` and the resource is submitted as `ResourceChanged`
-- **THEN** `Upload` is returned with `attempt == 0`, so a resource the cycle recorded but could not
+- **THEN** `Upload` is returned, so a resource the cycle recorded but could not
   enqueue is re-derived as work rather than suppressed by its own record
 
-#### Scenario: Failed entry re-uploads
-- **WHEN** the ledger entry is `FAILED` and the same resource is submitted as `ResourceChanged`
-- **THEN** `Upload` is returned with `attempt == 0` and nothing is written until `UploadStarted`
+#### Scenario: A failed upload's entry re-uploads
+- **WHEN** an upload of the resource failed, returning its entry to `DISCOVERED`, and the same resource is
+  submitted as `ResourceChanged`
+- **THEN** `Upload` is returned and nothing is written until `UploadStarted`
 
 #### Scenario: A new ledger state must be classified here
 - **WHEN** a value is added to `LedgerState` and this decision is not updated
@@ -86,49 +90,49 @@ without classifying it here fails to compile rather than falling into whichever 
 
 #### Scenario: Resource instance round-trips
 - **WHEN** a `Work` decision is returned for a resource
-- **THEN** `decision.job.request.resource` is the identical instance the platform supplied (no
+- **THEN** `decision.request.resource` is the identical instance the platform supplied (no
   copying), so the platform can read its opaque `data` payload back at the execution edge
 
 ### Requirement: Request minting via the request provider
 For every `Work` decision the engine SHALL obtain the request by calling
 `UploadRequestProvider.provide(resource)` with the platform's resource instance, and SHALL carry
-the returned `UploadRequest` on the job unmodified. The provider SHALL NOT be called when the
+the returned `UploadRequest` on the decision unmodified. The provider SHALL NOT be called when the
 answer is `AlreadyUploaded`. Encoding and placement of the filename remain the provider's
 responsibility under the deterministic-and-injective filename→destination contract.
 
 #### Scenario: Provider receives the resource
 - **WHEN** `handle(ResourceChanged(resource))` yields a `Work` decision
 - **THEN** the provider was invoked exactly once with that same resource instance, and
-  `job.request` is its return value, unmodified
+  `decision.request` is its return value, unmodified
 
 #### Scenario: No minting for skipped work
 - **WHEN** `handle(ResourceChanged(resource))` yields `AlreadyUploaded`
 - **THEN** the provider was not invoked
 
 ### Requirement: Failure adjudication — retry forever
-When a platform submits `UploadFailed(job, error)`, the engine SHALL answer `Retry` carrying one
-fresh `UploadJob` with `attempt` incremented by one and a request newly minted via
-`provide(job.request.resource)` — for every `UploadError` variant, with no attempt budget — and
-SHALL record `FAILED` (the failed attempt) for the key. The engine SHALL NOT record `REQUESTED` for
-the retry here; the ledger is left in `FAILED` until the platform creates the retry job and reports
-`UploadStarted` (write-after-act). Recording `FAILED` is an idempotent **guarded** upsert: it SHALL NOT
-overwrite a row in a done state (capability `sync-ledger`, "Record operations"). The answer SHALL be
+When a platform submits `UploadFailed(request, error)`, the engine SHALL answer `Retry` carrying a request
+newly minted via `provide(request.resource)` — for every `UploadError` variant, with no attempt budget and no
+attempt count — and SHALL record `DISCOVERED` for the key: a failed upload returns its row to the state that
+needs a job. `Retry` SHALL remain a distinct `Work` arm from `Upload`; platforms execute both identically, and
+the arm names the decision's provenance for logs and the harness journal. The engine SHALL NOT record
+`REQUESTED` for the retry here; the ledger is left in `DISCOVERED` until the platform creates the retry job and
+reports `UploadStarted` (write-after-act). Recording `DISCOVERED` is an idempotent **guarded** upsert: it SHALL
+NOT overwrite a row in a done state (capability `sync-ledger`, "Record operations"). The answer SHALL be
 `Retry` whether or not the record applied — the engine's decision does not depend on the guard.
 
-#### Scenario: Fresh request on retry, ledger left FAILED
-- **WHEN** `handle(UploadFailed(job, Http(403)))` is called
-- **THEN** `Retry` is returned with `attempt == job.attempt + 1` and a request newly obtained from
-  the provider for the same resource instance, and the ledger entry for the key is `FAILED` with the
-  failed attempt (the new `REQUESTED` is written only when the platform reports `UploadStarted`)
+#### Scenario: Fresh request on retry, ledger left DISCOVERED
+- **WHEN** `handle(UploadFailed(request, Http(403)))` is called
+- **THEN** `Retry` is returned with a request newly obtained from the provider for the same resource
+  instance, and the ledger entry for the key is `DISCOVERED` (the new `REQUESTED` is written only when the
+  platform reports `UploadStarted`)
 
 #### Scenario: Every error kind retries
 - **WHEN** failures with `Network`, `Http(500)`, `Cancelled`, and `Unknown("x")` are each handled
 - **THEN** each yields exactly one `Retry` — none is dropped
 
 #### Scenario: A late failure never un-completes a key
-- **WHEN** `handle(UploadFailed(job, Network))` is called for a key whose ledger entry is `COMPLETED`
-- **THEN** `Retry` is still returned, and the ledger entry is unchanged — still `COMPLETED` with its prior
-  attempt
+- **WHEN** `handle(UploadFailed(request, Network))` is called for a key whose ledger entry is `COMPLETED`
+- **THEN** `Retry` is still returned, and the ledger entry is unchanged — still `COMPLETED`
 
 ### Requirement: Provider failures rethrow
 If the request provider throws, the engine SHALL NOT catch it: `handle` fails with that exception
@@ -143,9 +147,9 @@ recording is an idempotent per-key upsert.
   for the key, and a subsequent `handle` of the same event succeeds when the provider does
 
 ### Requirement: Upload-started recording (write-after-act)
-The engine SHALL accept a `SyncEvent.UploadStarted(job)` observation, reported by the platform
-**after** it has created (or retried) the upload job for `job`. On `UploadStarted` the engine SHALL
-record `REQUESTED` for the key with `job.attempt`, and SHALL answer `AlreadyUploaded` (there is
+The engine SHALL accept a `SyncEvent.UploadStarted(request)` observation, reported by the platform
+**after** it has created (or retried) the upload job for `request`. On `UploadStarted` the engine SHALL
+record `REQUESTED` for the key, and SHALL answer `AlreadyUploaded` (there is
 nothing further for the platform to do). `REQUESTED` SHALL be recorded **only** on `UploadStarted` —
 never on `ResourceChanged` or `UploadFailed`. Recording is an idempotent per-key **guarded** upsert that
 SHALL NOT overwrite a row in a done state (capability `sync-ledger`, "Record operations"),
@@ -155,12 +159,12 @@ a dropped `UploadStarted`
 `ResourceChanged` re-derivation safely re-issues as `Work`.
 
 #### Scenario: Created job records REQUESTED
-- **WHEN** `handle(UploadStarted(job))` is called for a key with no entry (or a `FAILED` entry)
-- **THEN** the ledger entry becomes `REQUESTED` with `job.attempt`, and `AlreadyUploaded` is returned
+- **WHEN** `handle(UploadStarted(request))` is called for a key with no entry (or a `DISCOVERED` entry)
+- **THEN** the ledger entry becomes `REQUESTED`, and `AlreadyUploaded` is returned
 
 #### Scenario: Decision then act then record converge
 - **WHEN** `ResourceChanged` yields `Upload` (no write), the platform creates the job, and reports
-  `UploadStarted(job)`
+  `UploadStarted(request)`
 - **THEN** the ledger holds `REQUESTED` exactly once for the key, regardless of how many times the
   `ResourceChanged`→`UploadStarted` pair is replayed
 
@@ -171,7 +175,7 @@ a dropped `UploadStarted`
   rather than skipped
 
 #### Scenario: A late start never un-completes a key
-- **WHEN** `handle(UploadStarted(job))` is called for a key whose ledger entry is `COMPLETED`
+- **WHEN** `handle(UploadStarted(request))` is called for a key whose ledger entry is `COMPLETED`
 - **THEN** `AlreadyUploaded` is returned and the ledger entry is unchanged
 
 ### Requirement: Resource asset identity
@@ -190,3 +194,4 @@ solely from the ledger entry for `filename`.
 - **WHEN** a `ResourceChanged` is handled for a resource whose key is absent from the ledger
 - **THEN** the answer is `Upload` regardless of the resource's `assetId` (the decision reads only
   `filename`)
+
