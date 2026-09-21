@@ -55,6 +55,23 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun deleteKeys(keys: Collection<String>) {
+        // Key-scoped, exactly like the backend's primary-key DELETE; dings only when a row went.
+        val wanted = keys.toSet()
+        if (entries.keys.removeAll { it in wanted }) dings.tryEmit(Unit)
+    }
+
+    override suspend fun clearAbsenceMarks() {
+        var cleared = false
+        for ((key, row) in entries) {
+            if (row.absent) {
+                entries[key] = row.markedPresent()
+                cleared = true
+            }
+        }
+        if (cleared) dings.tryEmit(Unit)
+    }
+
     override suspend fun markAbsent(assetId: String) {
         for ((key, row) in entries) {
             if (row.assetId == assetId && !row.absent) entries[key] = row.markedAbsent()

@@ -261,6 +261,15 @@ class UploadCycle(
         runCatching { ledger.backfillEventId(eventId) }
             .onFailure { log.w(it) { "eventId backfill failed this cycle — retried next cycle" } }
 
+        // The retired absence mark (capability `sync-ledger`, "Prune operations are writer-only"). Nothing
+        // sets it any more, but the work read, the manifest and both status reads still exclude marked rows,
+        // so a row an earlier build marked would be unreachable for good. Cleared, each one heals: a row that
+        // needs a job fails to resolve below and is deleted by key; a settled one is deleted by the walk if
+        // its asset is gone. Same seat and posture as the provenance sweep, and it matches nothing on every
+        // cycle after the first.
+        runCatching { ledger.clearAbsenceMarks() }
+            .onFailure { log.w(it) { "absence-mark sweep failed this cycle — retried next cycle" } }
+
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
         // (stable, no expiry — the provider re-derives the identical destination locally). Below the
         // direction gate, because it creates jobs.
@@ -447,9 +456,12 @@ class UploadCycle(
      * been sitting since the cursor settled are picked up by the same read, on the next cycle, with no
      * re-enumeration between them.
      *
-     * A key that resolves to nothing has left the library since its row was written. That is marked, not
-     * failed: "the asset is gone" and "the upload did not work" have different causes and different
-     * fixes, and the port's partial contract exists so this seam can tell them apart.
+     * A key that resolves to nothing has left the library since its row was written — or, under a partial
+     * grant, left the selection. Its row is deleted, not failed: "the asset is gone" and "the upload did not
+     * work" have different causes and different fixes, and the port's partial contract exists so this seam
+     * can tell them apart. Deleted **by key**, because this read selects rows by key: an asset's other rows
+     * — a Live Photo's already-uploaded primary beside its unresolvable paired video — are not this pass's
+     * evidence, and a re-selected or restored photo is simply discovered again.
      *
      * **The rows are admitted first** (capability `photo-selection-policy`). A row is an upstream-filtered
      * structure: it records that the policy admitted its asset *when the row was written*, and a
@@ -497,8 +509,8 @@ class UploadCycle(
         for (row in rows) {
             val resource = byKey[row.key]
             if (resource == null) {
-                log.i { "asset ${row.assetId} is gone — cannot resolve ${row.key}; marking its rows absent" }
-                ledger.markAbsent(row.assetId)
+                log.i { "cannot resolve ${row.key} — its asset is gone; deleting that row" }
+                ledger.deleteKeys(listOf(row.key))
                 continue
             }
             // Through the engine, never around it: it is the one place that decides whether a key uploads,

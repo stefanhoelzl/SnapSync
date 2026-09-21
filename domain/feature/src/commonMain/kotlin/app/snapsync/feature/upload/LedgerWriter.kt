@@ -61,6 +61,21 @@ class LedgerWriter(
         record(resource, LedgerState.FAILED, attempt, eventId)
 
     /**
+     * Delete exactly the rows keyed by [keys] — the cycle's one row deletion (capability `sync-ledger`,
+     * "Deletion is a presence diff over an authoritative walk"). A sync write by the single writer, and
+     * key-scoped on purpose: the caller holds evidence about individual rows, never about every row an
+     * asset has.
+     */
+    suspend fun deleteKeys(keys: Collection<String>) = backend.deleteKeys(keys)
+
+    /**
+     * Clear the retired absence mark from every row an earlier build set it on, so the reads that still
+     * exclude marked rows can reach them again. Idempotent; the single writer's cycle runs it once per
+     * entry, beside [backfillEventId].
+     */
+    suspend fun clearAbsenceMarks() = backend.clearAbsenceMarks()
+
+    /**
      * Record that [assetId] has left the library — a sync write by the single writer (distinct from the
      * app-side [LedgerStore.clear] reset). At the writer layer it consults no engine state; it just
      * marks. The rows survive, so a restored asset re-uploads nothing.

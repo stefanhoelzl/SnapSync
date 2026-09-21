@@ -113,6 +113,8 @@ class OsDrivenUploadMechanismTest {
         override suspend fun backfillManifestDetail(entry: LedgerEntry) = TODO("not reached by this mechanism")
         override suspend fun clear() = TODO("not reached by this mechanism")
         override suspend fun resetTo(entries: List<LedgerEntry>) = TODO("not reached by this mechanism")
+        override suspend fun deleteKeys(keys: Collection<String>) = TODO("not reached by this mechanism")
+        override suspend fun clearAbsenceMarks() = TODO("not reached by this mechanism")
         override suspend fun markAbsent(assetId: String) = TODO("not reached by this mechanism")
         override suspend fun markPresent(assetIds: Collection<String>) = TODO("not reached by this mechanism")
         override suspend fun backfillEventId(eventId: String) = TODO("not reached by this mechanism")

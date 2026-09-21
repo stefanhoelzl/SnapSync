@@ -179,6 +179,31 @@ class SqlDelightLedgerStore(
         dings.tryEmit(Unit)
     }
 
+    override suspend fun deleteKeys(keys: Collection<String>) {
+        if (keys.isEmpty()) return
+        // One transaction, chunked: an IN list is one bind variable per key, and a walk can name more rows
+        // than a driver will bind. Dings only when a row went — a delete that matched nothing changed no truth.
+        val deleted = queries.transactionWithResult {
+            keys.toSet().chunked(KEY_CHUNK).sumOf { chunk ->
+                queries.deleteKeys(chunk)
+                queries.changedRows().executeAsOne()
+            }
+        }
+        if (deleted > 0L) dings.tryEmit(Unit)
+    }
+
+    override suspend fun clearAbsenceMarks() {
+        val cleared = queries.transactionWithResult {
+            queries.clearAbsenceMarks()
+            queries.changedRows().executeAsOne()
+        }
+        if (cleared > 0L) {
+            // Positively observable, like the eventId backfill: the steady-state no-op stays silent.
+            log.i { "absence marks cleared on $cleared row(s) an earlier build marked" }
+            dings.tryEmit(Unit)
+        }
+    }
+
     override suspend fun markAbsent(assetId: String) {
         // An indexed UPDATE over one asset — no keep-set, so no bind-variable limit to work around, which
         // is what the deleted `retainAssets` needed its per-straggler loop for.
@@ -222,6 +247,9 @@ class SqlDelightLedgerStore(
 
 /** Asset ids per `markPresent` UPDATE — well under every driver's bind-variable limit. */
 private const val MARK_PRESENT_CHUNK = 500
+
+/** Keys per `deleteKeys` statement — well under every driver's bind-variable limit. */
+private const val KEY_CHUNK = 500
 
 /**
  * Constructs the generated database with its column adapters wired — the single place that

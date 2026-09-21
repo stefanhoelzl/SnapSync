@@ -27,8 +27,9 @@ import kotlinx.coroutines.test.runTest
 internal const val CREATION_DATE = "2026-06-27T10:00:00Z"
 
 /**
- * The guarded writes of the storage seam (capability `sync-ledger`): a record never overwrites a settled
- * row, and `markPresent` brings an absent asset back. Run by every [LedgerStore] binding through
+ * The guarded and pruning writes of the storage seam (capability `sync-ledger`): a record never overwrites a
+ * settled row, `deleteKeys` deletes exactly the rows it names, and `clearAbsenceMarks` makes the rows an
+ * earlier build marked reachable again. Run by every [LedgerStore] binding through
  * [LedgerStoreContract], which extends this class.
  */
 abstract class LedgerRecordGuardContract {
@@ -156,64 +157,87 @@ abstract class LedgerRecordGuardContract {
     }
 
     @Test
-    fun `markPresent clears a settled row's mark and nothing else`() = runTest {
+    fun `deleteKeys deletes exactly the named rows and leaves an asset's siblings`() = runTest {
         val backend = createBackend()
-        val before = entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, attempt = 2, eventId = "E1")
-        backend.recordUnlessSettled(before)
-        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.FAILED))
-        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
-        backend.markAbsent("A")
-        backend.markAbsent("B")
+        val primary = entry(key = "X-primary.heic", assetId = "X", state = LedgerState.COMPLETED, eventId = "E1")
+        backend.recordUnlessSettled(primary)
+        backend.recordUnlessSettled(entry(key = "X-live.mov", assetId = "X", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(entry(key = "Y-primary.heic", assetId = "Y", state = LedgerState.FAILED))
 
-        // A restored photo: its COMPLETED row is one no record write will ever reach again.
-        backend.markPresent(listOf("A", "unknown"))
+        // The Live Photo case: the paired video's key failed to resolve, and only that key is evidence.
+        backend.deleteKeys(listOf("X-live.mov", "Y-primary.heic"))
 
-        assertEquals(before, backend.get("A-photo.jpg"), "un-marked, every other field untouched")
-        assertEquals(false, backend.get("A-video.mov")?.absent, "every row of the asset, whatever its state")
-        assertEquals(true, backend.get("B-photo.jpg")?.absent, "an asset not named stays absent")
-        assertEquals(listOf("A-photo.jpg", "A-video.mov"), backend.manifestRows().map { it.key }.sorted())
+        assertNull(backend.get("X-live.mov"))
+        assertNull(backend.get("Y-primary.heic"))
+        assertEquals(primary, backend.get("X-primary.heic"), "the sibling survives, every field unchanged")
     }
 
     @Test
-    fun `markPresent dings once when it cleared a mark`() = runTest {
+    fun `deleteKeys dings once when it deleted and not at all when it matched nothing`() = runTest {
         val backend = createBackend()
         backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
-        backend.markAbsent("A")
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
-        backend.markPresent(listOf("A"))
+        backend.deleteKeys(listOf("unknown"))
+        backend.deleteKeys(emptyList())
         runCurrent()
+        assertEquals(0, dings, "a delete that matched nothing changed no truth")
 
+        backend.deleteKeys(listOf("A-photo.jpg"))
+        runCurrent()
         assertEquals(1, dings)
     }
 
     @Test
-    fun `markPresent over assets that are not absent changes nothing and does not ding`() = runTest {
+    fun `deleteKeys handles more keys than one statement binds`() = runTest {
         val backend = createBackend()
-        val row = entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED)
-        backend.recordUnlessSettled(row)
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+        val keys = (0 until 1_200).map { "asset-$it-photo.jpg" }
+        backend.resetTo(keys.map { entry(key = it, state = LedgerState.COMPLETED) } + entry(key = "kept"))
 
-        // The every-cycle case: the walk saw assets, none of which was ever marked.
-        backend.markPresent(listOf("A", "B"))
-        backend.markPresent(emptyList())
-        runCurrent()
+        backend.deleteKeys(keys)
 
-        assertEquals(row, backend.get("A-photo.jpg"))
-        assertEquals(0, dings)
+        assertEquals(listOf("kept"), backend.manifestRows().map { it.key })
     }
 
     @Test
-    fun `markPresent handles more assets than one statement binds`() = runTest {
+    fun `clearAbsenceMarks unmarks every row an earlier build marked and nothing else`() = runTest {
         val backend = createBackend()
-        val ids = (0 until 1_200).map { "asset-$it" }
-        backend.resetTo(ids.map { entry(key = "$it-photo.jpg", assetId = it, state = LedgerState.COMPLETED) })
-        ids.forEach { backend.markAbsent(it) }
+        // An earlier build's mark, seeded verbatim: nothing sets it any more.
+        val settled = entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, attempt = 2, eventId = "E1")
+        backend.resetTo(
+            listOf(
+                settled.markedAbsent(),
+                entry(key = "A-video.mov", assetId = "A", state = LedgerState.FAILED).markedAbsent(),
+                entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED),
+            ),
+        )
+        assertEquals(listOf("B-photo.jpg"), backend.manifestRows().map { it.key }, "marked rows are unreachable")
 
-        backend.markPresent(ids)
+        backend.clearAbsenceMarks()
 
-        assertEquals(ids.size, backend.manifestRows().size, "every named asset is present again")
+        assertEquals(settled, backend.get("A-photo.jpg"), "unmarked, every other field untouched")
+        assertEquals(
+            listOf("A-photo.jpg", "A-video.mov", "B-photo.jpg"),
+            backend.manifestRows().map { it.key }.sorted(),
+        )
+        assertEquals(listOf("A-video.mov"), backend.rowsNeedingJob().map { it.key }, "back in the work read")
+    }
+
+    @Test
+    fun `clearAbsenceMarks dings once when it cleared and not at all on a clean ledger`() = runTest {
+        val backend = createBackend()
+        backend.resetTo(listOf(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED).markedAbsent()))
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        backend.clearAbsenceMarks()
+        runCurrent()
+        assertEquals(1, dings)
+
+        // The every-cycle case after the first: nothing is marked.
+        backend.clearAbsenceMarks()
+        runCurrent()
+        assertEquals(1, dings)
     }
 }

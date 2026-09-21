@@ -145,6 +145,38 @@ interface LedgerStore : TransferRecord {
     suspend fun resetTo(entries: List<LedgerEntry>)
 
     /**
+     * Delete exactly the rows whose key is among [keys], whatever their state, and no other — the one row
+     * deletion a cycle performs (capability `sync-ledger`, "Deletion is a presence diff over an authoritative
+     * walk").
+     *
+     * **Key-scoped, never asset-scoped.** Several resources of one photo share an `assetId` and hold per-key
+     * states, and every caller holds evidence about individual rows: a key that resolved to nothing, or a row
+     * an authoritative walk did not return. An asset-scoped delete driven by a key-grained read reaches rows
+     * the read never selected — a Live Photo's `COMPLETED` primary, deleted because its paired video's key
+     * failed to resolve under a partial grant.
+     *
+     * Writes nothing and dings nothing when none of [keys] has a row. Accepts more keys than one storage
+     * statement binds. A writer-family operation: only the single writer's cycle runs it.
+     */
+    suspend fun deleteKeys(keys: Collection<String>)
+
+    /**
+     * Clear the retired absence mark from every row an earlier build marked, touching nothing else.
+     *
+     * No operation sets the mark any more — a departed asset's rows are deleted, not marked — but every read
+     * that answers "what does this device hold or share" still excludes marked rows, so a row an earlier
+     * build marked would be unreachable forever without this. Cleared, it heals itself: a row that still
+     * needs a job is offered again, fails to resolve, and is deleted by key; a settled one is deleted by the
+     * next authoritative walk if its asset is gone.
+     *
+     * One idempotent statement, run once per cycle beside [backfillEventId]; it matches nothing on every cycle
+     * after the first. Deliberately NOT a schema migration: a migration raises the schema version, which an
+     * older binary refuses to open. Removed with the column by the migration that drops it. Dings [changes]
+     * only when it cleared a mark.
+     */
+    suspend fun clearAbsenceMarks()
+
+    /**
      * Mark every row whose [LedgerEntry.assetId] equals [assetId] as [LedgerEntry.absent] — the asset has
      * left this device's library. The rows are **kept**: what they record (these bytes are on the
      * backend) is still true, and keeping them is what stops a restored asset re-uploading. The backend
