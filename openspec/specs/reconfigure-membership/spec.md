@@ -138,14 +138,20 @@ clamped to the event's `endsAt` ceiling — `min(chosen, endsAt)` — exactly as
 On a successful reconfigure Save the system SHALL re-drive the same provision-side effects a join performs,
 so a change takes effect immediately rather than waiting for the OS's next scheduled cycle:
 
-- when `saveToAlbum` is now **true**, it SHALL ensure the event album (capability `event-album`);
+- when `saveToAlbum` is now **true**, it SHALL ensure the event album and then **start a gather** into it
+  (capability `event-album`, *Ensuring the album gathers what the device already holds*). The gather runs on
+  every such Save, not only one that turns the album on: a lowered cutoff or a changed direction changes
+  what the device holds for the event too;
 - when `direction` now **includes upload**, it SHALL arm the upload producer per the current photo
   permission and **schedule** the upload pump;
 - when `direction` now **includes download**, it SHALL trigger a **download reconcile**.
 
-These effects SHALL be **idempotent** (re-arming an already-armed producer, or ensuring an existing album,
-is a no-op). The command wiring these effects SHALL be built only in the shared composition
-(`compose/SnapSyncApp.kt`), over the existing album/upload-arm/download seams.
+Save SHALL NOT wait for the gather. It is started detached, because its cost grows with the photos the
+device holds for the event, and the command that Save awaits must return when the settings are committed.
+
+These effects SHALL be **idempotent** (re-arming an already-armed producer, ensuring an existing album, or
+gathering photos already in the album, is a no-op). The command wiring these effects SHALL be built only in
+the shared composition (`compose/SnapSyncApp.kt`), over the existing album/upload-arm/download seams.
 
 #### Scenario: Enabling share kicks an upload immediately
 - **WHEN** a `DownloadOnly` membership is reconfigured to include upload and photo access is granted
@@ -158,6 +164,11 @@ is a no-op). The command wiring these effects SHALL be built only in the shared 
 #### Scenario: Turning the album on ensures the album
 - **WHEN** a membership with `saveToAlbum = false` is reconfigured to `true` and access is granted
 - **THEN** the event album is ensured (created or reused) before further syncs place photos
+
+#### Scenario: Saving with the album on starts a gather without waiting for it
+- **WHEN** a membership is saved with `saveToAlbum = true` and access is granted
+- **THEN** a gather into the event album is started after the album is ensured, and the Save command returns
+  without waiting for that gather to finish
 
 ### Requirement: A disabling change drains in-flight uploads but cancels in-flight downloads
 
@@ -200,7 +211,8 @@ The obligations that follow from the extension remaining registered are the cycl
 
 The reconfigure surface SHALL communicate the consequences of a change with **inline helper text** and
 SHALL NOT gate Save behind a confirmation dialog (Save itself is the confirmation). The helper text SHALL
-make clear that turning the album **on** adds only photos synced **from now on** (no backfill).
+make clear that turning the album **on** also collects the photos **already synced**, not only the ones
+synced from now on (capability `event-album`, *Ensuring the album gathers what the device already holds*).
 
 The helper text SHALL further make clear that a **narrowing** change — raising the cutoff, or turning the
 share direction off — **stops the affected photos being listed to the event**, and that this is
@@ -216,9 +228,10 @@ not*).
 Receipt is unaffected: photos this device has already **received** from the event are untouched by any
 narrowing change, exactly as before.
 
-#### Scenario: Album-on carries forward-only helper text
+#### Scenario: Album-on helper text includes photos already synced
 - **WHEN** the album toggle is turned on on the surface
-- **THEN** helper text states that only photos synced from now on are added to the album
+- **THEN** helper text states that the album collects the photos already synced as well as those synced
+  from now on, and no helper text states that only photos synced from now on are added
 
 #### Scenario: Narrowing carries partial-retraction helper text
 - **WHEN** the member raises the cutoff or turns the share direction off on the surface

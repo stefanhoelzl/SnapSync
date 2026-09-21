@@ -8,28 +8,29 @@ partial grant a first-class working state rather than a failure mode — "is eve
 answerable again, because the selection defines "everything", and "In sync" over the chosen set is true.
 For a guest at a stranger's event, picking exactly what to share is the *more* natural grant.
 
-Three measured platform facts shape every requirement here (SE2; the probe records live with the
-decision records). First, iOS's automatic limited-access alert is armed by the **library changing**, not
-by reading: a `PHAsset` fetch under `.limited` surfaces it **iff the library gained content outside the
-app's selection since the app last looked**, armed **once per change** rather than once per fetch — and
-app-created assets join the selection at creation, so an import, and any fetch resolving what it created,
-never arm it. Read volume therefore does **not** change the alert count, and the read discipline below is
-kept for a different reason: under a partial grant the selection *is* the scope, so reading it rather
-than walking the library is simply the correct source. The residual is real and unavoidable — **every
-photo the member takes costs one system prompt**, surfaced by the app's next read, which no read strategy
-avoids. Second, a partially-granted process **cannot change its upload-job registration at all** —
-`setUploadJobExtensionEnabled` is refused in both directions with `PHPhotosErrorAccessUserDenied`
-(3311) — so the ≥26.1 PhotoKit background-upload extension is never registered from `.limited` and the OS
-never invokes it there; hence uploads run the app-driven mechanism. Third, asset and album **creation**
-are unrestricted under `.limited`; hence downloads and the event album need no special handling at all,
-and receive-only is a valid resting state.
+Three measured platform facts shape every requirement here (SE2; the probe records live with the decision
+records). First, the app never raises iOS's automatic limited-access prompt itself. That prompt nudges the
+member to widen the selection; it does not guard reads. The app suppresses it
+(`PHPhotoLibraryPreventAutomaticLimitedAccessAlert`) and owns the picker instead. Reads of an unchanged
+library, and the app's own creations, raise none. Whether a photo taken **outside** the selection gets
+past the key has differed by release (it leaked on iOS 26.5.x and held on 26.6.2), so nothing is designed
+on it. The read discipline below is kept for a different reason: under a partial grant the selection *is*
+the scope, so reading it rather than walking the library is simply the correct source. Second, a
+partially-granted process **cannot change its upload-job registration at all** —
+`setUploadJobExtensionEnabled` is refused in both directions with `PHPhotosErrorAccessUserDenied` (3311) —
+so the ≥26.1 PhotoKit background-upload extension is never registered from `.limited` and the OS never
+invokes it there; hence uploads run the app-driven mechanism. Third, asset and album **creation** are
+unrestricted under `.limited`; hence downloads and the event album need no special handling at all, and
+receive-only is a valid resting state.
 
 Decision record: `changes/archive/2026-07-20-accept-limited-photo-access` (`PROBE-FINDINGS.md` +
 `LIMITED-ACCESS-DESIGN.md`) established this capability;
 `changes/archive/2026-08-06-correct-limited-access-read-premise`
-(`PROBE-FINDINGS.md`, SE2 / iOS 26.5.2) **supersedes its fact 5** — the alert rule above replaces the
-"every autonomous fetch storms" claim, which explained the same observations less well. Evidence for the
-new rule: one device, one OS point release, n = 1 out-of-scope change; re-measure at the next iOS major.
+(`PROBE-FINDINGS.md`, SE2 / iOS 26.5.2) **superseded its fact 5**, the "every autonomous fetch storms"
+claim. `changes/archive/2026-09-21-correct-limited-access-alert-rule` **corrects the alert rule again**.
+August's "one prompt per photo taken" residual rested on the suppression key leaking on iOS 26.5.x, and
+the key held on iOS 26.6.2, so the out-of-scope case is now recorded per release rather than as a rule.
+Evidence: one device; re-measure at the next iOS major.
 `changes/archive/2026-08-25-collapse-upload-tier-seam` (D11, D11b; SE2 / iOS 26.6) **corrects fact 2** —
 the earlier reading, that registration *succeeds and lies* under `.limited`, is contradicted by
 measurement: both directions are refused, and the enable was reached only through a development
@@ -84,12 +85,31 @@ record) contradicts both halves:
 - one camera capture followed by the **sanctioned** change-observer read produced an alert, queued,
   surfacing on the bare home screen after the app was killed.
 
-The rule that fits that evidence **and** the original probe's is: under `.limited` a `PHAsset` fetch
-surfaces the alert **iff the library gained content outside the app's selection since the app last
-looked**, armed **once per change** rather than once per fetch, and merely surfaced by the first fetch
-after it. App-created assets join the selection at creation, so they never arm it. The original probe's
-two storms — the initial grant picker, and taking a photo while the app re-fetched — were both periods
-of out-of-scope change; its five clean creations were fetch-free.
+**What the alert is.** It is iOS's automatic *"Select More Photos… / Keep Current Selection"* prompt: a
+nudge to the member to add photos to a partial selection. It is **not** a guard on reads, because under
+`.limited` the app can only ever read the selection. The app suppresses it with
+`PHPhotoLibraryPreventAutomaticLimitedAccessAlert` and offers its own route instead (see *The app owns the
+limited-library picker*).
+
+**What is settled.** Two probes, on iOS 26.5.2 (2026-08-06) and on iOS 26.6.2
+(`changes/archive/2026-09-21-album-gathers-retroactively`, both on the SE2 with the key in the bundle), agree
+that neither **reads of an unchanged library** nor **the app's own creations** raise the prompt. The
+app's own creations are imports, which join the selection at creation, and album creation and adds over
+selected assets. That holds however many reads follow.
+
+**What is not settled, and SHALL NOT be designed on.** The probes disagree on a change **outside** the
+selection:
+
+- **iOS 26.5 and 26.5.2** leaked the prompt **despite** the key in two probes. In July, prompts stormed
+  during the first-grant picker, and queued after a camera photo plus re-fetches, surviving the app's
+  death. In August, one camera capture then the app's reads surfaced exactly one queued prompt.
+- **iOS 26.6.2:** the same camera stimulus, with 11 reads across 4 launch-and-kill cycles, surfaced
+  **none**, which is what the key promises.
+
+That fits the key working as documented from 26.6 on, but it is one device and one probe on the newer
+release. No requirement, design or justification SHALL assume either outcome. In particular, nothing
+SHALL assert that a limited member pays one prompt per photo taken, and nothing SHALL be justified as
+suppressing one.
 
 It follows that **read volume does not change the alert count**, so this discipline SHALL NOT be
 justified as alert suppression. It is retained on its own merits, which are real: under a partial grant
@@ -101,14 +121,9 @@ to happen at exactly two moments and no others:
   the status total and catching any backlog (selection changes made while the app was dead); and
 - **on a selection-change emission** (next requirement).
 
-**The residual SHALL be stated rather than implied**: because the change observer fires for changes the
-app cannot see, and the app's response to an emission is itself a fetch, **every photo a member takes
-under a partial grant arms one alert that the app's next read surfaces**. During an event that is one
-system prompt per photo taken, and no read strategy avoids it — the alert is armed by the OS on a change
-the app never observes. The only mitigation available is the offered upgrade to full access.
-
 Expiry trigger: re-measure on the next iOS major, or if Apple documents the automatic alert's trigger.
-Caveats on the evidence: one device, one OS point release, **n = 1** out-of-scope change.
+Caveats on the evidence: one device. The leak was seen on iOS 26.5 and 26.5.2 (two probes), and not
+on iOS 26.6.2 (one probe, n = 1 out-of-scope change).
 
 #### Scenario: Foreground entry under limited does not walk the library
 - **WHEN** the app enters the foreground with permission `LIMITED` (not a cold launch)
@@ -128,10 +143,10 @@ Caveats on the evidence: one device, one OS point release, **n = 1** out-of-scop
   the selection since its last read
 - **THEN** no limited-access alert is queued, however many times it reads
 
-#### Scenario: A photo taken elsewhere costs one prompt, not one per read
-- **WHEN** the member captures a photo outside the app's selection and the app subsequently reads the
-  library any number of times
-- **THEN** exactly one limited-access alert is queued, surfaced by the first of those reads
+#### Scenario: The app's own creations raise no prompt
+- **WHEN** under a partial grant the app imports a photo, or creates an album and adds selected photos to
+  it, and then reads the library any number of times
+- **THEN** no limited-access prompt is presented, in the running app or after it is killed
 
 ### Requirement: Selection changes reach the domain through a change-source port
 
@@ -238,22 +253,22 @@ SHALL live entirely in how the source is **constructed and fed**:
 
 - A library **fetch/query** (`PHAsset.fetchAssets…`) SHALL NOT be issued autonomously. The selection is
   captured only at the cold-launch baseline and at photo-selection-change observer emissions, and the
-  source is **fed** that snapshot — never pulled. This is the measured storm: off-flow fetches queue
-  limited-access alerts that survive process death, and
-  `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` does **not** reliably suppress them (decision record
-  `changes/archive/2026-07-20-accept-limited-photo-access`).
+  source is **fed** that snapshot — never pulled. Under a partial grant the selection *is* the scope, so
+  the captured snapshot is the correct source, and an autonomous fetch is a round-trip that buys nothing.
+  (This was once justified as a "storm" of alerts from off-flow fetches. The 2026-08-06 probe retired
+  that: an unchanged library raised none. See *No autonomous library reads under a limited grant*.)
 - A per-asset **resource read** (`assetResourcesForAsset`) of an already-selected asset MAY be issued
-  off-flow. This was measured storm-free on device (SE2, iOS 26.5.2, `.limited`, alert-suppression on):
-  six off-flow bursts over already-held baseline refs produced zero alerts, during the bursts and on the
-  bare home screen after a `SIGKILL`.
+  off-flow. Measured on device (SE2, iOS 26.5.2, `.limited`, alert suppression on): six off-flow bursts
+  over already-held baseline refs produced zero alerts, during the bursts and on the bare home screen
+  after a `SIGKILL`.
 
 The snapshot SHALL nonetheless continue to be read **eagerly, with resources**, at those sanctioned
 points. The spike licenses a lazy per-asset read where the asset reference is still held; it does not
 license one across the snapshot cell, because reaching those assets again later would mean either holding
-platform references for an unbounded period — storm-safety resting on an invariant no type expresses — or
-re-fetching by local identifier, which is the measured storm itself. The eager read is what keeps every
-library **fetch** in-flow, and a limited selection is hand-picked and small, so the deferral would save
-almost nothing for that risk. The lazy path belongs to the *walking* sources, where the reference never
+platform references for an unbounded period — resting on an invariant no type expresses — or re-fetching
+by local identifier, an autonomous library fetch the first bullet forbids. The eager read is what keeps
+every library **fetch** in-flow, and a limited selection is hand-picked and small, so the deferral would
+save almost nothing. The lazy path belongs to the *walking* sources, where the reference never
 leaves the call.
 
 Consequently a candidate under `LIMITED` carries facts derived from the snapshot it was built from, and
@@ -495,4 +510,3 @@ dependence, whether or not the platform honours the attempt.
 - **WHEN** that relinquish attempt is refused because the grant is partial
 - **THEN** the surviving registration is left in place, the app-driven mechanism pumps regardless, and
   exactly one process writes ledger records
-
