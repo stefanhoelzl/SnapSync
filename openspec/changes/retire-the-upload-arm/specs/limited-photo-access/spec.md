@@ -4,15 +4,17 @@
 
 A `LIMITED` membership's uploads SHALL run on the app-driven `URLSession` mechanism (capability
 `ios-url-session-upload`) regardless of OS version. On iOS ≥26.1 this is forced by measurement: the
-OS does not invoke the PhotoKit background-upload extension while the app holds `.limited`, and its
-registration cannot be changed there (capability `ios-photokit-upload` records both constraints). Resolution
+extension's registration cannot be changed while the app holds `.limited` — neither created nor removed
+(capability `ios-photokit-upload`) — so the OS-driven tier cannot be brought up there. Resolution
 therefore yields the app-driven kind under `LIMITED` (capability `upload-lifecycle`), and the app engine's
 entry gate admits its cycle there, scoped to the selection snapshot.
 
 The extension SHALL **withhold** under `LIMITED` at its own entry gate, reading the grant in its own process.
-A registration made under a full grant survives a downgrade (the deregistration is refused), and an extension
-cycle there would inherit a whole-library scope — it has no selection snapshot — so relying on the OS never
-invoking it would rest the partial grant's scope on an unmeasured OS behaviour. The extension SHALL decide on
+A registration made under a full grant survives a downgrade (the deregistration is refused), and **the OS
+does invoke it there** — measured on the SE2, iOS 26.6, 2026-09-21: with a surviving record and a partial
+grant, `process()` ran four seconds after a new photo joined the selection. An extension cycle there would
+inherit a whole-library scope — it has no selection snapshot — so the gate is load-bearing, not
+defense-in-depth. The extension SHALL decide on
 the permission, never on its selection scope, whose default is untrue under a partial grant.
 
 #### Scenario: A limited member on iOS ≥26.1 uploads via the app-driven tier

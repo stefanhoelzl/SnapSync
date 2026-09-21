@@ -249,7 +249,10 @@ would be a silent no-op: the screen would sit at "Synchronization pending…" in
 the failure mode this requirement exists to prevent.
 
 A registration that **survives** a downgrade to a partial grant SHALL be made **inert by the extension's own
-gate**, not only by the OS's observed behaviour: the extension reads the grant in its own process and
+gate**. The OS does NOT leave it alone — measured on the SE2, iOS 26.6, 2026-09-21: with a surviving record
+under `LIMITED`, `process()` ran four seconds after a new photo joined the selection, and the gate withheld
+it. That supersedes this requirement's earlier reading that such a record is inert because the OS does not
+invoke it. The extension reads the grant in its own process and
 withholds under anything but `GRANTED` ("The extension withholds its cycle without a full grant"). A return to
 a full grant is a permission change whose compared reconcile re-registers through the disable→enable ritual
 if the record is gone. There is therefore no state in which a surviving registration and a running
@@ -268,7 +271,8 @@ places the app-driven mechanism (`upload-lifecycle`).
 
 #### Scenario: The surviving registration causes no second writer
 - **WHEN** a registration survives a downgrade to a partial grant and the app-driven mechanism is running
-- **THEN** an extension invocation withholds at its gate, so exactly one process writes ledger records
+- **THEN** an extension invocation — which the OS does make (measured, iOS 26.6) — withholds at its gate,
+  so exactly one process writes ledger records
 
 #### Scenario: An enable under a partial grant is refused too
 - **WHEN** the OS-driven mechanism is pinned by a development override under a `LIMITED` grant and its
