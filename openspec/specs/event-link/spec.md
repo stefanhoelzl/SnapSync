@@ -306,16 +306,16 @@ the cost is a deferred cycle, not a false leave.
 a misclassified not-found was caught downstream — the fallback found the legacy item and the device
 stayed joined — so absence required a *second* answer to agree. It no longer does: the classifier
 that decides whether an `NSError` belongs to the not-found class is now solely load-bearing for the
-leave decision, and a wrong verdict is an unrecoverable, silent logout (capability
-`upload-state-reconciliation` states the consequence). Widening that whitelist SHALL therefore be
-treated as changing the leave decision itself.
+leave decision, and a wrong verdict silently reads a joined device as not joined (the consequence is
+stated below). Widening that whitelist SHALL therefore be treated as changing the leave decision itself.
 
-A reader that acts on the absence of a config — in particular the re-join reconciliation, for
-which "no event configured" means *the device left the event* and triggers clearing the persisted
-`joinedEventId` marker (capability `upload-state-reconciliation`) — SHALL act **only** on a
-definitely absent config. On an unreadable config **the upload cycle** SHALL skip entirely: it
-SHALL NOT reconcile, SHALL NOT clear the join marker, SHALL NOT write the ledger, and
-SHALL NOT create upload jobs; the cycle SHALL complete cleanly and the next cycle SHALL retry.
+A reader that acts on the absence of a config — in particular the upload cycle, for which "no event
+configured" means *not joined* and therefore *upload nothing* — SHALL act **only** on a definitely
+absent config. On an unreadable config **the upload cycle** SHALL skip entirely: it SHALL NOT touch
+the ledger (no write, no clear, no reset), SHALL NOT write the device manifest, and SHALL NOT create
+upload jobs; the cycle SHALL complete cleanly and the next cycle SHALL retry. Neither outcome is a
+leave: the cycle holds no leave-side action at all — ending a membership, and clearing the upload
+ledger with it, is the explicit leave's (capability `leave-event`), never an inference from a read.
 
 This SHALL hold on **every upload tier and at every trigger**, not only where the OS is the
 invoker. The tiers differ in who invokes a cycle — the OS on iOS ≥26.1, the app on iOS 18–26.0 —
@@ -323,23 +323,27 @@ and not in what an unreadable membership means. A tier SHALL NOT reach this deci
 two-state read that cannot express "unreadable"; the three-state read is the only permitted path
 (capability `upload-lifecycle`, which owns where the decision is made).
 
-Conflating the two is what makes an ordinary locked-device wake perform a *false leave*: the
-marker is cleared, and the next readable cycle sees a marker mismatch and pays for a full re-join
-reconciliation (a device listing, an atomic ledger clear-and-seed to bare rows, and a walk that
-must re-read every seeded asset's resources) — repeatedly, without the marker ever settling.
+Conflating the two is what makes an ordinary locked-device wake read as *not joined*. Because the
+not-joined path writes nothing, the upload cycle's cost is bounded to that cycle: it uploads nothing,
+and the next readable cycle proceeds as a joined one with its ledger intact. The remaining risk is the
+app's: a false absence is a *conclusive* read, so the trigger-time reload replaces the held config with
+it (`configAfterReload`, below) and the app treats the device as not joined — the screen regresses to
+the setup gate until a later conclusive read restores the membership. A user who answers that gate by
+re-scanning the invite reaches a join, whose clear-then-load re-baselines the ledger from the
+per-device listing (capability `join-event`). That is why the absence class stays a closed whitelist.
 
-#### Scenario: An unreadable config does not clear the join marker
+#### Scenario: An unreadable config leaves the ledger and the membership untouched
 
 - **WHEN** an upload cycle reads the config and the read fails because protected data is
   unavailable (the file read fails permission-class before first unlock)
-- **THEN** the cycle is skipped, the reconciliation is not invoked, the persisted `joinedEventId`
-  marker is left intact, the ledger is not written, and the cycle completes cleanly
+- **THEN** the cycle is skipped, the ledger is not written, cleared or reset, no upload job is
+  created, the config file is left intact, and the cycle completes cleanly
 
-#### Scenario: A definitely-absent config still drives the leave path
+#### Scenario: A definitely-absent config reads as not joined
 
 - **WHEN** an upload cycle reads the config and the file is missing by the not-found error class
-- **THEN** the reconciliation runs for the no-config case and clears the `joinedEventId` marker,
-  exactly as a leave requires — with no other store consulted
+- **THEN** the cycle takes the not-joined path — it uploads nothing, creates no upload job, and
+  writes nothing to the ledger — with no other store consulted
 
 #### Scenario: An unrecognized read error stays unreadable
 
@@ -351,15 +355,15 @@ must re-read every seeded asset's resources) — repeatedly, without the marker 
 #### Scenario: A joined device stays settled across locked wakes
 
 - **WHEN** a joined device runs cycles repeatedly while locked and its config is unreadable
-- **THEN** its join marker still matches its configured event on the next readable cycle, so no
-  re-join reconciliation or ledger re-seed is performed
+- **THEN** its ledger is exactly as the last readable cycle left it, and the next readable cycle
+  proceeds as a joined cycle — no listing is fetched and the ledger is not re-seeded
 
 #### Scenario: The app-driven tier skips rather than leaves
 
 - **WHEN** the app-driven tier (iOS 18–26.0) runs a cycle from any trigger — foreground, background task,
   silent push, or session events — and the config read fails because protected data is unavailable
-- **THEN** the cycle is skipped, the `joinedEventId` marker is left intact, and the membership survives —
-  the same outcome the OS-invoked tier produces
+- **THEN** the cycle is skipped, the ledger is untouched, and the membership survives — the same
+  outcome the OS-invoked tier produces
 
 ### Requirement: Event name is fetched, not carried in the event link
 
@@ -390,31 +394,45 @@ last-known name unchanged and SHALL NOT affect syncing.
 
 ### Requirement: Switching events leaves the previous event first
 
-The provisioning flow SHALL fire a best-effort backend leave of the previous event before persisting a
-new event's config, whenever a valid event link provisions an event whose `eventId` **differs**
-from the currently provisioned one (a switch). That leave issues
+The provisioning flow (`flow/Provision`) SHALL run a switch as a leave of the previous event followed
+by a join of the new one — a switch being a valid event link that provisions an event whose `eventId`
+**differs** from the currently provisioned one — in this order:
+
+1. **stop uploads** (`uploadArm.onLeave()`), so no mechanism starts new work against a ledger about to
+   be replaced;
+2. send the **best-effort backend leave** of the previous event, awaited;
+3. run the **join-time ledger load**, awaited (capability `join-event`, "A provision into a new
+   membership clears, then loads the upload ledger"), so no cycle can see the new membership over the
+   previous membership's ledger;
+4. **persist** the new event's config;
+5. then refresh status, arm the upload mechanism (`uploadArm.onProvision()`), ensure the album, and start
+   downloads and push, as for any provision.
+
+A first join (no current membership) takes steps 3–5. The backend leave issues
 `DELETE /events/<previousEventId>/devices/<deviceId>` via the same `HttpLeaveNotifier` the explicit
 Leave uses. The previous `eventId` SHALL be
 read before it is replaced. Provisioning an event link for the **same** event that is already configured
-SHALL remain an idempotent no-op and SHALL NOT fire a leave. The backend leave SHALL be best-effort — a
-failure SHALL NOT prevent the switch — so the device always ends up provisioned to the new event. The
+SHALL tear nothing down: it SHALL NOT stop uploads, SHALL NOT fire a leave, and SHALL NOT load or reset
+the upload ledger. The backend leave SHALL be best-effort — a failure SHALL NOT prevent the switch — so
+the device always ends up provisioned to the new event. The
 switch fires the leave **without** a confirmation dialog (the leave-confirm-on-switch dialog is a
 separate change).
 
 #### Scenario: Provisioning a different event leaves the previous one
 
 - **WHEN** an event link provisions an `eventId` different from the currently configured event
-- **THEN** the flow issues `DELETE /events/<previousEventId>/devices/<deviceId>` best-effort, then persists the new event's config
+- **THEN** the flow stops uploads, then issues `DELETE /events/<previousEventId>/devices/<deviceId>` best-effort, then runs the join-time ledger load, then persists the new event's config, all before the upload mechanism is armed
 
 #### Scenario: Re-provisioning the same event fires no leave
 
 - **WHEN** an event link provisions the `eventId` already configured
-- **THEN** provisioning is an idempotent no-op and no backend leave is issued
+- **THEN** uploads are not stopped, no backend leave is issued, and the upload ledger is neither loaded
+  nor reset
 
 #### Scenario: A failed switch-leave still switches
 
 - **WHEN** the previous-event `DELETE` fails during a switch
-- **THEN** the failure is logged and the new event's config is still persisted (the device is provisioned to the new event)
+- **THEN** the failure is logged and the ledger is still loaded and the new event's config still persisted (the device is provisioned to the new event)
 
 ### Requirement: iOS file-backed config store
 
@@ -472,7 +490,7 @@ instead of reading a leave.
 
 The adapter SHALL seed its `config` `StateFlow` synchronously at construction from the same read
 (mapping both *absent* and *unreadable* to `null` — acceptable for the UI, never for the
-reconciler, which uses the three-state `ConfigReader`), and SHALL expose a `reload()` the trigger
+upload cycle, which uses the three-state `ConfigReader`), and SHALL expose a `reload()` the trigger
 flows call before acting (migration step 12 — the trigger-time membership re-read replaced the
 protected-data unlock hook; see `ios-app-shell`): a background construction before first unlock
 seeds `null` (the protected read fails permission-class → unreadable) and is repaired at the next
@@ -518,21 +536,21 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
 
 - **WHEN** a read finds a file whose envelope version is not this build's (e.g. a revert build
   opening a successor's file)
-- **THEN** the read reports **unreadable** — the cycle skips, no marker is cleared, no upload runs
-  — and never reports no-config
+- **THEN** the read reports **unreadable** — the cycle skips, the ledger is untouched, no upload
+  runs — and never reports no-config
 
 #### Scenario: A current-version file without a cutoff reads as unreadable
 
 - **WHEN** a read finds a current-version envelope whose payload lacks `minPhotoDate`
 - **THEN** the decode fails, the failure is logged, the read reports **unreadable** (never
-  no-config — no marker is cleared), no default cutoff is substituted, and no upload occurs until
+  no-config — the ledger is untouched), no default cutoff is substituted, and no upload occurs until
   the user re-joins
 
 #### Scenario: A current-version file without a name reads as unreadable
 
 - **WHEN** a read finds a current-version envelope whose payload lacks `name`
 - **THEN** the decode fails, the failure is logged, the read reports **unreadable** (never
-  no-config — the file is left intact, no marker is cleared, and no backend leave is issued), and
+  no-config — the file is left intact, the ledger is untouched, and no backend leave is issued), and
   no empty name is substituted
 
 #### Scenario: A trigger-time reload retains the membership on a transient failure

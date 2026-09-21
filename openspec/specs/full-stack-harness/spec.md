@@ -68,7 +68,8 @@ every count shown on the phone frame SHALL be computed by the real projection ov
 
 Nothing SHALL auto-run: the operator plays the OS. The inspector SHALL provide a primary **Invoke
 extension** action that runs exactly one extension invocation — the `process()`-shaped upload cycle
-(reload config → reconcile → build config → run the real cycle, via the world's runner) **and** a
+(reload config → build config → run the real cycle, via the world's runner — the cycle holds no
+reconcile step; the upload ledger was loaded when the event was provisioned) **and** a
 download reconcile over the event union — and then refreshes the status and download sources so the
 left pane reflects the new world state. Every invocation's discovery is a full enumeration of the world's
 gallery (capability `harness-world-model`), so there is no change token for the inspector to expire.
@@ -158,8 +159,9 @@ with the left pane re-binding its status host to the new sources (keyed on a wor
 because the world is a live stateful stack (backend byte store, ledger, gallery) whose deposited state
 cannot be un-set by resetting a cell. The presets SHALL be: **Clean** (nothing joined), **Enrolled**
 (event provisioned with own assets present), **Fresh join** (a fresh event, own assets present,
-nothing stored yet), **Re-provision (dedup)** (own assets already stored, then provisioned so
-reconcile seeds them `COMPLETED` and a subsequent invoke uploads nothing new), and **Foreign
+nothing stored yet), **Re-provision (dedup)** (own assets already stored, then provisioned so the
+join-time load seeds them `COMPLETED` from the per-device listing and a subsequent invoke uploads nothing
+new), and **Foreign
 download** (event provisioned with an injected foreign device's complete assets in the union).
 Incremental controls SHALL mutate the current world in place (no world rebuild).
 
@@ -172,7 +174,9 @@ Incremental controls SHALL mutate the current world in place (no world rebuild).
 #### Scenario: Re-provision dedup uploads nothing new
 
 - **WHEN** the operator selects Re-provision (dedup) and invokes the extension
-- **THEN** reconcile seeds the already-stored assets `COMPLETED` and the cycle creates no new upload job
+- **THEN** the already-stored assets are `COMPLETED` in the ledger as soon as the preset's provision
+  returns — the join-time load seeded them, before any invoke — and the invoked cycle creates no new upload
+  job
 
 #### Scenario: Incremental edits keep the world
 

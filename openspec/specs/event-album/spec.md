@@ -15,11 +15,12 @@ own (`photo-download`): the grouping lives where the user already looks at photo
 The **app is the sole album creator**, eagerly on the photo-permission grant, because album creation needs a
 grant the extension may not have. Album identity is remembered per event and **survives leave**, so a rejoin
 reuses the same album rather than spawning a duplicate. A member's own photos are added when their upload is
-first enqueued, in whichever process runs the cycle — placement waits for no upload outcome; downloaded photos
+first enqueued, in whichever process runs the cycle — placement waits for no upload outcome — and a photo whose
+bytes were already stored, which the join loaded from the device's stored-file listing, is added when the walk
+first dates its row (`changes/archive/2026-09-21-join-loads-leave-clears`); downloaded photos
 are added atomically inside the importer's existing commit, so a photo is never visible in the library but
 missing from the album. What the device **already holds** is gathered by the app on each opt-in act: photos
-shared or received before the member opted in, and photos contributed during an earlier event that this
-event's window admits. So the album mirrors the event as the device holds it, not only what arrived after
+shared or received before the member opted in. So the album mirrors the event as the device holds it, not only what arrived after
 the toggle.
 
 Decision record: `changes/archive/2026-07-08-add-event-album`. Own-photo placement moved from upload
@@ -151,7 +152,9 @@ For a `saveToAlbum` membership, the upload cycle SHALL add a member's **own** ph
 its upload is **first enqueued**, in **whichever process runs the cycle** — the upload extension on iOS ≥26.1
 and the app on iOS 18–26.0. Placement depends on no upload outcome: a photo belongs to the event from the
 moment this device commits to sharing it, which is also what the device manifest already declares (capability
-`device-manifest`).
+`device-manifest`). First enqueue is not the only own-photo placement moment: a photo the join-time load
+recorded as already stored is never enqueued, and is placed when the walk fills its bare row's detail (see *Own
+photos loaded at join are added when the walk fills their detail*).
 
 In each cycle's enqueue stage, after the rows needing a job have been admitted by the membership's **current**
 policy, bounded to the slice the platform will accept, and resolved to live resources — and **before** any job
@@ -169,8 +172,8 @@ placement is idempotent, as the gather below already relies on. A failure the cy
 platform's returned jobs does not pass through the enqueue stage and is not placed there.
 
 The placement SHALL NOT be attempted for a row the current policy excludes, for a row whose
-resource no longer resolves, or on a cycle that creates no upload work (an unreadable or absent membership, a
-deferred re-join reconciliation, or a direction that excludes upload). Rows settled by the ledger migration
+resource no longer resolves, or on a cycle that creates no upload work (an unreadable or absent membership, or a
+direction that excludes upload). Rows settled by the ledger migration
 that retired `UPLOADED` SHALL NOT be placed (capability `sync-ledger`).
 
 Because a returned ledger row carries only its normalized `assetId`, the system SHALL recover each asset's raw
@@ -218,7 +221,14 @@ The **app process** SHALL **gather** into the event album the photos of the even
 holds. Placement at first enqueue and at import covers what is synced **after** an album exists. The gather
 covers what was already there: photos shared or received before the member turned the album on, and photos
 this device contributed during an earlier event that this event's window also admits. Those photos are
-listed in this event's device manifest, but they are never enqueued again, so no enqueue ever places them.
+listed in this event's device manifest once dated, but they are never enqueued again, so no enqueue ever
+places them.
+
+At a provision into a new membership the ledger holds nothing from before it: the join-time load records every
+resource the backend holds for this device as a **bare** row (capability `upload-state-reconciliation`). No
+projection admits an undated row, so the gather that provision starts does not see those photos and may place
+no own photo at all. They are placed when a cycle's walk fills their detail (see *Own photos loaded at join
+are added when the walk fills their detail*); a later gather re-adds them harmlessly.
 
 **What it places.** A gather SHALL place two sets, and only these:
 
@@ -259,9 +269,13 @@ album: it runs after the album has been ensured.
 set, and the own set SHALL still be gathered. A missing asset SHALL be skipped. Each failure SHALL be
 logged. A failed gather SHALL NOT be retried on its own: the next opt-in act runs another.
 
-#### Scenario: A carried-over photo is gathered at join
-- **WHEN** a device joins an event with `saveToAlbum = true`, and its ledger holds a `COMPLETED` row from an earlier event whose photo the new membership's policy admits
-- **THEN** that photo is added to the new event's album, although no upload job is created for it
+#### Scenario: A carried-over photo is placed when its loaded row is healed, not by the join's gather
+- **WHEN** a device joins an event with `saveToAlbum = true`, and the per-device listing holds a resource it uploaded during an earlier event, whose photo the new membership's policy admits
+- **THEN** the join-time load records a bare `COMPLETED` row for it, the provision's gather does not place it because the row is undated, and the first cycle whose walk fills that row's detail adds the photo to the new event's album, although no upload job is created for it
+
+#### Scenario: A later gather places a healed carried-over photo
+- **WHEN** a carried-over photo's loaded row has had its detail filled, and the member then saves a `reconfigure-membership` change with `saveToAlbum = true`
+- **THEN** the gather includes that photo, and adding it again when it is already in the album changes nothing
 
 #### Scenario: A photo received in another event is not gathered
 - **WHEN** the download store holds an `IMPORTED` row from an earlier event whose asset is not in this event's union
@@ -301,7 +315,7 @@ logged. A failed gather SHALL NOT be retried on its own: the next opt-in act run
 
 #### Scenario: The extension never gathers
 - **WHEN** the upload extension runs a cycle
-- **THEN** it runs no gather, and only the enqueue-time placement adds photos to the album
+- **THEN** it runs no gather; only the enqueue-time placement and the placement of rows whose detail the walk fills add photos to the album
 
 ### Requirement: Album orchestration is a tested commonMain coordinator over platform seams
 
@@ -392,4 +406,65 @@ album is populated by whichever direction(s) sync).
 #### Scenario: An existing membership keeps its stored choice
 - **WHEN** a membership persisted with `saveToAlbum = false` before this default changed is loaded
 - **THEN** it stays `saveToAlbum = false` — no migration flips it — and the reconfigure surface seeds from the stored value
+
+### Requirement: Own photos loaded at join are added when the walk fills their detail
+
+For a `saveToAlbum` membership, the upload cycle SHALL add a member's **own** photo to the event album when the
+cycle's walk fills the manifest detail of a **bare** ledger row for that photo's asset, in **whichever process
+runs the cycle** — the upload extension on iOS ≥26.1, and the app on iOS 18–26.0 and under a partial grant.
+This is the **second** own-photo placement moment, beside first enqueue (see *Own photos are added when their
+upload is first enqueued, in the running process*).
+
+A bare row is what the join-time load records for every resource the backend already holds for this device
+(capability `upload-state-reconciliation`): a `COMPLETED` row with no capture date. Such a photo is never
+enqueued, so first enqueue never places it. The gather a provision starts does not place it either: it runs
+before any walk has dated the row, and no projection admits an undated row (capability `device-manifest`). On
+iOS ≥26.1 the walk runs in the extension, so the app cannot order a gather after it. Placing at the moment the
+walk dates the row is what gets a photo the device shared before this membership into this event's album.
+
+In each cycle's decide stage, the cycle already determines which assets the membership's **current** policy
+admits and which of those have a bare row (the assets the walk reads because the ledger does not fully know
+them, capability `sync-ledger`). In the update stage the cycle SHALL place, in a **single best-effort add**, the
+admitted assets whose bare row this walk is filling. The add SHALL be issued **before** the fill is written:
+once a row carries its detail it is no longer bare, so a process death between a fill and a later placement
+would leave a photo this moment never places again. Placed first, an interrupted fill leaves the row bare and
+the next cycle's placement repeats harmlessly.
+
+The placement SHALL NOT be attempted for an asset the current policy excludes, for an asset with no bare row,
+or on a cycle whose walk does not run (an unreadable or absent membership, or a direction that excludes
+upload). It SHALL use the same identifier recovery and the same best-effort rules as the enqueue-time
+placement: the normalized `assetId` is reversed to its raw `localIdentifier`; a missing asset or a missing
+album is skipped without error; the extension only **adds** and never creates the album; and a failure SHALL
+NOT fail, block, or retry the fill or any other part of the cycle. It keeps no record of what it placed:
+adding an asset already in the collection is a no-op (measured, simulator, iOS 26.5), so a later gather or a
+repeated placement re-adding it is harmless.
+
+#### Scenario: A photo stored before the join reaches the album when its row is healed
+- **WHEN** a device joins an event with `saveToAlbum = true`, the join-time load records a bare `COMPLETED` row
+  for a photo the device uploaded earlier, and the membership's policy admits that photo
+- **THEN** the first cycle whose walk fills that row's detail adds the photo to the event album, although no
+  upload job is created for it
+
+#### Scenario: The extension places a healed photo on iOS 26.1 and later
+- **WHEN** the upload extension runs the cycle whose walk fills a bare row's detail for a `saveToAlbum`
+  membership whose album exists
+- **THEN** the extension adds the photo to the album in that cycle, and creates no album
+
+#### Scenario: A loaded row the policy excludes is not placed
+- **WHEN** the join-time load records a bare row for a photo whose capture date the membership's policy does
+  not admit
+- **THEN** the photo is not added to the album
+
+#### Scenario: Placement precedes the fill
+- **WHEN** a cycle places the assets whose bare rows it is filling
+- **THEN** the album add is issued before their detail is written, so an interrupted cycle leaves the rows
+  bare and a later cycle places them again
+
+#### Scenario: A failed placement does not stop the fill
+- **WHEN** the album add fails, or the album does not yet exist
+- **THEN** the failure is logged, and the rows' detail is still filled and the cycle still reports its outcome
+
+#### Scenario: An opted-out membership places nothing on a fill
+- **WHEN** a cycle fills bare rows' detail for a membership with `saveToAlbum = false`
+- **THEN** no photo is added to any album
 

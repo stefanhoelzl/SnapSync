@@ -172,3 +172,48 @@ sites.
     lands there too), not the App-Group container, so a key planted in the App-Group plist is never read.
     The removal was verified against the file the app actually uses.
 
+
+## Archive gate 2 — delta completeness
+
+Modules the diff touched, each resolved to its capability:
+
+- `:domain` `ports/` (`DeviceFilesSource`/`StoredResource`, `LedgerStore.assetProgress`, `GalleryStatusSource`,
+  `ConfigPorts` KDoc; `JoinedEventMarker` deleted) → `upload-state-reconciliation`, `sync-ledger`, `gallery-status`,
+  `event-link`. Deltas.
+- `:domain` `model/` (`bytesBelievedStored` deleted; KDoc) → `sync-ledger`. Delta.
+- `:domain` `feature/upload` (`UploadCycle`, reconciler/audit/`UploadForeground` deleted, healed-row placement) →
+  `upload-lifecycle`, `upload-state-reconciliation`, `event-album`, `device-manifest`. Deltas.
+- `:domain` `feature/membership` (`ShareSetLoad`, `MembershipEntry`, `SwitchDecision`, `LeaveEvent`,
+  `ResetDeviceState` KDoc) → `join-event`, `upload-state-reconciliation`, `leave-event`, `device-state-reset`.
+  Deltas.
+- `:domain` `feature/status` (`LedgerCounts` sets, `LedgerBackedSyncStatusSource`, `OwnDeviceGalleryStatusSource`)
+  → `sync-status`, `gallery-status`. Deltas.
+- `:domain` `flow/` (`Provision`, `Foreground`) and `compose/` (`SnapSyncApp`, `UploadCore`, `UploadRecordPorts`,
+  `ShareSetComposition`) → `join-event`, `event-link`, `upload-lifecycle`, `upload-state-reconciliation`. Deltas.
+  `architecture/` is regenerated output of the same (capability `architecture-diagrams`: behaviour-preserving
+  there — no requirement of that capability changed).
+- `:adapter:generic:app` (`HttpDeviceFilesSource`, `Ledger.sq` `assetProgress`, `SqlDelightLedgerStore`) →
+  `upload-state-reconciliation`, `sync-ledger`. Deltas.
+- `:adapter:ios:ext-safe` (`IosJoinedEventMarker` deleted, `removeOrphanedJoinMarker`, config KDoc) →
+  `ios-app-shell`, `architecture-guards`, `event-link`. Deltas.
+- `:adapter:generic:fake` (in-memory ledger/gallery stores, marker fake deleted) → no capability of its own; it
+  implements the `sync-ledger` / `gallery-status` port contracts, which carry the deltas.
+- `:app:ios` (`SnapSyncRoot`, `UrlSessionUploadController`) and `:app:ios:extension` (`UploadExtensionRoot`) →
+  `ios-app-shell`, `ios-url-session-upload`, `ios-photokit-upload`. Deltas.
+- `:app:desktop` (world inspector labels) → `full-stack-harness`. Delta.
+- `:test:world` (`World.provision/leave`, contracts, `WorldRunner`/`BackendStore` KDoc) → `harness-world-model`.
+  Delta.
+- `:test:integration` (new `ShareSetIntegrationTest`, updated gate/status tests) → `testing-architecture`: no delta
+  needed — tests placed per its existing rules; the behaviour they pin is in the deltas above.
+- `:test:architecture` (`RuntimeIdentityTest` pin comment, `CompositionSeamTest` floor) → `architecture-guards`.
+  Delta (the pin); the floor change is behaviour-preserving (the bundle shrank by the deleted marker field).
+- `:test:rig` (`RigState`, `IosRigBuilders` read the set-based counts) → dev infra, no spec by design (CLAUDE.md
+  module map: "non-gating, no spec").
+- `CLAUDE.md` module map, `.claude/skills/ios-simulator` and `.claude/skills/local-backend` wording → docs; no
+  capability.
+
+## Archive gate 3 — dead types
+
+Removed types that exist nowhere else in the tree: `JoinedEventMarker`, `InMemoryJoinedEventMarker`,
+`IosJoinedEventMarker`, `UploadReconciler`, `UploadLedgerAudit` (+ `Findings`), `UploadForeground`,
+`CycleOutcome.SeedDeferred`. `grep` over `openspec/specs/` finds none of them after the sync.

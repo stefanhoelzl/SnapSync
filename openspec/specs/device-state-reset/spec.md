@@ -5,15 +5,13 @@
 Void this device's durable sync state, so a build pointed at a **different backend** starts from nothing
 rather than from state describing bytes that backend does not hold.
 
-Crossing backends inverts every premise the retained state was right to keep. The upload ledger's key is the
-bare filename and is therefore event-independent, so a `COMPLETED` row stays *true* across a leave — and
-becomes a lie the moment the bytes live on a backend the device no longer talks to. The device then uploads
-**nothing**, with no error, no failed request, and no log line, which is indistinguishable from a broken rig.
-It bites in both directions: going to a local backend, and coming back.
+A `COMPLETED` row the device kept would be a lie the moment the bytes live on a backend the device no longer
+talks to: the device uploads **nothing**, with no error, no failed request, and no log line, which is
+indistinguishable from a broken rig. It bites in both directions: going to a local backend, and coming back.
 
-This is not "leave harder". `leave-event` deliberately keeps the ledger and is right to, because a leave does
-not remove this device's bytes from its storage partition. The reset exists for the one case where that
-reasoning stops holding.
+Since `changes/archive/2026-09-21-join-loads-leave-clears` a leave clears the upload ledger too, so the reset is close to "leave harder". The one difference
+that remains is that a reset notifies **no backend**: the event belongs to the backend being left behind, which
+this build can no longer reach.
 
 Decision record: `changes/archive/2026-08-24-retire-launch-env-triggers`.
 ## Requirements
@@ -114,9 +112,16 @@ only cost an extra round trip.
 ### Requirement: A reset on a running process may be overtaken by work already in flight
 
 The operation SHALL be usable on a running process, and every step SHALL be one that some runtime path
-already performs on a live app — clearing the config is what a leave does, emptying the ledger is what a
-re-join's clear-and-seed does against an empty listing, and the download prune already runs under the download controller's lock. It
-SHALL NOT require a relaunch to leave the process coherent.
+already performs on a live app — emptying the upload ledger and then clearing the config is what a leave
+does (capability `leave-event`), and the download prune already runs under the download controller's lock.
+It SHALL NOT require a relaunch to leave the process coherent.
+
+Since a leave now clears the upload ledger too, the operation is no longer distinguished from a leave by
+what it clears: both empty the upload ledger, clear the membership config, and drop only the prunable
+download rows, retaining every handle-carrying one ("Rows carrying an import handle are retained"). The
+behavioural difference that remains is that the operation issues **no backend notify** — the membership
+belongs to the backend the device is leaving behind, and the newly baked backend never knew this device —
+whereas a leave notifies the backend it is leaving.
 
 An upload cycle **already in flight** when the operation runs MAY complete and write rows into the ledger it
 just emptied. This is stated rather than prevented: the cycle gate re-reads the membership config each run,

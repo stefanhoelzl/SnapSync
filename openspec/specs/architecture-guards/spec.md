@@ -518,10 +518,15 @@ is a spec change to this requirement, deliberately):
   are checked only for the device-id seat's presence, not pinned as a set. That gap is narrow by
   construction (a scoped read cannot find the unscoped items pre-11a builds wrote, which is the only
   thing such a seat could be after) and is named here rather than left to be discovered.
-- **App-Group `NSUserDefaults` keys** `rejoin.joinedEventId`, `app.snapsync.album.map`. The discovery
+- **App-Group `NSUserDefaults` keys** `app.snapsync.album.map` and `rejoin.joinedEventId`. The discovery
   cursor's key `discovery.changeToken` was **retired from this inventory** when the cursor was removed: it
   appears in production Kotlin nowhere, which an exactly-once pin cannot express. A stale value an older
-  build left in the App-Group defaults is inert.
+  build left in the App-Group defaults is inert. The upload tier's join-marker key `rejoin.joinedEventId`
+  **stays pinned, as a removal target**: nothing reads or writes it since the marker was deleted, and its
+  one production occurrence is the start-up removal that deletes the orphaned key from every existing
+  device's App-Group defaults (capability `ios-app-shell`). That removal is what keeps a revert clean, and
+  it fails *silently* if the literal drifts — `removeObjectForKey` on a misspelled key is a no-op that no
+  test, log or device would notice. The exactly-once pin is what makes a re-valued literal fail the build.
 - **Database filenames** `ledger.db`, `downloads.db`.
 - **Config filename** `eventconfig.json` — the App-Group config file of record (capability
   `event-link`; the only config storage). Re-valuing it reads every joined device's file as
@@ -603,6 +608,12 @@ files.
 
 - **WHEN** the guard classifies the device-id seat
 - **THEN** it is found among the seats that name an access group, never among the unscoped ones
+
+#### Scenario: The retired join-marker key is pinned at its removal site
+
+- **WHEN** the literal at the orphaned-key removal site no longer equals `rejoin.joinedEventId`, or a second
+  production occurrence of it appears
+- **THEN** the guard fails, because a drifted removal would silently leave the key in place on every device
 
 #### Scenario: A BGTask id diverges between Kotlin and Info.plist
 
