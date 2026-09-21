@@ -98,7 +98,7 @@ there SHALL be no cross-process write contention on this tier.
 
 ### Requirement: Stranded reconciliation: scoped each cycle, complete at a start
 
-The app-driven tier SHALL record `FAILED` every `REQUESTED` row whose transfer ended without reporting an
+The app-driven tier SHALL record `DISCOVERED` every `REQUESTED` row whose transfer ended without reporting an
 outcome — the OS dropped it, or a force-quit or a cancellation ended it with no completion delivered — so a later
 cycle re-uploads it: the engine never re-issues a `REQUESTED` key, and nothing else will ever move that row. It
 SHALL do this **precisely**, from facts its transport can enumerate, and SHALL NOT depend on any blanket clear. It
@@ -106,11 +106,11 @@ SHALL apply two rules, each only where it is true:
 
 - **Each cycle** — immediately after the transport's terminal jobs are drained, the **cycle** SHALL ask the
   transport for the keys of the transfers it has **lost** (see "The transport reports the transfers it still
-  holds") and record `FAILED` every `REQUESTED` row among them. A `REQUESTED` row this transport never began —
+  holds") and record `DISCOVERED` every `REQUESTED` row among them. A `REQUESTED` row this transport never began —
   on this tier, one it never staged — SHALL NOT be a candidate of this rule, however long it has had no live
   transfer: it may belong to another transport that is still carrying it.
 - **At a start** — the app-driven mechanism's `start()` SHALL signal a restart to the cycle, and the next cycle
-  to reach its stranded pass SHALL instead record `FAILED` every `REQUESTED` row with **no live transfer**, once;
+  to reach its stranded pass SHALL instead record `DISCOVERED` every `REQUESTED` row with **no live transfer**, once;
   later cycles apply the per-cycle rule again. When this mechanism starts, no other transport is carrying rows —
   the OS-driven registration has been relinquished, is inert under a partial grant, or does not exist — so a
   `REQUESTED` row without a live task will never be settled. This rule needs no staged file, so it also recovers
@@ -132,9 +132,9 @@ ledger state; the cycle reads the `REQUESTED` keys, selects the candidates from 
 `:domain` `feature/upload` is what makes it testable on every target the module declares rather than only on a
 device.
 
-The candidate set SHALL be the **`REQUESTED`** rows, never the whole non-done backlog. A `FAILED` row has
-already been adjudicated; re-surfacing it every cycle re-writes the row, signals a change, and reports a
-loss that did not happen — which is what a device log then shows dozens of times for one key inside a single
+The candidate set SHALL be the **`REQUESTED`** rows, never the whole non-done backlog. A row that needs a job
+has already been returned to the ledger's work read; re-surfacing it every cycle re-writes the row, signals a
+change, and reports a loss that did not happen — which is what a device log then shows dozens of times for one key inside a single
 process.
 
 That write SHALL go through the same guarded `markTerminal` the delegate uses (`sync-ledger`), so a row that
@@ -154,27 +154,27 @@ accepted — the upload is idempotent — rather than guarded against.
 
 #### Scenario: Lost task is recreated, survivors untouched
 - **WHEN** the app relaunches after the OS dropped a background transfer (e.g. user force-quit), leaving a `REQUESTED` row whose staged file remains and whose task is gone
-- **THEN** that row is recorded `FAILED` and re-uploaded by a later cycle, while `REQUESTED` rows whose tasks are still live remain untouched (the engine's `REQUESTED`-skip holds)
+- **THEN** that row is recorded `DISCOVERED` and re-uploaded by a later cycle, while `REQUESTED` rows whose tasks are still live remain untouched (the engine's `REQUESTED`-skip holds)
 
 #### Scenario: A row this transport never began is not a per-cycle candidate
 - **WHEN** a cycle runs with no restart pending while a `REQUESTED` row has no live task and no staged file
-- **THEN** that cycle does not record the row `FAILED`
+- **THEN** that cycle does not record the row `DISCOVERED`
 
 #### Scenario: A start recovers every row without a live transfer
 - **WHEN** the app-driven mechanism starts while `REQUESTED` rows exist with no live task, some with a staged file
   and some without
-- **THEN** the next cycle's stranded pass records all of them `FAILED` and leaves rows with a live task untouched,
+- **THEN** the next cycle's stranded pass records all of them `DISCOVERED` and leaves rows with a live task untouched,
   and the cycle after it applies the per-cycle rule
 
 #### Scenario: A hand-off from the OS-driven mechanism leaves nothing stranded
 - **WHEN** photo access moves from `GRANTED` to `LIMITED` on an OS carrying the OS-driven mechanism while it has
   `REQUESTED` rows
-- **THEN** the app-driven mechanism's start makes the next cycle record those rows `FAILED`, and they are
+- **THEN** the app-driven mechanism's start makes the next cycle record those rows `DISCOVERED`, and they are
   re-created by that mechanism
 
 #### Scenario: A restart is never applied outside a cycle
 - **WHEN** the app-driven mechanism's `start()` runs while a cycle is already running
-- **THEN** no row is recorded `FAILED` by `start()` itself; the restart rule is applied once, by the next cycle to
+- **THEN** no row is recorded `DISCOVERED` by `start()` itself; the restart rule is applied once, by the next cycle to
   reach its stranded pass
 
 #### Scenario: Lost transfers are discarded after the pass
@@ -182,7 +182,8 @@ accepted — the upload is idempotent — rather than guarded against.
 - **THEN** the cycle instructs the transport to discard exactly those transfers, after every candidate write
 
 #### Scenario: An already-adjudicated row is not re-reported
-- **WHEN** a cycle runs while the ledger holds a `FAILED` row with no live task
+- **WHEN** a cycle runs while the ledger holds a `DISCOVERED` row, returned there by an earlier failure, with no
+  live task
 - **THEN** that row is not reported stranded, is not re-written, and produces no loss diagnostic
 
 #### Scenario: A row recorded terminal mid-pass is not overwritten
@@ -193,7 +194,7 @@ accepted — the upload is idempotent — rather than guarded against.
 #### Scenario: The stranded rules are exercised without a device
 - **WHEN** the shared cycle runs over a transport double that reports a live set and a lost set, with and without
   a pending restart, while the ledger holds `REQUESTED` rows inside and outside both sets
-- **THEN** exactly the rows each rule selects are recorded `FAILED`, on JVM and on `iosSimulatorArm64`
+- **THEN** exactly the rows each rule selects are recorded `DISCOVERED`, on JVM and on `iosSimulatorArm64`
 
 ### Requirement: Per-slot temp-file staging
 
@@ -214,7 +215,7 @@ deleting it first would hide a lost transfer from the per-cycle pass. Extraction
 
 #### Scenario: Orphaned temp files are discarded after the stranded pass
 - **WHEN** the app was killed mid-transfer, leaving staged temp files
-- **THEN** the next cycle to reach its stranded pass first records those transfers' `REQUESTED` rows `FAILED`,
+- **THEN** the next cycle to reach its stranded pass first records those transfers' `REQUESTED` rows `DISCOVERED`,
   then deletes the files
 
 #### Scenario: A start deletes no temp file
@@ -561,7 +562,7 @@ background-`URLSession`-backed adapter (`IosUrlSessionUploadPlatform`) — **not
   `LIMIT_EXCEEDED` (the adapter's backpressure), and on a failure to start (e.g. unusable staged file) it
   SHALL return `FAILED`.
 - `fetchRetryJobs()` SHALL return an **empty** list — this platform grants no OS-sponsored single
-  retry; a terminal failure is recorded `FAILED` by the delegate and re-uploaded from a later enumeration.
+  retry; a terminal failure is recorded `DISCOVERED` by the delegate and re-uploaded from a later enumeration.
 - `drainTerminals()` SHALL return an **empty** list on this tier and SHALL perform no reconciliation of its
   own. Terminal outcomes are recorded into the ledger by the delegate as they are delivered (see "The delegate
   records the terminal fact before it returns"), so no terminal fact crosses the port, and this tier has
@@ -587,14 +588,14 @@ reality until the re-upload completes — which is a defect, not an accepted con
 
 #### Scenario: fetchRetryJobs is empty on this platform
 - **WHEN** `UploadCycle` calls `fetchRetryJobs()` on the `URLSession` adapter
-- **THEN** it returns an empty list, and a failed upload is instead recorded `FAILED` by the delegate and re-uploaded from a later enumeration
+- **THEN** it returns an empty list, and a failed upload is instead recorded `DISCOVERED` by the delegate and re-uploaded from a later enumeration
 
 #### Scenario: drainTerminals is empty on this platform
 - **WHEN** `UploadCycle` calls `drainTerminals()` on the `URLSession` adapter
 - **THEN** it returns an empty list, because every terminal outcome has already been recorded into the ledger
 
 #### Scenario: A recreated upload keeps its original content type
-- **WHEN** a `FAILED` key is re-uploaded from a later enumeration
+- **WHEN** a key whose upload failed, returning its row to `DISCOVERED`, is re-uploaded from a later enumeration
 - **THEN** the request carries the content type recorded on its ledger row, so the stored object
   is typed identically on this tier and on the PhotoKit tier
 
@@ -809,7 +810,8 @@ tiers are never simultaneously live and the `sync-ledger` single-record-writer i
 ### Requirement: The delegate records the terminal fact before it returns
 
 The `URLSession` task-completion delegate SHALL record the terminal outcome into the ledger —
-`COMPLETED` on success, `FAILED` otherwise — through the guarded, non-suspending `markTerminal` of the
+`COMPLETED` on success, `DISCOVERED` otherwise (the platform's failed outcome returns the row to the ledger's
+work read) — through the guarded, non-suspending `markTerminal` of the
 `TransferRecord` it is given (`sync-ledger`), **synchronously, before the callback returns**. It SHALL NOT
 hold the outcome in process memory for a later cycle to collect. Success is recorded as the settled state:
 nothing a completion used to trigger is still owed, so no later cycle reads or re-settles the row.
@@ -838,7 +840,7 @@ process. A write whose guard applies to no row SHALL be logged and SHALL NOT be 
 #### Scenario: The recorded state distinguishes success from failure
 
 - **WHEN** a task completes with a transport error or a non-2xx status
-- **THEN** the row is recorded `FAILED`, not `COMPLETED`
+- **THEN** the row is recorded `DISCOVERED`, not `COMPLETED`
 
 #### Scenario: A guarded write that applies to nothing is reported
 
@@ -928,7 +930,7 @@ on.
 
 #### Scenario: A failed row is retried without re-reading its asset
 
-- **WHEN** a transfer fails and its row is recorded `FAILED`, on a device whose library has not changed
+- **WHEN** a transfer fails and its row is recorded `DISCOVERED`, on a device whose library has not changed
   since
 - **THEN** the next cycle re-enqueues that row from the ledger, and its walk does not read that asset's
   resources
@@ -1071,7 +1073,7 @@ nothing. An absent lost set SHALL cause the cycle's per-cycle rule to reconcile 
 #### Scenario: A durable queue reports no set, and nothing is stranded
 
 - **WHEN** the OS-driven adapter is asked for its live keys, and the ledger holds `REQUESTED` rows
-- **THEN** it reports the absence of a set, and the cycle records none of those rows `FAILED`
+- **THEN** it reports the absence of a set, and the cycle records none of those rows `DISCOVERED`
 
 #### Scenario: The app-driven tier reports its lost transfers
 
@@ -1087,5 +1089,5 @@ nothing. An absent lost set SHALL cause the cycle's per-cycle rule to reconcile 
 #### Scenario: A durable queue reports no lost set
 
 - **WHEN** the OS-driven adapter is asked for its lost keys
-- **THEN** it reports the absence of a set, and the cycle's per-cycle rule records nothing `FAILED`
+- **THEN** it reports the absence of a set, and the cycle's per-cycle rule records nothing `DISCOVERED`
 

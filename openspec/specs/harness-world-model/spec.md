@@ -234,8 +234,10 @@ report the absence of a live set from `liveKeys()` and of a lost set from `lostK
 action SHALL deposit the job's object key into the backend object store **store-direct** (byte transfer
 is not routed through ktor) and move the job to the acknowledge bucket, so the next cycle records it
 `COMPLETED`. An operator **fail** action SHALL move the job to the retry bucket carrying a chosen engine
-`UploadError` (`Network`, `Http`, `Cancelled`, or `Unknown`), driving the real engine retry chain with
-an incremented attempt. The queue's pending/retry/acknowledge buckets and per-job attempt SHALL be
+`UploadError` (`Network`, `Http`, `Cancelled`, or `Unknown`), driving the real engine retry chain: the
+engine answers `Retry` with a freshly minted request and the job is re-created. The engine carries no attempt
+count (capability `sync-engine`), so the queue records its own per-key count of the creations it observed. The
+queue's pending/retry/acknowledge buckets and per-key creation count SHALL be
 inspectable so tests assert the lifecycle, not only the final outcome.
 
 #### Scenario: Complete deposits the object and the ledger records COMPLETED
@@ -246,7 +248,7 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 #### Scenario: Fail drives the real retry chain
 
 - **WHEN** the operator fails a created job with a chosen `UploadError` and the next cycle runs
-- **THEN** the engine answers `Retry`, the job is re-created, and its attempt count increments
+- **THEN** the engine answers `Retry`, the job is re-created, and the queue's creation count for that key rises
 
 #### Scenario: Job-limit truncates creation but not the cycle
 
@@ -258,7 +260,7 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 #### Scenario: The fake queue reports neither live nor lost transfers
 
 - **WHEN** the world's upload cycle reaches its stranded pass
-- **THEN** the fake queue reports no live set and no lost set, so no row is recorded `FAILED` by that pass
+- **THEN** the fake queue reports no live set and no lost set, so no `REQUESTED` row is returned to `DISCOVERED` by that pass
 
 #### Scenario: The fake queue holds no ledger store
 
@@ -428,7 +430,7 @@ count.
 
 - **WHEN** the job-limit, a per-job `UploadError`, or an import failure is armed and the corresponding
   cycle runs
-- **THEN** the real orchestration responds (deferred cycle, engine retry with incremented attempt, or a
+- **THEN** the real orchestration responds (deferred cycle, engine retry re-creating the job, or a
   non-terminal import failure respectively)
 
 #### Scenario: A suspended import holds the guarded state open
