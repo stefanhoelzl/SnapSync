@@ -228,6 +228,47 @@ Several `## Purpose` sections also mention the cursor or the change feed (`sync-
 `ios-photokit-upload`, `architecture-guards`, `upload-lifecycle`, `leave-event`, `sync-engine`). A delta
 cannot carry a Purpose, so those are edited by hand when the change is synced.
 
+## Measured on device (task 7.1)
+
+iPhone12,8 (SE2) / iOS 26.6, rig Debug build of this branch, full photo grant, 2026-09-21. A fresh upload-only
+event whose window held seeded `kind=policy` assets (half above the 3 MP floor, so half admitted); the library
+held 4,387 assets outside the window. Timings are from the processes' own `debug.log` invocation lines.
+
+**OS-driven tier (extension `process()`), 200 candidates in the window, 100 admitted:**
+
+| | cycle 1, first after join | cycle 2, library fully known |
+|---|---|---|
+| walk (`platform.discoverResources`) | 103 ms | 108 ms |
+| admission + resource reads | **1,785 ms** (100 read, ~18 ms each) | **68 ms** (0 read, 100 skipped) |
+| whole `process()` | 5,642 ms (includes 1.67 s re-join listing + reseed of 1,433 rows) | 1,511 ms |
+
+The rest of cycle 2 is the ledger work read and job creation: `resourcesFor` of 16 keys (244 ms) and 16
+`createJob` calls at ~36 ms each. Without D6, cycle 2 would have paid the same ~1.8 s of resource reads as
+cycle 1, and would keep paying it on every cycle.
+
+**App-driven tier, backlog drain (the completion-driven case in Risks):** 100 uploads drained in ~110 s over
+**101 cycles**, each walking 400 in-window candidates (200 admitted, all fully known, 0 read):
+
+| per cycle | min | median | p90 | max |
+|---|---|---|---|---|
+| walk | 55 ms | 79 ms | 81 ms | 86 ms |
+| whole `runCycle` | 123 ms | 184 ms | 191 ms | 284 ms |
+
+So a completion-driven cycle over a fully-known library costs ~80 ms of fetch and ~180 ms end to end on this
+device, 17.3 s of cycle time across the whole drain. With resource reads at ~18 ms per admitted asset, the
+same drain without D6 would have spent about 3.6 s per cycle, roughly six minutes in total.
+
+**Not covered:** the older-device-under-import-load case (SNAPSYNC-16, iPhone11,2 / iOS 18.7.9) stays
+unmeasured; this is one idle SE2.
+
+**An unexplained hang during the first app-driven attempt.** The first attempt (after a no-op reconfigure moved
+the device from `photokit` to `url_session`, then a 200-asset seed and a heartbeat) stopped logging mid-cycle
+at 07:49:44 and stopped answering the control channel, while the process sat at 0.2–0.4 % CPU. The ledger
+afterwards showed that cycle's `DISCOVERED` batch had committed, so the cycle ran past its last logged line.
+No stack could be captured (DVT refuses SIGABRT/SIGQUIT, and a sysdiagnose needs a person at the phone).
+After a SIGKILL and relaunch, the same drain ran to completion with no recurrence. The cause is not
+established, including whether it predates this change.
+
 ## Risks / Trade-offs
 
 - **[Cost on an older device under import load is unmeasured]** → D6 bounds the per-cycle resource reads to
@@ -278,9 +319,8 @@ cannot carry a Purpose, so those are edited by hand when the change is synced.
 
 ## Open Questions
 
-- Is a device measurement of the per-cycle cost wanted before merging? On the SE2, the rig can seed an
-  event-sized library, force foreground cycles, drain a backlog on the app-driven tier and read the audit
-  line. That would give idle SE2 numbers for both a trigger-driven and a completion-driven cycle; it would
-  not measure the A12 case.
-- If the completion-driven walk proves too slow, should the walk-less top-up (see Risks) be a follow-up
-  change or folded into phase 4, which already reshapes the cycle's entry?
+- The app-driven hang recorded under "Measured on device" is unexplained and did not recur. Does it warrant a
+  reproduction attempt (with someone at the phone for a sysdiagnose) before merging, or a tracked follow-up?
+- The completion-driven walk measured ~80 ms on an idle SE2 (see "Measured on device"), so the walk-less
+  top-up (see Risks) is not needed on that evidence. It stays the answer if an older device under load
+  proves slow.

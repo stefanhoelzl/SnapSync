@@ -108,12 +108,12 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
 - [x] 6.3 `./gradlew architectureDiagrams` and commit `architecture/` (the port set changed).
 - [x] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and
   `… validate always-full-enumerate --strict`.
-- [ ] 6.5 The native driver's contract run (`iosSimulatorArm64Test`) runs on CI `macos-26`. Confirm
+- [x] 6.5 The native driver's contract run (`iosSimulatorArm64Test`) runs on CI `macos-26`. Confirm
   it is green on the PR, since `recordAllUnlessSettled`'s transaction is driver-specific.
 
 ## 7. Measure on device (design Open Questions — the user's call)
 
-- [ ] 7.1 If wanted before merge: on the SE2 with a rig build, seed an event-sized library, force
+- [x] 7.1 If wanted before merge: on the SE2 with a rig build, seed an event-sized library, force
   foreground cycles, and read the audit line and `platform.discoverResources` durations from
   `debug.log` for (a) a trigger-driven cycle over a fully-known library, and (b) completion-driven
   cycles during an app-driven backlog drain. Record the numbers in `design.md`.
