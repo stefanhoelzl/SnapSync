@@ -73,6 +73,9 @@ class RuntimeIdentityTest {
         // NB `discovery.changeToken` was pinned here until the discovery cursor was removed (capability
         // `architecture-guards`): every walk is a full enumeration now, so the key appears in production
         // Kotlin nowhere and an exactly-once pin would fail forever. A stale value in the App Group is inert.
+        // The retired join marker's key: pinned as a REMOVAL TARGET, not an identity anything reads. Its one
+        // production occurrence is the start-up removal (`removeOrphanedJoinMarker`), which keeps a revert of
+        // `join-loads-leave-clears` clean — and which a drifted literal would turn into a silent no-op.
         "rejoin.joinedEventId",
         "app.snapsync.album.map",
         "ledger.db",

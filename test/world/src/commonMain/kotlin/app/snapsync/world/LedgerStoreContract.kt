@@ -113,6 +113,46 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         assertEquals(LedgerAggregates(pending = 1, completed = 1), backend.aggregates())
     }
 
+    // ── The per-asset progress read (capability `sync-ledger`, "Per-asset progress read") ────────────
+
+    @Test
+    fun `assetProgress answers a photo done only when all its resources are`() = runTest {
+        val backend = createBackend()
+        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
+        backend.recordUnlessSettled(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.DISCOVERED))
+
+        assertEquals(mapOf("A" to true, "B" to false), backend.assetProgress())
+    }
+
+    @Test
+    fun `assetProgress on an empty ledger answers nothing`() = runTest {
+        assertEquals(emptyMap(), createBackend().assetProgress())
+    }
+
+    @Test
+    fun `assetProgress agrees with the aggregate read`() = runTest {
+        val backend = createBackend()
+        backend.recordUnlessSettled(entry(key = "a", state = LedgerState.REQUESTED))
+        backend.recordUnlessSettled(entry(key = "b", state = LedgerState.DISCOVERED))
+        backend.recordUnlessSettled(entry(key = "c", state = LedgerState.COMPLETED))
+
+        val progress = backend.assetProgress()
+        val aggregates = backend.aggregates()
+        assertEquals(aggregates.completed, progress.count { it.value })
+        assertEquals(aggregates.pending, progress.count { !it.value })
+    }
+
+    @Test
+    fun `assetProgress sees a photo done as soon as its last upload is recorded`() = runTest {
+        val backend = createBackend()
+        LedgerWriter(backend).recordRequested(res("a.heic", "A"), destinationPath = "/a.heic")
+        backend.markTerminal("a.heic", TerminalOutcome.COMPLETED)
+
+        assertEquals(mapOf("A" to true), backend.assetProgress())
+    }
+
     @Test
     fun `pendingResources returns only non-COMPLETED rows paired with their asset`() = runTest {
         val backend = createBackend()
@@ -298,7 +338,7 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         writer.recordRequested(res("inflight.heic", "B"))
         writer.recordDiscovered(listOf(res("found.heic", "D")))
         writer.recordFailed(res("failed.heic", "F"))
-        // A row the re-join reconcile seeded from a filename listing: COMPLETED, but no capture date.
+        // A row the join-time load seeded from a stored-file listing: COMPLETED, but no capture date.
         // The read no longer excludes it — the membership's policy does, because an empty capture date
         // sorts before every real cutoff (capability `photo-selection-policy`).
         backend.recordUnlessSettled(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED))

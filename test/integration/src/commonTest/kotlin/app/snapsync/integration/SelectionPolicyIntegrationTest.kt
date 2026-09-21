@@ -93,7 +93,7 @@ class SelectionPolicyIntegrationTest {
         w.addLowResPhoto("WA")
 
         w.refreshStatus()
-        assertEquals(1, w.ownGallery.size.value, "N counts only the admitted camera photo")
+        assertEquals(1, w.ownGallery.admitted.value?.size, "N counts only the admitted camera photo")
 
         // Drive the admitted photo all the way to COMPLETED, and the world reports fully in sync.
         w.runUploadCycle()

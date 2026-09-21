@@ -128,7 +128,10 @@ class AlbumWorldTest {
     }
 
     @Test
-    fun a_join_gathers_a_photo_carried_over_from_an_earlier_event_without_uploading_it_again() = worldTest {
+    fun a_photo_carried_over_from_an_earlier_event_is_placed_when_its_loaded_row_is_healed() = worldTest {
+        // The leave clears the upload ledger, and the next join loads it back from the device's stored-file
+        // listing as BARE rows — which the join's gather cannot admit (no date yet). The walk that dates the
+        // row is what places the photo, and it places it without an upload (capability `event-album`).
         val w = World(this)
         w.provision("E1", saveToAlbum = false)
         w.shareToCompletion("A")
@@ -139,6 +142,9 @@ class AlbumWorldTest {
 
         assertEquals(JoinOutcome.Committed, w.join("E2", saveToAlbum = true))
         w.core.albumGather.awaitStarted()
+        assertTrue(w.albumManager.assetsIn(albumId).isEmpty(), "the join's gather finds no dated own row yet")
+
+        w.runUploadCycle()
 
         assertEquals(listOf("A"), w.albumManager.assetsIn(albumId), "the carried-over photo is in the new album")
         assertEquals(jobsBefore, w.platform.created.size, "and no upload job was created to put it there")
@@ -225,6 +231,11 @@ class AlbumWorldTest {
         w.core.albumGather.awaitStarted()
         assertTrue(w.albumManager.added.isNotEmpty())
 
+        w.leave()
+        // Something the join's gather will place: a photo received in E2, whose import row is permanent
+        // across a leave (capability `download-store`) and which E2's union still lists.
+        w.provision("E2", saveToAlbum = false)
+        w.receive("DEV-PEER", "E2", "FQ")
         w.leave()
         w.albumCoordinator.ensureAlbum("E2", "Trip", saveToAlbum = true)
         w.albumManager.holdAdds()

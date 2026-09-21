@@ -26,8 +26,6 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
-import app.snapsync.membership.HttpDeviceFilesSource
-import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.extensionLogDestination
@@ -220,10 +218,6 @@ object UploadExtensionRoot {
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
-                // Re-join reconciliation seed (capability `upload-state-reconciliation`): the
-                // device's stored-file listing over the Darwin HTTPS client, same compile-time host.
-                deviceFiles = HttpDeviceFilesSource(httpClient, bakedUploadBase()),
-                joinedMarker = IosJoinedEventMarker(),
                 // The per-event device manifest (capability `device-manifest`): the extension is its
                 // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpManifestPublisher`
                 // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).

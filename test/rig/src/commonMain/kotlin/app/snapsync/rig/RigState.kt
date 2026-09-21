@@ -115,7 +115,7 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
             minPhotoDate = config?.minPhotoDate?.at?.iso,
             maxPhotoDate = config?.maxPhotoDate?.at?.iso,
         ),
-        ledger = LedgerView(completed = counts.completed, pending = counts.pending),
+        ledger = LedgerView(completed = counts.done.size, pending = counts.pending.size),
         download = DownloadView(
             downloaded = progress.downloaded,
             total = progress.total,

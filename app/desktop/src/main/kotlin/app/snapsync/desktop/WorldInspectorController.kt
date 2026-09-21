@@ -252,7 +252,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     fun reprovision() = launchMutation {
         val eventId = world.configSource.config.value?.eventId ?: return@launchMutation
         world.provision(eventId)
-        appendConsole("re-provisioned $eventId (reconcile seeds stored assets COMPLETED)")
+        appendConsole("re-provisioned $eventId (the joined event: nothing stopped, nothing loaded)")
     }
 
     /**
@@ -379,8 +379,8 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     fun presetReprovisionDedup() = installFreshWorld("re-provision (dedup)") {
-        // Own asset already stored (as if previously uploaded), then provision: the reconcile seeds it
-        // COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
+        // Own asset already stored (as if previously uploaded), then provision: the join-time load seeds
+        // it COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
         // keys (uploadKey) so the completeness check matches — don't reconstruct the key by hand.
         addOwnAsset("own-a1")
         readCandidates(selectionPolicy())

@@ -334,7 +334,7 @@ class CompositionSeamTest {
      */
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
-        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 3)
+        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 2) // the join marker left it
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,

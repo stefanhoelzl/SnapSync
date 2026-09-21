@@ -1,15 +1,26 @@
 package app.snapsync.ports
 
 /**
- * The seam that fetches a **device's** already-stored object filenames (`GET /files/devices/<deviceId>`,
+ * The seam that fetches what a **device** has already stored (`GET /files/devices/<deviceId>`,
  * `bunny-list-endpoint`). Bytes are device-partitioned and event-independent, so this is the dedup
- * source the extension reconciler seeds `COMPLETED` from — a reinstall (empty ledger) is restored by
- * it, and it preserves dedup across an event switch. Failures are a failed [Result] (never thrown), so
- * the reconciler can defer the cycle rather than crash.
+ * source the join-time load seeds the ledger's `COMPLETED` rows from (capability
+ * `upload-state-reconciliation`): whatever the backend already holds for this device is not uploaded
+ * again. Failures are a failed [Result] (never thrown), so a failed load can fall back to an empty
+ * ledger rather than crash the join.
  */
 interface DeviceFilesSource {
-    suspend fun list(deviceId: String): Result<List<String>>
+    suspend fun list(deviceId: String): Result<List<StoredResource>>
 }
+
+/**
+ * One resource the backend holds for this device: its recomposed storage [key] and the [assetId] the
+ * backend **reported** for it.
+ *
+ * The `assetId` travels beside the key rather than being parsed back out of it. The backend states
+ * identity, so a caller seeding a ledger row takes that statement instead of recovering it from a string
+ * the seam has just composed — the direction that cannot drift.
+ */
+data class StoredResource(val key: String, val assetId: String)
 
 /**
  * The listing did not have the shape this build understands.

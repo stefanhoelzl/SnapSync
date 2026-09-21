@@ -11,6 +11,7 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runCurrent
@@ -21,7 +22,7 @@ class LedgerBackedSyncStatusSourceTest {
     private val ledgerCounts = MutableLedgerCountsSource()
     private val permission = FakePermissionSource(PermissionStatus.GRANTED)
     // The honest fake exposes only the port; the test owns the cell it reads (fake-honesty gate).
-    private val galleryCell = MutableStateFlow<Int?>(0)
+    private val galleryCell = MutableStateFlow<Set<String>?>(emptySet())
     private val gallery = InMemoryGalleryStatusSource(galleryCell)
 
     private fun ready(
@@ -31,13 +32,16 @@ class LedgerBackedSyncStatusSourceTest {
         active: Boolean = true,
     ) = SyncStatus.Ready(SyncProgress(pending, completed, total, failed = 0, active, estimatedRemaining = null))
 
+    /** `n` distinct asset ids `<prefix>1..<prefix>n` — the admitted set, or a slice of the ledger's. */
+    private fun ids(prefix: String, n: Int): Set<String> = (1..n).mapTo(mutableSetOf()) { "$prefix$it" }
+
     private fun source(scope: kotlinx.coroutines.CoroutineScope) =
         LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
-        ledgerCounts.set(completed = 1, pending = 0)
-        galleryCell.value = 3
+        ledgerCounts.set(done = setOf("a1"), pending = emptySet())
+        galleryCell.value = ids("a", 3)
 
         val source = source(backgroundScope)
 
@@ -65,7 +69,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `an unread gallery total alone holds the source at Loading`() = runTest {
-        ledgerCounts.set(completed = 1, pending = 0) // read
+        ledgerCounts.set(done = setOf("a1"), pending = emptySet()) // read
         galleryCell.value = null // not counted
 
         val source = source(backgroundScope)
@@ -76,7 +80,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `unread ledger counts alone hold the source at Loading`() = runTest {
-        galleryCell.value = 3 // counted
+        galleryCell.value = ids("a", 3) // counted
         val source = LedgerBackedSyncStatusSource(
             MutableLedgerCountsSource(), // never set → UNREAD
             permission,
@@ -92,8 +96,8 @@ class LedgerBackedSyncStatusSourceTest {
     fun `a read zero and a counted zero total do mint a Ready`() = runTest {
         // The other half of the rule: a counted zero is an ANSWER. A non-contributing membership must
         // still settle the screen, exactly as it did before (design D3).
-        ledgerCounts.set(completed = 0, pending = 0)
-        galleryCell.value = 0
+        ledgerCounts.set(done = emptySet(), pending = emptySet())
+        galleryCell.value = emptySet()
 
         val source = source(backgroundScope)
         runCurrent()
@@ -103,8 +107,8 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `once Ready the source never regresses to Loading`() = runTest {
-        ledgerCounts.set(completed = 1, pending = 0)
-        galleryCell.value = 2
+        ledgerCounts.set(done = setOf("a1"), pending = emptySet())
+        galleryCell.value = ids("a", 2)
         val source = source(backgroundScope)
         runCurrent()
         assertIs<SyncStatus.Ready>(source.status.value)
@@ -119,9 +123,10 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `first Ready reflects completed and pending clamped to remaining`() = runTest {
-        // pending high (1000) so it reads as the remaining; completed 2 of 5 → remaining 3.
-        ledgerCounts.set(completed = 2, pending = 1000)
-        galleryCell.value = 5
+        // Every remaining admitted photo in flight, plus 1000 not-done rows the membership does not admit:
+        // completed 2 of 5 → remaining 3, and only the admitted 3 count as pending.
+        ledgerCounts.set(done = setOf("a1", "a2"), pending = setOf("a3", "a4", "a5") + ids("x", 1000))
+        galleryCell.value = ids("a", 5)
 
         val source = source(backgroundScope)
         runCurrent()
@@ -131,8 +136,9 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `pending is the in-flight count when below remaining`() = runTest {
-        ledgerCounts.set(completed = 2, pending = 2) // synced 2, remaining 5, only 2 in flight
-        galleryCell.value = 7
+        // synced 2, remaining 5, only 2 in flight
+        ledgerCounts.set(done = setOf("a1", "a2"), pending = setOf("a3", "a4"))
+        galleryCell.value = ids("a", 7)
         val source = source(backgroundScope)
         runCurrent()
 
@@ -142,24 +148,26 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `pending is clamped to remaining when a deleted-but-unpruned photo over-counts`() = runTest {
-        ledgerCounts.set(completed = 5, pending = 3) // synced 5, remaining 2, ledger reports 3 in flight
-        galleryCell.value = 7
+        // synced 5, remaining 2, ledger reports 3 in flight — one of them a photo deleted from the
+        // library (no longer admitted) whose row was not yet pruned
+        ledgerCounts.set(done = ids("a", 5), pending = setOf("a6", "a7", "deleted"))
+        galleryCell.value = ids("a", 7)
         val source = source(backgroundScope)
         runCurrent()
 
-        // pending = min(3, 2) = 2 — never above remaining
+        // pending = the 2 admitted in-flight photos — the deleted one is outside the set, never above remaining
         assertEquals(ready(pending = 2, completed = 5, total = 7), source.status.value)
     }
 
     @Test
     fun `an in-flight change re-mints pending`() = runTest {
-        ledgerCounts.set(completed = 1, pending = 3)
-        galleryCell.value = 6
+        ledgerCounts.set(done = setOf("a1"), pending = setOf("a2", "a3", "a4"))
+        galleryCell.value = ids("a", 6)
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(ready(pending = 3, completed = 1, total = 6), source.status.value)
 
-        ledgerCounts.set(completed = 1, pending = 1)
+        ledgerCounts.set(done = setOf("a1"), pending = setOf("a2"))
         runCurrent()
 
         assertEquals(ready(pending = 1, completed = 1, total = 6), source.status.value)
@@ -167,13 +175,13 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `a newly complete asset re-mints completed and shrinks remaining`() = runTest {
-        ledgerCounts.set(completed = 0, pending = 1000)
-        galleryCell.value = 4
+        ledgerCounts.set(done = emptySet(), pending = ids("a", 4))
+        galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(ready(pending = 4, total = 4), source.status.value)
 
-        ledgerCounts.set(completed = 1, pending = 1000)
+        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4), source.status.value)
@@ -181,24 +189,26 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `pending is zero when completed meets or exceeds the live total`() = runTest {
-        // The gallery total can momentarily lag the ledger; remaining (and so pending) clamps at 0.
-        ledgerCounts.set(completed = 3, pending = 1000)
-        galleryCell.value = 1
+        // The gallery total can momentarily lag the ledger: rows done for photos the admitted set does not
+        // (yet, or any more) hold. Counting over the admitted set keeps completed <= total structurally, so
+        // completed meets the total and nothing reads as pending.
+        ledgerCounts.set(done = setOf("a1", "a2", "a3"), pending = ids("x", 1000))
+        galleryCell.value = setOf("a1")
         val source = source(backgroundScope)
         runCurrent()
 
-        assertEquals(ready(pending = 0, completed = 3, total = 1), source.status.value)
+        assertEquals(ready(pending = 0, completed = 1, total = 1), source.status.value)
     }
 
     @Test
     fun `a gallery change re-mints with the recomputed remaining`() = runTest {
-        ledgerCounts.set(completed = 1, pending = 1000)
-        galleryCell.value = 4
+        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 9) - "a1")
+        galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(ready(pending = 3, completed = 1, total = 4), source.status.value)
 
-        galleryCell.value = 9
+        galleryCell.value = ids("a", 9)
         runCurrent()
 
         assertEquals(ready(pending = 8, completed = 1, total = 9), source.status.value)
@@ -206,8 +216,8 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `a permission flip re-mints with unchanged counts`() = runTest {
-        ledgerCounts.set(completed = 1, pending = 1000)
-        galleryCell.value = 4
+        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
+        galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
 
@@ -220,8 +230,8 @@ class LedgerBackedSyncStatusSourceTest {
     @Test
     fun `a limited grant is active`() = runTest {
         // Usable access (capability `limited-photo-access`): a partial grant is syncing, not blocked.
-        ledgerCounts.set(completed = 1, pending = 1000)
-        galleryCell.value = 4
+        ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
+        galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)
         runCurrent()
 
@@ -233,8 +243,8 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `the source never estimates and never gives up`() = runTest {
-        ledgerCounts.set(completed = 0, pending = 1000)
-        galleryCell.value = 1
+        ledgerCounts.set(done = emptySet(), pending = setOf("a1"))
+        galleryCell.value = setOf("a1")
         val source = source(backgroundScope)
         runCurrent()
 
@@ -243,6 +253,67 @@ class LedgerBackedSyncStatusSourceTest {
         assertEquals(null, progress.estimatedRemaining)
         assertEquals(1, progress.pending)
         assertEquals(1, progress.total)
+    }
+
+    // ---- Counted over the admitted set (capability `sync-status`, design D5) -----------------------
+
+    @Test
+    fun `historical done rows outside the admitted set do not mask a pending in-window photo`() = runTest {
+        // The masking bug this counts-over-the-admitted-set rule fixes. The join-time load seeds a done row
+        // for everything this device ever stored, so a whole-ledger count read 1,402 completed against a
+        // total of 3 — `synced >= total` — and settled "In sync" while `z` was still uploading.
+        val historical = ids("old", 1_400)
+        ledgerCounts.set(done = setOf("x", "y") + historical, pending = setOf("z"))
+        galleryCell.value = setOf("x", "y", "z")
+
+        val source = source(backgroundScope)
+        runCurrent()
+
+        val progress = assertIs<SyncStatus.Ready>(source.status.value).progress
+        assertEquals(ready(pending = 1, completed = 2, total = 3), source.status.value)
+        assertTrue(progress.completed < progress.total, "one admitted photo is still pending — not in sync")
+    }
+
+    @Test
+    fun `a bare done row for an admitted photo counts as completed as soon as the set is counted`() = runTest {
+        // A listing-loaded row: COMPLETED, no job history, nothing else known about it. Before the gallery
+        // has counted, nothing is minted; the moment the admitted set arrives holding it, it is completed.
+        ledgerCounts.set(done = setOf("loaded"), pending = emptySet())
+        galleryCell.value = null
+        val source = source(backgroundScope)
+        runCurrent()
+        assertEquals(SyncStatus.Loading, source.status.value)
+
+        galleryCell.value = setOf("loaded")
+        runCurrent()
+
+        assertEquals(ready(pending = 0, completed = 1, total = 1), source.status.value)
+    }
+
+    @Test
+    fun `an admitted photo with no ledger row is neither completed nor pending`() = runTest {
+        // Undiscovered: admitted by the policy, but no job created yet. It stays in the remainder —
+        // counted in the total, not done, and not claimed as in flight.
+        ledgerCounts.set(done = setOf("a1"), pending = setOf("a2"))
+        galleryCell.value = setOf("a1", "a2", "undiscovered")
+
+        val source = source(backgroundScope)
+        runCurrent()
+
+        assertEquals(ready(pending = 1, completed = 1, total = 3), source.status.value)
+    }
+
+    @Test
+    fun `an uncounted admitted set holds Loading even over a read ledger that has everything done`() = runTest {
+        // Read counts alone never mint a snapshot: without the admitted set there is nothing to count them
+        // over, and a done-heavy ledger must not stand in for a total.
+        ledgerCounts.set(done = ids("a", 50), pending = emptySet())
+        galleryCell.value = null
+
+        val source = source(backgroundScope)
+        runCurrent()
+
+        assertEquals(SyncStatus.Loading, source.status.value)
     }
 }
 

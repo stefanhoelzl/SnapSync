@@ -64,7 +64,7 @@ fun denormalizeAssetId(assetId: String): String = assetId.replace('_', '/')
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
  * `"<assetId>-<role>.<ext>"` layout lives, where `assetId` is the PHAsset's `localIdentifier` (v1,
  * single-device) with `/`→`_` (via [normalizeAssetId]). Kept platform-free so the layout is unit-tested on the simulator
- * instead of trapped inside the PhotoKit adapter; the adapter (and the re-join seed) only supply the
+ * instead of trapped inside the PhotoKit adapter; the adapter (and the device listing's seam) only supply the
  * raw fields. Shared by the upload producer (`:app:ios:extension`) and the manifest synthesis
  * so a manifest's `filename` is byte-identical to what the producer uploads under.
  */
@@ -118,9 +118,10 @@ fun roleFromUploadKey(filename: String): ResourceRole {
  * Recover the `assetId` from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): drop the extension,
  * then take everything before the **final** `-` (the role token `primary`/`live` carries no `-`, though
  * an `assetId` may). The exact inverse of [uploadKey] — `assetIdFromUploadKey(uploadKey(id, role, name))
- * == id` — and the single shared implementation of that parse, so the upload-job reconstruction and the
- * re-join reconciler recover the same identity from a key (the parse is load-bearing at the record
- * path). Kept here in `:domain:gallery` next to [uploadKey], never duplicated per-consumer.
+ * == id` — and the single shared implementation of that parse, so every site holding only a key (the
+ * upload-job reconstruction, the discovery's key-to-asset lookup) recovers the same identity (the parse
+ * is load-bearing at the record path). The join-time load is not one of them: it seeds the `assetId`
+ * the backend's listing reports. Kept here in `:domain:gallery` next to [uploadKey], never duplicated per-consumer.
  */
 fun assetIdFromUploadKey(filename: String): String =
     filename.substringBeforeLast('.').substringBeforeLast('-')

@@ -7,16 +7,13 @@ import app.snapsync.model.decodeConfigFile
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * A single read of the persisted config, with **three** outcomes — the distinction the upload
- * extension's reconciliation depends on.
+ * A single read of the persisted config, with **three** outcomes — the distinction every upload cycle's
+ * entry gate depends on.
  *
- * "No config" means *this device left the event* to the reconciler: it clears the persisted
- * `joinedEventId` marker (capability `upload-state-reconciliation`). So an **unreadable** config —
- * the normal state on a locked device before this change, since the item was stored `WhenUnlocked` —
- * must never be reported as an **absent** one. It used to be, and the result was a *false leave* on
- * every OS-scheduled invocation: the marker was cleared, and the next readable cycle paid for a full
- * re-join reconciliation (a device listing, an atomic ledger clear-and-seed, and a discovery-cursor
- * reset forcing a complete library re-enumeration) — for ever, without the marker ever settling.
+ * "No config" means *this device is not joined*. So an **unreadable** config — the normal state on a
+ * locked device before this change, since the item was stored `WhenUnlocked` — must never be reported as
+ * an **absent** one. It used to be, and the result was a *false leave* on every OS-scheduled invocation,
+ * tearing down join state that the next readable cycle then paid to rebuild — for ever.
  *
  * Decision record: `changes/archive/…-fix-locked-device-keychain-access`.
  */
@@ -27,7 +24,7 @@ sealed interface ConfigRead {
 
     /**
      * There is definitively no usable config: the config file is genuinely missing. This is the only
-     * outcome that may drive the leave-side reconciliation, and since the Stage-2 fallback deletion
+     * outcome that reads as not joined, and since the Stage-2 fallback deletion
      * it is reached from **one** fact — the file's not-found error class — with no second store
      * consulted (capability `upload-state-reconciliation`).
      */
@@ -58,9 +55,9 @@ interface ConfigReader {
  *
  * **That classifier is now solely load-bearing.** While the fallback existed, a wrong [Missing] was
  * caught downstream: the fallback found the legacy item, answered joined, and the device stayed
- * joined. There is no second opinion any more — a misclassified read error is an uncaught logout
- * (marker cleared, ledger clear-and-seeded, cursor reset), so widening the not-found whitelist is a
- * change to the leave decision, not an error-handling detail.
+ * joined. There is no second opinion any more — a misclassified read error reads the device as not
+ * joined (it uploads nothing, and the screen returns to the setup gate), so widening the not-found
+ * whitelist is a change to the leave decision, not an error-handling detail.
  */
 sealed interface ConfigFileRead {
 
@@ -92,7 +89,7 @@ const val CONFIG_FILE_FOREIGN_STATUS: Int = -1
  * not decode ([ConfigFileDecode.Unusable]). Unreadable, not a leave: unlike the retired Keychain
  * legacy item (whose undecodability was a known, deliberate re-join path), an unusable file this
  * adapter's own atomic writes should make unreachable is evidence of something unexplained —
- * and an unexplained state must defer, never clear the join marker. Distinct from
+ * and an unexplained state must defer, never read as a leave. Distinct from
  * [CONFIG_FILE_FOREIGN_STATUS] so a device log can tell the two apart.
  */
 const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2

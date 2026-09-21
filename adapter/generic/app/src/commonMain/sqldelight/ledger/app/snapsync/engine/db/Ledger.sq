@@ -19,7 +19,7 @@ import app.snapsync.model.LedgerState;
 -- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
 -- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
 -- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
--- enriched" sentinel that a re-join seed and a pre-5.sqm row both start in, swept by
+-- enriched" sentinel that a join-time load's row and a pre-5.sqm row both start in, swept by
 -- `backfillManifestDetail`.
 CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,
@@ -95,8 +95,8 @@ FROM ledgerRow
 WHERE destinationPath = :destinationPath;
 
 -- Fill the manifest detail of ONE already-recorded row, without touching its state.
--- The sweep for rows a migration could not fill and for rows the re-join reconcile seeded from a
--- filename listing (which carries no capture date). Touches only bare rows: a row already enriched
+-- The sweep for rows a migration could not fill and for rows the join-time load seeded from a
+-- stored-file listing (which carries no capture date). Touches only bare rows: a row already enriched
 -- is never rewritten, so re-running is free and cannot clobber a good value with a worse one.
 backfillManifestDetail:
 UPDATE ledgerRow
@@ -162,6 +162,15 @@ SELECT
     COUNT(CASE WHEN notDone > 0 THEN 1 END) AS pending,
     COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed
 FROM perAsset;
+
+-- Per photo, whether every row is done (capability `sync-ledger`, "Per-asset progress read"): the same
+-- per-asset collapse `aggregates` performs, un-counted, in one query. Status intersects it with the admitted
+-- set it counts `N` over; the ledger interprets nothing about admission.
+assetProgress:
+SELECT assetId,
+       SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
+FROM ledgerRow
+GROUP BY assetId;
 
 -- Flip ONE row's state, but only while it is still REQUESTED — the guarded terminal write
 -- (capability `sync-ledger`). Two writers reach this row holding no shared lock: a platform callback on

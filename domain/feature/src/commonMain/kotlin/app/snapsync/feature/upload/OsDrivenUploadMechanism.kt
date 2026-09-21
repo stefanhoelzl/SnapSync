@@ -28,8 +28,9 @@ import co.touchlab.kermit.Logger
  * two has no expression (two `LedgerWriter`s over one App-Group ledger would breach `sync-ledger`'s
  * single-record-writer invariant).
  *
- * The app performs no upload, fetch, enumeration, or seed on this tier: the extension self-reconciles on
- * its next cycle, gated by its `joinedEventId` marker (`upload-state-reconciliation`).
+ * The app performs no upload or enumeration on this tier. It does touch the ledger at membership
+ * transitions — the join-time load and the leave's clear, through the store's reset family, which a holder
+ * without the `LedgerWriter` may invoke (`sync-ledger`) — but never from this mechanism.
  */
 class OsDrivenUploadMechanism(
     private val ledgerStore: LedgerStore,

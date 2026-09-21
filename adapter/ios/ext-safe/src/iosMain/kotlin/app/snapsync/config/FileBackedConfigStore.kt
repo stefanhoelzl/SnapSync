@@ -54,7 +54,7 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  *
  * That makes **reinstall = left the event** the real behaviour rather than a staged one: an
  * App-Group container dies with the install, so a reinstalled device reads definitively not joined,
- * runs the leave-side reconciliation, and rejoins only by re-scanning the invite (capability
+ * uploads nothing, and rejoins only by re-scanning the invite (capability
  * `upload-state-reconciliation`). The fallback existed because the migration reached the whole
  * installed base as ONE merge, which made every joined device pre-11a at update time; that
  * population is gone — the fallback shipped in step 11a and both it and the finale are ancestors of

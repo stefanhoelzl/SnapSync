@@ -1,6 +1,7 @@
 package app.snapsync.membership
 
 import app.snapsync.ports.DeviceListingShapeException
+import app.snapsync.ports.StoredResource
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -15,9 +16,9 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * The Ktor adapter behind the `DeviceFilesSource` port — the **dedup** source the extension reconciler
+ * The Ktor adapter behind the `DeviceFilesSource` port — the **dedup** source the join-time load
  * seeds `COMPLETED` from. Bytes are device-partitioned and event-independent, so this listing is what
- * restores a reinstall's empty ledger and what preserves dedup across an event switch.
+ * keeps a join from re-uploading anything this device already stored, whichever event it stored it for.
  *
  * Two contracts of its own. **The identity fields are REQUIRED and the key is recomposed from them**:
  * the backend answers `assetId`, `role` and the resource's capture `filename`, and this seam rebuilds
@@ -27,8 +28,8 @@ import kotlinx.coroutines.test.runTest
  * with no failed request anywhere. Unknown fields are still ignored, because a backend ADDING one must
  * not cost a device its dedup set.
  *
- * And **every failure is a failed [Result], never a throw**, so the reconciler can defer the cycle
- * rather than crash — but a SHAPE failure is a distinguishable type, because unlike a transport failure
+ * And **every failure is a failed [Result], never a throw**, so the join-time load can fall back to an
+ * empty ledger rather than crash the join — but a SHAPE failure is a distinguishable type, because unlike a transport failure
  * it will never heal, and the message names the status, because "could not list" and "listed nothing"
  * are opposite answers here (an empty success seeds no dedup at all, which is correct only when the
  * device genuinely stored nothing).
@@ -61,7 +62,10 @@ class HttpDeviceFilesSourceTest {
         }
 
         // The KEY, not the capture name: `<assetId>-<role>.<ext>`, exactly what the producer uploaded under.
-        assertEquals(listOf("a-primary.heic", "b-live.mov"), source(engine).list(deviceId).getOrThrow())
+        assertEquals(
+            listOf(StoredResource("a-primary.heic", "a"), StoredResource("b-live.mov", "b")),
+            source(engine).list(deviceId).getOrThrow(),
+        )
         assertEquals("https://edge.example/files/devices/$deviceId", requested)
         assertEquals("GET", method)
     }
@@ -75,7 +79,7 @@ class HttpDeviceFilesSourceTest {
                 HttpStatusCode.OK,
             )
         }
-        assertEquals(listOf("a-primary.heic"), source(engine).list(deviceId).getOrThrow())
+        assertEquals(listOf(StoredResource("a-primary.heic", "a")), source(engine).list(deviceId).getOrThrow())
     }
 
     @Test

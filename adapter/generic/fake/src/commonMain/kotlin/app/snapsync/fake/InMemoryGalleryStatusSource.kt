@@ -7,9 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * An honest in-memory [GalleryStatusSource]: surfaces a constructor-injected count cell as the
- * port's [size] StateFlow. Whoever owns the cell (a test, a `:test:world` wrapper) forges the total —
- * **not-yet-counted** (`null`), discovery-lag (`N > n`), overshoot (`n > N`), counted-empty (`0`) —
+ * An honest in-memory [GalleryStatusSource]: surfaces a constructor-injected admitted-set cell as the
+ * port's [admitted] StateFlow. Whoever owns the cell (a test, a `:test:world` wrapper) forges the set —
+ * **not-yet-counted** (`null`), discovery-lag, overshoot, counted-empty (`emptySet()`) —
  * and the fake itself exposes only the port (the honesty gate). The iOS app backs the seam with
  * PhotoKit instead.
  *
@@ -19,9 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * projection that rendered "In sync" over unread inputs shipped twice (`SNAPSYNC-14`, `SNAPSYNC-16`).
  * A fake seeded with a count it was never given cannot fail the way the device fails.
  */
-internal class InMemoryGalleryStatusSource(state: MutableStateFlow<Int?>) : GalleryStatusSource {
+internal class InMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>) : GalleryStatusSource {
 
-    constructor(initial: Int? = null) : this(MutableStateFlow(initial))
+    constructor(initial: Set<String>? = null) : this(MutableStateFlow(initial))
 
-    override val size: StateFlow<Int?> = state.asStateFlow()
+    override val admitted: StateFlow<Set<String>?> = state.asStateFlow()
 }

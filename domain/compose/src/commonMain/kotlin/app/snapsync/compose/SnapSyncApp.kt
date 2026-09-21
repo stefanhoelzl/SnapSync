@@ -17,6 +17,8 @@ import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.toCommit
 import app.snapsync.feature.membership.LeaveEvent
+import app.snapsync.feature.membership.MembershipEntry
+import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.membership.ReconfigureEvent
@@ -38,7 +40,6 @@ import app.snapsync.feature.upload.uploadMechanismTable
 import app.snapsync.model.UploadMechanism
 import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.feature.upload.UploadArm
-import app.snapsync.feature.upload.UploadForeground
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.flow.Background
 import app.snapsync.flow.DownloadBackstop
@@ -317,12 +318,11 @@ class AppCore internal constructor(
         )
     }
 
-    // Own-device completeness AND in-flight, both from one consistent ledger `aggregates()` read
-    // (capability `sync-status`). Read-only; on any failure the last good counts are retained.
+    // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read
+    // (capability `sync-status`), counted by the status source over the gallery's admitted set. Read-only;
+    // on any failure the last good value is retained.
     val ledgerCounts: ReadingLedgerCountsSource by lazy {
-        ReadingLedgerCountsSource {
-            ports.uploadRecord.ledger.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
-        }
+        ReadingLedgerCountsSource { LedgerCounts.of(ports.uploadRecord.ledger.assetProgress()) }
     }
 
     // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
@@ -531,17 +531,23 @@ class AppCore internal constructor(
         Unit
     }
 
-    // The leave use-case: stop the producer, clear the config (which flips the screen off the joined
-    // layer), then notify the backend fire-and-forget. It destroys no dedup state.
+    // The leave use-case: stop the producer, clear the upload ledger (the ledger is the current
+    // membership's share set — capability `sync-ledger`), clear the config (which flips the screen off the
+    // joined layer), then notify the backend fire-and-forget. The download store is not touched.
     val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = ports.configStore,
             configSource = ports.configSource,
             stopUploads = { uploadArm.onLeave() },
+            clearLedger = { ports.uploadRecord.ledger.clear() },
             scope = scope,
             notifyLeave = notifyLeave,
         )
     }
+
+    // The join-time load (capability `upload-state-reconciliation`), built in `shareSetLoadFor`. Public for
+    // the world harness, whose operator provision runs this instance rather than a copy.
+    val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(ports) }
 
     // The in-place reconfigure use-case (capability `reconfigure-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
@@ -785,11 +791,6 @@ class AppCore internal constructor(
     }
 
     val foregroundFlow: Foreground by lazy {
-        // Built here rather than as a member: the check needs nothing else in this graph, and `AppCore`
-        // is measured (see `uploadLedgerAuditFor`, which holds the placement decision).
-        val audit = uploadLedgerAuditFor(ports) {
-            ports.configSource.config.value?.let { selectionPolicyForMembership(it) }
-        }
         Foreground(
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
@@ -805,13 +806,7 @@ class AppCore internal constructor(
             // full grant, do not pump, because the OS owns scheduling. That IS the resolution, so
             // resolving says it once instead. (The two pump entry points it chose between have identical
             // bodies; the choice was never between them.)
-            uploadForeground = UploadForeground(
-                pump = { uploadArm.triggers.onForeground() },
-                // The config read is the port touch a flow may not make (law "flow/ never references
-                // ports/"); the SKIP on an absent event is the check's own rule, not this lambda's, so
-                // it is handed the nullable id rather than being guarded here.
-                check = { audit.check(ports.configSource.config.value?.eventId) },
-            ),
+            pumpUploads = { uploadArm.triggers.onForeground() },
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
@@ -856,7 +851,9 @@ class AppCore internal constructor(
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
             activeEventId = { ports.configSource.config.value?.eventId },
-            notifyLeave = notifyLeave,
+            // The order (stop, backend leave, load) is `MembershipEntry`'s rule; the backend leave is
+            // awaited here, unlike the leave command's fire-and-forget, as it always was on this path.
+            enterMembership = MembershipEntry({ uploadArm.onLeave() }, notifyLeave, { shareSetLoad.load() })::enter,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
             refreshStatus = { refreshStatusSources() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted

@@ -250,7 +250,7 @@ class FullStackIntegrationTest {
             // enumerates nothing, and no upload job or ledger row ever appears for the own asset.
             w.refreshStatus()
             w.ledgerCounts.refresh()
-            assertEquals(LedgerCounts(completed = 0, pending = 0), w.ledgerCounts.counts.value)
+            assertEquals(LedgerCounts(done = emptySet(), pending = emptySet()), w.ledgerCounts.counts.value)
 
             val host = statusHost(w, scope)
             // UI outcome: the settled zero-total health — not the permission-attention line.
@@ -280,7 +280,7 @@ class FullStackIntegrationTest {
             w.changeSelection("A", "B")
             // One emission serves the total: N counts the selection, not the library. Awaiting it also
             // sequences the cycle below — the collector sets the discovery cell before recounting.
-            withTimeout(5_000) { w.ownGallery.size.first { it == 2 } }
+            withTimeout(5_000) { w.ownGallery.admitted.first { it == setOf("A", "B") } }
 
             // The operator plays the OS: run the cycle — discovery is the snapshot (no walk).
             w.runUploadCycle()
@@ -325,7 +325,7 @@ class FullStackIntegrationTest {
 
             w.changeSelection("OK", "OLD", "SHOT")
             // N counts only the policy-admitted selection (1 of the 3 picked).
-            withTimeout(5_000) { w.ownGallery.size.first { it == 1 } }
+            withTimeout(5_000) { w.ownGallery.admitted.first { it == setOf("OK") } }
 
             w.runUploadCycle()
             w.platform.completeJob("OK-primary.jpg")
@@ -364,7 +364,7 @@ class FullStackIntegrationTest {
             w.addOwnAsset("MINE")
             w.changeSelection("MINE", importedLocalId)
             // The echo is suppressed from the total: only MINE counts.
-            withTimeout(5_000) { w.ownGallery.size.first { it == 1 } }
+            withTimeout(5_000) { w.ownGallery.admitted.first { it == setOf("MINE") } }
 
             w.runUploadCycle()
             w.platform.completeJob("MINE-primary.jpg")
@@ -389,13 +389,13 @@ class FullStackIntegrationTest {
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
             w.ledgerCounts.refresh()
-            assertEquals(LedgerCounts(completed = 1, pending = 0), w.ledgerCounts.counts.value)
+            assertEquals(LedgerCounts(done = setOf("A"), pending = emptySet()), w.ledgerCounts.counts.value)
 
             // Upload completeness is the local ledger, not a storage LIST — backend-offline changes
             // nothing (the read never touches the network).
             w.backendOffline = true
             w.ledgerCounts.refresh()
-            assertEquals(LedgerCounts(completed = 1, pending = 0), w.ledgerCounts.counts.value)
+            assertEquals(LedgerCounts(done = setOf("A"), pending = emptySet()), w.ledgerCounts.counts.value)
             // The download union read still fails offline, without throwing (keeps last state).
             w.downloadController.reconcile("E")
         } finally {
@@ -507,7 +507,7 @@ class FullStackIntegrationTest {
             // (capability `sync-status-screen`), so this is now load-bearing: were the total to report the
             // un-uploaded gallery, the upload arrow would show and this would fail.
             w.refreshStatus()
-            assertEquals(0, w.ownGallery.size.value, "a non-contributing membership counts nothing")
+            assertEquals(emptySet(), w.ownGallery.admitted.value, "a non-contributing membership counts nothing")
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
@@ -566,6 +566,7 @@ class FullStackIntegrationTest {
                 config = w.configStore,
                 configSource = w.configSource,
                 stopUploads = {},
+                clearLedger = {},
                 notifyLeave = { id -> notifyStarted.complete(id); deleteGate.await() /* hangs */ },
                 scope = scope,
             )

@@ -191,7 +191,7 @@ class DeviceManifestProducerTest {
 
     @Test
     fun a_bare_row_is_not_listed() = runTest {
-        // A row the re-join reconcile seeded from a filename listing has no capture date until the next
+        // A row the join-time load seeded from a stored-file listing has no capture date until the next
         // full enumeration backfills it. It is excluded by the POLICY, not by a predicate in the
         // projection or its storage read: an empty capture date sorts before every real cutoff
         // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.

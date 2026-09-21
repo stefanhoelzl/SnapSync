@@ -9,17 +9,19 @@ import co.touchlab.kermit.Logger
  * Void this device's durable sync state (the control channel's `POST /device/reset`, capability
  * `ios-app-shell`), so a build pointed at a **different backend** starts from nothing.
  *
- * ## Why this is not just "leave harder"
+ * ## What it adds to a leave
  *
- * [LeaveEvent] **deliberately keeps** the ledger, and is right to: the ledger key is the bare filename
- * with no event scoping, leaving does not remove this device's bytes from its storage partition, so a
- * `COMPLETED` row stays *true* across a leave (`sync-ledger`, "Event-independent key"). Wiping it there
- * would force a re-upload of everything already stored.
+ * Very little, now. The leave command already prunes non-terminal download rows
+ * (`DownloadController.onLeaveOrSwitch`) and, since `changes/join-loads-leave-clears`, clears the upload
+ * ledger too: the ledger is the current membership's share set (`sync-ledger`), and the next join reloads
+ * it from the backend's stored-file listing. The one remaining difference is that a reset **notifies no
+ * backend** (below).
  *
- * That reasoning holds for exactly one backend. Point the build at another and every premise inverts:
- * the bytes are on the backend you left behind, while the ledger still says `COMPLETED` — so the device
- * uploads **nothing**, with no error, no failed request, and no log line. It is indistinguishable from a
- * broken rig, and it bites in both directions (going to a local backend and coming back).
+ * It exists for the case a leave's backend notify gets wrong: a build pointed at a **different backend**.
+ * Point it at another and a stale `COMPLETED` row would say the bytes are stored while they sit on the
+ * backend you left behind — the device uploads **nothing**, with no error, no failed request, and no log
+ * line. The leave-and-rejoin path would clear it too, but by `DELETE`-ing a membership on a backend this
+ * build can no longer reach.
  *
  * ## Why all three, and why not the fourth
  *

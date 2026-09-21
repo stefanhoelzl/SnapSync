@@ -20,8 +20,8 @@ sequenceDiagram
   participant albumCoordinator
   participant downloadController
   Trigger->>Provision: run(…)
-  alt switchDecision(activeEventId(), cfg.eventId) = is SwitchDecision.LeavePrevious
-    Provision->>effects: notifyLeave(…)
+  alt switchDecision(activeEventId(), cfg.eventId) = is SwitchDecision.Enter
+    Provision->>effects: enterMembership(…)
   else switchDecision(activeEventId(), cfg.eventId) = SwitchDecision.Stay
     Note over Provision: nothing
   end

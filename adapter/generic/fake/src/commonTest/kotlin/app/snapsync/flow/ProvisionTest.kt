@@ -33,22 +33,25 @@ import kotlin.test.assertTrue
 
 /**
  * The **provision** trigger flow — the shared path for a scanned/typed event link and a freshly created
- * event. It coordinates six steps in a fixed order and decides nothing; what each step *means* is its
+ * event. It coordinates seven steps in a fixed order and decides nothing; what each step *means* is its
  * own feature's rule. What this test pins is the coordination, which no gate can see.
  *
- * The order is not arbitrary, and three of the edges are load-bearing:
+ * The order is not arbitrary, and four of the edges are load-bearing:
  *
  * - **The leave precedes the save.** On a switch, the previous event is left on the backend while the
  *   config still names it; a save first would overwrite the only record of which event to leave.
+ * - **The share-set load precedes the save, and runs only on a transition.** A switch or a first join
+ *   replaces the upload ledger before any cycle can see the new membership; a re-provision of the joined
+ *   event must not, because that would reset a live membership's work in flight.
  * - **The save precedes everything downstream.** The status refresh, the arm and the reconcile all read
  *   the persisted membership — including the extension, in its own process.
  * - **The album call is unconditional and carries the access fact.** `ensureAlbum` owns the
  *   granted/opt-in gate as its own leading guard (capability `event-album`), so no caller can forget
  *   it; this flow's job is only to pass `isGranted()` through honestly.
  *
- * The destructive verbs a provision must never reach do not exist in the seams it calls
- * (`upload-lifecycle`), which is why there is no "and nothing was cleared" assertion here — the
- * absence is structural, not behavioural.
+ * A provision into a new membership now DOES reach destructive verbs — a switch stops the previous
+ * membership's uploads, and the load resets the ledger (capability `upload-lifecycle`, reversed by
+ * `changes/join-loads-leave-clears`) — so a Stay's "nothing was stopped or loaded" is asserted, not assumed.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProvisionTest {
@@ -75,33 +78,37 @@ class ProvisionTest {
 
         flow.run(config(eventB, saveToAlbum = true))
 
-        // The leave carries the PREVIOUS id and happens before the save that overwrites it.
+        // The leave carries the PREVIOUS id and happens before the save that overwrites it; the new share
+        // set is loaded before the save too.
         assertEquals("leave:$eventA", order.first())
         assertEquals(
-            listOf("leave:$eventA", "save:$eventB", "refresh", "arm", "album"),
-            order.take(5),
+            listOf("leave:$eventA", "load", "save:$eventB", "refresh", "arm", "album"),
+            order.take(6),
         )
-        // Step 6 is concurrent, so membership is asserted rather than order — but both are awaited.
+        // Step 7 is concurrent, so membership is asserted rather than order — but both are awaited.
         assertTrue("reconcile:$eventB" in order, "the foreign-download reconcile never ran")
         assertTrue("push" in order, "the push token was never re-registered")
     }
 
     @Test
-    fun `re-scanning the already-joined event is a Stay so nothing is left`() = runTest {
-        // `switchDecision` is membership's sealed rule; this flow must not invent a leave for it.
+    fun `re-scanning the already-joined event is a Stay so nothing is left or loaded`() = runTest {
+        // `switchDecision` is membership's sealed rule; this flow must not invent a leave for it — nor a
+        // load, which would reset the live membership's upload ledger with nothing stopped.
         val order = mutableListOf<String>()
         provision(order = order, activeEventId = { eventA }).run(config(eventA))
 
         assertTrue(order.none { it.startsWith("leave:") }, "a re-scan left its own event: $order")
+        assertTrue("load" !in order, "a re-scan reset the live membership's ledger: $order")
         assertEquals("save:$eventA", order.first())
     }
 
     @Test
-    fun `a first join with no previous membership leaves nothing`() = runTest {
+    fun `a first join leaves nothing and loads the share set before the save`() = runTest {
         val order = mutableListOf<String>()
         provision(order = order, activeEventId = { null }).run(config(eventA))
 
         assertTrue(order.none { it.startsWith("leave:") }, "a first join fired a leave: $order")
+        assertEquals(listOf("load", "save:$eventA"), order.take(2))
     }
 
     @Test
@@ -179,7 +186,8 @@ class ProvisionTest {
             ),
             albumCoordinator = AlbumCoordinator(RecordingAlbums(order, saveToAlbum), albumStore),
             activeEventId = activeEventId,
-            notifyLeave = { order += "leave:$it" },
+            // The entry's inner order (stop, leave, load) is `MembershipEntryTest`'s; here it is one step.
+            enterMembership = { previous -> previous?.let { order += "leave:$it" }; order += "load" },
             saveConfig = saveConfig,
             refreshStatus = { order += "refresh" },
             isGranted = isGranted,

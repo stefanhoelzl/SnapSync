@@ -3,18 +3,6 @@ package app.snapsync.fake
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.JoinedEventMarker
-
-/** An honest in-memory [JoinedEventMarker] for the composed `UploadReconciler`. */
-internal class InMemoryJoinedEventMarker(private var value: String? = null) : JoinedEventMarker {
-    override fun read(): String? = value
-    override fun set(eventId: String) {
-        value = eventId
-    }
-    override fun clear() {
-        value = null
-    }
-}
 
 /** The honest in-memory [DeviceManifestStore] for the composed `DeviceManifestProducer`. */
 internal class InMemoryDeviceManifestStore : DeviceManifestStore {

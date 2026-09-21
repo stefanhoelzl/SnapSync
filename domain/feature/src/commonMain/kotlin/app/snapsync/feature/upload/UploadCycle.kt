@@ -54,12 +54,11 @@ class UploadCycle(
     // The DECISION is here rather than in each root because a root reaches it only for the tiers its
     // author enumerated. That is not hypothetical: the OS-invoked tier gated on `cycleGate` and the
     // app-driven tier read a two-state `StateFlow` that cannot express "unreadable" — reporting a failed
-    // Keychain read as a leave, and clearing the join marker of a device that never left. A root supplies
-    // the reads (its own storage, its own bundle); this decides.
+    // Keychain read as a leave. A root supplies the reads (its own storage, its own bundle); this decides.
     //
     // Required, with **no default**: a default would have to invent an answer for "what is this device
-    // joined to", and every answer is wrong. See [reconcile] and [SelectionPolicy] for the same reasoning
-    // applied after each shipped bug that a default caused.
+    // joined to", and every answer is wrong. See [SelectionPolicy] for the same reasoning applied after each
+    // shipped bug that a default caused.
     private val readGate: () -> CycleGate,
     // The engine for THIS cycle's config — the edge provider needs the host and the device id, and the
     // host arrives with the gate, not at construction. Called once, after the gate says Run.
@@ -69,24 +68,11 @@ class UploadCycle(
     // What the cycle reads from the photo library — the full-enumeration walk and the id-scoped key resolve.
     // Not the transport's: both tiers read the library identically, and only the transfer lifecycle differs.
     private val library: UploadDiscovery,
-    // Re-join reconciliation (capability `upload-state-reconciliation`): the marker-gated seed that makes
-    // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /
-    // reinstalled device re-uploads nothing it has already contributed. Returns whether the producer may
-    // create jobs this cycle — `false` defers (a failed/timed-out device listing), and this cycle creates
-    // nothing and leaves the ledger and marker untouched so the next cycle retries.
-    //
-    // Takes the eventId, mirroring the real reconciler 1:1 — `null` IS the leave side, which clears the
-    // `joinedEventId` marker. Both calls are made HERE: the leave-side one used to be written identically
-    // in both composition roots and in the harness, three copies of one decision, and the decision is
-    // whether an absent config means "this device left".
-    //
-    // Required, with **no default**: it lives in the CYCLE, not in each tier's composition root, because
-    // the cycle is the only thing that runs on EVERY route to a divergent ledger — a fresh join, an event
-    // switch, a leave-then-rejoin, and a delete-and-reinstall (which no provisioning path observes at all:
-    // a cold relaunch of an already-joined app provisions nothing). Root-wired reconciliation is exactly
-    // how the app-driven tier shipped without any, so a defaulted `{ true }` would re-open that hole
-    // silently.
-    private val reconcile: suspend (eventId: String?) -> Boolean,
+    // There is no re-join reconciliation here. The cycle used to detect a membership change nobody
+    // announced (a persisted join marker compared on every run) and re-seed the ledger from the device
+    // listing. Every change of membership is now an explicit app action, and the join loads the ledger
+    // itself (capability `upload-state-reconciliation`, "A join loads the ledger from the per-device
+    // listing"), so this cycle reads the ledger it is given and never fetches the listing.
     // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
     // manifest is built from THIS (no second PhotoKit enumeration). Bounded and `runCatching`ed HERE, so a
     // hung host can never stall a cycle and no root has to remember to bound it (both used to, with the
@@ -158,35 +144,32 @@ class UploadCycle(
 
     /**
      * Establish what is true before anything is decided: the entry gate, the membership's one policy
-     * derivation, the re-join seed, and the outcomes the platform is holding.
+     * derivation, and the outcomes the platform is holding.
      *
-     * It is not a read stage. The seed fetches over the network and may re-baseline the whole ledger;
-     * this is where the cycle finds out — and repairs — what is true.
+     * It is not a read stage: settling the platform's returned jobs writes the ledger.
      */
     private suspend fun settle(): Settled {
-        // THE ENTRY GATE (capability `upload-lifecycle`) — before the direction gate, the seed, the walk,
+        // THE ENTRY GATE (capability `upload-lifecycle`) — before the direction gate, the walk,
         // and every hook. Three outcomes, and the difference between two of them is the difference between
         // a settled join and a false leave.
         val gate = readGate()
         val (config, membership) = when (gate) {
             is CycleGate.Skip -> {
-                // Unreadable != left. Touch NOTHING: no seed, no marker clear, no ledger write, no jobs. A
+                // Unreadable != left. Touch NOTHING: no ledger write, no manifest, no jobs. A
                 // clean completion; the next cycle — or the next unlock — retries. `detail` is the root's
                 // forensics, logged verbatim: this line is the only way an unreadable membership is visible
                 // on a device.
                 log.w {
                     "skipping cycle — ${gate.detail.ifEmpty { "a required read failed" }}. NOT treating " +
-                        "this as a leave; nothing minted, nothing reconciled, marker untouched."
+                        "this as a leave; nothing minted, nothing written."
                 }
                 return Settled.Short(CycleOutcome.Unreadable)
             }
             CycleGate.NotJoined -> {
                 // Definitively not joined: no item, an item that cannot decode, a missing baked host, or a
-                // leave. This is where a leave clears the `joinedEventId` marker — it keeps the ledger
-                // intact so a later provision of any event dedups against it.
-                // Reaching here means the config really IS absent, never merely unread.
-                runCatching { reconcile(null) }
-                    .onFailure { log.w(it) { "leave-side marker clear failed" } }
+                // leave. Reaching here means the config really IS absent, never merely unread — and it is
+                // still not this cycle's to clear anything: the leave that got us here cleared the ledger
+                // itself (capability `leave-event`).
                 log.i { "skipping cycle — no joined event / host" }
                 return Settled.Short(CycleOutcome.NotJoined)
             }
@@ -202,23 +185,6 @@ class UploadCycle(
         val eventId = config.eventId
         val engine = engineFor(config)
 
-        // Phase 0 — re-join reconciliation (capability `upload-state-reconciliation`), BEFORE any upload
-        // job is created. On a marker mismatch it seeds the ledger from the device's stored-file listing
-        // so nothing already contributed re-uploads; on a settled join it is a no-op. A `false` return is
-        // a deferral (the listing fetch failed or timed out): create nothing this cycle and report a clean
-        // COMPLETED — a no-op, never a failure — so the next cycle retries with the marker still unset. A
-        // THROW is treated identically to `false` (never a FAILED cycle), preserving the deferral the
-        // roots previously applied with their own `runCatching`.
-        //
-        // It runs AHEAD of the direction gate. What it establishes — which of this device's resources are
-        // already on the backend — is a fact about BYTES, which this system defines as independent of the
-        // selection policy (capability `sync-ledger`); gating it on direction would make a
-        // policy-independent fact wait on a policy-dependent branch. It is marker-gated and a no-op on a
-        // settled join, so the cost is bounded to the first cycle after a join, switch, or reinstall — and
-        // running it here means a member who later re-enables their direction re-uploads nothing.
-        val seedSucceeded = runCatching { reconcile(eventId) }
-            .getOrElse { log.e(it) { "re-join seed failed — deferring uploads this cycle" }; false }
-
         // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the walk and job creation: a
         // non-contributor must not enumerate its library to discover it contributes nothing (the walk costs
         // ~110 ms of PhotoKit XPC per asset).
@@ -230,20 +196,7 @@ class UploadCycle(
         if (!policy.contributes) {
             recreateRetrySpent(engine)
             log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-            return Settled.Short(CycleOutcome.Declined(eventId, policy, seedSucceeded))
-        }
-
-        // A DEFERRED SEED SETTLES TOO (capability `upload-lifecycle`). The obligation is owed to the
-        // platform for jobs it has ALREADY presented, and it depends neither on whether this membership
-        // still contributes — which the branch above has honoured since the 50008 measurement — nor on
-        // whether the seed succeeded, which this branch used to get wrong. The two sat one below the
-        // other stating opposite rules for one obligation, and no spec ever asked for this one:
-        // `upload-state-reconciliation`'s "defers without settling" is about the ledger SEED, not about
-        // the platform's returned jobs.
-        if (!seedSucceeded) {
-            recreateRetrySpent(engine)
-            log.i { "re-join seed deferred this cycle — creating no upload jobs, and writing no manifest" }
-            return Settled.Short(CycleOutcome.SeedDeferred)
+            return Settled.Short(CycleOutcome.Declined(eventId, policy))
         }
 
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -255,9 +208,7 @@ class UploadCycle(
             engine.handle(SyncEvent.UploadStarted(retry.request))
         }
 
-        // Phase 2 — the outcomes the platform is holding, in its usual position for a contributing
-        // membership: AFTER the seed settled, so the rows it writes are labelled with a membership the
-        // marker agrees with (see the backfill note above).
+        // Phase 2 — the outcomes the platform is holding.
         val capHit = recreateRetrySpent(engine)
 
         // A re-created retry may have hit the platform's job limit. That is carried as a FACT rather than
@@ -310,12 +261,17 @@ class UploadCycle(
             // and the ledger keeps no content version, so re-reading a recorded asset could only answer
             // "already uploaded"; a row that still needs a job is found by the ledger's work read, not by the
             // walk. An asset with a BARE row is read, because only the walk can fill its detail — which is
-            // also what completes a re-join seed that listed only some of an asset's roles.
+            // also what completes a join-time load that listed only some of an asset's roles.
             val rows = ledger.manifestRows()
-            val fullyKnown = rows.groupBy { it.assetId }
-                .filterValues { group -> group.none { it.needsManifestDetail } }
-                .keys
+            val byAsset = rows.groupBy { it.assetId }
+            val fullyKnown = byAsset.filterValues { group -> group.none { it.needsManifestDetail } }.keys
             val toRead = admitted.filter { it.facts.assetId !in fullyKnown }
+            // The admitted assets whose rows this walk is about to date — the join-time load's bare rows.
+            // They are never enqueued (their bytes are stored), so this walk is the only moment that places
+            // them in the event album (capability `event-album`).
+            val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { id ->
+                byAsset[id]?.any { it.needsManifestDetail } == true
+            }
             val liveResources = toRead.flatMap { it.resources() }
                 .also {
                     log.i {
@@ -330,6 +286,7 @@ class UploadCycle(
                 CyclePlan(
                     liveResources,
                     skipped = admitted.size - toRead.size,
+                    healing = healing,
                     departedKeys = if (discovery.fullEnumeration) {
                         departedKeys(rows, presentAssetIds, ready.policy)
                     } else {
@@ -392,6 +349,12 @@ class UploadCycle(
                 ledger.deleteKeys(plan.departedKeys)
             }
 
+            // Place the assets whose bare rows this walk is about to date, BEFORE their detail is written:
+            // once dated a row is no longer bare, so a death between the two would leave the photo unplaced
+            // by this path. Placed first, a death before the backfill leaves the row bare and the next walk
+            // places it again — a no-op.
+            placeHealed(ready, plan.healing)
+
             // RECORD what the walk found; do not act on it. Every admitted resource the engine judges to
             // be new work gets a `DISCOVERED` row (capability `sync-ledger`), and every already-recorded
             // one still resting bare gets its manifest detail filled.
@@ -406,11 +369,11 @@ class UploadCycle(
                     newWork += resource
                 } else {
                     alreadyUploaded++
-                    // Enrich a row that predates the manifest detail, or that the re-join seed took from a
+                    // Enrich a row that predates the manifest detail, or that the join-time load took from a
                     // filename listing (capability `sync-ledger`). The engine writes nothing on an
                     // already-uploaded resource, so without this sweep a seeded row would never learn its
                     // capture date — and the device manifest, projected from the ledger, would silently
-                    // drop this member's photos out of the event union after every re-join or reinstall.
+                    // drop this member's photos out of the event union after every join.
                     //
                     // A capture date lives only in the photo library and only the walk reads it — which is
                     // why a bare row's asset is always read, never skipped as fully known.
@@ -562,6 +525,26 @@ class UploadCycle(
     }
 
     /**
+     * Event-album placement (capability `event-album`) for the assets whose bare rows this walk dates: the
+     * own photos the join-time load seeded `COMPLETED` from the device's stored-file listing.
+     *
+     * The second own-photo placement moment beside [placeFirstEnqueued], and needed for the same reason the
+     * gather exists: a photo whose bytes are already stored is never enqueued, so no enqueue places it. The
+     * provision's gather cannot place it either — it runs before any walk has dated the row, and the policy
+     * excludes a row with no date. On iOS >=26.1 that walk runs in the extension, so the app could not order
+     * a gather after it; placing here works in whichever process runs the cycle.
+     *
+     * One best-effort call, keeping no record: a repeat add is a no-op, so a later gather re-adding these is
+     * harmless. The set is admitted by the membership's current policy by construction (it is a subset of
+     * the walk's admitted set).
+     */
+    private suspend fun placeHealed(ready: Ready, assetIds: Set<String>) {
+        if (!ready.saveToAlbum || assetIds.isEmpty()) return
+        runCatching { placeInAlbum(ready.eventId, assetIds) }
+            .onFailure { log.w(it) { "event-album placement of healed rows failed this cycle" } }
+    }
+
+    /**
      * Write what the event can see: the enumeration audit line, the device manifest, and the completion
      * notify. Decided over the outcome, exhaustively, so a new outcome cannot inherit a publication
      * policy nobody chose for it (capability `upload-lifecycle`).
@@ -572,14 +555,13 @@ class UploadCycle(
     private suspend fun CycleOutcome.publish(): CycleResult {
         when (this) {
             // Nothing was established, so nothing may be said. An unreadable membership must touch
-            // nothing at all; a definitively-absent one has already cleared its marker; a deferred seed
-            // leaves the ledger unable to say what this device shares (capability `device-manifest`).
-            CycleOutcome.Unreadable, CycleOutcome.NotJoined, CycleOutcome.SeedDeferred -> Unit
+            // nothing at all; a definitively-absent one has no event to publish to.
+            CycleOutcome.Unreadable, CycleOutcome.NotJoined -> Unit
 
             // A membership that shares nothing publishes an EMPTY manifest: that is the honest statement
             // of its state, and leaving a stale one in place would keep advertising photos the member has
-            // stopped sharing. Suppressed if the seed deferred — see [writeDeviceManifest].
-            is CycleOutcome.Declined -> writeDeviceManifest(eventId, policy, seedSucceeded)
+            // stopped sharing.
+            is CycleOutcome.Declined -> writeDeviceManifest(eventId, policy)
 
             // The platform stopped accepting jobs partway through — and this cycle publishes anyway.
             //
@@ -594,12 +576,12 @@ class UploadCycle(
             // the declined branch below has always written one without any walk at all.
             is CycleOutcome.Truncated -> {
                 logEnumeration(audit)
-                writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded = true)
+                writeDeviceManifest(ready.eventId, ready.policy)
             }
 
             is CycleOutcome.Drained -> {
                 logEnumeration(audit)
-                writeDeviceManifest(ready.eventId, ready.policy, seedSucceeded = true)
+                writeDeviceManifest(ready.eventId, ready.policy)
             }
         }
         return result
@@ -630,6 +612,8 @@ class UploadCycle(
         val liveResources: List<Resource>,
         /** Admitted assets the ledger already fully knows, whose resources the walk therefore did not read. */
         val skipped: Int,
+        /** Admitted assets with a bare row this walk dates — placed in the event album before it does. */
+        val healing: Set<String>,
         /** The rows an authoritative walk shows are gone — empty for a walk that is not authoritative. */
         val departedKeys: List<String>,
     )
@@ -682,13 +666,8 @@ class UploadCycle(
             override val result get() = CycleResult.COMPLETED
         }
 
-        /** Definitively not joined; the leave-side marker clear has already run. */
+        /** Definitively not joined. */
         data object NotJoined : CycleOutcome {
-            override val result get() = CycleResult.COMPLETED
-        }
-
-        /** The re-join seed deferred, so the ledger cannot say what this device shares. */
-        data object SeedDeferred : CycleOutcome {
             override val result get() = CycleResult.COMPLETED
         }
 
@@ -696,7 +675,6 @@ class UploadCycle(
         class Declined(
             val eventId: String,
             val policy: SelectionPolicy,
-            val seedSucceeded: Boolean,
         ) : CycleOutcome {
             override val result get() = CycleResult.SKIPPED
         }
@@ -755,40 +733,11 @@ class UploadCycle(
     }
 
 
-    /**
-     * Publish the device manifest for [eventId] under [policy] — or **suppress the write** when
-     * [seedSucceeded] is false (capability `device-manifest`).
-     *
-     * The suppression exists because the manifest is a **full-state** document. Publishing one built from
-     * an incomplete ledger does not under-report, it **un-lists**: every resource missing from the
-     * projection stops being offered to the other members, even though its bytes are on the backend. That
-     * became a live hazard the moment a narrowing scope change started retracting listings deliberately
-     * (capability `reconfigure-membership`) — before that, a short manifest and an intended one were
-     * indistinguishable in consequence, so nothing had to tell them apart.
-     *
-     * The known unsettled path is a deferred re-join reconciliation: it seeds the ledger from the device's
-     * stored-file listing, and returns `false` when that listing fails or times out. The ledger then does
-     * not yet know about resources this device really has uploaded.
-     *
-     * A read failure inside the hook suppresses the write too, structurally: the projection's rows are read
-     * there, so if that read throws, nothing is produced and nothing is published.
-     *
-     * **The two outcomes are logged distinctly, deliberately.** "Could not determine what this device
-     * shares" and "this device shares nothing" have opposite causes and opposite fixes, and collapsing them
-     * would make an outage read as a deliberate withdrawal (law: absence is never silent).
-     */
+    /** Publish the device manifest for [eventId] under [policy] (capability `device-manifest`). */
     private suspend fun writeDeviceManifest(
         eventId: String,
         policy: SelectionPolicy,
-        seedSucceeded: Boolean,
     ): Boolean {
-        if (!seedSucceeded) {
-            log.i {
-                "device.json NOT written this cycle — the ledger is unsettled, so the projection would " +
-                    "un-list resources that are really uploaded. The previous manifest stands."
-            }
-            return false
-        }
         // Best-effort and bounded here, so a hung host can never stall a cycle and no root has to
         // remember to bound it (both used to, with the same two constants — one copied from the other,
         // along with a justification that only applied to the tier it was copied FROM).

@@ -17,7 +17,6 @@ sequenceDiagram
   participant Foreground
   participant effects
   participant statusPoller
-  participant uploadForeground
   participant downloadController
   participant membershipRefresh
   Trigger->>Foreground: run(…)
@@ -25,12 +24,11 @@ sequenceDiagram
   Foreground->>effects: refreshAttestation()
   Foreground->>statusPoller: start()
   par concurrent — awaited before the flow returns
-    Foreground--)uploadForeground: pump()
+    Foreground--)effects: pumpUploads()
     Foreground--)effects: refreshStatus()
     opt only when activeEventId() resolves
       Foreground--)downloadController: reconcile(…)
     end
-    Foreground--)uploadForeground: check()
     Foreground--)downloadController: releaseSettledBytes()
     opt only when activeEventId() resolves
       Foreground--)membershipRefresh: refresh(…)

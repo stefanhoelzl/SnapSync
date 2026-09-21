@@ -254,6 +254,7 @@ class JoinGateIntegrationTest {
                 config = w.configStore,
                 configSource = w.configSource,
                 stopUploads = {},
+                clearLedger = {},
                 notifyLeave = { deleteGate.await() /* hangs */ },
                 scope = scope,
             )

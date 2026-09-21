@@ -56,7 +56,20 @@ interface LedgerStore : TransferRecord {
      */
     suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int
 
+    /**
+     * The ledger's whole-store truth, counted by photo. It counts EVERY row — the join-time load seeds the
+     * device's stored resources for any event — so it is not the status read: its callers are the
+     * extension's "work remains" check and the diagnostic dump. Status reads [assetProgress].
+     */
     suspend fun aggregates(): LedgerAggregates
+
+    /**
+     * Per photo, whether **every** row of that asset is done: `assetId → done`, one entry per asset the ledger
+     * holds a row for (capability `sync-ledger`, "Per-asset progress read"). The same per-asset collapse
+     * [aggregates] performs, un-counted, in one snapshot-consistent read. Status intersects it with the
+     * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
+     */
+    suspend fun assetProgress(): Map<String, Boolean>
 
     /**
      * The non-settled rows (the backlog) as [PendingResource]s. Returns exactly the rows whose state is

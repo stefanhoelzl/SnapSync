@@ -79,7 +79,7 @@ class StatusRefreshTest {
         val refresh = StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource {
                 steps += "ledger"
-                LedgerCounts(completed = 1, pending = 0)
+                LedgerCounts(done = setOf("d1"), pending = emptySet())
             },
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
@@ -104,7 +104,7 @@ class StatusRefreshTest {
         // The ordering assertions above would all pass against a method that walked and threw the
         // answer away, so pin that the sequence actually produces `N`.
         val gallery = OwnDeviceGalleryStatusSource(OneAsset())
-        val counts = ReadingLedgerCountsSource { LedgerCounts(completed = 3, pending = 1) }
+        val counts = ReadingLedgerCountsSource { LedgerCounts(done = setOf("d1", "d2", "d3"), pending = setOf("p1")) }
         StatusRefresh(
             ledgerCounts = counts,
             gallery = gallery,
@@ -112,8 +112,8 @@ class StatusRefreshTest {
             activeConfig = { config },
             policyFor = { policy() },
         ).run()
-        assertEquals(1, gallery.size.value, "N is the admitted own-asset count")
-        assertEquals(LedgerCounts(completed = 3, pending = 1), counts.counts.value, "and the counts are read")
+        assertEquals(setOf("A"), gallery.admitted.value, "N is the admitted own-asset count")
+        assertEquals(LedgerCounts(done = setOf("d1", "d2", "d3"), pending = setOf("p1")), counts.counts.value, "and the counts are read")
     }
 
     @Test
@@ -167,7 +167,7 @@ class StatusRefreshTest {
         ).run() // must NOT throw
 
         assertEquals(listOf("ledger", "downloads", "policy"), steps, "the sibling and the walk still ran")
-        assertEquals(1, gallery.size.value, "and the enumeration still published N")
+        assertEquals(1, gallery.admitted.value?.size, "and the enumeration still published N")
     }
 
     @Test

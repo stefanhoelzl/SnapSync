@@ -19,8 +19,8 @@ package app.snapsync.model
  * than a parallel accumulator maintaining the same asset set with different columns.
  *
  * They default to `""` — the "not yet enriched" sentinel, and a row can rest there two ways: it
- * predates the 5.sqm migration, or the **re-join reconcile** seeded it from the device's stored-file
- * listing, which returns filenames and therefore carries no capture date. Both are swept the same
+ * predates the 5.sqm migration, or the **join-time load** seeded it from the device's stored-file
+ * listing, which carries no capture date. Both are swept the same
  * way, by the single writer's next full enumeration ([LedgerStore.backfillManifestDetail]).
  */
 class LedgerEntry(
@@ -138,7 +138,7 @@ enum class LedgerState {
      * nothing further is owed for the key.
      *
      * Written by whichever party the platform tells that the upload terminated, **at the moment it is
-     * told** ([TerminalOutcome], through the ledger's guarded terminal write), by the re-join seed for a
+     * told** ([TerminalOutcome], through the ledger's guarded terminal write), by the join-time load for a
      * resource the device listing already holds, and by the `8.sqm` migration for rows an earlier build
      * left `UPLOADED`. Nothing a completion used to trigger remains: the device manifest declared the
      * resource at discovery, and the event-album placement happened when its upload was first enqueued.
@@ -210,33 +210,6 @@ val LedgerState.needsJob: Boolean
 
 /** The states needing an upload job, bound into the work-source read. See [needsJob]. */
 val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJob }
-
-/**
- * Whether a row in this state records a **belief that the bytes are on the backend** — the ledger's own
- * claim, which is exactly what a check against the backend's listing must compare (capability
- * `upload-state-reconciliation`).
- *
- * The third classification alongside [isDone] and [needsJob], and independent of both: the two axes above
- * answer "is anything still owed?" and "should a job be made?", neither of which is the same question as
- * "does this row assert that the upload landed?".
- *
- * Today it classifies every state exactly as [isDone] does, and it stays a separate decision on purpose: a
- * comparison against the backend must not depend on what "settled" means, and a future state may separate
- * the two. The belief matters most on the OS-driven tier, where the returned upload job carries no HTTP
- * status (`PHAssetResourceUploadJob` has no `statusCode`), so a [LedgerState.COMPLETED] recorded there
- * cannot tell a stored `201` from a `502`.
- *
- * Exhaustive with no `else`, for the reason [isDone] has none: a state added without classifying it must
- * stop the compile rather than land silently on one side of a comparison that decides whether a lost
- * photo is ever noticed.
- *
- * Decision record: `changes/retire-uploaded-state` (D5).
- */
-val LedgerState.bytesBelievedStored: Boolean
-    get() = when (this) {
-        LedgerState.COMPLETED -> true
-        LedgerState.DISCOVERED, LedgerState.REQUESTED -> false
-    }
 
 /**
  * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not

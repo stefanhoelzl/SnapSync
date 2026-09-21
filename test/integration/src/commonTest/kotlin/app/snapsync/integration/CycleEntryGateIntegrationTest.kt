@@ -10,8 +10,8 @@ import kotlin.test.assertTrue
 
 /**
  * The cycle's **entry gate** over the real stack (capability `upload-lifecycle`, and `event-link`'s
- * *An unreadable config is not an absent config*): the real `UploadCycle`, reconciler, ledger, marker and
- * mini-edge, with only the membership read forced.
+ * *An unreadable config is not an absent config*): the real `UploadCycle`, ledger and mini-edge, with only
+ * the membership read forced.
  *
  * These assertions could not be made before this change, in either of the two senses that matter:
  *
@@ -21,22 +21,20 @@ import kotlin.test.assertTrue
  *  - The **decision** lived in each composition root, which is `iosMain` and untested by project rule. No
  *    test could reach it at all, which is why one tier had it and the other did not.
  *
- * The distinction under test is not academic. `NotJoined` runs the leave-side reconciliation, which clears
- * the persisted `joinedEventId` marker; the next readable cycle then sees a mismatch and pays for a full
- * re-join — a device listing, an atomic ledger clear-and-seed to bare rows, and a walk that must re-read
- * every seeded asset (~110 ms of PhotoKit XPC per asset). Getting this wrong costs a settled join.
+ * The distinction under test is not academic. An unreadable read that acted like a leave would touch a
+ * settled membership's ledger or publish over its manifest; a cycle must do neither until it can read what
+ * the device is joined to.
  */
 class CycleEntryGateIntegrationTest {
 
     @Test
-    fun an_unreadable_membership_does_not_clear_the_join_marker() = worldTest {
+    fun an_unreadable_membership_leaves_the_ledger_untouched() = worldTest {
         val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("A")
-        // Settle the join: a first readable cycle seeds the marker and uploads.
+        // Settle the join: a first readable cycle records and uploads.
         w.runUploadCycle()
-        assertEquals(eventId, w.marker.read(), "precondition: the join is settled")
         val ledgerAfterSettle = w.ledgerBackend.manifestRows()
         assertTrue(ledgerAfterSettle.isNotEmpty(), "precondition: the settled cycle recorded the asset")
 
@@ -45,14 +43,10 @@ class CycleEntryGateIntegrationTest {
         val result = w.runUploadCycle()
 
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op")
-        assertEquals(
-            eventId,
-            w.marker.read(),
-            "unreadable is not a leave: the marker of a device that never left must survive",
-        )
+        assertEquals(eventId, w.configSource.config.value?.eventId, "unreadable is not a leave")
         assertEquals(
             ledgerAfterSettle, w.ledgerBackend.manifestRows(),
-            "the ledger must not be re-seeded — a re-seed leaves bare rows every walk must re-read",
+            "the ledger of a device that never left must not be touched",
         )
     }
 
@@ -75,22 +69,23 @@ class CycleEntryGateIntegrationTest {
         assertEquals(before, w.store.publishesOf("E", w.ownDeviceId), "no manifest published")
     }
 
-    // The other half of the gate: the fix must not turn a REAL leave into a skip. A leave that stopped
-    // clearing the marker would leave the device claiming a membership it no longer has.
+    // The other half of the gate: the fix must not turn a REAL leave into a skip. A definitively absent
+    // membership reads as not joined, and the cycle uploads nothing for it.
     @Test
-    fun a_cleared_membership_still_drives_the_leave_path() = worldTest {
+    fun a_cleared_membership_reads_as_not_joined_and_uploads_nothing() = worldTest {
         val w = World(this)
-        val eventId = "E"
-        w.provision(eventId)
+        w.provision("E")
         w.addOwnAsset("A")
         w.runUploadCycle()
-        assertEquals(eventId, w.marker.read(), "precondition: the join is settled")
+        val created = w.platform.created.size
 
         // A real leave: the config is definitively gone, and readable.
         w.leave()
-        w.runUploadCycle()
+        w.addOwnAsset("B")
+        assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
 
-        assertNull(w.marker.read(), "a real leave still clears the join marker")
+        assertEquals(created, w.platform.created.size, "a device that left uploads nothing")
+        assertTrue(w.ledgerBackend.manifestRows().isEmpty(), "and the leave cleared its upload ledger")
     }
 
     @Test

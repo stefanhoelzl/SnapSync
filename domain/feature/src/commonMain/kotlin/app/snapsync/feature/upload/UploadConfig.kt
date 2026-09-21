@@ -61,19 +61,17 @@ class JoinedMembership(
  * What one invocation should do — the **three-way** gate, because "the config could not be read" is
  * not "no event is configured".
  *
- * The distinction is load-bearing: [NotJoined] runs the leave-side reconciliation, which **clears the
- * persisted `joinedEventId` marker** (capability `upload-state-reconciliation`). An upload cycle runs
- * when the device is idle — which usually means *locked* — and a locked device could not read the
- * Keychain at all before the accessibility fix. That read failure used to arrive as "not joined", so
- * every invocation performed a **false leave**: the marker was cleared, and the next readable cycle
- * paid for a full re-join reconciliation (a device listing, and an atomic ledger clear-and-seed to bare
- * rows that the walk then had to re-read). The marker never settled.
+ * The distinction is load-bearing: an upload cycle runs when the device is idle — which usually means
+ * *locked* — and a locked device could not read the Keychain at all before the accessibility fix. That
+ * read failure used to arrive as "not joined", so every invocation performed a **false leave**, clearing
+ * the join state a later readable cycle then had to rebuild. [NotJoined] now clears nothing (the explicit
+ * leave clears the ledger itself, capability `leave-event`), but "could not look" and "not joined" still
+ * mean different things to every reader of this answer.
  *
  * This gate is consumed by [UploadCycle.run] — the choke point every trigger on every tier funnels
  * through — and **not** by a composition root. A root that reaches this decision itself reaches it for
  * whichever tiers its author enumerated: the OS-invoked tier had this gate and the app-driven tier did
- * not, for the same reason the re-join reconciliation and the direction gate each reached one tier and
- * not the other. A root supplies the reads; the cycle decides.
+ * not, for the same reason the direction gate once reached one tier and not the other. A root supplies the reads; the cycle decides.
  *
  * Decision record: `changes/archive/…-fix-locked-device-keychain-access` (the three-state read),
  * `changes/archive/…-fix-upload-config-gate` (moving it to the choke point).
@@ -81,7 +79,7 @@ class JoinedMembership(
 sealed interface CycleGate {
 
     /**
-     * A required input could not be read. Touch **nothing**: no reconcile, no marker clear, no jobs.
+     * A required input could not be read. Touch **nothing**: no ledger write, no manifest, no jobs.
      * Retry later.
      *
      * [detail] is the root's forensics — which read failed, and with what status. The decision is made
@@ -92,7 +90,7 @@ sealed interface CycleGate {
      */
     data class Skip(val detail: String) : CycleGate
 
-    /** There is definitively no event configured (or no baked host): reconcile the leave side, upload nothing. */
+    /** There is definitively no event configured (or no baked host): upload nothing, and touch nothing. */
     data object NotJoined : CycleGate
 
     /** Joined and configured: run the cycle. */
@@ -105,8 +103,8 @@ sealed interface CycleGate {
  * are genuine [CycleGate.NotJoined] states that a later retry cannot improve.
  *
  * [configReadable] covers **every** protected read the cycle needs, not just the config: resolving the
- * device identity fails the same way (both are Keychain items) and every outcome below needs it — the
- * reconciler and the manifest producer each close over it, so even the leave-side branch touches it. An
+ * device identity fails the same way (both are Keychain items) and the joined outcome needs it — the
+ * engine and the manifest producer each close over it. An
  * unresolvable identity is "I could not look", never "no identity" (the Keychain-backed identity never
  * reports absence — an absent item mints), so it belongs on this side of the roll-up rather than in a
  * fourth state.

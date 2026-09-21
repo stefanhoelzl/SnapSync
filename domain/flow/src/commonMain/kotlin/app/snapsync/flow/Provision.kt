@@ -12,22 +12,33 @@ import kotlinx.coroutines.launch
 /**
  * The **provision** trigger flow — the shared path for a scanned/typed event link and a freshly created
  * event (capabilities `event-link`, `upload-lifecycle`, `photo-selection-policy`). It **coordinates**
- * the join side effects in order and **decides** nothing; the destructive verbs a provision must never
- * reach simply do not exist in the seams it calls (`upload-lifecycle`).
+ * the join side effects in order and **decides** nothing: whether a transition is due is
+ * `feature/membership`'s sealed [switchDecision] rule.
  *
- * Order (each preserved from the shell's former `provisionEvent`):
- *  1. **Switch** — whether a leave is due is `feature/membership`'s sealed [switchDecision] rule;
- *     on a switch the previous event is left on the backend first (best-effort via [notifyLeave]).
- *  2. **Save** the whole [EventConfig] as-is (never destructured — a newly-added field like the cutoff
+ * A provision into a **new** membership replaces the upload ledger — the ledger is the current
+ * membership's share set (capability `sync-ledger`). That reverses the old rule that no destructive verb
+ * reaches a provision (`upload-lifecycle`): a switch now stops the previous membership's uploads, and a
+ * switch or a first join resets the ledger through [enterMembership]. A re-provision of the joined event
+ * reaches neither.
+ *
+ * Order:
+ *  1–2. **Enter the new membership** (a switch or a first join; `feature/membership`'s `MembershipEntry`
+ *     owns the order): on a switch, stop the previous membership's uploads, then fire the best-effort
+ *     backend leave; then load the new share set — clear the upload ledger and seed it from the device's
+ *     stored-file listing, or leave it empty when the listing fails. It never blocks the join. It runs
+ *     BEFORE the save, so no cycle ever sees the new membership over the previous one's ledger; a crash
+ *     between the two leaves either an unjoined device whose next join reloads anyway, or the previous
+ *     membership, whose next walk re-records its work.
+ *  3. **Save** the whole [EventConfig] as-is (never destructured — a newly-added field like the cutoff
  *     must not be dropped before the persist the extension reads).
- *  3. **Refresh** the status sources (re-enumerate the own total, re-read completeness) — synchronous,
+ *  4. **Refresh** the status sources (re-enumerate the own total, re-read completeness) — synchronous,
  *     so its lines carry this trigger's log context, as before.
- *  4. **Arm** the tier-neutral upload lifecycle ([UploadArm.onProvision]): with access granted it starts
+ *  5. **Arm** the tier-neutral upload lifecycle ([UploadArm.onProvision]): with access granted it starts
  *     the producer (or stops it for a download-only membership); with no access it defers to the grant.
- *  5. **Album** — ask the coordinator for the event album, unconditionally, passing the access fact
+ *  6. **Album** — ask the coordinator for the event album, unconditionally, passing the access fact
  *     along with the membership's: the granted/opt-in gate is [AlbumCoordinator.ensureAlbum]'s own
  *     leading guard (`event-album`; the grant subscription covers the grant-after-join case).
- *  6. **Reconcile** foreign downloads and **re-register the push token** — concurrently, so a slow
+ *  7. **Reconcile** foreign downloads and **re-register the push token** — concurrently, so a slow
  *     one never blocks the other and each labels its own log lines, but awaited before `run()`
  *     returns (law "A trigger flow never outlives its own run").
  *
@@ -37,7 +48,7 @@ import kotlinx.coroutines.launch
  * the event's details, so the fetch was redundant by construction. `Foreground` is the sole trigger
  * that refreshes the membership (capability `join-event`).
  *
- * Port touches ([activeEventId], [notifyLeave], [saveConfig], [refreshStatus], [isGranted]) arrive as
+ * Port touches ([activeEventId], [enterMembership], [saveConfig], [refreshStatus], [isGranted]) arrive as
  * `model`-typed effect lambdas built in `compose/`; the album rule lives in its feature
  * ([AlbumCoordinator]).
  */
@@ -48,8 +59,11 @@ class Provision(
     private val albumCoordinator: AlbumCoordinator,
     /** The currently-joined event id, or `null` — the config read (a port touch). */
     private val activeEventId: () -> String?,
-    /** Best-effort backend leave of a previous event on a switch. */
-    private val notifyLeave: suspend (eventId: String) -> Unit,
+    /**
+     * Enter a new membership — leaving `previousEventId` first on a switch (`null` for a first join) — and
+     * make the upload ledger its share set (capability `upload-state-reconciliation`).
+     */
+    private val enterMembership: suspend (previousEventId: String?) -> Unit,
     /** Persist the whole config (a port touch). */
     private val saveConfig: suspend (EventConfig) -> Unit,
     /** Re-enumerate the own total + re-read completeness (read-model refreshes). */
@@ -64,23 +78,23 @@ class Provision(
     private val registerPush: suspend () -> Unit = {},
 ) {
     suspend fun run(cfg: EventConfig) {
-        // 1. Switch: whether a leave is due is membership's sealed rule; on LeavePrevious the flow
-        //    fires the best-effort backend leave first. Re-scanning the same event is a Stay.
+        // 1–2. Enter the new membership — a switch or a first join. Re-scanning the same event is a Stay:
+        //      nothing is stopped, left or loaded.
         when (val decision = switchDecision(activeEventId(), cfg.eventId)) {
-            is SwitchDecision.LeavePrevious -> notifyLeave(decision.previousEventId)
+            is SwitchDecision.Enter -> enterMembership(decision.previousEventId)
             SwitchDecision.Stay -> Unit
         }
-        // 2. Persist the full config as-is (the per-device cutoff rides along untouched).
+        // 3. Persist the full config as-is (the per-device cutoff rides along untouched).
         saveConfig(cfg)
-        // 3. (re)joined event → re-enumerate own total + re-read completeness (synchronous: keeps context).
+        // 4. (re)joined event → re-enumerate own total + re-read completeness (synchronous: keeps context).
         refreshStatus()
-        // 4. Drive the tier-neutral upload lifecycle; nothing is cancelled or reset (no destructive verb).
+        // 5. Drive the tier-neutral upload lifecycle.
         uploadArm.onProvision()
-        // 5. Event album — an unconditional call carrying the access FACT: the granted/opt-in/name
+        // 6. Event album — an unconditional call carrying the access FACT: the granted/opt-in/name
         //    gate is the coordinator's own leading guard (capability `event-album`), so no caller can
         //    forget it. (The grant subscription covers the grant-after-join case.)
         albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, granted = isGranted())
-        // 6. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
+        // 7. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
         //    inside the controller) and re-register the push token — the latter closes the warm-rejoin
         //    window the sweep's device-record collection opens (capability `push-registration`). No
         //    details fetch rides here: the membership this flow just persisted came from details the
