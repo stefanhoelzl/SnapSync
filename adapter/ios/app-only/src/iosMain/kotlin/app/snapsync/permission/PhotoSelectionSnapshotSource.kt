@@ -25,7 +25,7 @@ import platform.Photos.PHFetchResult
  * app is the user action that makes it in-flow) and once per change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).
  *
- * Every read here is **in-flow** — measured storm-free on device: the baseline is one scope query per
+ * Every read here is **in-flow** (capability `limited-photo-access`): the baseline is one scope query per
  * observation start, and each change reads the **pushed** `fetchResultAfterChanges` (never a fresh
  * scope query). Change details are consumed as whole snapshots, not itemized deltas — bulk changes
  * arrive non-incremental (measured), so the reliable path is reload-and-let-the-ledger-dedup, which
@@ -109,8 +109,9 @@ class PhotoSelectionSnapshotSource(
         // "every fetch is in-flow" property is (capability `limited-photo-access`).
         //
         // Eager on purpose: deferring the resource read would leave a later consumer holding only
-        // identifiers, and reaching the assets again off-flow IS the measured storm. The selection is
-        // hand-picked and small, so eagerness costs little and buys the discipline.
+        // identifiers, and reaching the assets again off-flow would be an autonomous library fetch, which
+        // the read discipline forbids. The selection is hand-picked and small, so eagerness costs little
+        // and buys the discipline.
         _snapshots.emit(source.candidatesFrom(result).flatMap { it.resources() })
     }
 }

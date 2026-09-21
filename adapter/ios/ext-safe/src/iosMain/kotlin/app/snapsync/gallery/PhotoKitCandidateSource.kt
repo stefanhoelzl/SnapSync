@@ -45,9 +45,9 @@ import platform.UniformTypeIdentifiers.UTType
  *
  * **The candidate closes over the `PHAsset`, never over its identifier.** Re-fetching by
  * `localIdentifier` at read time would be a second round-trip for something already in hand; holding the
- * object keeps the deferred read off the fetch path entirely. (Not an alert argument: iOS's
- * limited-access alert is armed once per **out-of-scope library change**, not per fetch — capability
- * `limited-photo-access`.)
+ * object keeps the deferred read off the fetch path entirely. (Not an alert argument: no probe has seen a
+ * read of an unchanged library raise iOS's limited-access prompt, which the app suppresses anyway —
+ * capability `limited-photo-access`.)
  *
  * **Every read hops to [Dispatchers.Default], for concurrency rather than for safety.** Off-main is the
  * composition's job now — the app scope is a dedicated non-UI lane (spec `module-architecture`, law
