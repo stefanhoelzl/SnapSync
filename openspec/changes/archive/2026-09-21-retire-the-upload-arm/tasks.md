@@ -51,4 +51,4 @@
 ## 7. Ship
 
 - [ ] 7.1 PR labelled `bug` (customer-visible: background uploads resume after cold wakes); `/ship --keep-workspace`
-- [ ] 7.2 At sync/archive: rewrite `upload-lifecycle`'s Purpose (no producer seam; the arm is the transitions set; exclusivity gated) and run the three archive gates
+- [x] 7.2 At sync/archive: rewrite `upload-lifecycle`'s Purpose (no producer seam; the arm is the transitions set; exclusivity gated) and run the three archive gates

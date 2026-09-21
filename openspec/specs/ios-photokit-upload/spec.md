@@ -213,8 +213,14 @@ row to `DISCOVERED`.
 
 ### Requirement: Extension registration is a disable→enable toggle
 
-**On iOS ≥26.1**, on a full photo-access grant the app SHALL register the background-upload extension with a
-**disable→enable toggle** — `setUploadJobExtensionEnabled(false)` then `setUploadJobExtensionEnabled(true)` — rather than a bare enable. The system's `AssetResourceUploadJobConfiguration` is keyed by bundle id and **persists across app delete/reinstall and device reboot**; a stale record (e.g. left by a differently-signed build) makes a bare `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record"), after which the system never launches the extension. The leading `enable(false)` deletes the stale record so `enable(true)` re-creates it cleanly for the currently-installed extension. On iOS 18–26.0 there is no such OS toggle; "enable" starts the app-driven pump and "disable" cancels it (see `ios-url-session-upload`).
+**On iOS ≥26.1** the app SHALL register the background-upload extension with a **disable→enable toggle**
+whenever it registers it — forced at a **join**, and at a reconfigure, a permission change, a launch or an
+override change only when the compared reconcile finds it wanted and absent (`upload-lifecycle`, "Membership
+transitions reconcile the upload mechanisms in one tested place") — `setUploadJobExtensionEnabled(false)` then `setUploadJobExtensionEnabled(true)` — rather than a bare enable. The system's `AssetResourceUploadJobConfiguration` is keyed by bundle id and **persists across app delete/reinstall and device reboot**; a stale record (e.g. left by a differently-signed build) makes a bare `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record"), after which the system never launches the extension. The leading `enable(false)` deletes the stale record so `enable(true)` re-creates it cleanly for the currently-installed extension. On iOS 18–26.0 there is no such OS toggle; the transitions arm and disarm the app-driven engine instead (see `ios-url-session-upload`).
+
+A stale record that still **reads** enabled is repaired only at the next join: the launch reconcile compares
+rather than forcing, so the extension's in-flight jobs survive app launches (`upload-lifecycle`, "Launch
+reconciles by comparison; only a join forces the repair").
 
 The registration change SHALL be made through a **port** in `:domain` `ports/`, named for the need, whose
 iOS adapter — the only implementation that calls `PHPhotoLibrary.setUploadJobExtensionEnabled` or
@@ -251,10 +257,10 @@ a target's host cannot hold such a record, the port's binding for that target an
 - **THEN** the rows are demoted to `DISCOVERED` **before** the enable is attempted, so the repair cannot demote
   rows belonging to the registration it is about to re-create
 
-#### Scenario: Stopping is the disable alone
-- **WHEN** the OS-driven mechanism's `stop()` runs — on a leave, or to relinquish it to the app-driven one
+#### Scenario: Deregistering is the disable alone
+- **WHEN** the extension is deregistered — on a leave, a download-only join, or a pin away from this mechanism
 - **THEN** the registration is removed (or, under a partial grant, the attempt is refused) and no ledger
-  row is touched; the next mechanism start repairs any row left `REQUESTED`
+  row is touched; the next bring-up repairs any row left `REQUESTED`
 
 ### Requirement: Device-visible (un-redacted) logging
 
@@ -465,15 +471,15 @@ the app-driven tier, which has no OS registration record to re-create (see `ios-
 "App-driven lifecycle").
 
 A **switch** (a re-provision into a different event) is a leave followed by a join (capabilities
-`upload-lifecycle`, `join-event`). On this tier it SHALL run in the app, in this order: the arm **stops**
-this mechanism (the disable alone — see "Re-registering the extension demotes orphaned REQUESTED rows"),
+`upload-lifecycle`, `join-event`). On this tier it SHALL run in the app, in this order: the leave transition
+**deregisters** the extension (the disable alone — see "Re-registering the extension demotes orphaned REQUESTED rows"),
 the provision's **join-time load** re-baselines the ledger — it fetches the
 per-device file listing (capability `api-endpoints`) and **`resetTo`s** (atomic clear-and-seed) the ledger
 to one already-uploaded row per stored file, or `clear()`s it when the fetch fails — through the app's
 `LedgerStore`, with no `LedgerWriter` (see `ios-app-shell`, "The app resets the upload ledger at membership
-transitions on every tier"), the new config is then saved, and only then does the arm's `start()`
+transitions on every tier"), the new config is then saved, and only then does the join transition
 re-register the extension (the
-disable→enable toggle). A first join takes the same load before the first registration. The extension
+disable→enable toggle, forced). A first join takes the same load before the first registration. The extension
 therefore never re-baselines the ledger itself: it constructs no join marker and runs no in-cycle
 reconciliation, and its first cycle after the re-register already reads the loaded ledger.
 
@@ -508,7 +514,7 @@ demotes orphaned REQUESTED rows").
 
 #### Scenario: The disable→enable toggle is confined to this tier
 - **WHEN** the app re-provisions an event on iOS 18–26.0
-- **THEN** `setUploadJobExtensionEnabled` is not called, and the app-driven producer's `start()` runs instead
+- **THEN** `setUploadJobExtensionEnabled` is not called, and the join transition arms the app-driven engine instead
 
 ### Requirement: Discovery prunes ledger rows for deleted assets
 
@@ -576,23 +582,23 @@ therefore **wipes every in-flight OS upload job**, and no API surfaces a vanishe
 rows stay `REQUESTED` forever: the engine treats `REQUESTED` as in-flight and never re-issues it, and no
 cycle re-baselines the ledger — so the photos that were mid-upload are permanently abandoned.
 
-The recovery SHALL run in this mechanism's **`start()`** — the disable→enable re-register — **between** the
+The recovery SHALL run in the **registration** — the disable→enable re-register — **between** the
 disable and the enable, and SHALL be the ledger's reset-family `demoteRequested()` (`sync-ledger`): every
 `REQUESTED` row becomes `DISCOVERED`. Every one of them is unsettleable at that moment: the disable has just wiped
-this tier's jobs, and wherever the app-driven mechanism also exists, starting this mechanism is preceded by the
-app-driven mechanism's `stop()` (`upload-lifecycle`, "The upload mechanism is resolved, never selected"), so
+this tier's jobs, and wherever the app-driven engine also exists, the transition that registers disarms it
+first (`upload-lifecycle`, "Membership transitions reconcile the upload mechanisms in one tested place"), so
 no app-driven transfer is carrying a row either.
 
 A `DISCOVERED` row needs a job, so the ledger's work read returns it on the next cycle without any walk
 re-deriving it. The former recovery *deleted* the rows, which only a walk that re-read the asset's
 resources could re-surface; a demoted row needs no such walk.
 
-This mechanism's **`stop()`** SHALL be the disable alone and SHALL repair nothing — on a leave and on a
-relinquish to the app-driven mechanism alike. On a leave nothing uploads until a mechanism starts again, and
-the leave's own ledger clear — `LeaveEvent`'s, after this `stop()`, never this verb's (capability
-`leave-event`) — leaves no row to repair; on a relinquish, the app-driven mechanism's own start repairs (`ios-url-session-upload`,
-"Stranded reconciliation: scoped each cycle, complete at a start"). There SHALL therefore be no narrower
-teardown verb for a hand-off.
+**Deregistration** SHALL be the disable alone and SHALL repair nothing — on a leave, a download-only join, and
+a pin away from this mechanism alike. On a leave nothing uploads until a mechanism is brought up again, and
+the leave's own ledger clear — `LeaveEvent`'s, after the deregistration, never its (capability
+`leave-event`) — leaves no row to repair; where the app-driven engine is armed instead, its restart rule
+repairs (`ios-url-session-upload`, "Stranded reconciliation: scoped each cycle, complete at a start"). There
+SHALL therefore be no narrower teardown verb for a hand-off.
 
 The demote SHALL be **awaited off the main thread and completed before the enable**. The write SHALL run on
 `Dispatchers.Default` (Kotlin/Native has no `Dispatchers.IO`), never on the `Dispatchers.Main` scope — it is a
@@ -625,11 +631,10 @@ the one recording process, and `demoteRequested` is a reset-family operation tha
 - **THEN** the SQLite write executes on `Dispatchers.Default` (not the `Dispatchers.Main` scope) with
   a bounded retry, and is awaited rather than launched fire-and-forget
 
-#### Scenario: A stop repairs nothing
+#### Scenario: A deregistration repairs nothing
 
-- **WHEN** the extension is disabled by this mechanism's `stop()` — a leave, or a relinquish to the app-driven
-  mechanism — while `REQUESTED` rows exist
-- **THEN** the `stop()` itself changes no ledger row, and the rows are demoted by the next mechanism start
+- **WHEN** the extension is deregistered — a leave, or a download-only join — while `REQUESTED` rows exist
+- **THEN** the deregistration itself changes no ledger row, and the rows are demoted by the next bring-up
   (or removed by a leave's subsequent ledger clear)
 
 #### Scenario: Completed rows survive the repair
@@ -799,15 +804,21 @@ re-evaluate at the iOS 27 GM re-assessment (~Sept 2026, the existing
 `PHBackgroundResourceUploadJobExtension` trigger) — the constraint MUST be re-measured against the async
 protocol before assuming it persists.
 
-Consequently, under `LIMITED` the upload arm SHALL NOT start this tier's producer — it starts the
-app-driven producer instead (capability `upload-lifecycle`). A `LIMITED` membership relying on this tier
+Consequently, under `LIMITED` resolution SHALL NOT yield this tier — the app-driven engine runs instead —
+and no registration write SHALL be attempted there by a compared reconcile (capability `upload-lifecycle`);
+only the forced writes of a join or a leave reach the platform, and their refusal is reported, not fatal. A `LIMITED` membership relying on this tier
 would be a silent no-op: the screen would sit at "Synchronization pending…" indefinitely, which is exactly
 the failure mode this requirement exists to prevent.
 
-A registration that **survives** a downgrade to a partial grant SHALL be understood as **inert rather than
-hazardous**: the OS does not invoke the extension under that grant, and a return to a full grant
-re-registers through the disable→enable ritual regardless. There is therefore no state in which a
-surviving registration and a running app-driven mechanism produce two ledger writers. Deregistration
+A registration that **survives** a downgrade to a partial grant SHALL be made **inert by the extension's own
+gate**. The OS does NOT leave it alone — measured on the SE2, iOS 26.6, 2026-09-21: with a surviving record
+under `LIMITED`, `process()` ran four seconds after a new photo joined the selection, and the gate withheld
+it. That supersedes this requirement's earlier reading that such a record is inert because the OS does not
+invoke it. The extension reads the grant in its own process and
+withholds under anything but `GRANTED` ("The extension withholds its cycle without a full grant"). A return to
+a full grant is a permission change whose compared reconcile re-registers through the disable→enable ritual
+if the record is gone. There is therefore no state in which a surviving registration and a running
+app-driven mechanism produce two ledger writers. Deregistration
 remains both possible and required under a **full** grant, which is where a development mechanism override
 places the app-driven mechanism (`upload-lifecycle`).
 
@@ -816,13 +827,14 @@ places the app-driven mechanism (`upload-lifecycle`).
 - **THEN** no upload waits on a `process()` invocation — the work runs on the app-driven mechanism
 
 #### Scenario: A downgrade to a partial grant cannot deregister
-- **WHEN** photo access transitions from `GRANTED` to `LIMITED` while this tier's producer is started
-- **THEN** the deregistration attempt is refused with `PHPhotosErrorAccessUserDenied`, the configuration
-  record survives, and the app-driven producer starts regardless
+- **WHEN** photo access transitions from `GRANTED` to `LIMITED` while the extension is registered
+- **THEN** no deregistration is attempted (it would be refused with `PHPhotosErrorAccessUserDenied`), the
+  configuration record survives, and the app-driven engine is armed regardless
 
 #### Scenario: The surviving registration causes no second writer
 - **WHEN** a registration survives a downgrade to a partial grant and the app-driven mechanism is running
-- **THEN** the OS does not invoke the extension, so exactly one process writes ledger records
+- **THEN** an extension invocation — which the OS does make (measured, iOS 26.6) — withholds at its gate,
+  so exactly one process writes ledger records
 
 #### Scenario: An enable under a partial grant is refused too
 - **WHEN** the OS-driven mechanism is pinned by a development override under a `LIMITED` grant and its
@@ -1081,4 +1093,39 @@ unreadable library then costs an idle pass: nothing is recorded and nothing is d
 - **WHEN** the library read reports the library not readable
 - **THEN** the discovery returns no candidates and does not report `fullEnumeration`, so the cycle records
   nothing and deletes nothing
+
+### Requirement: The extension withholds its cycle without a full grant
+
+The extension SHALL read the photo grant **in its own process** and pass it to its cycle's entry gate as the
+admission answer (`upload-lifecycle`, "The upload cycle owns its entry decision"): it SHALL admit exactly
+under `GRANTED` and **withhold** under `LIMITED`, `DENIED` and `NOT_DETERMINED`.
+
+A withheld cycle SHALL acknowledge the terminal jobs the OS presented and record their outcomes — the
+acknowledgement obligation whose omission makes the system report `50008`, discard the outstanding jobs and
+defer the extension — but SHALL re-create no retry, create no job, run no stranded pass, walk nothing, and
+publish **no** device manifest. It SHALL report `SKIPPED` at routine severity.
+
+It SHALL NOT reuse the direction gate's decline, which publishes an **empty** manifest: that is honest for a
+direction that permanently excludes upload, and a grant is temporary. Publishing empty on a revoked or
+undetermined grant would remove this device's photos from every member's view the moment the grant flipped.
+
+The decision SHALL be made before the membership's selection policy is built, so a `NOT_DETERMINED` grant never
+reaches the denylisted-album read that would present the permission dialog.
+
+The grant read SHALL be the same `PHAuthorizationStatus` → `PermissionStatus` mapping the app process uses, held
+once in `:adapter:ios:ext-safe` (whose `Photos` import the extension-safety gate allows) and delegated to by the
+app-only permission adapter — one mapping, not a copy.
+
+#### Scenario: A downgraded grant withholds the extension's cycle
+- **WHEN** the OS invokes the extension while photo access is `LIMITED`
+- **THEN** it acknowledges the presented jobs, creates no job, walks nothing, writes no manifest, and reports
+  `SKIPPED`
+
+#### Scenario: A withheld cycle does not blank the event union
+- **WHEN** the extension withholds on a device whose manifest lists uploaded photos
+- **THEN** that manifest is left as it was, so the photos stay visible to every member
+
+#### Scenario: An undetermined grant raises no dialog in the extension
+- **WHEN** the OS invokes the extension while photo access is `NOT_DETERMINED`
+- **THEN** the cycle withholds before any album structure is read, and no permission prompt is issued
 

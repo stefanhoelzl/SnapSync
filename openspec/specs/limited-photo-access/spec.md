@@ -364,16 +364,28 @@ completion is not a separate signal path.
 
 A `LIMITED` membership's uploads SHALL run on the app-driven `URLSession` mechanism (capability
 `ios-url-session-upload`) regardless of OS version. On iOS ≥26.1 this is forced by measurement: the
-OS never invokes the PhotoKit background-upload extension while the app holds `.limited` (capability
-`ios-photokit-upload` records the constraint), so the arm starts the app-driven producer under
-`LIMITED` and the PhotoKit producer under `GRANTED` (capability `upload-lifecycle` owns the
-exactly-one-started invariant).
+extension's registration cannot be changed while the app holds `.limited` — neither created nor removed
+(capability `ios-photokit-upload`) — so the OS-driven tier cannot be brought up there. Resolution
+therefore yields the app-driven kind under `LIMITED` (capability `upload-lifecycle`), and the app engine's
+entry gate admits its cycle there, scoped to the selection snapshot.
+
+The extension SHALL **withhold** under `LIMITED` at its own entry gate, reading the grant in its own process.
+A registration made under a full grant survives a downgrade (the deregistration is refused), and **the OS
+does invoke it there** — measured on the SE2, iOS 26.6, 2026-09-21: with a surviving record and a partial
+grant, `process()` ran four seconds after a new photo joined the selection. An extension cycle there would
+inherit a whole-library scope — it has no selection snapshot — so the gate is load-bearing, not
+defense-in-depth. The extension SHALL decide on
+the permission, never on its selection scope, whose default is untrue under a partial grant.
 
 #### Scenario: A limited member on iOS ≥26.1 uploads via the app-driven tier
 - **WHEN** a member on iOS ≥26.1 holds a `LIMITED` grant with upload-inclusive direction and selects an
   in-scope photo
 - **THEN** the upload completes through the app-driven `URLSession` mechanism without any PhotoKit
   extension invocation
+
+#### Scenario: An extension invoked under a limited grant withholds
+- **WHEN** a registration survives a downgrade to `LIMITED` and the OS invokes the extension
+- **THEN** the extension's cycle withholds: it walks nothing, creates no job, and publishes no manifest
 
 ### Requirement: A downgrade to limited narrows the visible set without breaking sync
 
@@ -404,14 +416,14 @@ The app SHALL treat the resulting `LIMITED→GRANTED` change as an ordinary scop
 of the existing downgrade requirement: the OS terminates the app when the grant changes in Settings,
 and the next cold launch composes the ordinary `GRANTED` state — the baseline covers the whole
 post-cutoff library under the selection policy, the selection-change observer is not registered, the
-arm starts the `GRANTED`-tier producer (capability `upload-lifecycle`), and the ledger/reconcile
-guarantees photos uploaded under the limited selection are not re-uploaded.
+launch reconcile brings up the mechanism resolution yields for `GRANTED` (capability `upload-lifecycle`),
+and the ledger guarantees photos uploaded under the limited selection are not re-uploaded.
 
 #### Scenario: The upgrade resumes as an ordinary full grant
 - **WHEN** a member who uploaded photos under a `LIMITED` selection switches to Full Access in
   Settings and relaunches the app
 - **THEN** the app composes the ordinary `GRANTED` state — no selection-change observer, the
-  `GRANTED`-tier producer — and only newly-in-scope post-cutoff photos upload; nothing re-uploads
+  `GRANTED`-tier mechanism — and only newly-in-scope post-cutoff photos upload; nothing re-uploads
 
 #### Scenario: The route raises no permission dialog
 - **WHEN** the member takes the in-app route to Full Access
@@ -421,7 +433,8 @@ guarantees photos uploaded under the limited selection are not re-uploaded.
 ### Requirement: The read discipline is enforced at the mechanism, not at the trigger fan-out
 
 The rule that no autonomous library read occurs under a partial grant SHALL be enforced by the upload
-**mechanism** that would perform the read, not by the trigger fan-out that wakes it. A trigger SHALL be
+**mechanism** that would perform the read — at its cycle's entry gate and in its discovery — not by the
+trigger fan-out that wakes it. A trigger SHALL be
 delivered to the resolved mechanism unconditionally (`upload-lifecycle`, "Triggers are delivered to the
 mechanism and declined explicitly"), and the mechanism SHALL decide whether responding would read the
 library.
@@ -484,32 +497,28 @@ the library, and nothing about its contents says so.
 ### Requirement: A limited grant resolves the app-driven mechanism by resolution, not by a branch
 
 Under a partial grant the app-driven mechanism SHALL be the one **resolution** yields on every OS
-version (`upload-lifecycle`, "The upload mechanism is resolved, never selected"), and on an OS carrying
-the OS-driven mechanism that resolved producer SHALL **attempt** to relinquish the OS-driven registration
-before it pumps.
+version (`upload-lifecycle`, "The upload mechanism is resolved, never selected").
 
-The attempt SHALL be understood as an attempt, not an accomplished teardown. Under a partial grant the
-platform refuses it with `PHPhotosErrorAccessUserDenied` (`ios-photokit-upload`, "The registration cannot
-be changed under a partial grant"), so any record that already exists survives. That is safe rather than
-merely tolerable: the OS does not invoke the extension under a partial grant, so a surviving record
-produces no second ledger writer, and a return to a full grant re-registers through the disable→enable
-ritual regardless. Where the same resolution cell is entered under a **full** grant — which is where a
-development mechanism override places the app-driven mechanism — the relinquish succeeds and is
-load-bearing.
+No deregistration SHALL be attempted under a partial grant. The platform refuses it with
+`PHPhotosErrorAccessUserDenied` (`ios-photokit-upload`, "The registration cannot be changed under a partial
+grant"), so an attempt could only ever report a refusal; the transitions' compared reconcile changes nothing
+under any grant other than `GRANTED` (`upload-lifecycle`). A record that already exists survives, and that is
+safe: the extension withholds at its own gate under a partial grant ("Upload under limited uses the app-driven
+mechanism on every OS version"), so a surviving record produces no second ledger writer, and a return to a full
+grant is a permission change whose compared reconcile re-registers through the disable → enable ritual if the
+record is gone.
 
-Deregistration under a partial grant is therefore not a separate rule from the forced-tier case: both are
-the same resolution cell. A limited member on such an OS previously depended on a lifecycle transition
-firing to tear the registration down; making it a property of the resolved mechanism removes that
-dependence, whether or not the platform honours the attempt.
+Where the app-driven kind is resolved under a **full** grant — which only a development mechanism override
+produces — the deregistration succeeds and is load-bearing (`upload-lifecycle`, "A mechanism override is a
+runtime input a shipped build cannot carry").
 
-#### Scenario: A downgrade to a limited grant relinquishes via the resolved mechanism
-
+#### Scenario: A downgrade to a limited grant attempts no registration change
 - **WHEN** photo access transitions from `GRANTED` to `LIMITED` on an OS carrying the OS-driven mechanism
-- **THEN** resolution yields the app-driven kind, whose producer attempts to deregister the extension
-  before pumping, and no separate deregistration rule is consulted
+- **THEN** resolution yields the app-driven kind, the app engine is armed, and no registration write is
+  attempted
 
-#### Scenario: A refused relinquish does not block the pump
+#### Scenario: A surviving registration does not block the pump
+- **WHEN** a registration survives the downgrade
+- **THEN** the app-driven mechanism pumps regardless, the extension withholds if invoked, and exactly one
+  process writes ledger records
 
-- **WHEN** that relinquish attempt is refused because the grant is partial
-- **THEN** the surviving registration is left in place, the app-driven mechanism pumps regardless, and
-  exactly one process writes ledger records
