@@ -11,7 +11,8 @@ For a guest at a stranger's event, picking exactly what to share is the *more* n
 Three measured platform facts shape every requirement here (SE2; the probe records live with the decision
 records). First, the app never raises iOS's automatic limited-access prompt itself. That prompt nudges the
 member to widen the selection; it does not guard reads. The app suppresses it
-(`PHPhotoLibraryPreventAutomaticLimitedAccessAlert`) and owns the picker instead. Reads of an unchanged
+(`PHPhotoLibraryPreventAutomaticLimitedAccessAlert`, in the app **and** the extension bundle — the extension
+evaluates the prompt at launch, measured) and owns the picker instead. Reads of an unchanged
 library, and the app's own creations, raise none. Whether a photo taken **outside** the selection gets
 past the key has differed by release (it leaked on iOS 26.5.x and held on 26.6.2), so nothing is designed
 on it. The read discipline below is kept for a different reason: under a partial grant the selection *is*
@@ -340,7 +341,8 @@ consumer waiting or retrying.
 ### Requirement: The app owns the limited-library picker
 
 The app SHALL suppress iOS's automatic limited-access alert
-(`PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true` in the app target's Info.plist) **and**
+(`PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true`) in **both** bundles' Info.plist — the app target's
+**and** the background-upload extension's — **and**
 SHALL offer its own route to widen the selection: the status screen's "Choose more photos" affordance
 (capability `sync-status-screen`) drives `presentLimitedLibraryPicker` (PhotosUI category on
 `PHPhotoLibrary`; app-only adapter). Both halves are mandatory and measured: without suppression the
@@ -349,6 +351,14 @@ limited user with no way to widen their selection except Settings.
 
 The resulting selection change is observed through the change-source port like any other — the picker
 completion is not a separate signal path.
+
+**The extension needs the key as well, because the Photos framework reads it from the running process's own
+bundle.** Measured on the SE2, iOS 26.6, 2026-09-21: under a partial grant with an extension registration
+surviving from a full grant, the OS launches the extension, and its `PhotoLibraryServicesCore` evaluates the
+automatic prompt **at launch**, before any of the app's code runs — while the app process, which carried the
+key, never evaluated it in the same window. One such launch put the prompt on the member's screen. No read
+discipline in the extension's code can prevent a decision taken before that code starts; only the key can
+(decision record: `changes/archive/2026-09-21-retire-the-upload-arm`).
 
 #### Scenario: The picker is reachable from the status screen under limited
 - **WHEN** permission is `LIMITED` and the member taps "Choose more photos"
@@ -359,6 +369,12 @@ completion is not a separate signal path.
 - **WHEN** the app reads the photo library under a limited grant in its steady state
 - **THEN** iOS's automatic "Select More Photos / Keep Current Selection" alert is not presented by the
   app's reads (the Info.plist key is present in the built bundle)
+
+#### Scenario: An extension launch under a limited grant raises no alert
+- **WHEN** the OS launches the background-upload extension while the app holds a limited grant (a
+  registration surviving from a full grant)
+- **THEN** the automatic alert is not presented, because the key is present in the extension bundle's own
+  Info.plist
 
 ### Requirement: Upload under limited uses the app-driven mechanism on every OS version
 

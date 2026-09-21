@@ -47,6 +47,14 @@
 	     of them is a reachable state, and the one ios.yml asserts against both. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2</string>
+	<!-- THE SAME SUPPRESSION THE APP CARRIES, and it must be here too: the Photos framework reads it from
+	     THIS process's own bundle. Measured on device (SE2, iOS 26.6, 2026-09-21): under a limited grant
+	     with an extension registration surviving from a full grant, the OS launches this extension, and
+	     its PhotoLibraryServicesCore evaluates the automatic "Select More Photos / Keep Current Selection"
+	     prompt at launch — before any of our code runs — while the app process, which carries the key,
+	     never does. One such launch put the prompt on screen. Capability `limited-photo-access`. -->
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
 	<key>EXAppExtensionAttributes</key>
 	<dict>
 		<key>EXExtensionPointIdentifier</key>
