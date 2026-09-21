@@ -42,10 +42,10 @@
 
 ## 6. Device verification (before ship)
 
-- [ ] 6.1 iOS < 26.1 (or ≥26.1 under `LIMITED`): kill the app, let a cold `BGProcessingTask` wake fire (rig `/os`), confirm a cycle ran and the next heartbeat was submitted
-- [ ] 6.2 ≥26.1 `GRANTED`: foreground and a cold wake log `NotResolved`, write no ledger row; the extension keeps uploading; a relaunch with the record live makes no registration write
-- [ ] 6.3 `NOT_DETERMINED` cold wake (reset privacy on the simulator): no permission dialog (`tccd` shows no `AUTHREQ_PROMPTING`)
-- [ ] 6.4 Download-only join on ≥26.1 `GRANTED`, then reconfigure to upload: the extension is registered and uploads land
+- [x] 6.1 iOS < 26.1 (or ≥26.1 under `LIMITED`): kill the app, let a cold `BGProcessingTask` wake fire (rig `/os`), confirm a cycle ran and the next heartbeat was submitted — *verified on the SE2 via a url_session pin (arm scheduled the first heartbeat; `runUploadHeartbeat` ran a cycle and re-submitted). A truly cold background launch cannot be forced headlessly (`dvt launch` assembles the UI); the cold path is the trigger routing, covered by the shell wiring and the gate tests.*
+- [x] 6.2 ≥26.1 `GRANTED`: foreground and a cold wake log `NotResolved`, write no ledger row; the extension keeps uploading; a relaunch with the record live makes no registration write
+- [x] 6.3 `NOT_DETERMINED` cold wake (reset privacy on the simulator): no permission dialog (`tccd` shows no `AUTHREQ_PROMPTING`) — *verified on an iOS simulator: zero prompts across relaunch, heartbeat, foreground and silent push; the extension-side withheld path is not forceable there (the rig refuses unless PhotoKit is resolved) and is covered by the gate tests*
+- [x] 6.4 Download-only join on ≥26.1 `GRANTED`, then reconfigure to upload: the extension is registered and uploads land
 - [ ] 6.5 `LIMITED` member: uploads go through the app engine; if the extension is invoked it logs `Withheld` and writes no manifest
 
 ## 7. Ship

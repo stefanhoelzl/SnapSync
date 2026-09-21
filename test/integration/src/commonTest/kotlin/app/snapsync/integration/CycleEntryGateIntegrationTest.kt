@@ -82,7 +82,8 @@ class CycleEntryGateIntegrationTest {
         // A real leave: the config is definitively gone, and readable.
         w.leave()
         w.addOwnAsset("B")
-        assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
+        // SKIPPED: with no membership the app engine's pump must not re-arm a heartbeat for no event.
+        assertEquals(CycleResult.SKIPPED, w.runUploadCycle())
 
         assertEquals(created, w.platform.created.size, "a device that left uploads nothing")
         assertTrue(w.ledgerBackend.manifestRows().isEmpty(), "and the leave cleared its upload ledger")

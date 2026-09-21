@@ -401,7 +401,7 @@ class UploadCycleTest {
 
         val result = cycle(backend, platform, readGate = { CycleGate.NotJoined }).run()
 
-        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(CycleResult.SKIPPED, result, "no membership, nothing to re-arm for — the join arms")
         assertEquals(LedgerState.COMPLETED, backend.get("kept-primary.heic")?.state, "the ledger is untouched")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "a leave creates no upload job")
     }

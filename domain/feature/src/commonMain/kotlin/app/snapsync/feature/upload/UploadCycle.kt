@@ -689,9 +689,14 @@ class UploadCycle(
             override val result get() = CycleResult.COMPLETED
         }
 
-        /** Definitively not joined. */
+        /**
+         * Definitively not joined. `SKIPPED`, not `COMPLETED`: with no membership there is nothing to wake for,
+         * and the pump re-arms its heartbeat on anything but `SKIPPED` — so an unjoined device whose triggers
+         * now reach the app engine would carry a self-re-submitting `BGProcessingTask` for no event. The join
+         * is what arms it (capability `upload-lifecycle`, "No membership, no arm").
+         */
         data object NotJoined : CycleOutcome {
-            override val result get() = CycleResult.COMPLETED
+            override val result get() = CycleResult.SKIPPED
         }
 
         /** This process's engine is not the resolved mechanism. Nothing was touched. */
