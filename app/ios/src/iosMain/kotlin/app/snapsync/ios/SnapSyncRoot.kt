@@ -61,8 +61,8 @@ import app.snapsync.ports.PlatformHandoff
 import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
-import app.snapsync.feature.upload.OsDrivenUploadMechanism
-import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.feature.upload.ExtensionRegistration
+import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploadMechanism
 import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.ports.OsReceipt
@@ -76,7 +76,6 @@ import app.snapsync.model.PlatformEntry
 import app.snapsync.link.isWebLinkActivity
 import app.snapsync.model.forwardEventLink
 import app.snapsync.model.userActivityParams
-import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appLogDestination
 import app.snapsync.logging.IosDeviceLogSource
@@ -135,10 +134,11 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
  * `compose/` zone as [app]. `permission` and `config` are each passed as both their ports (one
  * adapter implements both).
  *
- * **Upload lifecycle lives elsewhere.** This root selects exactly one [UploadProducer] for the process
- * (the PhotoKit extension registration on iOS ≥26.1, the in-app URLSession pump on 18–26.0) and forwards
- * membership transitions to the composed, tier-neutral `UploadArm` (`app.uploadArm`). The *decision* —
- * which verb fires on provision / grant / leave — is not made here, because this module is wiring-only and
+ * **Upload lifecycle lives elsewhere.** This root constructs the mechanisms this OS can carry (the PhotoKit
+ * extension registration on iOS ≥26.1, the in-app URLSession engine everywhere) and the composed, stateless
+ * `UploadTransitions` (`app.uploadTransitions`) decide what each membership transition does to them. The
+ * *decision* — which verb fires on join / reconfigure / grant / launch / leave — is not made here, because
+ * this module is wiring-only and
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
  * shipped a provision path that destroyed its ledger and started nothing (capability `upload-lifecycle`).
  */
@@ -263,15 +263,15 @@ object SnapSyncRoot {
     internal var uploadMechanismOverrideSource: () -> UploadMechanism? = { null }
 
     /**
-     * The OS-driven mechanism, composed **only where its API exists**.
+     * The OS-driven registration, composed **only where its API exists**.
      *
      * The one remaining switch, and it earns its place: `setUploadJobExtensionEnabled` does not exist
      * below iOS 26.1, so constructing this object there would put a trapping selector one call away. Below
      * 26.1 the thunk never touches it, which is what keeps that structural rather than guarded. It decides
      * nothing else — it does not say which mechanism runs, only which one this OS *has*.
      */
-    private val osDrivenUploadThunk: () -> UploadMechanismRuntime? =
-        if (osSupportsOsDrivenUpload) ({ photoKitProducer }) else ({ null })
+    private val osDrivenRegistrationThunk: () -> ExtensionRegistration? =
+        if (osSupportsOsDrivenUpload) ({ osDrivenRegistration }) else ({ null })
 
     /**
      * The OS's registration record, composed under the same switch and for the same reason: both of its
@@ -483,11 +483,8 @@ object SnapSyncRoot {
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
                 // every transition (capability `upload-lifecycle`) — this root supplies only facts.
                 appDrivenUpload = { urlSessionUpload },
-                osDrivenUpload = osDrivenUploadThunk,
+                extensionRegistration = osDrivenRegistrationThunk,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                // The OS-driven mechanism's ordinary `stop()` — the disable alone. It repairs no ledger row;
-                // the incoming mechanism's own start does (`upload-lifecycle`, `RelinquishThenRun`).
-                relinquishOsRegistration = { photoKitProducer.stop() },
                 uploadMechanismOverride = uploadMechanismOverrideSource,
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
@@ -1097,8 +1094,8 @@ object SnapSyncRoot {
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
      * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
-     * total and the storage-truth status sources, then **starts** the producer if access is granted (via
-     * the tested, tier-neutral [UploadArm]). At a first join or a switch the Provision flow also loads the
+     * total and the storage-truth status sources, then runs the upload arm's **join** transition (the tested,
+     * stateless `UploadTransitions`). At a first join or a switch the Provision flow also loads the
      * upload ledger from the device's stored-file listing (`upload-state-reconciliation`).
      *
      * Starting here is load-bearing: the grant collector fires only on a *transition* to GRANTED, so a
@@ -1134,14 +1131,14 @@ object SnapSyncRoot {
     // can rescue a membership provisioned while access was already granted — the provision flow owns
     // that case.
 
-    // The two candidate mechanisms this OS can carry. Both are `by lazy`: `OsDrivenUploadMechanism` is
+    // The two mechanisms this OS can carry. Both are `by lazy`: `OsDrivenRegistration` is
     // constructed only where its registration selector exists (≥26.1), so no code path can trap on a
     // lower system. Which one RUNS is `resolveUploadMechanism`'s answer, re-read at every transition —
     // on ≥26.1 under a partial grant BOTH are constructed and only the app-driven one is started.
-    // (The tier-neutral `UploadArm` — which verb fires on which membership transition — is composed in
-    // the app graph as `app.uploadArm`, over the resolved mechanism.)
-    private val photoKitProducer: OsDrivenUploadMechanism by lazy {
-        OsDrivenUploadMechanism(ledgerStore, extensionRegistry, log, IosLogScope)
+    // (What each membership transition does to them is composed in the app graph as
+    // `app.uploadTransitions`, over the resolved mechanism.)
+    private val osDrivenRegistration: OsDrivenRegistration by lazy {
+        OsDrivenRegistration(ledgerStore, extensionRegistry, log, IosLogScope)
     }
 
     // The registration port's adapter, chosen by compilation target (capability `ios-photokit-upload`).
@@ -1169,7 +1166,6 @@ object SnapSyncRoot {
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
             scope, ledgerStore, config,
-            permission = { permission.permission.value },
             // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
             // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
             // success, so this is one read per process, as before.
@@ -1190,9 +1186,13 @@ object SnapSyncRoot {
             // membership's opt-in (which arrived with its gate) and `uploadCore` owns the shared
             // `assetId` denormalization.
             albumCoordinator = app.albumCoordinator,
-            // The walk-vs-snapshot decision, derived by the app graph from current permission + the
-            // latest snapshot (capability `limited-photo-access`).
-            selectionScope = { app.selectionScope() },
+            // The app graph's per-cycle answers, forwarded only: current permission, the walk-vs-snapshot
+            // decision (capability `limited-photo-access`), and whether this engine may run (`upload-lifecycle`).
+            graph = AppGraphReads(
+                permission = { permission.permission.value },
+                selectionScope = { app.selectionScope() },
+                admission = { app.appUploadAdmission() },
+            ),
             // Where this session's OS completion handler is released — the main lane, because UIKit
             // owns that handler and requires it (capability `ios-app-shell`). Named here, in the one
             // app-process file the lane gate permits to name it.
@@ -1344,7 +1344,7 @@ object SnapSyncRoot {
                     entryPoint = "runUploadHeartbeat",
                     deadline = ReceiptDeadlines.BACKGROUND_TASK,
                     release = onComplete,
-                ).heldFor { app.uploadArm.triggers.onBackgroundTask() }
+                ).heldFor { urlSessionUpload.onBackgroundTask() }
             }
         }
 

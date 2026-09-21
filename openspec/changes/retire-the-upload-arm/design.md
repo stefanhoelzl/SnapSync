@@ -75,7 +75,8 @@ From `(kind, posture)` it derives the desired state:
 |---|---|---|
 | posture `true`, kind `PHOTOKIT` | yes | no |
 | posture `true`, kind `URL_SESSION` | no | yes |
-| posture `true`, kind `IDLE` | unchanged | no |
+| posture `true`, kind `IDLE`, no usable access | unchanged | no |
+| posture `true`, kind `IDLE` pinned under usable access | no | no |
 | posture `false` or `null` | no | no |
 
 Verbs, and what each forces:

@@ -43,6 +43,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -290,6 +291,104 @@ class UploadCycleTest {
         assertEquals(emptyList<String>(), touched, "unreadable ≠ left: no hooks")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "no upload job")
         assertNull(platform.discoverPolicyArg, "the library is not walked")
+    }
+
+    // ---- Admission (capability `upload-lifecycle`, "Exactly one mechanism writes the ledger") ---------------
+
+    @Test
+    fun a_not_resolved_cycle_touches_nothing_not_even_the_settle() = runTest {
+        // The app engine while the extension is the resolved mechanism: the extension's REQUESTED rows have no
+        // transfer on THIS transport, so a stranded pass here would demote them — a second ledger writer.
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("ext-primary.heic", assetId = "ext")
+        backend.inFlight("done-primary.heic", assetId = "done")
+        val touched = mutableListOf<String>()
+        val platform = FakePlatform(
+            discovered = listOf(resource("A-primary.heic")),
+            succeeded = listOf("done-primary.heic"),
+            ledger = backend,
+            fullEnumeration = true,
+        ).apply { lost = setOf("ext-primary.heic"); live = emptySet() }
+
+        val result = cycle(
+            backend, platform,
+            readGate = { CycleGate.NotResolved },
+            onDiscovery = { _, _ -> touched += "manifest"; true },
+        ).run()
+
+        assertEquals(CycleResult.SKIPPED, result, "declined — and the pump schedules nothing on SKIPPED")
+        assertFalse(platform.drained, "no settle: this engine is not the one the OS is presenting jobs to")
+        assertEquals(LedgerState.REQUESTED, backend.get("ext-primary.heic")?.state, "the other writer's row is untouched")
+        assertEquals(LedgerState.REQUESTED, backend.get("done-primary.heic")?.state, "nothing drained, nothing recorded")
+        assertEquals(emptyList<String>(), touched, "no manifest — not even an empty one")
+        assertTrue(platform.created.isEmpty(), "no upload job")
+        assertNull(platform.discoverPolicyArg, "the library is not walked")
+    }
+
+    @Test
+    fun a_withheld_cycle_acknowledges_what_was_presented_and_creates_nothing() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("done-primary.heic", assetId = "done")
+        backend.inFlight("lost-primary.heic", assetId = "lost")
+        LedgerWriter(backend).recordRequested(resource("spent-primary.heic", "spent"))
+        val touched = mutableListOf<String>()
+        val platform = FakePlatform(
+            discovered = listOf(resource("A-primary.heic")),
+            succeeded = listOf("done-primary.heic"),
+            ackJobs = listOf(platformJob("spent-primary.heic", UploadError.Network)),
+            ledger = backend,
+        ).apply { lost = setOf("lost-primary.heic"); live = emptySet() }
+
+        val result = cycle(
+            backend, platform,
+            readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) },
+            onDiscovery = { _, _ -> touched += "manifest"; true },
+        ).run()
+
+        assertEquals(CycleResult.SKIPPED, result)
+        assertTrue(platform.drained, "the presented jobs are acknowledged — 50008 otherwise")
+        assertEquals(LedgerState.COMPLETED, backend.get("done-primary.heic")?.state, "a presented success is recorded")
+        assertEquals(
+            LedgerState.DISCOVERED, backend.get("spent-primary.heic")?.state,
+            "a retry-spent failure is adjudicated back to the work read — but not re-created here",
+        )
+        assertTrue(platform.created.isEmpty(), "no job is created, retries included")
+        assertEquals(LedgerState.REQUESTED, backend.get("lost-primary.heic")?.state, "no stranded pass")
+        assertTrue(platform.discarded.isEmpty(), "no lost-transfer discard either")
+        assertEquals(emptyList<String>(), touched, "a temporary grant state publishes no manifest")
+        assertNull(platform.discoverPolicyArg, "the library is not walked")
+    }
+
+    @Test
+    fun a_not_resolved_cycle_leaves_a_signalled_restart_pending() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("orphan-primary.heic", assetId = "orphan")
+        val platform = FakePlatform(ledger = backend).apply { live = emptySet(); lost = emptySet() }
+        var resolved = false
+        val c = cycle(
+            backend, platform,
+            readGate = {
+                if (resolved) {
+                    CycleGate.Run(
+                        UploadConfig(TEST_HOST, TEST_EVENT),
+                        JoinedMembership(TEST_EVENT, { admitting(TEST_CUTOFF) }, saveToAlbum = false),
+                    )
+                } else {
+                    CycleGate.NotResolved
+                }
+            },
+        )
+        c.signalRestart()
+
+        c.run()
+        assertEquals(LedgerState.REQUESTED, backend.get("orphan-primary.heic")?.state)
+
+        resolved = true
+        c.run()
+        assertEquals(
+            LedgerState.DISCOVERED, backend.get("orphan-primary.heic")?.state,
+            "the restart survived the declined cycle and was applied by the first admitted one",
+        )
     }
 
     @Test

@@ -4,7 +4,6 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.SwitchDecision
 import app.snapsync.feature.membership.switchDecision
-import app.snapsync.feature.upload.UploadArm
 import app.snapsync.model.EventConfig
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -33,8 +32,10 @@ import kotlinx.coroutines.launch
  *     must not be dropped before the persist the extension reads).
  *  4. **Refresh** the status sources (re-enumerate the own total, re-read completeness) — synchronous,
  *     so its lines carry this trigger's log context, as before.
- *  5. **Arm** the tier-neutral upload lifecycle ([UploadArm.onProvision]): with access granted it starts
- *     the producer (or stops it for a download-only membership); with no access it defers to the grant.
+ *  5. **Reconcile the upload mechanisms** ([reconcileUploads] — the upload arm's join transition,
+ *     capability `upload-lifecycle`): the extension registration is forced (the stale-record repair) and
+ *     the app engine armed or disarmed, from resolution and the membership's direction. It runs after the
+ *     share-set load, so a first join has no registered extension that could race it.
  *  6. **Album** — ask the coordinator for the event album, unconditionally, passing the access fact
  *     along with the membership's: the granted/opt-in gate is [AlbumCoordinator.ensureAlbum]'s own
  *     leading guard (`event-album`; the grant subscription covers the grant-after-join case).
@@ -53,7 +54,8 @@ import kotlinx.coroutines.launch
  * ([AlbumCoordinator]).
  */
 class Provision(
-    private val uploadArm: UploadArm,
+    /** The upload arm's join transition (capability `upload-lifecycle`) — built in `compose/`. */
+    private val reconcileUploads: suspend () -> Unit,
     private val downloadController: DownloadController,
     /** The event-album coordinator (capability `event-album`); its `ensureAlbum` owns the opt-in gate. */
     private val albumCoordinator: AlbumCoordinator,
@@ -88,8 +90,8 @@ class Provision(
         saveConfig(cfg)
         // 4. (re)joined event → re-enumerate own total + re-read completeness (synchronous: keeps context).
         refreshStatus()
-        // 5. Drive the tier-neutral upload lifecycle.
-        uploadArm.onProvision()
+        // 5. Reconcile the upload mechanisms for the membership just saved.
+        reconcileUploads()
         // 6. Event album — an unconditional call carrying the access FACT: the granted/opt-in/name
         //    gate is the coordinator's own leading guard (capability `event-album`), so no caller can
         //    forget it. (The grant subscription covers the grant-after-join case.)

@@ -1,5 +1,6 @@
 package app.snapsync.permission
 
+import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -13,9 +14,6 @@ import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.Photos.PHAccessLevelReadWrite
-import platform.Photos.PHAuthorizationStatusAuthorized
-import platform.Photos.PHAuthorizationStatusLimited
-import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
 import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
@@ -124,12 +122,6 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
         }
     }
 
-    private fun read(): PermissionStatus =
-        when (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)) {
-            PHAuthorizationStatusAuthorized -> PermissionStatus.GRANTED
-            PHAuthorizationStatusLimited -> PermissionStatus.LIMITED
-            PHAuthorizationStatusNotDetermined -> PermissionStatus.NOT_DETERMINED
-            // .denied, .restricted — refused or unchangeable.
-            else -> PermissionStatus.DENIED
-        }
+    // The one mapping, shared with the extension process (ext-safe `currentPhotoPermission`).
+    private fun read(): PermissionStatus = currentPhotoPermission()
 }

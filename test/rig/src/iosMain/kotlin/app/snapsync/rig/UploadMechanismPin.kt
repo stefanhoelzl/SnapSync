@@ -57,6 +57,11 @@ object UploadMechanismPin {
 fun uploadMechanismCommand(
     osSupportsOsDrivenUpload: () -> Boolean,
     permission: () -> app.snapsync.model.PermissionStatus,
+    // The compared registration reconcile (capability `upload-lifecycle`, "A mechanism override is a runtime
+    // input a shipped build cannot carry"): the extension cannot read this pin — it lives only in this
+    // process's memory — so a pin away from the OS-driven mechanism must deregister it now, not at the next
+    // transition, or the extension's permission-only gate would admit a second writer meanwhile.
+    reconcile: suspend () -> Unit,
 ): RigCommand = RigCommand { params, _ ->
     val raw = params["value"]
     val cleared = raw.equals("none", ignoreCase = true) || raw.equals("clear", ignoreCase = true)
@@ -71,6 +76,7 @@ fun uploadMechanismCommand(
         )
         else -> {
             val pin = UploadMechanismPin.set(if (cleared) null else named)
+            reconcile()
             val resolved = app.snapsync.model.resolveUploadMechanism(
                 backgroundUploadSupported = osSupportsOsDrivenUpload(),
                 permission = permission(),

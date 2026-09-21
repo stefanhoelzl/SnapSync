@@ -20,6 +20,7 @@ Roots found:
 |---|---|---|---|
 | `AlbumCoordinator` | | x | |
 | `ApnsPushToken` | x | | |
+| `AppGraphReads` | x | | |
 | `AppPorts` | x | | |
 | `BackgroundEventsReceipts` | | | x |
 | `BackgroundUploadPump` | | | x |
@@ -52,7 +53,7 @@ Roots found:
 | `KeychainDeviceIdentity` | x | x | |
 | `KtorPushHttpClient` | x | | |
 | `MetricKitProcessMetricSource` | x | | |
-| `OsDrivenUploadMechanism` | x | | |
+| `OsDrivenRegistration` | x | | |
 | `OsReceipt` | x | | |
 | `PhotoKitAssetPresence` | x | | |
 | `PhotoKitCandidateSource` | x | x | x |

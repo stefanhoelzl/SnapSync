@@ -150,7 +150,7 @@ class UploadCycle(
      */
     private suspend fun settle(): Settled {
         // THE ENTRY GATE (capability `upload-lifecycle`) — before the direction gate, the walk,
-        // and every hook. Three outcomes, and the difference between two of them is the difference between
+        // and every hook. Five outcomes, and the difference between two of them is the difference between
         // a settled join and a false leave.
         val gate = readGate()
         val (config, membership) = when (gate) {
@@ -172,6 +172,24 @@ class UploadCycle(
                 // itself (capability `leave-event`).
                 log.i { "skipping cycle — no joined event / host" }
                 return Settled.Short(CycleOutcome.NotJoined)
+            }
+            CycleGate.NotResolved -> {
+                // Another mechanism is the resolved one (capability `upload-lifecycle`). Touch NOTHING — not
+                // even the settle: this transport holds no transfer for the rows the other process requested,
+                // so its stranded pass would demote them. Routine: every trigger reaches this engine.
+                log.i { "skipping cycle — this engine is not the resolved upload mechanism; nothing settled or written" }
+                return Settled.Short(CycleOutcome.NotResolved)
+            }
+            is CycleGate.Withheld -> {
+                // No full grant in a process that would read the whole library. Still owed: acknowledging what
+                // the platform presented (50008 otherwise). Not owed, and not safe: creating work or demoting
+                // rows while another process may be the writer.
+                acknowledgePresented(engineFor(gate.config))
+                log.i {
+                    "cycle withheld — no full photo grant in this process; presented jobs acknowledged, " +
+                        "nothing created, nothing published"
+                }
+                return Settled.Short(CycleOutcome.Withheld)
             }
             is CycleGate.Run -> gate.config to gate.membership
         }
@@ -558,6 +576,11 @@ class UploadCycle(
             // nothing at all; a definitively-absent one has no event to publish to.
             CycleOutcome.Unreadable, CycleOutcome.NotJoined -> Unit
 
+            // A temporary state of this process, not of the membership: publish NOTHING. The empty manifest a
+            // declined direction publishes would remove this device's photos from every member's view the
+            // moment a grant flipped, or whenever the other process happened to be the resolved one.
+            CycleOutcome.NotResolved, CycleOutcome.Withheld -> Unit
+
             // A membership that shares nothing publishes an EMPTY manifest: that is the honest statement
             // of its state, and leaving a stale one in place would keep advertising photos the member has
             // stopped sharing.
@@ -671,6 +694,16 @@ class UploadCycle(
             override val result get() = CycleResult.COMPLETED
         }
 
+        /** This process's engine is not the resolved mechanism. Nothing was touched. */
+        data object NotResolved : CycleOutcome {
+            override val result get() = CycleResult.SKIPPED
+        }
+
+        /** No full grant here: the presented jobs were acknowledged, nothing was created. */
+        data object Withheld : CycleOutcome {
+            override val result get() = CycleResult.SKIPPED
+        }
+
         /** This membership's direction excludes upload. */
         class Declined(
             val eventId: String,
@@ -773,6 +806,20 @@ class UploadCycle(
      * what lets a direction-declined cycle run it. The only jobs it can create
      * are replacements for failures the platform already tried.
      */
+    /**
+     * The **narrow** settle of a withheld cycle (capability `upload-lifecycle`, "Settling with the platform is
+     * owed regardless of the cycle's other outcomes"): record and acknowledge every terminal job the platform
+     * presented — the drain does both — and adjudicate the retry-spent failures it hands back, returning their
+     * rows to `DISCOVERED`. Unlike [recreateRetrySpent] it creates no job and runs no stranded pass: either
+     * would write the ledger for work this process may not own.
+     */
+    private suspend fun acknowledgePresented(engine: SyncEngine) {
+        for (job in platform.drainTerminals()) {
+            if (ledger.entry(job.key)?.state?.isDone == true) continue
+            adjudicateFailure(engine, job)
+        }
+    }
+
     private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {
         var capHit = false
         val returned = platform.drainTerminals()

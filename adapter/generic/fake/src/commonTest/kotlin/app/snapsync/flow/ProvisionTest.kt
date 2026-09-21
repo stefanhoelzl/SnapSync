@@ -5,10 +5,7 @@ import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
-import app.snapsync.feature.upload.UploadArm
-import app.snapsync.feature.upload.UploadMechanismRuntime
 import app.snapsync.model.EventConfig
-import app.snapsync.model.UploadMechanism
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.AlbumManager
@@ -168,13 +165,9 @@ class ProvisionTest {
         saveToAlbum: Boolean = false,
         registerPush: suspend () -> Unit = { order += "push" },
     ): Provision {
-        val mechanism = RecordingMechanism(order)
         return Provision(
-            uploadArm = UploadArm(
-                resolve = { UploadMechanism.URL_SESSION },
-                mechanismFor = { mechanism },
-                membershipIncludesUpload = { true },
-            ),
+            // The join transition's own decisions are `UploadTransitionsTest`'s; here it is one step.
+            reconcileUploads = { order += "arm" },
             downloadController = DownloadController(
                 union = RecordingUnion(order),
                 store = InMemoryDownloadStore(),
@@ -193,15 +186,6 @@ class ProvisionTest {
             isGranted = isGranted,
             registerPush = registerPush,
         )
-    }
-
-    private class RecordingMechanism(private val order: MutableList<String>) : UploadMechanismRuntime {
-        override suspend fun start() { order += "arm" }
-        override suspend fun stop() { order += "arm-stop" }
-        override suspend fun onForeground() = Unit
-        override suspend fun onSilentPush(eventId: String) = Unit
-        override suspend fun onBackgroundTask() = Unit
-        override suspend fun onSelectionChanged() = Unit
     }
 
     private class RecordingUnion(private val order: MutableList<String>) : EventUnionSource {

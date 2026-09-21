@@ -9,7 +9,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.feature.upload.AppUploadEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -102,17 +102,16 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
 }
 
 /**
- * The world's [UploadProducer]: inert, because **the operator is the producer** — nothing auto-runs in
- * the world (spec `full-stack-harness`), and a cycle happens only when the operator invokes it. The
- * composed `UploadArm` still drives the real lifecycle verbs against this on join/leave/grant.
+ * The world's app-driven [AppUploadEngine]: inert, because **the operator is the engine** — nothing auto-runs in
+ * the world (spec `full-stack-harness`), and a cycle happens only when the operator invokes it. The composed
+ * `UploadTransitions` still drive the real arm/disarm decisions against this on join/leave/grant.
  */
-class OperatorUploadProducer : UploadMechanismRuntime {
-    override suspend fun start() {}
-    override suspend fun stop() {}
+class OperatorUploadEngine : AppUploadEngine {
+    override suspend fun arm() {}
+    override suspend fun disarm() {}
 
     // The operator IS the trigger in the world harness: cycles happen when invoked by hand from the
-    // inspector, never off an OS callback, so every trigger answer here is "nothing" — stated rather
-    // than inherited, exactly as a device mechanism must state its own (`upload-lifecycle`).
+    // inspector, never off an OS callback, so every trigger answer here is "nothing".
     override suspend fun onForeground() {}
     override suspend fun onSilentPush(eventId: String) {}
     override suspend fun onBackgroundTask() {}

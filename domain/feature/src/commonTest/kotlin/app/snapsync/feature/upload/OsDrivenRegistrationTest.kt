@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The OS-driven mechanism's **ritual and its repair** — the two things it exists to get right, and neither
+ * The OS-driven registration's **ritual and its repair** — the two things it exists to get right, and neither
  * of which could be tested at all until this class left `:app:ios`.
  *
  * Both defend against damage that is invisible when it happens and terminal afterwards. A bare enable
@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
  * `REQUESTED` forever, because no API can enumerate what vanished. Before, the only way to exercise either
  * was to contrive a physical device into the state it defends against.
  */
-class OsDrivenUploadMechanismTest {
+class OsDrivenRegistrationTest {
 
     /**
      * A registry that records the order of what it was asked, and can be made to refuse.
@@ -122,7 +122,7 @@ class OsDrivenUploadMechanismTest {
         log: MutableList<String>,
         ledger: RequestedRowsLedger = RequestedRowsLedger(log),
         registry: RecordingRegistry = RecordingRegistry(log),
-    ) = OsDrivenUploadMechanism(ledger, registry) to registry
+    ) = OsDrivenRegistration(ledger, registry) to registry
 
     // ── The ritual ────────────────────────────────────────────────────────────────────────────────
 
@@ -132,10 +132,10 @@ class OsDrivenUploadMechanismTest {
      * enable fail with `3202` — and the leading disable is what removes it.
      */
     @Test
-    fun `start disables before it enables`() = runTest {
+    fun `register disables before it enables`() = runTest {
         val log = mutableListOf<String>()
         val (mechanism, _) = mechanism(log)
-        mechanism.start()
+        mechanism.register()
         assertEquals(listOf("disable", "enable"), log.filter { it == "disable" || it == "enable" })
     }
 
@@ -151,7 +151,7 @@ class OsDrivenUploadMechanismTest {
         val ledger = RequestedRowsLedger(log)
         ledger.requested("a.jpg")
         val (mechanism, _) = mechanism(log, ledger)
-        mechanism.start()
+        mechanism.register()
         assertEquals(listOf("disable", "demote", "enable"), log, "the repair must sit inside the toggle, in order")
         assertEquals(LedgerState.DISCOVERED, ledger.stateOf("a.jpg"), "the orphaned row must be demoted, not dropped")
     }
@@ -162,7 +162,7 @@ class OsDrivenUploadMechanismTest {
         val log = mutableListOf<String>()
         val registry = RecordingRegistry(log, registered = true)
         val (mechanism, _) = mechanism(log, registry = registry)
-        mechanism.start()
+        mechanism.register()
         assertTrue(registry.isEnabled(), "the ritual must leave a live registration behind")
     }
 
@@ -180,7 +180,7 @@ class OsDrivenUploadMechanismTest {
             refuseWith = true to RegistrationOutcome.Failed(enabling = true, domain = "PHPhotosErrorDomain", code = 3202L),
         )
         val (mechanism, _) = mechanism(log, registry = registry)
-        mechanism.start()
+        mechanism.register()
         assertTrue(!registry.isEnabled(), "a refused enable must not leave the app believing it registered")
     }
 
@@ -193,31 +193,18 @@ class OsDrivenUploadMechanismTest {
      * mechanism owns. There is no narrower hand-off verb any more because there is nothing left to narrow.
      */
     @Test
-    fun `stop deregisters and repairs nothing`() = runTest {
+    fun `deregister touches the registration and repairs nothing`() = runTest {
         val log = mutableListOf<String>()
         val ledger = RequestedRowsLedger(log)
         val (mechanism, registry) = mechanism(log, ledger)
         // Seeded AFTER the ritual, deliberately: `start()` repairs, so a row planted before it would be
         // demoted by the verb that is not under test.
-        mechanism.start()
+        mechanism.register()
         ledger.requested("a.jpg")
         log.clear()
-        mechanism.stop()
+        mechanism.deregister()
         assertTrue(!registry.isEnabled(), "stop must deregister")
         assertEquals(listOf("disable"), log, "stop must touch nothing but the registration")
         assertEquals(LedgerState.REQUESTED, ledger.stateOf("a.jpg"), "stop must leave the repair to the next start")
-    }
-
-    /** Every app-side kick is declined: the OS owns scheduling on this tier, and there is nothing to top up. */
-    @Test
-    fun `every app-side trigger is declined`() = runTest {
-        val log = mutableListOf<String>()
-        val (mechanism, _) = mechanism(log)
-        log.clear()
-        mechanism.onForeground()
-        mechanism.onSilentPush("event")
-        mechanism.onBackgroundTask()
-        mechanism.onSelectionChanged()
-        assertEquals(emptyList(), log, "an app-side trigger must touch neither the registration nor the ledger")
     }
 }

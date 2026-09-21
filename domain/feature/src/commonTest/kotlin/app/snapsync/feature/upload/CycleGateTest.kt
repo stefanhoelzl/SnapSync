@@ -1,6 +1,8 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.UploadMechanism
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
@@ -39,6 +41,16 @@ class CycleGateTest {
         )
     }
 
+    // Every pre-admission case runs as an admitted process: admission is decided only once the membership is
+    // readable and joined, so these assert that it never masks "unreadable" or "not joined".
+    private fun gate(
+        configReadable: Boolean,
+        membership: JoinedMembership?,
+        host: String?,
+        admission: UploadAdmission = UploadAdmission.Admit,
+        skipDetail: String = "",
+    ) = cycleGate(configReadable, membership, host, admission, skipDetail)
+
     private fun joined(
         eventId: String = this.eventId,
         policy: suspend () -> SelectionPolicy = admitting,
@@ -48,7 +60,7 @@ class CycleGateTest {
     // THE regression. A locked device cannot read the Keychain; that must not clear the join marker.
     @Test
     fun `an unreadable config skips the cycle entirely`() {
-        val gate = cycleGate(configReadable = false, membership = joined(), host = host)
+        val gate = gate(configReadable = false, membership = joined(), host = host)
 
         assertIs<CycleGate.Skip>(
             gate,
@@ -60,7 +72,7 @@ class CycleGateTest {
     fun `an unreadable config skips even when no membership is known`() {
         // The membership is null precisely BECAUSE the config could not be read — inferring "not
         // joined" from that is the false leave.
-        assertIs<CycleGate.Skip>(cycleGate(configReadable = false, membership = null, host = host))
+        assertIs<CycleGate.Skip>(gate(configReadable = false, membership = null, host = host))
     }
 
     // The identity half of the roll-up. `configReadable` covers EVERY protected read the cycle needs,
@@ -72,7 +84,7 @@ class CycleGateTest {
         val configRead = true
         val deviceIdReadable = false
 
-        val gate = cycleGate(
+        val gate = gate(
             configReadable = configRead && deviceIdReadable,
             membership = joined(),
             host = host,
@@ -91,7 +103,7 @@ class CycleGateTest {
         // so the device log keeps one line rather than two across two files.
         val detail = "config status=-25308, deviceId readable=false"
 
-        val gate = cycleGate(configReadable = false, membership = null, host = host, skipDetail = detail)
+        val gate = gate(configReadable = false, membership = null, host = host, skipDetail = detail)
 
         assertIs<CycleGate.Skip>(gate)
         assertEquals(detail, gate.detail)
@@ -99,7 +111,7 @@ class CycleGateTest {
 
     @Test
     fun `a definitively absent config is NotJoined so the leave side still reconciles`() {
-        val gate = cycleGate(configReadable = true, membership = null, host = host)
+        val gate = gate(configReadable = true, membership = null, host = host)
 
         assertEquals(
             CycleGate.NotJoined,
@@ -110,7 +122,7 @@ class CycleGateTest {
 
     @Test
     fun `a joined config runs the cycle and carries the membership through`() {
-        val gate = cycleGate(
+        val gate = gate(
             configReadable = true,
             membership = joined(policy = admitting, saveToAlbum = true),
             host = host,
@@ -129,7 +141,7 @@ class CycleGateTest {
     // inside `UploadCycle.run()`, so the cycle can decline it after the read rather than before.
     @Test
     fun `a non-contributing membership is Run and declines later at the direction gate`() {
-        val gate = cycleGate(
+        val gate = gate(
             configReadable = true,
             membership = joined(policy = { SelectionPolicy(listOf(SelectionRule.DenyAll)) }),
             host = host,
@@ -147,15 +159,68 @@ class CycleGateTest {
 
     @Test
     fun `a missing host is NotJoined as it always has been`() {
-        assertEquals(CycleGate.NotJoined, cycleGate(configReadable = true, membership = joined(), host = null))
-        assertEquals(CycleGate.NotJoined, cycleGate(configReadable = true, membership = joined(), host = ""))
+        assertEquals(CycleGate.NotJoined, gate(configReadable = true, membership = joined(), host = null))
+        assertEquals(CycleGate.NotJoined, gate(configReadable = true, membership = joined(), host = ""))
     }
 
     @Test
     fun `an empty event id is NotJoined`() {
         assertEquals(
             CycleGate.NotJoined,
-            cycleGate(configReadable = true, membership = joined(eventId = ""), host = host),
+            gate(configReadable = true, membership = joined(eventId = ""), host = host),
         )
+    }
+
+    // ---- admission (capability `upload-lifecycle`, "The upload cycle owns its entry decision") ----------
+
+    @Test
+    fun `an engine that is not the resolved mechanism is NotResolved`() {
+        assertEquals(
+            CycleGate.NotResolved,
+            gate(configReadable = true, membership = joined(), host = host, admission = UploadAdmission.NotResolved),
+        )
+    }
+
+    @Test
+    fun `a process without a full grant is Withheld and carries the config the narrow settle needs`() {
+        val gate = gate(configReadable = true, membership = joined(), host = host, admission = UploadAdmission.Withheld)
+
+        assertIs<CycleGate.Withheld>(gate)
+        assertEquals(eventId, gate.config.eventId)
+        assertEquals(host, gate.config.host)
+    }
+
+    // The NOT_DETERMINED trap: building the policy reads the album structure, which prompts. The gate must
+    // decide both declines without invoking the supplier.
+    @Test
+    fun `neither decline invokes the policy supplier`() {
+        val forbidden: suspend () -> SelectionPolicy = { error("the gate must not build the policy") }
+        for (admission in listOf(UploadAdmission.NotResolved, UploadAdmission.Withheld)) {
+            val gate = gate(configReadable = true, membership = joined(policy = forbidden), host = host, admission = admission)
+            assertIs<CycleGate>(gate)
+        }
+    }
+
+    @Test
+    fun `unreadable and absent outrank admission`() {
+        for (admission in UploadAdmission.entries) {
+            assertIs<CycleGate.Skip>(gate(configReadable = false, membership = joined(), host = host, admission = admission))
+            assertEquals(CycleGate.NotJoined, gate(configReadable = true, membership = null, host = host, admission = admission))
+        }
+    }
+
+    @Test
+    fun `the app admits exactly when the app-driven mechanism is resolved`() {
+        assertEquals(UploadAdmission.Admit, appAdmission(UploadMechanism.URL_SESSION))
+        assertEquals(UploadAdmission.NotResolved, appAdmission(UploadMechanism.PHOTOKIT))
+        assertEquals(UploadAdmission.NotResolved, appAdmission(UploadMechanism.IDLE))
+    }
+
+    @Test
+    fun `the extension admits exactly under a full grant`() {
+        for (permission in PermissionStatus.entries) {
+            val expected = if (permission == PermissionStatus.GRANTED) UploadAdmission.Admit else UploadAdmission.Withheld
+            assertEquals(expected, extensionAdmission(permission), "under $permission")
+        }
     }
 }

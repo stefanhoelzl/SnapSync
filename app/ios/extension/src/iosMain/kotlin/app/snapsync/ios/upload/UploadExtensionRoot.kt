@@ -1,5 +1,7 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.feature.upload.extensionAdmission
+import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.ports.AttestStore
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.compose.UploadPorts
@@ -208,6 +210,10 @@ object UploadExtensionRoot {
             UploadPorts(
                 appVersion = ::appMarketingVersion,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
+                // This process's own grant read (capability `ios-photokit-upload`, "The extension withholds its
+                // cycle without a full grant"): a registration made under a full grant survives a downgrade,
+                // and a cycle here has no selection snapshot to scope to.
+                admission = { extensionAdmission(currentPhotoPermission()) },
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.
