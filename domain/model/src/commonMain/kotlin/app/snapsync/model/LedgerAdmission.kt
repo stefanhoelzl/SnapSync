@@ -18,8 +18,8 @@ package app.snapsync.model
  * are the two capture-date bounds and the two id-set exclusions, which is exactly what a per-event
  * question about a device-global ledger needs. An empty `creationDate` sorts before every real cutoff, so
  * a row the policy cannot judge is excluded — the one place a missing fact excludes rather than admits —
- * and the next walk that reaches it fills its detail before advancing the cursor, so it re-enters with a
- * real date.
+ * and the next walk that reaches it fills its detail — a walk always reads an asset with a bare row — so
+ * it re-enters with a real date.
  *
  * Rows are grouped per asset first: several resources of one photo share an `assetId` and stand or fall
  * together, or a Live Photo's paired video outlives its excluded primary as an orphan.

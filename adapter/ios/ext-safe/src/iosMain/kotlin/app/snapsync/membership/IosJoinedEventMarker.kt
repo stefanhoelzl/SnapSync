@@ -8,7 +8,7 @@ import platform.Foundation.NSUserDefaults
 
 /**
  * The App-Group-backed [JoinedEventMarker]: the last reconciled `eventId` lives in the shared
- * `NSUserDefaults` suite (the same suite the discovery cursor uses) so it survives the extension's
+ * `NSUserDefaults` suite (the same suite the event-album map uses) so it survives the extension's
  * per-cycle process death — the property that makes it, not ledger-emptiness, the join signal.
  *
  * It lives here, beside the [JoinedEventMarker] interface, rather than in either upload tier's module,

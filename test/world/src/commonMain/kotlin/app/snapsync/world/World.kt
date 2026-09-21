@@ -15,7 +15,6 @@ import app.snapsync.fake.inMemoryAttestStore
 import app.snapsync.fake.inMemoryDeviceLogSource
 import app.snapsync.fake.inMemoryDeviceManifestStore
 import app.snapsync.fake.inMemoryDiagnosticsReporter
-import app.snapsync.fake.inMemoryDiscoveryStore
 import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryJoinedEventMarker
 import app.snapsync.fake.inMemoryLedgerStore
@@ -79,7 +78,6 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.JoinedEventMarker
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessRequester
@@ -185,7 +183,6 @@ class World(
             is CandidateRead.Readable -> read.candidates
             CandidateRead.NotReadable -> emptyList()
         }
-    val discoveryStore: DiscoveryStore = inMemoryDiscoveryStore()
     val downloadStore: RecordingDownloadStore = RecordingDownloadStore(inMemoryDownloadStore())
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
     // as both device adapters do, so the world exercises the real two-phase completion.
@@ -490,9 +487,6 @@ class World(
             // stated answer to the trigger (`OperatorUploadProducer`), which is where a mechanism's
             // response to a kick belongs.
             candidateSource = enumerator,
-            // The shared discovery cursor a cutoff-lowering reconfigure invalidates (capability
-            // `reconfigure-membership`) — the SAME store the world's upload cycle reads.
-            clearDiscoveryCursor = discoveryStore::clearToken,
             // The SAME mini-edge listing and the SAME marker the upload tier's reconcile uses — the
             // read-only foreground check is a second consumer of both, never a second source
             // (capability `upload-state-reconciliation`).
@@ -672,7 +666,7 @@ class World(
         albumManager.placeIn(albumTitle, assetId)
     }
 
-    /** Remove an own asset from the gallery (surfaces as `removedAssetIds` on the next incremental cycle). */
+    /** Remove an own asset from the gallery (absent from the next cycle's walk, which deletes its in-window rows). */
     suspend fun removeAsset(assetId: String) {
         gallery.set(gallery.current().filterNot { it.assetId == assetId })
     }
@@ -808,7 +802,6 @@ class World(
                 transfer = platform,
                 discovery = discovery,
                 selectionScope = { core.selectionScope() },
-                discoveryStore = discoveryStore,
                 deviceFiles = deviceFiles,
                 joinedMarker = marker,
                 manifestStore = manifestStore,

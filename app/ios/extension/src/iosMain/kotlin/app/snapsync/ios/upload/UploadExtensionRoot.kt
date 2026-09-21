@@ -16,7 +16,6 @@ import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
-import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CycleResult
@@ -111,7 +110,6 @@ object UploadExtensionRoot {
         // the process. This root is unchanged either way: it names the need, and the target answers it.
         uploadJobQueue(log, ledgerStore)
     }
-    private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 
     // The app-written download store, opened read-only through the NARROWED SuppressionSource type
     // (capability `download-store`): only `suppressedLocalIds()`, never the full DownloadStore surface,
@@ -222,7 +220,6 @@ object UploadExtensionRoot {
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
-                discoveryStore = discoveryStore,
                 // Re-join reconciliation seed (capability `upload-state-reconciliation`): the
                 // device's stored-file listing over the Darwin HTTPS client, same compile-time host.
                 deviceFiles = HttpDeviceFilesSource(httpClient, bakedUploadBase()),

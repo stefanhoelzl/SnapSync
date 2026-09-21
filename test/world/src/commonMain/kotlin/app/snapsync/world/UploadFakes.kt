@@ -160,13 +160,14 @@ class FakeBackgroundTransfer(
 }
 
 /**
- * The world's [UploadDiscovery] (capability `harness-world-model`): the cycle's change feed and key resolve
- * over the in-memory gallery, **observable** so a test can tell a cycle that walked from one that enqueued from
- * the ledger.
+ * The world's [UploadDiscovery] (capability `harness-world-model`): the cycle's walk and key resolve over the
+ * in-memory gallery, **observable** so a test can tell a cycle that walked from one that enqueued from the
+ * ledger.
  *
- * The change feed ([discover]) is derived from the in-memory gallery via the real [source]: additions ride in
- * `Discovery.candidates`, removals in `removedAssetIds`, and an operator [expireToken] returns
- * `fullEnumeration = true` with the whole current key-set.
+ * Every readable walk ([discover]) is a **full enumeration** of the gallery through the real [source], as on a
+ * device: there is no change feed and no token. An added asset appears in the next walk, and a removed one is
+ * simply absent from it — the evidence the cycle's presence diff consumes. The operator's [makeWalkUnreadable]
+ * answers the next walk the way a device answers an unreadable library.
  */
 class FakeUploadDiscovery(
     private val source: CandidateSource,
@@ -185,9 +186,7 @@ class FakeUploadDiscovery(
     /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
     var resolvedKeyCount = 0
 
-    private var tokenCounter = 0
-    private var forceFull = false
-    private var knownAssetIds: Set<String> = emptySet()
+    private var unreadable = false
 
     /** Inspection: how many times the discovery feed was consumed — 0 proves a cycle enqueued from the ledger. */
     var discoverCalls = 0
@@ -217,45 +216,32 @@ class FakeUploadDiscovery(
         return resourcesFrom(rawAssets()).filter { it.filename in keys }
     }
 
-    override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+    override suspend fun discover(policy: SelectionPolicy): Discovery {
         discoverCalls++
-        // Scoped by the POLICY, exactly as the PhotoKit walk is (capability `photo-selection-policy`);
-        // the cycle's own admission still runs over whatever comes back.
-        // The world's source is the honest in-memory fake, which always has an answer; `NotReadable`
-        // would mean the operator's failure lever fired, and the same rule the device holds applies —
-        // enumerate nothing and KEEP the cursor, so an un-read cycle costs an idle pass, not a photo.
-        val current = when (val read = source.candidates(policy)) {
-            is CandidateRead.Readable -> read.candidates
-            CandidateRead.NotReadable -> return Discovery(
-                candidates = emptyList(),
-                nextToken = sinceToken ?: ByteArray(0),
-                fullEnumeration = false,
-            )
+        if (unreadable) {
+            unreadable = false
+            // What a device answers for a library it could not read: nothing, and NOT authoritative — so the
+            // cycle deletes nothing on the strength of an empty answer (capability `sync-ledger`).
+            return Discovery(candidates = emptyList(), fullEnumeration = false)
         }
-        // Removals are diffed against the LIBRARY, unscoped — never against the policy-scoped read above.
-        // The real feed's removals are PhotoKit's `deletedLocalIdentifiers`: assets that left the library.
-        // Diffing the scoped set instead would report a *narrowing reconfigure* as a mass deletion, and
-        // the cycle would mark those rows absent — silently doing, in the harness only, the job the
-        // enqueue admission does on a device, and hiding whether the admission happens at all.
-        val presentAssetIds = rawAssets().mapTo(mutableSetOf()) { it.assetId }
-        val full = forceFull || sinceToken == null
-        forceFull = false
-        val nextToken = (++tokenCounter).toString().encodeToByteArray()
-        return if (full) {
-            knownAssetIds = presentAssetIds
-            Discovery(candidates = current, nextToken = nextToken, fullEnumeration = true)
-        } else {
-            val added = current.filter { it.facts.assetId !in knownAssetIds }
-            val removed = (knownAssetIds - presentAssetIds).toList()
-            knownAssetIds = presentAssetIds
-            Discovery(candidates = added, nextToken = nextToken, removedAssetIds = removed, fullEnumeration = false)
+        // Scoped by the POLICY exactly as far as a platform predicate scopes a device's fetch, and no further:
+        // the honest source narrows by the capture floor only, leaving every other rule to the cycle's
+        // admission. That matters twice over now — what comes back is also the walk's PRESENCE set, so a fake
+        // that applied the whole admission would make an asset the admission excludes (a denylisted album)
+        // look departed, and the cycle would delete rows a device keeps.
+        return when (val read = source.candidates(policy)) {
+            is CandidateRead.Readable -> Discovery(candidates = read.candidates, fullEnumeration = true)
+            CandidateRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
         }
     }
 
     // ---- operator actions -----------------------------------------------------------------------
 
-    /** Force the next discovery to be a whole-library full enumeration (the routine token-expiry path). */
-    fun expireToken() {
-        forceFull = true
+    /**
+     * Make the next walk unreadable: no candidates, and not authoritative — the case the cycle's deletion gate
+     * exists for (capability `harness-world-model`).
+     */
+    fun makeWalkUnreadable() {
+        unreadable = true
     }
 }

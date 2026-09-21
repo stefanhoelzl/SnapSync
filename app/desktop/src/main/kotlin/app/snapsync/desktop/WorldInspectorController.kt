@@ -241,11 +241,6 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         world.configSource.config.value?.eventId?.let { world.downloadController.reconcile(it) }
     }
 
-    fun expireToken() = launchMutation {
-        world.discovery.expireToken()
-        appendConsole("change token expired → next invoke does a full enumeration")
-    }
-
     // ---- enrollment ------------------------------------------------------------------------------
 
     fun setPermission(status: PermissionStatus) = launchMutation { world.permission.set(status) }

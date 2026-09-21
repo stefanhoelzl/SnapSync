@@ -78,20 +78,6 @@ class LedgerWriter(
     suspend fun clearAbsenceMarks() = backend.clearAbsenceMarks()
 
     /**
-     * Record that [assetId] has left the library — a sync write by the single writer (distinct from the
-     * app-side [LedgerStore.clear] reset). At the writer layer it consults no engine state; it just
-     * marks. The rows survive, so a restored asset re-uploads nothing.
-     */
-    suspend fun markAbsent(assetId: String) = backend.markAbsent(assetId)
-
-    /**
-     * Record that the walk saw [assetIds] in the library — the inverse of [markAbsent], and the only thing
-     * that brings a restored photo whose rows are settled back into the device manifest (the engine writes
-     * nothing for an already-uploaded resource). Writes nothing unless one of them was marked absent.
-     */
-    suspend fun markPresent(assetIds: Collection<String>) = backend.markPresent(assetIds)
-
-    /**
      * Sweep every pre-provenance row (`eventId = ""` — recorded before the ledger carried the
      * column, or by a staged-revert build) to [eventId]. A writer-family operation like the
      * prunes: only the single-writer's cycle runs it, once per entry, idempotently.

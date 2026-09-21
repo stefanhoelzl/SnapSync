@@ -116,8 +116,6 @@ class OsDrivenUploadMechanismTest {
         override suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int = TODO("not reached by this mechanism")
         override suspend fun deleteKeys(keys: Collection<String>) = TODO("not reached by this mechanism")
         override suspend fun clearAbsenceMarks() = TODO("not reached by this mechanism")
-        override suspend fun markAbsent(assetId: String) = TODO("not reached by this mechanism")
-        override suspend fun markPresent(assetIds: Collection<String>) = TODO("not reached by this mechanism")
         override suspend fun backfillEventId(eventId: String) = TODO("not reached by this mechanism")
     }
 

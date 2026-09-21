@@ -5,7 +5,6 @@ import app.snapsync.world.World
 import app.snapsync.world.worldTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -24,8 +23,8 @@ import kotlin.test.assertTrue
  *
  * The distinction under test is not academic. `NotJoined` runs the leave-side reconciliation, which clears
  * the persisted `joinedEventId` marker; the next readable cycle then sees a mismatch and pays for a full
- * re-join — a device listing, an atomic ledger clear-and-seed, and a cursor reset forcing a complete
- * library re-enumeration (~110 ms of PhotoKit XPC per asset). Getting this wrong costs a settled join.
+ * re-join — a device listing, an atomic ledger clear-and-seed to bare rows, and a walk that must re-read
+ * every seeded asset (~110 ms of PhotoKit XPC per asset). Getting this wrong costs a settled join.
  */
 class CycleEntryGateIntegrationTest {
 
@@ -38,8 +37,8 @@ class CycleEntryGateIntegrationTest {
         // Settle the join: a first readable cycle seeds the marker and uploads.
         w.runUploadCycle()
         assertEquals(eventId, w.marker.read(), "precondition: the join is settled")
-        val cursorAfterSettle = w.discoveryStore.loadToken()
-        assertNotNull(cursorAfterSettle, "precondition: a drained cycle advanced the cursor")
+        val ledgerAfterSettle = w.ledgerBackend.manifestRows()
+        assertTrue(ledgerAfterSettle.isNotEmpty(), "precondition: the settled cycle recorded the asset")
 
         // The device is now woken while its membership cannot be read — a boot with no unlock since.
         w.membershipUnreadable = true
@@ -51,9 +50,9 @@ class CycleEntryGateIntegrationTest {
             w.marker.read(),
             "unreadable is not a leave: the marker of a device that never left must survive",
         )
-        assertTrue(
-            w.discoveryStore.loadToken().contentEquals(cursorAfterSettle),
-            "the discovery cursor must not reset — resetting forces a full library re-enumeration",
+        assertEquals(
+            ledgerAfterSettle, w.ledgerBackend.manifestRows(),
+            "the ledger must not be re-seeded — a re-seed leaves bare rows every walk must re-read",
         )
     }
 

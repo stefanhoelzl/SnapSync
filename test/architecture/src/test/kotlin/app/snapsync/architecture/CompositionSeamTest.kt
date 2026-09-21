@@ -121,10 +121,6 @@ class CompositionSeamTest {
                 "the process's admit-on-doubt wrapper over the AlbumManager port — the chain terminates " +
                 "at a port (D9); the lambda carries the per-tier failure posture, and is shared verbatim " +
                 "with the status total so the two consumers of one policy cannot diverge",
-            "clearDiscoveryCursor" to
-                "invalidates the shared cursor through the DiscoveryStore port, which this bundle " +
-                "deliberately does not carry (it belongs to UploadPorts) — one surface both " +
-                "ReconfigureEvent and ResetDeviceState reach it by, rather than two that could diverge",
             "provision" to
                 "re-enters this core's own flow/Provision through the shell's log-wrapping delegator; " +
                 "the shell decides nothing on the way (law \"Shells are wiring only\")",

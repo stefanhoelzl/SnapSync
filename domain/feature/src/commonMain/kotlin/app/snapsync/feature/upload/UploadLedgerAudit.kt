@@ -42,8 +42,8 @@ private val DEFAULT_MIN_INTERVAL: Duration = 30.minutes
  *
  * So this **detects, and never repairs**. Every risk in correcting the ledger — racing the extension's
  * writes, moving the progress screen backwards, demote/re-upload churn, deciding what a corrected row
- * should even say — comes from *writing*. Nothing here writes: no ledger row, no discovery cursor, no
- * `joinedEventId` marker, no upload job. Reverting it is deleting one call.
+ * should even say — comes from *writing*. Nothing here writes: no ledger row, no `joinedEventId` marker,
+ * no upload job. Reverting it is deleting one call.
  *
  * **Where it runs is load-bearing.** The app process, from the foreground trigger flow, beside the
  * download arm's existing `reconcile` — which is exactly this shape for the other half of the product.

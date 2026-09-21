@@ -60,7 +60,7 @@ import platform.posix.memcpy
  * work runs when the device is *idle*, which usually means *locked*.
  *
  * It is deliberately **not** `…ThisDeviceOnly`: the item must ride an encrypted backup, because the app
- * container (the SQL ledger and the discovery cursor) rides it too. A device-bound id would give a
+ * container (the SQL ledger) rides it too. A device-bound id would give a
  * restored phone a *fresh* identity alongside a *restored* ledger that claims everything is already
  * uploaded — so it would upload nothing while its manifest sat empty. Keeping the id restorable keeps
  * id ↔ ledger ↔ partition consistent. Decision record: `changes/archive/…-fix-locked-device-keychain-access`.

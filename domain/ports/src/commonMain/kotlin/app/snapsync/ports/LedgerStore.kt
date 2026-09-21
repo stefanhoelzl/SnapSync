@@ -190,37 +190,6 @@ interface LedgerStore : TransferRecord {
     suspend fun clearAbsenceMarks()
 
     /**
-     * Mark every row whose [LedgerEntry.assetId] equals [assetId] as [LedgerEntry.absent] — the asset has
-     * left this device's library. The rows are **kept**: what they record (these bytes are on the
-     * backend) is still true, and keeping them is what stops a restored asset re-uploading. The backend
-     * matches by equality and never interprets the value — `assetId` is a second opaque grouping field
-     * (it does not know what an "asset" means). Idempotent. Dings [changes].
-     *
-     * There is deliberately **no** `retainAssets`, and no delete-by-asset at all. Retention used to prune
-     * every row outside a supplied keep-set, and the cycle supplied the **policy-admitted** set — so
-     * raising a capture cutoff discarded the `COMPLETED` rows of photos that were still in the library
-     * and still uploaded. Those rows are exactly what suppresses re-upload, so the narrowing became
-     * irreversible, and a membership turned download-only would have lost the event's rows entirely,
-     * defeating the drain that exists so re-enabling re-uploads nothing (capability
-     * `reconfigure-membership`). A scope change belongs to the manifest projection (capability
-     * `device-manifest`), never to this record.
-     */
-    suspend fun markAbsent(assetId: String)
-
-    /**
-     * Clear [LedgerEntry.absent] on every row whose [LedgerEntry.assetId] is among [assetIds] — the inverse of
-     * [markAbsent], for assets a walk has seen in the library again.
-     *
-     * **Whatever the row's state.** A settled row is exactly the one no record write reaches again — the engine
-     * writes nothing for an already-uploaded resource — so without this a restored photo would stay out of the
-     * device manifest for good. Every other column is preserved.
-     *
-     * Runs every cycle over every asset the walk saw, so it SHALL write nothing when none of them is marked,
-     * and dings [changes] only when it cleared a mark.
-     */
-    suspend fun markPresent(assetIds: Collection<String>)
-
-    /**
      * Rewrite the [LedgerEntry.eventId] of every row whose value is the pre-provenance sentinel
      * `""` to [eventId], leaving every other field — and every row already carrying a real
      * eventId — untouched. The backend matches the sentinel by equality and interprets nothing.

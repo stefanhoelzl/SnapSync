@@ -17,7 +17,7 @@ private const val ALBUM_MAP_KEY = "app.snapsync.album.map"
 
 /**
  * The iOS [AlbumMapStore] (capability `event-album`): the `eventId → albumLocalId` map, persisted as
- * JSON in the **App-Group `NSUserDefaults` suite** — the same shared suite the discovery cursor uses —
+ * JSON in the **App-Group `NSUserDefaults` suite** — the same shared suite the join marker uses —
  * so both the app (which writes on album creation) and the upload extension (which reads on placement)
  * see it.
  *

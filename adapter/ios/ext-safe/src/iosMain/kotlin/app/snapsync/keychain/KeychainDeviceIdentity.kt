@@ -85,7 +85,7 @@ enum class DeviceIdentityRole {
  * it a property of this code instead. Decision record: `changes/archive/2026-07-20-fix-split-device-identity`.
  *
  * The id is deliberately **restorable from an encrypted backup** (not `…ThisDeviceOnly`): the app
- * container — the ledger and the discovery cursor — is restored alongside it, and an id that did *not*
+ * container — the ledger — is restored alongside it, and an id that did *not*
  * survive the restore would leave a restored device with a fresh identity but a ledger claiming
  * everything is already uploaded, so it would upload nothing while its manifest sat empty.
  * Decision record: `changes/archive/…-fix-locked-device-keychain-access`.

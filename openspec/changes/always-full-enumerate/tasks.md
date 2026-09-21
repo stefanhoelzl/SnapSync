@@ -61,52 +61,52 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
 
 ## 4. Remove the cursor
 
-- [ ] 4.1 `UploadDiscovery.discover(policy): Discovery`, and `Discovery(candidates, fullEnumeration)`.
+- [x] 4.1 `UploadDiscovery.discover(policy): Discovery`, and `Discovery(candidates, fullEnumeration)`.
   Drop `sinceToken`, `nextToken` and `removedAssetIds`, and restate the `fullEnumeration` KDoc as "authoritative for
   deletion" (design D2).
-- [ ] 4.2 `IosDiscovery`: delete the change-feed branch and the token archiving; `Readable` →
+- [x] 4.2 `IosDiscovery`: delete the change-feed branch and the token archiving; `Readable` →
   `fullEnumeration = true`, `NotReadable` → no candidates, `false`.
-- [ ] 4.3 `SelectionScopedDiscovery`: drop the token pass-through, and restate its KDoc around "never
+- [x] 4.3 `SelectionScopedDiscovery`: drop the token pass-through, and restate its KDoc around "never
   authoritative" (spec `limited-photo-access`).
-- [ ] 4.4 `UploadCycle`: drop `store`, `loadToken`/`saveToken`, the removals loop, `markPresent`, and the
+- [x] 4.4 `UploadCycle`: drop `store`, `loadToken`/`saveToken`, the removals loop, `markPresent`, and the
   "cursor advance" comment block; fix the stale class KDoc at `UploadCycle.kt:40`.
-- [ ] 4.5 Delete `DiscoveryStore`, `IosDiscoveryStore`, `inMemoryDiscoveryStore` (+ `InMemoryStores.kt`
+- [x] 4.5 Delete `DiscoveryStore`, `IosDiscoveryStore`, `inMemoryDiscoveryStore` (+ `InMemoryStores.kt`
   entry, `Factories.kt`), `DISCOVERY_TOKEN_KEY`, and `UploadPorts.discoveryStore`.
-- [ ] 4.6 Delete `AppPorts.clearDiscoveryCursor` and the cursor steps in `UploadReconciler`,
+- [x] 4.6 Delete `AppPorts.clearDiscoveryCursor` and the cursor steps in `UploadReconciler`,
   `ReconfigureEvent` and `ResetDeviceState`, plus their tests' cursor assertions
   (`ReconfigureEventTest`, `ResetDeviceStateTest`). Wiring: `SnapSyncRoot`, `UrlSessionUploadController`,
   `UploadExtensionRoot`, `UploadCore`, `SnapSyncApp`.
-- [ ] 4.7 Delete `markAbsent` / `markPresent` from `LedgerStore`, `LedgerWriter`, `Ledger.sq`,
+- [x] 4.7 Delete `markAbsent` / `markPresent` from `LedgerStore`, `LedgerWriter`, `Ledger.sq`,
   `SqlDelightLedgerStore` and every double, and their contract cases. Keep the `absent` column and the four
   `absent = 0` filters (design D5).
-- [ ] 4.8 `:test:architecture`: remove `discovery.changeToken` from `RuntimeIdentityTest`, and the
+- [x] 4.8 `:test:architecture`: remove `discovery.changeToken` from `RuntimeIdentityTest`, and the
   `clearDiscoveryCursor` seam from `CompositionSeamTest`.
-- [ ] 4.9 Grep for leftovers: `DiscoveryStore`, `changeToken`, `removedAssetIds`, `sinceToken`,
+- [x] 4.9 Grep for leftovers: `DiscoveryStore`, `changeToken`, `removedAssetIds`, `sinceToken`,
   `nextToken`, `markAbsent`, `markPresent`, `clearDiscoveryCursor` must not match under `adapter/ domain/
   app/ test/ ui/` outside comments that describe history.
 
 ## 5. World and harness
 
-- [ ] 5.1 `FakeUploadDiscovery` (`:test:world` `UploadFakes.kt`): make every readable discovery a full
+- [x] 5.1 `FakeUploadDiscovery` (`:test:world` `UploadFakes.kt`): make every readable discovery a full
   enumeration over `source.candidates(policy)` (the floor-narrowed read, never the full admission), and
   replace `expireToken` with an `unreadableWalk` lever that returns no candidates and
   `fullEnumeration = false` (spec `harness-world-model`).
-- [ ] 5.2 `World.kt`: drop `discoveryStore` and the `clearDiscoveryCursor` wiring. Update
+- [x] 5.2 `World.kt`: drop `discoveryStore` and the `clearDiscoveryCursor` wiring. Update
   `UploadCycleWorldTest` and `CycleEntryGateIntegrationTest` (which asserted cursor stability) to
   assert the ledger instead.
-- [ ] 5.3 World/integration tests for the new scenarios: removal deletes in-window rows; narrowing keeps
+- [x] 5.3 World/integration tests for the new scenarios: removal deletes in-window rows; narrowing keeps
   rows; a denylisted-album asset stays present; an unreadable walk deletes nothing.
-- [ ] 5.4 `:app:desktop`: remove the "Expire change token" action from `WorldInspector` /
+- [x] 5.4 `:app:desktop`: remove the "Expire change token" action from `WorldInspector` /
   `WorldInspectorController` (spec `full-stack-harness`).
 
 ## 6. Verify
 
-- [ ] 6.1 `./gradlew build`: the canonical check, including `:test:architecture` and every
+- [x] 6.1 `./gradlew build`: the canonical check, including `:test:architecture` and every
   `LedgerStoreContract` binding.
-- [ ] 6.2 `./gradlew compileIosMainKotlinMetadata`: the Linux-runnable iOS proxy (`IosDiscovery`,
+- [x] 6.2 `./gradlew compileIosMainKotlinMetadata`: the Linux-runnable iOS proxy (`IosDiscovery`,
   `IosLedgerStore`, both roots).
-- [ ] 6.3 `./gradlew architectureDiagrams` and commit `architecture/` (the port set changed).
-- [ ] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and
+- [x] 6.3 `./gradlew architectureDiagrams` and commit `architecture/` (the port set changed).
+- [x] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and
   `… validate always-full-enumerate --strict`.
 - [ ] 6.5 The native driver's contract run (`iosSimulatorArm64Test`) runs on CI `macos-26`. Confirm
   it is green on the PR, since `recordAllUnlessSettled`'s transaction is driver-specific.

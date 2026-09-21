@@ -17,12 +17,11 @@ import app.snapsync.ports.UploadDiscovery
  * snapshot — so this class holds no policy of its own:
  *
  * - [SelectionScope.Unrestricted] → delegate to the platform walk, unchanged.
- * - [SelectionScope.Scoped] → return the snapshot as the discovery, **without any platform read**.
- *   The walk cursor is preserved (`nextToken` = the incoming token), so a later full-access walk
- *   resumes incrementally rather than from scratch. `fullEnumeration` stays false: a selection
- *   snapshot is not the whole-library key-set, so it must never drive ledger pruning — an uploaded,
- *   later-deselected photo keeps its `COMPLETED` row (deselection is not withdrawal; upload is a
- *   publish).
+ * - [SelectionScope.Scoped] → return the snapshot as the discovery, **without any platform read**, and
+ *   **never authoritative** (`fullEnumeration = false`): a selection snapshot is not the library, so it
+ *   must never drive ledger deletion — an uploaded, later-deselected photo keeps its `COMPLETED` row
+ *   (deselection is not withdrawal; upload is a publish). A snapshot the member put every photo into looks
+ *   complete and still is not the library, which is why the flag is fixed here rather than inferred.
  *
  * It wraps the library reads and nothing else. Free capacity, job creation and the terminal drain are the
  * transport's facts, and a partial photo grant changes what may be READ, never what a transport will accept.
@@ -48,17 +47,15 @@ class SelectionScopedDiscovery(
             is SelectionScope.Scoped -> scope.resources.filter { it.filename in keys }
         }
 
-    override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
+    override suspend fun discover(policy: SelectionPolicy): Discovery =
         when (val scope = selectionScope()) {
-            SelectionScope.Unrestricted -> delegate.discover(sinceToken, policy)
+            SelectionScope.Unrestricted -> delegate.discover(policy)
             is SelectionScope.Scoped -> Discovery(
                 // The snapshot arrives already read, with resources — the sanctioned eager read is what
                 // keeps every library FETCH in-flow (capability `limited-photo-access`). Wrapping it as
                 // held candidates is honest: they genuinely are in hand, so nothing is deferred and
                 // nothing will need re-fetching by identifier later.
                 candidates = candidatesFromResources(scope.resources),
-                nextToken = sinceToken ?: ByteArray(0),
-                removedAssetIds = emptyList(),
                 fullEnumeration = false,
             )
         }

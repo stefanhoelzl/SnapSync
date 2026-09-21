@@ -67,7 +67,6 @@ fun WorldInspector(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { controller.invokeExtension() }) { Text("▶ Invoke extension") }
-            OutlinedButton(onClick = { controller.expireToken() }) { Text("Expire change token") }
         }
 
         // ---- Membership -------------------------------------------------------------------------

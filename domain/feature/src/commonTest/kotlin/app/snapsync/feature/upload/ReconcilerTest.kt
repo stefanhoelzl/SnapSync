@@ -51,8 +51,7 @@ class ReconcilerTest {
         ledger: FakeLedgerStore,
         marker: JoinedEventMarker,
         log: Logger = Logger.withTag("ReconcilerTest"),
-        onCursorClear: () -> Unit = {}, // last, so the existing call sites keep their trailing lambda
-    ) = UploadReconciler(files, ledger, marker, deviceId, { onCursorClear() }, log)
+    ) = UploadReconciler(files, ledger, marker, deviceId, log)
 
     /** Records what was logged, so a severity can be asserted rather than a message. */
     private class Recorder : LogWriter() {
@@ -64,13 +63,12 @@ class ReconcilerTest {
     }
 
     @Test
-    fun `marker mismatch reset-seeds every stored file then clears the cursor and sets the marker`() = runTest {
+    fun `marker mismatch reset-seeds every stored file and sets the marker`() = runTest {
         val files = FakeFiles(Result.success(listOf("A-primary.heic", "A-live.mov")))
         val ledger = FakeLedgerStore()
         val marker = FakeMarker(null)
-        var cursorCleared = 0
 
-        assertTrue(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("E1"))
+        assertTrue(reconciler(files, ledger, marker).reconcile("E1"))
 
         assertEquals(1, files.calls)
         assertEquals(deviceId, files.lastDeviceId) // listed by DEVICE, not event
@@ -79,7 +77,6 @@ class ReconcilerTest {
         assertEquals("A", primary.assetId) // assetId recovered from the filename
         assertEquals("E1", primary.eventId) // seeds carry the reconciled event as provenance
         assertEquals(LedgerState.COMPLETED, ledger.get("A-live.mov")!!.state)
-        assertEquals(1, cursorCleared) // re-join forces a full re-enumeration
         assertEquals("E1", marker.read())
     }
 
@@ -95,15 +92,13 @@ class ReconcilerTest {
     }
 
     @Test
-    fun `marker match skips the join and uploads directly without fetching or clearing the cursor`() = runTest {
+    fun `marker match skips the join and uploads directly without fetching`() = runTest {
         val files = FakeFiles(Result.success(emptyList()))
         val ledger = FakeLedgerStore()
-        var cursorCleared = 0
 
-        assertTrue(reconciler(files, ledger, FakeMarker("E1")) { cursorCleared++ }.reconcile("E1"))
+        assertTrue(reconciler(files, ledger, FakeMarker("E1")).reconcile("E1"))
 
         assertEquals(0, files.calls) // no fetch, no seed
-        assertEquals(0, cursorCleared) // an already-joined event re-enumerates incrementally
         assertTrue(ledger.rows.isEmpty())
     }
 
@@ -216,18 +211,16 @@ class ReconcilerTest {
     @Test
     fun `a storage reset - empty listing against a non-empty ledger - re-baselines and re-uploads`() = runTest {
         // A confirmed-successful empty listing is AUTHORITATIVE: the objects were deleted from storage
-        // (a reset), not transiently un-listed. So the ledger must be wiped to empty and the cursor
-        // cleared, so the producer re-uploads everything — NOT deferred (which hung the device forever).
+        // (a reset), not transiently un-listed. So the ledger must be wiped to empty, so the next walk finds no
+        // row for anything and re-uploads everything — NOT deferred (which hung the device forever).
         val ledger = FakeLedgerStore().apply {
             recordUnlessSettled(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0, eventId = ""))
         }
         val files = FakeFiles(Result.success(emptyList()))
         val marker = FakeMarker("OLD")
-        var cursorCleared = 0
 
-        assertTrue(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
+        assertTrue(reconciler(files, ledger, marker).reconcile("NEW"))
         assertTrue(ledger.rows.isEmpty()) // re-baselined to exactly what storage holds (nothing)
-        assertEquals(1, cursorCleared) // cursor cleared → full re-enumeration re-uploads everything
         assertEquals("NEW", marker.read()) // settled, not looping
     }
 
@@ -241,12 +234,10 @@ class ReconcilerTest {
         }
         val files = FakeFiles(Result.success(listOf("kept-primary.heic"))) // only the survivor is listed
         val marker = FakeMarker("OLD")
-        var cursorCleared = 0
 
-        assertTrue(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
+        assertTrue(reconciler(files, ledger, marker).reconcile("NEW"))
         assertEquals(LedgerState.COMPLETED, ledger.get("kept-primary.heic")!!.state) // still deduped
         assertNull(ledger.get("gone-primary.heic")) // dropped → producer re-uploads it
-        assertEquals(1, cursorCleared)
         assertEquals("NEW", marker.read())
     }
 

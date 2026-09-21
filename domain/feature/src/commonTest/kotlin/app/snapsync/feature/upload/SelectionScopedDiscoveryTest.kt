@@ -8,7 +8,6 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.UploadDiscovery
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -17,8 +16,7 @@ import kotlinx.coroutines.test.runTest
 /**
  * The read-discipline gate (capability `limited-photo-access`): under a [SelectionScope.Scoped],
  * discovery consumes the snapshot with NO platform read; under [SelectionScope.Unrestricted] it
- * delegates unchanged. The walk cursor is preserved across the scoped period, and a snapshot is
- * never a full enumeration (it must not drive ledger pruning).
+ * delegates unchanged, and a snapshot is never authoritative (it must not drive ledger deletion).
  */
 /** An admitting policy over [cutoff] — the shape the cycle hands the discovery. */
 private suspend fun admitting(cutoff: String): SelectionPolicy =
@@ -29,9 +27,9 @@ class SelectionScopedDiscoveryTest {
     private class RecordingDelegate : UploadDiscovery {
         var discoverCalls = 0
         var resolveCalls = 0
-        override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+        override suspend fun discover(policy: SelectionPolicy): Discovery {
             discoverCalls++
-            return Discovery(emptyList(), byteArrayOf(7))
+            return Discovery(emptyList(), fullEnumeration = true)
         }
         override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
             resolveCalls++
@@ -47,10 +45,10 @@ class SelectionScopedDiscoveryTest {
         val delegate = RecordingDelegate()
         val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Unrestricted }
 
-        val discovery = scoped.discover(byteArrayOf(1), admitting("2026-01-01T00:00:00Z"))
+        val discovery = scoped.discover(admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(1, delegate.discoverCalls)
-        assertContentEquals(byteArrayOf(7), discovery.nextToken)
+        assertTrue(discovery.fullEnumeration, "the platform walk's own answer crosses unchanged")
     }
 
     @Test
@@ -59,7 +57,7 @@ class SelectionScopedDiscoveryTest {
         val snapshot = listOf(resource("A"), resource("B"))
         val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(snapshot) }
 
-        val discovery = scoped.discover(byteArrayOf(1, 2), admitting("2026-01-01T00:00:00Z"))
+        val discovery = scoped.discover(admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(0, delegate.discoverCalls)
         assertEquals(
@@ -67,23 +65,22 @@ class SelectionScopedDiscoveryTest {
             discovery.candidates.map { it.facts.assetId },
             "the snapshot crosses verbatim — wrapped as HELD candidates, nothing re-read",
         )
-        // The walk cursor survives the scoped period: a later full-access walk resumes incrementally.
-        assertContentEquals(byteArrayOf(1, 2), discovery.nextToken)
-        // A snapshot is not the whole-library key-set — it must never drive ledger pruning.
+        // A snapshot is not the library — a de-selected photo is not a deleted one, so it must never drive
+        // ledger deletion (capability `limited-photo-access`).
         assertFalse(discovery.fullEnumeration)
-        assertTrue(discovery.removedAssetIds.isEmpty())
     }
 
     @Test
-    fun scoped_with_no_prior_cursor_yields_an_empty_token() = runTest {
+    fun an_empty_snapshot_is_still_not_authoritative() = runTest {
+        // Everything de-selected, or not yet captured: no candidates, and no evidence that anything left.
         val delegate = RecordingDelegate()
         val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(emptyList()) }
 
-        val discovery = scoped.discover(null, admitting("2026-01-01T00:00:00Z"))
+        val discovery = scoped.discover(admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(0, delegate.discoverCalls)
         assertTrue(discovery.candidates.isEmpty())
-        assertContentEquals(ByteArray(0), discovery.nextToken)
+        assertFalse(discovery.fullEnumeration)
     }
 
     // ---- the ledger-driven resolve, under the same discipline (capability `sync-ledger`) ------------

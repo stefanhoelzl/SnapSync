@@ -63,8 +63,7 @@ class OsDrivenUploadMechanism(
         // `REQUESTED` rows would never move again. Every `REQUESTED` row is unsettleable right now: this tier's
         // jobs are gone, and wherever the app-driven mechanism exists its `stop()` ran before this start. So the
         // whole set is demoted — through the reset family, because on this tier the extension is the one
-        // recording process — and a `FAILED` row returns through the ledger's work read with no walk, which is
-        // why no discovery-cursor reset accompanies it.
+        // recording process — and a `FAILED` row returns through the ledger's work read with no walk.
         //
         // Awaited, off-main: it completes BEFORE the re-enable below, so a row the re-registered extension
         // records can never be demoted by a repair still running.

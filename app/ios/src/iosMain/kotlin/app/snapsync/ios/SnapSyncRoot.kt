@@ -27,7 +27,6 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.toFacts
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
-import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.registry.uploadExtensionRegistry
 import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.model.PermissionStatus
@@ -423,10 +422,6 @@ object SnapSyncRoot {
                 // (:adapter:ios:app-only).
                 handoff = PlatformHandoff(share = IosShareSheet(), links = IosLinkOpener()),
                 candidateSource = candidateSource,
-                // A cutoff-lowering reconfigure invalidates the shared discovery cursor so both tiers
-                // re-enumerate and back-share the newly-in-scope older photos (capability
-                // `reconfigure-membership`).
-                clearDiscoveryCursor = discoveryStore::clearToken,
                 // Selection snapshots under a partial grant (capability `limited-photo-access`):
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
@@ -1161,10 +1156,6 @@ object SnapSyncRoot {
     // seam forced the choice at construction; a candidate defers it to the caller instead, so the cheap
     // and the expensive read are the same source asked different questions.
     private val candidateSource: PhotoKitCandidateSource by lazy { PhotoKitCandidateSource() }
-
-    // The shared App-Group discovery cursor (capability `reconfigure-membership`): any `IosDiscoveryStore`
-    // instance reads/writes the same App-Group token, so this clears the cursor both upload tiers consult.
-    private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 
     // The selection-change source (capability `limited-photo-access`): registers the library observer
     // only while permission is LIMITED; the app graph collects its snapshots.

@@ -28,9 +28,9 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit (iOS ≥26.1) implementation of [BackgroundTransfer] — the OS-owned upload-job queue:
- * fetch/retry/acknowledge system jobs and create jobs. Discovery and change-token archiving are not this
- * class's: the root binds the shared `IosDiscovery` as the cycle's `UploadDiscovery`, and the upload request
- * is built by the shared [uploadUrlRequest]; only the job lifecycle differs and stays here. All *domain* decisions live in
+ * fetch/retry/acknowledge system jobs and create jobs. Discovery is not this class's: the root binds the
+ * shared `IosDiscovery` as the cycle's `UploadDiscovery`, and the upload request is built by the shared
+ * [uploadUrlRequest]; only the job lifecycle differs and stays here. All *domain* decisions live in
  * `UploadCycle`; the branches here are technology-vocabulary mappings (job state, error class, the
  * per-job key recovery), which is exactly what an adapter may hold (spec `module-architecture`,
  * "Ports are the I/O boundary named for the need": adapters are named for the technology, placed by

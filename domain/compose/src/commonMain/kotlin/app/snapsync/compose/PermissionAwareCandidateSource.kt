@@ -48,7 +48,7 @@ import kotlinx.coroutines.flow.StateFlow
  * count. The refresh wins, every time.
  *
  * The sibling collapse in `AppCore.selectionScope()` — the same cell, the same `?: emptyList()` — is
- * **kept**, and deliberately: a scoped discovery preserves its walk cursor and prunes nothing, so its
+ * **kept**, and deliberately: a scoped discovery is never authoritative and deletes nothing, so its
  * empty answer costs one idle cycle that the next emission re-runs. Its answer is retryable; a settled
  * screen is not.
  *

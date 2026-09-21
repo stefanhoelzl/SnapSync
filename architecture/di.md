@@ -42,7 +42,6 @@ Roots found:
 | `IosDeviceLogSource` | x | | |
 | `IosDeviceManifestStore` | x | x | x |
 | `IosDiscovery` | | x | x |
-| `IosDiscoveryStore` | x | x | x |
 | `IosDownloadTransport` | x | | |
 | `IosJoinedEventMarker` | x | x | x |
 | `IosLinkOpener` | x | | |

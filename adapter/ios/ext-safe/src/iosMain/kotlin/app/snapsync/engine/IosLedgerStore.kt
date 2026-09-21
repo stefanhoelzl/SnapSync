@@ -13,17 +13,10 @@ import platform.Foundation.NSFileProtectionKey
 const val LEDGER_APP_GROUP: String = "group.app.snapsync"
 
 /**
- * The App-Group `NSUserDefaults` key the extension persists its discovery change-token cursor under.
- * Shared here so the extension (which writes and clears it across its re-join reconciliation) cannot
- * drift on the key name.
- */
-const val DISCOVERY_TOKEN_KEY: String = "discovery.changeToken"
-
-/**
  * The App-Group `NSUserDefaults` key the extension persists its `joinedEventId` re-join marker under —
  * the last event it reconciled (capability `upload-state-reconciliation`). It is the join signal in
  * the extension's short-lived process, where ledger-emptiness cannot be (a zero-row join would never
- * settle). Lives beside [DISCOVERY_TOKEN_KEY] so the extension's keys stay in one place.
+ * settle).
  */
 const val JOINED_EVENT_KEY: String = "rejoin.joinedEventId"
 

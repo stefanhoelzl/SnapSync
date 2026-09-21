@@ -69,8 +69,8 @@ WHERE key = :key;
 -- backend already holds. `:doneStates` is bound from Kotlin's `LedgerState.isDone`, never written as a
 -- literal, for the same reason every state-scoped read binds it.
 --
--- `absent` is in the SET on purpose: a record over a non-settled row is also how that row's absence mark
--- is cleared when its asset is discovered again. A settled row is un-marked by `markPresent` instead.
+-- `absent` is in the SET because the statement writes the whole row. Nothing sets the retired mark any more,
+-- so a record always writes it clear — which also clears a mark an earlier build left on a non-settled row.
 recordUnlessSettled:
 INSERT INTO ledgerRow (
     key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent,
@@ -177,27 +177,6 @@ clearAbsenceMarks:
 UPDATE ledgerRow
 SET absent = 0
 WHERE absent = 1;
-
--- Record that one asset has left the library (rides the assetId index). An UPDATE, never a DELETE: the
--- row's statement — "these bytes are on the backend" — stays true, and keeping it is what stops a
--- restored asset re-uploading. Idempotent, so re-running on an already-marked asset is free.
-markAbsent:
-UPDATE ledgerRow
-SET absent = 1
-WHERE assetId = :assetId;
-
--- The assets currently marked absent — the one read `markPresent` intersects with what a walk saw, so that
--- the common cycle (nothing restored) writes nothing at all.
-selectAbsentAssetIds:
-SELECT DISTINCT assetId FROM ledgerRow
-WHERE absent = 1;
-
--- Clear the absence mark of the given assets, whatever their rows' state: a settled row is exactly the one
--- no record write reaches again. One column, so every other fact about the row survives by construction.
-markPresent:
-UPDATE ledgerRow
-SET absent = 0
-WHERE absent = 1 AND assetId IN :assetIds;
 
 -- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
 -- photo in Kotlin to intersect outstanding resources with observed completions, without

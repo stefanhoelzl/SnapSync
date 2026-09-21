@@ -19,10 +19,10 @@ import kotlinx.coroutines.launch
  * already gone.
  *
  * **Leaving destroys no dedup state.** [stopUploads] is the `stop()` half of the `UploadProducer` seam
- * (capability `upload-lifecycle`): it cancels in-flight work and nothing else. The ledger, the discovery
- * cursor, and the device-manifest accumulator are **kept** — the ledger key is the bare filename with no
+ * (capability `upload-lifecycle`): it cancels in-flight work and nothing else. The ledger is **kept** —
+ * the ledger key is the bare filename with no
  * event scoping, and leaving an event does not remove this device's bytes from its storage partition, so
- * a `COMPLETED` row stays *true* across a leave (`sync-ledger`, "Event-independent key"). Wiping them
+ * a `COMPLETED` row stays *true* across a leave (`sync-ledger`, "Event-independent key"). Wiping it
  * would force a re-upload of everything already stored on the next join, which is exactly what the
  * app-driven tier used to do here. The upload tier clears only the `joinedEventId` marker, on its next
  * cycle, once the configured event no longer matches (see [UploadReconciler]); a later join of *any*

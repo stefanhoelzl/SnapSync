@@ -3,7 +3,6 @@ package app.snapsync.feature.upload
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.BackgroundTransfer
@@ -103,10 +102,10 @@ class UploadCycleTest {
         private val ackJobs: List<PlatformUploadJob> = emptyList(),
         // The ledger this platform records into. Optional only so tests that never drain need not state it.
         private val ledger: LedgerStore? = null,
-        private val nextToken: ByteArray = byteArrayOf(9),
         private val limitAfter: Int = Int.MAX_VALUE,
         private val failCreate: Boolean = false,
-        private val removedAssetIds: List<String> = emptyList(),
+        // Not authoritative by default, so a test that is not about deletion is not affected by it: a row
+        // seeded without a matching `discovered` resource would otherwise be deleted as departed.
         private val fullEnumeration: Boolean = false,
         // What this platform says it will accept. `null` — the default — is "I will not say", which keeps
         // every test that predates the bound on the cycle's own `enqueueBatchSize`, exactly as before.
@@ -128,7 +127,6 @@ class UploadCycleTest {
         val retried = mutableListOf<PlatformUploadJob>()
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
         var drained = false
-        var discoverTokenArg: ByteArray? = null
         var discoverPolicyArg: SelectionPolicy? = null
         /** Keys the cycle asked to resolve — how a test asserts it enqueued from the ledger, not a walk. */
         val resolvedKeys = mutableSetOf<String>()
@@ -138,8 +136,8 @@ class UploadCycleTest {
         /**
          * Everything this fixture's "library" has ever held — what [resourcesFor] answers from.
          *
-         * Deliberately not [discovered]: the change feed reports what CHANGED, and the whole point of
-         * resolving by key is that it works for an asset the feed has stopped mentioning.
+         * Deliberately not [discovered]: a test can empty the walk, and the whole point of resolving by key
+         * is that it works for an asset the walk no longer needs to re-read.
          */
         private val library = discovered
         private var creates = 0
@@ -171,8 +169,7 @@ class UploadCycleTest {
             return library.filter { it.filename in keys }
         }
 
-        override suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
-            discoverTokenArg = sinceToken
+        override suspend fun discover(policy: SelectionPolicy): Discovery {
             discoverPolicyArg = policy
             // The fake returns HELD candidates: it stands in for a platform whose discovery already
             // carried resources, which is the honest shape for an in-memory fixture. It deliberately
@@ -184,7 +181,7 @@ class UploadCycleTest {
                     override suspend fun resources() = held.resources().also { readAssets += held.facts.assetId }
                 }
             }
-            return Discovery(candidates, nextToken, removedAssetIds, fullEnumeration)
+            return Discovery(candidates, fullEnumeration)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
             if (failCreate) return CreateResult.FAILED
@@ -193,14 +190,6 @@ class UploadCycleTest {
             created += resource
             return CreateResult.CREATED
         }
-    }
-
-    private class FakeStore(private val token: ByteArray? = null) : DiscoveryStore {
-        var saved: ByteArray? = null
-        var cleared = false
-        override fun loadToken(): ByteArray? = token
-        override fun saveToken(token: ByteArray) { saved = token }
-        override fun clearToken() { cleared = true }
     }
 
     // Dated by default: every membership carries a cutoff (capability `photo-selection-policy`), and an asset
@@ -242,7 +231,6 @@ class UploadCycleTest {
     private suspend fun cycle(
         backend: LedgerStore,
         platform: FakePlatform,
-        store: DiscoveryStore = FakeStore(),
         // Nullable rather than defaulted: a suspend call is not allowed in a default value.
         policy: SelectionPolicy? = null,
         saveToAlbum: Boolean = true,
@@ -265,7 +253,6 @@ class UploadCycleTest {
             ledger = ledger,
             platform = platform,
             library = platform,
-            store = store,
             reconcile = reconcile,
             onDiscovery = onDiscovery,
             placeInAlbum = placeInAlbum,
@@ -276,8 +263,7 @@ class UploadCycleTest {
     private suspend fun cycleOver(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
-        store: DiscoveryStore = FakeStore(),
-    ): UploadCycle = cycle(backend, platform, store)
+    ): UploadCycle = cycle(backend, platform)
 
     // ---- The entry gate (capability `upload-lifecycle`) -----------------------------------------------
     // The three-state membership read, decided HERE rather than in each composition root. A root reaches
@@ -288,9 +274,8 @@ class UploadCycleTest {
     @Test
     fun an_unreadable_membership_touches_nothing() = runTest {
         val backend = InMemoryLedgerStore()
-        // A cursor that must not advance, and a library full of admissible work: the ONLY reason nothing
-        // happens is that the membership could not be read.
-        val store = FakeStore(token = "cursor-before".encodeToByteArray())
+        // A library full of admissible work: the ONLY reason nothing happens is that the membership could not
+        // be read.
         val touched = mutableListOf<String>()
         val platform = FakePlatform(
             discovered = listOf(resource("A-primary.heic"), resource("B-primary.heic")),
@@ -298,7 +283,7 @@ class UploadCycleTest {
         )
 
         val result = cycle(
-            backend, platform, store,
+            backend, platform,
             readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
             reconcile = { touched += "reconcile"; true },
             onDiscovery = { _, _ -> touched += "discovery"; true },
@@ -307,7 +292,7 @@ class UploadCycleTest {
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
         assertEquals(emptyList<String>(), touched, "unreadable ≠ left: no reconcile, no marker clear, no hooks")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "no upload job")
-        assertNull(store.saved, "the discovery cursor must not advance")
+        assertNull(platform.discoverPolicyArg, "the library is not walked")
     }
 
     // THE regression this gate exists for, at the choke point: the reconciler's `null` call is what clears
@@ -318,7 +303,7 @@ class UploadCycleTest {
         var reconciledWith: List<String?> = emptyList()
 
         cycle(
-            backend, FakePlatform(), FakeStore(),
+            backend, FakePlatform(),
             readGate = { CycleGate.Skip("protected data unavailable") },
             reconcile = { eventId -> reconciledWith = reconciledWith + eventId; true },
         ).run()
@@ -333,7 +318,7 @@ class UploadCycleTest {
         var reconciledWith: List<String?> = listOf("unset")
 
         val result = cycle(
-            backend, platform, FakeStore(),
+            backend, platform,
             readGate = { CycleGate.NotJoined },
             reconcile = { eventId -> reconciledWith = listOf(eventId); true },
         ).run()
@@ -346,7 +331,7 @@ class UploadCycleTest {
     @Test
     fun a_failing_leave_side_reconcile_still_completes_cleanly() = runTest {
         val result = cycle(
-            InMemoryLedgerStore(), FakePlatform(), FakeStore(),
+            InMemoryLedgerStore(), FakePlatform(),
             readGate = { CycleGate.NotJoined },
             reconcile = { error("marker clear boom") },
         ).run()
@@ -387,7 +372,7 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         backend.recordUnlessSettled(LedgerEntry("A-photo.jpg", "A", LedgerState.COMPLETED, 0, eventId = ""))
 
-        cycle(backend, FakePlatform(), FakeStore(), reconcile = { false }).run()
+        cycle(backend, FakePlatform(), reconcile = { false }).run()
 
         assertEquals("", backend.get("A-photo.jpg")?.eventId)
     }
@@ -401,7 +386,7 @@ class UploadCycleTest {
         var joined = true
 
         val c = cycle(
-            backend, platform, FakeStore(),
+            backend, platform,
             readGate = {
                 if (joined) {
                     CycleGate.Run(
@@ -434,10 +419,9 @@ class UploadCycleTest {
     private suspend fun decliningCycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
-        store: DiscoveryStore,
         order: MutableList<String> = mutableListOf(),
     ): UploadCycle = cycle(
-        backend, platform, store,
+        backend, platform,
         policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
         onDiscovery = { _, _ -> order += "discovery"; true },
         reconcile = { order += "reconcile"; true },
@@ -445,7 +429,6 @@ class UploadCycleTest {
 
     @Test
     fun a_non_contributing_membership_creates_no_job_and_lists_nothing() = runTest {
-        val store = FakeStore()
         // A library full of perfectly admissible work: in scope, no origin exclusion, nothing in flight.
         // The ONLY reason nothing happens is the membership's direction.
         val platform = FakePlatform(
@@ -454,7 +437,7 @@ class UploadCycleTest {
         )
         val order = mutableListOf<String>()
 
-        val result = decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
+        val result = decliningCycle(InMemoryLedgerStore(), platform, order).run()
 
         assertEquals(CycleResult.SKIPPED, result, "declined, and distinguishable from a drained cycle")
         assertTrue(platform.created.isEmpty(), "no upload job for a membership that contributes nothing")
@@ -472,11 +455,10 @@ class UploadCycleTest {
      */
     @Test
     fun the_gate_precedes_the_walk_but_not_the_reconcile_or_the_manifest() = runTest {
-        val store = FakeStore()
         val platform = FakePlatform(discovered = listOf(resource("a")))
         val order = mutableListOf<String>()
 
-        decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
+        decliningCycle(InMemoryLedgerStore(), platform, order).run()
 
         // What the gate withholds is NEW WORK — the walk and job creation. It does not withhold facts
         // about what is already uploaded (the reconcile, capability `sync-ledger`) nor the statement of
@@ -485,18 +467,6 @@ class UploadCycleTest {
         // new work, and a declined cycle owes it (capability `upload-lifecycle`).
         assertEquals(listOf("reconcile", "discovery"), order, "reconcile, then the manifest")
         assertNull(platform.discoverPolicyArg, "the library is still never enumerated — that is the cost")
-    }
-
-    /** A declined cycle discovered nothing, so it advances nothing: the cursor stays exactly where it was. */
-    @Test
-    fun a_declined_cycle_does_not_advance_or_clear_the_discovery_cursor() = runTest {
-        val store = FakeStore()
-        val platform = FakePlatform(discovered = listOf(resource("a")))
-
-        decliningCycle(InMemoryLedgerStore(), platform, store).run()
-
-        assertNull(store.saved, "the cursor must not advance")
-        assertTrue(!store.cleared, "nor be cleared — this membership's state is untouched, not reset")
     }
 
     /**
@@ -520,7 +490,7 @@ class UploadCycleTest {
         val platform = FakePlatform(discovered = listOf(resource("a")))
 
         val result = cycle(
-            InMemoryLedgerStore(), platform, FakeStore(),
+            InMemoryLedgerStore(), platform,
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             log = Logger(loggerConfigInit(recorder), "UploadCycleTest"),
         ).run()
@@ -548,14 +518,13 @@ class UploadCycleTest {
     @Test
     fun a_declined_cycle_settles_with_the_platform_and_nothing_more() = runTest {
         val backend = InMemoryLedgerStore()
-        val store = FakeStore()
         val presented = "c-primary.heic"
         backend.inFlight(presented, assetId = "c")
         val platform =
             FakePlatform(discovered = listOf(resource("a")), succeeded = listOf(presented), ledger = backend)
         val order = mutableListOf<String>()
 
-        val result = decliningCycle(backend, platform, store, order).run()
+        val result = decliningCycle(backend, platform, order).run()
 
         assertEquals(CycleResult.SKIPPED, result, "still declined — settling is not contributing")
         assertTrue(
@@ -571,8 +540,6 @@ class UploadCycleTest {
         assertTrue(platform.created.isEmpty(), "no upload job is created")
         assertEquals(listOf("reconcile", "discovery"), order, "reconcile and the manifest both run")
         assertNull(platform.discoverPolicyArg, "the library is never enumerated")
-        assertNull(store.saved, "the discovery cursor does not advance")
-        assertTrue(!store.cleared, "nor is it cleared")
     }
 
     // ---- Phase 0: the re-join reconciliation gate (capability `upload-state-reconciliation`) ----------
@@ -584,11 +551,10 @@ class UploadCycleTest {
     private suspend fun gatedCycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
-        store: DiscoveryStore = FakeStore(),
         order: MutableList<String> = mutableListOf(),
         gate: suspend () -> Boolean,
     ): UploadCycle = cycle(
-        backend, platform, store,
+        backend, platform,
         onDiscovery = { _, _ -> order += "discovery"; true },
         reconcile = { order += "reconcile"; gate() },
     )
@@ -607,13 +573,12 @@ class UploadCycleTest {
 
     @Test
     fun a_deferred_reconcile_creates_no_jobs_but_still_settles() = runTest {
-        val store = FakeStore()
         val platform = FakePlatform(
             discovered = listOf(resource("a")),
             succeeded = listOf("b-primary.heic"),
         )
         // A failed/timed-out device listing: the reconciler returns false rather than seeding.
-        val cycle = gatedCycle(InMemoryLedgerStore(), platform, store) { false }
+        val cycle = gatedCycle(InMemoryLedgerStore(), platform) { false }
 
         // COMPLETED, never FAILED: a deferral is a clean no-op so the tier's scheduler simply retries.
         assertEquals(CycleResult.COMPLETED, cycle.run())
@@ -626,8 +591,6 @@ class UploadCycleTest {
         // for it, and `upload-state-reconciliation`'s "defers without settling" is about the ledger SEED.
         assertTrue(platform.drained, "a deferred seed still settles with the platform")
         assertNull(platform.discoverPolicyArg, "a deferred cycle must not even walk the library")
-        assertNull(store.saved, "the cursor must not advance on a deferred cycle")
-        assertTrue(!store.cleared, "a deferral leaves the cursor untouched so the next cycle retries")
     }
 
     @Test
@@ -645,15 +608,13 @@ class UploadCycleTest {
     fun discovery_creates_a_job_per_new_resource_and_records_requested_after_create() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
-        val store = FakeStore()
 
-        val result = cycleOver(backend, platform, store).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
         assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
         assertEquals(LedgerState.REQUESTED, backend.get("b")?.state)
-        assertContentEquals(byteArrayOf(9), store.saved) // cursor advanced on a fully-drained cycle
     }
 
     @Test
@@ -740,17 +701,6 @@ class UploadCycleTest {
     }
 
     @Test
-    fun discovery_passes_the_loaded_cursor_to_the_platform() = runTest {
-        val backend = InMemoryLedgerStore()
-        val platform = FakePlatform()
-        val store = FakeStore(token = byteArrayOf(7))
-
-        cycleOver(backend, platform, store).run()
-
-        assertContentEquals(byteArrayOf(7), platform.discoverTokenArg)
-    }
-
-    @Test
     fun a_succeeded_upload_is_recorded_completed_where_the_platform_reports_it() = runTest {
         // The platform records the outcome where the OS told it — that write is what survives process
         // death — and it records it SETTLED: nothing a completion used to owe is left for a cycle to do.
@@ -826,48 +776,6 @@ class UploadCycleTest {
         assertEquals(LedgerState.COMPLETED, backend.get("a")?.state, "neither FAILED nor REQUESTED landed")
         assertEquals(0, backend.get("a")?.attempt)
         assertTrue(platform.created.isEmpty())
-    }
-
-    @Test
-    fun a_restored_settled_asset_is_listed_again_without_a_job() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.completed(resource("R-photo.jpg", "R"))
-        backend.markAbsent("R")
-        // The photo came back from Recently Deleted: the walk returns it again.
-        val platform = FakePlatform(discovered = listOf(resource("R-photo.jpg", "R")))
-
-        cycleOver(backend, platform).run()
-
-        assertEquals(false, backend.get("R-photo.jpg")?.absent, "the engine writes nothing for it, so markPresent must")
-        assertEquals(LedgerState.COMPLETED, backend.get("R-photo.jpg")?.state)
-        assertEquals(listOf("R-photo.jpg"), backend.manifestRows().map { it.key })
-        assertTrue(platform.created.isEmpty(), "and nothing re-uploads")
-    }
-
-    @Test
-    fun a_restored_asset_outside_the_policy_is_still_marked_present() = runTest {
-        val backend = InMemoryLedgerStore()
-        val outOfScope = datedResource("O-photo.jpg", creationDate = "2020-01-01T00:00:00Z", assetId = "O")
-        backend.completed(outOfScope)
-        backend.markAbsent("O")
-        val platform = FakePlatform(discovered = listOf(outOfScope))
-
-        cycleOver(backend, platform).run()
-
-        // Being in the library is not a question of scope; the projection still applies the policy on its own.
-        assertEquals(false, backend.get("O-photo.jpg")?.absent)
-        assertTrue(platform.created.isEmpty())
-    }
-
-    @Test
-    fun an_asset_removed_and_returned_in_one_walk_ends_present() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.completed(resource("R-photo.jpg", "R"))
-        val platform = FakePlatform(discovered = listOf(resource("R-photo.jpg", "R")), removedAssetIds = listOf("R"))
-
-        cycleOver(backend, platform).run()
-
-        assertEquals(false, backend.get("R-photo.jpg")?.absent, "the candidate fetch is the later fact")
     }
 
     // ---- The stranded reconciliation (capability `ios-url-session-upload`) -----------------------------
@@ -1004,7 +912,7 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         backend.inFlight("lost-primary.heic")
 
-        val result = decliningCycle(backend, FakePlatform().apply { lost = setOf("lost-primary.heic") }, FakeStore()).run()
+        val result = decliningCycle(backend, FakePlatform().apply { lost = setOf("lost-primary.heic") }).run()
 
         assertEquals(CycleResult.SKIPPED, result)
         assertEquals(
@@ -1032,19 +940,17 @@ class UploadCycleTest {
     fun create_failure_records_no_requested_and_does_not_cap() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("a")), failCreate = true)
-        val store = FakeStore()
 
-        val result = cycleOver(backend, platform, store).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result) // a create FAILURE is not the cap
         // Still no REQUESTED — write-after-act is intact, and that is what this test guards.
         // But the row is no longer ABSENT: the walk recorded it DISCOVERED before any job was
         // attempted, so a create that failed leaves the resource remembered rather than forgotten.
         // Before, a failed create left nothing at all, and the resource was found again only by a walk
-        // that re-derived it — which an incremental walk does not do for an asset that has not changed.
+        // that re-derived it — which the walk no longer does for an asset the ledger already knows.
         // Same defect as the never-retried FAILED row, arriving through a different door.
         assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state)
-        assertContentEquals(byteArrayOf(9), store.saved) // cursor advances: the walk was recorded
     }
 
     @Test
@@ -1077,13 +983,12 @@ class UploadCycleTest {
             limitAfter = 1,
         )
 
-        val result = cycleOver(backend, platform, FakeStore()).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.PROCESSING, result)
         // BOTH are enriched, including the one the platform's job limit would once have stopped short of.
-        // This is a precondition of advancing the cursor, not a nicety: a capture date lives only in the
-        // library and only the walk reads it, so a bare row the cursor has moved past stays bare — and
-        // invisible — until something forces a full re-enumeration.
+        // A capture date lives only in the library and only the walk reads it, so a bare row that is not
+        // filled here stays bare — and invisible to every projection.
         assertEquals(IN_SCOPE_DATE, backend.get("seeded-a")?.creationDate)
         assertEquals(IN_SCOPE_DATE, backend.get("seeded-b")?.creationDate)
     }
@@ -1095,17 +1000,15 @@ class UploadCycleTest {
             discovered = listOf(resource("a"), resource("b"), resource("c")),
             limitAfter = 2,
         )
-        val store = FakeStore()
-        val cycle = cycleOver(backend, platform, store)
+        val cycle = cycleOver(backend, platform)
 
         assertEquals(CycleResult.PROCESSING, cycle.run())
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
 
-        // The platform frees its slots, and nothing in the library changes. Under the old design this is
-        // the dead spot: an incremental walk returns nothing, so "c" was found again only by a full
-        // re-enumeration — which is why the cursor was not allowed to advance in the first place.
+        // The platform frees its slots, and the walk returns nothing new. "c" is not re-derived by any walk:
+        // it is resolved from its DISCOVERED row.
         platform.freeSlots()
-        platform.discovered = emptyList() // the change feed reports nothing new
+        platform.discovered = emptyList()
 
         assertEquals(CycleResult.COMPLETED, cycle.run())
 
@@ -1114,24 +1017,19 @@ class UploadCycleTest {
     }
 
     @Test
-    fun cap_during_creation_advances_the_cursor_and_leaves_the_remainder_discovered() = runTest {
+    fun cap_during_creation_leaves_the_remainder_discovered() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(resource("a"), resource("b"), resource("c")),
             limitAfter = 2,
         )
-        val store = FakeStore()
 
-        val result = cycleOver(backend, platform, store).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.PROCESSING, result)
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
-        // THE INVERSION (capability `ios-photokit-upload`). The cursor advances because every fact the
-        // walk produced is durable — the un-created remainder holds a DISCOVERED row, so nothing is lost
-        // by moving past it. The old rule waited for "every job was created", which on a device with more
-        // outstanding work than the platform's job limit is never true, so the cursor stood still and
-        // every cycle re-enumerated the whole library.
-        assertContentEquals(byteArrayOf(9), store.saved, "the walk was recorded, so the cursor advances")
+        // Every fact the walk produced is durable before any job is created: the un-created remainder holds a
+        // DISCOVERED row, so the platform's job limit loses nothing (capability `ios-photokit-upload`).
         assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "the remainder is remembered")
         assertEquals(LedgerState.REQUESTED, backend.get("a")?.state, "what got a job is in flight")
     }
@@ -1148,7 +1046,7 @@ class UploadCycleTest {
             capacity = 2,
         )
 
-        val result = cycleOver(backend, platform, FakeStore()).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(2, platform.resolvedKeys.size, "only what the platform will take is resolved")
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
@@ -1168,7 +1066,7 @@ class UploadCycleTest {
             capacity = 2,
         )
 
-        val result = cycleOver(backend, platform, FakeStore()).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(listOf("a", "b"), platform.created.map { it.filename }, "both were accepted")
         assertEquals(CycleResult.PROCESSING, result, "a full read means the ledger may hold more")
@@ -1178,10 +1076,10 @@ class UploadCycleTest {
     fun a_full_platform_resolves_nothing_and_reports_work_remaining() = runTest {
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordDiscovered(listOf(resource("a")), TEST_EVENT)
-        // The change feed reports nothing new: the only work is what the ledger already holds.
+        // The walk returns nothing new: the only work is what the ledger already holds.
         val platform = FakePlatform(discovered = emptyList(), capacity = 0)
 
-        val result = cycleOver(backend, platform, FakeStore()).run()
+        val result = cycleOver(backend, platform).run()
 
         assertTrue(platform.resolvedKeys.isEmpty(), "a full platform costs no platform round-trip at all")
         assertTrue(platform.created.isEmpty())
@@ -1197,7 +1095,7 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = emptyList(), capacity = 0)
 
-        val result = cycleOver(backend, platform, FakeStore()).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result, "an empty backlog drains, however full the platform")
     }
@@ -1209,7 +1107,7 @@ class UploadCycleTest {
         // no number — the OS-driven tier's answer, and every test that predates this bound.
         val platform = FakePlatform(discovered = (1..20).map { resource("r$it") }, capacity = null)
 
-        val result = cycleOver(backend, platform, FakeStore()).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(16, platform.resolvedKeys.size, "the fixed batch still bounds the read")
         assertEquals(CycleResult.PROCESSING, result)
@@ -1236,39 +1134,6 @@ class UploadCycleTest {
         )
         assertEquals(false, backend.get("X-primary.heic")?.absent)
         assertTrue(platform.created.isEmpty())
-    }
-
-    @Test
-    fun removed_asset_rows_are_marked_absent_incrementally_by_assetId() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.completed(resource("A_1-photo.jpg", "A_1"))
-        LedgerWriter(backend).recordRequested(resource("A_1-video.mov", "A_1"), attempt = 0, eventId = TEST_EVENT)
-        backend.completed(resource("B-photo.jpg", "B"))
-        val platform = FakePlatform(removedAssetIds = listOf("A_1"))
-
-        cycleOver(backend, platform).run()
-
-        // MARKED, not deleted: the bytes are still on the backend, so the row stays true and keeps
-        // suppressing re-upload if the asset comes back (capability `sync-ledger`).
-        assertEquals(true, backend.get("A_1-photo.jpg")?.absent, "departed asset's rows are marked")
-        assertEquals(true, backend.get("A_1-video.mov")?.absent)
-        assertEquals(LedgerState.COMPLETED, backend.get("A_1-photo.jpg")?.state, "and keep their state")
-        assertEquals(false, backend.get("B-photo.jpg")?.absent, "other assets untouched")
-    }
-
-    @Test
-    fun mid_upload_deletion_clears_the_stuck_pending_row() = runTest {
-        val backend = InMemoryLedgerStore()
-        // A photo deleted before its upload finished: a REQUESTED row discovery never revisits.
-        LedgerWriter(backend).recordRequested(resource("gone-photo.jpg", "gone"), attempt = 0, eventId = TEST_EVENT)
-        assertEquals(1, backend.aggregates().pending)
-        val platform = FakePlatform(removedAssetIds = listOf("gone"))
-
-        val result = cycleOver(backend, platform).run()
-
-        assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(true, backend.get("gone-photo.jpg")?.absent, "the stuck row is marked, not deleted")
-        assertEquals(0, backend.aggregates().pending, "no phantom pending pins the extension awake")
     }
 
     // ---- Deletion is a presence diff over an authoritative walk (capability `sync-ledger`) ----------------
@@ -1440,38 +1305,6 @@ class UploadCycleTest {
     }
 
     @Test
-    fun reconcile_does_not_run_on_an_incremental_cycle() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.completed(resource("untouched-photo.jpg", "untouched"))
-        // Incremental (fullEnumeration = false): `discovered` is only the changed subset, never the
-        // live asset set, so retainAssets must NOT run or it would wipe everything not just-changed.
-        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = false)
-
-        cycleOver(backend, platform).run()
-
-        assertEquals(LedgerState.COMPLETED, backend.get("untouched-photo.jpg")?.state)
-    }
-
-    @Test
-    fun a_marked_then_rediscovered_asset_is_not_re_uploaded() = runTest {
-        val backend = InMemoryLedgerStore()
-        // Uploaded, deleted, then recovered from iOS's "Recently Deleted" — which holds 30 days, the same
-        // order as an event's whole life, so this is an ordinary sequence rather than an exotic one.
-        backend.completed(resource("x-photo.jpg", "x"))
-        val platform = FakePlatform(
-            discovered = listOf(resource("x-photo.jpg")),
-            removedAssetIds = listOf("x"),
-        )
-
-        cycleOver(backend, platform).run()
-
-        // The COMPLETED row survived the deletion as a MARK, so the re-discovered key is AlreadyUploaded.
-        // Under the old prune it was fresh work and the identical bytes were uploaded again.
-        assertTrue(platform.created.isEmpty(), "the surviving row suppresses re-upload of identical bytes")
-        assertEquals(LedgerState.COMPLETED, backend.get("x-photo.jpg")?.state)
-    }
-
-    @Test
     fun cap_during_re_create_still_walks_publishes_and_returns_processing() = runTest {
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested(resource("a", "a"), attempt = 0, eventId = TEST_EVENT)
@@ -1479,17 +1312,15 @@ class UploadCycleTest {
         // The asset is still in the library: this is about the cap, not about a departed photo, whose row
         // would be deleted when its key failed to resolve.
         val platform = FakePlatform(discovered = listOf(resource("a", "a")), ackJobs = listOf(job), limitAfter = 0)
-        val store = FakeStore()
 
-        val result = cycleOver(backend, platform, store).run()
+        val result = cycleOver(backend, platform).run()
 
         // Still PROCESSING: the re-created retry never got a job, so work remains and the pump must
         // re-arm. What changed is everything else the cycle used to withhold on the way out.
         assertEquals(CycleResult.PROCESSING, result)
-        // It WALKS. This cycle is the one whose remaining backlog most needs accounting for, and once
-        // the walk only records what it finds, running it also keeps the cursor moving.
+        // It WALKS. This cycle is the one whose remaining backlog most needs accounting for, and an
+        // authoritative walk is also what retracts a departed photo.
         assertNotNull(platform.discoverPolicyArg, "a settle-pass cap hit still enumerates")
-        assertContentEquals(byteArrayOf(9), store.saved, "and its recorded walk advances the cursor")
         // The retry it could not re-create rests FAILED — which the ledger's work read returns next
         // cycle, so nothing depends on a later walk re-deriving it.
         assertEquals(LedgerState.FAILED, backend.get("a")?.state)
@@ -1509,13 +1340,12 @@ class UploadCycleTest {
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         order: MutableList<String>,
-        store: DiscoveryStore = FakeStore(),
         publishThrows: Boolean = false,
         atPublish: suspend () -> Unit = {},
     ): UploadCycle {
         var lastPublished: List<String>? = null
         return cycle(
-            backend, platform, store,
+            backend, platform,
             onDiscovery = { _, _ ->
                 order += "manifest"
                 atPublish()
@@ -1590,14 +1420,12 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         backend.inFlight("a-primary.jpg", assetId = "a")
         val platform = FakePlatform(succeeded = listOf("a-primary.jpg"), ledger = backend)
-        val store = FakeStore()
         val order = mutableListOf<String>()
 
-        val result = cycleWithHooks(backend, platform, order, store, publishThrows = true).run()
+        val result = cycleWithHooks(backend, platform, order, publishThrows = true).run()
 
         assertEquals(CycleResult.COMPLETED, result) // best-effort: the failure is absorbed
         assertEquals(listOf("manifest"), order)
-        assertContentEquals(byteArrayOf(9), store.saved) // cursor still advanced despite the failed publish
     }
 
     @Test
@@ -1665,7 +1493,7 @@ class UploadCycleTest {
     }
 
     @Test
-    fun cutoff_applies_on_the_incremental_walk_too() = runTest {
+    fun cutoff_applies_to_a_walk_that_takes_no_predicate() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")),
@@ -1674,7 +1502,8 @@ class UploadCycleTest {
 
         cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
 
-        assertTrue(platform.created.isEmpty(), "a pre-cutoff changed asset is excluded on the incremental walk")
+        // A selection snapshot takes no predicate, so the cycle's admission is all that stands in the way.
+        assertTrue(platform.created.isEmpty(), "a pre-cutoff asset is excluded without the fetch's help")
     }
 
     @Test
@@ -1858,7 +1687,7 @@ class UploadCycleTest {
     }
 
     @Test
-    fun the_origin_filter_covers_the_incremental_walk() = runTest {
+    fun the_origin_filter_covers_a_walk_that_takes_no_predicate() = runTest {
         val platform = FakePlatform(
             discovered = listOf(originResource("shot.png", "shot", isScreenshot = true)),
             fullEnumeration = false,
@@ -1866,7 +1695,7 @@ class UploadCycleTest {
 
         originCycle(InMemoryLedgerStore(), platform).run()
 
-        assertTrue(platform.created.isEmpty(), "excluded on the incremental walk exactly as on a full one")
+        assertTrue(platform.created.isEmpty(), "excluded on a selection snapshot exactly as on a full walk")
     }
 
     @Test

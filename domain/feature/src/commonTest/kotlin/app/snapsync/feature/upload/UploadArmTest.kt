@@ -300,8 +300,8 @@ class UploadArmTest {
 
         arm(producer, granted = true).onLeave()
 
-        // `stop()` is the ONLY verb reachable on leave. The seam exposes no way to clear the ledger or the
-        // discovery cursor, so cross-event dedup survives — a later join re-uploads nothing already stored.
+        // `stop()` is the ONLY verb reachable on leave. The seam exposes no way to clear the ledger, so
+        // cross-event dedup survives — a later join re-uploads nothing already stored.
         assertEquals(listOf("stop"), producer.verbs)
     }
 

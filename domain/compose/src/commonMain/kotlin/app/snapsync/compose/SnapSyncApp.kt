@@ -224,10 +224,6 @@ class AppPorts(
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
-    /** Invalidate the shared discovery cursor (capability `reconfigure-membership`): `ReconfigureEvent`
-     *  calls it on a cutoff-lowering so the next cycle re-enumerates and back-shares the newly-in-scope
-     *  older photos on both tiers. Default no-op keeps other compositions unaffected. */
-    val clearDiscoveryCursor: () -> Unit = {},
     /** Tells the shared event this device is leaving (capability `leave-event`). This was
      *  `notifyLeave: suspend (eventId) -> Unit`, a lambda the shell built by closing over the adapter
      *  AND this device's id — a backend call reaching out of the process behind a type indistinguishable
@@ -571,9 +567,6 @@ class AppCore internal constructor(
             // the command's return.
             startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
             cancelDownloads = { downloadController.onLeaveOrSwitch() },
-            // A cutoff-lowering reconfigure re-shares the newly-in-scope older photos on both tiers by
-            // invalidating the forward-only discovery cursor (capability `reconfigure-membership`).
-            clearDiscoveryCursor = ports.clearDiscoveryCursor,
         )
     }
 
@@ -654,9 +647,8 @@ class AppCore internal constructor(
 
     /**
      * Voids this device's durable sync state (capability `device-state-reset`) so a build pointed at a
-     * different backend starts from nothing. The cursor invalidation reuses the SAME
-     * [AppPorts.clearDiscoveryCursor] effect `ReconfigureEvent` uses, so there is one surface for "make
-     * the next cycle re-enumerate" rather than two that could diverge.
+     * different backend starts from nothing. Emptying the ledger is enough to make the next cycle upload
+     * everything in scope: every walk is a full enumeration, so there is no cursor to invalidate.
      *
      * Public because the dev/test control channel drives it directly. It has no user path by design —
      * `leave-event` deliberately keeps the ledger, and this is the one operation for which that reasoning
@@ -675,7 +667,6 @@ class AppCore internal constructor(
             // pruned, so its change block's marker write lands on nothing. Passing the critical section
             // rather than the value is also what keeps the membership feature blind to its sibling.
             resetDownloads = { downloadController.onDurableStateReset() },
-            clearDiscoveryCursor = ports.clearDiscoveryCursor,
         )
     }
 

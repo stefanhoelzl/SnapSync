@@ -108,8 +108,8 @@ abstract class LedgerRecordGuardContract {
     @Test
     fun `a record over a non-settled row clears its absence mark`() = runTest {
         val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.FAILED))
-        backend.markAbsent("A")
+        // An earlier build's mark, seeded verbatim: nothing sets it any more.
+        backend.resetTo(listOf(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.FAILED).markedAbsent()))
 
         // The walk re-derived the asset, so it is here again: the record states that, as the upsert always has.
         backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.REQUESTED, attempt = 1))

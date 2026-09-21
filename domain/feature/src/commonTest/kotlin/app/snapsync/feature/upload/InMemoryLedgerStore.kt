@@ -88,25 +88,6 @@ class InMemoryLedgerStore : LedgerStore {
         if (cleared) dings.tryEmit(Unit)
     }
 
-    override suspend fun markAbsent(assetId: String) {
-        for ((key, row) in entries) {
-            if (row.assetId == assetId && !row.absent) entries[key] = row.markedAbsent()
-        }
-        dings.tryEmit(Unit)
-    }
-
-    override suspend fun markPresent(assetIds: Collection<String>) {
-        val wanted = assetIds.toSet()
-        var cleared = false
-        for ((key, row) in entries) {
-            if (row.absent && row.assetId in wanted) {
-                entries[key] = row.markedPresent()
-                cleared = true
-            }
-        }
-        if (cleared) dings.tryEmit(Unit)
-    }
-
     override suspend fun aggregates(): LedgerAggregates {
         // Counted by photo (assetId): a photo is complete only when all its rows are COMPLETED.
         val byAsset = entries.values.filterNot { it.absent }.groupBy { it.assetId }
