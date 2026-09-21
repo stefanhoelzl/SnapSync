@@ -77,10 +77,10 @@ fun extensionTriggerGroup(
  * Run one extension cycle and answer with what it produced.
  *
  * **Refused unless the resolved mechanism is the OS-driven one**, and the refusal names what resolved.
- * Under the app-driven mechanism the app's own arm holds a live `LedgerWriter`, and this cycle would be a
+ * Under the app-driven mechanism the app's own engine holds a live `LedgerWriter`, and this cycle would be a
  * second one over the same App-Group ledger — breaching `sync-ledger`'s single-record-writer invariant,
  * which is silent when violated and has been expensive once already. Under the OS-driven mechanism the
- * app-side producer writes no ledger rows at all (it only toggles the registration), so the invoked cycle
+ * app writes no ledger rows at all (it only toggles the registration), so the invoked cycle
  * genuinely is the sole writer: the shipped division of labour exactly.
  *
  * Kermit's writer list is process-global and BOTH composition roots set it in their `init`, so touching the
@@ -100,7 +100,7 @@ private suspend fun invokeExtensionCycle(
     if (resolved != UploadMechanism.PHOTOKIT) {
         return """{"refused":"the resolved upload mechanism is ${resolved.diagnosticName}, not photokit",""" +
             """"resolves":"${resolved.diagnosticName}","permission":"${permission().name}",""" +
-            """"why":"under ${resolved.diagnosticName} the app's own arm holds a live LedgerWriter; """ +
+            """"why":"under ${resolved.diagnosticName} the app's own engine holds a live LedgerWriter; """ +
             """invoking this cycle would put a second record-writer over one App-Group ledger",""" +
             """"fix":"clear any pin with POST /device/upload-mechanism?value=none, and grant full photo """ +
             """access — this tier resolves only under GRANTED on iOS >= 26.1"}""" + "\n"

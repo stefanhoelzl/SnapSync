@@ -55,8 +55,12 @@ nothing. ⏰ Re-measure at the next iOS major; evidence is one device, and one p
 ② **the ≥26.1 PhotoKit
 extension cannot be REGISTERED under `.limited`** (`setUploadJobExtensionEnabled` is refused in *both*
 directions with `PHPhotosErrorAccessUserDenied` 3311 — measured, SE2/26.6; the older "registration
-succeeds and lies" reading is contradicted by measurement), so the OS never invokes it there — under a
-partial grant resolution yields the app-driven mechanism instead (`resolveUploadMechanism`);
+succeeds and lies" reading is contradicted by measurement) — under a partial grant resolution yields the
+app-driven mechanism instead (`resolveUploadMechanism`). ⚠️ A registration made under a FULL grant
+**survives** a downgrade (the deregistration is refused too) and **the OS still invokes it** under `.limited`
+— measured SE2/26.6, 2026-09-21: `process()` ran 4 s after a new photo joined the selection. The
+extension's own entry gate is what stops it (it withholds without `GRANTED`); never rely on "the OS does not
+invoke it";
 ③ asset/album **creation is unrestricted** under `.limited`, so downloads and the event album need no
 special handling (the album **denylist**, though, is inert — album structure is
 unreadable; the resolution floors still apply). Decision record:

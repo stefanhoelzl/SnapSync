@@ -46,7 +46,7 @@
 - [x] 6.2 ≥26.1 `GRANTED`: foreground and a cold wake log `NotResolved`, write no ledger row; the extension keeps uploading; a relaunch with the record live makes no registration write
 - [x] 6.3 `NOT_DETERMINED` cold wake (reset privacy on the simulator): no permission dialog (`tccd` shows no `AUTHREQ_PROMPTING`) — *verified on an iOS simulator: zero prompts across relaunch, heartbeat, foreground and silent push; the extension-side withheld path is not forceable there (the rig refuses unless PhotoKit is resolved) and is covered by the gate tests*
 - [x] 6.4 Download-only join on ≥26.1 `GRANTED`, then reconfigure to upload: the extension is registered and uploads land
-- [ ] 6.5 `LIMITED` member: uploads go through the app engine; if the extension is invoked it logs `Withheld` and writes no manifest
+- [x] 6.5 `LIMITED` member: uploads go through the app engine; if the extension is invoked it logs `Withheld` and writes no manifest — *verified on the SE2 (iOS 26.6): a new selection photo uploaded through the app engine (ledger +1); the OS itself invoked the surviving extension under `LIMITED` 4 s later and the gate withheld it (nothing created, nothing published) — a new measurement, recorded in the specs and CLAUDE.md*
 
 ## 7. Ship
 
