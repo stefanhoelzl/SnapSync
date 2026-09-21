@@ -494,7 +494,7 @@ This SHALL hold when the policy **narrows under a live membership** (`reconfigur
 only for a policy that was already in force when a resource was discovered. A resource recorded as
 needing an upload job under a wider policy SHALL NOT have its bytes uploaded once the membership's
 current policy excludes its asset — the exclusion takes effect on the next cycle, whatever the ledger
-already records, and whether or not the discovery cursor was reset.
+already records.
 
 #### Scenario: Upload and manifest admit the identical set
 
@@ -554,8 +554,8 @@ asset's `creationDate` **exceeds the applicable upper bound**, **or** which any 
 `from <= creationDate <= until`: the lower bound admits at or after `from`, and the upper bound admits at or
 before `until` (inclusive). Both comparisons SHALL be plain **lexicographic** compares over the canonical
 `yyyy-MM-dd'T'HH:mm:ss'Z'` second-precision shape (see *Cutoff string format invariant*), so a differing
-shape on either bound compares incorrectly. The filter SHALL be applied to **both** the full enumeration and
-the incremental change-token walk, and SHALL be **tier-agnostic** (it governs the OS-driven PhotoKit
+shape on either bound compares incorrectly. The filter SHALL be applied to every walk (each one a full enumeration, whose platform predicate may
+return a superset of the admitted set) and to every selection snapshot, and SHALL be **tier-agnostic** (it governs the OS-driven PhotoKit
 extension tier and the app-driven `URLSession` tier alike, since both funnel through the shared cycle). The
 applicable lower bound SHALL be expressed as the **minimum** lower bound across the device's current
 memberships — so a photo is uploaded when it is in scope for **at least one** joined event — which in v1
@@ -618,7 +618,7 @@ NOT take the ledger's contents for the admitted set.
 
 #### Scenario: The filter covers the incremental walk
 
-- **WHEN** the incremental change-token walk surfaces a changed asset the policy does not admit
+- **WHEN** a partial grant's selection snapshot carries an asset the policy does not admit
 - **THEN** that asset is excluded, exactly as in the full enumeration
 
 #### Scenario: The admitted set is the minimum across memberships
@@ -898,3 +898,4 @@ is otherwise an unbounded scope, and an unbounded scope is the failure this capa
 #### Scenario: A policy built outside the derivation is rejected
 - **WHEN** a selection policy is constructed anywhere other than the single derivation
 - **THEN** the build fails, so a hand-assembled rule list with no capture floor cannot reach a consumer
+

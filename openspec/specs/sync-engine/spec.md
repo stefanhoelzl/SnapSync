@@ -12,11 +12,11 @@ transports resources grouped by an opaque `assetId` — the engine carries the `
 the ledger but does not interpret it; richer asset handling lives in a later layer above the seam;
 encoding and placement of identity live below it, in the upload-request provider.
 
-**Why a ledger, and not a stateless engine.** PhotoKit's change-token expiry is routine, and Apple's only
-remedy is a full re-enumeration. With no memory of what is already stored, every expiry would re-upload the
-entire library — tens of thousands of assets, hundreds of gigabytes. The ledger is what makes skipping
-*provable*: a `COMPLETED` key is never re-uploaded, so re-deriving the change feed is idempotent and full
-re-enumeration is harmless. Platforms therefore report **observations, never bookkeeping** — they do not
+**Why a ledger, and not a stateless engine.** Every upload walk is a full enumeration of the in-scope
+library (capability `ios-photokit-upload`; before `changes/archive/2026-09-21-always-full-enumerate` a routine
+change-token expiry forced one anyway). With no memory of what is already stored, every walk would re-upload
+the entire library — tens of thousands of assets, hundreds of gigabytes. The ledger is what makes skipping
+*provable*: a `COMPLETED` key is never re-uploaded, so re-walking the library is idempotent and harmless. Platforms therefore report **observations, never bookkeeping** — they do not
 filter, dedupe, or track what was uploaded, because exactly-once across the file system and the job system
 is impossible and reports are at-least-once by construction.
 

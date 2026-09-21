@@ -25,9 +25,12 @@ The `DISCOVERED` state, the `needsJob` classification beside `isDone`, and the b
 read that together make the ledger the upload cycle's source of work were added in `changes/archive/2026-08-27-fix-cap-truncation-loop`.
 
 The guarded record write that never overwrites a settled row (replacing the unconditional `put`), and
-`markPresent`, which lists a restored photo again, were added in
+`markPresent`, which listed a restored photo again, were added in
 `changes/archive/2026-09-15-record-never-overwrites-settled-row` — the `ON CONFLICT` precedence re-examination the
 original decision record's D7 deferred to the arrival of a second writer.
+Deletion as a presence diff over an authoritative, in-window walk, the key-scoped delete that replaced
+`markAbsent`/`markPresent`, the retired absence mark and its sweep, and the walk's read skip with its atomic batch
+record came from `changes/archive/2026-09-21-always-full-enumerate`, which removed the discovery cursor.
 
 The `UPLOADED` state and its promotion (added in `changes/archive/2026-08-26-fix-lost-upload-acks`) were
 retired, the guarded terminal write narrowed to a `TerminalOutcome`, and the `8.sqm` rewrite added in
@@ -43,10 +46,11 @@ rows that **need a job** (see "The DISCOVERED state and the ledger as the upload
 manifest projection read and its detail backfill, the aggregate read
 `aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
 delete-all reset, `demoteRequested()` — mark every `REQUESTED` row `FAILED` (see "Requested-state reset"), `resetTo(entries)` — an **atomic**
-delete-all-then-insert-all replacement, the asset-targeted bulk mark `markAbsent(assetId)` — mark
-every row whose `assetId` equals the argument as absent, **keeping** the rows — its inverse
-`markPresent(assetIds)` — clear the absence mark of every row whose `assetId` is among the arguments — and
-the provenance sweep `backfillEventId(eventId)` (see "Event provenance and the backfill sweep").
+delete-all-then-insert-all replacement, the key-targeted delete `deleteKeys(keys)` — delete exactly the
+rows whose `key` is among the arguments and no other — the batch record write `recordAllUnlessSettled(entries)`
+(see "A walk re-reads only the assets the ledger does not fully know"), the retired absence mark's sweep
+`clearAbsenceMarks()` (see "Prune operations are writer-only"), and the provenance sweep
+`backfillEventId(eventId)` (see "Event provenance and the backfill sweep").
 
 There is deliberately **no** unconditional per-row upsert (`put`). It was removed when the record path became
 guarded: with no production caller left, it could only serve as an unguarded door for the next production
@@ -62,12 +66,13 @@ done-state guard and `markTerminal`'s `REQUESTED` guard — and each SHALL be
 enforced inside the storage statement itself, never by a read followed by a write. The reset family SHALL
 apply no precedence at all. A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`DISCOVERED` |
 `REQUESTED` | `COMPLETED` | `FAILED`), `attempt`, and `eventId` — the event that was
-joined when the row was recorded. `clear()`, `demoteRequested()`, `resetTo`, `markAbsent`, an applied record
-write, an applied `markPresent`, and an applied
+joined when the row was recorded. `clear()`, `demoteRequested()`, `resetTo`, an applied `deleteKeys`, an
+applied record write (a batch record write that applied to any row signals once for the whole batch), an
+applied `clearAbsenceMarks`, and an applied
 `markTerminal` SHALL each remove (and, for `resetTo`, then insert) or
 update the matching rows and signal `changes` **once** (so watchers re-read the
 now-current truth).
-`clear()`, `demoteRequested()`, `resetTo`, `markAbsent`, and `markPresent` are **reset/bulk** operations, not the
+`clear()`, `demoteRequested()`, `resetTo`, `deleteKeys`, and `clearAbsenceMarks` are **reset/bulk** operations, not the
 per-key **record** operations; recording per-upload facts remains the single record-writer's job, so a
 non-writer holder of the backend may reset the store without breaching the
 single-record-writer invariant. `markTerminal` is a **record** operation and is exposed here deliberately —
@@ -81,8 +86,12 @@ only where an operation's contract says so (the backfill's sentinel match); it d
 
 There is deliberately **no** `deleteByAssetId` and **no** `retainAssets`. Both were removed when
 retention stopped being driven by the selection policy (see "The ledger is never pruned by the
-selection policy"): a departed asset's rows are **marked**, never deleted, because their bytes are
-still on the backend and the rows are what stop a restored asset re-uploading.
+selection policy"), and neither returns with presence-driven deletion. Deletion is **key-scoped**: every
+caller of `deleteKeys` names exactly the rows it holds evidence about — a key that failed to resolve, or a
+row an authoritative walk did not return (see "Deletion is a presence diff over an authoritative walk") —
+so no operation can reach the settled siblings of a row it did not judge. Several resources of one photo
+share an `assetId` and hold per-key states, so an asset-scoped delete driven by a key-grained read would
+reach rows the read never selected.
 
 #### Scenario: A recorded entry round-trips
 - **WHEN** `recordUnlessSettled(entry)` is called for a key with no row, and then `get(entry.key)`
@@ -103,9 +112,15 @@ still on the backend and the rows are what stop a restored asset re-uploading.
   is `demoteRequested()`, which keeps them
 
 #### Scenario: There is no delete-by-asset
-- **WHEN** an asset leaves the device's library
-- **THEN** its rows are marked absent and retained, and no seam operation exists that deletes rows by
-  `assetId`
+- **WHEN** the `LedgerStore` interface is inspected
+- **THEN** it declares no operation that deletes rows by `assetId`; `deleteKeys` deletes only the keys it is
+  given
+
+#### Scenario: Deleting one key leaves its asset's other rows
+- **WHEN** assetId `X` has a `COMPLETED` row `X-primary.heic` and a `DISCOVERED` row `X-live.mov`, and
+  `deleteKeys({"X-live.mov"})` is called
+- **THEN** `get("X-live.mov")` returns nothing, `get("X-primary.heic")` still returns the `COMPLETED` row with
+  every field unchanged, and `changes` signals once
 
 ### Requirement: Aggregate reads
 `LedgerStore.aggregates()` SHALL answer `LedgerAggregates(pending, completed)` computed in one
@@ -290,34 +305,28 @@ package `app.snapsync.engine.db`; moved from `:domain:engine` at migration step 
 died at step 10) with the schema
 `key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL,
 eventId TEXT NOT NULL DEFAULT '', absent INTEGER NOT NULL DEFAULT 0`
-plus **two** indexes: one on `assetId` (backing `markAbsent`, `markPresent` and the `assetId`-grouped
-aggregate) and one on `destinationPath` (backing the acknowledgement lookup that resolves a returned
-upload job to its row — capability `ios-photokit-upload`, on a path the OS invokes with a deadline).
-**Every index SHALL be created by both routes** — the `CREATE` statements and the migration chain — so a
-device that upgraded into the current schema carries the same objects as one created fresh. An index
-reachable only by one route is the defect this states, not a detail: `ALTER TABLE … ADD COLUMN` creates no
-index, so a column added by migration and indexed only in the `CREATE` statements leaves every upgraded
-device without it. The `absent`
-column records that an asset has left the library; its `DEFAULT 0` SHALL be present in **both** the
-migration and the CREATE statement, like `eventId`'s, and it is the correct resting value for a row
-written before the column existed. Reads that answer *what does this device hold or share* SHALL
-exclude marked rows; `get` SHALL NOT, so upload suppression survives a deletion. `state`
+plus an index on `assetId` (backing the `assetId`-grouped aggregate). The `absent`
+column is **retired and unwritten** (see "Prune operations are writer-only"): no operation sets it, and
+`clearAbsenceMarks` clears what an earlier build set. It stays in the schema until a later migration drops
+it; its `DEFAULT 0` SHALL remain present in **both** the migration and the CREATE statement, like
+`eventId`'s. Reads that answer *what does this device hold or share* SHALL keep excluding marked rows. `state`
 SHALL be a SQLDelight typed column (`AS LedgerState` via the built-in enum adapter); adapter wiring
 SHALL be hidden in a single factory function so construction sites never see it. The schema carries
 no timestamp column. The `eventId` column's `DEFAULT ''` SHALL be present in **both** the migration
-and the CREATE statement (the SQLDelight migration-verify task proves the two schemas identical — see
-"Migration verification is backed by a committed schema snapshot", which is what makes that true),
+and the CREATE statement (the SQLDelight migration-verify task proves the two schemas identical),
 and SHALL NOT be removed while any shipped build may write a 4-column row (see "Event provenance
 and the backfill sweep", staged revert). The record write SHALL be a single guarded SQL upsert statement
 whose applied/not-applied answer is read inside that statement's own transaction, like `markTerminal`'s;
 `resetTo` SHALL insert with a plain `INSERT` inside its delete-all transaction;
+`recordAllUnlessSettled` SHALL apply its entries through the same guarded statement inside **one**
+transaction; `deleteKeys` SHALL delete by primary key in chunks below every driver's bind-variable limit;
 `aggregates()` SHALL be a single
 SQL round-trip (an `assetId`-grouped query). Every `LedgerStore` implementation SHALL satisfy the
 shared `LedgerStoreContract` (hosted in `:test:world` commonMain since step 10): the JVM/sqlite and
 native (simulator) driver tests extend it from `:adapter:generic:app`'s test source sets, and
 `:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — extends it
 from `:test:world`'s own tests. Every other `LedgerStore` test double SHALL honour the record guard and
-`markPresent` the same way, so no test passes against a store that does something the device does not. The
+`deleteKeys` the same way, so no test passes against a store that does something the device does not. The
 native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
 factory over the App-Group container.
 
@@ -337,11 +346,6 @@ factory over the App-Group container.
   current 5-column schema
 - **THEN** the row lands with `eventId = ''` (the DEFAULT fills the omitted column) and reads back
   through `get` as a sentinel row
-
-#### Scenario: An upgraded device carries every index a fresh one does
-- **WHEN** a database is brought to the current schema by the migration chain rather than created
-- **THEN** it carries both the `assetId` and the `destinationPath` index, so the acknowledgement lookup
-  is indexed on an upgraded device exactly as on a fresh one
 
 ### Requirement: Ledger schema migration
 The SQLDelight schema SHALL be versioned and ship migrations that bring an existing on-device
@@ -505,45 +509,56 @@ it, which is why such a migration's effect is asserted by a test instead.
 
 ### Requirement: Prune operations are writer-only
 
-The asset-keyed bulk mark (`markAbsent`) and its inverse (`markPresent`) SHALL be exposed on
+The key-scoped delete (`deleteKeys`) and the absence-mark sweep (`clearAbsenceMarks`) SHALL be exposed on
 `LedgerWriter` (delegating to the backend) and SHALL NOT be exposed on any other app-facing ledger
 surface. Each is a sync write by the single ledger writer, not the app-side `clear()` reset, and at
 the writer layer it consults no engine state first. Because only the engine's
-composition root constructs a `LedgerWriter`, mark access is confined to the single-writer process,
+composition root constructs a `LedgerWriter`, prune access is confined to the single-writer process,
 preserving the single-writer invariant.
 
-`markPresent(assetIds)` SHALL clear the absence mark of every row whose `assetId` is among the arguments,
-**whatever the row's state** — a settled row is exactly the one no record write will ever reach again. It
-SHALL leave every other field untouched, and SHALL write nothing when no supplied asset has a marked row: the
-common case, since it runs every cycle over every asset the walk saw. It SHALL signal `changes` only when it
-cleared a mark.
+`deleteKeys(keys)` SHALL delete exactly the rows whose key is among the arguments, whatever their state, and
+SHALL write nothing and signal nothing when none of them has a row. It SHALL accept more keys than one storage
+statement binds.
 
-The upload cycle SHALL call `markPresent` with the asset ids of **every** candidate its walk returned — before
-the selection policy's admission, because being in the library is not a question of scope — and SHALL do so
-after applying the change feed's removals for the same walk, so an asset named by both is left present.
+**The absence mark is retired.** No operation SHALL set a row's `absent` mark: a departed asset's rows are
+deleted (see "Deletion is a presence diff over an authoritative walk"), not marked. The `absent` column
+SHALL remain in the schema, unwritten, until a later migration removes it, and the reads that exclude
+marked rows keep that exclusion. `clearAbsenceMarks()` SHALL clear the mark of every row an earlier build
+marked — one idempotent statement, whatever the row's state, leaving every other field untouched — and SHALL
+signal `changes` only when it cleared a mark. The upload cycle SHALL run it once per cycle, beside the
+provenance sweep, so a row an earlier build marked is reachable again by the work read and by the walk's
+deletion. Without it such a row would be excluded from every read that matters, and nothing could ever
+reach it again. It SHALL NOT be carried by a schema migration: a migration raises the schema version,
+which an older binary refuses to open.
 
-#### Scenario: Writer marks an asset absent
+#### Scenario: Writer deletes named keys
 
-- **WHEN** a `LedgerWriter` records a row for assetId `X` (key `X-photo.jpg`) and then calls
-  `markAbsent("X")`
-- **THEN** `entry("X-photo.jpg")` returns a row whose `absent` is set
+- **WHEN** a `LedgerWriter` records rows `X-primary.heic` and `Y-primary.heic` and then calls
+  `deleteKeys({"X-primary.heic"})`
+- **THEN** `entry("X-primary.heic")` returns nothing, `entry("Y-primary.heic")` is unchanged, and `changes`
+  signals once
 
-#### Scenario: Writer marks a settled asset present again
+#### Scenario: Deleting keys that have no row writes nothing
 
-- **WHEN** assetId `X` has a `COMPLETED` row marked absent, and the writer calls `markPresent({"X", "Y"})`
-- **THEN** `entry("X-photo.jpg")` is still `COMPLETED` with every other field unchanged and `absent` unset, and
-  `changes` signals once
-
-#### Scenario: Marking present an asset that is not absent writes nothing
-
-- **WHEN** `markPresent` is called with asset ids none of whose rows is marked absent
+- **WHEN** `deleteKeys` is called with keys none of which has a row
 - **THEN** no row changes and `changes` does not signal
 
-#### Scenario: The mark is absent from the non-writer surface
+#### Scenario: The sweep clears marks an earlier build wrote
+
+- **WHEN** a row carries the `absent` mark from an earlier build, and the writer calls `clearAbsenceMarks()`
+- **THEN** the row is unmarked with every other field unchanged, it is returned again by the reads that
+  exclude marked rows, and `changes` signals once
+
+#### Scenario: The sweep on an unmarked ledger writes nothing
+
+- **WHEN** `clearAbsenceMarks()` runs over a ledger with no marked row
+- **THEN** no row changes and `changes` does not signal
+
+#### Scenario: Prune operations are absent from the non-writer surface
 
 - **WHEN** a component holds the ledger only as a `LedgerStore` reader (no writer)
-- **THEN** `markAbsent` and `markPresent` are not part of its sanctioned surface — they reach the backend only
-  through the root-constructed `LedgerWriter`
+- **THEN** `deleteKeys` and `clearAbsenceMarks` are not part of its sanctioned surface — they reach the backend
+  only through the root-constructed `LedgerWriter`
 
 ### Requirement: Pending-resource read
 
@@ -671,10 +686,11 @@ re-register, after a disable has wiped every in-flight OS job at once (`ios-phot
 transfers can be enumerated recovers precisely instead (`ios-url-session-upload`).
 
 It demotes rather than deletes because a `FAILED` row **needs a job** (see "The DISCOVERED state and the ledger
-as the upload work source"): the ledger's own work read returns it on the next cycle, so the recovery needs no
-re-enumeration and no discovery-cursor reset. A deleted row could only return through discovery, which a
-settled cursor never re-surfaces. Demoting also keeps the row's recorded detail — `assetId`, role, content
-type, provenance — which a deletion discarded and a rediscovery had to re-derive.
+as the upload work source"): the ledger's own work read returns it on the next cycle, so the recovery
+depends on no walk. A deleted row could only return through a walk that reads the asset's resources again,
+which a fully-recorded asset's walk skips (see "A walk re-reads only the assets the ledger does not fully
+know"). Demoting also keeps the row's recorded detail — `assetId`, role, content type, provenance — which a
+deletion discarded and a rediscovery had to re-derive.
 
 #### Scenario: demoteRequested marks only REQUESTED rows FAILED
 
@@ -692,7 +708,7 @@ type, provenance — which a deletion discarded and a rediscovery had to re-deri
 
 - **WHEN** a key is `REQUESTED`, `demoteRequested()` runs, and the work source is read with no discovery
 - **THEN** the row is among the rows needing a job, so the next cycle re-creates its upload without
-  re-enumerating the library
+  re-reading the asset's resources
 
 ### Requirement: Lifecycle transitions never clear the ledger
 
@@ -705,12 +721,6 @@ with no event scoping (see "Event-independent key"), and leaving an event does n
 bytes from its storage partition. A `COMPLETED` row therefore stays **true** across a leave, a switch,
 and a re-join — and clearing it would force a re-upload of every already-stored resource on the next
 join.
-
-The discovery cursor is **not** part of this prohibition, because it is not dedup state. It records where
-an incremental scan resumes, and a reconciliation clears it whenever it re-baselines
-(`upload-state-reconciliation`). What that costs is a
-full re-enumeration whose every resource is already `COMPLETED` here — which is precisely why the ledger
-is the thing that must not be cleared, and the cursor is not.
 
 The **only** operation that re-baselines the ledger SHALL be `resetTo`, invoked by a triggered
 reconciliation against the authoritative per-device listing (`upload-state-reconciliation`). Ledger and
@@ -807,34 +817,36 @@ upload, admitting nothing — a policy-derived removal would discard the **entir
 defeating the drain requirement (capability `reconfigure-membership`), which exists so that a settled
 upload is recorded and re-enabling the direction re-uploads nothing.
 
-Deletion from the library SHALL be recorded by the **precise** signal — the asset identifiers the
-platform change feed reports removed — and SHALL mark the rows absent rather than removing them. There
-SHALL be no full-enumeration retain-live reconcile: a deletion the change feed missed leaves a row
-listed, whose bytes are still on the backend, so a member still downloads it successfully. The photo
-remains in the event, which is what already happens when a member leaves. Exhaustive deletion-tracking
-is therefore not required. An asset the walk sees in the library again SHALL have its rows un-marked (see
-"Prune operations are writer-only").
+Deletion from the **library** is a different fact, and SHALL be decided only by **presence**, never by
+admission: a row is removed when an authoritative walk of the library shows its asset is gone (see
+"Deletion is a presence diff over an authoritative walk"). The retired retain-live reconcile was fed the
+policy-admitted set, which is exactly the conflation this requirement forbids; presence-driven deletion is
+fed the walk's whole candidate set and judges only rows inside the policy's window, so narrowing the
+policy moves rows **out** of the set it may delete rather than into it.
 
 #### Scenario: A narrowing scope removes no rows
-- **WHEN** the membership's capture cutoff is raised and a fully-drained full enumeration then runs
-- **THEN** every ledger row is retained, including those for assets now outside the range
+- **WHEN** the membership's capture cutoff is raised and a full enumeration then runs
+- **THEN** every ledger row of an asset still in the library is retained, including those for assets now
+  outside the range
 
 #### Scenario: Turning the direction off removes no rows
 - **WHEN** a contributing membership's direction is turned off and a cycle runs
 - **THEN** the event's ledger rows are retained in full, so re-enabling the direction re-uploads nothing
 
-#### Scenario: A deletion reported by the change feed marks the rows
-- **WHEN** the platform change feed reports an asset removed
-- **THEN** that asset's rows are marked absent and remain readable, so the next manifest projection stops
-  listing it while re-upload stays suppressed
+#### Scenario: An origin exclusion removes no rows
+- **WHEN** an asset with a `COMPLETED` row is still in the library and the walk returns it, but the policy's
+  admission now excludes it (for example, it was added to a denylisted album)
+- **THEN** its rows are retained: the walk returned it, so it is present
 
 #### Scenario: Narrow then widen re-lists without re-uploading
 - **WHEN** a member narrows their scope, a full enumeration runs, and the member then widens it back
 - **THEN** the previously-uploaded assets are listed again and no byte is re-uploaded
 
-#### Scenario: A restored asset does not re-upload
-- **WHEN** an asset marked absent is restored to the library and discovered again
-- **THEN** its `COMPLETED` row still suppresses re-upload of the same key, and its absence mark is cleared
+#### Scenario: A restored asset re-uploads under its own key
+- **WHEN** an asset whose rows an authoritative walk deleted is restored to the library, and the next walk
+  returns it
+- **THEN** its resources are recorded `DISCOVERED` again and re-uploaded under the same keys; this is the
+  accepted cost of storing presence rather than remembering absence
 
 ### Requirement: The done-state set is decided in Kotlin
 
@@ -921,9 +933,10 @@ job is created for that cycle.
 
 The ledger SHALL be the upload cycle's **source of work**: a producer SHALL enqueue from the ledger's
 rows rather than from the walk's return value, so a cycle can make progress on work it already knows
-about whatever the change feed reports. (A cycle still consults that feed — there is no cheaper way to
-learn what the library did — but it no longer depends on the feed re-deriving work it has already
-seen.) The `LedgerStore` SHALL expose a state-scoped read of the rows that need a job, and
+about whatever the walk returns. Every walk is a full enumeration, but it re-reads resources only for assets
+the ledger does not fully know (see "A walk re-reads only the assets the ledger does not fully know"), so a
+row that needs a job is found by this read, never re-derived by the walk. The `LedgerStore` SHALL expose a
+state-scoped read of the rows that need a job, and
 `DISCOVERED` and `FAILED` rows SHALL both be returned by it — they are the same fact to a producer,
 differing only in whether an attempt has already been made.
 
@@ -935,6 +948,12 @@ how much work one cycle takes SHALL be applied to the **admitted** rows — boun
 stable key order, so excluded rows sorting ahead of admitted ones would fill the batch on every cycle and
 admitted work further down would never be reached. What the bound exists to protect is the platform
 round-trip and, on the app-driven tier, the staged temp file — both of which follow the admitted rows.
+
+A row this read returned whose key the platform resolves to **nothing** SHALL have that row, and only that
+row, deleted (see "Deletion is a presence diff over an authoritative walk"). Its asset has left the library,
+or, under a partial grant, left the selection. Either way it can no longer be uploaded, and a row that
+still needs a job for it would be offered on every cycle. Deleting by key rather than by asset is what
+leaves the asset's settled rows alone: this read selects rows by key.
 
 `DISCOVERED` SHALL NOT be a done state, so a row in it counts toward the backlog everywhere. It SHALL
 nonetheless be **included** in the device-manifest projection: the manifest declares what this device
@@ -950,15 +969,22 @@ happen.
 
 #### Scenario: A top-up enqueues from the ledger, not from the walk's output
 
-- **WHEN** a cycle runs with rows in `DISCOVERED` or `FAILED` and its change feed reports nothing new
-- **THEN** it resolves those rows' keys and enqueues them, rather than treating an empty change set as
+- **WHEN** a cycle runs with rows in `DISCOVERED` or `FAILED` and its walk returns no asset it has not
+  already recorded
+- **THEN** it resolves those rows' keys and enqueues them, rather than treating a walk with nothing new as
   no work
 
-#### Scenario: A FAILED row is re-enqueued without a full enumeration
+#### Scenario: A FAILED row is re-enqueued without re-reading its asset
 
-- **WHEN** a row rests `FAILED` and its asset has not changed since the persisted discovery cursor
-- **THEN** the next cycle re-enqueues it from the ledger, rather than waiting for a full enumeration
-  to re-derive it
+- **WHEN** a row rests `FAILED` and its asset is fully recorded, so the walk skips its resources
+- **THEN** the next cycle re-enqueues it from the ledger, rather than waiting for the walk to re-derive it
+
+#### Scenario: A row that no longer resolves is deleted by key
+
+- **WHEN** a `DISCOVERED` row's key resolves to nothing at enqueue, while a sibling row of the same asset is
+  `COMPLETED`
+- **THEN** the unresolved row is deleted, the `COMPLETED` sibling is untouched, and no upload is attempted
+  for the deleted key
 
 #### Scenario: A discovered row is backlog AND manifest
 
@@ -982,7 +1008,7 @@ happen.
 
 - **WHEN** the membership's policy stops admitting an asset whose row needs a job
 - **THEN** the row is left in the ledger untouched — no state change, no prune — so widening the policy
-  again re-admits it and the next cycle enqueues it with no re-enumeration
+  again re-admits it and the next cycle enqueues it with no re-read of its asset
 
 ### Requirement: The needs-job set is decided in Kotlin
 
@@ -1067,4 +1093,107 @@ no expiry, so a row's recorded destination stays valid for as long as the row do
 
 - **WHEN** a row carrying a destination path is read
 - **THEN** its key is still the bare, event-independent object name, unchanged by the addition
+
+### Requirement: Deletion is a presence diff over an authoritative walk
+
+The upload cycle SHALL delete a ledger row because its asset left the library **only** when all of the
+following hold:
+
+1. **The walk is authoritative.** The cycle's discovery reported `fullEnumeration`: it read the library
+   itself, under a full grant, and the read succeeded, so every asset inside the policy's capture window was
+   returned. A partial grant's selection snapshot is not the library (capability `limited-photo-access`),
+   and an unreadable library returns nothing, so neither is evidence of absence. A walk that is not
+   authoritative SHALL delete nothing.
+2. **The row is inside the walk's window.** The row's asset is admitted by the membership's policy through
+   the same row-admission derivation the device manifest and the enqueue use (`admittedAssetIds`). The
+   ledger is device-global and the walk is bounded by the policy's capture range, so a row outside that
+   range is not evidence either way. A bare row (empty `creationDate`) is never admitted, so it is never
+   deleted this way.
+3. **The asset is absent from the walk.** Presence SHALL be the asset ids of **every** candidate the walk
+   returned, before admission. Being in the library is not a question of scope.
+4. **The row is not `REQUESTED`.** A live platform job owns a `REQUESTED` row until its terminal write lands,
+   and that write matches only a `REQUESTED` row. The row is deleted by the first authoritative walk after it
+   settles.
+
+The cycle SHALL decide the deletion from the same walk that supplies presence, and SHALL apply it through
+`deleteKeys` before it records that walk's discoveries and before it publishes the device manifest, so a
+departed photo is never listed by the cycle that saw it leave.
+
+A second path deletes one row at a time: a ledger key the cycle asked the platform to resolve for a job that
+resolves to **nothing** SHALL have **that row** deleted, and no other (see "The DISCOVERED state and the
+ledger as the upload work source"). It needs no authoritative gate, because it only ever reaches a row that
+still needs a job, and deleting one costs a re-discovery, never a photo.
+
+#### Scenario: A departed in-window asset's rows are deleted
+- **WHEN** an authoritative walk does not return asset `X`, whose `COMPLETED` rows carry a capture date the
+  policy admits
+- **THEN** the cycle deletes those rows before recording its discoveries, and the manifest it publishes no
+  longer lists `X`
+
+#### Scenario: A row outside the walk's window is kept
+- **WHEN** the ledger holds a `COMPLETED` row whose capture date is before the membership's cutoff (seeded by
+  a re-join, or left by an earlier event), and an authoritative walk does not return its asset
+- **THEN** the row is kept
+
+#### Scenario: A bare row is never deleted by the walk
+- **WHEN** the ledger holds a row with an empty `creationDate` and an authoritative walk does not return its
+  asset
+- **THEN** the row is kept
+
+#### Scenario: A selection snapshot deletes nothing
+- **WHEN** the cycle runs under a partial grant, the member has de-selected a photo whose `COMPLETED` row is
+  in-window, and the scoped discovery does not return it
+- **THEN** no row is deleted, because the discovery was not authoritative
+
+#### Scenario: An unreadable walk deletes nothing
+- **WHEN** the platform reports the library not readable and the discovery returns no candidates
+- **THEN** no row is deleted
+
+#### Scenario: An in-flight row outlives its asset until it settles
+- **WHEN** an authoritative walk does not return asset `X`, one of whose rows is `REQUESTED`
+- **THEN** that row is kept and `X`'s settled rows are deleted; once the job's terminal write lands, the next
+  authoritative walk deletes the remaining row
+
+#### Scenario: A resolve failure deletes only its own key
+- **WHEN** a `DISCOVERED` row `X-live.mov` resolves to nothing while its sibling `X-primary.heic` is
+  `COMPLETED`
+- **THEN** `X-live.mov` is deleted and `X-primary.heic` is untouched
+
+### Requirement: A walk re-reads only the assets the ledger does not fully know
+
+The upload cycle SHALL read an admitted candidate's resources **only** when the ledger does not fully know
+its asset. Every upload walk is a full enumeration, so reading every admitted candidate's resources would
+repeat one synchronous platform round-trip per photo on every cycle, for photos already recorded. A
+candidate's resources are read when the ledger holds no row for its asset, or when at least one
+of its asset's rows is bare (its manifest detail is not yet filled). Every other admitted candidate SHALL be
+skipped. An uploaded resource is immutable and the ledger keeps no content version, so re-reading it could
+only answer "already uploaded". A row that still needs a job is picked up from the ledger, not from the walk.
+
+The skip is sound only if an asset is never partly recorded. The cycle SHALL therefore record the new
+`DISCOVERED` rows of one walk with **one** batch record write, `recordAllUnlessSettled(entries)`. That write
+applies each entry under the same done-state guard as the single record write, in **one storage
+transaction**, and signals `changes` once if any entry applied. A process death then leaves either all of a
+walk's new rows or none of them, never one role of a photo whose other role is skipped forever.
+
+A re-join seed produces bare rows, so an asset whose stored-file listing named only some of its roles is
+read again, and its missing roles are discovered.
+
+#### Scenario: A fully-known asset is not re-read
+- **WHEN** an authoritative walk returns an admitted asset all of whose rows exist and carry manifest detail
+- **THEN** the cycle does not read that asset's resources
+
+#### Scenario: An unknown or bare asset is read
+- **WHEN** an authoritative walk returns an admitted asset with no row, or with a bare row
+- **THEN** the cycle reads its resources, records new work `DISCOVERED`, and fills the bare rows' detail
+
+#### Scenario: A walk's discoveries land together or not at all
+- **WHEN** a walk discovers a Live Photo's primary and paired-video resources, and the process dies during
+  the batch record write
+- **THEN** afterwards the ledger holds either both rows or neither, so the next walk either skips a fully
+  recorded asset or reads it again
+
+#### Scenario: A partial seed is completed by the walk
+- **WHEN** a re-join seed recorded only `X-primary.heic` (bare), and the walk returns `X`
+- **THEN** the cycle reads `X`'s resources, fills the primary row's detail, and records `X-live.mov`
+  `DISCOVERED`
 

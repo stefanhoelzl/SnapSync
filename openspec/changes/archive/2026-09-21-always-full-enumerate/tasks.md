@@ -120,6 +120,6 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
 
 ## 8. At sync (not part of apply)
 
-- [ ] 8.1 Hand-edit the `## Purpose` sections a delta cannot carry, to drop the cursor/change-feed
+- [x] 8.1 Hand-edit the `## Purpose` sections a delta cannot carry, to drop the cursor/change-feed
   wording: `sync-ledger`, `ios-photokit-upload`, `architecture-guards`, `upload-lifecycle`,
   `leave-event`, `sync-engine` (design D9).

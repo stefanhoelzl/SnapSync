@@ -3,9 +3,9 @@
 ## Purpose
 
 Leaving the configured event: the local-only inverse of the join lifecycle. The `LeaveEvent`
-use-case disables the upload producer, wipes the ledger and discovery cursor, and forgets the
-`eventId`, returning to the setup gate — without touching anything already uploaded to storage (a
-later re-scan re-joins and reconciles it back). Covers the leave sequence and its best-effort
+use-case disables the upload producer and forgets the `eventId`, returning to the setup gate — without
+touching the ledger or anything already uploaded to storage (a later re-scan re-joins and reconciles it
+back). Covers the leave sequence and its best-effort
 semantics, the local-only guarantee, the joined-layer-only affordance and its confirmation, and the
 presentation seam that triggers it.
 ## Requirements
@@ -20,9 +20,9 @@ snapshotted synchronously (from `ConfigSource.config`) into the use-case's own f
 and passed into the notify, so the notify targets the correct event with no race against the cleared
 config. The backend notify SHALL be dispatched **fire-and-forget** on an injected app-lifetime
 `CoroutineScope` so it does not block the local teardown (see "Local teardown does not block on the
-backend notify"). The use-case SHALL **not** touch the ledger, the discovery cursor, or any
+backend notify"). The use-case SHALL **not** touch the ledger or any
 `EventStatus`: with the producer's reconciliation in the extension (see `upload-state-reconciliation`),
-the extension resets its private ledger, cursor, and `joinedEventId` marker on its next join (a
+the extension resets its private ledger and `joinedEventId` marker on its next join (a
 configured `eventId` that no longer matches the marker, or a later provision of a different event). The
 producer is disabled **before** the config clear so no producer work races the teardown. The platform
 side-effects — disabling the producer and the backend notify — SHALL be injected as suspend lambdas
@@ -103,7 +103,7 @@ visibility is local screen state and SHALL NOT enter `UiState`.
 
 #### Scenario: Choosing Stay leaves everything intact
 - **WHEN** the user activates the leave affordance and chooses **Stay**
-- **THEN** the prompt is dismissed and no config, ledger, cursor, or producer state changes
+- **THEN** the prompt is dismissed and no config, ledger, or producer state changes
 
 ### Requirement: The container leave action defaults to a no-op
 
@@ -261,3 +261,4 @@ interim.
 
 - **WHEN** the self-leave's best-effort backend notify fails because the event no longer exists
 - **THEN** the local teardown has already completed and the failure is logged and ignored
+

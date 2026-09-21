@@ -278,7 +278,8 @@ keeps pushing this device.
 
 The push handler SHALL release the OS completion handler promptly and SHALL NOT hold it for the cycle: iOS
 grants a silent push a short budget, and a library walk can exceed it. The scan is therefore best-effort — a
-cycle cut short by suspension advances no discovery cursor, so the next wake simply redoes it.
+cycle cut short by suspension leaves only idempotent ledger writes behind, and the next wake's walk is
+a full enumeration that simply redoes it.
 
 #### Scenario: A push for the active event drives a cycle and re-arms
 - **WHEN** a silent push arrives naming the device's active event on a contributing membership
@@ -364,8 +365,7 @@ producer's **mechanism**:
 - **`stop()`** (the disable verb — access revoked, or a download-only membership): cancel the in-flight
   upload **tasks**, delete their staged temp files, and cancel the scheduled `BGProcessingTask`. The
   background `URLSession` itself SHALL be left intact — see "Cancellation never invalidates the
-  background session" below. `stop()` SHALL NOT clear the ledger and SHALL NOT clear the discovery
-  cursor. `stop()` SHALL repair no ledger row: a cancelled transfer's `REQUESTED` row
+  background session" below. `stop()` SHALL NOT clear the ledger. `stop()` SHALL repair no ledger row: a cancelled transfer's `REQUESTED` row
   is recorded by its own completion when one is delivered, and otherwise by the restart repair of whichever
   mechanism starts next (see "Stranded reconciliation: scoped each cycle, complete at a start").
 - **re-provision** (a valid event link for a **different** event; re-confirming the
@@ -375,12 +375,12 @@ producer's **mechanism**:
   (`/files/devices/<deviceId>/<filename>`), so an in-flight upload remains valid across the switch and
   cancelling it would re-upload identical bytes to an identical URL. The cycle re-reads config each
   run, and its marker-gated reconciliation (`upload-state-reconciliation`) seeds already-stored
-  resources as `COMPLETED` and clears the discovery cursor before any upload job is created. There
+  resources as `COMPLETED` before any upload job is created. There
   SHALL be no disable→enable toggle, no ledger wipe, and no cross-process race.
 - **leave**: `stop()` (cancel the in-flight tasks and the scheduled task, leaving the session intact) and
-  clear the stored `eventId`. The ledger and the discovery cursor SHALL be **kept** — they are
-  device-global dedup state that stays valid across events (`sync-ledger`, "Event-independent key"), and
-  clearing them would force a re-upload of every already-stored resource on the next join. The
+  clear the stored `eventId`. The ledger SHALL be **kept** — it is device-global dedup state that stays
+  valid across events (`sync-ledger`, "Event-independent key"), and clearing it would force a re-upload of
+  every already-stored resource on the next join. The
   `joinedEventId` marker is cleared by the reconciliation gate on the next cycle
   (`upload-state-reconciliation`).
 
@@ -399,15 +399,15 @@ producer's **mechanism**:
 - **WHEN** the app-driven producer's `start()` runs
 - **THEN** a restart is signalled to the cycle, a cycle runs, and the first `BGProcessingTask` is submitted
 
-#### Scenario: Stopping preserves the ledger and cursor
+#### Scenario: Stopping preserves the ledger
 
 - **WHEN** the app-driven producer's `stop()` runs (access revoked or a download-only membership)
-- **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, while every ledger row and the discovery cursor are left intact
+- **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, while every ledger row is left intact
 
 #### Scenario: Leave cancels transfers and keeps dedup
 
 - **WHEN** the user leaves the event on iOS 18–26.0
-- **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled and the stored `eventId` is cleared, while the ledger and discovery cursor are kept — so joining any event afterwards re-uploads nothing already in the device's byte partition
+- **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled and the stored `eventId` is cleared, while the ledger is kept — so joining any event afterwards re-uploads nothing already in the device's byte partition
 
 #### Scenario: Disable cancels tasks without destroying the session
 - **WHEN** photo access is revoked on iOS 18–26.0
@@ -508,7 +508,7 @@ effect is not part of the entry gate and is owned by the app shell's protected-d
 
 This tier invokes its own cycles from the app process, from four triggers (start, foreground, background
 task, session events) plus silent push. Each SHALL produce **Skip** on an unreadable membership: no
-reconciliation, no `joinedEventId` marker clear, no discovery-cursor reset, no upload job. The exposure is
+reconciliation, no `joinedEventId` marker clear, no upload job. The exposure is
 narrow — the membership item is stored `AfterFirstUnlock`, so an unreadable read needs a boot with no
 unlock — and the requirement stands regardless: the accessibility attribute makes a false leave
 improbable, the three-state read makes it impossible.
@@ -873,10 +873,13 @@ On this tier the upload cycle SHALL enqueue work from the ledger's rows that nee
 return value: the walk's job is to **record** what it found, and creating jobs from what it happens to
 be holding is what made the cycle unable to resume work it had already seen.
 
-A cycle SHALL still consult the change feed, because that is the only way to learn what the library
-did — there is no cheaper oracle, and the cursor is not one: `UploadDiscovery.discover(token)` **is** the
-question. What changes is the cost of asking. Because the cursor now advances once the walk's facts are
-durable, that consultation is an incremental change-token fetch rather than a full enumeration.
+A cycle SHALL still walk the library, because that is the only way to learn what the library holds.
+Every walk is a full enumeration (capability `ios-photokit-upload`, "In-extension discovery by full
+enumeration"; this tier binds the same `IosDiscovery`), including the walk of a cycle a completion
+triggered. What bounds its cost is that it reads resources only for the assets the ledger does not fully
+know (capability `sync-ledger`, "A walk re-reads only the assets the ledger does not fully know"), so a
+completion-triggered cycle over a fully-recorded library pays the fetch and the per-asset facts, and no
+resource read.
 
 This is what makes the tier's concurrency cap a throughput bound rather than an architectural one.
 Before it, the only source of work was the walk's return value, so freeing one slot cost a full library
@@ -884,7 +887,9 @@ enumeration to refill it: measured on device (build 0.3(605), iPhone11,2 / iOS 1
 of PhotoKit XPC over 224 candidates to enqueue two to four resources, repeated 26 times in two hours
 without ever draining. (That per-walk figure is situational, not intrinsic: the same operation
 measured 145 ms for 1084 candidates on an idle iPhone12,8 / iOS 26.6. What the requirement rests on
-is the **repetition**, not the cost of any one walk.)
+is the **repetition**, not the cost of any one walk.) With every walk a full enumeration, the fetch is
+repeated per cycle again; what is no longer repeated is the resource read of every admitted asset, and
+no refill depends on the walk at all.
 
 What is RESOLVED SHALL be bounded by **what the platform will accept right now**, not by a fixed
 batch. A platform that knows its own capacity SHALL report it (see "The platform reports the capacity
@@ -913,19 +918,20 @@ on.
 #### Scenario: A completion-triggered cycle enqueues from the ledger
 
 - **WHEN** an upload completes, freeing a concurrency slot, and rows needing a job exist in the ledger
-- **THEN** the cycle enqueues from those rows, whether or not that cycle's change feed reported anything
+- **THEN** the cycle enqueues from those rows, whether or not that cycle's walk found anything new
 
 #### Scenario: A cycle with nothing new to discover still makes progress
 
-- **WHEN** a cycle's change feed reports no change and the ledger holds rows needing a job
-- **THEN** the cycle enqueues those rows rather than treating an empty change set as no work
+- **WHEN** a cycle's walk returns no asset the ledger does not already know, and the ledger holds rows
+  needing a job
+- **THEN** the cycle enqueues those rows rather than treating a walk with nothing new as no work
 
-#### Scenario: A failed row is retried on a device whose cursor is settled
+#### Scenario: A failed row is retried without re-reading its asset
 
-- **WHEN** a transfer fails and its row is recorded `FAILED`, on a device whose discovery cursor is
-  settled and whose library has not changed since
-- **THEN** the next cycle re-enqueues that row from the ledger, without waiting for a full enumeration
-  to re-derive it
+- **WHEN** a transfer fails and its row is recorded `FAILED`, on a device whose library has not changed
+  since
+- **THEN** the next cycle re-enqueues that row from the ledger, and its walk does not read that asset's
+  resources
 
 #### Scenario: The top-up asks for no more than the platform will take
 
@@ -1082,3 +1088,4 @@ nothing. An absent lost set SHALL cause the cycle's per-cycle rule to reconcile 
 
 - **WHEN** the OS-driven adapter is asked for its lost keys
 - **THEN** it reports the absence of a set, and the cycle's per-cycle rule records nothing `FAILED`
+

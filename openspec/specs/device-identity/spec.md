@@ -115,8 +115,8 @@ background `URLSession` completion, and the OS-scheduled upload extension — ru
 idle and therefore usually locked, and each such context resolves the device id.
 
 The item SHALL NOT be restricted to the device (`…ThisDeviceOnly`): it SHALL remain restorable from an
-encrypted backup, so that a restored device recovers the **same** id as the app container (ledger and
-discovery cursor) that is restored alongside it. Decision record:
+encrypted backup, so that a restored device recovers the **same** id as the app container (the ledger)
+that is restored alongside it. Decision record:
 `changes/archive/2026-07-14-fix-locked-device-keychain-access`.
 
 #### Scenario: A locked background wake resolves the device id
@@ -128,8 +128,8 @@ discovery cursor) that is restored alongside it. Decision record:
 #### Scenario: The id is restorable alongside the app container
 
 - **WHEN** an encrypted backup is restored to a device
-- **THEN** the restored device reads the same device id it had before, consistent with the ledger and
-  discovery cursor restored with it, and therefore does not re-upload its already-stored resources
+- **THEN** the restored device reads the same device id it had before, consistent with the ledger
+  restored with it, and therefore does not re-upload its already-stored resources
 
 ### Requirement: Accessibility migration preserves the device id
 
@@ -259,3 +259,4 @@ fault rather than as normal operation.
 - **WHEN** the app and the extension resolve different ids
 - **THEN** the two diagnostic logs show different values for the same field, and the operator can
   detect the split by reading them
+

@@ -37,9 +37,7 @@ Decision record: `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
 That settling with the platform is owed on every cycle reaching a usable membership, and that a
 cycle's publication is decided by its outcome rather than by where it returned, were added in
 `changes/archive/2026-08-27-fix-cap-truncation-loop`.
-
 ## Requirements
-
 ### Requirement: Upload producer seam has no destructive verb
 
 The system SHALL express the upload arm's **lifecycle** as a platform-free `UploadProducer` seam in `:domain`'s
@@ -60,20 +58,18 @@ orchestrator is given no trigger to invoke.
 
 The property being defended is **dedup**: the proof that a photo is already in the event. Destroying it
 re-uploads a member's whole post-cutoff library — the failure this project exists to prevent. The ledger's
-`COMPLETED` rows and the stored bytes are that proof; the **discovery cursor is not**. A cleared cursor
-costs one full re-enumeration, which finds nothing new, because dedup lives in the ledger it did not touch.
+`COMPLETED` rows and the stored bytes are that proof, and nothing else a mechanism persists is.
 
-`stop()` SHALL NOT clear the discovery cursor either. That is not because the cursor is dedup state — it is
-not — but because no mechanism needs it: the damage a stop can leave behind is `REQUESTED` rows no transfer
-will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `FAILED`
+No mechanism needs a destructive verb as a repair either: the damage a stop can leave behind is
+`REQUESTED` rows no transfer will settle, and each mechanism repairs those in its own **`start()`** by demoting them to `FAILED`
 (`ios-photokit-upload`, `ios-url-session-upload`), which the ledger's work read returns without a walk. A
 repair belongs to the start because the start is the one moment a mechanism knows no other transfer is still
 carrying those rows, and because every path back to uploading passes through one.
 
-(This seam previously permitted a `stop()` to clear its cursor as a repair for jobs its own mechanism wiped.
-Its only instance was the PhotoKit disable, whose bulk *delete* of `REQUESTED` rows could not be recovered
-without a re-enumeration. With the rows demoted instead of deleted, the permission has no use and is
-withdrawn rather than kept.)
+(This seam previously permitted a `stop()` to clear its discovery cursor as a repair for jobs its own
+mechanism wiped. Its only instance was the PhotoKit disable, whose bulk *delete* of `REQUESTED` rows could
+not be recovered without a re-enumeration. With the rows demoted instead of deleted, the permission had no
+use and was withdrawn; the discovery cursor itself has since been removed.)
 
 Each tier SHALL supply one `UploadProducer` implementation binding these verbs to its own mechanism.
 
@@ -87,16 +83,16 @@ Each tier SHALL supply one `UploadProducer` implementation binding these verbs t
 - **WHEN** `stop()` is called on either tier
 - **THEN** in-flight uploads cease, but every ledger row and every stored object is left intact
 
-#### Scenario: Stopping clears no cursor
+#### Scenario: Stopping touches no ledger row
 
 - **WHEN** `stop()` is called on either tier, including as part of a switch or a leave
-- **THEN** the discovery cursor is left exactly where it was
+- **THEN** every ledger row is left exactly as it was
 
 #### Scenario: Rows a stop leaves stranded are repaired by the next start
 
 - **WHEN** a `stop()` leaves `REQUESTED` rows that no transfer will settle, and a mechanism is later started
-- **THEN** that start demotes those rows to `FAILED`, and the next cycle re-creates their uploads without
-  re-enumerating the library
+- **THEN** that start demotes those rows to `FAILED`, and the next cycle re-creates their uploads from the
+  ledger's work read, without the walk re-deriving them
 
 ### Requirement: Lifecycle orchestration is tier-neutral and tested
 
@@ -104,8 +100,8 @@ The decision of **which verb fires on which transition** SHALL live in a tier-ne
 `:domain`'s `feature/upload` zone, not in the app composition root, and SHALL be tested in `commonTest`
 (running on both JVM and `iosSimulatorArm64`) against fake `UploadProducer`s, so it is exercised on JVM
 **and** `iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate
-membership and permission transitions into `start()`/`stop()` and nothing else: it holds no ledger, no
-cursor, and no storage handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives
+membership and permission transitions into `start()`/`stop()` and nothing else: it holds no ledger and
+no storage handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives
 it no verb that could.
 
 Photo access is **usable** when it is `GRANTED` or `LIMITED`. A producer SHALL be started only when an
@@ -225,7 +221,7 @@ not silently blanking a previous manifest, is now the *intended* behaviour of a 
 
 **The gate bounds new work, not settlement.** A cycle the gate declines SHALL, before returning, run the
 acknowledgement of terminal upload jobs the OS has **already presented** to this invocation. That pass
-creates no upload job, enumerates no library, advances no discovery cursor and issues no network request —
+creates no upload job, enumerates no library and issues no network request —
 so it takes nothing the gate exists to withhold — and it is the only way the platform's acknowledgement
 obligation can be discharged on a tier whose extension is still registered.
 
@@ -292,7 +288,7 @@ enforcement is how this capability's own history records the lifecycle shipping 
 - **WHEN** the OS invokes the cycle for a membership whose direction excludes upload, presenting terminal
   upload jobs created before the direction changed
 - **THEN** every presented job is acknowledged and its outcome settled in the ledger, and the cycle still
-  creates no upload job, performs no library enumeration and leaves the discovery cursor untouched
+  creates no upload job and performs no library enumeration
 
 #### Scenario: A declined cycle still reconciles the re-join
 - **WHEN** a cycle runs for a membership whose direction excludes upload on the first cycle after a re-join,
@@ -318,7 +314,7 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly th
   step 11a — config-file content this build cannot positively interpret; capability `event-link`,
   *An unreadable config is not an absent config*). Unreadable content includes a foreign envelope
   version and an undecodable current-version payload. The cycle SHALL touch nothing: no reconcile, no
-  marker clear, no cursor reset, no jobs. It SHALL complete cleanly; the next cycle retries.
+  marker clear, no ledger write, no jobs. It SHALL complete cleanly; the next cycle retries.
 - **Not joined** — there is definitively no usable membership (no config file by the not-found
   error class and — while the read-only fallback lasts — no legacy Keychain item, or a legacy
   item that does not decode (the legacy-item rule, Keychain-side only), or no baked
@@ -358,7 +354,7 @@ not "no identity" (capability `device-identity`, which never reports absence: an
 #### Scenario: An unreadable membership skips without touching state
 - **WHEN** the cycle's membership read reports unreadable
 - **THEN** the cycle completes cleanly, having created no upload job, run no reconciliation, cleared no
-  marker, and reset no cursor
+  marker, and written no ledger row
 
 #### Scenario: An unresolvable device identity skips, and does not read as a leave
 - **WHEN** the device identity cannot be resolved because protected data is unavailable
@@ -633,6 +629,7 @@ that OS wake, so no mechanism can fail to release one.
 
 - **WHEN** a mechanism is added without stating an answer for every trigger
 - **THEN** it does not compile
+
 ### Requirement: Settling with the platform is owed regardless of the cycle's other outcomes
 
 The upload cycle SHALL settle with the platform — drain the outcomes it is holding and adjudicate them
@@ -648,8 +645,7 @@ acknowledge jobs for processing state"), **discard** the outstanding jobs, and r
 against the upload-job configuration that defers the extension by ~300 seconds and escalates with the
 attempt count. Expiry: re-measure at the next iOS major.
 
-Settling creates no upload work and publishes nothing: it enumerates nothing, touches no discovery
-cursor, and writes no manifest. Suppressing the manifest write on a deferred reconciliation stays
+Settling creates no upload work and publishes nothing: it enumerates nothing and writes no manifest. Suppressing the manifest write on a deferred reconciliation stays
 required (capability `device-manifest`) and is unaffected by this.
 
 #### Scenario: A deferred reconciliation still settles
@@ -657,7 +653,7 @@ required (capability `device-manifest`) and is unaffected by this.
 - **WHEN** the re-join reconciliation defers because the device's stored-file listing failed or timed
   out, on a contributing membership
 - **THEN** the cycle still settles with the platform, and still writes no manifest, creates no upload
-  job, and leaves the discovery cursor untouched
+  job, and enumerates nothing
 
 #### Scenario: A declined direction still settles
 
@@ -706,3 +702,4 @@ with a backlog takes on every cycle withheld them permanently, with no error and
 - **WHEN** a truncated or drained cycle publishes
 - **THEN** it writes the device manifest and the enumeration audit line, and changes the state of no ledger
   row
+

@@ -249,21 +249,24 @@ narrowing change, exactly as before.
 
 ### Requirement: Lowering the cutoff re-shares newly-in-scope older photos, on every tier
 
-A reconfigure that **lowers** the cutoff SHALL share the newly-in-scope older photos to the event — uploaded and listed — on the next upload cycle, **on both upload tiers** (the OS-driven PhotoKit tier and the app-driven `URLSession` tier alike). Lowering the cutoff moves `minPhotoDate` earlier, widening the membership's scope above the immutable `startsAt` floor. Because the platform discovery walk is bounded by a persisted,
-forward-only change cursor that would otherwise never re-visit unchanged older assets, a cutoff-lowering
-reconfigure SHALL **invalidate that discovery cursor** so the next cycle performs a **full re-enumeration
-at the new cutoff**; the ledger's `COMPLETED` rows still suppress re-upload of already-shared photos, so
-only the genuinely newly-in-scope assets are uploaded. This invalidation SHALL be driven by the shared
-domain reconfigure path (`ReconfigureEvent`), so it is **tier-agnostic** and does not depend on any one
-producer's start/stop behaviour.
+A reconfigure that **lowers** the cutoff SHALL share the newly-in-scope older photos to the event — uploaded and listed — on the next upload cycle, **on both upload tiers** (the OS-driven PhotoKit tier and the app-driven `URLSession` tier alike). Lowering the cutoff moves `minPhotoDate` earlier, widening the membership's scope above the immutable `startsAt` floor. Every upload walk is a **full enumeration** narrowed at the platform fetch by
+the membership's **current** policy (capability `ios-photokit-upload`, "In-extension discovery by full
+enumeration"), and the next cycle derives that policy from the reconfigured membership, so its walk
+**already** covers the newly-in-scope older assets. The reconfigure SHALL therefore need no discovery-side
+action of its own. The ledger's `COMPLETED` rows still suppress re-upload of already-shared photos, so only
+the genuinely newly-in-scope assets are uploaded. Because both tiers bind the same walk, the outcome is
+**tier-agnostic** and does not depend on any one producer's start/stop behaviour.
+
+This replaces the earlier mechanism, in which the walk resumed from a persisted, forward-only change cursor
+that never re-visited unchanged older assets, and a cutoff-lowering reconfigure had to invalidate that
+cursor. There is no cursor any more, so there is nothing to invalidate.
 
 This makes real the widening the capability's purpose already promises ("the worst a member can do is
 widen their own contribution above the event's start, visibly and on purpose") and removes the prior
 silent divergence where lowering the cutoff back-shared older photos on the PhotoKit tier but not on the
 `URLSession` tier.
 
-Raising the cutoff (narrowing) SHALL NOT require a cursor invalidation, because nothing new comes into
-scope. It SHALL, however, retract the affected **listings** on the next cycle, per *A narrowing change
+Raising the cutoff (narrowing) brings nothing new into scope. It SHALL, however, retract the affected **listings** on the next cycle, per *A narrowing change
 retracts the member's listings; leaving does not* — and it SHALL NOT prune the ledger rows for the
 now-out-of-scope photos, so a later widening restores their listings without re-uploading a byte.
 
@@ -275,17 +278,19 @@ now-out-of-scope photos, so a later widening restores their listings without re-
 
 #### Scenario: Lowering the cutoff shares the newly-in-scope older photos on the URLSession tier
 - **WHEN** a member on the iOS 18–26.0 `URLSession` tier makes the same cutoff-lowering reconfigure
-- **THEN** the discovery cursor is invalidated and the next cycle re-enumerates at the new cutoff, so the
-  older in-scope photos are uploaded and listed — the same outcome as the PhotoKit tier
+- **THEN** the next cycle's walk enumerates at the new cutoff, so the older in-scope photos are uploaded
+  and listed — the same outcome as the PhotoKit tier
 
 #### Scenario: Already-shared photos are not re-uploaded on re-enumeration
-- **WHEN** the full re-enumeration after a cutoff-lowering reconfigure re-encounters photos already shared
+- **WHEN** the walk after a cutoff-lowering reconfigure re-encounters photos already shared
   under the previous cutoff
 - **THEN** their `COMPLETED` ledger rows suppress re-upload, so only the newly-in-scope photos upload
 
-#### Scenario: Raising the cutoff needs no re-enumeration
-- **WHEN** a member raises the cutoff (narrowing scope)
-- **THEN** no discovery cursor is invalidated and no re-enumeration is forced
+#### Scenario: Raising the cutoff deletes no row
+- **WHEN** a member raises the cutoff (narrowing scope) and the next cycle's walk no longer returns the
+  photos now before it
+- **THEN** their ledger rows are kept, because they are outside the walk's window and so are not evidence
+  of absence (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk")
 
 #### Scenario: Raising then lowering the cutoff re-lists without re-uploading
 - **WHEN** a member raises the cutoff, a cycle runs, and the member then lowers it back
@@ -358,3 +363,4 @@ membership, not in the previous manifest being left in place.
 - **WHEN** a member leaves the event
 - **THEN** their manifest is preserved as the departed manifest and their contributions remain available to
   the remaining members — leaving retracts nothing
+

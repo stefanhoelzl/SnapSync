@@ -25,7 +25,6 @@ contained, not to withhold) nor `:tools:diagrams`. That change also moved the mo
 expected value out of the guard and into this requirement, so the enumeration below is now read by
 `ModuleSetTest` at test runtime rather than copied into it.
 ## Requirements
-
 ### Requirement: The module set withholds; packages organize
 The system SHALL consist of exactly the modules enumerated below, and **every** module the build
 declares SHALL appear in exactly one group. A group names the law that justifies its members'
@@ -404,9 +403,8 @@ read as satisfying this law by carrying a rich failure payload while collapsing 
 violating it by carrying a poor one while keeping them apart.
 
 The test is **consequence asymmetry, not nullability**. A nullable return is not itself a
-violation: `DiscoveryStore.loadToken` collapses absent and unreadable correctly, because a cold
-start with no cursor re-enumerates the whole library and the ledger makes that harmless, and it
-says so. The violation is a collapse whose stated consequence does not cover every cause it
+violation: a cache whose absent and unreadable values both cost only a recomputation collapses the
+two correctly, provided it says so. The violation is a collapse whose stated consequence does not cover every cause it
 absorbs, or a collapse with no stated consequence at all.
 
 The law is enforced mechanically at the two seams where enforcement is possible — platform entry
@@ -548,7 +546,6 @@ form of evidence that does not qualify.
 - **THEN** it states what is actually absent — a public API, a target, a version — rather than the
   facility as a whole, so a later reader can tell which change would falsify it
 
-
 ### Requirement: A build-time-only module is contained by compilation, not by a runtime check
 A test-only module that links into a shipped-format binary SHALL be contained at compile time: it is linked only under an explicit build property, and a build without that property SHALL contain **no source of that module at all** — not a stub, not a no-op implementation, and not an inert runtime branch. Such a module SHALL still earn its modulehood the ordinary way, by withholding a third-party or platform dependency from every other module by compile error.
 
@@ -599,3 +596,4 @@ because the file reading it is absent from a production build.
 - **WHEN** the module is added to the module set
 - **THEN** its withholding argument is recorded here, and the dependency it withholds is unreachable from
   every other module by compile error
+

@@ -282,9 +282,10 @@ implementation SHALL observe them:
 - The predicate SHALL NOT reference `hasAdjustments`; it is not a supported key and likewise aborts the
   process.
 
-A change feed reports what *changed*, not what is in *scope*: an iCloud sync or a bulk import surfaces
-thousands of out-of-scope assets at once. An implementation reading a change feed SHALL therefore reject an
-out-of-scope asset **before** reading its resources, using only the asset's own facts.
+A read that takes no predicate — assets fetched by identifier, or a partial grant's selection change —
+reports what it was handed, not what is in *scope*: an iCloud sync or a bulk import can surface thousands of
+out-of-scope assets at once. An implementation reading such a result SHALL therefore reject an out-of-scope
+asset **before** reading its resources, using only the asset's own facts.
 
 #### Scenario: One seam, taking the policy
 
@@ -422,10 +423,10 @@ asset, rather than issuing an unnarrowed fetch and relying on the caller's in-me
 every result.
 
 This is a **liveness** requirement, matching the one that already forces the capture-date lower bound into
-the query. The whole-library enumeration — a cold start with no discovery cursor — is the path that carries
-a predicate, and it is the path where an unnarrowed fetch costs one synchronous platform round-trip per
+the query. The library enumeration — every upload walk, and every count — is the path that carries a
+predicate, and it is the path where an unnarrowed fetch costs one synchronous platform round-trip per
 asset. Without this translation a membership that contributes nothing would pay a full library walk on
-every cold start to arrive at the empty set its own configuration already stated.
+every read to arrive at the empty set its own configuration already stated.
 
 The translation SHALL be built from a comparison that is never satisfiable on a key the platform is known
 to evaluate correctly. It SHALL NOT be built from any query form whose emptiness is an artefact of the
@@ -478,3 +479,4 @@ library asset by asset to discover that none is admitted.
 #### Scenario: The shareable-count preview is zero without a per-asset walk
 - **WHEN** the join-time preview is computed with sharing off
 - **THEN** it reports zero, and no per-asset platform round-trip is paid
+
