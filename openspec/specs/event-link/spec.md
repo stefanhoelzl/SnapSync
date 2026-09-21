@@ -285,6 +285,7 @@ SHALL be an idempotent no-op. Consumers SHALL depend on each port separately.
 #### Scenario: Clearing removes the config but keeps the album map
 - **WHEN** `clear()` is invoked while a config is persisted
 - **THEN** the persisted config is removed and `config` emits `null`, with no change to the ledger and no change to the event-album map
+
 ### Requirement: An unreadable config is not an absent config
 
 The config seam SHALL distinguish three outcomes: a **readable** config, a **definitely absent**
@@ -313,7 +314,7 @@ A reader that acts on the absence of a config — in particular the re-join reco
 which "no event configured" means *the device left the event* and triggers clearing the persisted
 `joinedEventId` marker (capability `upload-state-reconciliation`) — SHALL act **only** on a
 definitely absent config. On an unreadable config **the upload cycle** SHALL skip entirely: it
-SHALL NOT reconcile, SHALL NOT clear the join marker, SHALL NOT reset the discovery cursor, and
+SHALL NOT reconcile, SHALL NOT clear the join marker, SHALL NOT write the ledger, and
 SHALL NOT create upload jobs; the cycle SHALL complete cleanly and the next cycle SHALL retry.
 
 This SHALL hold on **every upload tier and at every trigger**, not only where the OS is the
@@ -324,15 +325,15 @@ two-state read that cannot express "unreadable"; the three-state read is the onl
 
 Conflating the two is what makes an ordinary locked-device wake perform a *false leave*: the
 marker is cleared, and the next readable cycle sees a marker mismatch and pays for a full re-join
-reconciliation (a device listing, an atomic ledger clear-and-seed, and a discovery-cursor reset
-that forces a complete library re-enumeration) — repeatedly, without the marker ever settling.
+reconciliation (a device listing, an atomic ledger clear-and-seed to bare rows, and a walk that
+must re-read every seeded asset's resources) — repeatedly, without the marker ever settling.
 
 #### Scenario: An unreadable config does not clear the join marker
 
 - **WHEN** an upload cycle reads the config and the read fails because protected data is
   unavailable (the file read fails permission-class before first unlock)
 - **THEN** the cycle is skipped, the reconciliation is not invoked, the persisted `joinedEventId`
-  marker is left intact, the discovery cursor is not reset, and the cycle completes cleanly
+  marker is left intact, the ledger is not written, and the cycle completes cleanly
 
 #### Scenario: A definitely-absent config still drives the leave path
 
@@ -351,7 +352,7 @@ that forces a complete library re-enumeration) — repeatedly, without the marke
 
 - **WHEN** a joined device runs cycles repeatedly while locked and its config is unreadable
 - **THEN** its join marker still matches its configured event on the next readable cycle, so no
-  re-join reconciliation, ledger re-seed, or full re-enumeration is performed
+  re-join reconciliation or ledger re-seed is performed
 
 #### Scenario: The app-driven tier skips rather than leaves
 
@@ -605,3 +606,4 @@ made this defect take a full day to characterise.
 - **WHEN** a delivery is ignored as a duplicate
 - **THEN** the device log records it together with the entry point that delivered it, so it is
   distinguishable from a link that never arrived
+

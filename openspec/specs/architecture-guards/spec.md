@@ -15,7 +15,7 @@ they run against is normally locked, since the OS wakes them while the phone is 
   per-item at the call site, so this is a property of *every* call site — provable only if there is
   exactly one module that may contain them.
 - **The App-Group default data-protection class must never be raised.** The background tier's SQL
-  ledger, download store, discovery cursor, and event-album map are readable while locked only because
+  ledger, download store, and event-album map are readable while locked only because
   they inherit the iOS default. Raising it in an entitlements file is a one-line edit that reads as a
   security improvement and disables background sync entirely — silently, and only on locked devices.
 
@@ -86,7 +86,7 @@ set `com.apple.developer.default-data-protection` to `NSFileProtectionComplete`.
 
 The background tier depends on the iOS default protection class for App-Group container files,
 `NSFileProtectionCompleteUntilFirstUserAuthentication` — the guarantee that makes the SQL ledger, the
-download store, the discovery cursor, and the event-album map readable while the device is locked.
+download store, and the event-album map readable while the device is locked.
 Raising the default to `NSFileProtectionComplete` would make **every** file in both containers unreadable
 while locked, disabling background upload and download entirely, silently, and only on locked devices —
 while presenting as a security improvement.
@@ -518,8 +518,10 @@ is a spec change to this requirement, deliberately):
   are checked only for the device-id seat's presence, not pinned as a set. That gap is narrow by
   construction (a scoped read cannot find the unscoped items pre-11a builds wrote, which is the only
   thing such a seat could be after) and is named here rather than left to be discovered.
-- **App-Group `NSUserDefaults` keys** `discovery.changeToken`, `rejoin.joinedEventId`,
-  `app.snapsync.album.map`.
+- **App-Group `NSUserDefaults` keys** `rejoin.joinedEventId`, `app.snapsync.album.map`. The discovery
+  cursor's key `discovery.changeToken` was **retired from this inventory** when the cursor was removed: it
+  appears in production Kotlin nowhere, which an exactly-once pin cannot express. A stale value an older
+  build left in the App-Group defaults is inert.
 - **Database filenames** `ledger.db`, `downloads.db`.
 - **Config filename** `eventconfig.json` — the App-Group config file of record (capability
   `event-link`; the only config storage). Re-valuing it reads every joined device's file as

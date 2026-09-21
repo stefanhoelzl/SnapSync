@@ -10,7 +10,8 @@ must reach the event without the user ever opening the app, and only the OS can 
 The extension is the **sole `LedgerWriter`** on this tier; the app reads the ledger read-only. The
 platform-agnostic orchestration deliberately lives in `:domain`'s `feature/upload` zone (which declares a `jvm()` target
 so the upload cycle is harness- and JVM-tested); what this capability covers is the iOS side of that seam —
-the PhotoKit adapter, the thin Swift pass-through shell, discovery via the persistent change token, job
+the PhotoKit adapter, the thin Swift pass-through shell, discovery by full enumeration (there is no persisted
+change-token cursor since `changes/archive/2026-09-21-always-full-enumerate`), job
 creation/retry/acknowledge disposition, the compile-time upload host, and the ATS constraint that the host
 be HTTPS.
 
@@ -28,7 +29,7 @@ cap-truncated cycle.
 ## Requirements
 ### Requirement: Background upload extension target
 
-On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The platform-agnostic upload **orchestration** — the upload cycle (`UploadCycle`, `:domain` `feature/upload`), the fine-grained OS-verb platform seam (`BackgroundTransfer`, `:domain` `ports/`), the library-read seam (`UploadDiscovery`, `:domain` `ports/`), and the config assembly (`UploadConfig`/`buildUploadConfig`, `:domain` `feature/upload`) — SHALL live in `:domain` (migration step 5; formerly `:capability:upload`), which declares **`jvm()`** alongside `iosArm64`/`iosSimulatorArm64` — no Compose/UI — so the orchestration tests run on JVM (and the iOS simulator) per capability `testing-architecture` ("Every test runs on every target its module declares"). The extension SHALL assemble its cycle through the **shared composition** `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition"): the root supplies only its ports and platform reads — the file-backed `ConfigReader`, the device-identity thunk, the compile-time host read, the PhotoKit platform adapter, the PhotoKit discovery (`IosDiscovery`, bound once as the `UploadDiscovery`), and the generic HTTP adapters (`:adapter:generic:app`'s `HttpEnrollment` is the device-manifest uploader; there is no extension-local uploader copy). The **PhotoKit platform adapter** (`IosPhotoKitUploadPlatform`, the `BackgroundTransfer` impl) SHALL live in the extension-safe adapter module `:adapter:ios:ext-safe` — an adapter is placed by linkage and MAY branch on technology vocabulary (spec `module-architecture`; seated there at the migration finale — its former shell seat put adapter branching inside the zero-decision shell gate's scope), beside the shared PhotoKit discovery the roots bind (the `IosDiscovery` change-token walk + token archiver, implementing `UploadDiscovery`), the shared upload-request builder, and the `IosDiscoveryStore` cursor store, all shared with the `ios-url-session-upload` adapter, and the file-backed `ConfigSource`. The **compile-time host read** (`bakedUploadBase`, the `uploadBase` value read from the bundled `Deployment.plist`) SHALL live in `:adapter:ios:ext-safe` beside the build-version read the boot banner uses, for the same two reasons: **both processes** read it (each `NSBundle.mainBundle` being its own bundle), and its absent-key defaulting is a **decision**, which the zero-decision shell gate forbids a wiring-only root to hold — the same reasoning that seated `IosPhotoKitUploadPlatform` there at the migration finale. The composition root (`UploadExtensionRoot`) SHALL live in a lean `:app:ios:extension` module that **composes** `:domain` (which also carries the upload receive seam in `feature/upload`), `:adapter:ios:ext-safe`, and `:adapter:generic:app`, and is packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension bundle SHALL carry the generated `Deployment.plist` (capability `deployment-configuration`), whose `uploadBase` is the compile-time edge host the app and the extension **read** when they build upload requests. The extension `Info.plist` SHALL **additionally** declare `BackgroundUploadURLBase`, carrying that same base URL: it is read not by this app but by **`assetsd`**, which validates the registration insert against the value in the bundle's own `Info.plist` and can see no resource the app bundles. With the key absent, `setUploadJobExtensionEnabled(true)` SHALL be expected to fail with a bare `PHPhotosErrorDomain -1` and empty `userInfo`, the OS never launches the extension, and nothing uploads on this tier. Because an `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an xcconfig line with no escape, the value SHALL be **composed** in the `Info.plist` from build settings that cannot themselves contain `//` — a scheme enum and a bare host — rather than carried as one URL-valued build setting. The app bundle SHALL carry the key on the same terms: the registration call is made by the app process, and which bundle the daemon reads has not been established. What IS established is a device A/B (SE2, iOS 26.6, 2026-08-28, one variable): key absent → enable fails `-1`, disable fails `3201`; key present as `https://<domain>/api/v1` → both succeed and the read-back is `true`. The daemon's **matching rule** — whether it compares host, origin or prefix — is NOT established, and this spec SHALL NOT assert one. ⏰ Re-measure at the next iOS major, with the other PhotoKit platform facts. The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
+On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The platform-agnostic upload **orchestration** — the upload cycle (`UploadCycle`, `:domain` `feature/upload`), the fine-grained OS-verb platform seam (`BackgroundTransfer`, `:domain` `ports/`), the library-read seam (`UploadDiscovery`, `:domain` `ports/`), and the config assembly (`UploadConfig`/`buildUploadConfig`, `:domain` `feature/upload`) — SHALL live in `:domain` (migration step 5; formerly `:capability:upload`), which declares **`jvm()`** alongside `iosArm64`/`iosSimulatorArm64` — no Compose/UI — so the orchestration tests run on JVM (and the iOS simulator) per capability `testing-architecture` ("Every test runs on every target its module declares"). The extension SHALL assemble its cycle through the **shared composition** `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition"): the root supplies only its ports and platform reads — the file-backed `ConfigReader`, the device-identity thunk, the compile-time host read, the PhotoKit platform adapter, the PhotoKit discovery (`IosDiscovery`, bound once as the `UploadDiscovery`), and the generic HTTP adapters (`:adapter:generic:app`'s `HttpEnrollment` is the device-manifest uploader; there is no extension-local uploader copy). The **PhotoKit platform adapter** (`IosPhotoKitUploadPlatform`, the `BackgroundTransfer` impl) SHALL live in the extension-safe adapter module `:adapter:ios:ext-safe` — an adapter is placed by linkage and MAY branch on technology vocabulary (spec `module-architecture`; seated there at the migration finale — its former shell seat put adapter branching inside the zero-decision shell gate's scope), beside the shared PhotoKit discovery the roots bind (the `IosDiscovery` full-enumeration walk, implementing `UploadDiscovery`) and the shared upload-request builder, both shared with the `ios-url-session-upload` adapter, and the file-backed `ConfigSource`. The **compile-time host read** (`bakedUploadBase`, the `uploadBase` value read from the bundled `Deployment.plist`) SHALL live in `:adapter:ios:ext-safe` beside the build-version read the boot banner uses, for the same two reasons: **both processes** read it (each `NSBundle.mainBundle` being its own bundle), and its absent-key defaulting is a **decision**, which the zero-decision shell gate forbids a wiring-only root to hold — the same reasoning that seated `IosPhotoKitUploadPlatform` there at the migration finale. The composition root (`UploadExtensionRoot`) SHALL live in a lean `:app:ios:extension` module that **composes** `:domain` (which also carries the upload receive seam in `feature/upload`), `:adapter:ios:ext-safe`, and `:adapter:generic:app`, and is packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension bundle SHALL carry the generated `Deployment.plist` (capability `deployment-configuration`), whose `uploadBase` is the compile-time edge host the app and the extension **read** when they build upload requests. The extension `Info.plist` SHALL **additionally** declare `BackgroundUploadURLBase`, carrying that same base URL: it is read not by this app but by **`assetsd`**, which validates the registration insert against the value in the bundle's own `Info.plist` and can see no resource the app bundles. With the key absent, `setUploadJobExtensionEnabled(true)` SHALL be expected to fail with a bare `PHPhotosErrorDomain -1` and empty `userInfo`, the OS never launches the extension, and nothing uploads on this tier. Because an `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an xcconfig line with no escape, the value SHALL be **composed** in the `Info.plist` from build settings that cannot themselves contain `//` — a scheme enum and a bare host — rather than carried as one URL-valued build setting. The app bundle SHALL carry the key on the same terms: the registration call is made by the app process, and which bundle the daemon reads has not been established. What IS established is a device A/B (SE2, iOS 26.6, 2026-08-28, one variable): key absent → enable fails `-1`, disable fails `3201`; key present as `https://<domain>/api/v1` → both succeed and the read-back is `true`. The daemon's **matching rule** — whether it compares host, origin or prefix — is NOT established, and this spec SHALL NOT assert one. ⏰ Re-measure at the next iOS major, with the other PhotoKit platform facts. The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
 
 #### Scenario: Extension declares the PhotoKit background-upload point
 - **WHEN** the extension target is built
@@ -44,7 +45,7 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
 
 #### Scenario: Extension adapters compose the capability
 - **WHEN** the extension's composition root assembles a cycle
-- **THEN** the iOS adapters (`IosPhotoKitUploadPlatform`, `IosDiscovery`, `IosDiscoveryStore`) implement the upload seams — `IosDiscovery` shared with the app-driven tier from `:adapter:ios:ext-safe` and bound once as the `UploadDiscovery` — and the root supplies them as `UploadPorts` to `uploadCore`, which constructs the `:domain` `feature/upload` `UploadCycle`, with the download-store / rejoin / manifest edges answered in the ports bundle rather than inside the feature
+- **THEN** the iOS adapters (`IosPhotoKitUploadPlatform`, `IosDiscovery`) implement the upload seams — `IosDiscovery` shared with the app-driven tier from `:adapter:ios:ext-safe` and bound once as the `UploadDiscovery` — and the root supplies them as `UploadPorts` to `uploadCore`, which constructs the `:domain` `feature/upload` `UploadCycle`, with the download-store / rejoin / manifest edges answered in the ports bundle rather than inside the feature
 
 #### Scenario: The app-driven tier applies below 26.1
 - **WHEN** the app runs on iOS 18–26.0 (below the `PHBackgroundResourceUploadExtension` floor)
@@ -67,67 +68,6 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
 - **WHEN** the `Info.plist` value is rendered
 - **THEN** it is composed from a scheme enum and a bare host emitted as separate build settings, so no
   single build setting carries a value containing `//`, which the xcconfig grammar would truncate silently
-
-### Requirement: In-extension discovery via persistent change token
-
-On each `process()` invocation, the extension SHALL discover work itself (the system does not
-enumerate). On first run (no token) it SHALL enumerate the whole library via `PHAsset.fetchAssets`
-and capture `currentChangeToken` as baseline; in steady state it SHALL call
-`fetchPersistentChanges(since:)` and derive the changed asset set. On `persistentChangeTokenExpired`
-it SHALL re-enumerate the whole library, relying on the ledger to skip already-recorded keys. The
-change token SHALL be **persisted across extension process death** in a shared App-Group store (an
-archived `PHPersistentChangeToken`; see "Persisted change-token cursor"), so a short-lived wake
-resumes incrementally instead of re-enumerating the whole library.
-
-The token SHALL be advanced (persisted to `currentChangeToken`) **once every fact the walk produced is
-durable**, and SHALL NOT be conditioned on how many upload jobs that cycle went on to create. A walk
-produces exactly three facts that exist nowhere else, and all three are ledger writes:
-
-- every admitted resource the engine judged to be new work — recorded `DISCOVERED` (capability
-  `sync-ledger`);
-- every asset the change feed reported removed — marked absent;
-- the manifest detail of every already-recorded row still lacking it — backfilled.
-
-The token SHALL be persisted **after** those writes and **before** any upload job is created, so a
-process death between them costs one re-derivation rather than losing work. The ordering, not
-atomicity, is what makes that safe: the writes are idempotent, so a repeated walk converges, while
-persisting the token first would discard resources that no row records.
-
-This **replaces** the previous rule that the token advance only at the end of a fully-drained cycle —
-a cycle in which every discovered resource was turned into a job with no `limitExceeded`. That rule
-was correct in its purpose and wrong in its condition: it protected against advancing past resources
-nothing durably recorded, but it used "every job was created" as the proxy for "every resource is
-recorded", and on a device whose outstanding work exceeds the platform's job limit those two are never
-the same. The proxy made the cursor unwritable for as long as a device was behind, so every cycle
-re-enumerated the whole library. With the un-created remainder now recorded `DISCOVERED`, the walk's
-information survives without the cursor standing still, and the producer resumes that remainder from
-the ledger rather than by re-deriving it.
-
-#### Scenario: First run enumerates the whole library
-- **WHEN** `process()` runs with no persisted change token
-- **THEN** the extension enumerates the full library and records the current change token as the
-  baseline cursor in the App-Group store
-
-#### Scenario: Cursor survives a process restart
-- **WHEN** the extension process is torn down after a cycle that recorded its walk and later re-invoked
-- **THEN** it loads the persisted token and calls `fetchPersistentChanges(since:)` from it, rather
-  than re-enumerating the whole library
-
-#### Scenario: Token advances on a cap-truncated cycle whose walk was recorded
-- **WHEN** a cycle records `DISCOVERED` rows for every admitted new-work resource, marks the reported
-  removals, backfills bare rows, and then stops creating jobs because `creationRequestForJob` raised
-  `PHPhotosErrorLimitExceeded`
-- **THEN** the persisted token has already advanced, and the next wake discovers only what changed
-  since it while resuming the un-created remainder from the ledger
-
-#### Scenario: Token does not advance when the walk was not recorded
-- **WHEN** a cycle's ledger writes for the walk's facts do not complete
-- **THEN** the persisted token is left unchanged, so the next wake re-derives the same change set
-
-#### Scenario: Token expiry re-enumerates harmlessly
-- **WHEN** `fetchPersistentChanges(since:)` reports `persistentChangeTokenExpired`
-- **THEN** the extension re-enumerates the whole library and the ledger answers `AlreadyUploaded` for
-  keys already recorded, so no duplicate jobs are created
 
 ### Requirement: Resource identity and fan-out
 
@@ -305,13 +245,13 @@ a target's host cannot hold such a record, the port's binding for that target an
 
 #### Scenario: The repair completes before the re-enable
 - **WHEN** the ritual runs while the ledger holds orphaned `REQUESTED` rows
-- **THEN** the rows are demoted to `FAILED` **before** the enable is attempted, and the discovery cursor is
-  left untouched, so the repair cannot demote rows belonging to the registration it is about to re-create
+- **THEN** the rows are demoted to `FAILED` **before** the enable is attempted, so the repair cannot demote
+  rows belonging to the registration it is about to re-create
 
 #### Scenario: Stopping is the disable alone
 - **WHEN** the OS-driven mechanism's `stop()` runs — on a leave, or to relinquish it to the app-driven one
-- **THEN** the registration is removed (or, under a partial grant, the attempt is refused) and neither the
-  ledger rows nor the discovery cursor is touched; the next mechanism start repairs any row left `REQUESTED`
+- **THEN** the registration is removed (or, under a partial grant, the attempt is refused) and no ledger
+  row is touched; the next mechanism start repairs any row left `REQUESTED`
 
 ### Requirement: Device-visible (un-redacted) logging
 
@@ -458,8 +398,8 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
 
 When `creationRequestForJob` raises `PHPhotosErrorLimitExceeded`, the extension SHALL stop creating
 jobs for the remainder of the cycle and surface a **processing** result so the system re-invokes it
-promptly. It SHALL NOT stop anything else: the change token has already advanced (see "In-extension
-discovery via persistent change token"), the un-created remainder is already recorded `DISCOVERED`,
+promptly. It SHALL NOT stop anything else: the walk's facts are already recorded (see "In-extension
+discovery by full enumeration"), the un-created remainder is already recorded `DISCOVERED`,
 and the cycle SHALL still publish its device manifest, its enumeration audit line, and its completion
 notify. On the next wake, the producer resumes exactly the un-created remainder from the ledger — with
 no duplicate jobs, no persisted residue list, and no re-derivation.
@@ -514,26 +454,6 @@ stops compiling instead.
 - **THEN** the shell reports `.failure`, so the system retries and the defect stays visible, rather
   than reporting a successful cycle that cannot be trusted
 
-### Requirement: Persisted change-token cursor
-
-The discovery cursor SHALL be persisted in the shared App-Group store written by the extension. The
-extension SHALL archive the `PHPersistentChangeToken` (via its `NSSecureCoding` support) to `Data`
-and store it in App-Group `NSUserDefaults` (suite `group.app.snapsync`), reading it back at cycle
-start. The cursor's load/advance orchestration SHALL be platform-free (a `commonMain` port over
-opaque token bytes) so it is exercised on the simulator with a fake; the `NSUserDefaults` archiving
-is a platform detail of the `:adapter:ios:ext-safe` cursor store (`IosDiscoveryStore`), not shell
-wiring. Persistence is an efficiency optimization only: a cold start with no
-stored token re-enumerates the whole library, which the ledger makes harmless.
-
-#### Scenario: Token round-trips through the App-Group store
-- **WHEN** the extension advances the cursor at the end of a fully-drained cycle
-- **THEN** the archived token bytes are written to App-Group `NSUserDefaults` and a subsequent
-  process reads them back and resumes `fetchPersistentChanges(since:)` from that token
-
-#### Scenario: Missing token falls back to full enumeration
-- **WHEN** `process()` runs with no token in the App-Group store
-- **THEN** the extension enumerates the whole library and the ledger skips already-recorded keys
-
 ### Requirement: Re-provision resets sync state
 
 On a **valid event-link (re)scan**, the host app SHALL re-provision the (possibly new) event
@@ -545,25 +465,24 @@ the app-driven tier, which has no OS registration record to re-create (see `ios-
 On this tier the re-provision's `start()` SHALL re-register the extension (the disable→enable toggle).
 On its next cycle the extension reconciles against the per-device file listing (capability
 `api-endpoints`, see `upload-state-reconciliation`): it **`resetTo`s** (atomic clear-and-seed)
-the ledger to one already-uploaded row per stored file and **clears the discovery cursor** (forcing a
-full re-enumeration). The device-global listing re-seeds the same files as already-uploaded, so
-**nothing already stored re-uploads**, while the clear drops stale/phantom rows and the cursor clear
-re-enumerates to find genuinely-unstored work. The re-baselined ledger is then **re-projected** to the
+the ledger to one already-uploaded row per stored file. The device-global listing re-seeds the same files
+as already-uploaded, so **nothing already stored re-uploads**, while the clear drops stale/phantom rows and
+the cycle's walk, a full enumeration like every walk, finds genuinely-unstored work. The re-baselined ledger
+is then **re-projected** to the
 **new** event's `device.json` path, and the joined-event marker is set. Rows seeded from the listing are
-**bare** (a filename carries no capture date) and are therefore not listed until the forced full
-re-enumeration backfills their manifest detail. The app decodes the event link only to gate this on a
+**bare** (a filename carries no capture date) and are therefore not listed until the walk backfills their
+manifest detail; a bare row is always re-read by the walk (capability `sync-ledger`, "A walk re-reads only
+the assets the ledger does not fully know"). The app decodes the event link only to gate this on a
 valid payload; the authoritative decode/validate/persist still happens in the shared container intent.
 
 The re-provision itself SHALL NOT clear the **ledger** (`upload-lifecycle`): only the reconciliation's
-`resetTo` re-baselines it, from the authoritative per-device listing. The **discovery cursor** is cleared
-on this path by the reconciliation itself — not by the provisioning logic, and not by the re-register, whose
-repair demotes rows instead (see "Re-registering the extension demotes orphaned REQUESTED rows"). The clear costs only a re-enumeration — the ledger it leaves intact
-is what knows the work is already done.
+`resetTo` re-baselines it, from the authoritative per-device listing. The re-register's repair demotes rows
+instead (see "Re-registering the extension demotes orphaned REQUESTED rows").
 
 #### Scenario: Valid re-scan reconciles and re-projects to the new event
 - **WHEN** a valid `https://<link domain>/join#…` event link is opened for a different event on iOS ≥26.1
 - **THEN** the extension is re-registered (disable→enable), and the next cycle `resetTo`s the ledger
-  from the per-device file listing, clears the discovery cursor, and re-projects `device.json` from
+  from the per-device file listing and re-projects `device.json` from
   that ledger to the new event path with the joined-event marker set
 
 #### Scenario: Already-stored photos do not re-upload on a switch
@@ -574,7 +493,7 @@ is what knows the work is already done.
 
 #### Scenario: Invalid event link does not re-provision
 - **WHEN** an opened URL fails config decoding
-- **THEN** no re-provision occurs (the ledger, cursor, and joined-event marker are untouched)
+- **THEN** no re-provision occurs (the ledger and the joined-event marker are untouched)
 
 #### Scenario: The disable→enable toggle is confined to this tier
 - **WHEN** the app re-provisions an event on iOS 18–26.0
@@ -582,73 +501,61 @@ is what knows the work is already done.
 
 ### Requirement: Discovery prunes ledger rows for deleted assets
 
-The extension SHALL record that an asset has left the library by **marking** its ledger rows absent, and
-SHALL NOT delete them (capability `sync-ledger`). A row states that a resource's bytes are on the
-backend, and nothing on the device can make that false — no local action deletes an uploaded object, and
-reclamation belongs entirely to the nightly sweep (capability `scheduled-cleanup`). Keeping the row is
-also what stops a restored asset re-uploading. The ledger writes preserve the single-writer invariant.
+The extension SHALL record that an asset has left the library by **deleting** its ledger rows, and only on
+the evidence capability `sync-ledger` defines ("Deletion is a presence diff over an authoritative walk"): an
+authoritative walk that did not return the asset, for rows inside the membership's capture window that no
+live job owns; or, for a single row that still needs a job, its key resolving to nothing. The ledger writes
+preserve the single-writer invariant. No remote object is deleted: nothing on the device deletes an
+uploaded object, and reclamation belongs entirely to the nightly sweep (capability `scheduled-cleanup`).
+The one-way model is unchanged.
 
-Marking keeps the ledger honest about what still exists on device and, critically, clears a row left
-non-`COMPLETED` by an asset deleted mid-upload — which would otherwise keep `pending > 0` forever and
-hold the extension in the perpetual `processing` re-invocation loop (see "Cap-aware creation and
-tri-state processing result"): a marked row counts toward neither `pending` nor `completed`. Because the
-device manifest is projected from those same rows and the projection excludes marked ones, one mark also
-makes the next projected `device.json` stop listing the departed asset — there is no second structure to
-keep in step. No remote object is deleted; the one-way model is unchanged.
+Deleting keeps the ledger honest about what still exists on device and, critically, removes a row left
+non-`COMPLETED` by an asset deleted mid-upload. That row would otherwise keep `pending > 0` forever and hold
+the extension in the perpetual `processing` re-invocation loop (see "Cap-aware creation and tri-state
+processing result"). Because the device manifest is projected from those same rows, one deletion also makes
+the next projected `device.json` stop listing the departed asset: there is no second structure to keep in
+step.
 
-- **Incremental (every cycle):** when deriving the changed set from `fetchPersistentChanges(since:)`, the
-  extension SHALL also collect each change record's `deletedLocalIdentifiers()` and, for each removed
-  `localIdentifier` `L` (normalized `/`→`_` to match the stored `assetId`), call `markAbsent(L)` so all
-  of that asset's resource rows are flagged.
-- **There SHALL be no reconcile backstop.** A full enumeration SHALL NOT prune or mark rows for assets it
-  did not return. The enumeration is narrowed by the membership's own selection policy, so "not returned"
-  conflates *gone from the library* with *outside the current capture window* — and the backstop was
-  supplied the policy-**admitted** set, so raising a capture cutoff discarded the `COMPLETED` rows of
-  photos that were still present and still uploaded. Those rows are exactly what suppresses re-upload, so
-  the narrowing became irreversible, and a membership turned download-only admits nothing at all and would
-  have lost the event's rows entirely.
+The walk is narrowed by the membership's own selection policy, so "not returned" means gone from the
+library **only inside the policy's capture window**. That is why the deletion is judged per row by the
+policy's row admission and never by the admitted candidate set. The retired reconcile backstop was supplied
+the policy-**admitted** set, so raising a capture cutoff discarded the `COMPLETED` rows of photos that were
+still present. Judged by presence and row admission, a raised cutoff moves those rows out of the window
+instead, and they survive. A membership whose direction excludes upload never reaches the walk at all.
 
-The change feed's removal signal is therefore the **only** deletion input. A deletion it never reported —
-because the persistent-change token had expired — leaves the asset listed for the event's remaining life;
-its bytes are still on the backend, so a member still downloads it and the photo simply stays in the
-event, exactly as it does when a member leaves. Deletion-tracking is not exhaustive, and does not need to
-be.
+Deletion is now exhaustive for a full grant: a deletion is observed by the first authoritative walk after
+it, whenever that is, with no token to expire. A re-added asset (for example, recovered from "Recently
+Deleted") SHALL be discovered as new work and re-uploaded under its same keys. Its rows are gone, so nothing
+suppresses the upload. The backend re-stores the role idempotently and wakes nobody (capability
+`api-endpoints`). No `DELETED` state is introduced and the upload decision is unchanged.
 
-A re-added asset (e.g. recovered from "Recently Deleted") SHALL NOT re-upload: its rows were marked, not
-removed, so discovery still finds the `COMPLETED` entry, the engine returns no work, and the idempotent
-key is never re-sent. iOS keeps a deleted photo recoverable for 30 days — the same order as an event's
-whole life — so this is an ordinary sequence rather than an exotic one. No `DELETED` state is introduced
-and the upload decision is unchanged.
-
-#### Scenario: Removed asset's rows are marked incrementally
-- **WHEN** `fetchPersistentChanges(since:)` reports `deletedLocalIdentifiers` containing asset `L`,
-  and the ledger holds rows for `L`'s resources
-- **THEN** the extension calls `markAbsent(L)`, so `L` contributes to neither `pending` nor `completed`
-  and the next projected `device.json` omits it — while its rows remain readable
+#### Scenario: A departed asset's rows are deleted by the next walk
+- **WHEN** asset `L` has in-window `COMPLETED` rows and an authoritative walk does not return it
+- **THEN** the extension deletes those rows before recording the walk's discoveries, so `L` contributes to
+  neither `pending` nor `completed` and the next projected `device.json` omits it
 
 #### Scenario: Mid-upload deletion lets the extension rest
-- **WHEN** an asset deleted before its upload completed leaves a non-`COMPLETED` ledger row, and a
-  later cycle's change feed reports that asset as removed
-- **THEN** the extension marks the row, the ledger reaches no pending rows, and `process()` can
-  return `completed` instead of looping on `processing`
+- **WHEN** an asset deleted before its upload completed leaves a `DISCOVERED` or `FAILED` row
+- **THEN** its key resolves to nothing at enqueue and that row is deleted, the ledger reaches no pending
+  rows, and `process()` can return `completed` instead of looping on `processing`
 
-#### Scenario: A full enumeration reconciles nothing away
-- **WHEN** a full enumeration completes with no `limitExceeded` and the ledger holds rows for an
-  asset the enumeration did not return
-- **THEN** those rows are neither removed nor marked — the enumeration is policy-narrowed, so an asset's
-  absence from it is not evidence that the asset left the library
+#### Scenario: A walk deletes nothing outside its window
+- **WHEN** an authoritative walk completes and the ledger holds rows, outside the membership's capture
+  window, for an asset the walk did not return
+- **THEN** those rows are kept: the walk is policy-narrowed, so an asset's absence from it is not evidence
+  that the asset left the library
 
 #### Scenario: A narrowed scope costs no ledger rows
-- **WHEN** the membership's capture cutoff is raised past an already-uploaded asset and a full
-  enumeration runs
+- **WHEN** the membership's capture cutoff is raised past an already-uploaded asset still in the library,
+  and a full enumeration runs
 - **THEN** that asset's `COMPLETED` rows survive, so lowering the cutoff again re-lists it with no byte
   re-uploaded
 
-#### Scenario: Re-added asset does not re-upload
-- **WHEN** an asset whose rows were marked absent reappears in the library (e.g. recovered from
+#### Scenario: Re-added asset re-uploads
+- **WHEN** an asset whose rows a walk deleted reappears in the library (for example, recovered from
   "Recently Deleted")
-- **THEN** discovery finds its `COMPLETED` ledger entry, the engine returns no work, no job is created,
-  and the next projection lists it again
+- **THEN** the next walk records its resources `DISCOVERED`, their upload is re-created under the same
+  keys, and the next projection lists it again
 
 ### Requirement: Re-registering the extension demotes orphaned REQUESTED rows
 
@@ -665,9 +572,9 @@ this tier's jobs, and wherever the app-driven mechanism also exists, starting th
 app-driven mechanism's `stop()` (`upload-lifecycle`, "The upload mechanism is resolved, never selected"), so
 no app-driven transfer is carrying a row either.
 
-The recovery SHALL NOT reset the discovery cursor. A `FAILED` row needs a job, so the ledger's work read
-returns it on the next cycle with no re-enumeration; the reset existed only because the former recovery
-*deleted* the rows, which a settled cursor would never re-surface.
+A `FAILED` row needs a job, so the ledger's work read returns it on the next cycle without any walk
+re-deriving it. The former recovery *deleted* the rows, which only a walk that re-read the asset's
+resources could re-surface; a demoted row needs no such walk.
 
 This mechanism's **`stop()`** SHALL be the disable alone and SHALL repair nothing — on a leave and on a
 relinquish to the app-driven mechanism alike. On a leave nothing uploads until a mechanism starts again, and
@@ -688,11 +595,11 @@ the one recording process, and `demoteRequested` is a reset-family operation tha
 
 #### Scenario: A re-register self-heals instead of orphaning
 
-- **WHEN** photos are mid-upload (`REQUESTED` rows, OS jobs registered, the discovery cursor settled)
+- **WHEN** photos are mid-upload (`REQUESTED` rows, OS jobs registered)
   and the app re-registers the extension (disable→enable)
-- **THEN** the disable wipes the OS jobs, `demoteRequested()` marks the rows `FAILED`, and the discovery
-  cursor is untouched — so the next cycle's work read re-creates the not-yet-stored jobs (bytes resume
-  landing), with no permanently-stuck `REQUESTED` and no re-enumeration
+- **THEN** the disable wipes the OS jobs and `demoteRequested()` marks the rows `FAILED`, so the next
+  cycle's work read re-creates the not-yet-stored jobs (bytes resume landing), with no permanently-stuck
+  `REQUESTED` and no re-read of the assets' resources
 
 #### Scenario: The re-enable does not race the repair
 
@@ -710,8 +617,7 @@ the one recording process, and `demoteRequested` is a reset-family operation tha
 
 - **WHEN** the extension is disabled by this mechanism's `stop()` — a leave, or a relinquish to the app-driven
   mechanism — while `REQUESTED` rows exist
-- **THEN** no ledger row changes and the cursor is untouched, and the rows are demoted by the next mechanism
-  start
+- **THEN** no ledger row changes, and the rows are demoted by the next mechanism start
 
 #### Scenario: Completed rows survive the repair
 
@@ -1110,4 +1016,56 @@ unexpected, terminal failure reported at `Error`.
 - **THEN** it builds one port bundle, whose `BackgroundTransfer` is whatever that target's seam yields and
   whose `UploadDiscovery` is the same PhotoKit discovery on every target, and no second assembly of that
   bundle exists anywhere
+
+### Requirement: In-extension discovery by full enumeration
+
+On each `process()` invocation, the extension SHALL discover work itself (the system does not enumerate)
+by **enumerating the library** through the shared `UploadDiscovery` binding (`IosDiscovery`):
+`PHAsset.fetchAssets` narrowed by the membership's selection policy (capability `photo-selection-policy`).
+There SHALL be **no** persisted discovery cursor: no change token is archived, stored, loaded or cleared,
+and no `fetchPersistentChanges(since:)` walk is made. Every cycle's walk is complete in itself, so a
+short-lived wake needs nothing from the previous one.
+
+The cursor was an efficiency optimization only, and its own contract said so: a cold start with no stored
+token re-enumerated the whole library, which the ledger made harmless. It cost a durable App-Group key, a
+port with its iOS store and fake, a clear effect threaded through every re-baselining caller, and an
+absence protocol that existed only because a change feed reports a deletion once, as an event. A full
+enumeration reports what **is**, so presence is recomputed every cycle (capability `sync-ledger`,
+"Deletion is a presence diff over an authoritative walk").
+
+A walk yields exactly two kinds of fact that exist nowhere else, both recorded in the ledger before any
+upload job is created:
+
+- every admitted resource the engine judged to be new work, recorded `DISCOVERED` in one batch write
+  (capability `sync-ledger`);
+- the manifest detail of every already-recorded row still lacking it, backfilled.
+
+It also yields a **deletion**, when it is authoritative: the in-window rows of assets it did not return are
+deleted before those facts are recorded. The walk reads resources only for assets the ledger does not fully
+know (capability `sync-ledger`, "A walk re-reads only the assets the ledger does not fully know"), so its
+cost follows the photos that are new or unenriched, not the size of the member's in-window library.
+
+The discovery SHALL report `fullEnumeration` when the library was readable, and SHALL NOT report it when
+the read reported the library not readable; in that case it SHALL return no candidates. A cycle over an
+unreadable library then costs an idle pass: nothing is recorded and nothing is deleted.
+
+#### Scenario: Every cycle enumerates the in-scope library
+- **WHEN** `process()` runs
+- **THEN** the extension enumerates the library narrowed by the membership's policy, and reads no persisted
+  change token
+
+#### Scenario: A restart needs no stored state from the previous walk
+- **WHEN** the extension process is torn down after a cycle and later re-invoked
+- **THEN** it enumerates the in-scope library again, and the ledger answers "already uploaded" for keys
+  already recorded, so no duplicate job is created
+
+#### Scenario: A cap-truncated cycle loses no discovered work
+- **WHEN** a cycle records `DISCOVERED` rows for every admitted new-work resource and then stops creating
+  jobs because `creationRequestForJob` raised `PHPhotosErrorLimitExceeded`
+- **THEN** the next wake resumes the un-created remainder from the ledger
+
+#### Scenario: An unreadable library costs an idle pass
+- **WHEN** the library read reports the library not readable
+- **THEN** the discovery returns no candidates and does not report `fullEnumeration`, so the cycle records
+  nothing and deletes nothing
 

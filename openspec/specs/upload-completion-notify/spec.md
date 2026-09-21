@@ -31,9 +31,7 @@ re-admit resources already stored.
 Decision record: `changes/archive/2026-07-05-notify-driven-download`, superseded in part by
 `changes/archive/2026-08-27-fix-cap-truncation-loop`, by the move to the versioned device API, and by
 `changes/declare-upload-intent`.
-
 ## Requirements
-
 ### Requirement: The fan-out is an effect of the union gaining an asset
 
 The device SHALL issue **no notify request**. Members are woken by the backend, as an effect of the write
@@ -91,7 +89,7 @@ only its event and a recipient responds by reconciling the whole union.
 
 #### Scenario: A retraction wakes nobody
 
-- **WHEN** a cycle publishes a projection smaller than the last one — rows marked absent, a narrowed
+- **WHEN** a cycle publishes a projection smaller than the last one — rows of a departed asset deleted, a narrowed
   capture cutoff, or a reconfigure
 - **THEN** no member is woken, because no asset became fetchable
 
@@ -100,3 +98,4 @@ only its event and a recipient responds by reconciling the whole union.
 - **WHEN** an upload cycle completes any outcome that publishes
 - **THEN** it makes no notify call and publishes no unchanged document to provoke one, and the ordering of
   any wake against the union is the backend's guarantee rather than the cycle's
+

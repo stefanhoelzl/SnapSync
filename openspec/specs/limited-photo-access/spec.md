@@ -440,17 +440,19 @@ Relocating this gate SHALL preserve the behaviour it currently produces. It SHAL
 side effect of the move — if the relocated gate would admit a trigger the fan-out currently refuses, that
 widening is a separate decision requiring its own evidence.
 
-A selection-scoped discovery SHALL **preserve the walk cursor** — it SHALL return the change token it was
-given, unchanged — and SHALL NOT report a full enumeration, so it drives no ledger pruning. This is what
-makes the mechanism's own empty answer safe: where the count must distinguish an un-captured snapshot from
-an empty one, discovery need not, **because its empty answer is retryable and the count's is not**. An
-un-captured snapshot costs the upload arm one idle cycle, which the next observer emission re-runs; an
-advanced cursor would instead step the change feed permanently past assets nobody enumerated, and no later
-incremental walk would return them.
+A selection-scoped discovery SHALL NOT report a full enumeration, so it is never authoritative for
+deletion and drives no ledger deletion (capability `sync-ledger`, "Deletion is a presence diff over an
+authoritative walk"). A snapshot is the member's selection, not the library: a photo absent from it may
+simply be de-selected, and an uploaded, later-deselected photo SHALL keep its `COMPLETED` row, because
+deselection is not withdrawal and an upload is a publish. This is also what makes the mechanism's own empty
+answer safe: where the count must distinguish an un-captured snapshot from an empty one, discovery need
+not, **because its empty answer is retryable and the count's is not**. An un-captured snapshot costs the
+upload arm one idle cycle, which the next observer emission re-runs; a snapshot treated as authoritative
+would instead delete the rows of every photo it did not carry.
 
-The reason this is stated as a requirement rather than left to the implementation is that the behaviour is
-otherwise pinned only for its weaker justification — resuming incrementally after the partial grant ends,
-which is a performance argument a future change could reasonably trade away.
+The reason this is stated as a requirement rather than left to the implementation is that the flag is easy
+to set wrongly for a snapshot that looks complete: a selection the member put every photo into is still not
+the library, and nothing about its contents says so.
 
 #### Scenario: A trigger that would walk the library is declined under a partial grant
 
@@ -466,17 +468,18 @@ which is a performance argument a future change could reasonably trade away.
 - **THEN** whether it responds is decided by that mechanism's own reading of the discipline, not by a
   blanket refusal at the fan-out
 
-#### Scenario: A scoped discovery does not advance the cursor
+#### Scenario: A scoped discovery deletes nothing
 
-- **WHEN** a selection-scoped discovery runs with a change token it was given
-- **THEN** it returns that same token, reports no full enumeration and no removals, so nothing is pruned
-  and no asset is stepped over
+- **WHEN** a selection-scoped discovery runs, and the member has de-selected a photo whose `COMPLETED` row
+  is in the event's window
+- **THEN** it reports no full enumeration, and no ledger row is deleted as absent from the walk, so the
+  de-selected photo stays listed
 
 #### Scenario: An un-captured snapshot costs an idle cycle, not lost photos
 
 - **WHEN** an upload cycle runs under a partial grant before any selection snapshot has been captured
-- **THEN** it enqueues nothing, the cursor is unchanged, and the next observer emission re-runs discovery
-  over the real selection
+- **THEN** it enqueues nothing, no row is deleted as absent from the walk, and the next observer emission
+  re-runs discovery over the real selection
 
 ### Requirement: A limited grant resolves the app-driven mechanism by resolution, not by a branch
 

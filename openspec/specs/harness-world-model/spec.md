@@ -252,7 +252,7 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 
 - **WHEN** the job-limit is set below the number of `Work` resources in a cycle
 - **THEN** `createJob` returns `LIMIT_EXCEEDED`, the cycle returns `PROCESSING`, the un-enqueued
-  resources hold `DISCOVERED` rows, the discovery cursor **has** advanced, and the cycle still
+  resources hold `DISCOVERED` rows, and the cycle still
   published its device manifest
 
 #### Scenario: The fake queue reports neither live nor lost transfers
@@ -264,83 +264,6 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 
 - **WHEN** the world constructs its fake job queue
 - **THEN** it is given the world's ledger as a `TransferRecord`, exactly as a device transport is
-
-### Requirement: Token-delta discovery feed driven by the in-memory gallery
-
-The world SHALL provide a fake `UploadDiscovery` whose `discover(sinceToken, policy)` derives its change feed
-from the in-memory gallery — the honest `InMemoryCandidateSource`, which answers the single
-`CandidateSource.candidates(policy)` read over the world-owned asset cell and whose candidates map their
-resources through the real shared fan-out when the cycle asks for them. Adding an asset SHALL surface it
-as a new `Candidate` in `Discovery.candidates`; removing an asset SHALL surface its id in
-`Discovery.removedAssetIds`; and an operator **expire-token** action SHALL return
-`Discovery.fullEnumeration = true` carrying the whole current key-set (the routine token-expiry path).
-
-The same fake SHALL resolve ledger keys to uploadable resources (capability `ios-url-session-upload`) from the
-world's in-memory gallery, and both reads SHALL be observable, so a test can assert **which keys** a cycle
-resolved and **whether** it consumed the feed — the evidence that it enqueued from the ledger rather than from
-the walk's output. A key whose asset the operator has removed from the gallery SHALL resolve to nothing.
-
-**A removal SHALL mean the asset left the LIBRARY, never that the policy stopped admitting it.**
-`Discovery.removedAssetIds` SHALL therefore be derived by diffing the **unscoped** gallery — the same raw
-asset cell the fake resolves keys from — and SHALL NOT be derived by diffing the policy-scoped
-`candidates(policy)` read, however convenient that read is to have in hand. This mirrors the device, where
-removals are PhotoKit's `deletedLocalIdentifiers`: assets that were deleted, not assets that fell out of a
-fetch predicate. Diffing the scoped read instead makes a **narrowing reconfigure** arrive at the cycle as
-a mass deletion, and the cycle then marks exactly the rows a narrowing excludes absent — performing, in
-the harness alone, the job the enqueue admission does on a device (capability `photo-selection-policy`),
-and thereby hiding whether that admission exists at all. That is not hypothetical: it is how the world
-answered while the uploader was still sending the photos a narrowing had excluded, and the first
-integration test written against the real defect passed its upload assertions and failed on retention.
-
-A full enumeration SHALL reconcile **nothing** away. The cycle no longer prunes or marks rows for assets
-an enumeration did not return (capability `sync-ledger`), so the expire-token path exercises
-re-enumeration and cursor advance, not retention. Removal reaches the ledger by exactly one route — the
-`removedAssetIds` signal — which marks those rows absent rather than deleting them, so the world can
-drive both the "reported removal" case and the "removal the feed never reported" case, and they have
-different observable outcomes.
-
-#### Scenario: Adding an asset yields a new resource
-
-- **WHEN** an asset is added to the in-memory gallery and discovery runs
-- **THEN** `Discovery.candidates` carries that asset, and its resources fan out when the cycle asks
-
-#### Scenario: Removing an asset yields a removed id
-
-- **WHEN** an asset is removed and discovery runs
-- **THEN** `Discovery.removedAssetIds` carries its id and the cycle marks its ledger rows absent, so
-  they stop counting and stop being listed while remaining readable
-
-#### Scenario: Narrowing the policy is not a removal
-
-- **WHEN** the membership's capture-date cutoff is raised so assets still present in the gallery fall
-  outside it, and discovery then runs
-- **THEN** `Discovery.removedAssetIds` is empty and those assets' ledger rows are left unmarked — the
-  world shows the narrowing exactly as a device does, as rows the enqueue admission declines to upload
-  rather than as rows the feed retracted
-
-#### Scenario: Expiring the token forces a full enumeration
-
-- **WHEN** the operator expires the token and discovery runs
-- **THEN** `Discovery.fullEnumeration` is `true` with the whole key-set, and the cycle re-enumerates and
-  advances its cursor
-
-#### Scenario: A removal the feed never reported leaves the rows alone
-
-- **WHEN** an asset is removed from the in-memory gallery while the token is expired, so no
-  `removedAssetIds` signal is ever produced for it, and a full enumeration then runs
-- **THEN** its ledger rows survive unmarked — the world can therefore demonstrate that an unreported
-  deletion leaves the asset listed rather than silently retracted
-
-#### Scenario: A later cycle enqueues the remainder from the ledger
-
-- **WHEN** a job-limited cycle is followed by another cycle with no gallery change in between
-- **THEN** the remainder is enqueued by resolving its `DISCOVERED` rows' keys, not from anything the
-  change feed returned — which reports nothing, since nothing changed
-
-#### Scenario: A removed asset resolves to nothing
-
-- **WHEN** the operator removes an asset from the gallery and a cycle resolves a ledger key for it
-- **THEN** the resolution returns nothing for that key
 
 ### Requirement: Operator-driven download seams exercising echo-suppression
 
@@ -779,8 +702,8 @@ omits the state that breaks.
 
 #### Scenario: An unreadable membership is distinct from an absent one
 - **WHEN** the world's membership is set unreadable and a cycle runs
-- **THEN** the cycle skips, the joined-event marker is intact, and the ledger, discovery cursor, and
-  object store are untouched
+- **THEN** the cycle skips, the joined-event marker is intact, and the ledger and object store are
+  untouched
 
 #### Scenario: An absent membership still drives the leave path
 - **WHEN** the world's membership is cleared and a cycle runs
@@ -840,4 +763,73 @@ and takes the same posture as every other one in this project: supplied explicit
 
 - **WHEN** the world's importer is constructed
 - **THEN** the marker write must be supplied, rather than defaulting to a no-op
+
+### Requirement: Full-enumeration discovery driven by the in-memory gallery
+
+The world SHALL provide a fake `UploadDiscovery` whose `discover(policy)` is a **full enumeration** of the
+in-memory gallery, read through the honest `InMemoryCandidateSource`. That source answers the single
+`CandidateSource.candidates(policy)` read over the world-owned asset cell, and its candidates map their
+resources through the real shared fan-out when the cycle asks for them. Every readable discovery SHALL
+report `Discovery.fullEnumeration = true`. There is no change feed and no token: an added asset appears in
+the next discovery's candidates, and a removed asset is simply absent from it, which is exactly the evidence
+the cycle's presence diff consumes (capability `sync-ledger`, "Deletion is a presence diff over an
+authoritative walk").
+
+The walk SHALL be narrowed the way the device's fetch is narrowed, and no further: by the rules a platform
+predicate can express, returning a superset of the policy's capture window. It SHALL NOT be narrowed by the
+full admission. On a device the fetch predicate cannot express the id-set exclusions or the resolution
+floors, so an asset they exclude is still **present** in the walk. A fake that applied the whole admission
+would make such an asset absent, and the cycle would delete its rows: in the harness alone, a narrowing
+would become a deletion. That is the same false-deletion shape the retired reconcile shipped on device.
+
+The same fake SHALL resolve ledger keys to uploadable resources (capability `ios-url-session-upload`) from the
+world's in-memory gallery, and both reads SHALL be observable, so a test can assert **which keys** a cycle
+resolved and **how many** discoveries it made. A key whose asset the operator has removed from the gallery
+SHALL resolve to nothing.
+
+The world SHALL provide an operator **unreadable-walk** lever that makes the next discovery answer as a
+device does for an unreadable library: no candidates, and `fullEnumeration = false`. It is the case the
+authoritative gate exists for, and without a lever no test could show that an unreadable walk deletes
+nothing.
+
+#### Scenario: Adding an asset yields a new candidate
+
+- **WHEN** an asset is added to the in-memory gallery and discovery runs
+- **THEN** `Discovery.candidates` carries that asset, and its resources fan out when the cycle asks
+
+#### Scenario: Removing an asset deletes its in-window rows
+
+- **WHEN** an asset whose in-window rows are `COMPLETED` is removed from the gallery and a cycle runs
+- **THEN** the discovery no longer carries it, and the cycle deletes its rows, so it stops counting and
+  stops being listed
+
+#### Scenario: Narrowing the policy is not a removal
+
+- **WHEN** the membership's capture-date cutoff is raised so assets still present in the gallery fall
+  outside it, and a cycle then runs
+- **THEN** those assets' ledger rows are kept: they are outside the walk's window, so the world shows the
+  narrowing exactly as a device does, as rows the enqueue admission declines to upload rather than rows the
+  walk retracted
+
+#### Scenario: An asset the admission excludes is still present
+
+- **WHEN** an asset with a `COMPLETED` row is added to a denylisted album while it stays in the gallery, and a
+  cycle runs
+- **THEN** the discovery still carries it and its rows are kept
+
+#### Scenario: An unreadable walk deletes nothing
+
+- **WHEN** the operator makes the walk unreadable, removes an asset with in-window rows, and a cycle runs
+- **THEN** the discovery carries no candidates and reports no full enumeration, and no row is deleted
+
+#### Scenario: A later cycle enqueues the remainder from the ledger
+
+- **WHEN** a job-limited cycle is followed by another cycle with no gallery change in between
+- **THEN** the remainder is enqueued by resolving its `DISCOVERED` rows' keys, and the second cycle's walk
+  reads no already-recorded asset's resources
+
+#### Scenario: A removed asset resolves to nothing
+
+- **WHEN** the operator removes an asset from the gallery and a cycle resolves a ledger key for it
+- **THEN** the resolution returns nothing for that key
 

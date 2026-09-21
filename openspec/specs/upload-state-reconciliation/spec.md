@@ -32,7 +32,6 @@ Decision record: `changes/archive/2026-06-27-add-rejoin-reconciliation`.
 Generalized from **the extension** to **the upload tier** (both tiers, reconciling inside the shared
 `UploadCycle`) in `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` — it previously bound only the
 iOS ≥26.1 extension, so the app-driven tier shipped with no reconciliation at all.
-
 ## Requirements
 ### Requirement: Reconciliation gate before enabling uploads
 
@@ -156,8 +155,9 @@ A triggered reconciliation (in the extension) SHALL: fetch the **per-device** fi
 per stored resource, each keyed by the **recomposed** `<assetId>-<role>.<ext>` key, carrying the
 `assetId` the listing reported and the **configured `eventId` as provenance** (`sync-ledger`, "Event
 provenance and the backfill sweep" — the seed is this join's own write, so no seeded row is ever a
-pre-provenance sentinel row); **clear the discovery cursor** to force a full re-enumeration; and **on
-success set the `joinedEventId` marker** to the configured `eventId`. The seed records no timestamp.
+pre-provenance sentinel row); and **on success set the `joinedEventId` marker** to the configured
+`eventId`. The same cycle's walk, a full enumeration like every walk, then finds the genuinely-unstored
+work. The seed records no timestamp.
 
 Seeding from the listing's reported `assetId` rather than by re-parsing the key is the direction that
 cannot drift: the backend now states identity, so the client has no reason to recover it from a string it
@@ -186,7 +186,7 @@ writes and deletes immediately (read-after-write consistent), and (c) the list e
 `2xx` for a failed or partial listing (capability `api-endpoints`: a failure is `502`, surfaced
 to the reconciliation as a fetch failure, not an empty array). An **untrustworthy** signal — a transport
 error or a timeout — SHALL still defer (see "Upload tier defers uploads until the seed succeeds"), leaving
-the ledger, cursor, and marker untouched so the next cycle retries. A **decode** failure SHALL defer
+the ledger and marker untouched so the next cycle retries. A **decode** failure SHALL defer
 likewise, but SHALL NOT be reported as a transient condition: it will not heal by retrying, so it is
 surfaced as the permanent fault it is. The ledger is thus reset only ever on an authoritative listing.
 
@@ -216,7 +216,7 @@ surfaced as the permanent fault it is. The ledger is thus reset only ever on an 
 
 - **WHEN** the per-device listing returns **empty** (a genuine storage reset) but the ledger already
   holds `COMPLETED` rows
-- **THEN** the reconciliation `resetTo`s the ledger to empty, clears the cursor, and sets the marker, so
+- **THEN** the reconciliation `resetTo`s the ledger to empty and sets the marker, so
   the producer re-uploads every resource — it does **not** defer (a successful empty listing is
   authoritative, never a transient)
 
@@ -230,7 +230,7 @@ surfaced as the permanent fault it is. The ledger is thus reset only ever on an 
 #### Scenario: A decode failure defers without pretending to be transient
 
 - **WHEN** the listing cannot be decoded into the expected shape
-- **THEN** the ledger, cursor and marker are untouched and uploads are deferred, and the condition is
+- **THEN** the ledger and marker are untouched and uploads are deferred, and the condition is
   reported as permanent rather than logged as a retryable fetch failure
 
 #### Scenario: A not-yet-stored resource re-uploads idempotently
@@ -264,15 +264,16 @@ re-uploaded.
 
 The upload tier SHALL compare the configured `eventId` to the persisted `joinedEventId` marker. When
 they **match** (a relaunch or re-provision of the already-joined event) the switch is a no-op: no
-seed, no cursor clear, no re-projection, no marker write. When they **differ** — an event switch, a
+seed, no re-projection, no marker write. When they **differ** — an event switch, a
 reinstall with no marker, or a fresh provision — the tier SHALL **`resetTo`** (atomic clear-and-seed)
-the ledger from the per-device listing; **clear the discovery cursor** to force a full re-enumeration;
-**re-project** the device manifest (`device.json`) from the re-baselined ledger to the **new** event's
+the ledger from the per-device listing; **re-project** the device manifest (`device.json`) from the re-baselined ledger to the **new** event's
 storage path; and set the `joinedEventId` marker to the configured `eventId`. The
 clear-and-seed makes the ledger exactly the device's stored files — dropping stale/phantom rows —
 while the device-global listing re-seeds the same files `COMPLETED`, so nothing already stored
-re-uploads; the cursor clear re-enumerates to find genuinely-unstored work (the App-Group cursor
-survives an app upgrade, so without it a re-join would scan incrementally and find nothing).
+re-uploads, and the walk, a full enumeration like every walk, finds genuinely-unstored work. Every
+seeded row is bare, so the walk re-reads each seeded asset's resources, fills its detail, and records any
+role the listing lacked (capability `sync-ledger`, "A walk re-reads only the assets the ledger does not
+fully know").
 
 After a **leave** (config absent), **no** lifecycle path SHALL clear the ledger
 (`upload-lifecycle`, "Upload producer seam has no destructive verb"). The tier SHALL clear
@@ -282,25 +283,23 @@ reconciliation without losing dedup.
 
 The property this defends is **dedup**: the ledger's `COMPLETED` rows are device-global and stay true
 across a leave, a switch, and a re-join, so clearing them would re-upload every already-stored resource on
-the next join (`sync-ledger`). The **discovery cursor is not dedup state** — a tier's `stop()` may clear it
-as a repair for its own mechanism (`upload-lifecycle`), and this reconciliation clears it itself whenever
-it re-baselines. Either way the cost is one full re-enumeration that finds nothing new, because the ledger
-it did not touch still knows what is stored.
+the next join (`sync-ledger`). Nothing else the upload tier persists is dedup state: there is no discovery
+cursor, and the walk reads what the library holds on every cycle.
 
 #### Scenario: Re-provision of an already-joined event is a no-op
 
 - **WHEN** the configured `eventId` equals the `joinedEventId` marker
-- **THEN** no seed, no cursor clear, no re-projection, and no marker write occur; the ledger and cursor are unchanged
+- **THEN** no seed, no re-projection, and no marker write occur; the ledger is unchanged
 
-#### Scenario: A different event resets-and-seeds and clears the cursor
+#### Scenario: A different event resets-and-seeds
 
 - **WHEN** the configured `eventId` differs from the marker
-- **THEN** the ledger is `resetTo` (clear-and-seed) from the per-device listing, the discovery cursor is cleared, `device.json` is re-projected from the re-baselined ledger to the new event path, and the marker is set — with the global listing re-seeding the same files `COMPLETED` so nothing already stored re-uploads
+- **THEN** the ledger is `resetTo` (clear-and-seed) from the per-device listing, `device.json` is re-projected from the re-baselined ledger to the new event path, and the marker is set — with the global listing re-seeding the same files `COMPLETED` so nothing already stored re-uploads
 
 #### Scenario: A reinstall restores via the same clear-and-seed
 
 - **WHEN** the marker is absent and the ledger is empty (a reinstall) for a configured event
-- **THEN** the `resetTo` from the per-device listing restores the `COMPLETED` rows, the cursor is cleared, and the marker is set
+- **THEN** the `resetTo` from the per-device listing restores the `COMPLETED` rows and the marker is set
 
 #### Scenario: Leaving clears the marker but keeps dedup
 
@@ -312,10 +311,10 @@ it did not touch still knows what is stored.
 - **WHEN** a leave, an event switch, a re-provision, a permission change, or a direction change occurs on either tier
 - **THEN** the ledger is never cleared by that transition; only a triggered reconciliation's `resetTo` ever re-baselines it
 
-#### Scenario: A cleared cursor costs a re-enumeration, not a re-upload
+#### Scenario: A re-baseline costs a re-read, not a re-upload
 
-- **WHEN** a transition leaves the discovery cursor cleared — by a tier's own `stop()` repair, or by this reconciliation's re-baseline
-- **THEN** the next cycle enumerates the whole in-scope library and creates **no** upload job for anything already `COMPLETED`, because dedup lives in the ledger, not in the cursor
+- **WHEN** this reconciliation re-baselines the ledger to bare seeded rows
+- **THEN** the next walk enumerates the in-scope library, re-reads the seeded assets, and creates **no** upload job for anything already `COMPLETED`, because dedup lives in the ledger
 
 ### Requirement: Upload tier defers uploads until the seed succeeds
 
@@ -328,7 +327,7 @@ and status meanwhile comes from the ledger read.
 The device-listing fetch SHALL be bounded by an **explicit timeout** (`withTimeout`), mirroring the
 device-manifest guard, so a hung network call cannot stall an OS-scheduled cycle (on the OS-driven
 tier) or a `BGProcessingTask` window (on the app-driven tier). A timeout SHALL be treated **identically
-to a failed fetch**: no rows are seeded, the ledger and cursor are left untouched, the `joinedEventId`
+to a failed fetch**: no rows are seeded, the ledger is left untouched, the `joinedEventId`
 marker stays unset, and the next cycle retries. Only the network `LIST` is bounded — the subsequent
 `resetTo(seeds)` remains a single atomic, un-timed transaction.
 
@@ -345,7 +344,7 @@ marker stays unset, and the next cycle retries. Only the network `LIST` is bound
 #### Scenario: A listing timeout defers without settling
 
 - **WHEN** the device-listing fetch does not return within its bounded timeout
-- **THEN** it is treated exactly as a failed fetch — no seed, the ledger and cursor untouched, the marker unset — and the next cycle retries
+- **THEN** it is treated exactly as a failed fetch — no seed, the ledger untouched, the marker unset — and the next cycle retries
 
 ### Requirement: Reinstall means the device left the event
 
@@ -382,7 +381,7 @@ a *wrong* `Missing` — a read error misclassified into the not-found class — 
 found the legacy item, answered joined, and the device stayed joined. With the fallback gone there is
 no second opinion, so `isConfigFileAbsence` (the `NSError` domain/code classifier in
 `:adapter:ios:ext-safe`) is the only thing standing between a misclassified read failure and an
-**uncaught logout** — marker cleared, ledger clear-and-seeded, discovery cursor reset, screen back on
+**uncaught logout** — marker cleared, ledger clear-and-seeded, screen back on
 the setup gate, with no error raised anywhere and nothing to undo it. Its whitelist SHALL therefore
 stay closed (`else` answers "not absent"), and widening it SHALL be treated as changing the leave
 decision itself, not as an error-handling detail (capability `event-link` states the same rule at the
@@ -455,7 +454,7 @@ no backfilled `deletesAt` can never satisfy it.
 
 The backfill SHALL write only the new window and retention fields onto the config; it SHALL NOT alter the
 `eventId`, `name`, the capture-date range (`minPhotoDate`, `maxPhotoDate`), `direction`, or
-`saveToAlbum`, and it is not a switch (no ledger reset, no cursor clear).
+`saveToAlbum`, and it is not a switch (no ledger reset).
 
 #### Scenario: A legacy membership is backfilled to the event end and its deadline
 - **WHEN** a reconciliation runs for a membership stored before this change (no `endsAt`, no
@@ -498,7 +497,7 @@ event name and other membership details unchanged; it simply has no absent ceili
 
 The app SHALL, on entering the foreground, compare what the ledger records as landed against the
 per-device listing, and SHALL report a disagreement. The check SHALL be **read-only**: it SHALL NOT write
-the ledger, SHALL NOT clear the discovery cursor, SHALL NOT set or clear the `joinedEventId` marker, and
+the ledger, SHALL NOT set or clear the `joinedEventId` marker, and
 SHALL NOT create, cancel, or re-create any upload job. It exists to establish whether the failure occurs
 and at what rate, not to correct it.
 
@@ -543,7 +542,7 @@ about whether the ledger is right.
 #### Scenario: The check writes nothing
 
 - **WHEN** the check finds any disagreement in either direction
-- **THEN** no ledger row changes state, no row is added or removed, the discovery cursor is untouched, the
+- **THEN** no ledger row changes state, no row is added or removed, the
   `joinedEventId` marker is untouched, and no upload job is created or cancelled
 
 #### Scenario: Collected residue is not reported
@@ -571,3 +570,4 @@ about whether the ledger is right.
 
 - **WHEN** the app enters the foreground on iOS 18–26.0 or on iOS ≥26.1
 - **THEN** the check runs in the app process on both, whichever process holds the ledger writer
+

@@ -89,8 +89,8 @@ whose asset falls within the current membership's admitted capture-date range (c
 `photo-selection-policy`), **whatever its upload state**. A full-state document declaring what this member
 contributes, not a record of what has already landed. The ledger SHALL be the **only** durable record the
 projection reads: no second structure holding the same asset set exists, so none can disagree with it, and
-deletion-awareness comes from the ledger's **absence mark** (a departed asset's rows are marked, not
-dropped).
+deletion-awareness comes from the ledger itself: a departed asset's rows are **deleted** once an
+authoritative walk shows it gone (see "Deletion-aware manifest").
 
 Upload state SHALL NOT be an input to the projection. In particular a `FAILED` row SHALL still be listed:
 the engine retries forever with no attempt budget, so `FAILED` means "attempted, still owed" rather than
@@ -144,9 +144,8 @@ protect a referenced byte from collection (capability `scheduled-cleanup`).
 
 #### Scenario: A deleted asset drops from the manifest
 
-- **WHEN** an asset is deleted locally and its ledger rows are marked absent
-- **THEN** it no longer appears in the projected manifest, and its rows are still readable so re-upload
-  stays suppressed if the asset is restored
+- **WHEN** an asset is deleted locally and the next authoritative walk deletes its ledger rows
+- **THEN** it no longer appears in the projected manifest
 
 #### Scenario: Narrowing the scope shrinks the projection without touching the ledger
 
@@ -274,49 +273,54 @@ to list this device's photos with no blank window between the join and the next 
 
 ### Requirement: Deletion-aware manifest
 
-When an asset is deleted from the library, its **ledger rows** SHALL be **marked absent** — from the
-change feed's precise removal signal — so the next projection stops listing that asset. The rows
-themselves SHALL be retained: their bytes are still on the backend, so the record that suppresses
-re-upload stays true and a restored asset does not re-upload.
+When an asset is deleted from the library, its **ledger rows** SHALL be **deleted** by the first
+authoritative walk that does not return it (capability `sync-ledger`, "Deletion is a presence diff over an
+authoritative walk"), so the projection that same cycle publishes stops listing that asset. The deletion
+happens before the manifest is projected, so a cycle never publishes an asset its own walk found gone.
 
-When an asset whose rows are marked absent is seen in the library again by the upload cycle's walk, its
-rows SHALL be **un-marked** (capability `sync-ledger`, "Prune operations are writer-only"), so the next
-projection lists it again — whatever the rows' upload state, and without re-uploading a byte. Presence is a
-fact about the library, not about scope: the un-mark SHALL NOT depend on the membership's selection policy,
-which the projection still applies on its own.
+Presence is a fact about the library, not about scope. A row is judged gone only when its asset is inside
+the membership's capture window and absent from a walk that read the library itself, never because the
+selection policy stopped admitting it. The projection applies the policy on its own, and a row the policy
+excludes is simply not listed. A walk that is not authoritative (a partial grant's selection snapshot, or an
+unreadable library) retracts nothing.
 
-There SHALL be **no** full-enumeration retain-live reconcile. The change feed's removal signal is the only
-deletion input. A deletion the feed missed — because the change token expired — leaves the asset listed for
-the event's remaining life; its bytes are still present, so a member downloads it successfully and the photo
-simply stays in the event, exactly as it does when a member leaves. Deletion-tracking is therefore not
-exhaustive, and does not need to be.
+Deletion-tracking is **exhaustive for a full grant**: there is no change token to expire, so a deletion is
+observed by the next authoritative walk whenever it runs. Under a partial grant a settled row is never
+retracted by the walk, because deselection is not withdrawal (capability `limited-photo-access`).
 
-This supersedes the prior requirement that pruning be driven "incrementally from the change feed, **and** by
-the full enumeration's retain-live reconcile". That reconcile was fed the policy-admitted set, which
-conflated "gone from the library" with "outside the current capture window" and discarded upload-suppression
-state a scope change has no business touching.
+This supersedes two earlier requirements: that deletion be recorded by **marking** rows from the change
+feed's removal signal, with no reconcile backstop; and, before that, that pruning be driven "incrementally
+from the change feed, **and** by the full enumeration's retain-live reconcile". That reconcile was fed the
+policy-admitted set, which conflated "gone from the library" with "outside the current capture window" and
+discarded upload-suppression state a scope change has no business touching. Presence-driven deletion
+retracts only rows inside the window, judged against the walk's whole candidate set.
 
-#### Scenario: Deletion marks the rows
+A restored asset is a new asset to the ledger: its rows are gone, so the walk records it as new work, it
+re-uploads under its same keys, and the projection lists it again once it is recorded. The backend
+re-stores each role idempotently.
 
-- **WHEN** an asset previously listed in the manifest is reported deleted by the change feed
-- **THEN** its ledger rows are marked absent and the next manifest projection no longer lists it
+#### Scenario: Deletion retracts the listing
 
-#### Scenario: A deleted asset's rows survive
-
-- **WHEN** an asset's rows have been marked absent
-- **THEN** those rows are still readable and still `COMPLETED`, so restoring the asset re-uploads nothing
+- **WHEN** an asset previously listed in the manifest leaves the library, and an authoritative walk does not
+  return it
+- **THEN** its ledger rows are deleted and the manifest that cycle publishes no longer lists it
 
 #### Scenario: A restored asset is listed again
 
-- **WHEN** an asset whose `COMPLETED` rows are marked absent is returned by a later walk of the library
-- **THEN** its rows are no longer marked absent, the next manifest projection lists it (when the current
-  policy admits it), and no upload job is created for it
+- **WHEN** an asset whose rows were deleted is restored to the library and returned by a later walk
+- **THEN** it is recorded as new work, and the next manifest projection lists it (when the current policy
+  admits it)
 
-#### Scenario: A missed deletion leaves the asset listed
+#### Scenario: A deletion is not missed for want of a token
 
-- **WHEN** an asset is deleted while the change token is expired, so no removal signal is ever received
-- **THEN** the asset remains listed and remains downloadable from its still-present bytes — no full
-  enumeration retracts it
+- **WHEN** an asset is deleted while no upload cycle runs for an extended period
+- **THEN** the first authoritative walk afterwards retracts it; no signal needs to have been received at the
+  moment of deletion
+
+#### Scenario: A partial grant retracts nothing
+
+- **WHEN** under a partial grant the member de-selects a listed photo
+- **THEN** the photo stays listed, because a selection snapshot is not evidence of absence
 
 ### Requirement: Write-only in v1
 
@@ -397,10 +401,11 @@ still bare, not only those it reached before it stopped creating jobs.
 
 A row's capture date exists only in the photo library, and the walk is the only thing that reads it. A
 bare row is excluded from every projection fail-closed (see "Device-global ledger with per-event
-projection"), so a bare row the discovery cursor has advanced past would stay out of the union with no
-error anywhere, for as long as the cursor stands. The backfill is therefore a precondition of advancing
-the cursor (capability `ios-photokit-upload`, "In-extension discovery via persistent change token"),
-not an opportunistic sweep.
+projection"), and it is also never judged gone by the walk's deletion, so a bare row the walk never filled
+would stay out of the union with no error anywhere. The walk SHALL therefore always read the resources of
+an asset that has a bare row, even when every other asset it returns is skipped as fully known (capability
+`sync-ledger`, "A walk re-reads only the assets the ledger does not fully know"). The backfill is part of
+the walk, not an opportunistic sweep.
 
 #### Scenario: Bare rows past the truncation point are still backfilled
 
@@ -409,7 +414,7 @@ not an opportunistic sweep.
 - **THEN** every bare row the walk covered is backfilled with its capture date, including those after
   the point where job creation stopped
 
-#### Scenario: A re-joined device's photos return to the union without a full re-enumeration
+#### Scenario: A re-joined device's photos return to the union on its first cycles
 
 - **WHEN** a device re-joins an event it has already contributed to, and its first cycles stop creating
   jobs early
