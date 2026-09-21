@@ -104,6 +104,20 @@ interface DownloadStore : SuppressionSource {
      */
     suspend fun isSettled(ref: AssetRef): Boolean
 
+    /**
+     * The created local identifier of each of [refs] whose row is [DownloadState.IMPORTED] (capability
+     * `download-store`). A ref with no row, a non-terminal row — including an **unconfirmed** one that
+     * carries a marker, whose asset has not been adjudicated yet — or an [DownloadState.UNIMPORTABLE] row is
+     * absent from the answer.
+     *
+     * **Event-blind, like the rest of this store.** It does not know which event a download was for, and
+     * must not start to: one row serves every event that lists its ref. The caller decides which refs
+     * belong to an event by passing the refs from that event's union — the event album's gather
+     * (capability `event-album`) is the one consumer. Deliberately not on [SuppressionSource]: the
+     * extension never gathers.
+     */
+    suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String>
+
     /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
     suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>)
 

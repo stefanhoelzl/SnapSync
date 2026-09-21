@@ -1003,12 +1003,13 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `turning the album on shows the forward-only helper text`() = runComposeUiTest {
+    fun `turning the album on says the already-synced photos are included`() = runComposeUiTest {
         val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
         setContent {
             StatusScreen(reconfiguring(withAlbum, RangeForm(saveToAlbum = true)), cutoff = fixedCutoff())
         }
-        onNodeWithText("Only photos synced from now on are added.", substring = true).assertExists()
+        onNodeWithText("including the ones already synced", substring = true).assertExists()
+        onNodeWithText("from now on", substring = true).assertDoesNotExist()
     }
 
     @Test

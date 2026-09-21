@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 /**
  * Seam ↔ UI-state integration for the in-place reconfigure (capability `reconfigure-membership`), driven
  * against the REAL core over the world (`:test:world`) through the composed `UserCommands.reconfigure` —
- * asserting **`UiState` AND world outcomes**: enabling share uploads, album-on is forward-only, and
+ * asserting **`UiState` AND world outcomes**: enabling share uploads, album-on gathers what is already held, and
  * turning receive off cancels in-flight downloads. Runs on JVM and `iosSimulatorArm64`.
  */
 class ReconfigureIntegrationTest {
@@ -67,7 +67,7 @@ class ReconfigureIntegrationTest {
     }
 
     @Test
-    fun turning_the_album_on_is_forward_only_and_does_not_backfill() = worldTest {
+    fun turning_the_album_on_gathers_already_synced_photos_and_places_new_ones() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World(this)
@@ -83,21 +83,20 @@ class ReconfigureIntegrationTest {
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
             assertTrue(w.albumManager.created.isEmpty(), "no album while opted out")
 
-            // Reconfigure the album ON: the album is ensured but A is NOT retroactively gathered.
+            // Reconfigure the album ON: the album is ensured, and the gather (capability `event-album`) places
+            // the already-synced A — detached, so the Save returned before it ran.
             w.userCommands.reconfigure("E", Direction.Both, captureCutoff(World.DEFAULT_CUTOFF), captureCeiling(World.DEFAULT_FAR_CEILING), true)
             val albumId = w.albumManager.created.single().first
-            assertTrue(w.albumManager.assetsIn(albumId).isEmpty(), "album-on does not backfill already-synced A")
+            w.core.albumGather.awaitStarted()
+            assertEquals(listOf("A"), w.albumManager.assetsIn(albumId), "album-on gathers the already-synced A")
 
-            // A NEW photo synced after the toggle IS placed (forward-only).
+            // A NEW photo synced after the toggle is placed too, at its first enqueue.
             w.addOwnAsset("B")
             w.runUploadCycle()
             assertTrue(
-                w.albumManager.assetsIn(albumId).isNotEmpty(),
+                "B" in w.albumManager.assetsIn(albumId),
                 "placed when its upload was enqueued — before the upload completed",
             )
-            w.platform.completeJob("B-primary.jpg")
-            w.runUploadCycle()
-            assertTrue(w.albumManager.assetsIn(albumId).isNotEmpty(), "photos synced after album-on are placed")
         } finally {
             scope.cancel()
         }

@@ -53,12 +53,14 @@ class ReconfigureEventTest {
         source: ConfigSource,
         store: ConfigStore,
         order: MutableList<String> = mutableListOf(),
+        gatherAlbum: suspend (EventConfig) -> Unit = { order += "gather" },
     ) = ReconfigureEvent(
         configSource = source,
         store = store,
         refreshStatus = { order += "refresh" },
         armUpload = { order += "arm" },
         ensureAlbum = { order += "album" },
+        gatherAlbum = gatherAlbum,
         startDownloads = { id -> order += "reconcile:$id" },
         cancelDownloads = { order += "cancelDownloads" },
         clearDiscoveryCursor = { order += "clearCursor" },
@@ -193,5 +195,24 @@ class ReconfigureEventTest {
             .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
         assertTrue("refresh" in order)
         assertTrue("album" in order)
+    }
+
+    @Test
+    fun `the album gather starts after the album is ensured`() = runTest {
+        val order = mutableListOf<String>()
+        make(FakeConfigSource(current()), FakeConfigStore(), order)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
+        assertTrue("gather" in order)
+        assertTrue(order.indexOf("album") < order.indexOf("gather"), "the gather never ensures the album itself")
+    }
+
+    @Test
+    fun `a failing gather does not abort the remaining effects`() = runTest {
+        val order = mutableListOf<String>()
+        make(
+            FakeConfigSource(current(direction = Direction.UploadOnly)), FakeConfigStore(), order,
+            gatherAlbum = { error("boom") },
+        ).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
+        assertTrue("reconcile:E1" in order, "the download effect after the gather still ran")
     }
 }

@@ -23,6 +23,18 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     override suspend fun suppressedLocalIds(): Set<String> =
         q.suppressedLocalIds().executeAsList().mapNotNull { it }.toSet()
 
+    // Reads every imported row and filters here: the table holds only the unions of the events this device
+    // has joined, and binding a list of key PAIRS is awkward in SQLDelight. The port is stated by ref, so an
+    // index-driven query can replace this without touching a caller.
+    override suspend fun importedLocalIds(refs: Collection<AssetRef>): Map<AssetRef, String> {
+        if (refs.isEmpty()) return emptyMap()
+        val wanted = refs.toSet()
+        return q.selectImportedLocalIds { device, asset, localId -> AssetRef(device, asset) to localId }
+            .executeAsList()
+            .mapNotNull { (ref, localId) -> if (ref in wanted && localId != null) ref to localId else null }
+            .toMap()
+    }
+
     override suspend fun isSettled(ref: AssetRef): Boolean =
         q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
 
