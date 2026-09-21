@@ -16,7 +16,6 @@ import app.snapsync.fake.inMemoryDeviceLogSource
 import app.snapsync.fake.inMemoryDeviceManifestStore
 import app.snapsync.fake.inMemoryDiagnosticsReporter
 import app.snapsync.fake.inMemoryDownloadStore
-import app.snapsync.fake.inMemoryJoinedEventMarker
 import app.snapsync.fake.inMemoryLedgerStore
 import app.snapsync.fake.inMemoryPhotoSelectionChangeSource
 import app.snapsync.fake.inMemoryStagedBytes
@@ -25,6 +24,8 @@ import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.SwitchDecision
+import app.snapsync.feature.membership.switchDecision
 import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
@@ -78,7 +79,6 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.JoinedEventMarker
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.StagedBytes
@@ -237,8 +237,6 @@ class World(
     fun consumeStagedBytes(vararg paths: String) {
         stagedFiles.removeAll(paths.toSet())
     }
-    val marker: JoinedEventMarker = inMemoryJoinedEventMarker()
-
     /** Counts the real `Provision` flow's on-join push re-registration (capability `push-registration`):
      *  the `registerPush` effect below increments it, so a test can assert the join path fired it. */
     var registerPushCount: Int = 0
@@ -487,13 +485,11 @@ class World(
             // stated answer to the trigger (`OperatorUploadProducer`), which is where a mechanism's
             // response to a kick belongs.
             candidateSource = enumerator,
-            // The SAME mini-edge listing and the SAME marker the upload tier's reconcile uses — the
-            // read-only foreground check is a second consumer of both, never a second source
-            // (capability `upload-state-reconciliation`).
+            // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
+            // load seeds it from (capability `upload-state-reconciliation`).
             uploadRecord = UploadRecordPorts(
                 ledger = ledgerBackend,
                 files = deviceFiles,
-                joinedMarker = marker,
             ),
             downloadStore = downloadStore,
             assetPresence = assetPresence,
@@ -523,7 +519,13 @@ class World(
             // constant over the world's forgeable album membership, exactly as the shell wires it.
             albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
             leaveNotifier = leaveNotifier,
-            provision = { cfg -> configCell.value = cfg },
+            // The world IS the shell, and its provision is the operator's: load the share set as a join
+            // does, then persist — so a join through the REAL `UserCommands` ends with the same ledger a
+            // device's would (capability `harness-world-model`).
+            provision = { cfg ->
+                loadShareSetFor(cfg.eventId)
+                configCell.value = cfg
+            },
             // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
             registerPush = { registerPushCount++ },
             onEventMinted = { eventId -> onEventMinted(eventId) },
@@ -683,7 +685,9 @@ class World(
     }
 
     /**
-     * Join/provision an event: register its marker and make its config present (the config gate lifts).
+     * Join/provision an event: register its marker, load the upload ledger from this device's stored-file
+     * listing as a join does (a first join or a switch — never a re-provision of the joined event; capability
+     * `upload-state-reconciliation`), and make its config present (the config gate lifts).
      * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-selection-policy`),
      * always present. It defaults to [DEFAULT_CUTOFF], which precedes [DEFAULT_DATE] so an asset added with
      * default arguments is in scope.
@@ -693,7 +697,7 @@ class World(
      * event whose floor binds nothing. Pass a FUTURE value to model an event that has not begun: the real
      * stack then admits no photo at all, and the status line reads not-started.
      */
-    fun provision(
+    suspend fun provision(
         eventId: String,
         name: String = DEFAULT_EVENT_NAME,
         minPhotoDate: CaptureCutoff = captureCutoff(DEFAULT_CUTOFF),
@@ -723,6 +727,8 @@ class World(
             ownDeviceId,
             existing ?: DeviceManifest(deviceId = ownDeviceId, assets = emptyList()),
         )
+        // The join-time load, exactly as `flow/Provision` runs it — the composed instance, not a copy.
+        loadShareSetFor(eventId)
         configCell.value = EventConfig(
             eventId = eventId,
             name = name,
@@ -739,13 +745,15 @@ class World(
      * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
      * the real backend leave (the `:adapter:generic:app` `HttpLeaveNotifier` over the mini-edge — the same
-     * `DELETE` the app fires, driving the store's RENAME-ONLY departed-mark), then clear the config cell
-     * and the joined-event marker. Deliberately an operator edge, not [UserCommands.leave]: the
-     * composed leave's backend notify is fire-and-forget by design, and the operator's leave must be
-     * COMPLETE on return so world assertions never race the DELETE (drive `core.userCommands.leave`
-     * to exercise the production ordering instead). The gallery, ledger, and **imported foreign
-     * photos** are retained (imported download rows are terminal / delete-proof), so re-provisioning
-     * the same event afterwards still finds them suppressed (real cross-event dedup). Clearing
+     * `DELETE` the app fires, driving the store's RENAME-ONLY departed-mark), then clear the upload ledger
+     * (the ledger is the current membership's share set — capability `sync-ledger`) and the config cell.
+     * Deliberately an operator edge, not [UserCommands.leave]: the composed leave's backend notify is
+     * fire-and-forget by design, and the operator's leave must be COMPLETE on return so world assertions
+     * never race the DELETE (drive `core.userCommands.leave` to exercise the production ordering
+     * instead). The world has no upload mechanism to stop — the operator is the producer. The gallery and
+     * the **imported foreign photos** are retained (imported download rows are terminal / delete-proof),
+     * so re-provisioning the same event afterwards still finds them suppressed; the own photos come back
+     * `COMPLETED` through the join-time load, not through a retained ledger. Clearing
      * [configCell] is reactive, so the listing-backed status projection leaves the joined layer with
      * no rebuild. Backend outcomes (the device departed; the event and its bytes RETAINED until the
      * nightly sweep reclaims them, capability `scheduled-cleanup`) are assertable on [store].
@@ -753,8 +761,17 @@ class World(
     suspend fun leave() {
         core.downloadController.onLeaveOrSwitch()
         configCell.value?.eventId?.let { leaveNotifier.notifyLeaving(it) }
+        ledgerBackend.clear()
         configCell.value = null
-        marker.clear()
+    }
+
+    /**
+     * The join-time load for a provision of [eventId]: the composed [AppCore.shareSetLoad] — the instance
+     * `flow/Provision` runs — gated by the same `switchDecision` rule, so a re-provision of the joined event
+     * loads nothing, as on a device.
+     */
+    private suspend fun loadShareSetFor(eventId: String) {
+        if (switchDecision(configCell.value?.eventId, eventId) != SwitchDecision.Stay) core.shareSetLoad.load()
     }
 
     // ---- the upload cycle (the extension tier's shared assembly) --------------------------------
@@ -802,8 +819,6 @@ class World(
                 transfer = platform,
                 discovery = discovery,
                 selectionScope = { core.selectionScope() },
-                deviceFiles = deviceFiles,
-                joinedMarker = marker,
                 manifestStore = manifestStore,
                 manifestPublisher = manifestPublisher,
                 suppression = downloadStore,
@@ -818,7 +833,7 @@ class World(
     }
 
     /**
-     * Run one cycle. The membership read, the gate, the leave-side reconcile, and the assembly are all
+     * Run one cycle. The membership read, the gate, and the assembly are all
      * inside the real [cycle]; what is left here is the extension tier's own "pending > 0 ⇒
      * PROCESSING" re-invocation request, which [requeuePending] models. That rule is genuinely
      * tier-specific (the app-driven tier has completion callbacks and needs no such poll), so it is the

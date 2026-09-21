@@ -43,7 +43,7 @@ class AdmittedSetIntegrationTest {
         // ② the status total N — the half the user can see. Counting AFTER here is what pegged the screen
         //    below 100% forever, because its bytes were never going to arrive.
         w.refreshStatus()
-        assertEquals(1, w.core.gallery.size.value, "N counts only the in-window photo")
+        assertEquals(1, w.core.gallery.admitted.value?.size, "N counts only the in-window photo")
 
         // ③ the byte upload
         w.runUploadCycle()
@@ -82,7 +82,7 @@ class AdmittedSetIntegrationTest {
 
         assertEquals(2, w.core.loadShareableCount(cutoff, null))
         w.refreshStatus()
-        assertEquals(2, w.core.gallery.size.value)
+        assertEquals(2, w.core.gallery.admitted.value?.size)
         w.runUploadCycle()
         assertEquals(2, w.platform.created.size)
         w.platform.completeJob("IN-primary.jpg")
@@ -103,7 +103,7 @@ class AdmittedSetIntegrationTest {
 
         assertEquals(1, w.core.loadShareableCount(cutoff, ceiling))
         w.refreshStatus()
-        assertEquals(1, w.core.gallery.size.value)
+        assertEquals(1, w.core.gallery.admitted.value?.size)
         w.runUploadCycle()
         assertEquals(listOf("CAM-primary.jpg"), w.platform.created.map { it.filename })
         w.platform.completeJob("CAM-primary.jpg")

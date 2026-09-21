@@ -47,7 +47,6 @@ import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.metrics.MetricKitProcessMetricSource
 import app.snapsync.metrics.ProcessMetricHandler
 import app.snapsync.membership.HttpLeaveNotifier
-import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
@@ -71,6 +70,7 @@ import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.engine.iosLedgerStore
+import app.snapsync.engine.removeOrphanedJoinMarker
 import app.snapsync.model.EventLinkDelivery
 import app.snapsync.model.PlatformEntry
 import app.snapsync.link.isWebLinkActivity
@@ -163,6 +163,9 @@ object SnapSyncRoot {
         // `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an unchanged ledger
         // names the cause immediately. Diagnostic only: no behaviour, no state, no extra I/O.
         Logger.withTag("SnapSyncRoot").i { "[boot] upload base = ${bakedUploadBase()}" }
+        // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
+        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping.
+        removeOrphanedJoinMarker()
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
@@ -426,16 +429,13 @@ object SnapSyncRoot {
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
                 selectionChanges = selectionSource,
-                // What this process knows about its own uploads (capability `upload-state-reconciliation`):
-                // the ledger, the per-device listing over the SAME authenticated client every other call
-                // uses, and the App-Group join marker. On iOS 18-26.0 the upload tier in this process
-                // already holds all three; on >=26.1 the cycle lives in the extension, so the app builds
-                // its own handles — which is the point, because that is the tier whose upload jobs carry
-                // no HTTP status and whose belief is therefore least verifiable.
+                // What this process knows about its own uploads: the ledger, and the per-device listing
+                // over the SAME authenticated client every other call uses. The app loads the ledger from
+                // the listing at a join and clears it at a leave, on every tier (capability
+                // `upload-state-reconciliation`) — on >=26.1 as a non-writer, through the reset family.
                 uploadRecord = UploadRecordPorts(
                     ledger = ledgerStore,
                     files = HttpDeviceFilesSource(http, backendHost),
-                    joinedMarker = IosJoinedEventMarker(),
                 ),
                 downloadStore = downloadStore,
                 // Full-access presence for the import guard; composition wraps it so a partial or
@@ -1098,8 +1098,8 @@ object SnapSyncRoot {
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
      * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
      * total and the storage-truth status sources, then **starts** the producer if access is granted (via
-     * the tested, tier-neutral [UploadArm]). The app runs no join, fetch, or seed — the upload cycle
-     * self-reconciles, gated by its `joinedEventId` marker (`upload-state-reconciliation`).
+     * the tested, tier-neutral [UploadArm]). At a first join or a switch the Provision flow also loads the
+     * upload ledger from the device's stored-file listing (`upload-state-reconciliation`).
      *
      * Starting here is load-bearing: the grant collector fires only on a *transition* to GRANTED, so a
      * membership provisioned while access is already granted — the common case for every join after the
@@ -1182,7 +1182,7 @@ object SnapSyncRoot {
             suppression = downloadStore,
             // Denylisted-album membership (capability `photo-selection-policy`). Supplied on THIS tier too:
             // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
-            // exactly the class of bug that shipped the app-driven tier without a re-join reconciler.
+            // exactly the class of bug that once shipped the app-driven tier without a direction gate.
             albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { app.ledgerCounts.refresh() },

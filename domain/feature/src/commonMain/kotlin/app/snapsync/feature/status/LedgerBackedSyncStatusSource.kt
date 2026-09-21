@@ -14,12 +14,17 @@ import kotlinx.coroutines.launch
 
 /**
  * The real [SyncStatusSource]. Own-device completeness **and** in-flight activity are read from the
- * extension's ledger ([LedgerCountsSource] — `completed` and `pending` from one consistent
- * `aggregates()` read); the upload **total** is the live own-device gallery size ([GalleryStatusSource]);
- * `active` is derived from permission. The source issues **no storage LIST** for upload status — this is
- * the notify-driven, ledger-sourced projection (spec: sync-status). Reading the ledger for classification
- * is safe under the **no-deletion-during-an-active-event** invariant (the ledger cannot over-count; the
- * sole ledger↔storage divergence point, (re)join, is reconciled by `upload-state-reconciliation`).
+ * ledger's per-photo done-ness ([LedgerCountsSource] — one consistent `assetProgress()` read) and counted
+ * over the **admitted set** the gallery counted for the upload total ([GalleryStatusSource]); `active` is
+ * derived from permission. The source issues **no storage LIST** for upload status — this is the
+ * notify-driven, ledger-sourced projection (spec: sync-status).
+ *
+ * **Only what the membership admits is counted.** The ledger holds a row for every resource this device
+ * has stored for any event — the join-time load seeds them all — so counting the whole ledger would let a
+ * device with many historical uploads read "in sync" while in-window photos were still pending. Counting
+ * the gallery's admitted set makes `completed <= total` structural, counts a loaded (still undated) row as
+ * done the moment `N` is counted, and asks the policy nothing on the 2 s poll: the set was derived when `N`
+ * was.
  *
  * Like any source backed by an asynchronous first read, the factory does NOT suspend: it seeds
  * [SyncStatus.Loading] and, on [scope], collects the three inputs combined, emitting [SyncStatus.Ready]
@@ -34,15 +39,14 @@ import kotlinx.coroutines.launch
  * reported it as the status going backwards when the real counts arrived seconds or minutes later
  * (`SNAPSYNC-14`, `SNAPSYNC-16`). The specs said `Ready` waits for all three inputs the whole time; a
  * seeded value satisfied that vacuously, so the read-ness now lives in the input types themselves —
- * [GalleryStatusSource]'s nullable size and [LedgerCounts.read] — and cannot be satisfied by existing.
+ * [GalleryStatusSource]'s nullable admitted set and [LedgerCounts.read] — and cannot be satisfied by existing.
  *
  * A **counted** zero is a read value and does mint a snapshot: a non-contributing membership settles
  * the screen exactly as it always has.
  *
- * Each minted [SyncProgress] sets `completed` =
- * the ledger complete-asset count, `total` = the gallery size, `pending` = `min(ledgerPending, total −
- * completed)` — the ledger in-flight count **clamped to remaining** so a deleted-but-not-yet-pruned
- * photo can never read `pending` above the shown remainder (display-only — see [SyncProgress]) —
+ * Each minted [SyncProgress] sets `completed` = the admitted photos the ledger has done, `total` = the
+ * admitted set's size, `pending` = the admitted photos with a not-done row, still `min`-ed against the
+ * remainder as a guard (display-only — see [SyncProgress]; on a healthy device it decides nothing) —
  * `active = (permission == GRANTED)`, `failed = 0`, and `estimatedRemaining = null`. Its fields stay
  * non-nullable: the un-read state is carried by [SyncStatus.Loading], never as a hole inside a
  * snapshot.
@@ -63,19 +67,20 @@ fun LedgerBackedSyncStatusSource(
         combine(
             ledgerCounts.counts,
             permission.permission,
-            gallery.size,
-        ) { counts, perm, total ->
-            // The read gate. `total == null` is "the library was never enumerated" and `!counts.read`
+            gallery.admitted,
+        ) { counts, perm, admitted ->
+            // The read gate. `admitted == null` is "the library was never enumerated" and `!counts.read`
             // is "the ledger was never read" — both distinct from the zeros they used to be seeded as.
             // Staying Loading here is what keeps the screen from claiming everything is shared before
             // anything has been looked at.
-            if (total == null || !counts.read) return@combine SyncStatus.Loading
-            val completedCount = counts.completed
+            if (admitted == null || !counts.read) return@combine SyncStatus.Loading
+            val total = admitted.size
+            val completedCount = admitted.count { it in counts.done }
             val remaining = (total - completedCount).coerceAtLeast(0)
             SyncStatus.Ready(
                 SyncProgress(
                     // Ledger in-flight, clamped to remaining (display-only — see SyncProgress).
-                    pending = minOf(counts.pending, remaining),
+                    pending = minOf(admitted.count { it in counts.pending }, remaining),
                     completed = completedCount,
                     total = total,
                     failed = 0,

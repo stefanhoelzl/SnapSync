@@ -36,7 +36,7 @@ State these before writing a scenario against this host, or you will write one t
 - **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** The tier
   resolves to `photokit` here under a full grant, exactly as it does on a ≥26.1 device, and it now runs:
   `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCore`,
-  the entry gate, the re-join reconcile, real PhotoKit discovery, the real selection policy, the real
+  the entry gate, real PhotoKit discovery, the real selection policy, the real
   App-Group ledger and a real backend are all exercised. **Do not pin `url_session` for a photokit
   scenario any more** — the pin is now only for exercising the app-driven tier, and the trigger refuses
   outright while a pin is in force (two `LedgerWriter`s over one ledger).

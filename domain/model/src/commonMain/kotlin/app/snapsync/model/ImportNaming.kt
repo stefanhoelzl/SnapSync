@@ -17,7 +17,7 @@ package app.snapsync.model
  * the download store — so the import supplies it explicitly instead of letting the staging path decide.
  *
  * [originalFilename] is `""` when the uploader's manifest row was never enriched (a row predating the
- * 5.sqm migration, or one the re-join reconcile seeded from a filename listing, which carries no
+ * 5.sqm migration, or one the join-time load seeded from a stored-file listing, which carries no
  * capture detail — see `sync-ledger`). That is the one case with no human name to use, and the key is
  * the honest answer: it is what the bytes are actually called, and it is what the receiving device
  * displayed before this rule existed. Never produce an empty name — an unnamed resource is worse than

@@ -3,7 +3,6 @@ package app.snapsync.compose
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.feature.upload.CycleGate
-import app.snapsync.feature.upload.UploadReconciler
 import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
@@ -21,11 +20,9 @@ import app.snapsync.ports.UploadDiscovery
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.DiagnosticsReporter
-import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.ManifestPublisher
-import app.snapsync.ports.JoinedEventMarker
 import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.SuppressionSource
@@ -38,7 +35,7 @@ import kotlinx.coroutines.CoroutineScope
  * constructs its adapters and states its policies here; [uploadCore] does the assembling — so a
  * port added to the cycle is added to this bundle once, and every tier (and the world harness)
  * fails to compile until it answers, instead of one tier silently shipping without it (which is
- * how the app-driven tier shipped without a reconciler and without the direction gate).
+ * how the app-driven tier once shipped without the direction gate).
  */
 class UploadPorts(
     /** The three-state membership read (capability `event-link`). Read fresh once per cycle. */
@@ -68,9 +65,6 @@ class UploadPorts(
      * test. Derived by the app composition from current permission + the latest snapshot.
      */
     val selectionScope: () -> SelectionScope = { SelectionScope.Unrestricted },
-    /** The per-device stored-file listing the re-join reconciliation seeds from. */
-    val deviceFiles: DeviceFilesSource,
-    val joinedMarker: JoinedEventMarker,
     val manifestStore: DeviceManifestStore,
     /** The device-manifest publisher — production passes `:adapter:generic:app`'s `HttpManifestPublisher`. */
     val manifestPublisher: ManifestPublisher,
@@ -114,15 +108,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
     val ledger = LedgerWriter(ports.ledger)
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe
     // has succeeded — never at composition time, where a locked device would throw out of assembly.
-    val reconciler by lazy {
-        UploadReconciler(
-            files = ports.deviceFiles,
-            ledger = ports.ledger,
-            marker = ports.joinedMarker,
-            deviceId = ports.deviceId(),
-            log = ports.log,
-        )
-    }
     val manifestProducer by lazy {
         DeviceManifestProducer(
             store = ports.manifestStore,
@@ -152,7 +137,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         // the library reads, so every tier and the world get the same walk-vs-snapshot decision.
         library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope),
         log = ports.log,
-        reconcile = { eventId -> reconciler.reconcile(eventId) },
         // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
         // library enumeration. Bounding is the cycle's.
         // The manifest DECLARES what this device will provide: every non-absent ledger row, whatever its

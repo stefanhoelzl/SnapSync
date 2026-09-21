@@ -7,8 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
  * value is always available synchronously, so the status projection never has to guess while waiting
  * for a first read.
  *
- * [size] is `null` until a count has been taken, and an `Int` once one has. **Both are real,
- * source-derived values** — there is no placeholder count and no negative sentinel.
+ * [admitted] is `null` until a count has been taken, and the admitted own-asset set once one has — the
+ * upload total `N` is its size. **Both are real, source-derived values** — there is no placeholder
+ * count and no negative sentinel.
  *
  * ⚠️ **`null` and `0` are different answers, and conflating them is a shipped bug, not a hypothetical.**
  * `0` asserts that this membership contributes nothing; `null` asserts nothing at all. The status
@@ -23,11 +24,13 @@ import kotlinx.coroutines.flow.StateFlow
  * reports a **counted** `0` — reached on its own branch, without enumerating — which settles the screen
  * exactly as it always has.
  *
- * The count is scoped by the membership's selection policy (capability `photo-selection-policy`); there
- * is no whole-library count. The seam exposes the count only — never individual assets, identity, or
- * per-asset state.
+ * The set is scoped by the membership's selection policy (capability `photo-selection-policy`); there
+ * is no whole-library count. It carries normalized `assetId`s and nothing else — no per-asset state —
+ * and it is ONE value, so the total and the set it is counted over can never come from different
+ * refreshes. Status counts the ledger's per-photo done-ness over exactly this set (capability
+ * `sync-status`), which is what keeps historical uploads from masking pending in-window photos.
  */
 interface GalleryStatusSource {
-    /** The upload total `N`, or `null` when no count has been taken. */
-    val size: StateFlow<Int?>
+    /** The admitted own-asset set whose size is the upload total `N`, or `null` when none was counted. */
+    val admitted: StateFlow<Set<String>?>
 }

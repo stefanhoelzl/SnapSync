@@ -76,6 +76,7 @@ class MembershipRefreshTest {
                 config = config,
                 configSource = config,
                 stopUploads = {},
+                clearLedger = {},
                 notifyLeave = {},
                 scope = this,
             ),

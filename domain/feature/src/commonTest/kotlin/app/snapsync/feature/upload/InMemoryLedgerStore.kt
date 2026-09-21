@@ -87,6 +87,9 @@ class InMemoryLedgerStore : LedgerStore {
         )
     }
 
+
+    override suspend fun assetProgress(): Map<String, Boolean> =
+        entries.values.groupBy { it.assetId }.mapValues { (_, group) -> group.all { it.state.isDone } }
     override suspend fun pendingResources(): List<PendingResource> =
         entries.values.filter { !it.state.isDone }
             .map { PendingResource(it.assetId, it.key) }

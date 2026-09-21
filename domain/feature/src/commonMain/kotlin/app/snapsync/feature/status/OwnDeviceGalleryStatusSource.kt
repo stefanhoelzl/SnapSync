@@ -33,10 +33,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * than the whole library; the post-enumeration admission below still runs and remains authoritative (the
  * walk's fetch predicate may over-return).
  *
- * [size] is a level-triggered count; [refresh] re-enumerates and recomputes it (invoked on foreground
+ * [admitted] is a level-triggered set whose size is `N`; [refresh] re-enumerates and recomputes it (invoked on foreground
  * entry / library change / (re)join by the composition root).
  *
- * **Not counted is not zero.** [size] is `null` until a [refresh] has produced a count, and the two
+ * **Not counted is not zero.** [admitted] is `null` until a [refresh] has produced a count, and the two
  * states must never be collapsed: the status projection settles to "In sync" once the synced count
  * reaches the total, so a placeholder `0` standing in for an unread count renders a checkmark reading
  * "everything shared" on a device that has counted nothing. This source used to seed `0`, and that is
@@ -71,10 +71,10 @@ class OwnDeviceGalleryStatusSource(
     // membership that genuinely contributes nothing, and the status projection settles to "In sync" the
     // moment the synced count reaches the total — so a seeded `0` renders a checkmark on a device that
     // has counted nothing (capability `gallery-status`; reported as `SNAPSYNC-14` / `SNAPSYNC-16`).
-    private val _size = MutableStateFlow<Int?>(null)
+    private val _admitted = MutableStateFlow<Set<String>?>(null)
 
     /** The upload total `N`: the count of this device's OWN admitted assets, or `null` if not counted. */
-    override val size: StateFlow<Int?> = _size.asStateFlow()
+    override val admitted: StateFlow<Set<String>?> = _admitted.asStateFlow()
 
     /**
      * Re-read within [configPolicy] (what the joined membership contributes) and recompute `N`.
@@ -96,7 +96,7 @@ class OwnDeviceGalleryStatusSource(
      * capture bound is actually bounding anything is invisible on a real device: a bounded and an
      * unbounded fetch differ only in how many assets they touch.
      *
-     * **A failed enumeration does not propagate.** It leaves [size] untouched and logs at Error severity;
+     * **A failed enumeration does not propagate.** It leaves [admitted] untouched and logs at Error severity;
      * only cancellation is rethrown. This belongs here rather than at a call site because it is an
      * invariant about *this source's own state* — the same shape as [ReadingLedgerCountsSource], which
      * retains its last good counts on a failed read for the same reason. A caller still contains whatever
@@ -111,13 +111,17 @@ class OwnDeviceGalleryStatusSource(
         // count below reaches 0 through the same admission as every other answer, and the platform fetch
         // returns nothing rather than the source guarding the walk itself.
         val started = timeSource.markNow()
-        // `count()` reads facts only — no per-asset resource round-trip is issued for a number
-        // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*).
+        // `assets()` reads facts only — no per-asset resource round-trip is issued for a set of ids
+        // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*). The set,
+        // not just its size, is published: status counts the ledger's per-photo done-ness over exactly
+        // these ids (capability `sync-status`).
         // ONE call, TWO answers this source must keep apart, and a third the walk can throw:
-        //   • a count            → publish it
+        //   • an admitted set    → publish it
         //   • NOT READABLE       → publish nothing (below)
         //   • a thrown walk      → publish nothing (the `runCatching` arm)
-        val counted = runCatching { EventPhotoSet.readable(policy, source::candidates)?.count() }
+        val counted = runCatching {
+            EventPhotoSet.readable(policy, source::candidates)?.assets()?.mapTo(mutableSetOf()) { it.facts.assetId }
+        }
         counted.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed walk. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which
@@ -125,7 +129,7 @@ class OwnDeviceGalleryStatusSource(
             // ordinary teardown. `StatusCountsPoller` separates the two for the same reason.
             if (failure is CancellationException) throw failure
             // **The invariant is this source's, so the containment is too.** A walk that blew up must
-            // leave `size` exactly as it was — the previous good count, or the un-counted seed if there
+            // leave `admitted` exactly as it was — the previous good count, or the un-counted seed if there
             // was none — because "could not count" settling the screen as "counted nothing" is the
             // regression this class exists to prevent (`SNAPSYNC-14`, `SNAPSYNC-16`). It used to be the
             // caller that wrapped this, which made an invariant about this source's own state depend on
@@ -133,7 +137,7 @@ class OwnDeviceGalleryStatusSource(
             //
             // Error severity: the log line is the ONLY channel that distinguishes "could not count" from
             // "not counted yet", since both render the same neutral status line.
-            log.e(failure) { "gallery: enumeration failed — N stays ${_size.value ?: "un-counted"}" }
+            log.e(failure) { "gallery: enumeration failed — N stays ${_admitted.value?.size ?: "un-counted"}" }
             return
         }
         // NOT READABLE — no grant, an unresolved grant, or a partial grant whose selection snapshot has
@@ -145,12 +149,12 @@ class OwnDeviceGalleryStatusSource(
         // Bugsink. The line exists so a device log can separate "refused" from "never refreshed" — this
         // used to produce no `gallery:` line at all (law "Absence is never silent": an entry point that
         // declines to act records the reason).
-        val size = counted.getOrThrow() ?: run {
-            log.w { "gallery: library not readable — N stays ${_size.value ?: "un-counted"}" }
+        val admittedIds = counted.getOrThrow() ?: run {
+            log.w { "gallery: library not readable — N stays ${_admitted.value?.size ?: "un-counted"}" }
             return
         }
-        _size.value = size
+        _admitted.value = admittedIds
         val elapsed = started.elapsedNow()
-        log.i { "gallery: N=$size own admitted asset(s) in ${elapsed.inWholeMilliseconds}ms" }
+        log.i { "gallery: N=${admittedIds.size} own admitted asset(s) in ${elapsed.inWholeMilliseconds}ms" }
     }
 }

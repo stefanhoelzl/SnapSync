@@ -76,6 +76,7 @@ class OsDrivenUploadMechanismTest {
             pending = rows.values.count { it.state == LedgerState.REQUESTED },
             completed = rows.values.count { it.state == LedgerState.COMPLETED },
         )
+        override suspend fun assetProgress(): Map<String, Boolean> = TODO("not reached by this mechanism")
 
         fun stateOf(key: String): LedgerState? = rows[key]?.state
 

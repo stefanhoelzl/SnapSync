@@ -28,8 +28,8 @@ on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `SwitchDecision.kt`
-- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventRenamer (interface)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `NoOpEventRenamer (object)`, `NoOpResetRename (object)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ResetRename (interface)`, `SwitchDecision (interface)`
+- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `SwitchDecision.kt`
+- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventRenamer (interface)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `NoOpEventRenamer (object)`, `NoOpResetRename (object)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ResetRename (interface)`, `ShareSetLoad (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 
@@ -48,8 +48,8 @@ on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `BackgroundUploadPump.kt`, `DemoteRequested.kt`, `LedgerWriter.kt`, `OsDrivenUploadMechanism.kt`, `Reconciler.kt`, `RelinquishThenRun.kt`, `SelectionScopedDiscovery.kt`, `StrandedKeys.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadForeground.kt`, `UploadLedgerAudit.kt`, `UploadMechanismTable.kt`, `UploadPushReceiver.kt`
-- top-level types: `BackgroundUploadPump (class)`, `CycleGate (interface)`, `IdleUploadMechanism (object)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenUploadMechanism (class)`, `RelinquishThenRun (class)`, `SelectionScopedDiscovery (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadForeground (class)`, `UploadLedgerAudit (class)`, `UploadMechanismRuntime (interface)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`, `UploadReconciler (class)`, `UploadTriggers (interface)`
+- files: `BackgroundUploadPump.kt`, `DemoteRequested.kt`, `LedgerWriter.kt`, `OsDrivenUploadMechanism.kt`, `RelinquishThenRun.kt`, `SelectionScopedDiscovery.kt`, `StrandedKeys.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadMechanismTable.kt`, `UploadPushReceiver.kt`
+- top-level types: `BackgroundUploadPump (class)`, `CycleGate (interface)`, `IdleUploadMechanism (object)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenUploadMechanism (class)`, `RelinquishThenRun (class)`, `SelectionScopedDiscovery (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadMechanismRuntime (interface)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`, `UploadTriggers (interface)`
 
 ## `feature/version`
 

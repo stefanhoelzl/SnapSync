@@ -33,7 +33,7 @@ class MiniEdgeTest {
         // answers in, so it can no longer read the v1 listing (see the shape test below).
         val store = BackendStore().apply { deposit("D", "x-primary.jpg") }
         val src = HttpDeviceFilesSource(miniEdgeClient(store), host)
-        assertEquals(listOf("x-primary.jpg"), src.list("D").getOrThrow())
+        assertEquals(listOf("x-primary.jpg"), src.list("D").getOrThrow().map { it.key })
     }
 
     @Test
@@ -48,7 +48,7 @@ class MiniEdgeTest {
         val src = HttpDeviceFilesSource(miniEdgeClient(store), host)
         assertEquals(
             listOf("9E3F-4A_L0_001-primary.heic", "9E3F-4A_L0_001-live.mov"),
-            src.list("D").getOrThrow(),
+            src.list("D").getOrThrow().map { it.key },
         )
     }
 

@@ -86,9 +86,10 @@ object IdleUploadMechanism : UploadMechanismRuntime {
  * no-op below iOS 26.1. Joining an event therefore tore the upload arm down and started nothing.
  *
  * With no destructive verb on the seam there is no edge from *provision* to *destruction* to get wrong.
- * `stop()` never clears the **ledger**: that state is device-global dedup (`sync-ledger`,
- * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
- * reconciliation's `resetTo` ever re-baselines it (`upload-state-reconciliation`).
+ * `stop()` never clears the **ledger**. The ledger is the current membership's share set (`sync-ledger`),
+ * and replacing it is the membership use-cases' job: a leave clears it, and a first join or a switch
+ * loads it from the device's stored-file listing (`upload-state-reconciliation`). The seam that starts and
+ * stops a mechanism has no reason to know that.
  *
  * `stop()` repairs nothing either. What a stop can leave behind is
  * `REQUESTED` rows no transfer will settle; each mechanism repairs those in its **`start()`**, by demoting
@@ -202,11 +203,8 @@ class UploadArm(
      * the *already-joined* event never reaches here: `JoinEvent` short-circuits it as `AlreadyJoined`.)
      *
      * With access already usable this **starts** the resolved mechanism. It does not toggle, disable, or
-     * reset anything: the cycle re-reads config each run and its marker-gated reconciliation seeds
-     * already-stored resources as `COMPLETED` before any job is created.
-     * In-flight transfers are deliberately left alone — the byte URL is device-partitioned and
-     * event-independent, so an upload in flight stays valid across a switch and cancelling it would only
-     * re-upload identical bytes to an identical URL.
+     * reset anything itself: the Provision flow has already loaded the ledger for a new membership (and, on
+     * a switch, stopped the previous one through [onLeave]) before this runs.
      *
      * A download-only membership **stops** rather than merely skipping the start: a grant that landed
      * *before* this join may already have started a mechanism (the grant collector fires independently of
@@ -242,10 +240,9 @@ class UploadArm(
     }
 
     /**
-     * The user left the event. Stops the mechanism and nothing more — the caller clears the configured
-     * event. The ledger and the device-global accumulator are **kept**: they are valid across events, so a
-     * later join re-uploads nothing already in this device's byte partition. The reconciler clears the
-     * `joinedEventId` marker on the next cycle.
+     * The user left the event, or a switch is leaving the previous one. Stops the mechanism and nothing
+     * more — the caller clears the upload ledger and the configured event (`leave-event`), and a switch's
+     * join loads the new ledger.
      *
      * No mechanism's `stop()` repairs or resets anything here: rows a stop leaves `REQUESTED` are demoted by
      * the next mechanism start, and nothing uploads before one.

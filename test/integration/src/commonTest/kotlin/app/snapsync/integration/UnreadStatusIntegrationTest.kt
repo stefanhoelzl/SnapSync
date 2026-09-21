@@ -139,7 +139,7 @@ class UnreadStatusIntegrationTest {
 
             // The consequence, named rather than hidden: the total stays UNKNOWN, so the screen holds
             // its neutral line. It is deliberately not collapsed to `0`, which would read "In sync".
-            assertNull(w.ownGallery.size.value)
+            assertNull(w.ownGallery.admitted.value)
             val host = statusHost(w, scope)
             host.neverSettlesWithin()
 
@@ -148,7 +148,7 @@ class UnreadStatusIntegrationTest {
 
             // And the next refresh recovers: the lever is one-shot, like a transient platform failure.
             w.refreshStatus()
-            assertEquals(1, w.ownGallery.size.value)
+            assertEquals(1, w.ownGallery.admitted.value?.size)
             assertIs<SyncHealth.Syncing>(host.await { it.health() is SyncHealth.Syncing }.health())
         } finally {
             scope.cancel()
@@ -177,7 +177,7 @@ class UnreadStatusIntegrationTest {
             // and a counted zero SETTLES — on a member who has photos selected and simply has not been
             // told which yet (capability `limited-photo-access`; the `SNAPSYNC-14` / `SNAPSYNC-16`
             // shape, one grant over from where it was fixed).
-            assertNull(w.ownGallery.size.value)
+            assertNull(w.ownGallery.admitted.value)
             val host = statusHost(w, scope)
             host.neverSettlesWithin()
         } finally {
@@ -197,7 +197,7 @@ class UnreadStatusIntegrationTest {
             w.core.installPermissionSubscriptions()
 
             w.refreshStatus()
-            assertNull(w.ownGallery.size.value)
+            assertNull(w.ownGallery.admitted.value)
 
             // The sanctioned read lands. This is the ONLY thing that turns the un-answerable window
             // into an answer — and it proves the test above measured the window rather than a fixture
@@ -206,7 +206,7 @@ class UnreadStatusIntegrationTest {
 
             val host = statusHost(w, scope)
             assertIs<SyncHealth.Syncing>(host.await { it.health() is SyncHealth.Syncing }.health())
-            assertEquals(1, w.ownGallery.size.value)
+            assertEquals(1, w.ownGallery.admitted.value?.size)
         } finally {
             scope.cancel()
         }
@@ -230,7 +230,7 @@ class UnreadStatusIntegrationTest {
 
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
-            assertEquals(0, w.ownGallery.size.value)
+            assertEquals(0, w.ownGallery.admitted.value?.size)
         } finally {
             scope.cancel()
         }

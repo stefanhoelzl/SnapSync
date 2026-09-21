@@ -135,6 +135,11 @@ class SqlDelightLedgerStore(
             LedgerAggregates(pending.toInt(), completed.toInt())
         }.executeAsOne()
 
+    override suspend fun assetProgress(): Map<String, Boolean> =
+        queries.assetProgress(DONE_STATES) { assetId, notDone -> assetId to ((notDone ?: 0L) == 0L) }
+            .executeAsList()
+            .toMap()
+
     override suspend fun pendingResources(): List<PendingResource> =
         queries.selectPending(DONE_STATES) { assetId, key -> PendingResource(assetId, key) }.executeAsList()
 

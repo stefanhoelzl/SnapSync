@@ -220,8 +220,8 @@ class UploadCycleTest {
      *
      * The defaults live HERE, once and visibly, rather than on `UploadCycle`'s own parameters — that is the
      * distinction the required-ports rule draws (capability `upload-lifecycle`). A default on the class
-     * lets a *composition root* inherit an unstated policy, which is how the app-driven tier shipped
-     * without a re-join reconciler and how it nearly shipped without an album denylist. A default in a test
+     * lets a *composition root* inherit an unstated policy, which is how the app-driven tier once shipped
+     * without the direction gate and nearly shipped without an album denylist. A default in a test
      * helper is an answer stated once, in the file that reads it.
      *
      * [readGate] defaults to a joined membership on [TEST_EVENT]: nearly every test here is about the
@@ -235,7 +235,6 @@ class UploadCycleTest {
         policy: SelectionPolicy? = null,
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
-        reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
         onDiscovery: suspend (String, SelectionPolicy) -> Boolean = { _, _ -> true },
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
@@ -253,7 +252,6 @@ class UploadCycleTest {
             ledger = ledger,
             platform = platform,
             library = platform,
-            reconcile = reconcile,
             onDiscovery = onDiscovery,
             placeInAlbum = placeInAlbum,
             log = log,
@@ -269,7 +267,7 @@ class UploadCycleTest {
     // The three-state membership read, decided HERE rather than in each composition root. A root reaches
     // this decision only for the tiers its author enumerated: the OS-invoked tier gated on `cycleGate`, and
     // the app-driven tier read a two-state `StateFlow` that cannot express "unreadable" — so a failed
-    // Keychain read arrived as a leave and cleared the join marker of a device that never left.
+    // Keychain read arrived as a leave.
 
     @Test
     fun an_unreadable_membership_touches_nothing() = runTest {
@@ -285,58 +283,28 @@ class UploadCycleTest {
         val result = cycle(
             backend, platform,
             readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
-            reconcile = { touched += "reconcile"; true },
             onDiscovery = { _, _ -> touched += "discovery"; true },
         ).run()
 
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
-        assertEquals(emptyList<String>(), touched, "unreadable ≠ left: no reconcile, no marker clear, no hooks")
+        assertEquals(emptyList<String>(), touched, "unreadable ≠ left: no hooks")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "no upload job")
         assertNull(platform.discoverPolicyArg, "the library is not walked")
     }
 
-    // THE regression this gate exists for, at the choke point: the reconciler's `null` call is what clears
-    // the persisted joinedEventId marker, and an unreadable config must never reach it.
     @Test
-    fun an_unreadable_membership_never_reaches_the_leave_side_reconcile() = runTest {
+    fun a_definitively_absent_membership_touches_the_ledger_not_at_all_and_uploads_nothing() = runTest {
+        // Not joined is not this cycle's to clean up: the leave that got here cleared the ledger itself
+        // (capability `leave-event`). A row the cycle deleted here would be a row a later join never loads.
         val backend = InMemoryLedgerStore()
-        var reconciledWith: List<String?> = emptyList()
-
-        cycle(
-            backend, FakePlatform(),
-            readGate = { CycleGate.Skip("protected data unavailable") },
-            reconcile = { eventId -> reconciledWith = reconciledWith + eventId; true },
-        ).run()
-
-        assertEquals(emptyList<String?>(), reconciledWith, "the marker of a device that never left must survive")
-    }
-
-    @Test
-    fun a_definitively_absent_membership_reconciles_the_leave_side_and_uploads_nothing() = runTest {
-        val backend = InMemoryLedgerStore()
+        backend.completed(resource("kept-primary.heic", "kept"))
         val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
-        var reconciledWith: List<String?> = listOf("unset")
 
-        val result = cycle(
-            backend, platform,
-            readGate = { CycleGate.NotJoined },
-            reconcile = { eventId -> reconciledWith = listOf(eventId); true },
-        ).run()
+        val result = cycle(backend, platform, readGate = { CycleGate.NotJoined }).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf<String?>(null), reconciledWith, "a real leave still clears the join marker")
+        assertEquals(LedgerState.COMPLETED, backend.get("kept-primary.heic")?.state, "the ledger is untouched")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "a leave creates no upload job")
-    }
-
-    @Test
-    fun a_failing_leave_side_reconcile_still_completes_cleanly() = runTest {
-        val result = cycle(
-            InMemoryLedgerStore(), FakePlatform(),
-            readGate = { CycleGate.NotJoined },
-            reconcile = { error("marker clear boom") },
-        ).run()
-
-        assertEquals(CycleResult.COMPLETED, result, "a failed marker clear is a warning, never a FAILED cycle")
     }
 
     @Test
@@ -386,7 +354,6 @@ class UploadCycleTest {
         backend, platform,
         policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
         onDiscovery = { _, _ -> order += "discovery"; true },
-        reconcile = { order += "reconcile"; true },
     )
 
     @Test
@@ -411,23 +378,22 @@ class UploadCycleTest {
     }
 
     /**
-     * The gate precedes EVERYTHING — including the reconcile. A non-contributor must not walk its library to
+     * The gate precedes the walk. A non-contributor must not walk its library to
      * discover it contributes nothing: the walk costs one PhotoKit round-trip per asset (~110 ms on an SE2),
      * so a per-asset answer would spend minutes arriving at the empty set.
      */
     @Test
-    fun the_gate_precedes_the_walk_but_not_the_reconcile_or_the_manifest() = runTest {
+    fun the_gate_precedes_the_walk_but_not_the_manifest() = runTest {
         val platform = FakePlatform(discovered = listOf(resource("a")))
         val order = mutableListOf<String>()
 
         decliningCycle(InMemoryLedgerStore(), platform, order).run()
 
-        // What the gate withholds is NEW WORK — the walk and job creation. It does not withhold facts
-        // about what is already uploaded (the reconcile, capability `sync-ledger`) nor the statement of
-        // what this membership shares (the manifest, capability `device-manifest`). The terminal-job
+        // What the gate withholds is NEW WORK — the walk and job creation. It does not withhold the
+        // statement of what this membership shares (the manifest, capability `device-manifest`). The terminal-job
         // settlement is deliberately not in `order`: acknowledging a job the OS already presented is not
         // new work, and a declined cycle owes it (capability `upload-lifecycle`).
-        assertEquals(listOf("reconcile", "discovery"), order, "reconcile, then the manifest")
+        assertEquals(listOf("discovery"), order, "the manifest is still published")
         assertNull(platform.discoverPolicyArg, "the library is still never enumerated — that is the cost")
     }
 
@@ -500,70 +466,22 @@ class UploadCycleTest {
         )
         // And it took nothing the gate withholds: the walk and job creation.
         assertTrue(platform.created.isEmpty(), "no upload job is created")
-        assertEquals(listOf("reconcile", "discovery"), order, "reconcile and the manifest both run")
+        assertEquals(listOf("discovery"), order, "the manifest still runs")
         assertNull(platform.discoverPolicyArg, "the library is never enumerated")
     }
 
-    // ---- Phase 0: the re-join reconciliation gate (capability `upload-state-reconciliation`) ----------
-    // The gate lives in the CYCLE, not in each tier's composition root, because the cycle is the only
-    // thing that runs on every route to a divergent ledger. Root-wired reconciliation is exactly how the
-    // app-driven tier shipped with none, re-uploading the whole post-cutoff library after a reinstall.
-
-    /** Builds a cycle whose reconcile gate is [gate], recording call order into [order]. */
-    private suspend fun gatedCycle(
-        backend: InMemoryLedgerStore,
-        platform: FakePlatform,
-        order: MutableList<String> = mutableListOf(),
-        gate: suspend () -> Boolean,
-    ): UploadCycle = cycle(
-        backend, platform,
-        onDiscovery = { _, _ -> order += "discovery"; true },
-        reconcile = { order += "reconcile"; gate() },
-    )
-
     @Test
-    fun reconcile_runs_before_any_upload_job_is_created() = runTest {
-        val order = mutableListOf<String>()
+    fun a_cycle_never_fetches_the_listing_or_resets_the_ledger() = runTest {
+        // The cycle holds no re-join reconciliation (capability `upload-state-reconciliation`): the join
+        // loads the ledger, and a cycle reads what it is given. A row it did not judge survives it.
+        val backend = InMemoryLedgerStore()
+        backend.completed(resource("stored-primary.heic", "stored"))
         val platform = FakePlatform(discovered = listOf(resource("a")))
-        val cycle = gatedCycle(InMemoryLedgerStore(), platform, order = order) { true }
 
-        assertEquals(CycleResult.COMPLETED, cycle.run())
+        assertEquals(CycleResult.COMPLETED, cycle(backend, platform).run())
 
-        assertEquals("reconcile", order.first(), "the seed must precede everything the cycle does")
         assertEquals(listOf("a"), platform.created.map { it.filename })
-    }
-
-    @Test
-    fun a_deferred_reconcile_creates_no_jobs_but_still_settles() = runTest {
-        val platform = FakePlatform(
-            discovered = listOf(resource("a")),
-            succeeded = listOf("b-primary.heic"),
-        )
-        // A failed/timed-out device listing: the reconciler returns false rather than seeding.
-        val cycle = gatedCycle(InMemoryLedgerStore(), platform) { false }
-
-        // COMPLETED, never FAILED: a deferral is a clean no-op so the tier's scheduler simply retries.
-        assertEquals(CycleResult.COMPLETED, cycle.run())
-
-        assertTrue(platform.created.isEmpty(), "a deferred cycle must create no upload jobs")
-        // The obligation is owed to the platform for jobs it has ALREADY presented, and it depends
-        // neither on the direction gate — which has honoured that since the 50008 measurement — nor on
-        // whether the seed succeeded. This assertion used to say the opposite, 75 lines below one saying
-        // an un-acknowledged presented job makes the OS discard the outstanding jobs; no spec ever asked
-        // for it, and `upload-state-reconciliation`'s "defers without settling" is about the ledger SEED.
-        assertTrue(platform.drained, "a deferred seed still settles with the platform")
-        assertNull(platform.discoverPolicyArg, "a deferred cycle must not even walk the library")
-    }
-
-    @Test
-    fun a_throwing_reconcile_defers_rather_than_failing_the_cycle() = runTest {
-        val platform = FakePlatform(discovered = listOf(resource("a")))
-        val cycle = gatedCycle(InMemoryLedgerStore(), platform) { error("listing boom") }
-
-        // The roots previously wrapped reconcile in their own runCatching; moving the gate into the cycle
-        // must not turn a throwing reconcile into a FAILED cycle.
-        assertEquals(CycleResult.COMPLETED, cycle.run())
-        assertTrue(platform.created.isEmpty(), "a throwing reconcile must not upload anything")
+        assertEquals(LedgerState.COMPLETED, backend.get("stored-primary.heic")?.state)
     }
 
     @Test
@@ -722,7 +640,7 @@ class UploadCycleTest {
 
     @Test
     fun a_first_failure_for_a_settled_key_never_un_completes_it() = runTest {
-        // A re-join seeded the key COMPLETED from the device's stored-file listing while an old OS job for it
+        // A join-time load seeded the key COMPLETED from the device's stored-file listing while an old OS job for it
         // was still out, and that job now comes back as a first failure. The pass has no state check, so it
         // still retries (an untouched `.retry` job's fate is unmeasured, and a duplicate PUT converges) — but
         // both records it makes are declined by the ledger's guard.
@@ -930,7 +848,7 @@ class UploadCycleTest {
     @Test
     fun bare_rows_are_backfilled_even_when_creation_stops_early() = runTest {
         val backend = InMemoryLedgerStore()
-        // What a re-join seed leaves behind: COMPLETED rows taken from a filename listing, which carries
+        // What a join-time load leaves behind: COMPLETED rows taken from a filename listing, which carries
         // no capture date. A bare row is excluded from every projection fail-closed, so until something
         // fills it this member's photos are missing from the event union.
         backend.recordUnlessSettled(LedgerEntry("seeded-a", "seeded-a", LedgerState.COMPLETED))
@@ -1126,7 +1044,7 @@ class UploadCycleTest {
 
     @Test
     fun a_row_outside_the_walks_window_is_kept() = runTest {
-        // Seeded by a re-join, or left by an earlier event: dated before this membership's cutoff, so this
+        // Dated while an earlier cutoff admitted it: dated before this membership's cutoff, so this
         // walk — narrowed by that cutoff — could never have returned it. Its absence is no evidence.
         val backend = InMemoryLedgerStore()
         backend.row("old-photo.jpg", creationDate = "2025-01-01T00:00:00Z")
@@ -1247,7 +1165,7 @@ class UploadCycleTest {
 
     @Test
     fun a_seed_that_listed_one_role_is_completed_by_the_walk() = runTest {
-        // A re-join seed from the device listing that holds only the primary: the row is bare, so the walk reads
+        // A join-time load from the device listing that holds only the primary: the row is bare, so the walk reads
         // the asset and finds the paired video the listing never had.
         val backend = InMemoryLedgerStore()
         backend.resetTo(listOf(LedgerEntry("X-primary.heic", "X", LedgerState.COMPLETED)))
@@ -1820,51 +1738,12 @@ class UploadCycleTest {
         )
     }
 
-    // ---- The manifest is published only from a settled ledger (capability `device-manifest`) ----------
-    // The manifest is a FULL-STATE document, so publishing one built from an incomplete ledger does not
-    // under-report — it UN-LISTS. Every resource missing from the projection stops being offered to the
-    // other members although its bytes are on the backend. Harmless while a short manifest and an intended
-    // one were indistinguishable in consequence; a live hazard now that a narrowing scope change retracts
-    // listings deliberately (capability `reconfigure-membership`).
+    // ---- A non-contributor's manifest (capability `device-manifest`) --------------------------------
+    // The manifest is a FULL-STATE document: a declined cycle publishes the honest statement of what the
+    // membership shares, which is nothing.
 
     @Test
-    fun a_deferred_reconcile_writes_no_manifest_for_a_contributor() = runTest {
-        val order = mutableListOf<String>()
-        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
-
-        val result = cycle(
-            InMemoryLedgerStore(), platform,
-            reconcile = { false }, // the device file listing failed or timed out
-            onDiscovery = { _, _ -> order += "discovery"; true },
-        ).run()
-
-        assertEquals(CycleResult.COMPLETED, result, "a deferral is a no-op, never a failure")
-        assertTrue(order.isEmpty(), "the ledger is unseeded, so no manifest is published over the last one")
-        assertTrue(platform.created.isEmpty(), "and no upload job is created")
-    }
-
-    @Test
-    fun a_deferred_reconcile_writes_no_manifest_for_a_non_contributor_either() = runTest {
-        // The path the reordering opened: a declined cycle now publishes an empty manifest, so it has to
-        // answer the same question. An unseeded ledger must not be published as "I share nothing".
-        val order = mutableListOf<String>()
-        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")))
-
-        val result = cycle(
-            InMemoryLedgerStore(), platform,
-            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-            reconcile = { false },
-            onDiscovery = { _, _ -> order += "discovery"; true },
-        ).run()
-
-        assertEquals(CycleResult.SKIPPED, result)
-        assertTrue(order.isEmpty(), "no manifest — 'could not tell' is not 'shares nothing'")
-    }
-
-    @Test
-    fun a_settled_reconcile_publishes_the_manifest_for_a_non_contributor() = runTest {
-        // The contrast that makes the test above mean something: with the ledger settled, the declined
-        // cycle DOES publish, and what it publishes is empty.
+    fun a_declined_cycle_publishes_an_empty_manifest() = runTest {
         val order = mutableListOf<String>()
         val backend = InMemoryLedgerStore()
         backend.completed(resource("a-photo.jpg", "a"))
@@ -1873,7 +1752,6 @@ class UploadCycleTest {
         val result = cycle(
             backend, FakePlatform(),
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-            reconcile = { true },
             onDiscovery = { _, policy ->
                 order += "discovery"
                 listed = projectDeviceManifest("D", backend.manifestRows(), policy)
@@ -2002,6 +1880,71 @@ class UploadCycleTest {
 
         assertEquals(listOf(setOf("a")), placed.calls)
         assertEquals(listOf("a"), platform.created.map { it.filename })
+    }
+
+    // ── Own-photo album placement when a loaded row is healed (capability `event-album`) ───────────────
+    // The join-time load seeds the device's stored resources as BARE `COMPLETED` rows. They are never
+    // enqueued, and the provision's gather cannot admit them before a walk has dated them — so the walk that
+    // dates them is what places them.
+
+    @Test
+    fun a_loaded_row_is_placed_on_the_walk_that_heals_it_before_its_detail_is_written() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.resetTo(listOf(LedgerEntry("X-primary.heic", "X", LedgerState.COMPLETED)))
+        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val datesAtPlacement = mutableListOf<String?>()
+        val placed = mutableListOf<Set<String>>()
+
+        cycle(backend, platform, placeInAlbum = { _, ids ->
+            placed += ids
+            datesAtPlacement += backend.get("X-primary.heic")?.creationDate
+        }).run()
+
+        assertEquals(listOf(setOf("X")), placed, "the loaded photo is placed")
+        assertEquals(listOf<String?>(""), datesAtPlacement, "while its row is still bare — placed before dated")
+        assertEquals(IN_SCOPE_DATE, backend.get("X-primary.heic")?.creationDate, "and the walk then dates it")
+        assertTrue(platform.created.isEmpty(), "with no upload job: its bytes are already stored")
+    }
+
+    @Test
+    fun a_loaded_row_the_policy_does_not_admit_is_not_placed() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.resetTo(listOf(LedgerEntry("old-primary.heic", "old", LedgerState.COMPLETED)))
+        val platform = FakePlatform(
+            discovered = listOf(datedResource("old-primary.heic", "2025-01-01T00:00:00Z", "old")),
+            fullEnumeration = true,
+        )
+        val placed = Placements(platform)
+
+        cycle(backend, platform, placeInAlbum = placed.hook).run()
+
+        assertEquals(emptyList(), placed.calls, "a photo outside the window is never placed")
+    }
+
+    @Test
+    fun an_opted_out_membership_places_no_healed_row() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.resetTo(listOf(LedgerEntry("X-primary.heic", "X", LedgerState.COMPLETED)))
+        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val placed = Placements(platform)
+
+        cycle(backend, platform, saveToAlbum = false, placeInAlbum = placed.hook).run()
+
+        assertEquals(emptyList(), placed.calls)
+        assertEquals(IN_SCOPE_DATE, backend.get("X-primary.heic")?.creationDate, "the row is still healed")
+    }
+
+    @Test
+    fun a_healed_row_is_not_placed_again_by_the_next_walk() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.resetTo(listOf(LedgerEntry("X-primary.heic", "X", LedgerState.COMPLETED)))
+        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val placed = Placements(platform)
+
+        cycle(backend, platform, placeInAlbum = placed.hook).run()
+        cycle(backend, platform, placeInAlbum = placed.hook).run()
+
+        assertEquals(listOf(setOf("X")), placed.calls, "once dated, the row is fully known and not re-read")
     }
 
     @Test

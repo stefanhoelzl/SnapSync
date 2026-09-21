@@ -210,7 +210,7 @@ fun deviceCommands(
         // prevented, and visible right here when it happens.
         core().ledgerCounts.refresh()
         val counts = core().ledgerCounts.counts.value
-        CommandResult.ok("""{"reset":true,"ledgerCompleted":${counts.completed},"ledgerPending":${counts.pending}}""")
+        CommandResult.ok("""{"reset":true,"ledgerCompleted":${counts.done.size},"ledgerPending":${counts.pending.size}}""")
     },
     "gallery/seed" to RigCommand { params, _ ->
         val n = params["n"]?.toIntOrNull()

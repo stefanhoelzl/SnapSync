@@ -34,7 +34,7 @@ class LeaveEventTest {
     }
 
     @Test
-    fun `leave disables the producer then clears config then notifies with the snapshotted eventId`() = runTest {
+    fun `leave stops the producer clears the ledger clears config then notifies with the snapshotted eventId`() = runTest {
         val order = mutableListOf<String>()
         val config = FakeConfigStore(order)
         var notifiedWith: String? = null
@@ -43,16 +43,38 @@ class LeaveEventTest {
             config = config,
             configSource = FakeConfigSource("E1"),
             stopUploads = { order += "disable" },
+            clearLedger = { order += "ledger" },
             notifyLeave = { id -> order += "notify"; notifiedWith = id },
             scope = backgroundScope,
         ).leave()
         runCurrent() // let the fire-and-forget notify run
 
-        // Disable precedes clear (the producer-race invariant), the config is forgotten, and the notify
-        // is dispatched AFTER the clear with the eventId snapshotted before it. No ledger/marker touched.
+        // Stop precedes every clear (no mechanism starts work against rows about to vanish); the upload
+        // ledger goes before the config, so a device that has left never shows a stale share set; the
+        // notify is dispatched AFTER the clears with the eventId snapshotted before them.
+        assertTrue(config.cleared)
+        assertEquals(listOf("disable", "ledger", "clear", "notify"), order)
+        assertEquals("E1", notifiedWith)
+    }
+
+    @Test
+    fun `a failing ledger clear still clears the config and notifies`() = runTest {
+        val order = mutableListOf<String>()
+        val config = FakeConfigStore(order)
+
+        LeaveEvent(
+            config = config,
+            configSource = FakeConfigSource("E5"),
+            stopUploads = { order += "disable" },
+            clearLedger = { throw RuntimeException("sqlite busy") },
+            notifyLeave = { order += "notify" },
+            scope = backgroundScope,
+        ).leave()
+        runCurrent()
+
+        // Best-effort and independent: the device still leaves; the next join clears the ledger anyway.
         assertTrue(config.cleared)
         assertEquals(listOf("disable", "clear", "notify"), order)
-        assertEquals("E1", notifiedWith)
     }
 
     @Test
@@ -65,6 +87,7 @@ class LeaveEventTest {
             config = config,
             configSource = FakeConfigSource("E7"),
             stopUploads = {},
+            clearLedger = {},
             notifyLeave = { id -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
             scope = backgroundScope,
         ).leave() // returns promptly despite the notify below never completing
@@ -90,6 +113,7 @@ class LeaveEventTest {
             config = throwingConfig,
             configSource = FakeConfigSource("E2"),
             stopUploads = { disabled = true },
+            clearLedger = {},
             notifyLeave = { notified = true },
             scope = backgroundScope,
         ).leave()
@@ -110,6 +134,7 @@ class LeaveEventTest {
             config = config,
             configSource = FakeConfigSource("E3"),
             stopUploads = { order += "disable" },
+            clearLedger = {},
             notifyLeave = { throw RuntimeException("offline") },
             scope = backgroundScope,
         ).leave()
@@ -129,6 +154,7 @@ class LeaveEventTest {
             config = config,
             configSource = FakeConfigSource("E4"),
             stopUploads = { throw RuntimeException("photokit") },
+            clearLedger = {},
             notifyLeave = {},
             scope = backgroundScope,
         ).leave()
@@ -145,6 +171,7 @@ class LeaveEventTest {
             config = config,
             configSource = FakeConfigSource(null), // nothing to leave
             stopUploads = {},
+            clearLedger = {},
             notifyLeave = { notified = true },
             scope = backgroundScope,
         ).leave()

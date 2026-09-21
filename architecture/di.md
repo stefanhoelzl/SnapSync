@@ -27,7 +27,7 @@ Roots found:
 | `FileBackedConfigStore` | x | x | |
 | `FileLogWriter` | x | x | |
 | `HttpAttestClient` | x | | |
-| `HttpDeviceFilesSource` | x | x | x |
+| `HttpDeviceFilesSource` | x | | |
 | `HttpEventCreation` | x | | |
 | `HttpEventDirectory` | x | | |
 | `HttpEventJoin` | x | | |
@@ -43,7 +43,6 @@ Roots found:
 | `IosDeviceManifestStore` | x | x | x |
 | `IosDiscovery` | | x | x |
 | `IosDownloadTransport` | x | | |
-| `IosJoinedEventMarker` | x | x | x |
 | `IosLinkOpener` | x | | |
 | `IosPhotoLibraryImporter` | x | | |
 | `IosShareSheet` | x | | |

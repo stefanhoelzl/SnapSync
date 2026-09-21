@@ -11,9 +11,9 @@ import kotlin.test.assertIs
 
 /**
  * The skip-or-leave-or-run gate (capability `event-link`, *An unreadable config is not an absent
- * config*). [CycleGate.NotJoined] runs the leave-side reconciliation, which **clears the
- * `joinedEventId` marker** — so the difference between "unreadable" and "absent" is the difference
- * between a settled join and a false leave on every locked wake.
+ * config*). [CycleGate.NotJoined] reads the device as not joined — so the difference between
+ * "unreadable" and "absent" is the difference between a settled join and a false leave on every
+ * locked wake.
  *
  * The gate is tier-neutral by construction: it takes primitives, so the same decision is reached
  * whether the OS invoked the cycle or the app did. It used to be reached in the OS-invoked tier's

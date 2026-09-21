@@ -114,7 +114,7 @@ class StatusCountsPollerTest {
         val refresh = StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource {
                 ledgerReads++
-                LedgerCounts(completed = 0, pending = 0)
+                LedgerCounts(done = emptySet(), pending = emptySet())
             },
             gallery = OwnDeviceGalleryStatusSource(
                 object : CandidateSource {

@@ -17,8 +17,6 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.join.HttpManifestPublisher
-import app.snapsync.membership.HttpDeviceFilesSource
-import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.ports.PushReceiver
 import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.CycleResult
@@ -190,8 +188,8 @@ class UrlSessionUploadController(
      *
      * The entry gate reads the **three-state** `ConfigReader`, never `configSource.config` — that
      * port's own KDoc says it *"cannot express unreadable"*, and this tier once read it anyway: a
-     * failed Keychain read arrived as `null`, which this tier treated as a leave and used to clear
-     * the `joinedEventId` marker of a device that never left (capability `event-link`). The gate is
+     * failed Keychain read arrived as `null`, which this tier treated as a leave of a device that never
+     * left (capability `event-link`). The gate is
      * port-pure: this tier's former per-cycle `configSource.reload()` StateFlow refresh is gone —
      * see `uploadCore.readGate`'s decision comment (`establish-shared-composition` D1); the
      * StateFlow's unlock repair lives in `SnapSyncRoot`'s protected-data hook.
@@ -214,11 +212,6 @@ class UrlSessionUploadController(
                 transfer = platform,
                 discovery = discovery,
                 selectionScope = selectionScope,
-                // Re-join reconciliation seed: the device's stored-file listing over the shared
-                // Darwin client. This tier shipped without a reconciler once — that is why a
-                // reinstall re-uploaded the whole post-cutoff library.
-                deviceFiles = HttpDeviceFilesSource(httpClient, host),
-                joinedMarker = IosJoinedEventMarker(),
                 // The device manifest PUT goes through the generic `HttpManifestPublisher` (the former
                 // app-local `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = IosDeviceManifestStore(),

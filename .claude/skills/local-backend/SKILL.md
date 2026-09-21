@@ -95,7 +95,7 @@ bearer enrols the device the path names whenever it supplies the token. A caller
 is untouched.
 
 ⚠️ **`api/.localstore` survives across sessions.** If it still holds objects from an earlier run, the
-re-join reconcile (`upload-state-reconciliation`) seeds them as `COMPLETED` from the device's
+join-time load (`upload-state-reconciliation`) seeds them as `COMPLETED` from the device's
 stored-file listing and they never re-upload. `rm -rf api/.localstore` when you want a clean slate —
 measured 2026-08-25: a rejoin seeded 167 rows this way, which is correct behaviour and looks exactly
 like "nothing uploaded".

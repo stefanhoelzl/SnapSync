@@ -15,7 +15,6 @@ import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.ImportedAssetPresence
-import app.snapsync.ports.JoinedEventMarker
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.StagedBytes
@@ -50,9 +49,6 @@ fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestS
 fun inMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()): AlbumMapStore =
     InMemoryAlbumMapStore(initial)
 
-fun inMemoryJoinedEventMarker(value: String? = null): JoinedEventMarker =
-    InMemoryJoinedEventMarker(value)
-
 fun inMemoryAttestKey(supported: Boolean = true): AttestKey = InMemoryAttestKey(supported)
 
 fun inMemoryAttestClient(
@@ -71,10 +67,10 @@ fun inMemoryCandidateSource(state: MutableStateFlow<List<RawAsset>>): CandidateS
 fun inMemoryCandidateSource(initial: List<RawAsset> = emptyList()): CandidateSource =
     InMemoryCandidateSource(initial)
 
-fun inMemoryGalleryStatusSource(state: MutableStateFlow<Int?>): GalleryStatusSource =
+fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>): GalleryStatusSource =
     InMemoryGalleryStatusSource(state)
 
-fun inMemoryGalleryStatusSource(initial: Int? = null): GalleryStatusSource =
+fun inMemoryGalleryStatusSource(initial: Set<String>? = null): GalleryStatusSource =
     InMemoryGalleryStatusSource(initial)
 
 fun inMemoryPhotoSelectionChangeSource(

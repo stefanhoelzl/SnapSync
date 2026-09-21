@@ -7,7 +7,6 @@ import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.MutableLedgerCountsSource
-import app.snapsync.feature.upload.UploadForeground
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
@@ -38,7 +37,7 @@ import kotlin.test.assertTrue
  * **The foreground status refresh is not sequenced behind the upload pump** (capability `sync-status`).
  *
  * The flow transcriber pins the *shape* — `architecture/flows/Foreground.md` now shows
- * `pumpForeground()` inside the `par concurrent` block, and a stale diagram fails the build — but it
+ * `pumpUploads()` inside the `par concurrent` block, and a stale diagram fails the build — but it
  * cannot see whether the refresh actually *runs* while the pump is stuck. That is the property members
  * felt: the app-driven pump awaits a whole upload cycle, and a cycle's discovery walk stays outstanding
  * for as long as the app was suspended (774 s, measured on device — `SNAPSYNC-16`). While the pump was
@@ -120,15 +119,14 @@ class ForegroundOrderingTest {
                     config = configStore,
                     configSource = configSource,
                     stopUploads = {},
+                    clearLedger = {},
                     notifyLeave = {},
                     scope = this,
                 ),
             ),
             statusPoller = statusPoller,
             reloadConfig = {},
-            // The check rides beside the pump in the same bundle; this test is about ordering and the
-            // latency the pump used to impose, so it is inert here.
-            uploadForeground = UploadForeground(pump = pumpForeground, check = {}),
+            pumpUploads = pumpForeground,
             refreshStatus = refreshStatus,
             // No membership: the reconcile and the membership refresh short-circuit, leaving the pump,
             // the status refresh and the unconditional reclaim as the flow's children — which is exactly

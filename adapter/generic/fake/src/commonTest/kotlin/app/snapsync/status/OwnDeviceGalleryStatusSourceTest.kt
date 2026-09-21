@@ -96,7 +96,7 @@ class OwnDeviceGalleryStatusSourceTest {
         // `null`, NOT `0`. The status projection settles to "In sync" once the synced count reaches the
         // total, so a seeded zero here rendered a check mark reading "everything shared" on a device
         // that had not looked (`SNAPSYNC-14`, `SNAPSYNC-16`).
-        assertNull(source.size.value, "an un-refreshed total is not a count of zero")
+        assertNull(source.admitted.value, "an un-refreshed total is not a count of zero")
     }
 
     @Test
@@ -109,7 +109,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         // The distinction the law demands: "could not count" must not collapse into "counted nothing",
         // because the second settles the screen and the first must not.
-        assertNull(source.size.value, "a failed walk publishes no count")
+        assertNull(source.admitted.value, "a failed walk publishes no count")
     }
 
     @Test
@@ -118,7 +118,7 @@ class OwnDeviceGalleryStatusSourceTest {
         val source = OwnDeviceGalleryStatusSource(walk)
 
         source.refresh(admitting())
-        assertEquals(1, source.size.value)
+        assertEquals(setOf("A"), source.admitted.value)
 
         walk.delegate = Blowing()
         source.refresh(admitting())
@@ -126,7 +126,46 @@ class OwnDeviceGalleryStatusSourceTest {
         // Not regressed to `null` either: a transient walk failure must not un-count a total that WAS
         // counted, or the screen drops out of "In sync" on a device that has changed nothing — the same
         // rule `ReadingLedgerCountsSource` keeps for the ledger counts beside it.
-        assertEquals(1, source.size.value, "a failed walk leaves the previous count standing")
+        assertEquals(setOf("A"), source.admitted.value, "a failed walk leaves the previous count standing")
+    }
+
+    @Test
+    fun `refresh publishes the admitted ids rather than just their count`() = runTest {
+        // Status counts the ledger's per-photo done-ness over exactly THESE ids (capability `sync-status`),
+        // so a count alone is not enough: two libraries of the same size must publish different sets.
+        val cell = MutableStateFlow(listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")))
+        val source = OwnDeviceGalleryStatusSource(ResourceCandidates(cell))
+
+        source.refresh(admitting())
+        assertEquals(setOf("A", "B"), source.admitted.value)
+
+        cell.value = listOf(resource("C-primary.jpg", "C"), resource("D-primary.jpg", "D"))
+        source.refresh(admitting())
+
+        // Same N, different photos — a size-only projection could not tell these apart.
+        assertEquals(setOf("C", "D"), source.admitted.value)
+    }
+
+    @Test
+    fun `a failed refresh keeps the previous admitted set not a re-read of the changed library`() = runTest {
+        val cell = MutableStateFlow(listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")))
+        val walk = Switchable(ResourceCandidates(cell))
+        val source = OwnDeviceGalleryStatusSource(walk)
+        source.refresh(admitting())
+        assertEquals(setOf("A", "B"), source.admitted.value)
+
+        // The library moved on, but the next walk failed: the set stands as last counted, ids and all.
+        cell.value = listOf(resource("C-primary.jpg", "C"))
+        walk.delegate = Blowing()
+        source.refresh(admitting())
+        assertEquals(setOf("A", "B"), source.admitted.value, "a failed walk withdraws no id it counted")
+
+        // And an unreadable library keeps it just the same.
+        walk.delegate = object : CandidateSource {
+            override suspend fun candidates(policy: SelectionPolicy): CandidateRead = CandidateRead.NotReadable
+        }
+        source.refresh(admitting())
+        assertEquals(setOf("A", "B"), source.admitted.value, "a refusal withdraws no id it counted")
     }
 
     @Test
@@ -159,7 +198,7 @@ class OwnDeviceGalleryStatusSourceTest {
         // "In sync" on a device that has not looked (`SNAPSYNC-14`, `SNAPSYNC-16`).
         readable = false
         source.refresh(admitting())
-        assertNull(source.size.value, "an unreadable library publishes no count")
+        assertNull(source.admitted.value, "an unreadable library publishes no count")
 
         // Counted, THEN unreadable: the count stands. One rule covers this and the thrown walk above —
         // never publish a count we did not compute, never withdraw one we did. A refusal must not be
@@ -167,20 +206,20 @@ class OwnDeviceGalleryStatusSourceTest {
         // value in place.
         readable = true
         source.refresh(admitting())
-        assertEquals(1, source.size.value)
+        assertEquals(setOf("A"), source.admitted.value)
 
         readable = false
         source.refresh(admitting())
-        assertEquals(1, source.size.value, "a refusal withdraws no count it did not take")
+        assertEquals(setOf("A"), source.admitted.value, "a refusal withdraws no count it did not take")
     }
 
     @Test
     fun `a counted zero is distinguishable from never counted`() = runTest {
         val source = OwnDeviceGalleryStatusSource(ResourceCandidates(emptyList()))
-        assertNull(source.size.value)
+        assertNull(source.admitted.value)
 
         source.refresh(admitting())
-        assertEquals(0, source.size.value, "an empty library that WAS counted reports a real zero")
+        assertEquals(emptySet<String>(), source.admitted.value, "an empty library that WAS counted reports a real zero")
     }
 
     @Test
@@ -188,14 +227,14 @@ class OwnDeviceGalleryStatusSourceTest {
         val source = OwnDeviceGalleryStatusSource(
             ResourceCandidates(listOf(resource("A-primary.jpg", "A"))),
         )
-        assertNull(source.size.value)
+        assertNull(source.admitted.value)
 
         // `DenyAll` admits nothing, so the count reaches 0 through the ordinary admission. It is a
         // COUNTED zero and must settle the screen exactly as a completed count does — the fix must not
         // turn a legitimate "nothing to share" into a permanent neutral line.
         source.refresh(SelectionPolicy(listOf(SelectionRule.DenyAll)))
 
-        assertEquals(0, source.size.value)
+        assertEquals(emptySet<String>(), source.admitted.value)
     }
 
     @Test
@@ -209,7 +248,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(SelectionPolicy(listOf(SelectionRule.DenyAll)))
 
-        assertEquals(0, source.size.value, "a member who shares nothing has nothing to count")
+        assertEquals(emptySet<String>(), source.admitted.value, "a member who shares nothing has nothing to count")
         // The load-bearing half, and where it now lives. Counting 0 by walking 4000 assets would be ~7
         // minutes of PhotoKit XPC to learn what the direction already said — so the deny-everything rule
         // is translated into a fetch predicate matching NO asset (capability `gallery-status`), and the
@@ -232,7 +271,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting())
 
-        assertEquals(2, source.size.value)
+        assertEquals(setOf("A", "B"), source.admitted.value)
         assertEquals(1, enumerator.walks)
     }
 
@@ -256,7 +295,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting())
 
-        assertEquals(1, source.size.value, "the snapshot is counted through the same admission")
+        assertEquals(setOf("A"), source.admitted.value, "the snapshot is counted through the same admission")
     }
 
     private fun resource(filename: String, assetId: String) =
@@ -303,7 +342,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting())
 
-        assertEquals(1, source.size.value, "only the camera photo counts toward N")
+        assertEquals(setOf("CAM"), source.admitted.value, "only the camera photo counts toward N")
     }
 
     @Test
@@ -315,11 +354,11 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting(albumExcluded = setOf("WA")))
 
-        assertEquals(1, source.size.value)
+        assertEquals(setOf("CAM"), source.admitted.value)
     }
 
     @Test
-    fun `size counts own qualifying assets by photo`() = runTest {
+    fun `the admitted set counts own qualifying assets by photo`() = runTest {
         val enumerator = ResourceCandidates(
             listOf(
                 resource("A-primary.jpg", "A"),
@@ -331,7 +370,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting())
 
-        assertEquals(2, source.size.value) // A and B — counted by photo, not resource row
+        assertEquals(setOf("A", "B"), source.admitted.value) // A and B — counted by photo, not resource row
     }
 
     @Test
@@ -348,7 +387,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting(echo = setOf("B")))
 
-        assertEquals(1, source.size.value, "total counts only own assets (A), not the downloaded B")
+        assertEquals(setOf("A"), source.admitted.value, "total counts only own assets (A), not the downloaded B")
     }
 
     @Test
@@ -358,11 +397,11 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = ResourceCandidates(cell)
         val source = OwnDeviceGalleryStatusSource(enumerator)
         source.refresh(admitting())
-        assertEquals(1, source.size.value)
+        assertEquals(setOf("A"), source.admitted.value)
 
         cell.value = listOf(resource("A-primary.jpg", "A"), resource("C-primary.jpg", "C"))
         source.refresh(admitting())
-        assertEquals(2, source.size.value)
+        assertEquals(setOf("A", "C"), source.admitted.value)
     }
 
     @Test
@@ -379,7 +418,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting())
 
-        assertEquals(1, source.size.value, "only the post-cutoff asset (NEW) counts toward the total")
+        assertEquals(setOf("NEW"), source.admitted.value, "only the post-cutoff asset (NEW) counts toward the total")
     }
 
     @Test
@@ -389,6 +428,6 @@ class OwnDeviceGalleryStatusSourceTest {
 
         source.refresh(admitting())
 
-        assertEquals(0, source.size.value, "an asset with no creationDate is out of scope under a cutoff")
+        assertEquals(emptySet<String>(), source.admitted.value, "an asset with no creationDate is out of scope under a cutoff")
     }
 }
