@@ -26,19 +26,19 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
 
 ## 2. The gated presence diff
 
-- [ ] 2.1 In `UploadCycle.decide`, when `discovery.fullEnumeration`: read every row once, compute
+- [x] 2.1 In `UploadCycle.decide`, when `discovery.fullEnumeration`: read every row once, compute
   `admittedAssetIds(rows, policy)`, and plan the deletion as the keys of rows whose asset is admitted,
   absent from the walk's **candidate** ids (not the admitted set), and not `REQUESTED` (design D3).
   Carry it on `CyclePlan`.
-- [ ] 2.2 In `UploadCycle.update`, apply the planned deletion through `deleteKeys` before recording
+- [x] 2.2 In `UploadCycle.update`, apply the planned deletion through `deleteKeys` before recording
   discoveries. The manifest is published later in `publish`, so a departed asset is never listed by
   the cycle that saw it leave.
-- [ ] 2.3 Add a rows-deleted count to the `Enumeration` audit line.
-- [ ] 2.4 Cycle tests, one per spec scenario in `sync-ledger` "Deletion is a presence diff over an
+- [x] 2.3 Add a rows-deleted count to the `Enumeration` audit line.
+- [x] 2.4 Cycle tests, one per spec scenario in `sync-ledger` "Deletion is a presence diff over an
   authoritative walk": in-window departed → deleted; out-of-window → kept; bare → kept;
   `fullEnumeration = false` → nothing deleted; `REQUESTED` kept, then deleted after it settles;
   an asset the admission excludes but the walk returns → kept; a raised cutoff → rows kept.
-- [ ] 2.5 Add a KDoc note at `predicateFor` (`PhotoKitCandidateSource.kt`): a new clause that narrows
+- [x] 2.5 Add a KDoc note at `predicateFor` (`PhotoKitCandidateSource.kt`): a new clause that narrows
   the walk below the policy's capture window makes rows it excludes deletable by the diff (design
   Risks). Pin in a cycle test that presence is the candidate set, not the admitted set.
 

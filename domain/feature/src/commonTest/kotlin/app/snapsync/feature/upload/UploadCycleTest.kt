@@ -1262,46 +1262,124 @@ class UploadCycleTest {
         assertEquals(0, backend.aggregates().pending, "no phantom pending pins the extension awake")
     }
 
-    @Test
-    fun a_full_enumeration_no_longer_reconciles_rows_away() = runTest {
-        // The retain-live reconcile is GONE (capability `sync-ledger`). It was fed the POLICY-ADMITTED
-        // set, so it could not tell "deleted from the library" from "outside the current capture window"
-        // — and raising a cutoff therefore discarded the COMPLETED rows that suppress re-upload. Deletion
-        // now arrives only via the change feed's precise signal, which names the departed assets.
-        val backend = InMemoryLedgerStore()
-        backend.completed(resource("old-photo.jpg", "old"))
-        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
-        val store = FakeStore()
+    // ---- Deletion is a presence diff over an authoritative walk (capability `sync-ledger`) ----------------
+    // The walk is bounded by the policy's capture range and the ledger is device-global, so "not returned"
+    // means gone only inside that window, only when the walk read the library itself, and never for a row
+    // a live job still owns.
 
-        val result = cycleOver(backend, platform, store).run()
+    /** A dated row, seeded directly: what a walk, a seed or an earlier event left behind. */
+    private suspend fun InMemoryLedgerStore.row(
+        key: String,
+        state: LedgerState = LedgerState.COMPLETED,
+        creationDate: String = IN_SCOPE_DATE,
+    ) = recordUnlessSettled(
+        LedgerEntry(key, key.substringBefore('-'), state, attempt = 0, eventId = TEST_EVENT, creationDate = creationDate),
+    )
+
+    @Test
+    fun an_authoritative_walk_deletes_the_rows_of_a_departed_in_window_asset() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.row("gone-photo.jpg")
+        backend.row("gone-video.mov")
+        backend.row("kept-photo.jpg")
+        val platform = FakePlatform(discovered = listOf(resource("kept-photo.jpg", "kept")), fullEnumeration = true)
+
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(
-            LedgerState.COMPLETED, backend.get("old-photo.jpg")?.state,
-            "a row the enumeration did not return is NOT removed — its absence is not evidence",
-        )
-        assertEquals(false, backend.get("old-photo.jpg")?.absent, "and it is not marked either")
-        assertEquals(LedgerState.REQUESTED, backend.get("a-photo.jpg")?.state, "live resource uploaded")
+        assertNull(backend.get("gone-photo.jpg"), "every row of the departed asset goes")
+        assertNull(backend.get("gone-video.mov"))
+        assertEquals(LedgerState.COMPLETED, backend.get("kept-photo.jpg")?.state, "a returned asset is present")
     }
 
     @Test
-    fun reconcile_is_skipped_on_a_cap_truncated_full_enumeration() = runTest {
+    fun a_row_outside_the_walks_window_is_kept() = runTest {
+        // Seeded by a re-join, or left by an earlier event: dated before this membership's cutoff, so this
+        // walk — narrowed by that cutoff — could never have returned it. Its absence is no evidence.
         val backend = InMemoryLedgerStore()
-        backend.completed(resource("old-photo.jpg", "old"))
+        backend.row("old-photo.jpg", creationDate = "2025-01-01T00:00:00Z")
+        val platform = FakePlatform(fullEnumeration = true)
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(LedgerState.COMPLETED, backend.get("old-photo.jpg")?.state)
+    }
+
+    @Test
+    fun a_bare_row_is_never_deleted_by_the_walk() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.row("seeded-photo.jpg", creationDate = "")
+        val platform = FakePlatform(fullEnumeration = true)
+
+        cycleOver(backend, platform).run()
+
+        assertNotNull(backend.get("seeded-photo.jpg"), "an empty date sorts before every cutoff")
+    }
+
+    @Test
+    fun a_walk_that_is_not_authoritative_deletes_nothing() = runTest {
+        // A partial grant's selection snapshot, or a library the platform could not read: both arrive as
+        // `fullEnumeration = false`, and neither is the library.
+        val backend = InMemoryLedgerStore()
+        backend.row("deselected-photo.jpg")
+        val platform = FakePlatform(fullEnumeration = false)
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(LedgerState.COMPLETED, backend.get("deselected-photo.jpg")?.state)
+    }
+
+    @Test
+    fun an_in_flight_row_outlives_its_asset_until_it_settles() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.row("gone-photo.jpg")
+        backend.row("gone-video.mov", state = LedgerState.REQUESTED)
+        val platform = FakePlatform(fullEnumeration = true)
+
+        cycleOver(backend, platform).run()
+
+        assertNull(backend.get("gone-photo.jpg"), "the settled row goes")
+        assertEquals(
+            LedgerState.REQUESTED, backend.get("gone-video.mov")?.state,
+            "a live job owns it, and its terminal write matches only a REQUESTED row",
+        )
+
+        // The job lands; the next authoritative walk takes the row.
+        backend.markTerminal("gone-video.mov", TerminalOutcome.COMPLETED)
+        cycleOver(backend, platform).run()
+
+        assertNull(backend.get("gone-video.mov"))
+    }
+
+    @Test
+    fun presence_is_the_walks_candidate_set_not_the_admitted_set() = runTest {
+        // Still in the library, but now in a denylisted album: the admission excludes it, the walk returns
+        // it. A diff fed the admitted set would delete it — the retired reconcile's defect, reintroduced.
+        val backend = InMemoryLedgerStore()
+        backend.row("x-photo.jpg")
+        val platform = FakePlatform(discovered = listOf(resource("x-photo.jpg", "x")), fullEnumeration = true)
+
+        cycle(backend, platform, policy = admittingWith(albumExcluded = setOf("x"))).run()
+
+        assertEquals(LedgerState.COMPLETED, backend.get("x-photo.jpg")?.state)
+        assertTrue(platform.created.isEmpty(), "and the admission still keeps it from uploading")
+    }
+
+    @Test
+    fun a_cap_truncated_authoritative_walk_still_deletes() = runTest {
+        // The deletion is a fact about the walk, not about how many jobs the cycle then created.
+        val backend = InMemoryLedgerStore()
+        backend.row("gone-photo.jpg")
         val platform = FakePlatform(
             discovered = listOf(resource("a-photo.jpg"), resource("b-photo.jpg")),
             fullEnumeration = true,
-            limitAfter = 1, // cap mid-create → PROCESSING before reconcile
+            limitAfter = 1,
         )
-        val store = FakeStore()
 
-        val result = cycleOver(backend, platform, store).run()
+        val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.PROCESSING, result)
-        assertEquals(LedgerState.COMPLETED, backend.get("old-photo.jpg")?.state, "no reconcile on a cap-truncated cycle")
-        // Same inversion as `cap_during_creation_advances_the_cursor_…`: a full enumeration whose facts
-        // were all recorded may advance, and the resource the cap stopped short of rests DISCOVERED.
-        assertContentEquals(byteArrayOf(9), store.saved, "a recorded walk advances the cursor")
+        assertNull(backend.get("gone-photo.jpg"))
         assertEquals(LedgerState.DISCOVERED, backend.get("b-photo.jpg")?.state)
     }
 

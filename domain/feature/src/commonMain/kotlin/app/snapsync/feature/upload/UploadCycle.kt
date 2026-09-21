@@ -334,16 +334,52 @@ class UploadCycle(
                             "candidate(s) → ${it.size} resource(s)"
                     }
                 }
+            val presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId }
             Decided.Planned(
                 ready,
                 CyclePlan(
                     liveResources,
                     discovery.removedAssetIds,
                     discovery.nextToken,
-                    presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId },
+                    presentAssetIds = presentAssetIds,
+                    departedKeys = if (discovery.fullEnumeration) {
+                        departedKeys(presentAssetIds, ready.policy)
+                    } else {
+                        // A selection snapshot, or a library the platform could not read: neither is the
+                        // library, so neither is evidence that anything left it (capability `sync-ledger`).
+                        emptyList()
+                    },
                 ),
             )
         }
+    }
+
+    /**
+     * The rows an **authoritative** walk shows are gone (capability `sync-ledger`, "Deletion is a presence
+     * diff over an authoritative walk"): every row whose asset is inside the policy's window, that the walk
+     * did not return, and that no live job owns.
+     *
+     * **Presence is the walk's whole candidate set**, never the admitted set. The retired retain-live
+     * reconcile was fed the admitted set, so raising a capture cutoff discarded the `COMPLETED` rows of
+     * photos still in the library; being in the library is not a question of scope.
+     *
+     * **The window is the rows' own admission** ([admittedAssetIds]) — the derivation the manifest and the
+     * enqueue already take. The ledger is device-global and the walk is bounded by the capture range, so a
+     * row outside that range is no evidence either way; a raised cutoff moves rows OUT of the set this may
+     * delete. A bare row's empty date sorts before every cutoff, so it is never judged here. Deciding by
+     * this derivation rather than by comparing dates keeps the capture-date rule in one place.
+     *
+     * **A `REQUESTED` row is left alone.** A live platform job owns it until its terminal write lands, and
+     * that write matches only a `REQUESTED` row — deleting it would turn a normal completion into a
+     * reported "moved on". The first authoritative walk after it settles deletes it.
+     */
+    private suspend fun departedKeys(present: Set<String>, policy: SelectionPolicy): List<String> {
+        // Every row the ledger holds; after the absence sweep none is excluded.
+        val rows = ledger.manifestRows()
+        val inWindow = admittedAssetIds(rows, policy)
+        return rows
+            .filter { it.assetId in inWindow && it.assetId !in present && it.state != LedgerState.REQUESTED }
+            .map { it.key }
     }
 
     // --- stage 3: update -------------------------------------------------------------------------
@@ -370,6 +406,14 @@ class UploadCycle(
             // order as an event's whole life. The manifest stops listing it because the projection
             // excludes absent rows (capability `device-manifest`), which is where a change in what this
             // device SHARES belongs.
+            // The walk's own deletion (capability `sync-ledger`): the in-window rows of assets an authoritative
+            // walk did not return. Before anything is recorded, and long before `publish` projects the
+            // manifest, so a departed photo is never listed by the cycle that saw it leave.
+            if (plan.departedKeys.isNotEmpty()) {
+                log.i { "${plan.departedKeys.size} row(s) of assets the walk no longer returns — deleting them" }
+                ledger.deleteKeys(plan.departedKeys)
+            }
+
             for (assetId in plan.removedAssetIds) {
                 log.i { "asset $assetId left the library — marking its rows absent" }
                 ledger.markAbsent(assetId)
@@ -439,7 +483,7 @@ class UploadCycle(
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
             // not create everything the ledger holds. Both mean the same thing to the pump — work remains.
             val truncated = ready.capHit || enqueued.truncated
-            val audit = Enumeration(plan.liveResources.size, newWork, alreadyUploaded, truncated)
+            val audit = Enumeration(plan.liveResources.size, newWork, alreadyUploaded, plan.departedKeys.size, truncated)
             if (truncated) CycleOutcome.Truncated(ready, audit) else CycleOutcome.Drained(ready, audit)
         }
     }
@@ -623,7 +667,7 @@ class UploadCycle(
         log.i {
             val tail = if (audit.truncated) " — TRUNCATED, the platform took no more jobs this cycle" else ""
             "enumeration: ${audit.seen} seen, ${audit.newWork} new, " +
-                "${audit.alreadyUploaded} already-uploaded$tail"
+                "${audit.alreadyUploaded} already-uploaded, ${audit.deleted} deleted$tail"
         }
     }
 
@@ -636,6 +680,8 @@ class UploadCycle(
         val nextToken: ByteArray,
         /** Every asset the walk returned, BEFORE admission: being in the library is not a question of scope. */
         val presentAssetIds: Set<String>,
+        /** The rows an authoritative walk shows are gone — empty for a walk that is not authoritative. */
+        val departedKeys: List<String>,
     )
 
     /** The enumeration audit's operands (capability `diagnostic-logging`). */
@@ -643,6 +689,7 @@ class UploadCycle(
         val seen: Int,
         val newWork: Int,
         val alreadyUploaded: Int,
+        val deleted: Int,
         val truncated: Boolean,
     )
 

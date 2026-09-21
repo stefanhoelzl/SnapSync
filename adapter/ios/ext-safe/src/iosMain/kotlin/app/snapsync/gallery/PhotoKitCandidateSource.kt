@@ -168,6 +168,15 @@ private class PhotoKitCandidate(
  * subset. Where the predicate could disagree with the authoritative decision at a boundary it is
  * **widened**, never narrowed.
  *
+ * **What this returns is also the walk's presence set**, and a clause here is therefore not free even when
+ * it agrees with the admission. The upload cycle deletes the in-window ledger rows of every asset an
+ * authoritative walk did not return (capability `sync-ledger`, "Deletion is a presence diff over an
+ * authoritative walk"), judging "in-window" by the rows' own admission, which knows only capture dates and
+ * id sets. So a new clause that excludes an asset still in the library — a subtype, a flag — makes the rows
+ * such an asset **already** holds look departed, and they are deleted. The two subtype clauses below are
+ * safe only because nothing they exclude can hold a row: the admission rejected it before any row was
+ * written. A clause that could exclude an asset after its row exists belongs in the admission, not here.
+ *
  * **Three device-verified constraints on PhotoKit's predicate parser** (SE2, iOS 26.5.2; measured facts,
  * not preferences — re-verify on a device before adding any key):
  *
