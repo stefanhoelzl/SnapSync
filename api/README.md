@@ -527,7 +527,10 @@ CI deploys via `.github/workflows/api-deploy.yml` (path-scoped to `api/**` + `de
 > (`site/scripts/deploy.mjs` — upload new, delete stale, never clear-first), authenticating with
 > **only the storage-zone password** (`BUNNY_STORAGE_ACCESS_KEY`), never the account key. The api
 > Edge Script proxies that prefix, so the routing lives in the bundle as source-owned code — **no
-> pull-zone edge rules**. Capability `web-site`.
+> pull-zone edge rules**. It is path-filtered and runs on `main` only; the site's **gate** is
+> `.github/workflows/site.yml` (`site-build`: build + `npm run check` on every branch, no path
+> filter, a required check), split the same way and for the same reason as `api.yml` /
+> `api-deploy.yml`. Capability `web-site`.
 
 Provision once:
 
