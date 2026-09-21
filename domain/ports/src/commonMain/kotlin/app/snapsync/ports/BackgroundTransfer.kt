@@ -159,11 +159,11 @@ enum class CycleResult {
 
     /**
      * The cycle **declined**: this membership contributes nothing (`Contribution.None` — its participation
-     * direction excludes upload, capability `upload-lifecycle`). No walk, no job, no manifest, no notify, and
-     * the discovery cursor is not advanced.
+     * direction excludes upload), this process's engine is not the resolved mechanism, or this process holds
+     * no full photo grant (capability `upload-lifecycle`). No walk and no job.
      *
      * Distinct from [COMPLETED] because the re-arm answer differs: a drained cycle may deserve another wake,
-     * a declined one never does.
+     * a declined one never does — whatever makes it eligible again is a transition, and the transition arms.
      */
     SKIPPED,
 }

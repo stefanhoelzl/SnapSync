@@ -92,7 +92,8 @@ resolved kind and the membership's **three-valued** upload posture — includes-
 | --- | --- | --- | --- |
 | includes upload | OS-driven | wanted | disarmed |
 | includes upload | app-driven | not wanted | armed |
-| includes upload | idle (no usable access) | left as it is | disarmed |
+| includes upload | idle, no usable access | left as it is | disarmed |
+| includes upload | idle, pinned under usable access | not wanted | disarmed |
 | excludes upload, or no membership | any | not wanted | disarmed |
 
 The transitions SHALL reach that state as follows:
@@ -120,7 +121,8 @@ while the extension is the writer. Disarming an engine with nothing in flight is
 A disabling reconfigure calls no transition: in-flight uploads drain and the cycle's direction gate withholds
 new work (`reconfigure-membership`).
 
-**No membership, no arm.** A permission change with no event configured SHALL arm nothing and register nothing.
+**No membership, no arm.** A permission change with no event configured SHALL arm nothing and register nothing
+(a surviving record it finds under `GRANTED` is deregistered, as for any unwanted registration).
 Photo access can be usable while no event is configured — the join gate's photo-access explainer raises the
 system dialog **before** the join is confirmed, and `join-event` requires that no upload mechanism is enabled
 until the user confirms. The three-valued posture SHALL be read by the transitions object, never collapsed to
@@ -156,7 +158,7 @@ until the join transition runs, which is what prevents the load racing an extens
 
 #### Scenario: A grant with no event configured arms nothing
 - **WHEN** photo access transitions to usable access while no event is configured
-- **THEN** no registration is changed and the app engine is not armed
+- **THEN** the extension is not registered and the app engine is not armed
 
 #### Scenario: Bringing up the extension cancels app-driven work left by an earlier process
 - **WHEN** the app launches with the OS-driven kind resolved, on a device where a previous process left

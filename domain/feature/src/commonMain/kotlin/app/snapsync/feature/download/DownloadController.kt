@@ -52,7 +52,7 @@ class DownloadController(
     // but upload-only; `null` = **no membership at all**. Those last two are different answers and neither
     // enables the arm — collapsing them is not a nicety. This was `() -> Boolean = { true }`, bound at the
     // root with a `?: true`, so "we have no membership" resolved to "download freely": the same `?: true`
-    // shape `UploadArm`'s KDoc blames for starting an upload producer for an event that did not exist. It was
+    // shape the former upload arm's KDoc blamed for starting an upload producer for an event that did not exist. It was
     // unreachable only because every caller happened to pass a config-derived event id — a property of the
     // callers, not of the gate. The default is gone for the same reason the cutoff and the reconcile have
     // none: a permissive default on a safety gate is how a caller ships without one.

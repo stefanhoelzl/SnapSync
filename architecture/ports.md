@@ -11,6 +11,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` RecordingAlbumManager, RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
 | `AlbumMapSource` | `:domain:feature` | `:domain:feature` Current, Migrate, Retry | no |
 | `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:adapter:ios:ext-safe` IosAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore | yes |
+| `AppUploadEngine` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeEngine; `:test:architecture` Engine; `:test:world` OperatorUploadEngine | yes |
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
@@ -30,8 +31,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
-| `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Run, Skip | no |
-| `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, Truncated, Unreadable | no |
+| `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, NotResolved, Run, Skip, Withheld | no |
+| `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, NotResolved, Truncated, Unreadable, Withheld | no |
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
@@ -53,6 +54,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventRename` | `:domain:ports` | `:adapter:generic:app` HttpEventRename; `:domain:feature` FakeRename | yes |
 | `EventRenamer` | `:domain:feature` | `:domain:feature` NoOpEventRenamer, RenameEvent | no |
 | `EventUnionSource` | `:domain:ports` | `:adapter:generic:app` HttpEventUnionSource; `:adapter:generic:fake` EmptyUnion, FakeUnion, GateableUnion, RecordingUnion | yes |
+| `ExtensionRegistration` | `:domain:feature` | `:domain:feature` FakeRegistration, OsDrivenRegistration; `:test:architecture` PlatformRegistration | yes |
 | `GalleryStatusSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryGalleryStatusSource; `:domain:feature` OwnDeviceGalleryStatusSource | yes |
 | `ImportResult` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:adapter:ios:app-only` PhotoKitAssetPresence; `:domain:compose` PermissionAwareAssetPresence, RecordingLibrary; `:test:world` WorldAssetPresence | yes |
@@ -96,8 +98,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UploadDiscovery` | `:domain:ports` | `:adapter:ios:ext-safe` IosDiscovery; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedDiscovery; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
-| `UploadMechanismRuntime` | `:domain:feature` | `:adapter:generic:fake` RecordingMechanism; `:app:ios` UrlSessionUploadController; `:domain:feature` FakeProducer, IdleUploadMechanism, OsDrivenUploadMechanism, Recording, RelinquishThenRun; `:test:architecture` Recording; `:test:world` OperatorUploadProducer | yes |
-| `UploadProducer` | `:domain:feature` | — | no |
 | `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | no |
 | `UploadTriggers` | `:domain:feature` | — | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |

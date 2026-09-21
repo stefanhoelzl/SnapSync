@@ -202,6 +202,7 @@ fun deviceCommands(
     "upload-mechanism" to uploadMechanismCommand(
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
         permission = { photoAccess.permission.value },
+        reconcile = { core().uploadTransitions.onOverrideChanged() },
     ),
     "reset" to RigCommand { _, _ ->
         core().resetDeviceState.reset()

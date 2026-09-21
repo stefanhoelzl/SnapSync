@@ -48,8 +48,8 @@ on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `BackgroundUploadPump.kt`, `DemoteRequested.kt`, `LedgerWriter.kt`, `OsDrivenUploadMechanism.kt`, `RelinquishThenRun.kt`, `SelectionScopedDiscovery.kt`, `StrandedKeys.kt`, `SyncEngine.kt`, `UploadArm.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadMechanismTable.kt`, `UploadPushReceiver.kt`
-- top-level types: `BackgroundUploadPump (class)`, `CycleGate (interface)`, `IdleUploadMechanism (object)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenUploadMechanism (class)`, `RelinquishThenRun (class)`, `SelectionScopedDiscovery (class)`, `SyncEngine (class)`, `UploadArm (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadMechanismRuntime (interface)`, `UploadProducer (interface)`, `UploadPushReceiver (class)`, `UploadTriggers (interface)`
+- files: `BackgroundUploadPump.kt`, `DemoteRequested.kt`, `LedgerWriter.kt`, `OsDrivenRegistration.kt`, `SelectionScopedDiscovery.kt`, `StrandedKeys.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadPushReceiver.kt`, `UploadTransitions.kt`
+- top-level types: `AppUploadEngine (interface)`, `BackgroundUploadPump (class)`, `CycleGate (interface)`, `ExtensionRegistration (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenRegistration (class)`, `SelectionScopedDiscovery (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadPushReceiver (class)`, `UploadTransitions (class)`, `UploadTriggers (interface)`
 
 ## `feature/version`
 

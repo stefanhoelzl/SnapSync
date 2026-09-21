@@ -23,7 +23,8 @@ import app.snapsync.ports.CycleResult
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.feature.upload.UploadPushReceiver
-import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.feature.upload.AppUploadEngine
+import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.model.PermissionStatus
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.appMarketingVersion
@@ -38,14 +39,15 @@ import kotlin.coroutines.CoroutineContext
 /**
  * The app-driven (iOS 18–26.0) upload tier's composition root — the app-process analogue of
  * `UploadExtensionRoot`, but driving the shared `:domain` `feature/upload` `UploadCycle` over a background
- * `URLSession` instead of the PhotoKit OS-job queue. Assembled by [SnapSyncRoot] when
- * `backgroundUploadSupported()` is false (or the dev force flag is set). On this tier the **app is the
+ * `URLSession` instead of the PhotoKit OS-job queue. Assembled lazily by [SnapSyncRoot] on every OS: every
+ * app-side trigger reaches it, and its cycle's entry gate declines while resolution yields the OS-driven
+ * mechanism (capability `upload-lifecycle`). Where it runs, the **app is the
  * single `LedgerWriter`** — there is no extension process, so the cross-process single-writer concern
  * does not apply (`sync-ledger`: the record-writer's process placement is a platform binding).
  *
  * [BackgroundUploadPump] is the in-app reimplementation of the OS scheduler; its triggers are forwarded
  * from [SnapSyncRoot] (foreground, `BGProcessingTask`, background-session relaunch, per-completion) plus
- * a producer start and a **silent push** for the active event, the latter via [pushReceiver]. Config is
+ * an arm and a **silent push** for the active event, the latter via [pushReceiver]. Config is
  * re-read each cycle so a newly-joined event takes effect — including the membership's `Contribution`,
  * which is what makes a download-only membership's cycle decline (capability `upload-lifecycle`).
  */
@@ -80,12 +82,8 @@ class UrlSessionUploadController(
     // the signature permitting exactly what the prose forbade. `SnapSyncRoot` did pass it, so the property
     // held by diligence rather than by the compiler, which is what the same comment says failed last time.
     private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
-    // What upload discovery may read (capability `limited-photo-access`): the app graph's derived
-    // walk-vs-snapshot decision. **No default** for the same reason as the album lookup above — this
-    // tier serves LIMITED memberships, and a composition that forgot the scope would walk the library
-    // under a partial grant, where the selection IS the scope: it would discover photos the member never
-    // chose to share. (Not the alert: reads of an unchanged library raise no limited-access prompt.)
-    private val selectionScope: () -> SelectionScope,
+    // The app graph's per-cycle answers this engine only FORWARDS — see [AppGraphReads].
+    private val graph: AppGraphReads,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
     // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).
     private val onCycleComplete: suspend () -> Unit = {},
@@ -104,10 +102,7 @@ class UrlSessionUploadController(
     // *"so that the app can take a new snapshot of your user interface"*, so this is platform UI by the
     // platform's own account, which is exactly what that lane is reserved for.
     private val uiLane: CoroutineContext,
-    // Current photo access. Only ever FORWARDED — the read discipline it feeds is decided in the tested
-    // `UploadPushReceiver`, never branched on here, because this module is wiring-only by project rule.
-    private val permission: () -> PermissionStatus,
-) : UploadMechanismRuntime {
+) : AppUploadEngine {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
@@ -144,7 +139,7 @@ class UrlSessionUploadController(
         UploadPushReceiver(
             activeEventId = { configSource.config.value?.eventId },
             pump = pump,
-            permission = permission,
+            permission = graph.permission,
         )
     }
 
@@ -203,6 +198,7 @@ class UrlSessionUploadController(
             UploadPorts(
                 appVersion = ::appMarketingVersion,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
+                admission = graph.admission,
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
                 // cycle cleanly, not throw out of whatever first touches it (see [resolveDeviceId]).
@@ -211,7 +207,7 @@ class UrlSessionUploadController(
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
-                selectionScope = selectionScope,
+                selectionScope = graph.selectionScope,
                 // The device manifest PUT goes through the generic `HttpManifestPublisher` (the former
                 // app-local `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = IosDeviceManifestStore(),
@@ -231,8 +227,8 @@ class UrlSessionUploadController(
     private suspend fun runCycle(): CycleResult =
         log.invocation("url-session.runCycle", result = { "$it" }) { cycle.run() }
 
-    // ---- the UploadProducer seam (capability `upload-lifecycle`) ----
-    // The lifecycle DECISION — which verb on which transition — lives in the tested `UploadArm`
+    // ---- the AppUploadEngine seam (capability `upload-lifecycle`) ----
+    // The lifecycle DECISION — which verb on which transition — lives in the tested `UploadTransitions`
     // (`:domain` `feature/upload`). This class supplies only this tier's MECHANISM.
 
     /**
@@ -250,7 +246,7 @@ class UrlSessionUploadController(
      * for "new photos captured while the app is closed" never existed at all. The re-arm *policy* lives in
      * the tested pump, not here — this shell is wiring-only.
      */
-    override suspend fun start() = log.invocation("url-session.start") {
+    override suspend fun arm() = log.invocation("url-session.arm") {
         cycle.signalRestart()
         pump.onStart()
     }
@@ -300,8 +296,9 @@ class UrlSessionUploadController(
     }
 
     /**
-     * Stop uploading (access revoked, a download-only membership, or a leave) — the `stop()` half of the
-     * [UploadProducer] seam. Cancels in-flight transfers and the scheduled heartbeat, and **destroys no
+     * Stop uploading (access revoked, a download-only membership, a leave, or the OS-driven mechanism taking
+     * over) — the `disarm()` half of the [AppUploadEngine] seam. Cancels in-flight transfers and the scheduled
+     * heartbeat, and **destroys no
      * durable state**: the ledger and the discovery cursor are left intact.
      *
      * There is deliberately **no** destructive counterpart. The ledger is device-global dedup state — its
@@ -314,8 +311,24 @@ class UrlSessionUploadController(
      * No ledger repair runs here either: a cancelled transfer's `REQUESTED` row is recorded by its completion
      * if one is delivered, and otherwise demoted by the next mechanism start's restart rule.
      */
-    override suspend fun stop() = log.invocation("url-session.stop") {
+    override suspend fun disarm() = log.invocation("url-session.disarm") {
         platform.cancelAll()
         scheduler.cancel()
     }
 }
+
+/**
+ * The three per-cycle answers the app graph derives for this engine and the engine only **forwards** — each is
+ * decided in tested `:domain` code, never branched on here, because this module is wiring-only by project rule.
+ * Bundled because they share that one property, and because each is required with no default.
+ */
+class AppGraphReads(
+    // Current photo access — the read discipline it feeds is decided in the tested `UploadPushReceiver`.
+    val permission: () -> PermissionStatus,
+    // What upload discovery may read (capability `limited-photo-access`): the walk-vs-snapshot decision. A
+    // composition that forgot it would walk the library under a partial grant, where the selection IS the scope.
+    val selectionScope: () -> SelectionScope,
+    // Whether this engine's cycle may run now (capability `upload-lifecycle`): the answer from resolution. Every
+    // trigger reaches this engine; its entry gate declines while the OS-driven mechanism is the resolved one.
+    val admission: () -> UploadAdmission,
+)

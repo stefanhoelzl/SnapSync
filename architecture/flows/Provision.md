@@ -16,7 +16,6 @@ sequenceDiagram
   participant Trigger
   participant Provision
   participant effects
-  participant uploadArm
   participant albumCoordinator
   participant downloadController
   Trigger->>Provision: run(…)
@@ -27,7 +26,7 @@ sequenceDiagram
   end
   Provision->>effects: saveConfig(…)
   Provision->>effects: refreshStatus()
-  Provision->>uploadArm: onProvision()
+  Provision->>effects: reconcileUploads()
   Provision->>albumCoordinator: ensureAlbum(…)
   par concurrent — awaited before the flow returns
     Provision--)downloadController: reconcile(…)

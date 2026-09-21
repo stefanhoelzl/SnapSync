@@ -46,14 +46,15 @@ import kotlinx.coroutines.sync.withLock
  * in a background context the re-armed [scheduler] wakes the app.
  *
  * **SKIPPED never re-arms — this overrides every trigger below.** A cycle that returns
- * [CycleResult.SKIPPED] declined because this membership contributes nothing (capability
- * `upload-lifecycle`). That answer cannot change until a provision or a permission grant, both of which
- * arrive as [onStart] — so scheduling anything here would wake the device forever to decline again. See
+ * [CycleResult.SKIPPED] declined because this membership contributes nothing, or because this engine is not
+ * the resolved mechanism (capability `upload-lifecycle`). That answer cannot change until a transition, and
+ * every transition that makes this engine eligible arrives as [onStart] — so scheduling anything here would
+ * wake the device forever to decline again. See
  * [shouldSchedule], which states the policy over the whole enum so a new variant must be decided, not
  * inherited.
  *
  * **Re-arm policy per trigger** (all subject to the SKIPPED rule above):
- * - [onStart] — the producer was started (a photo-access grant, or a membership provision): drain, and
+ * - [onStart] — the engine was armed (a join, a reconfigure, a permission change, or a launch): drain, and
  *   **always** schedule the next wake. This is the only trigger that *arms the first* `BGProcessingTask`.
  *   Without it nothing ever would: [onBackgroundTask] re-submits but needs a task to have already fired,
  *   and [onSessionEvents] re-arms only when an in-flight background transfer completes — so the tier's
@@ -94,8 +95,8 @@ class BackgroundUploadPump(
     private var retrigger = false
 
     /**
-     * The producer was started (`UploadProducer.start()` — a photo-access grant or a membership
-     * provision): drain, and arm the heartbeat. The re-arm is unconditional because this is the one
+     * The engine was armed (`AppUploadEngine.arm()` — a join, a reconfigure, a permission change, or a
+     * launch): drain, and arm the heartbeat. The re-arm is unconditional because this is the one
      * trigger that can *create* the first `BGProcessingTask`; every other re-arm path presupposes one.
      */
     suspend fun onStart() = log.invocation(logScope, "pump.onStart") {

@@ -212,8 +212,8 @@ class DownloadControllerTest {
     fun reconcile_is_a_noop_when_there_is_no_membership_at_all() = runTest {
         // `null` = no membership, a DISTINCT answer from "a membership that excludes download" — and
         // neither enables the arm. The gate used to be two-valued, bound at the root with a `?: true`, so
-        // this case resolved to "download freely": the same collapse `UploadArm`'s KDoc blames for starting
-        // an upload producer for an event that did not exist. It was unreachable only because every caller
+        // this case resolved to "download freely": the same collapse the former upload arm's KDoc blamed for
+        // starting an upload producer for an event that did not exist. It was unreachable only because every caller
         // happened to pass a config-derived event id — a property of the callers, not of the gate.
         val store = InMemoryDownloadStore()
         val jobs = RecordingJobs()

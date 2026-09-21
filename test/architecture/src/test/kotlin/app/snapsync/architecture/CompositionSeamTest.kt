@@ -96,18 +96,13 @@ class CompositionSeamTest {
                 "assembling a locked background launch, where the Keychain read would throw out of the " +
                 "composition",
             "appDrivenUpload" to
-                "hands back core machinery (a feature/upload type). A thunk so the mechanism is " +
+                "hands back core machinery (a feature/upload type). A thunk so the engine is " +
                 "constructed at first use rather than while the graph is being assembled",
-            "osDrivenUpload" to
+            "extensionRegistration" to
                 "the same, and `null` where this OS does not carry that mechanism at all — the " +
                 "nullability IS that OS answer, and it must be a call rather than a value the bundle " +
-                "carries so the mechanism is never constructed where its registration selector does " +
-                "not exist",
-            "relinquishOsRegistration" to
-                "a platform effect: it deregisters the OS's upload-job configuration record. It is " +
-                "that mechanism's own `stop()`, bound at the composition site because the table is " +
-                "handed the OS-driven mechanism only where the OS carries it, while the app-driven " +
-                "cell must name its relinquish regardless",
+                "carries so the registration is never constructed where its selector does not exist. " +
+                "What it returns reaches the platform only through the UploadExtensionRegistry port",
             "uploadMechanismOverride" to
                 "reads a development pin on the resolved mechanism, re-read per resolution so the pin " +
                 "can change without rebuilding the graph. `null` in a production build not by " +
@@ -157,6 +152,11 @@ class CompositionSeamTest {
                 "change while it runs. A thunk because the extension re-reads its bundle per gate call " +
                 "and an absent host must skip the cycle, not crash it. EXPIRY: if the destination ever " +
                 "becomes runtime-resolved (the open uploadBase question), it is a port",
+            "admission" to
+                "whether THIS process may run a cycle now (capability `upload-lifecycle`): the app's " +
+                "answer is the core's own resolution, the extension's a status read of its own photo " +
+                "grant — a call because both change between cycles, and required because either " +
+                "default would be a silent answer to the two-writer question",
             "selectionScope" to
                 "what discovery may read right now (capability `limited-photo-access`), derived by the " +
                 "app composition from current permission plus the in-memory snapshot — a call and not a " +

@@ -454,6 +454,9 @@ class World(
      */
     var nowMillis: Long = 0L
 
+    /** One engine for the process, as on a device (it owns a process-lifetime session there). */
+    private val operatorEngine = OperatorUploadEngine()
+
     /**
      * The REAL app graph (spec `module-architecture`, "One shared composition"): the same
      * [snapSyncApp] the iOS shell calls, over the world's ports. Features, flows, and the user-tap
@@ -482,7 +485,7 @@ class World(
             // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N; the
             // operator then invokes the cycle by hand, exactly like every other world trigger. That used
             // to be an inert `pumpSelectionChanged = {}` port here; it is now the world mechanism's own
-            // stated answer to the trigger (`OperatorUploadProducer`), which is where a mechanism's
+            // stated answer to the trigger (`OperatorUploadEngine`), which is where a mechanism's
             // response to a kick belongs.
             candidateSource = enumerator,
             // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
@@ -511,8 +514,8 @@ class World(
             attestStore = inMemoryAttestStore(),
             deviceId = { ownDeviceId },
             clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
-            // The operator IS the producer: nothing auto-runs; a cycle happens when invoked by hand.
-            appDrivenUpload = { OperatorUploadProducer() },
+            // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
+            appDrivenUpload = { operatorEngine },
             albumManager = albumManager,
             albumMapStore = albumMapStore,
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
@@ -812,6 +815,9 @@ class World(
             scope,
             UploadPorts(
                 diagnosticsReporter = inMemoryDiagnosticsReporter(),
+                // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
+                // takes the app process's admission — the same resolution the device app engine gates on.
+                admission = { core.appUploadAdmission() },
                 config = configReader,
                 deviceId = { ownDeviceId },
                 host = { host },

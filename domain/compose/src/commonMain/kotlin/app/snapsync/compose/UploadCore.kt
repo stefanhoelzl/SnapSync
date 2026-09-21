@@ -7,6 +7,7 @@ import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.feature.upload.SelectionScopedDiscovery
+import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
 import app.snapsync.model.SelectionScope
@@ -57,6 +58,15 @@ class UploadPorts(
     val discovery: UploadDiscovery,
     /** Crash/error reporting (capability `crash-reporting`). Required on both tiers — see AppPorts. */
     val diagnosticsReporter: DiagnosticsReporter,
+    /**
+     * Whether this process may run a cycle now (capability `upload-lifecycle`, "The upload cycle owns its entry
+     * decision"), read once per gate. Required, with **no default**: the app answers from resolution (admit
+     * only when the app-driven mechanism is the resolved one), the extension from its own photo grant (admit
+     * only under `GRANTED`), and a default would state either answer silently — one of them is the two-writer
+     * bug. It is decided before the membership's policy is built, so an undetermined grant never reaches the
+     * album read that prompts.
+     */
+    val admission: () -> UploadAdmission,
     /**
      * What upload discovery may read (capability `limited-photo-access`): [SelectionScope.Unrestricted]
      * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
@@ -162,8 +172,8 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
 /**
  * THE ENTRY-GATE TRANSLATION (capability `upload-lifecycle`, "The upload cycle owns its entry
  * decision") — one implementation over the ports, where three per-root copies used to live. It is
- * **port-pure**: one fresh [ConfigReader.read] per cycle, the identity probe, and the host read —
- * and deliberately nothing else.
+ * **port-pure**: one fresh [ConfigReader.read] per cycle, the identity probe, the host read, and the
+ * root's admission answer — and deliberately nothing else.
  *
  * ⚖️ UNIFICATION DECISION (design D1 of `establish-shared-composition` — the one sanctioned
  * semantic change of migration step 7): the app-driven tier's copy additionally called
@@ -215,6 +225,9 @@ private fun readGate(ports: UploadPorts): CycleGate {
             )
         },
         host = ports.host(),
+        // Whether THIS process may run (capability `upload-lifecycle`): each root states its own answer —
+        // the app from resolution, the extension from its own grant read.
+        admission = ports.admission(),
         // The forensics for a skip: the decision is made in shared code that cannot see WHY the
         // read failed, and an unreadable config is invisible on a device except through this string.
         skipDetail = "protected data unavailable (config status=" +

@@ -125,18 +125,22 @@ on ≥26.1, false here, where the *app* invokes its own cycle. `onForeground` wa
 uploaded the camera roll of a member who had been promised "you won't share yours".
 
 **The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` supplies only
-**facts** — both mechanism thunks, whether this OS carries the OS-driven one, and any development
-override — and forwards membership transitions to the tested, tier-neutral `UploadArm` in `:domain`'s
-feature/upload, which holds **exactly one** `UploadMechanismRuntime` at a time, re-resolved per transition
-by `model/`'s `resolveUploadMechanism`. The seam has **two** verbs, `start()` and `stop()`, and **no
-destructive one**: no lifecycle transition (provision, switch, grant, direction change, leave) may clear
-the **ledger**. That is device-global dedup — it stays valid across events, and only a triggered
-reconciliation's `resetTo` re-baselines it. **No `stop()` repairs anything either** — not the ledger, not
-the discovery cursor. What a stop can leave behind is `REQUESTED` rows no transfer will settle (the OS's
-extension-disable wipes every in-flight PhotoKit job; a cancelled `URLSession` task may deliver no
-completion), and each mechanism demotes those to `DISCOVERED` in its own **`start()`** — the one moment no
-other transfer can be carrying them. A `DISCOVERED` row comes back through the ledger's work read, so no re-enumeration
-is needed (`upload-lifecycle`, `ios-photokit-upload`, `ios-url-session-upload`).
+**facts** — the app-driven engine, the OS-driven registration where this OS carries it, whether it does, and
+any development override. What each membership transition does (join · reconfigure · permission change ·
+launch · leave) is decided by the tested, stateless `UploadTransitions` in `:domain`'s feature/upload, from
+`model/`'s `resolveUploadMechanism` read fresh at that moment. It calls four verbs: the extension's
+`register()` (the disable → demote → enable ritual — never a bare enable) and `deregister()`, and the app
+engine's `arm()` and `disarm()`. **None of them clears the ledger**: only a leave clears it and only a join
+loads it, as the membership use-cases' own steps (`upload-lifecycle`, `join-event`). What standing a mechanism
+down can leave behind is `REQUESTED` rows no transfer will settle, and whichever mechanism is brought up next
+demotes those to `DISCOVERED` — the ritual's demote, or the app engine's restart rule.
+
+**Exactly one process writes the ledger, and that is gated, not structural.** Every app-side trigger goes to
+the app engine unconditionally; its cycle's entry gate declines as *not resolved* while the OS-driven
+mechanism is the resolved one (touching nothing — not even the settle), and the extension's gate withholds
+without a full grant. The launch reconcile is called explicitly from host assembly — the permission
+`StateFlow`'s replay is no longer a transition — and it *compares* against the OS's registration rather than
+forcing the ritual, so a launch no longer wipes the extension's in-flight jobs; only a join forces it.
 
 This structure is load-bearing, not tidiness. The lifecycle *used* to live here as a pile of
 `if (useAppDrivenUpload)` branches, and because this module is wiring-only and untested, nothing caught
@@ -225,12 +229,11 @@ a shipped process's tier is a function of the device it runs on **and** the gran
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
   devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitExtensionRegistry` (`:adapter:ios:app-only`), the
   sole caller of that selector and of its read-back, reached through the `UploadExtensionRegistry` port by
-  `OsDrivenUploadMechanism` (`:domain` `feature/upload`), which is only
-  constructed where the OS carries this mechanism (≥26.1) — so it can never trap on a lower system. On
-  ≥26.1 under a partial grant it *is* constructed but never started, and the incoming app-driven mechanism
-  deregisters it (`RelinquishThenRun`). A later move to the iOS 27 async
-  `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target — and, on
-  the Kotlin side, to a third `UploadProducer`.
+  `OsDrivenRegistration` (`:domain` `feature/upload`), which is only
+  constructed where the OS carries this mechanism (≥26.1) — so it can never trap on a lower system. Under
+  a partial grant no registration write is attempted (every one is refused — 3311); a surviving record is
+  made inert by the extension's own gate, which withholds without a full grant. A later move to the iOS 27
+  async `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
 - **app-driven `URLSession` (`ios-url-session-upload`) — all of iOS 18–26.0, and ≥26.1 under a partial
   grant.** No OS-driven upload runs here; the **main app process** performs uploads over a background
   `URLSession` + `BGProcessingTask`, via `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler`
