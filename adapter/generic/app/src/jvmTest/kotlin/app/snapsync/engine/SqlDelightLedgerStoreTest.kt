@@ -210,25 +210,6 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
     }
 
     @Test
-    fun `markAbsent flags one asset's rows across a large table`() = runTest {
-        // What this replaces: `retainAssets` took a keep-set, so it had to avoid binding a
-        // multi-thousand-element `NOT IN` (sqlite's limit is 32766) by diffing in Kotlin. `markAbsent`
-        // takes ONE assetId and rides the assetId index, so no such hazard exists — this only holds that
-        // the indexed UPDATE still finds its row in a table large enough to matter.
-        val backend = createBackend()
-        val others = (0 until 40_000).map { "k$it" }
-        others.forEach { backend.recordUnlessSettled(LedgerEntry(it, it, LedgerState.REQUESTED, 0, eventId = "E1")) }
-        backend.recordUnlessSettled(LedgerEntry("gone", "gone", LedgerState.COMPLETED, 0, eventId = "E1"))
-
-        backend.markAbsent("gone")
-
-        val row = backend.get("gone")
-        assertEquals(true, row?.absent)
-        assertEquals(LedgerState.COMPLETED, row?.state) // the row survives, so re-upload stays suppressed
-        assertEquals(false, backend.get("k0")?.absent)
-    }
-
-    @Test
     fun `migration v6 to v7 adds absent unset and preserves COMPLETED rows`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         // Stand up the v6 schema (manifest detail present, no `absent` column) holding a COMPLETED row.

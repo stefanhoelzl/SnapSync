@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.model.LedgerState
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CycleResult
 
@@ -53,24 +54,57 @@ class UploadCycleWorldTest {
     }
 
     @Test
-    fun a_reported_removal_marks_the_row_absent() = worldTest {
+    fun an_unreadable_walk_deletes_nothing_and_the_next_readable_walk_does() = worldTest {
         val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
         w.runUploadCycle()
         w.platform.completeJob("A-primary.jpg")
         w.runUploadCycle()
-        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
 
-        // The change feed names the departed asset — the precise signal, and the only deletion input
-        // (capability `sync-ledger`). The row is MARKED, never deleted: its bytes are still on the
-        // backend, so it stays true and keeps suppressing re-upload if the asset comes back.
+        // The asset leaves, but the walk that follows cannot read the library: an empty answer that is not
+        // authoritative is no evidence (capability `sync-ledger`), so it must cost an idle pass, not a row.
         w.removeAsset("A")
+        w.discovery.makeWalkUnreadable()
+        w.runUploadCycle()
+        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state, "nothing deleted")
+
+        w.runUploadCycle()
+        assertNull(w.ledgerBackend.get("A-primary.jpg"), "the next readable walk is the evidence")
+    }
+
+    @Test
+    fun a_raised_cutoff_keeps_the_rows_of_photos_still_in_the_library() = worldTest {
+        val w = World(this)
+        w.provision("E")
+        w.addOwnAsset("A") // captured at DEFAULT_DATE, inside the default window
+        w.runUploadCycle()
+        w.platform.completeJob("A-primary.jpg")
         w.runUploadCycle()
 
-        val row = w.ledgerBackend.get("A-primary.jpg")
-        assertEquals(true, row?.absent, "the departed asset's row is marked")
-        assertEquals(LedgerState.COMPLETED, row?.state, "and keeps its upload state")
+        // The member narrows past the photo. The walk no longer returns it — but it is outside the walk's
+        // window now, so its absence is no evidence, and the row that suppresses re-upload must survive.
+        w.provision("E", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"))
+        w.runUploadCycle()
+
+        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+    }
+
+    @Test
+    fun an_asset_moved_into_a_denylisted_album_is_still_present() = worldTest {
+        val w = World(this)
+        w.provision("E")
+        w.addOwnAsset("A")
+        w.runUploadCycle()
+        w.platform.completeJob("A-primary.jpg")
+        w.runUploadCycle()
+
+        // Still in the library; the admission now excludes it, the walk still returns it. A walk narrowed by
+        // the whole admission would make it look departed — the world must not do what a device cannot.
+        w.placeInAlbum("WhatsApp", "A")
+        w.runUploadCycle()
+
+        assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
     }
 
     @Test
@@ -86,7 +120,6 @@ class UploadCycleWorldTest {
         // authoritative walk"): a full enumeration that no longer returns an in-window asset IS the evidence.
         // Under the change feed this deletion was lost for the event's remaining life once the token expired.
         w.removeAsset("A")
-        w.discovery.expireToken()
         w.runUploadCycle()
 
         assertNull(w.ledgerBackend.get("A-primary.jpg"), "the departed asset's row is deleted")

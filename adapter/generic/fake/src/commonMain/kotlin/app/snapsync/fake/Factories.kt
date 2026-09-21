@@ -12,7 +12,6 @@ import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.DiagnosticsReporter
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.ImportedAssetPresence
@@ -45,8 +44,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 fun inMemoryLedgerStore(): LedgerStore = InMemoryLedgerStore()
 
 fun inMemoryDownloadStore(): DownloadStore = InMemoryDownloadStore()
-
-fun inMemoryDiscoveryStore(): DiscoveryStore = InMemoryDiscoveryStore()
 
 fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestStore()
 

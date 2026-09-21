@@ -66,8 +66,8 @@ class JoinedMembership(
  * when the device is idle — which usually means *locked* — and a locked device could not read the
  * Keychain at all before the accessibility fix. That read failure used to arrive as "not joined", so
  * every invocation performed a **false leave**: the marker was cleared, and the next readable cycle
- * paid for a full re-join reconciliation (a device listing, an atomic ledger clear-and-seed, and a
- * discovery-cursor reset forcing a complete library re-enumeration). The marker never settled.
+ * paid for a full re-join reconciliation (a device listing, and an atomic ledger clear-and-seed to bare
+ * rows that the walk then had to re-read). The marker never settled.
  *
  * This gate is consumed by [UploadCycle.run] — the choke point every trigger on every tier funnels
  * through — and **not** by a composition root. A root that reaches this decision itself reaches it for

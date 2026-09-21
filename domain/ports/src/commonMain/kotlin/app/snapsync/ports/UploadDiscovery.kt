@@ -5,7 +5,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 
 /**
- * What the upload cycle reads from the photo library: the change-token walk and the id-scoped resolve of
+ * What the upload cycle reads from the photo library: the full-enumeration walk and the id-scoped resolve of
  * ledger keys (capability `ios-url-session-upload`, "Ledger keys resolve to uploadable resources").
  *
  * Its own port rather than two members of [BackgroundTransfer], because neither read is a transport concern:
@@ -13,22 +13,23 @@ import app.snapsync.model.SelectionPolicy
  * root binds it **once**, and no transport implements or forwards it. The partial-grant read discipline wraps
  * this port, not the transport (`SelectionScopedDiscovery`, capability `limited-photo-access`).
  *
- * Not [CandidateSource]: that read answers the admitted set for a count and carries no cursor, and a change
- * feed cannot honestly supply a count of the current set.
+ * Not [CandidateSource], although once the change-token cursor was removed the walk became nearly the same
+ * read: this port's walk also says whether it is **authoritative for deletion** ([Discovery.fullEnumeration]),
+ * which a count has no use for, and it is what the partial-grant read discipline wraps.
  */
 interface UploadDiscovery {
 
     /**
-     * Enumerate the asset resources changed since [sinceToken] (null / expired → a full enumeration),
-     * returning them plus the cursor to persist once the cycle fully drains.
+     * Enumerate the library's candidate assets — **every** walk is a full enumeration; there is no persisted
+     * cursor (capability `ios-photokit-upload`, "In-extension discovery by full enumeration").
      *
-     * [policy] carries the membership's capture-date cutoff (capability `photo-selection-policy`). A full
-     * enumeration SHALL be scoped by it — walking the whole library costs one synchronous platform round-trip
-     * per asset. An implementation MAY return assets captured before the cutoff (the cycle filters), but MUST
-     * NOT omit any at or after it. The incremental change-token walk is already bounded by the change feed and
-     * ignores the cutoff; the cycle filters its output the same way.
+     * [policy] carries the membership's capture-date range (capability `photo-selection-policy`). The walk
+     * SHALL be scoped by it — walking the whole library costs one synchronous platform round-trip per asset.
+     * An implementation MAY return assets outside the range (the cycle filters), but MUST NOT omit any inside
+     * it: what this returns is also the walk's **presence** set, and an in-window asset it omits has its rows
+     * deleted as departed (capability `sync-ledger`).
      */
-    suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery
+    suspend fun discover(policy: SelectionPolicy): Discovery
 
     /**
      * Resolve ledger [keys] to uploadable [Resource]s — **id-scoped, never a walk**.
@@ -52,13 +53,7 @@ interface UploadDiscovery {
 }
 
 /**
- * Discovered resources plus the opaque cursor to persist once the cycle fully drains.
- *
- * [removedAssetIds] are the asset identifiers reported removed by the change feed this cycle
- * (normalized `/`→`_` to match the key scheme), used to prune their ledger rows incrementally;
- * empty on a full enumeration (the change feed isn't consulted). [fullEnumeration] is true when
- * this discovery enumerated the whole library (no/expired token), so [resources] holds **every**
- * current resource key — the live key-set the cycle reconciles the ledger against.
+ * One walk's candidates, and whether the walk is **authoritative for deletion**.
  */
 class Discovery(
     /**
@@ -67,7 +62,15 @@ class Discovery(
      * its admission keeps (capability `gallery-status`).
      */
     val candidates: List<Candidate>,
-    val nextToken: ByteArray,
-    val removedAssetIds: List<String> = emptyList(),
-    val fullEnumeration: Boolean = false,
+    /**
+     * Whether this walk read the **library itself** and returned every asset inside the policy's capture
+     * window — which is what makes an in-window asset's absence from [candidates] evidence that it left the
+     * library (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk").
+     *
+     * False for a partial grant's selection snapshot (a de-selected photo is not a deleted one, and an
+     * uploaded, later-deselected photo keeps its row — capability `limited-photo-access`) and for a library
+     * the platform could not read (no candidates, and no evidence of anything). A walk that is not
+     * authoritative deletes nothing.
+     */
+    val fullEnumeration: Boolean,
 )

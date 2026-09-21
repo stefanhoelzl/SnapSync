@@ -14,7 +14,6 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscovery
-import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.join.HttpManifestPublisher
@@ -117,7 +116,6 @@ class UrlSessionUploadController(
     }
 
     private val discovery = IosDiscovery(log, PhotoKitCandidateSource())
-    private val discoveryStore = IosDiscoveryStore()
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
 
     private val platform = IosUrlSessionUploadPlatform(
@@ -216,7 +214,6 @@ class UrlSessionUploadController(
                 transfer = platform,
                 discovery = discovery,
                 selectionScope = selectionScope,
-                discoveryStore = discoveryStore,
                 // Re-join reconciliation seed: the device's stored-file listing over the shared
                 // Darwin client. This tier shipped without a reconciler once — that is why a
                 // reinstall re-uploaded the whole post-cutoff library.

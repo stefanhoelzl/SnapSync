@@ -25,12 +25,11 @@ import app.snapsync.ports.ManifestPublisher
  * Listing only completed resources instead made a half-uploaded Live Photo readable as a complete
  * one-resource asset, which recipients imported as a still and never revisited.
  *
- * Deletion-awareness comes from the ledger's **absence mark**: an asset the change feed reports removed
- * has its rows marked (never deleted — their bytes may be on the backend, and the rows are what stop a
- * restored asset re-uploading), and the projection excludes marked rows, so they leave it with no second
- * structure to keep in step. There is no full-enumeration retain-live backstop: it was fed the
- * policy-admitted set, so a raised capture cutoff discarded rows for photos still present and still
- * uploaded (capability `sync-ledger`).
+ * Deletion-awareness comes from the ledger itself: an authoritative walk that no longer returns an in-window
+ * asset deletes its rows, so it leaves the projection with no second structure to keep in step (capability
+ * `sync-ledger`, "Deletion is a presence diff over an authoritative walk"). The walk is judged by presence,
+ * never by the policy-admitted set — the retired retain-live reconcile was fed that set, so a raised capture
+ * cutoff discarded rows for photos still present and still uploaded.
  *
  * A kill mid-PUT loses nothing durable (the snapshot recomputes next cycle); the manifest is write-only
  * in v1 so transient staleness is benign and self-heals.

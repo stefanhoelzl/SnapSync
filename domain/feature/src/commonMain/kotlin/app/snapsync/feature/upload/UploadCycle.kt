@@ -3,7 +3,6 @@ package app.snapsync.feature.upload
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.UploadDiscovery
@@ -29,25 +28,24 @@ import kotlinx.coroutines.withTimeout
 
 /**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
- * retry), then discover new/changed resources and create jobs — all gated by the [engine]. This is
- * the testable core: it depends only on the [engine], the [ledger] (to reconstruct lifecycle jobs
- * and to prune rows for deleted assets), the [BackgroundTransfer] and [UploadDiscovery] ports, and the [DiscoveryStore]
- * cursor, so a fake platform + a real engine exercise the whole flow on the simulator without
- * touching PhotoKit.
+ * retry), then walk the library, record what it found, and create jobs from the ledger — all gated by the
+ * [engine]. This is the testable core: it depends only on the [engine], the [ledger] (to reconstruct
+ * lifecycle jobs and to delete the rows of departed assets), and the [BackgroundTransfer] and
+ * [UploadDiscovery] ports, so a fake platform + a real engine exercise the whole flow on the simulator
+ * without touching PhotoKit.
  *
- * Write-after-act: the engine records `REQUESTED` only on [SyncEvent.UploadStarted], reported *after*
- * a job is created/retried — so an in-flight `REQUESTED` always implies a real job and discovery can
- * safely skip it. The cursor advances only when the cycle fully drains (no `limitExceeded`), so a
- * cap-truncated cycle re-derives next time and the engine's `REQUESTED`-skip prevents duplicates —
- * no residue store.
+ * Every walk is a **full enumeration**; there is no persisted cursor (capability `ios-photokit-upload`,
+ * "In-extension discovery by full enumeration"). Write-after-act: the engine records `REQUESTED` only on
+ * [SyncEvent.UploadStarted], reported *after* a job is created/retried — so an in-flight `REQUESTED` always
+ * implies a real job, and a cap-truncated cycle leaves its remainder `DISCOVERED` for the next cycle's work
+ * read, with no residue store.
  *
- * Deleted-asset pruning keeps the ledger honest about what still exists on device (and stops a row
- * left non-`COMPLETED` by an asset deleted mid-upload from pinning `pending > 0` forever): removed
- * assets reported by the change feed are pruned by key prefix each cycle, and a fully-drained full
- * enumeration reconciles the whole ledger against the live key-set. Pruning is the one direct
- * `LedgerWriter` write the cycle makes (everything else flows through the [engine]); the upload tier's
- * process is the single writer — the extension on iOS ≥26.1, the app on iOS 18–26.0 — so this
- * preserves the invariant. No S3 object is ever deleted.
+ * Deleted-asset pruning keeps the ledger honest about what still exists on device (and stops a row left
+ * non-`COMPLETED` by an asset deleted mid-upload from pinning `pending > 0` forever): an authoritative walk
+ * deletes the in-window rows of assets it did not return, and a key that no longer resolves loses its row
+ * (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk"). The upload tier's
+ * process is the single writer — the extension on iOS ≥26.1, the app on iOS 18–26.0 — so this preserves
+ * the invariant. No S3 object is ever deleted.
  */
 class UploadCycle(
     // THE ENTRY GATE (capability `upload-lifecycle`): the three-state membership read, in the shared
@@ -69,15 +67,14 @@ class UploadCycle(
     private val engineFor: (UploadConfig) -> SyncEngine,
     private val ledger: LedgerWriter,
     private val platform: BackgroundTransfer,
-    // What the cycle reads from the photo library — the change feed and the id-scoped key resolve. Not the
-    // transport's: both tiers read the library identically, and only the transfer lifecycle differs.
+    // What the cycle reads from the photo library — the full-enumeration walk and the id-scoped key resolve.
+    // Not the transport's: both tiers read the library identically, and only the transfer lifecycle differs.
     private val library: UploadDiscovery,
-    private val store: DiscoveryStore,
     // Re-join reconciliation (capability `upload-state-reconciliation`): the marker-gated seed that makes
     // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /
     // reinstalled device re-uploads nothing it has already contributed. Returns whether the producer may
     // create jobs this cycle — `false` defers (a failed/timed-out device listing), and this cycle creates
-    // nothing and leaves the ledger, cursor, and marker untouched so the next cycle retries.
+    // nothing and leaves the ledger and marker untouched so the next cycle retries.
     //
     // Takes the eventId, mirroring the real reconciler 1:1 — `null` IS the leave side, which clears the
     // `joinedEventId` marker. Both calls are made HERE: the leave-side one used to be written identically
@@ -174,7 +171,7 @@ class UploadCycle(
         val gate = readGate()
         val (config, membership) = when (gate) {
             is CycleGate.Skip -> {
-                // Unreadable != left. Touch NOTHING: no seed, no marker clear, no cursor reset, no jobs. A
+                // Unreadable != left. Touch NOTHING: no seed, no marker clear, no ledger write, no jobs. A
                 // clean completion; the next cycle — or the next unlock — retries. `detail` is the root's
                 // forensics, logged verbatim: this line is the only way an unreadable membership is visible
                 // on a device.
@@ -186,8 +183,8 @@ class UploadCycle(
             }
             CycleGate.NotJoined -> {
                 // Definitively not joined: no item, an item that cannot decode, a missing baked host, or a
-                // leave. This is where a leave clears the `joinedEventId` marker — it keeps the ledger,
-                // cursor, and accumulator intact so a later provision of any event dedups against them.
+                // leave. This is where a leave clears the `joinedEventId` marker — it keeps the ledger
+                // intact so a later provision of any event dedups against it.
                 // Reaching here means the config really IS absent, never merely unread.
                 runCatching { reconcile(null) }
                     .onFailure { log.w(it) { "leave-side marker clear failed" } }
@@ -225,7 +222,7 @@ class UploadCycle(
 
         // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the walk and job creation: a
         // non-contributor must not enumerate its library to discover it contributes nothing (the walk costs
-        // ~110 ms of PhotoKit XPC per asset). The discovery cursor is left exactly where it was.
+        // ~110 ms of PhotoKit XPC per asset).
         //
         // It withholds NEW WORK, not settlement, and not the record of what is already uploaded. A declined
         // cycle still settles with the platform and still publishes its (empty) manifest — neither of which
@@ -286,8 +283,8 @@ class UploadCycle(
 
         // A re-created retry may have hit the platform's job limit. That is carried as a FACT rather than
         // acted on here: the cycle walks anyway, because the walk is what produces the accounting a
-        // backlogged device is otherwise invisible in, and because recording what it finds is what lets
-        // the cursor advance. What the cap costs is only that this cycle cannot enqueue more — and the
+        // backlogged device is otherwise invisible in, and because an authoritative walk is what retracts a
+        // departed photo. What the cap costs is only that this cycle cannot enqueue more — and the
         // work it could not re-create rests `FAILED`, which the ledger's work read returns next cycle
         // without needing a walk to re-derive it.
         return Settled.Proceeding(Ready(eventId, policy, engine, membership.saveToAlbum, capHit))
@@ -308,11 +305,10 @@ class UploadCycle(
     private suspend fun Settled.decide(): Decided = when (this) {
         is Settled.Short -> Decided.Short(outcome)
         is Settled.Proceeding -> {
-            // Phase 3 — discover new/changed resources; the engine's in-flight skip filters what is
-            // already requested. The cutoff came in with the contribution and is passed down, so a full
-            // enumeration is scoped at the platform fetch rather than walked whole and filtered afterwards
-            // (capability `photo-selection-policy`).
-            val discovery = library.discover(store.loadToken(), ready.policy)
+            // Phase 3 — walk the library: a full enumeration, every cycle. The capture range came in with the
+            // contribution and is passed down, so the walk is scoped at the platform fetch rather than walked
+            // whole and filtered afterwards (capability `photo-selection-policy`).
+            val discovery = library.discover(ready.policy)
             log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
 
             // THE ADMISSION (capability `photo-selection-policy`): one policy, applied once, deciding the
@@ -322,8 +318,8 @@ class UploadCycle(
             // unrepresentable (see `SelectionPolicy`).
             //
             // It stays **authoritative** even though the platform walk narrows its own fetch by some of
-            // the same rules: the walk may return a superset (its predicate is deliberately widened, and
-            // the incremental walk takes no predicate at all), and this is what makes that optimization
+            // the same rules: the walk may return a superset (its predicate is deliberately widened, and a
+            // selection snapshot takes no predicate at all), and this is what makes that optimization
             // unable to change the admitted set. `resources()` pays the per-asset round-trip ONLY for the
             // assets it kept.
             val admitted = EventPhotoSet(ready.policy) { discovery.candidates }.assets()
@@ -355,9 +351,6 @@ class UploadCycle(
                 CyclePlan(
                     liveResources,
                     skipped = admitted.size - toRead.size,
-                    discovery.removedAssetIds,
-                    discovery.nextToken,
-                    presentAssetIds = presentAssetIds,
                     departedKeys = if (discovery.fullEnumeration) {
                         departedKeys(rows, presentAssetIds, ready.policy)
                     } else {
@@ -413,18 +406,6 @@ class UploadCycle(
             val eventId = ready.eventId
             val engine = ready.engine
 
-            // Record that the change feed reported these assets removed (incremental, every cycle — even
-            // a truncated one — so a mid-upload deletion is reflected promptly). This is the ONLY deletion
-            // input: it names the departed assets exactly, where an enumeration can only fail to mention
-            // one.
-            //
-            // A MARK, not a delete. The row's statement — these bytes are on the backend — stays true,
-            // because nothing on the device deletes an uploaded object (capability `scheduled-cleanup`
-            // owns the only deletion, and it deletes whole events). Keeping the row is what stops a
-            // restored asset re-uploading, and iOS keeps a deleted photo recoverable for 30 days: the same
-            // order as an event's whole life. The manifest stops listing it because the projection
-            // excludes absent rows (capability `device-manifest`), which is where a change in what this
-            // device SHARES belongs.
             // The walk's own deletion (capability `sync-ledger`): the in-window rows of assets an authoritative
             // walk did not return. Before anything is recorded, and long before `publish` projects the
             // manifest, so a departed photo is never listed by the cycle that saw it leave.
@@ -433,28 +414,13 @@ class UploadCycle(
                 ledger.deleteKeys(plan.departedKeys)
             }
 
-            for (assetId in plan.removedAssetIds) {
-                log.i { "asset $assetId left the library — marking its rows absent" }
-                ledger.markAbsent(assetId)
-            }
-
-            // And the inverse: every asset the walk just returned is in the library NOW, so none of its rows
-            // is absent (capability `sync-ledger`). This is the only thing that brings back a restored photo
-            // whose rows are settled — the engine writes nothing for an already-uploaded resource, so without it
-            // the photo would stay out of the device manifest for good. After the removals, so an asset named by
-            // both in one change window ends present: the candidate fetch is the later fact. Over the whole
-            // walk, not the admitted set — presence has nothing to do with scope. Writes nothing unless a
-            // returned asset was actually marked.
-            ledger.markPresent(plan.presentAssetIds)
-
             // RECORD what the walk found; do not act on it. Every admitted resource the engine judges to
             // be new work gets a `DISCOVERED` row (capability `sync-ledger`), and every already-recorded
             // one still resting bare gets its manifest detail filled.
             //
-            // This loop creates no upload job, and that is the change. While it did, it stopped at the
-            // platform's job limit — so the resources past that point were never recorded anywhere, the
-            // cursor could not advance past them, and the next cycle had to re-walk the whole library to
-            // find them again. Nothing here can stop early, so the walk's facts are captured whole.
+            // This loop creates no upload job. While it did, it stopped at the platform's job limit — so the
+            // resources past that point were recorded nowhere and only a later walk could find them again.
+            // Nothing here can stop early, so the walk's facts are captured whole.
             val newWork = mutableListOf<Resource>()
             var alreadyUploaded = 0
             for (resource in plan.liveResources) {
@@ -468,10 +434,8 @@ class UploadCycle(
                     // capture date — and the device manifest, projected from the ledger, would silently
                     // drop this member's photos out of the event union after every re-join or reinstall.
                     //
-                    // A capture date lives only in the photo library and only the walk reads it, so a bare
-                    // row the cursor has advanced past would stay bare — and fail-closed out of every
-                    // projection — until something forced a full re-enumeration. That is why this is a
-                    // PRECONDITION of the cursor advance below, not an opportunistic sweep.
+                    // A capture date lives only in the photo library and only the walk reads it — which is
+                    // why a bare row's asset is always read, never skipped as fully known.
                     //
                     // Idempotent and bare-only, exactly like the `eventId` sentinel sweep: a row already
                     // enriched is never rewritten.
@@ -482,24 +446,6 @@ class UploadCycle(
             // whose rows all exist, so recording a Live Photo's primary and then dying before its paired video
             // would leave the video unrecorded for good; in one transaction there is no such gap.
             ledger.recordDiscovered(newWork, eventId)
-
-            // THE CURSOR ADVANCE (capability `ios-photokit-upload`). Every fact this walk produced is now
-            // durable: the removals are marked, the new work is `DISCOVERED`, the bare rows are filled.
-            // Nothing else the walk returned is read by anything.
-            //
-            // ORDERING, not atomicity, is what makes this safe. The writes above are idempotent, so a
-            // process death between them and this line costs one re-derivation; persisting the token
-            // first would discard resources no row records, which is unrecoverable and silent. That is
-            // the same write-after-act discipline the engine uses for a job, applied one level up — and
-            // it is the dual of an invariant the codebase already keeps on the other side, where every
-            // operation that destroys rows behind the cursor also clears it (`ResetDeviceState`,
-            // `UploadReconciler`, `OsDrivenUploadMechanism.stop`).
-            //
-            // It is deliberately BEFORE any job is created. The old condition — "every job was created" —
-            // was a proxy for "every resource is recorded", and on a device with more outstanding work
-            // than the platform's job limit the two are never the same, so the cursor stood still for as
-            // long as the device was behind and every cycle re-enumerated the whole library.
-            store.saveToken(plan.nextToken)
 
             val enqueued = enqueue(ready)
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
@@ -523,11 +469,10 @@ class UploadCycle(
     /**
      * Create upload jobs from **the ledger**, not from the walk (capability `sync-ledger`).
      *
-     * This is the half of the change that makes the cursor advance safe. The rows needing a job span
-     * `DISCOVERED` (seen, never attempted) and `FAILED` (attempted, came back) — one fact to a producer,
-     * differing only in history — so the remainder a truncated cycle left behind and a failure that has
-     * been sitting since the cursor settled are picked up by the same read, on the next cycle, with no
-     * re-enumeration between them.
+     * The rows needing a job span `DISCOVERED` (seen, never attempted) and `FAILED` (attempted, came back) —
+     * one fact to a producer, differing only in history — so the remainder a truncated cycle left behind and
+     * a failure that has been sitting for many cycles are picked up by the same read, on the next cycle, with
+     * no walk re-deriving them (the walk skips assets the ledger already fully knows).
      *
      * A key that resolves to nothing has left the library since its row was written — or, under a partial
      * grant, left the selection. Its row is deleted, not failed: "the asset is gone" and "the upload did not
@@ -707,10 +652,6 @@ class UploadCycle(
         val liveResources: List<Resource>,
         /** Admitted assets the ledger already fully knows, whose resources the walk therefore did not read. */
         val skipped: Int,
-        val removedAssetIds: List<String>,
-        val nextToken: ByteArray,
-        /** Every asset the walk returned, BEFORE admission: being in the library is not a question of scope. */
-        val presentAssetIds: Set<String>,
         /** The rows an authoritative walk shows are gone — empty for a walk that is not authoritative. */
         val departedKeys: List<String>,
     )
@@ -791,8 +732,8 @@ class UploadCycle(
          *
          * Every truncated cycle has walked, so the audit is always present. The alternative — short-
          * circuiting a settle-pass cap hit before discovery, to save a library read it could not act on —
-         * was rejected: it is exactly the cycle whose remaining backlog most needs stating, and once the
-         * walk only RECORDS what it finds, running it also keeps the cursor moving.
+         * was rejected: it is exactly the cycle whose remaining backlog most needs stating, and an
+         * authoritative walk is also what retracts a departed photo.
          */
         class Truncated(val ready: Ready, val audit: Enumeration) : CycleOutcome {
             override val result get() = CycleResult.PROCESSING
@@ -903,8 +844,8 @@ class UploadCycle(
      * guarded on the done states, so the skip below is an early exit that saves the job, not the ledger's
      * only protection.
      *
-     * Creates no job for work not already begun, writes no manifest, enumerates nothing, and touches no
-     * discovery cursor — which is what lets a direction-declined cycle run it. The only jobs it can create
+     * Creates no job for work not already begun, writes no manifest, and enumerates nothing — which is
+     * what lets a direction-declined cycle run it. The only jobs it can create
      * are replacements for failures the platform already tried.
      */
     private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {

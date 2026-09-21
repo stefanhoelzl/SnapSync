@@ -34,7 +34,7 @@ import co.touchlab.kermit.Logger
  *
  * ## What is NOT bound here
  *
- * Only the job subsystem. Asset and resource fetches, the persistent change-token walk, the selection
+ * Only the job subsystem. Asset and resource fetches, the full-enumeration library walk, the selection
  * policy's reads, and album creation and membership are the real platform APIs on every target — they
  * work on a simulator, and they are among the most valuable things that host exercises. Discovery is
  * therefore not reached through this seam at all: the root binds the real PhotoKit discovery

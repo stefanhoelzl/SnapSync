@@ -233,61 +233,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     }
 
     @Test
-    fun `markAbsent flags only that asset's rows and keeps them readable`() = runTest {
-        val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A"))
-        backend.recordUnlessSettled(entry(key = "A-video.mov", assetId = "A"))
-        backend.recordUnlessSettled(entry(key = "B-photo.jpg", assetId = "B"))
-
-        backend.markAbsent("A")
-
-        // The rows SURVIVE: what they record — these bytes are on the backend — is still true, and
-        // keeping them is what stops a restored asset re-uploading.
-        assertEquals(true, backend.get("A-photo.jpg")?.absent)
-        assertEquals(true, backend.get("A-video.mov")?.absent)
-        assertEquals(false, backend.get("B-photo.jpg")?.absent)
-    }
-
-    @Test
-    fun `markAbsent preserves every other field of the row`() = runTest {
-        val backend = createBackend()
-        val before = entry(key = "A-photo.jpg", assetId = "A")
-        backend.recordUnlessSettled(before)
-
-        backend.markAbsent("A")
-
-        val after = backend.get("A-photo.jpg")
-        assertEquals(before.state, after?.state)
-        assertEquals(before.attempt, after?.attempt)
-        assertEquals(before.eventId, after?.eventId)
-        assertEquals(before.creationDate, after?.creationDate)
-    }
-
-    @Test
-    fun `markAbsent is idempotent`() = runTest {
-        val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A"))
-
-        backend.markAbsent("A")
-        backend.markAbsent("A")
-
-        assertEquals(true, backend.get("A-photo.jpg")?.absent)
-    }
-
-    @Test
-    fun `markAbsent dings an active changes collector`() = runTest {
-        val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "A-photo.jpg", assetId = "A"))
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
-
-        backend.markAbsent("A")
-        runCurrent()
-
-        assertEquals(1, dings)
-    }
-
-    @Test
     fun `resetTo replaces every row with the baseline verbatim`() = runTest {
         val backend = createBackend()
         backend.recordUnlessSettled(entry(key = "old-1", assetId = "old"))
@@ -372,41 +317,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     }
 
     @Test
-    fun `writer marks an asset absent - reader cannot`() = runTest {
-        val backend = createBackend()
-        val writer = LedgerWriter(backend)
-        writer.recordRequested(res("X-photo.jpg", "X"), attempt = 0, eventId = "E1")
-        writer.recordRequested(res("X-video.mov", "X"), attempt = 0, eventId = "E1")
-        writer.recordRequested(res("Y-photo.jpg", "Y"), attempt = 0, eventId = "E1")
-
-        writer.markAbsent("X")
-
-        assertEquals(true, writer.entry("X-photo.jpg")?.absent)
-        assertEquals(true, writer.entry("X-video.mov")?.absent)
-        assertEquals(false, writer.entry("Y-photo.jpg")?.absent)
-
-        writer.markPresent(listOf("X"))
-
-        assertEquals(false, writer.entry("X-photo.jpg")?.absent)
-        assertEquals(false, writer.entry("X-video.mov")?.absent)
-    }
-
-    @Test
-    fun `an absent row still suppresses re-upload`() = runTest {
-        // The point of marking rather than deleting: the bytes are still on the backend, so a restored
-        // asset must not re-upload (capability `sync-ledger`).
-        val backend = createBackend()
-        val writer = LedgerWriter(backend)
-        backend.seedCompleted(res("X-photo.jpg", "X"), eventId = "E1")
-
-        writer.markAbsent("X")
-
-        val row = writer.entry("X-photo.jpg")
-        assertEquals(LedgerState.COMPLETED, row?.state)
-        assertEquals(true, row?.absent)
-    }
-
-    @Test
     fun `recording converges on assetId state and attempt`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
@@ -478,17 +388,18 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
 
     @Test
     fun `an absent row is the one thing the manifest projection drops`() = runTest {
+        // Nothing sets the mark any more, but the reads honour a mark an earlier build set until the column
+        // is dropped — which is why the cycle's sweep exists (capability `sync-ledger`).
         val backend = createBackend()
-        val writer = LedgerWriter(backend)
-        backend.seedCompleted(res("kept.heic", "A"), eventId = "E1")
-        writer.recordDiscovered(listOf(res("gone.heic", "B")), eventId = "E1")
-        backend.markAbsent("B")
+        backend.resetTo(
+            listOf(
+                entry(key = "kept.heic", assetId = "A", state = LedgerState.COMPLETED),
+                entry(key = "gone.heic", assetId = "B", state = LedgerState.DISCOVERED).markedAbsent(),
+            ),
+        )
 
         assertEquals(listOf("kept.heic"), backend.manifestRows().map { it.key })
-        assertEquals(
-            LedgerState.DISCOVERED, backend.get("gone.heic")!!.state,
-            "the row survives — absence is a fact it carries, not a deletion",
-        )
+        assertEquals(LedgerState.DISCOVERED, backend.get("gone.heic")!!.state, "`get` still reads a marked row")
     }
 
     // ── The guarded terminal write and the narrow reads ─────────────────────────────────────────────
@@ -609,12 +520,11 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     }
 
     @Test
-    fun `rowsNeedingJob excludes rows whose asset left the library`() = runTest {
+    fun `rowsNeedingJob excludes a row an earlier build marked absent`() = runTest {
         val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "gone.heic", assetId = "G", state = LedgerState.DISCOVERED))
-        backend.markAbsent("G")
+        backend.resetTo(listOf(entry(key = "gone.heic", assetId = "G", state = LedgerState.DISCOVERED).markedAbsent()))
 
-        // A departed asset has no bytes left to read, so there is nothing to upload from.
+        // The filter stays until the column goes; the cycle's sweep is what brings such a row back.
         assertEquals(emptyList(), backend.rowsNeedingJob())
     }
 

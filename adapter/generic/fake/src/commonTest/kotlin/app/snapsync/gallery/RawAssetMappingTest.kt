@@ -195,8 +195,8 @@ class RawAssetMappingTest {
     fun a_candidate_reads_its_resources_only_when_asked() = runTest {
         // The cost ladder, over the fake: obtaining candidates costs nothing per asset, and the mapping
         // (role filter, upload key, id normalization) runs per candidate when its resources are asked for.
-        // The id-scoped incremental walk that used to be tested here is now internal to `IosDiscovery` —
-        // only it has identifiers to scope by, because only it reads the change feed.
+        // The id-scoped resolve that used to be tested here is internal to `IosDiscovery` — only it has
+        // identifiers to scope by, because only it resolves ledger keys.
         val source = InMemoryCandidateSource(
             listOf(
                 RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),

@@ -42,22 +42,20 @@ private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
  * `REQUESTED` row from a prior cycle whose job never materialized, which the engine would otherwise
  * treat as in-flight and skip forever), leaving the ledger as exactly the device's stored files.
  *
- * The **discovery cursor IS cleared** on a re-join, though: the cursor is what makes the next scan a
- * full re-enumeration rather than an incremental "what changed" pass, and a re-join needs to
- * re-enumerate to find the assets that still need uploading (the App-Group cursor survives an app
- * *upgrade*, so without the reset a re-join scans incrementally and discovers nothing). This is safe —
- * the reset+seeded ledger answers `AlreadyUploaded` for everything already stored, so a
- * re-enumeration re-uploads nothing; it only re-discovers genuinely-unstored work.
+ * The same cycle's walk then finds the assets that still need uploading: every walk is a full enumeration,
+ * and every seeded row is bare, so the walk re-reads each seeded asset, fills its detail, and records any
+ * role the listing lacked. This is safe — the reset+seeded ledger answers `AlreadyUploaded` for everything
+ * already stored, so the walk re-uploads nothing; it only discovers genuinely-unstored work.
  *
- * - configured `eventId` == marker → already joined; upload directly (no fetch, seed, or cursor reset).
+ * - configured `eventId` == marker → already joined; upload directly (no fetch or seed).
  * - configured `eventId` != marker (a switch, reinstall, or fresh provision) → fetch the **device's**
  *   stored filenames, **`resetTo`** one `COMPLETED` row per filename (clear-and-seed, key = filename),
- *   **clear the discovery cursor** (force a full re-enumeration), then set the marker. Returns `true`,
+ *   then set the marker. Returns `true`,
  *   so the same cycle proceeds to upload: seeded rows are skipped by the engine and any not-yet-stored
  *   resource uploads idempotently. The reset makes the ledger exactly the device's stored files on
  *   every re-join — restoring dedup after a reinstall and clearing any phantom in-flight rows.
- * - the listing fetch fails → create no jobs this cycle and leave the marker **unset** (the ledger and
- *   cursor are untouched), so the next cycle retries. There is no user-facing join-failure state. A
+ * - the listing fetch fails → create no jobs this cycle and leave the marker **unset** (the ledger is
+ *   untouched), so the next cycle retries. There is no user-facing join-failure state. A
  *   listing this build cannot *read* defers the same way but is reported at `Error`, because unlike a
  *   transport failure it will not heal on the next cycle.
  * - no event configured but a marker remains (a leave) → clear the marker only and upload nothing; the
@@ -68,7 +66,6 @@ class UploadReconciler(
     private val ledger: LedgerStore,
     private val marker: JoinedEventMarker,
     private val deviceId: String,
-    private val clearDiscoveryCursor: suspend () -> Unit,
     private val log: Logger = Logger.withTag("UploadReconciler"),
 ) {
     /**
@@ -92,7 +89,7 @@ class UploadReconciler(
         // defers without settling — the ledger and marker are left untouched and the next cycle retries.
         // The network LIST is bounded by an explicit timeout so a hung fetch cannot stall the
         // OS-scheduled cycle to the force-kill; a timeout defers exactly like a failed fetch (no seed,
-        // ledger/cursor/marker untouched, retry next cycle).
+        // ledger/marker untouched, retry next cycle).
         val listing = withTimeoutOrNull(DEVICE_LIST_TIMEOUT_MS) { files.list(deviceId) }
         if (listing == null) {
             log.w { "device listing timed out — deferring uploads this cycle" }
@@ -137,13 +134,8 @@ class UploadReconciler(
             LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED, attempt = 0, eventId = configuredEventId)
         }
         ledger.resetTo(seeds)
-        // Force a full re-enumeration so the producer re-discovers the assets that still need
-        // uploading — the cursor survives an app upgrade, so a re-join with a settled cursor would
-        // otherwise scan incrementally and find nothing. The reset+seed dedups, so this re-uploads
-        // nothing already stored.
-        clearDiscoveryCursor()
         marker.set(configuredEventId) // settle even when the listing is empty → the next cycle does not re-loop
-        log.i { "joined $configuredEventId — reset+seeded ${seeds.size} file(s), cleared cursor" }
+        log.i { "joined $configuredEventId — reset+seeded ${seeds.size} file(s)" }
         return true
     }
 }

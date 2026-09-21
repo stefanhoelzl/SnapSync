@@ -24,7 +24,6 @@ import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.ManifestPublisher
 import app.snapsync.ports.JoinedEventMarker
 import app.snapsync.ports.SecureStoreUnavailable
@@ -69,7 +68,6 @@ class UploadPorts(
      * test. Derived by the app composition from current permission + the latest snapshot.
      */
     val selectionScope: () -> SelectionScope = { SelectionScope.Unrestricted },
-    val discoveryStore: DiscoveryStore,
     /** The per-device stored-file listing the re-join reconciliation seeds from. */
     val deviceFiles: DeviceFilesSource,
     val joinedMarker: JoinedEventMarker,
@@ -122,10 +120,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
             ledger = ports.ledger,
             marker = ports.joinedMarker,
             deviceId = ports.deviceId(),
-            // Force a full re-enumeration on a re-join: the cursor survives an app upgrade, so a
-            // settled cursor would scan incrementally and find nothing. The seeded ledger dedups,
-            // so nothing already stored re-uploads.
-            clearDiscoveryCursor = { ports.discoveryStore.clearToken() },
             log = ports.log,
         )
     }
@@ -159,7 +153,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         // The read-discipline gate (capability `limited-photo-access`): the ONE shared assembly wraps
         // the library reads, so every tier and the world get the same walk-vs-snapshot decision.
         library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope),
-        store = ports.discoveryStore,
         log = ports.log,
         reconcile = { eventId -> reconciler.reconcile(eventId) },
         // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second

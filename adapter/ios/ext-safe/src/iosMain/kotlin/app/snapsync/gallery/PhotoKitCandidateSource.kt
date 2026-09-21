@@ -96,8 +96,8 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
      * The candidates for an **already-fetched** result — no fetch of its own.
      *
      * Two callers need this, and both for the same reason: they already hold a `PHFetchResult` and must
-     * not issue another fetch to reach its assets. The incremental change-feed walk fetches by identifier
-     * (which takes no predicate), and the `LIMITED` selection observer holds the baseline/change result
+     * not issue another fetch to reach its assets. The ledger-key resolve fetches by identifier (which
+     * takes no predicate), and the `LIMITED` selection observer holds the baseline/change result
      * whose re-fetch would repeat a read already paid for (capability `limited-photo-access`, whose read
      * discipline is about reading the right source under a partial grant — not about alert suppression).
      */

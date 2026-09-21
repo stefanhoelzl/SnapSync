@@ -72,17 +72,6 @@ class FakeLedgerStore : LedgerStore {
         if (cleared) dings.tryEmit(Unit)
     }
 
-    override suspend fun markAbsent(assetId: String) {
-        for ((key, row) in rows) if (row.assetId == assetId && !row.absent) rows[key] = row.markedAbsent()
-    }
-
-    override suspend fun markPresent(assetIds: Collection<String>) {
-        val wanted = assetIds.toSet()
-        var cleared = false
-        for ((key, row) in rows) if (row.absent && row.assetId in wanted) { rows[key] = row.markedPresent(); cleared = true }
-        if (cleared) dings.tryEmit(Unit)
-    }
-
     override suspend fun aggregates(): LedgerAggregates {
         val byAsset = rows.values.filterNot { it.absent }.groupBy { it.assetId }
         val complete = byAsset.values.filter { g -> g.all { it.state.isDone } }

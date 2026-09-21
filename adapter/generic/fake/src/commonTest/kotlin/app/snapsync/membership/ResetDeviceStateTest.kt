@@ -33,7 +33,6 @@ class ResetDeviceStateTest {
         val config = FakeConfigStore()
         val ledger = InMemoryLedgerStore()
         val downloads = InMemoryDownloadStore()
-        var cursorCleared = false
 
         /**
          * Stands in for the download controller's lock-holding reset entry point. It prunes through the
@@ -47,7 +46,6 @@ class ResetDeviceStateTest {
             ledger = ledger,
             downloads = downloads,
             resetDownloads = { downloadsReset = true; downloads.pruneNonTerminal(protecting = emptySet()) },
-            clearDiscoveryCursor = { cursorCleared = true },
         )
     }
 
@@ -55,7 +53,7 @@ class ResetDeviceStateTest {
         PlannedResource(key, "https://x/$key", "photo", "image/heic", key)
 
     @Test
-    fun `it clears the ledger and the cursor and the config`() = runTest {
+    fun `it clears the ledger and the config`() = runTest {
         val f = Fixture()
         f.ledger.recordUnlessSettled(LedgerEntry("IMG_1.HEIC", "asset-1", LedgerState.COMPLETED, 0, "E1"))
         f.ledger.recordUnlessSettled(LedgerEntry("IMG_2.HEIC", "asset-2", LedgerState.COMPLETED, 0, "E1"))
@@ -67,18 +65,7 @@ class ResetDeviceStateTest {
         val aggregates = f.ledger.aggregates()
         assertEquals(0, aggregates.completed)
         assertEquals(0, aggregates.pending)
-        assertTrue(f.cursorCleared, "the discovery cursor must be cleared")
         assertTrue(f.config.cleared, "the membership config must be cleared")
-    }
-
-    @Test
-    fun `clearing the cursor is what actually restores enumeration`() = runTest {
-        // The non-obvious half, pinned on its own: a ledger wipe with the change token still in place
-        // means the next cycle observes no changes and enumerates nothing, so the device uploads zero
-        // against the new backend — the exact silent failure this trigger exists to remove.
-        val f = Fixture()
-        f.reset().reset()
-        assertTrue(f.cursorCleared)
     }
 
     @Test
@@ -125,10 +112,9 @@ class ResetDeviceStateTest {
             ledger = f.ledger,
             downloads = f.downloads,
             resetDownloads = { f.downloadsReset = true },
-            clearDiscoveryCursor = { f.cursorCleared = true },
         ).reset()
 
         assertEquals(0, f.ledger.aggregates().completed, "the ledger clear still ran")
-        assertTrue(f.cursorCleared, "the cursor clear still ran")
+        assertTrue(f.downloadsReset, "the download reset still ran")
     }
 }

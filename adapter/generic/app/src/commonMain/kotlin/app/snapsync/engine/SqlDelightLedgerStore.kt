@@ -225,32 +225,6 @@ class SqlDelightLedgerStore(
         }
     }
 
-    override suspend fun markAbsent(assetId: String) {
-        // An indexed UPDATE over one asset — no keep-set, so no bind-variable limit to work around, which
-        // is what the deleted `retainAssets` needed its per-straggler loop for.
-        queries.markAbsent(assetId)
-        dings.tryEmit(Unit)
-    }
-
-    override suspend fun markPresent(assetIds: Collection<String>) {
-        if (assetIds.isEmpty()) return
-        // Read the marked assets first and update only the intersection: this runs every cycle over every
-        // asset the walk saw, and in the common case — nothing restored — it must not open a write at all.
-        // One transaction, so the read and the update see the same rows. Chunked, because an IN list is one
-        // bind variable per id and a full enumeration can name more assets than a driver will bind.
-        val cleared = queries.transactionWithResult {
-            val marked = queries.selectAbsentAssetIds().executeAsList().toSet()
-            val matches = assetIds.filterTo(linkedSetOf()) { it in marked }
-            matches.chunked(MARK_PRESENT_CHUNK).forEach { queries.markPresent(it) }
-            matches.size
-        }
-        if (cleared > 0) {
-            // Positively observable, like the eventId backfill: the steady-state no-op stays silent.
-            log.i { "absence cleared for $cleared asset(s) seen in the library again" }
-            dings.tryEmit(Unit)
-        }
-    }
-
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
     private fun roleOrNull(wire: String): ResourceRole? =
         ResourceRole.entries.firstOrNull { it.wire == wire }
@@ -265,9 +239,6 @@ class SqlDelightLedgerStore(
         dings.tryEmit(Unit)
     }
 }
-
-/** Asset ids per `markPresent` UPDATE — well under every driver's bind-variable limit. */
-private const val MARK_PRESENT_CHUNK = 500
 
 /** Keys per `deleteKeys` statement — well under every driver's bind-variable limit. */
 private const val KEY_CHUNK = 500

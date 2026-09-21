@@ -21,14 +21,11 @@ import co.touchlab.kermit.Logger
  * uploads **nothing**, with no error, no failed request, and no log line. It is indistinguishable from a
  * broken rig, and it bites in both directions (going to a local backend and coming back).
  *
- * ## Why all four, and why not the fifth
+ * ## Why all three, and why not the fourth
  *
- * Clearing the ledger alone is **not enough**, which is the non-obvious half. Discovery's cursor is a
- * persisted change token; with it retained the next cycle observes no changes and enumerates nothing, so
- * a ledger wipe on its own still uploads zero. [clearDiscoveryCursor] restores full re-enumeration — the
- * `DiscoveryStore` degradation ("a cold start with no stored token re-enumerates the whole library") is
- * precisely the behaviour wanted here. It arrives as the same injected effect `ReconfigureEvent` already
- * uses to invalidate the shared cursor, so both callers go through one surface.
+ * Clearing the ledger is enough to make the next cycle upload everything in scope: every upload walk is a
+ * full enumeration (there is no discovery cursor whose retained change token would make it enumerate
+ * nothing), and a walk reads every asset the ledger holds no row for.
  *
  * The config is cleared **locally only**: this issues no backend `DELETE`, because the event belongs to
  * the backend being left behind (now unreachable at the baked host) and the newly baked backend never
@@ -73,7 +70,6 @@ class ResetDeviceState(
      * exactly like one that worked.
      */
     private val resetDownloads: suspend () -> Unit,
-    private val clearDiscoveryCursor: () -> Unit,
 ) {
     private val log = Logger.withTag("ResetDeviceState")
 
@@ -83,14 +79,12 @@ class ResetDeviceState(
         val keptImported = runCatching { downloads.counts().imported }.getOrNull()
 
         step("clear ledger") { ledger.clear() }
-        // Without this the ledger clear achieves nothing: no change token means no enumeration.
-        step("clear discovery cursor") { clearDiscoveryCursor() }
         step("prune non-terminal downloads (and free the bytes it strands)") { resetDownloads() }
         // Local only — no backend is notified. See the class doc.
         step("clear config") { config.clear() }
 
         log.i {
-            "reset: ledger + discovery cursor + config cleared, non-terminal downloads pruned " +
+            "reset: ledger + config cleared, non-terminal downloads pruned " +
                 "(${keptImported ?: "?"} imported row(s) kept)"
         }
     }

@@ -90,7 +90,7 @@ object IdleUploadMechanism : UploadMechanismRuntime {
  * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
  * reconciliation's `resetTo` ever re-baselines it (`upload-state-reconciliation`).
  *
- * `stop()` repairs nothing either, and clears no discovery cursor. What a stop can leave behind is
+ * `stop()` repairs nothing either. What a stop can leave behind is
  * `REQUESTED` rows no transfer will settle; each mechanism repairs those in its **`start()`**, by demoting
  * them to `FAILED` — which the ledger's work read returns without a walk — because a start is the one
  * moment a mechanism knows no other transfer is carrying them (`upload-lifecycle`).
@@ -100,8 +100,8 @@ interface UploadProducer {
     suspend fun start()
 
     /**
-     * Cease uploading. Idempotent, and **destroys no durable state** — it must not clear the ledger, must
-     * not clear the discovery cursor, and must not delete stored bytes.
+     * Cease uploading. Idempotent, and **destroys no durable state** — it must not clear the ledger and
+     * must not delete stored bytes.
      */
     suspend fun stop()
 }
@@ -203,7 +203,7 @@ class UploadArm(
      *
      * With access already usable this **starts** the resolved mechanism. It does not toggle, disable, or
      * reset anything: the cycle re-reads config each run and its marker-gated reconciliation seeds
-     * already-stored resources as `COMPLETED` and clears the discovery cursor before any job is created.
+     * already-stored resources as `COMPLETED` before any job is created.
      * In-flight transfers are deliberately left alone — the byte URL is device-partitioned and
      * event-independent, so an upload in flight stays valid across a switch and cancelling it would only
      * re-upload identical bytes to an identical URL.

@@ -18,8 +18,8 @@ private const val POSIX_ENOENT: Long = 2L
  * downstream: `configReadViaFile` consulted the fallback on a missing file, the legacy item was
  * found, the read answered `Joined`, and the device stayed joined. There is no second opinion any
  * more. A read failure misclassified into the not-found class now **logs the device out** — the
- * `joinedEventId` marker is cleared, the ledger is clear-and-seeded, the discovery cursor is reset
- * and the screen returns to the setup gate — with no error raised anywhere and nothing to undo it.
+ * `joinedEventId` marker is cleared, the ledger is clear-and-seeded, and the screen returns to the setup
+ * gate — with no error raised anywhere and nothing to undo it.
  * So **widening the whitelist below is a change to the leave decision**, not an error-handling
  * tidy-up: it is a behaviour change to `upload-state-reconciliation` and belongs in a spec delta.
  *

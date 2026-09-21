@@ -9,7 +9,7 @@ import app.snapsync.ports.SecureStoreRead
  * The map used to live in the **Keychain**, which was a mistake: the upload extension reads it while
  * placing a completed upload into the event album, and the OS invokes that extension when the device
  * is idle — i.e. locked — where a `WhenUnlocked` Keychain item is unreadable. It now lives in the
- * App-Group `NSUserDefaults` suite (like the discovery cursor), whose container inherits
+ * App-Group `NSUserDefaults` suite (like the join marker), whose container inherits
  * `NSFileProtectionCompleteUntilFirstUserAuthentication` and is therefore background-readable **by
  * construction**, with no accessibility class to get wrong.
  *

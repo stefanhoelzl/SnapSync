@@ -36,18 +36,17 @@ class LedgerEntry(
     val contentType: String = "",
     val originalFilename: String = "",
     /**
-     * Whether the asset has left this device's library.
+     * The **retired** absence mark: an earlier build set it when an asset left the library, instead of
+     * deleting the row. Nothing sets it any more — a departed asset's rows are deleted by the walk that
+     * shows it gone (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk") —
+     * and the cycle's per-cycle sweep clears what an earlier build left, because every read that answers
+     * "what does this device hold or share" still excludes a marked row. The column goes with the migration
+     * that drops it; until then this field only carries what storage holds.
      *
-     * The row is **kept** when that happens, because what it records — these bytes are on the backend —
-     * is still true: nothing on the device deletes an uploaded object (capability `scheduled-cleanup`
-     * owns the only deletion, and it deletes whole events). Keeping it is also what stops a restored
-     * asset re-uploading, and iOS keeps a deleted photo recoverable for 30 days — the same order as an
-     * event's whole life.
-     *
-     * It replaces a `DELETE`. Pruning conflated the deletion signal with "the policy stopped admitting
-     * this", and because the prune was fed the policy-admitted set, raising a capture cutoff discarded
-     * the `COMPLETED` rows of photos still in the library and still uploaded — making the narrowing
-     * irreversible, since those rows are exactly what suppresses re-upload.
+     * The mark once replaced a `DELETE` for a reason that still holds, and holds for the deletion that
+     * replaced the mark: a prune fed the policy-admitted set conflated "gone from the library" with "outside
+     * the current capture window", so raising a cutoff discarded the `COMPLETED` rows of photos still in the
+     * library. The walk's deletion is judged by presence and by the rows' own window, never by admission.
      */
     val absent: Boolean = false,
     /**
@@ -145,15 +144,13 @@ enum class LedgerState {
      * The only state named for the **walk** rather than for an upload attempt, and the reason the ledger
      * can be the cycle's source of work at all: without it, the sole record of "this needs uploading"
      * lives in the walk's return value and dies with the cycle, so a cycle that could not enqueue
-     * everything it saw had to re-walk the whole library next time to find the remainder — and could not
-     * advance the change-token cursor, because advancing past a resource nothing records loses it
-     * silently and permanently.
+     * everything it saw had to re-walk the whole library next time to find the remainder. It is also what
+     * lets the walk skip an asset it has already recorded (capability `sync-ledger`, "A walk re-reads only
+     * the assets the ledger does not fully know"): the work lives in this row, not in a re-read.
      *
-     * It is recorded **before** the first `createJob` of a cycle, and it is what licenses that cycle's
-     * cursor advance (capability `ios-photokit-upload`, "In-extension discovery via persistent change
-     * token"). It does not mean a job exists — that is [REQUESTED], and the write-after-act invariant
-     * keeping those distinct is what lets the stranded pass treat a `REQUESTED` row with no live task as
-     * a lost transfer.
+     * It is recorded **before** the first `createJob` of a cycle. It does not mean a job exists — that is
+     * [REQUESTED], and the write-after-act invariant keeping those distinct is what lets the stranded pass
+     * treat a `REQUESTED` row with no live task as a lost transfer.
      *
      * Not a done state ([isDone]) and **does** need a job ([needsJob]), so it counts toward the backlog
      * everywhere. It is nonetheless DECLARED in the device manifest: that document states what this device

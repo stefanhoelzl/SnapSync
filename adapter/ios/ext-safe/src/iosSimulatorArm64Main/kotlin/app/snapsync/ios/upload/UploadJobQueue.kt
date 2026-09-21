@@ -109,7 +109,7 @@ object SimulatorUploadJobs {
 
     /**
      * The OS's in-flight job cap in force for this cycle. `createJob` answers `LIMIT_EXCEEDED` at or above
-     * it, which is what drives a cap-truncated cycle: creation stops, the cursor is left un-advanced, and
+     * it, which is what drives a cap-truncated cycle: creation stops, the remainder rests `DISCOVERED`, and
      * the result is `PROCESSING`.
      */
     suspend fun jobLimit(): Int = mutex.withLock { limit }
@@ -134,7 +134,7 @@ object SimulatorUploadJobs {
  * A [BackgroundTransfer] over [SimulatorUploadJobs] — the four job verbs, and nothing else.
  *
  * **Discovery is not here**, exactly as it is not in [IosPhotoKitUploadPlatform]: the root binds the real
- * PhotoKit change-token walk (`IosDiscovery`) beside this queue on every target. The walk, the `PHAsset`
+ * PhotoKit full-enumeration walk (`IosDiscovery`) beside this queue on every target. The walk, the `PHAsset`
  * fetches and the selection policy's inputs are real platform behaviour that works on this host, and
  * answering them here would throw away the most valuable coverage the host offers.
  *

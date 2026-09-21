@@ -70,7 +70,9 @@ class RuntimeIdentityTest {
     /** Quoted Kotlin string literals: exactly one production occurrence each. */
     private val kotlinLiterals = listOf(
         "group.app.snapsync",
-        "discovery.changeToken",
+        // NB `discovery.changeToken` was pinned here until the discovery cursor was removed (capability
+        // `architecture-guards`): every walk is a full enumeration now, so the key appears in production
+        // Kotlin nowhere and an exactly-once pin would fail forever. A stale value in the App Group is inert.
         "rejoin.joinedEventId",
         "app.snapsync.album.map",
         "ledger.db",
