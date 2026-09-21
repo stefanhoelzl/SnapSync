@@ -2,26 +2,26 @@ One PR, landed as the reviewable commits below (design D1). Every group leaves `
 
 ## 1. Retire the absence mark (sweep + key-scoped delete)
 
-- [ ] 1.1 Add `deleteKeys(keys: Collection<String>)` and `clearAbsenceMarks()` to `LedgerStore`
+- [x] 1.1 Add `deleteKeys(keys: Collection<String>)` and `clearAbsenceMarks()` to `LedgerStore`
   (`domain/ports/.../LedgerStore.kt`), with KDoc stating the key-scoped rule and the sweep's reason
   (spec `sync-ledger`, "Prune operations are writer-only").
-- [ ] 1.2 Implement both in `SqlDelightLedgerStore` + `Ledger.sq`: `deleteKeys` chunked below the
+- [x] 1.2 Implement both in `SqlDelightLedgerStore` + `Ledger.sq`: `deleteKeys` chunked below the
   bind-variable limit (reuse the `MARK_PRESENT_CHUNK` reasoning), `clearAbsenceMarks` as one
   `UPDATE ledgerRow SET absent = 0 WHERE absent = 1`; each dings `changes` only when it changed a row.
   **No `.sqm` is added.** `Schema.version` must not move (design D5).
-- [ ] 1.3 Implement both in `:adapter:generic:fake`'s `InMemoryLedgerStore` and in the
+- [x] 1.3 Implement both in `:adapter:generic:fake`'s `InMemoryLedgerStore` and in the
   `domain/feature` commonTest doubles (`InMemoryLedgerStore`, `FakeLedgerStore`,
   `OsDrivenUploadMechanismTest`'s store).
-- [ ] 1.4 Expose both on `LedgerWriter` only. Run `clearAbsenceMarks()` once per cycle in
+- [x] 1.4 Expose both on `LedgerWriter` only. Run `clearAbsenceMarks()` once per cycle in
   `UploadCycle.settle`, beside `backfillEventId`, with the same `runCatching` posture.
-- [ ] 1.5 In `UploadCycle.enqueue`, replace `ledger.markAbsent(row.assetId)` with
+- [x] 1.5 In `UploadCycle.enqueue`, replace `ledger.markAbsent(row.assetId)` with
   `ledger.deleteKeys(listOf(row.key))`, and fix the log line and KDoc ("marked, not failed" → "deleted
   by key").
-- [ ] 1.6 Extend `LedgerStoreContract` / `LedgerRecordGuardContract` (`:test:world`) with the new
+- [x] 1.6 Extend `LedgerStoreContract` / `LedgerRecordGuardContract` (`:test:world`) with the new
   scenarios: named keys only, the sibling survives, no-op writes nothing, the sweep clears and preserves
   fields, the sweep on a clean ledger does not ding, more keys than one statement binds. Every
   `LedgerStore` binding runs them.
-- [ ] 1.7 Cycle test: a `DISCOVERED` `X-live` that resolves to nothing is deleted while its `COMPLETED`
+- [x] 1.7 Cycle test: a `DISCOVERED` `X-live` that resolves to nothing is deleted while its `COMPLETED`
   `X-primary` sibling is untouched, including under a scoped (partial-grant) resolve.
 
 ## 2. The gated presence diff

@@ -162,6 +162,22 @@ UPDATE ledgerRow
 SET state = 'FAILED'
 WHERE state = 'REQUESTED';
 
+-- Delete exactly the named rows, by primary key (capability `sync-ledger`). KEY-scoped on purpose: every
+-- caller holds evidence about individual rows, and the resources of one asset hold per-key states, so an
+-- asset-scoped delete would reach rows its caller never judged. The caller chunks the IN list below the
+-- driver's bind-variable limit.
+deleteKeys:
+DELETE FROM ledgerRow
+WHERE key IN :keys;
+
+-- Clear the retired absence mark from every row an earlier build set it on. Nothing sets the mark any
+-- more; this makes such rows reachable again by the reads that still exclude marked rows. Idempotent, and
+-- matches nothing on every run after the first.
+clearAbsenceMarks:
+UPDATE ledgerRow
+SET absent = 0
+WHERE absent = 1;
+
 -- Record that one asset has left the library (rides the assetId index). An UPDATE, never a DELETE: the
 -- row's statement — "these bytes are on the backend" — stays true, and keeping it is what stops a
 -- restored asset re-uploading. Idempotent, so re-running on an already-marked asset is free.

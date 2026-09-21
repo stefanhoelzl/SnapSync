@@ -40,6 +40,23 @@ class FakeLedgerStore : LedgerStore {
         rows.clear(); rows.putAll(next); dings.tryEmit(Unit)
     }
 
+    override suspend fun deleteKeys(keys: Collection<String>) {
+        // Key-scoped, exactly like the backend's primary-key DELETE; dings only when a row went.
+        val wanted = keys.toSet()
+        if (rows.keys.removeAll { it in wanted }) dings.tryEmit(Unit)
+    }
+
+    override suspend fun clearAbsenceMarks() {
+        var cleared = false
+        for ((key, row) in rows) {
+            if (row.absent) {
+                rows[key] = row.markedPresent()
+                cleared = true
+            }
+        }
+        if (cleared) dings.tryEmit(Unit)
+    }
+
     override suspend fun markAbsent(assetId: String) {
         for ((key, row) in rows) if (row.assetId == assetId && !row.absent) rows[key] = row.markedAbsent()
     }

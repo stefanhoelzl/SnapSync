@@ -1207,6 +1207,29 @@ class UploadCycleTest {
     }
 
     @Test
+    fun a_row_that_no_longer_resolves_is_deleted_by_key_and_its_sibling_survives() = runTest {
+        // A Live Photo whose primary is uploaded and whose paired video still waits. The video's key now
+        // resolves to nothing — its asset left the library, or, under a partial grant, left the selection;
+        // the cycle sees the same answer from `resourcesFor` either way.
+        val backend = InMemoryLedgerStore()
+        backend.completed(resource("X-primary.heic", "X"))
+        LedgerWriter(backend).recordDiscovered(resource("X-live.mov", "X"), TEST_EVENT)
+        val platform = FakePlatform(discovered = emptyList())
+
+        val result = cycleOver(backend, platform).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(setOf("X-live.mov"), platform.resolvedKeys, "the row was offered")
+        assertNull(backend.get("X-live.mov"), "the unresolvable row is deleted, by its key")
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("X-primary.heic")?.state,
+            "its sibling is not this pass's evidence: an asset-scoped write would have reached it",
+        )
+        assertEquals(false, backend.get("X-primary.heic")?.absent)
+        assertTrue(platform.created.isEmpty())
+    }
+
+    @Test
     fun removed_asset_rows_are_marked_absent_incrementally_by_assetId() = runTest {
         val backend = InMemoryLedgerStore()
         backend.completed(resource("A_1-photo.jpg", "A_1"))
@@ -1319,7 +1342,9 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested(resource("a", "a"), attempt = 0, eventId = TEST_EVENT)
         val job = platformJob("a", UploadError.Network)
-        val platform = FakePlatform(ackJobs = listOf(job), limitAfter = 0)
+        // The asset is still in the library: this is about the cap, not about a departed photo, whose row
+        // would be deleted when its key failed to resolve.
+        val platform = FakePlatform(discovered = listOf(resource("a", "a")), ackJobs = listOf(job), limitAfter = 0)
         val store = FakeStore()
 
         val result = cycleOver(backend, platform, store).run()
