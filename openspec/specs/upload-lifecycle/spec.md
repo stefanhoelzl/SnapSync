@@ -215,8 +215,13 @@ so a decision placed there reaches whichever tiers its author happened to enumer
 
 The **translation** of those reads into the decision's inputs SHALL itself exist exactly once, in the
 shared composition (`uploadCore`, `:domain` `compose/`) — not once per root. It SHALL be **port-pure**:
-one fresh three-state `ConfigReader.read()` per cycle, the identity probe, the host read, and the
-admission answer, and nothing else. In particular it SHALL NOT refresh any adapter-held read-model state (such as the
+one read of the ledger's manifest version (capability `sync-ledger`), then one fresh three-state
+`ConfigReader.read()` per cycle, the identity probe, the host read, and the admission answer, and nothing
+else. The manifest version SHALL be read **first** — before the config, and therefore before the policy and
+the ledger rows the manifest is projected from — and SHALL be carried with the cycle to the manifest
+producer (capability `device-manifest`). The order is the ordering argument: every change that could alter
+the projection advances the version, so a change the projection misses happened after the read and carries
+a higher version. A version that cannot be read SHALL produce **Skip**, like any other unreadable input. In particular it SHALL NOT refresh any adapter-held read-model state (such as the
 UI-facing `ConfigSource` `StateFlow`) as a side effect of gating a cycle: repairing a `StateFlow`
 seeded while protected data was unavailable is the app process's trigger flows' concern — every
 OS-callback flow re-reads the membership before acting (migration step 12; see `ios-app-shell`,
@@ -254,6 +259,12 @@ not "no identity" (capability `device-identity`, which never reports absence: an
 #### Scenario: A long-lived tier re-reads the membership each cycle
 - **WHEN** a tier whose process survives across cycles runs a cycle after the membership changed
 - **THEN** the cycle acts on the current membership, without a relaunch
+
+#### Scenario: The manifest version is read before the membership
+
+- **WHEN** a cycle is gated
+- **THEN** the ledger's manifest version is read before the config, and the manifest the cycle publishes
+  carries that version
 
 #### Scenario: The entry-gate translation is one implementation
 - **WHEN** any tier (or the world harness) assembles an upload cycle
@@ -890,4 +901,3 @@ Decision record: `changes/selection-is-the-walk` (D3).
 #### Scenario: A late failure for a present row is still retried
 - **WHEN** a presented failure's key has a `REQUESTED` row
 - **THEN** it is adjudicated as before: the row returns to `DISCOVERED`, and the retry or re-creation is made
-

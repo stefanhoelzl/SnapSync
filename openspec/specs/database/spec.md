@@ -312,6 +312,13 @@ Recording a device manifest SHALL be atomic across every effect it has — at mi
 of that membership's `event_assets`, together with any other row the publish writes. A partially-applied
 publish SHALL NOT be observable by any read.
 
+On the current API version the **version comparison belongs to the same transaction**. The publish SHALL
+decide whether its manifest version is at least the membership's stored `manifest_version` (or the stored
+value is absent), record the new version, and replace the asset set, all in one transaction — and when the
+stored version is newer it SHALL change nothing at all. The comparison SHALL NOT be a read followed by a
+separate write: two publishes racing would both pass a check made outside the transaction. Every chunk of a
+chunked replace SHALL be conditioned on the same decision, so a refused publish cannot apply part of itself.
+
 Where the write would exceed the platform's bound-parameter limit it SHALL be chunked **within** the same
 transaction. Chunking across transactions SHALL NOT be used: it would leave a half-replaced asset set
 visible to the union, which is exactly the partial state the atomicity requirement exists to forbid.
@@ -325,6 +332,12 @@ missing.
 
 - **WHEN** any statement of a manifest publish fails
 - **THEN** none of the membership, asset-set, or resource changes are applied
+
+#### Scenario: An older publish changes nothing
+
+- **WHEN** a current-version publish carries manifest version 4 and the membership stores version 7
+- **THEN** neither the stored version nor any `event_assets` row is changed, including for a publish large
+  enough to be chunked
 
 #### Scenario: A large publish stays atomic
 
@@ -419,6 +432,16 @@ device that has not moved, and because the exemption ends when that version is r
 
 An exemption SHALL be recorded against a **named** version. A new version SHALL NOT be granted one.
 
+**One column carries a named exception on the current version: `memberships.manifest_version`.** Its writer
+is the manifest publish, which records the version it accepted there; the join also writes it, but only to
+**clear** it when a membership starts or restarts (capability `api-endpoints`, "Joining is an explicit
+route"). It is the only `memberships` column the publish writes, and the publish writes nothing else in
+`memberships`. The exception is safe for a reason the rule's own rationale names: nothing merges the two
+writes and no reconciliation rule exists between them — the join's write is a lifecycle reset, not a second
+source for the version, and no route but the publish reads the column. Decision record:
+`changes/manifest-versions` (D7), which weighed a per-column-group split with a join generation and rejected it
+as three columns for identical behaviour.
+
 #### Scenario: The current version's manifest publish does not record uploads
 
 - **WHEN** a manifest on the current version names resources
@@ -428,6 +451,12 @@ An exemption SHALL be recorded against a **named** version. A new version SHALL 
 
 - **WHEN** a device publishes a manifest on the current version for an event it has departed
 - **THEN** its membership state is unchanged, because only join and leave write it
+
+#### Scenario: The manifest version is written by the publish and cleared only by a join
+
+- **WHEN** the columns each current-version route writes are listed
+- **THEN** the manifest publish writes `memberships.manifest_version` and no other `memberships` column, and the
+  join writes it only to clear it
 
 #### Scenario: A legacy version keeps its second writer
 
@@ -663,3 +692,19 @@ hand-written statement of the shape.
 - **WHEN** the index is introduced
 - **THEN** it is a new file in the ordered migration set rather than an edit to one already applied, and
   the committed schema snapshot regenerates to include it
+
+### Requirement: The membership stores the manifest version it last accepted
+
+`memberships` SHALL carry a nullable integer `manifest_version`: the manifest version of the last current-version
+publish the membership accepted, or absent when none has been accepted since the membership last (re)started
+or since a versionless publish. It SHALL be added by an ordered, additive migration (`ALTER TABLE memberships
+ADD COLUMN manifest_version INTEGER`), which leaves every existing row absent and derives nothing — absent is
+the correct value for a membership that has never published a version. The column is rebuildable state
+(see "The database holds only rebuildable state"): losing it costs at most one publish being accepted out of
+order, which the device's next publish supersedes.
+
+#### Scenario: The migration leaves existing memberships unversioned
+
+- **WHEN** the migration runs over existing memberships
+- **THEN** every row survives with `manifest_version` absent, and the next versioned publish for each is
+  accepted

@@ -51,6 +51,8 @@ None.
   migration that adds them.
 - `upload-lifecycle`: the entry gate's translation reads the manifest version first, before the config.
 - `reconfigure-membership`: the config save bumps the manifest version after it lands.
+- `harness-world-model`: the world's v2 manifest publish models the backend's version ordering and the join's reset
+  (added at archive, when the delta-completeness gate found `test/world` unaccounted for).
 
 ## Impact
 
