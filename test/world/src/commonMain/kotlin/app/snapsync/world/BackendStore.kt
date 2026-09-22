@@ -78,9 +78,11 @@ enum class MemberState { ACTIVE, DEPARTED }
  * One membership: the device's state in the event, and the assets it shares there.
  *
  * The assets are retained across a leave, which is what lets a departed member keep contributing to the
- * union, and are REPLACED wholesale by each publish (full-state, capability `device-manifest`).
+ * union, and are REPLACED wholesale by each publish (full-state, capability `device-manifest`) — unless the
+ * publish carries a manifest version older than [manifestVersion], the backend's `memberships.manifest_version`
+ * (capability `api-endpoints`, "The v2 manifest publish is ordered by its version"). A join clears it.
  */
-data class Membership(val state: MemberState, val manifest: DeviceManifest)
+data class Membership(val state: MemberState, val manifest: DeviceManifest, val manifestVersion: Long? = null)
 
 /**
  * The in-memory model of the edge's byte store + registry (capability `harness-world-model`) — the
@@ -237,7 +239,9 @@ class BackendStore {
         if (eventId !in events) return JoinOutcome.NO_SUCH_EVENT
         val existing = memberships[eventId to deviceId]
         if (existing != null) {
-            memberships[eventId to deviceId] = existing.copy(state = MemberState.ACTIVE)
+            // A (re)join clears the stored manifest version, as the real `ENROLL` does: a re-joined device whose
+            // counter restarted must not have every publish refused as older (capability `api-endpoints`).
+            memberships[eventId to deviceId] = existing.copy(state = MemberState.ACTIVE, manifestVersion = null)
             return JoinOutcome.ENROLLED
         }
         // Capacity counts every membership ever enrolled, active or departed — leaving frees no slot.
@@ -257,15 +261,33 @@ class BackendStore {
      */
     fun putManifestV2Json(eventId: String, deviceId: String, json: String): Boolean {
         val existing = memberships[eventId to deviceId] ?: return false
-        memberships[eventId to deviceId] = existing.copy(manifest = deviceManifestFromJson(json))
+        val incoming = deviceManifestFromJson(json)
+        val version = incoming.version
+        val stored = existing.manifestVersion
+        // ORDERED, like the real route: a strictly older version changes nothing and is still answered as a
+        // success, because a snapshot at least as new is already here. An equal one is accepted (one version
+        // names one snapshot); a versionless one applies and clears the stored version.
+        if (version != null && stored != null && version < stored) {
+            refused[eventId to deviceId] = (refused[eventId to deviceId] ?: 0) + 1
+            return true
+        }
+        memberships[eventId to deviceId] = existing.copy(manifest = incoming, manifestVersion = version)
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
         return true
     }
 
     private val publishes = mutableMapOf<Pair<String, String>, Int>()
+    private val refused = mutableMapOf<Pair<String, String>, Int>()
+
+    /** How many v2 publishes the backend refused as older than the version it held — inspectable outcome. */
+    fun refusedPublishesOf(eventId: String, deviceId: String): Int = refused[eventId to deviceId] ?: 0
+
+    /** The manifest version the backend holds for a membership, or null — inspectable outcome. */
+    fun manifestVersionOf(eventId: String, deviceId: String): Long? = memberships[eventId to deviceId]?.manifestVersion
 
     /**
-     * How many times a device has PUBLISHED its asset set for an event over the manifest route —
+     * How many times a device has PUBLISHED its asset set for an event over the manifest route, counting only
+     * publishes the backend APPLIED (a publish refused as older is counted by [refusedPublishesOf]) —
      * inspectable outcome.
      *
      * A count rather than a value, because the publish IS the announcement now (the versioned device API

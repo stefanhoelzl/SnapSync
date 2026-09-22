@@ -8,6 +8,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.PendingResource
+import app.snapsync.model.changesManifestProjection
 
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
@@ -39,12 +40,14 @@ internal class InMemoryLedgerStore : LedgerStore {
 
     override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
         if (rows[entry.key]?.state?.isDone == true) return false
+        advance(rows[entry.key], entry)
         rows[entry.key] = entry
         dings.tryEmit(Unit)
         return true
     }
 
     override suspend fun clear() {
+        version += rows.size
         rows.clear()
         dings.tryEmit(Unit)
     }
@@ -54,6 +57,7 @@ internal class InMemoryLedgerStore : LedgerStore {
         // collector's view (mirrors the SQL transaction) and a failure before the swap leaves the
         // store unchanged.
         val next = entries.associateByTo(mutableMapOf()) { it.key }
+        version += rows.size + next.size
         rows.clear()
         rows.putAll(next)
         dings.tryEmit(Unit)
@@ -65,6 +69,7 @@ internal class InMemoryLedgerStore : LedgerStore {
         var applied = 0
         for (entry in entries) {
             if (next[entry.key]?.state?.isDone == true) continue
+            advance(next[entry.key], entry)
             next[entry.key] = entry
             applied++
         }
@@ -77,7 +82,9 @@ internal class InMemoryLedgerStore : LedgerStore {
     override suspend fun deleteKeys(keys: Collection<String>) {
         // Key-scoped, exactly like the backend's primary-key DELETE; dings only when a row went.
         val wanted = keys.toSet()
+        val before = rows.size
         if (rows.keys.removeAll { it in wanted }) dings.tryEmit(Unit)
+        version += before - rows.size
     }
 
     override suspend fun aggregates(): LedgerAggregates {
@@ -102,7 +109,7 @@ internal class InMemoryLedgerStore : LedgerStore {
     override suspend fun backfillManifestDetail(entry: LedgerEntry) {
         val current = rows[entry.key] ?: return
         if (!current.needsManifestDetail) return // bare-only, exactly like the SQL UPDATE's WHERE
-        rows[entry.key] = LedgerEntry(
+        val filled = LedgerEntry(
             key = current.key,
             assetId = current.assetId,
             state = current.state,
@@ -112,6 +119,8 @@ internal class InMemoryLedgerStore : LedgerStore {
             originalFilename = entry.originalFilename,
             destinationPath = current.destinationPath, // the SQL UPDATE sets the four detail columns alone
         )
+        advance(current, filled)
+        rows[entry.key] = filled
     }
 
     override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
@@ -128,4 +137,18 @@ internal class InMemoryLedgerStore : LedgerStore {
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         rows.values.filter { it.state.needsJob }
             .sortedBy { it.key }
+
+    // The manifest version, advanced by the rule the SQLite store's triggers apply
+    // (`changesManifestProjection`): every insert and delete, and a change to a projected column.
+    private var version = 0L
+
+    private fun advance(before: LedgerEntry?, after: LedgerEntry?) {
+        if (changesManifestProjection(before, after)) version++
+    }
+
+    override suspend fun manifestVersion(): Long = version
+
+    override suspend fun bumpManifestVersion() {
+        version++
+    }
 }

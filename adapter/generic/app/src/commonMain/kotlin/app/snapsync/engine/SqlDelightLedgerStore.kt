@@ -200,6 +200,14 @@ class SqlDelightLedgerStore(
         if (deleted > 0L) dings.tryEmit(Unit)
     }
 
+    // The counter itself is maintained by `Ledger.sq`'s triggers, inside each write's own transaction; these
+    // are its one read and the one explicit advance (capability `sync-ledger`).
+    override suspend fun manifestVersion(): Long = queries.selectManifestVersion().executeAsOne()
+
+    override suspend fun bumpManifestVersion() {
+        queries.bumpManifestVersion()
+    }
+
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
     private fun roleOrNull(wire: String): ResourceRole? =
         ResourceRole.entries.firstOrNull { it.wire == wire }

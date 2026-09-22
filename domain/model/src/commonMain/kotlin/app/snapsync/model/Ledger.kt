@@ -78,6 +78,26 @@ class LedgerEntry(
 }
 
 /**
+ * Whether replacing the row [before] with [after] (either `null` for an insert or a delete) changes what the
+ * device manifest projects from it — so whether the ledger's **manifest version** advances (capability
+ * `sync-ledger`, "The manifest version orders the device's manifest snapshots").
+ *
+ * The SQLite store decides this in its triggers; this is the same rule for a store that has none (the
+ * in-memory stores), stated once so no fake grows its own reading of it. `state` and `destinationPath` are
+ * deliberately not compared: the manifest carries no upload state, and a bump per finished upload would
+ * force a republish per cycle.
+ */
+fun changesManifestProjection(before: LedgerEntry?, after: LedgerEntry?): Boolean {
+    if (before == null || after == null) return before != after
+    return before.key != after.key ||
+        before.assetId != after.assetId ||
+        before.creationDate != after.creationDate ||
+        before.role != after.role ||
+        before.contentType != after.contentType ||
+        before.originalFilename != after.originalFilename
+}
+
+/**
  * Record one resource as a ledger row, carrying the **device manifest's** presentation detail
  * (capability `sync-ledger`) off the resource that caused the transition.
  *

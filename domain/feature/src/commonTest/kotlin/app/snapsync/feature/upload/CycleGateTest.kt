@@ -57,7 +57,7 @@ class CycleGateTest {
         eventId: String = this.eventId,
         policy: suspend () -> SelectionPolicy = admitting,
         saveToAlbum: Boolean = false,
-    ) = JoinedMembership(eventId = eventId, policy = policy, saveToAlbum = saveToAlbum)
+    ) = JoinedMembership(eventId = eventId, policy = policy, saveToAlbum = saveToAlbum, manifestVersion = 0L)
 
     // THE regression. A locked device cannot read the Keychain; that must not clear the join marker.
     @Test

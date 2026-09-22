@@ -23,9 +23,12 @@ private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
 
 class ReconfigureEventTest {
 
-    private class FakeConfigStore : ConfigStore {
+    private class FakeConfigStore(private val fails: Boolean = false) : ConfigStore {
         var saved: EventConfig? = null
-        override suspend fun save(config: EventConfig) { saved = config }
+        override suspend fun save(config: EventConfig) {
+            if (fails) error("disk full")
+            saved = config
+        }
         override suspend fun clear() {}
     }
 
@@ -54,6 +57,7 @@ class ReconfigureEventTest {
         store: ConfigStore,
         order: MutableList<String> = mutableListOf(),
         gatherAlbum: suspend (EventConfig) -> Unit = { order += "gather" },
+        bumpManifestVersion: suspend () -> Unit = {},
     ) = ReconfigureEvent(
         configSource = source,
         store = store,
@@ -63,7 +67,57 @@ class ReconfigureEventTest {
         gatherAlbum = gatherAlbum,
         startDownloads = { id -> order += "reconcile:$id" },
         cancelDownloads = { order += "cancelDownloads" },
+        bumpManifestVersion = bumpManifestVersion,
     )
+
+    @Test
+    fun `a saved reconfigure advances the manifest version after the config is saved`() = runTest {
+        val store = FakeConfigStore()
+        var savedWhenBumped: EventConfig? = null
+        var bumps = 0
+        make(FakeConfigSource(current()), store, bumpManifestVersion = {
+            savedWhenBumped = store.saved
+            bumps++
+        }).reconfigure(
+            eventId = "E1",
+            direction = Direction.Both,
+            chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+            chosenUpper = FIXTURE_CEILING,
+            saveToAlbum = false,
+        )
+        assertEquals(1, bumps)
+        // Bumped BEFORE the save, a cycle could read the new version and then the old config, and publish
+        // the old policy under a version nothing later exceeds.
+        assertEquals(captureCutoff("2026-07-06T18:00:00Z"), savedWhenBumped?.minPhotoDate)
+    }
+
+    @Test
+    fun `a failed save does not advance the manifest version`() = runTest {
+        var bumps = 0
+        make(FakeConfigSource(current()), FakeConfigStore(fails = true), bumpManifestVersion = { bumps++ })
+            .reconfigure(
+                eventId = "E1",
+                direction = Direction.Both,
+                chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+                chosenUpper = FIXTURE_CEILING,
+                saveToAlbum = false,
+            )
+        assertEquals(0, bumps)
+    }
+
+    @Test
+    fun `a no-op reconfigure does not advance the manifest version`() = runTest {
+        var bumps = 0
+        make(FakeConfigSource(current(eventId = "OTHER")), FakeConfigStore(), bumpManifestVersion = { bumps++ })
+            .reconfigure(
+                eventId = "E1",
+                direction = Direction.Both,
+                chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+                chosenUpper = FIXTURE_CEILING,
+                saveToAlbum = false,
+            )
+        assertEquals(0, bumps)
+    }
 
     @Test
     fun `saves the whole config with only the three participation fields changed`() = runTest {

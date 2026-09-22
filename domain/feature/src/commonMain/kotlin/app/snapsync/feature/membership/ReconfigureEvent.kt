@@ -57,6 +57,12 @@ class ReconfigureEvent(
     private val gatherAlbum: suspend (EventConfig) -> Unit,
     private val startDownloads: suspend (eventId: String) -> Unit,
     private val cancelDownloads: suspend () -> Unit,
+    /**
+     * Advance the ledger's manifest version (capability `reconfigure-membership`, "The reconfigure save advances
+     * the manifest version after it lands"). This save is the one writer of the policy bounds the device
+     * manifest is projected through, and those bounds live outside the ledger, so no trigger sees them change.
+     */
+    private val bumpManifestVersion: suspend () -> Unit,
 ) {
     private val log = Logger.withTag("ReconfigureEvent")
 
@@ -87,8 +93,16 @@ class ReconfigureEvent(
             maxPhotoDate = newMax,
             saveToAlbum = saveToAlbum,
         )
-        // Persist the WHOLE config with only the three participation fields changed (one-writer, in place).
-        step("save config") { store.save(newCfg) }
+        // Persist the WHOLE config with only the three participation fields changed (one-writer, in place) —
+        // THEN advance the manifest version, in the same step so a failed save advances nothing. The order is
+        // the correctness argument (decision record `changes/manifest-versions`, D4): the config and the
+        // counter live in two stores and cannot share a transaction. Bumped first, a cycle could read the new
+        // version and then the OLD config, and publish the old policy under a version nothing later exceeds.
+        // Bumped after, a cycle that read the older version is overtaken by the newer one.
+        step("save config") {
+            store.save(newCfg)
+            bumpManifestVersion()
+        }
         // A LOWERED cutoff widens scope, and needs nothing from this use-case to take effect: every upload
         // walk is a full enumeration narrowed by the membership's CURRENT policy, so the next cycle's walk
         // already covers the newly-in-scope older photos and back-shares them — tier-agnostically

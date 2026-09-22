@@ -59,6 +59,15 @@ class JoinedMembership(
      */
     val policy: suspend () -> SelectionPolicy,
     val saveToAlbum: Boolean,
+    /**
+     * The ledger's manifest version, read by the entry-gate translation **before** the membership (capability
+     * `upload-lifecycle`), and carried by the cycle to its manifest publish (capability `device-manifest`).
+     *
+     * Read first because every change that could alter the projection — a ledger row, or a reconfigure's
+     * save — advances it: a change the projection misses therefore happened after this read and carries a
+     * higher number, so the backend can refuse an older publish without ever refusing a newer one.
+     */
+    val manifestVersion: Long,
 )
 
 /**

@@ -1,0 +1,42 @@
+-- v11 -> v12: the manifest version (capability `sync-ledger`, "The manifest version orders the device's
+-- manifest snapshots"; decision record `changes/manifest-versions`).
+--
+-- ROW-PRESERVING: one new table and three triggers, and not one `ledgerRow` row is read or written, so an
+-- update in place creates no upload job and changes no state. No seed: the counter reads 0 while its row is
+-- absent, and the first advance creates it (see `Ledger.sq`).
+--
+-- The statements are byte-for-byte those in `Ledger.sq`: `verifyCommonMainLedgerDatabaseMigration` compares
+-- the migrated schema with the created one, triggers included.
+CREATE TABLE manifestVersion (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    value INTEGER NOT NULL
+);
+
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;

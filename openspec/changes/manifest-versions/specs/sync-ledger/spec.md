@@ -13,9 +13,11 @@ It SHALL advance:
 - on every **insert** into and every **delete** from `ledgerRow`, and on every **update** that changes a
   projected column — `key`, `assetId`, `creationDate`, `role`, `contentType`, `originalFilename` — by
   SQLite **triggers** on `ledgerRow`, so that no write path, present or future, can change the projection
-  without advancing it. The update trigger SHALL compare old and new values (a `WHEN` clause), not fire on
-  the column being named: the guarded record write names every detail column in its `SET` list, and a bump
-  for an unchanged value would force a republish for nothing. It SHALL NOT advance on a change to `state` or
+  without advancing it. The update trigger SHALL compare old and new values, not fire on the column being
+  named: the guarded record write names every detail column in its `SET` list, and a bump for an unchanged
+  value would force a republish for nothing. A trigger SHALL NOT advance the counter with a conflict-resolving
+  insert (`INSERT OR REPLACE`): inside a trigger SQLite applies the outer statement's conflict resolution, so
+  one fired by the record upsert aborts that write. It SHALL NOT advance on a change to `state` or
   `destinationPath` alone: the manifest carries no upload state, and a bump per finished upload would force a
   republish per cycle;
 - on an explicit **bump**, which the reconfigure save uses because the membership's policy bounds live
@@ -34,10 +36,11 @@ advances it by one and signals no change (the ledger's rows did not change). Eve
 SHALL satisfy the version scenarios in the shared `LedgerStoreContract`, including `:adapter:generic:fake`'s
 in-memory store, which SHALL apply the same advance rules without triggers.
 
-The migration that adds it (`11.sqm`, v11 → v12) SHALL be **row-preserving**: it creates the table seeded with
-`0` and the triggers, touching no `ledgerRow` row, so an update in place creates no upload job and changes no
-state. The `CREATE` statements in `Ledger.sq` SHALL carry the same table, seed and triggers, and the migration
-verification (see "Migration verification is backed by a committed schema snapshot") SHALL prove the two
+The migration that adds it (`11.sqm`, v11 → v12) SHALL be **row-preserving**: it creates the table and the
+triggers, touching no `ledgerRow` row, so an update in place creates no upload job and changes no state. The
+counter SHALL NOT depend on a seed row: an absent row reads as `0`, and the first advance creates it, so no
+create route or migration can leave it stuck. The `CREATE` statements in `Ledger.sq` SHALL carry the same table
+and triggers, and the migration verification (see "Migration verification is backed by a committed schema snapshot") SHALL prove the two
 schemas identical. A future migration that drops a column a trigger names SHALL drop and recreate the trigger,
 because SQLite refuses `DROP COLUMN` for a column a trigger references. Decision record:
 `changes/manifest-versions`.

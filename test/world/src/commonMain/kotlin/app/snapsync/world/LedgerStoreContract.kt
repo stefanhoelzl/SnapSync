@@ -28,10 +28,11 @@ import kotlinx.coroutines.test.runTest
  * The storage-seam contract every [LedgerStore] must satisfy (sync-ledger spec). Concrete
  * backends bind [createBackend]; the same scenarios run unchanged against each.
  *
- * Its guarded-write and presence scenarios live in the base, [LedgerRecordGuardContract] — a split for
- * size only (the harness tier's `LargeClass` ceiling), so every binding still runs both halves once.
+ * Its guarded-write and presence scenarios live in the base, [LedgerRecordGuardContract], and its manifest-version
+ * scenarios in [LedgerManifestVersionContract] between the two — a split for
+ * size only (the harness tier's `LargeClass` ceiling), so every binding still runs every part once.
  */
-abstract class LedgerStoreContract : LedgerRecordGuardContract() {
+abstract class LedgerStoreContract : LedgerManifestVersionContract() {
 
     @Test
     fun `a recorded entry round-trips field for field`() = runTest {
