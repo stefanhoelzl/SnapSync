@@ -231,9 +231,10 @@ nothing for a key the first recorded `REQUESTED`) rather than in the architectur
   staged files of live tasks only). → Accepted; bounded by the transfers that vanished.
 - **A download-only member's extension launches** (it stays registered). → Each launch settles and returns
   `SKIPPED`; the OS invokes on library changes, so the cost is bounded by photo-taking.
-- **`GRANTED → LIMITED` device fact still unmeasured:** whether the OS still completes and reports a surviving
-  registration's in-flight jobs under `.limited` (see Open Questions). If it does not, those rows stay `REQUESTED`
-  until access is restored — the same exposure as "the OS loses a job", accepted above.
+- **In-flight extension jobs across `GRANTED → LIMITED`** (measured SE2/26.6, 2026-09-22): they survive and
+  settle when access returns — none was presented during the `.limited` interval, all were presented as
+  succeeded to the first invocation after the regrant. While access stays `.limited` their rows stay
+  `REQUESTED`, the same exposure as "the OS loses a job", accepted above.
 
 ## Migration Plan
 
@@ -250,12 +251,27 @@ Device verification before merge (SE2, `rig-channel`): on ≥26.1 full grant, a 
 process with one `COMPLETED` row; a re-scan of the joined event leaves registration and jobs intact; a
 `GRANTED → LIMITED → GRANTED` round trip cancels nothing and ends with every row settled.
 
+## Device verification (SE2, iOS 26.6, 2026-09-22, rig build of this branch)
+
+- **Both uploaders, full grant.** A fresh upload-only event: the join logged `photokit.register` then
+  `url-session.arm`; the app's cycle created both admitted photos' jobs, both completed through its delegate, and
+  the event read `InSync`. A **real overlap** happened: the OS launched the extension at the same second the app's
+  first cycle ran; it found both keys already `REQUESTED` and created nothing — no duplicate.
+- **Re-scan of the joined event.** The link gate absorbs a repeated link before any provision runs; no
+  registration call was logged and the record stayed registered.
+- **Download-only.** The reconfigure touched no registration; a forced extension cycle declined on the policy,
+  published the empty manifest (200) and returned `SKIPPED`.
+- **`GRANTED → LIMITED → GRANTED`.** With the app switched off and four extension jobs in flight: the `LIMITED`
+  relaunch made no registration write and cancelled nothing; the app's cycle left the `REQUESTED` rows alone; a
+  withheld extension cycle was presented none; after the regrant (no registration write — the record read
+  present) the first extension invocation settled all four `COMPLETED`.
+
 ## Open Questions
 
-- **Does the OS complete and report a surviving registration's in-flight jobs under `.limited`?** Not measured
-  before propose. Probe: full grant, queue several extension jobs, downgrade to `.limited`, observe whether the
-  extension's `process()` presents them for acknowledgement and whether the objects land. Result recorded in
-  `ios-photokit-upload` "The registration cannot be changed under a partial grant".
+- ~~Does the OS complete and report a surviving registration's in-flight jobs under `.limited`?~~ **Answered on
+  device (2026-09-22):** they survive the round trip and settle at the first invocation after the regrant; none
+  is presented while `.limited`. Recorded in `ios-photokit-upload` "The registration cannot be changed under a
+  partial grant".
 - **`resolveChunk` value.** 4 matches the URLSession cap; measure the PhotoKit per-chunk overhead on device and
   adjust if a larger chunk is materially cheaper there.
 - **Does a device reset deregister?** `ResetDeviceState` clears the config but not the registration; under D5

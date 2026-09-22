@@ -131,12 +131,13 @@ class ReconfigureEventTest {
     }
 
     @Test
-    fun `disabling upload does NOT stop the producer so in-flight drains`() = runTest {
+    fun `disabling upload still only kicks the arm whose transition stops nothing`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current(direction = Direction.Both)), FakeConfigStore(), order)
             .reconfigure("E1", Direction.DownloadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
-        // Upload is being turned off: the arm is deliberately not driven, so nothing cancels in-flight.
-        assertTrue("arm" !in order)
+        // The reconfigure transition never deregisters or cancels (UploadTransitionsTest); the cycle's policy is
+        // what stops new work, so in-flight uploads drain.
+        assertTrue("arm" in order)
     }
 
     @Test

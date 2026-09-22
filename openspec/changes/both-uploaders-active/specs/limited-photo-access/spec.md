@@ -11,9 +11,10 @@ extension cannot take that role, by measurement: its registration cannot be chan
 `GRANTED`, and nothing registers it under a partial grant. Decision record: `changes/both-uploaders-active`.
 
 The extension SHALL **withhold** under `LIMITED` at its own entry gate, reading the grant in its own process:
-it acknowledges the jobs the OS presents and records their outcomes, and creates none. Whether the OS still
-completes a surviving registration's in-flight jobs under `.limited` is unmeasured (capability
-`ios-photokit-upload`, "The registration cannot be changed under a partial grant").
+it acknowledges the jobs the OS presents and records their outcomes, and creates none. A surviving
+registration's in-flight jobs were measured to survive a round trip through `.limited` and settle once access
+returns (SE2, iOS 26.6, 2026-09-22; capability `ios-photokit-upload`, "The registration cannot be changed under a
+partial grant").
 A registration made under a full grant survives a downgrade (the deregistration is refused), and **the OS
 does invoke it there** — measured on the SE2, iOS 26.6, 2026-09-21: with a surviving record and a partial
 grant, `process()` ran four seconds after a new photo joined the selection. An extension cycle there would

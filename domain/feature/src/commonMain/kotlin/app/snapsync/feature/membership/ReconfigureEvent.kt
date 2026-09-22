@@ -29,11 +29,12 @@ import co.touchlab.kermit.Logger
  * effect immediately rather than waiting for the OS's next scheduled cycle — but with a deliberate
  * **asymmetry** between the two arms when a direction is turned **off** (`reconfigure-membership`):
  *
- * - **Upload**: [armUpload] is called **only when the new direction includes upload** — starting (or
- *   re-selecting) the producer. When upload is turned **off**, the producer is deliberately left running:
- *   the per-cycle gate (`Contribution.None`, capability `photo-selection-policy`) stops new work while an
- *   in-flight upload **drains**, and the byte URL is device-partitioned and event-independent, so
- *   cancelling one would only re-upload identical bytes.
+ * - **Upload**: [armUpload] runs the upload arm's reconfigure transition **whatever the new direction** — a
+ *   kick of the app's uploader that never touches the extension's registration and cancels nothing. The
+ *   cycle's own selection policy decides what uploads: turned **off**, it admits nothing, so new work stops
+ *   while an in-flight upload **drains** (the byte URL is device-partitioned and event-independent, so
+ *   cancelling one would only re-upload identical bytes). No direction check here — the policy is the one
+ *   (decision record `changes/both-uploaders-active`).
  * - **Download**: [startDownloads] runs a reconcile when download is included; otherwise [cancelDownloads]
  *   **cancels in-flight downloads**, so foreign photos stop arriving once the member turns receive off.
  *
@@ -101,8 +102,8 @@ class ReconfigureEvent(
         // them without re-uploading a byte.
         // Re-enumerate the own total + re-read completeness so the status reflects a changed cutoff/direction.
         step("refresh status") { refreshStatus() }
-        // Upload arm: START on enable; on disable leave the producer to drain (see class doc).
-        if (direction.includesUpload) step("arm upload") { armUpload() }
+        // Upload arm: a kick in either direction; the cycle's policy decides, and nothing is cancelled (class doc).
+        step("arm upload") { armUpload() }
         // Event album: an unconditional call carrying the new config; the granted/opt-in gate is the
         // coordinator's own leading guard (capability `event-album`).
         step("ensure album") { ensureAlbum(newCfg) }
