@@ -567,6 +567,9 @@ class AppCore internal constructor(
             // the command's return.
             startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
             cancelDownloads = { downloadController.onLeaveOrSwitch() },
+            // The policy bounds are a manifest projection input that lives outside the ledger (capability
+            // `reconfigure-membership`); the use-case calls this after its config save has landed.
+            bumpManifestVersion = { ports.uploadRecord.ledger.bumpManifestVersion() },
         )
     }
 

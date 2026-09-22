@@ -204,7 +204,7 @@ class DeviceManifestProducerTest {
     fun puts_the_projected_snapshot_and_records_it_on_success() = runTest {
         val store = FakeStore()
         val up = FakeUploader(ok = true)
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals("E", up.puts.single().first)
         assertTrue(store.lastUploaded!!.endsWith(up.puts.single().third)) // marker records the json
@@ -217,8 +217,8 @@ class DeviceManifestProducerTest {
         val store = FakeStore()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
-        producer.produce("EVENT-B", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // same content, new event
+        producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce("EVENT-B", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L) // same content, new event
         assertEquals(2, up.puts.size) // both events written, despite identical content
         assertEquals(listOf("EVENT-A", "EVENT-B"), up.puts.map { it.first })
     }
@@ -228,8 +228,8 @@ class DeviceManifestProducerTest {
         val store = FakeStore()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // identical
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L) // identical
         assertEquals(1, up.puts.size) // second produce skipped the PUT
     }
 
@@ -241,13 +241,15 @@ class DeviceManifestProducerTest {
         // cycle rewrote the projection over the empty document.
         //
         // The join writes no manifest now, so there is nothing to repair: the server still holds the real
-        // projection, the record is still TRUE, and skipping an unchanged projection is CORRECT rather
-        // than the bug it used to be.
+        // projection, and the record is still TRUE for the version it names. What the join DOES change is the
+        // version: its ledger load advances the counter (capability `sync-ledger`), and the backend's join
+        // cleared the stored one — so the next cycle republishes the unchanged projection under the newer
+        // version, which is what re-establishes it on the backend (capability `device-manifest`).
         val store = FakeStore()
         val up = FakeUploader()
         val join = FakeJoin()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
 
         ManifestDeviceEnroller(join).enroll("E", "dev") // the re-join
@@ -255,8 +257,35 @@ class DeviceManifestProducerTest {
         assertEquals(listOf("E" to "dev"), join.joins)
         assertEquals(1, up.puts.size, "the join must write no manifest")
 
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // UNCHANGED projection
-        assertEquals(1, up.puts.size, "an unchanged projection is correctly skipped after a re-join")
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        assertEquals(1, up.puts.size, "an unchanged projection under the same version is correctly skipped")
+
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 7L)
+        assertEquals(2, up.puts.size, "the join's ledger load advanced the version, so the unchanged set republishes")
+        assertEquals(up.puts[0].third.substringBefore("\"version\""), up.puts[1].third.substringBefore("\"version\""))
+    }
+
+    @Test
+    fun the_publish_carries_the_manifest_version() = runTest {
+        val up = FakeUploader()
+        DeviceManifestProducer(FakeStore(), up, "dev")
+            .produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 42L)
+        assertEquals(42L, deviceManifestFromJson(up.puts.single().third).version)
+    }
+
+    @Test
+    fun a_new_version_republishes_an_unchanged_snapshot() = runTest {
+        // THE same-version crossed pair (decision record `changes/manifest-versions`, D3): two cycles read one
+        // version, a change commits between their row reads, the OLDER snapshot lands last on the backend (an
+        // equal version is accepted) and the NEWER one's skip record is saved last. A marker comparing content
+        // alone would now skip forever against a stale backend. The next cycle reads a higher version, so the
+        // marker no longer matches and it republishes.
+        val store = FakeStore()
+        val up = FakeUploader()
+        val producer = DeviceManifestProducer(store, up, "dev")
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"), row("B")), manifestVersion = 5L)
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"), row("B")), manifestVersion = 6L)
+        assertEquals(2, up.puts.size)
     }
 
     @Test
@@ -270,7 +299,7 @@ class DeviceManifestProducerTest {
     fun a_failed_put_does_not_record_last_uploaded() = runTest {
         val store = FakeStore()
         val up = FakeUploader(ok = false)
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
         assertFalse(up.puts.isEmpty())

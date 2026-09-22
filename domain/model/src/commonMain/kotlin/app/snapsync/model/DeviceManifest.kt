@@ -44,7 +44,20 @@ class DeviceManifestAsset(
 class DeviceManifest(
     val deviceId: String,
     val assets: List<DeviceManifestAsset>,
+    /**
+     * The ledger's **manifest version** this snapshot was projected under (capability `device-manifest`, "A
+     * publish carries the manifest version"): the backend stores a publish only when it is not older than the
+     * one it holds, so two processes' publishes crossing in the network can never leave it a snapshot behind.
+     *
+     * Not a projection input — the projection is a function of the rows and the policy alone, and
+     * [projectDeviceManifest] leaves it absent; the producer stamps it. `null` is the wire's "no version"
+     * (a build that predates it), which the backend applies unconditionally.
+     */
+    val version: Long? = null,
 )
+
+/** This snapshot, stamped with the manifest [version] it was projected under. */
+fun DeviceManifest.withVersion(version: Long): DeviceManifest = DeviceManifest(deviceId, assets, version)
 
 /** Strict JSON for the device manifest — declared fields only. */
 private val deviceManifestJson = Json { encodeDefaults = true }

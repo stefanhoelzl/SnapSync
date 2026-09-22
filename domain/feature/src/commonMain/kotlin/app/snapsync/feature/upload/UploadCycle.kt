@@ -59,7 +59,7 @@ class UploadCycle(
     // Required, with **no default**: a default would have to invent an answer for "what is this device
     // joined to", and every answer is wrong. See [SelectionPolicy] for the same reasoning applied after each
     // shipped bug that a default caused.
-    private val readGate: () -> CycleGate,
+    private val readGate: suspend () -> CycleGate,
     // The engine for THIS cycle's config — the edge provider needs the host and the device id, and the
     // host arrives with the gate, not at construction. Called once, after the gate says Run.
     private val engineFor: (UploadConfig) -> SyncEngine,
@@ -85,7 +85,7 @@ class UploadCycle(
     // write, so nothing was PUT. That answer is the notify's whole trigger (capability
     // `upload-completion-notify`), which is why it is a Boolean rather than Unit: "the union now lists
     // something new" is a fact only the producer's skip-if-unchanged record knows.
-    private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy) -> Boolean,
+    private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy, manifestVersion: Long) -> Boolean,
     // The echo-suppression and denylisted-album readers used to be injected HERE, so the cycle could
     // complete a config-derived policy. They moved to the one derivation in the shared composition
     // (capability `photo-selection-policy`), which the membership's policy supplier closes over — so this
@@ -193,7 +193,7 @@ class UploadCycle(
         if (!policy.contributes) {
             recreateRetrySpent(engine)
             log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-            return Settled.Short(CycleOutcome.Declined(eventId, policy))
+            return Settled.Short(CycleOutcome.Declined(eventId, policy, membership.manifestVersion))
         }
 
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -218,7 +218,9 @@ class UploadCycle(
         // departed photo. What the cap costs is only that this cycle cannot enqueue more — and the
         // work it could not re-create rests `DISCOVERED`, which the ledger's work read returns next cycle
         // without needing a walk to re-derive it.
-        return Settled.Proceeding(Ready(eventId, policy, engine, membership.saveToAlbum, capHit))
+        return Settled.Proceeding(
+            Ready(eventId, policy, membership.manifestVersion, engine, membership.saveToAlbum, capHit),
+        )
     }
 
     // --- stage 2: decide -------------------------------------------------------------------------
@@ -559,7 +561,7 @@ class UploadCycle(
             // A membership that shares nothing publishes an EMPTY manifest: that is the honest statement
             // of its state, and leaving a stale one in place would keep advertising photos the member has
             // stopped sharing.
-            is CycleOutcome.Declined -> writeDeviceManifest(eventId, policy)
+            is CycleOutcome.Declined -> writeDeviceManifest(eventId, policy, manifestVersion)
 
             // The platform stopped accepting jobs partway through — and this cycle publishes anyway.
             //
@@ -574,12 +576,12 @@ class UploadCycle(
             // the declined branch below has always written one without any walk at all.
             is CycleOutcome.Truncated -> {
                 logEnumeration(audit)
-                writeDeviceManifest(ready.eventId, ready.policy)
+                writeDeviceManifest(ready.eventId, ready.policy, ready.manifestVersion)
             }
 
             is CycleOutcome.Drained -> {
                 logEnumeration(audit)
-                writeDeviceManifest(ready.eventId, ready.policy)
+                writeDeviceManifest(ready.eventId, ready.policy, ready.manifestVersion)
             }
         }
         return result
@@ -630,6 +632,8 @@ class UploadCycle(
     private class Ready(
         val eventId: String,
         val policy: SelectionPolicy,
+        /** The manifest version the gate read first; the publish carries it (capability `device-manifest`). */
+        val manifestVersion: Long,
         val engine: SyncEngine,
         val saveToAlbum: Boolean,
         /**
@@ -683,6 +687,7 @@ class UploadCycle(
         class Declined(
             val eventId: String,
             val policy: SelectionPolicy,
+            val manifestVersion: Long,
         ) : CycleOutcome {
             override val result get() = CycleResult.SKIPPED
         }
@@ -741,10 +746,14 @@ class UploadCycle(
     }
 
 
-    /** Publish the device manifest for [eventId] under [policy] (capability `device-manifest`). */
+    /**
+     * Publish the device manifest for [eventId] under [policy], carrying the [manifestVersion] the gate read
+     * first (capability `device-manifest`).
+     */
     private suspend fun writeDeviceManifest(
         eventId: String,
         policy: SelectionPolicy,
+        manifestVersion: Long,
     ): Boolean {
         // Best-effort and bounded here, so a hung host can never stall a cycle and no root has to
         // remember to bound it (both used to, with the same two constants — one copied from the other,
@@ -754,7 +763,7 @@ class UploadCycle(
         // "the projection was unchanged, so nothing was PUT" and "the write failed or timed out" alike,
         // and both mean the same thing to a recipient — the union does not list anything it did not list
         // before, so waking anyone would be a wasted background launch.
-        return runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy) } }
+        return runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy, manifestVersion) } }
             .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
             .getOrDefault(false)
     }

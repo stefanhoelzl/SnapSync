@@ -85,6 +85,8 @@ class UploadCycleTest {
         const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
         const val TEST_HOST = "https://edge.example"
         const val TEST_EVENT = "event-1"
+        /** The manifest version the fixture gate reads — distinctive, so a test can see it reach the publish. */
+        const val TEST_MANIFEST_VERSION = 4242L
     }
 
     /** A no-network provider returning a throwaway destination — the cycle never inspects the URL. */
@@ -219,7 +221,7 @@ class UploadCycleTest {
         policy: SelectionPolicy? = null,
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
-        onDiscovery: suspend (String, SelectionPolicy) -> Boolean = { _, _ -> true },
+        onDiscovery: suspend (String, SelectionPolicy, Long) -> Boolean = { _, _, _ -> true },
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
         // The platform itself by default; a test about the partial-grant read discipline wraps it in the
@@ -232,7 +234,12 @@ class UploadCycleTest {
             readGate = readGate ?: {
                 CycleGate.Run(
                     UploadConfig(host = TEST_HOST, eventId = TEST_EVENT),
-                    JoinedMembership(eventId = TEST_EVENT, policy = { effectivePolicy }, saveToAlbum = saveToAlbum),
+                    JoinedMembership(
+                        eventId = TEST_EVENT,
+                        policy = { effectivePolicy },
+                        saveToAlbum = saveToAlbum,
+                        manifestVersion = TEST_MANIFEST_VERSION,
+                    ),
                 )
             },
             engineFor = { SyncEngine(StubUploadRequestProvider(), ledger) },
@@ -257,6 +264,20 @@ class UploadCycleTest {
     // Keychain read arrived as a leave.
 
     @Test
+    fun the_publish_carries_the_manifest_version_the_gate_read() = runTest {
+        // The gate reads the version FIRST (capability `upload-lifecycle`); the cycle must hand that same value
+        // to the publish rather than read a fresher one later, or a change its projection missed could carry
+        // a version no higher than its own.
+        val seen = mutableListOf<Long>()
+        cycle(
+            InMemoryLedgerStore(),
+            FakePlatform(discovered = listOf(resource("A-primary.heic")), fullEnumeration = true),
+            onDiscovery = { _, _, version -> seen += version; true },
+        ).run()
+        assertEquals(listOf(TEST_MANIFEST_VERSION), seen)
+    }
+
+    @Test
     fun an_unreadable_membership_touches_nothing() = runTest {
         val backend = InMemoryLedgerStore()
         // A library full of admissible work: the ONLY reason nothing happens is that the membership could not
@@ -270,7 +291,7 @@ class UploadCycleTest {
         val result = cycle(
             backend, platform,
             readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
-            onDiscovery = { _, _ -> touched += "discovery"; true },
+            onDiscovery = { _, _, _ -> touched += "discovery"; true },
         ).run()
 
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
@@ -328,7 +349,7 @@ class UploadCycleTest {
         val result = cycle(
             backend, platform,
             readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) },
-            onDiscovery = { _, _ -> touched += "manifest"; true },
+            onDiscovery = { _, _, _ -> touched += "manifest"; true },
         ).run()
 
         assertEquals(CycleResult.SKIPPED, result)
@@ -373,7 +394,7 @@ class UploadCycleTest {
                 if (joined) {
                     CycleGate.Run(
                         UploadConfig(TEST_HOST, TEST_EVENT),
-                        JoinedMembership(TEST_EVENT, { admitting(TEST_CUTOFF) }, saveToAlbum = false),
+                        JoinedMembership(TEST_EVENT, { admitting(TEST_CUTOFF) }, saveToAlbum = false, manifestVersion = 0L),
                     )
                 } else {
                     CycleGate.NotJoined
@@ -405,7 +426,7 @@ class UploadCycleTest {
     ): UploadCycle = cycle(
         backend, platform,
         policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-        onDiscovery = { _, _ -> order += "discovery"; true },
+        onDiscovery = { _, _, _ -> order += "discovery"; true },
     )
 
     @Test
@@ -1099,7 +1120,7 @@ class UploadCycleTest {
         cycle(
             backend, platform,
             library = SelectionScopedDiscovery(platform) { SelectionScope.Scoped(selection) },
-            onDiscovery = { _, policy ->
+            onDiscovery = { _, policy, _ ->
                 published += projectDeviceManifest("D", backend.manifestRows(), policy).assets.map { it.assetId }
                 true
             },
@@ -1250,7 +1271,7 @@ class UploadCycleTest {
         var lastPublished: List<String>? = null
         return cycle(
             backend, platform,
-            onDiscovery = { _, _ ->
+            onDiscovery = { _, _, _ ->
                 order += "manifest"
                 atPublish()
                 if (publishThrows) error("manifest boom")
@@ -1509,7 +1530,7 @@ class UploadCycleTest {
         // The REAL projection, not the raw rows. These used to agree only because `retainAssets` pruned
         // every row the policy stopped admitting; with the ledger no longer policy-pruned they differ, and
         // what other members see is the projection (capability `device-manifest`).
-        onDiscovery = { _, policy ->
+        onDiscovery = { _, policy, _ ->
             manifestSaw += projectDeviceManifest("D", backend.manifestRows(), policy)
                 .assets.map { it.assetId }
             true
@@ -1780,7 +1801,7 @@ class UploadCycleTest {
         val result = cycle(
             backend, FakePlatform(),
             policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
-            onDiscovery = { _, policy ->
+            onDiscovery = { _, policy, _ ->
                 order += "discovery"
                 listed = projectDeviceManifest("D", backend.manifestRows(), policy)
                     .assets.map { it.assetId }

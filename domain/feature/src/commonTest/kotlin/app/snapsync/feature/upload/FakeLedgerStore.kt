@@ -8,6 +8,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.PendingResource
+import app.snapsync.model.changesManifestProjection
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,12 +25,14 @@ class FakeLedgerStore : LedgerStore {
         rows.values.firstOrNull { it.destinationPath == destinationPath }
     override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
         if (rows[entry.key]?.state?.isDone == true) return false
+        advance(rows[entry.key], entry)
         rows[entry.key] = entry; dings.tryEmit(Unit)
         return true
     }
-    override suspend fun clear() { rows.clear(); dings.tryEmit(Unit) }
+    override suspend fun clear() { version += rows.size; rows.clear(); dings.tryEmit(Unit) }
     override suspend fun resetTo(entries: List<LedgerEntry>) {
         val next = entries.associateByTo(mutableMapOf()) { it.key }
+        version += rows.size + next.size
         rows.clear(); rows.putAll(next); dings.tryEmit(Unit)
     }
 
@@ -39,6 +42,7 @@ class FakeLedgerStore : LedgerStore {
         var applied = 0
         for (entry in entries) {
             if (next[entry.key]?.state?.isDone == true) continue
+            advance(next[entry.key], entry)
             next[entry.key] = entry
             applied++
         }
@@ -51,7 +55,9 @@ class FakeLedgerStore : LedgerStore {
     override suspend fun deleteKeys(keys: Collection<String>) {
         // Key-scoped, exactly like the backend's primary-key DELETE; dings only when a row went.
         val wanted = keys.toSet()
+        val before = rows.size
         if (rows.keys.removeAll { it in wanted }) dings.tryEmit(Unit)
+        version += before - rows.size
     }
 
     override suspend fun aggregates(): LedgerAggregates {
@@ -85,4 +91,18 @@ class FakeLedgerStore : LedgerStore {
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         rows.values.filter { it.state.needsJob }
             .sortedBy { it.key }
+
+    // The manifest version, advanced by the rule the SQLite store's triggers apply
+    // (`changesManifestProjection`): every insert and delete, and a change to a projected column.
+    private var version = 0L
+
+    private fun advance(before: LedgerEntry?, after: LedgerEntry?) {
+        if (changesManifestProjection(before, after)) version++
+    }
+
+    override suspend fun manifestVersion(): Long = version
+
+    override suspend fun bumpManifestVersion() {
+        version++
+    }
 }

@@ -47,6 +47,64 @@ CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 -- therefore TWO obligations, not one. The verify task now catches a missed second one.
 CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
 
+-- THE MANIFEST VERSION (capability `sync-ledger`, "The manifest version orders the device's manifest
+-- snapshots"). One counter, one row, that advances on every change that could alter the device manifest's
+-- projection. Each publish carries the value its cycle read FIRST, and the backend refuses a strictly older
+-- one — which is what stops the app's and the upload extension's publishes, crossing in the network, from
+-- leaving the backend a snapshot behind (decision record `changes/manifest-versions`).
+--
+-- The row is kept at `id = 0` and every advance is "create the row if absent, then add one", so an absent row
+-- reads as 0 and the first advance creates it: nothing depends on a seed that a create route or a migration
+-- could forget. NOT `INSERT OR REPLACE`: inside a trigger SQLite applies the OUTER statement's conflict
+-- resolution, so fired by `recordUnlessSettled`'s upsert the replace became an abort (measured — a
+-- `manifestVersion.id` PRIMARY KEY failure on the first re-record). The guarded insert never conflicts. The counter never moves backwards — the reset family deletes
+-- `ledgerRow` rows only, and those deletes advance it like any other change.
+CREATE TABLE manifestVersion (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    value INTEGER NOT NULL
+);
+
+-- The advance, by TRIGGER, so that no write path — present or future — can change the projection without
+-- it. Each fires inside its statement's transaction, so a reader that sees version N sees every change
+-- numbered up to N: two publishes carrying one version carry one snapshot.
+--
+-- The UPDATE trigger compares values (a `WHERE` on `old`/`new` in its body — SQLDelight's parser does not
+-- resolve them in a trigger's `WHEN` clause, measured), NOT `UPDATE OF`: `recordUnlessSettled` names every detail
+-- column in its `SET` list, and `UPDATE OF` would fire on unchanged values and force a republish for
+-- nothing. `state` and `destinationPath` are deliberately absent: the manifest carries no upload state, and
+-- a bump per finished upload would force a republish per cycle.
+--
+-- ⚠️ SQLite REFUSES `DROP COLUMN` for a column a trigger names. A migration that drops one of the columns
+-- below must DROP and re-CREATE `ledgerRow_version_update` around it — in the migration AND here.
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;
+
 get:
 SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
 FROM ledgerRow
@@ -203,3 +261,15 @@ SELECT key, assetId, state, creationDate, role, contentType, originalFilename, d
 FROM ledgerRow
 WHERE state IN :needsJobStates
 ORDER BY key;
+
+-- The manifest version, 0 before the first change. One read, taken FIRST by the upload cycle's entry gate.
+selectManifestVersion:
+SELECT COALESCE((SELECT value FROM manifestVersion WHERE id = 0), 0);
+
+-- The explicit advance, for the one projection input that lives outside this database: the membership's
+-- policy bounds, whose writer (the reconfigure save) calls this AFTER its config save has landed.
+bumpManifestVersion {
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+}

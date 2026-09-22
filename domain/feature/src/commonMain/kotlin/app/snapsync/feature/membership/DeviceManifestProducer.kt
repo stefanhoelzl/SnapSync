@@ -4,6 +4,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
+import app.snapsync.model.withVersion
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.ManifestPublisher
 
@@ -33,6 +34,10 @@ import app.snapsync.ports.ManifestPublisher
  *
  * A kill mid-PUT loses nothing durable (the snapshot recomputes next cycle); the manifest is write-only
  * in v1 so transient staleness is benign and self-heals.
+ *
+ * Both processes publish (the app and, on iOS ≥26.1, the upload extension), and each publish carries the
+ * ledger's manifest version its cycle read first; the backend refuses a strictly older one. That ordering is
+ * what keeps two crossing publishes from leaving the backend a snapshot behind (capability `device-manifest`).
  */
 class DeviceManifestProducer(
     private val store: DeviceManifestStore,
@@ -54,11 +59,26 @@ class DeviceManifestProducer(
      * `upload-completion-notify`). It is kept because "did this cycle actually publish?" is the honest
      * result of the operation and is what a test asserts on — not because a caller branches on it.
      */
-    suspend fun produce(eventId: String, policy: SelectionPolicy, rows: List<LedgerEntry>): Boolean {
-        val json = projectDeviceManifest(deviceId, rows, policy).encodeToJson()
+    suspend fun produce(
+        eventId: String,
+        policy: SelectionPolicy,
+        rows: List<LedgerEntry>,
+        manifestVersion: Long,
+    ): Boolean {
+        val json = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion).encodeToJson()
         // Skip-if-unchanged, keyed by EVENT. The projected JSON is event-independent (`{deviceId,
-        // assets}`), so without the event id in the marker a **switch** to a new event would compare
+        // assets, version}`), so without the event id in the marker a **switch** to a new event would compare
         // equal to the prior event's upload and skip writing the new event's (still-absent) device.json.
+        //
+        // The marker holds the VERSION too — it rides inside the JSON — and that is load-bearing, not
+        // incidental. Two cycles can read one version while a change commits between their row reads, so one
+        // version can name two snapshots; the backend accepts an equal version, so the older can land last.
+        // A marker comparing only the content would then name the newer snapshot while the backend holds the
+        // older, and skip forever. With the version in it, the next cycle — which reads a higher version —
+        // finds no match and republishes (decision record `changes/manifest-versions`, D3).
+        //
+        // A publish the backend refused as older answers 2xx like a stored one, and is recorded the same way:
+        // a snapshot at least as new is already there, and at worst the next cycle republishes once.
         val marker = "$eventId $json"
         if (marker == store.loadLastUploaded()) return false
         if (!publisher.publish(eventId, deviceId, json)) return false

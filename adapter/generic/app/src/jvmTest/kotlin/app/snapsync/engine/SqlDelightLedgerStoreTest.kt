@@ -5,6 +5,7 @@ import app.snapsync.world.LedgerStoreContract
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
+import app.snapsync.model.TerminalOutcome
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.engine.db.LedgerDatabase
@@ -395,7 +396,57 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertTrue("A-photo.jpg" in backend.manifestRows().map { it.key })
         assertEquals(LedgerAggregates(pending = 3, completed = 2), backend.aggregates())
     }
+
+    // The manifest version's table and triggers are schema, so the verify task checks that an upgraded device
+    // carries them. What it cannot check is that the upgrade touched no row and that the counter WORKS on a
+    // database that got its triggers from 11.sqm rather than from the CREATE — this is that coverage.
+
+    @Test
+    fun `migration v11 to v12 adds the manifest version and touches no row`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver.execute(null, V11_LEDGER_ROW, 0)
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(null, "CREATE INDEX $DESTINATION_INDEX ON ledgerRow(destinationPath)", 0)
+        driver.execute(
+            null,
+            "INSERT INTO ledgerRow VALUES " +
+                "('C-photo.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', " +
+                "'IMG_C.JPG', '/v2/files/C'), " +
+                "('R-photo.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', " +
+                "'IMG_R.JPG', '/v2/files/R')",
+            0,
+        )
+
+        LedgerDatabase.Schema.migrate(driver, 11L, LedgerDatabase.Schema.version).await()
+
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state)
+        assertEquals("/v2/files/C", backend.get("C-photo.jpg")?.destinationPath)
+        assertEquals(LedgerState.REQUESTED, backend.get("R-photo.jpg")?.state)
+        assertEquals(LedgerAggregates(pending = 1, completed = 1), backend.aggregates())
+        // No seed and no row touched, so the counter reads 0 — and the migrated triggers are live.
+        assertEquals(0L, backend.manifestVersion())
+        assertTrue(backend.markTerminal("R-photo.jpg", TerminalOutcome.COMPLETED))
+        assertEquals(0L, backend.manifestVersion(), "a state change alone does not advance it")
+        backend.deleteKeys(listOf("C-photo.jpg"))
+        assertTrue(backend.manifestVersion() > 0L, "a delete advances it through the migrated trigger")
+    }
 }
+
+/** The v11 table — what 10.sqm leaves, and the shape 11.sqm meets. */
+private val V11_LEDGER_ROW =
+    """
+    CREATE TABLE ledgerRow (
+        key TEXT NOT NULL PRIMARY KEY,
+        assetId TEXT NOT NULL,
+        state TEXT NOT NULL,
+        creationDate TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT '',
+        contentType TEXT NOT NULL DEFAULT '',
+        originalFilename TEXT NOT NULL DEFAULT '',
+        destinationPath TEXT
+    )
+    """.trimIndent()
 
 private const val DESTINATION_INDEX = "ledgerRow_destinationPath"
 

@@ -77,6 +77,16 @@
 # ⏰ Re-derive it at the next binary search rather than treating 400 as measured: it is a granularity
 # boundary, not a measurement, exactly as 390 was.
 #
+# RAISED 400 -> 410 by `manifest-versions`, owing the same proof. `AppCore` measured 400 when that change
+# began (the headroom 400 restored was spent by later capabilities, not by slack) and needs exactly ONE
+# line: the `bumpManifestVersion` binding in the `ReconfigureEvent` construction. The reconfigure save is
+# the one writer of the policy bounds the device manifest is projected through, those bounds live outside
+# the ledger's triggers, and a use-case's dependency is bound where the use-case is built. Irreducible
+# for the same reason `openLink` was. Measured by setting 401: `AppCore` is exactly 401 with it.
+# Everything that could live elsewhere does: the ordering rule (save, then bump) is inside the use-case
+# and tested there, and the counter is the ledger's. 410 is the next 10-line step.
+# ⏰ Same caveat: a granularity boundary, not a measurement.
+#
 # `buildUponDefaultConfig` is TRUE for the tier tasks (unlike `app-shell.yml`, which is a complete
 # statement of five rules). Listing all ~60 rules in eight files is not maintainable; the cost is that
 # a detekt upgrade activating a new rule starts firing here. That failure lands in the upgrade PR,
@@ -104,7 +114,7 @@ complexity:
     constructorThreshold: 47
   LargeClass:
     active: true
-    threshold: 400
+    threshold: 410
 style:
   ReturnCount:
     active: true

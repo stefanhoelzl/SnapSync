@@ -53,15 +53,23 @@ iOS kills (`0xdead10cc`).
 
 ### 2. The version: one counter, bumped by every manifest-relevant change, read first
 
-A one-row table `manifestVersion(value INTEGER NOT NULL)` in the ledger database, seeded to 0 by `11.sqm` and by
-the `CREATE`.
+A one-row table `manifestVersion(id INTEGER PRIMARY KEY CHECK (id = 0), value INTEGER NOT NULL)` in the ledger
+database. There is **no seed**: the read is `COALESCE(…, 0)`, and every advance is "insert the row if absent, then
+`UPDATE … SET value = value + 1`". So neither the `CREATE` nor `11.sqm` has a seed it could forget.
 
 - **Ledger changes bump it through triggers**, so no write path can forget: `AFTER INSERT` and `AFTER DELETE` on
-  `ledgerRow`, and an `AFTER UPDATE` whose `WHEN` clause fires only if a projected column really changed
-  (`assetId`, `key`, `creationDate`, `role`, `contentType`, `originalFilename`, compared `OLD IS NOT NEW`). Never on
-  `state` or `destinationPath`: the v2 manifest carries no upload state, and a bump per finished upload would force
-  a republish per cycle for nothing. A `WHEN` clause rather than `UPDATE OF`, because `recordUnlessSettled`'s upsert
-  names every detail column in its `SET` list, and `UPDATE OF` would fire on unchanged values.
+  `ledgerRow`, and an `AFTER UPDATE` that advances only if a projected column really changed (`key`, `assetId`,
+  `creationDate`, `role`, `contentType`, `originalFilename`, compared `old IS NOT new`). Never on `state` or
+  `destinationPath`: the v2 manifest carries no upload state, and a bump per finished upload would force a republish
+  per cycle for nothing. It compares values, not `UPDATE OF`, because `recordUnlessSettled`'s upsert names every
+  detail column in its `SET` list, and `UPDATE OF` would fire on unchanged values. Two facts measured while building
+  it:
+  - The comparison sits in the trigger **body** (`UPDATE … WHERE id = 0 AND (…)`), not in a `WHEN` clause.
+    SQLDelight's parser does not resolve `old`/`new` in `WHEN`.
+  - The advance is a guarded insert plus an `UPDATE`, **not** `INSERT OR REPLACE`. Inside a trigger SQLite applies
+    the *outer* statement's conflict resolution, so a replace fired by the record upsert became an abort (a
+    `manifestVersion.id` primary-key failure on the first re-record).
+  - The migration verify compares trigger bodies too; a drifted body fails the build (checked by mutation).
 - **A reconfigure bumps it** after its config save has landed (§4).
 - **A cycle reads it first**, before the config read and before `manifestRows()`. The trigger bumps inside the
   same transaction as the change. So a cycle that read N saw every change up to N, and any change its projection
@@ -88,8 +96,17 @@ Why this suffices: while the counter still reads N, no manifest-relevant change 
 N, so every publish numbered N carries the same content. The server keeps the highest version it has seen. So if
 the marker equals the current `(N, S)`, the server holds S.
 
-Cost: one republish per counter bump that did not change the projection. The trigger's column filter keeps that
-rare.
+Cost: one extra publish after every cycle that changed the ledger. The cycle reads the version before its own
+writes (the rows its walk records, the backfill), so the next cycle reads a higher version, finds the marker's
+version unequal, and republishes the unchanged snapshot once before skipping again. That is at most one duplicate
+PUT per changing cycle, and duplicates are harmless. An integration test pins it so the cost stays visible. The
+trigger's column filter keeps other no-op bumps (state transitions) from adding more. **Rejected:** reading the
+version a second time, after the cycle's writes, for the marker. It would save that one PUT, but the marker would
+then name a version the publish never carried, and the argument above would need a second proof.
+
+On the wire the version is a field of the manifest document itself (`DeviceManifest.version`), stamped by the
+producer. The marker, which holds the event id and the serialized document, therefore holds the version without a
+separate slot, and the `ManifestPublisher` port is unchanged.
 
 ### 4. The reconfigure bump runs after the save, in the same step
 

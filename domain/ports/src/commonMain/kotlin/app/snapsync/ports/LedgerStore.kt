@@ -153,4 +153,23 @@ interface LedgerStore : TransferRecord {
      * statement binds. A writer-family operation: only the single writer's cycle runs it.
      */
     suspend fun deleteKeys(keys: Collection<String>)
+
+    /**
+     * The **manifest version**: a counter that advances on every change that could alter the device manifest's
+     * projection, `0` before the first (capability `sync-ledger`, "The manifest version orders the device's
+     * manifest snapshots"). The upload cycle reads it FIRST — before the membership, the policy and the rows —
+     * and its publish carries it, so the backend can refuse a publish older than one it already holds.
+     *
+     * It advances in the **same transaction** as the change that caused it — an insert, a delete, or a change to
+     * a projected column ([app.snapsync.model.changesManifestProjection]); never a change to `state` or the
+     * destination alone. The reset family advances it too, and nothing moves it backwards.
+     */
+    suspend fun manifestVersion(): Long
+
+    /**
+     * Advance the manifest version by one, for the one projection input that lives outside this store: the
+     * membership's policy bounds, whose writer (the reconfigure save) calls this **after** its config save has
+     * landed (capability `reconfigure-membership`). Dings nothing: no row changed.
+     */
+    suspend fun bumpManifestVersion()
 }

@@ -154,11 +154,14 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         // upload state. This hook therefore needs no discovery of its own — the cycle has already
         // recorded every admitted resource and backfilled the bare ones by the time it fires, and the
         // rows it recorded THIS cycle are part of what it declares.
-        onDiscovery = { eventId, policy ->
+        onDiscovery = { eventId, policy, manifestVersion ->
             manifestProducer.produce(
                 eventId = eventId,
                 policy = policy, // the ONE admission (capability `photo-selection-policy`)
                 rows = ledger.manifestRows(),
+                // Read by the gate BEFORE the membership, so every change the rows or the policy miss
+                // carries a higher version (capability `sync-ledger`).
+                manifestVersion = manifestVersion,
             )
         },
         // The cycle applies the membership's opt-in (it arrived with the gate); this translation
@@ -191,7 +194,12 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
  *    trigger flows' membership re-read (`AppPorts.reloadConfig`, migration step 12 — before that,
  *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
  */
-private fun readGate(ports: UploadPorts): CycleGate {
+private suspend fun readGate(ports: UploadPorts): CycleGate {
+    // The manifest version FIRST — before the membership, and so before the policy and the rows the manifest
+    // is projected from (capability `upload-lifecycle`). Every change that could alter the projection
+    // advances it, so a change this cycle's projection misses happened after this read and carries a higher
+    // version. Unreadable (a locked device's protected ledger) is "I could not look", like the config.
+    val version = runCatching { ports.ledger.manifestVersion() }
     val read = ports.config.read()
     // The identity probe — an unresolvable id is "I could not look", never "no id", so it belongs
     // on the unreadable side of the roll-up. Every outcome needs the id: the reconciler and the
@@ -209,7 +217,7 @@ private fun readGate(ports: UploadPorts): CycleGate {
     val idReadable = identityFailure == null
     val payload = (read as? ConfigRead.Joined)?.config
     return cycleGate(
-        configReadable = read !is ConfigRead.Unavailable && idReadable,
+        configReadable = read !is ConfigRead.Unavailable && idReadable && version.isSuccess,
         membership = payload?.let {
             JoinedMembership(
                 eventId = it.eventId,
@@ -223,6 +231,7 @@ private fun readGate(ports: UploadPorts): CycleGate {
                     )
                 },
                 saveToAlbum = it.saveToAlbum,
+                manifestVersion = version.getOrDefault(0L),
             )
         },
         host = ports.host(),
@@ -231,15 +240,20 @@ private fun readGate(ports: UploadPorts): CycleGate {
         admission = ports.admission(),
         // The forensics for a skip: the decision is made in shared code that cannot see WHY the
         // read failed, and an unreadable config is invisible on a device except through this string.
-        skipDetail = "protected data unavailable (config status=" +
-            "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=$idReadable" +
-            // Naming WHICH identity failure occurred is the difference between "the device is locked,
-            // this will pass" and "this process has no identity and may not create one", which need
-            // opposite reactions from whoever reads the log.
-            when (identityFailure) {
-                is DeviceIdentityAbsent -> ", deviceId absent and unmintable here"
-                is SecureStoreUnavailable -> ", deviceId unreadable (${identityFailure.detail})"
-                else -> ""
-            } + ")",
+        skipDetail = skipDetail(read, identityFailure, version.exceptionOrNull()),
     )
 }
+
+/** The skip line [readGate] hands the cycle: which read failed, and how. */
+private fun skipDetail(read: ConfigRead, identityFailure: Throwable?, versionFailure: Throwable?): String =
+    "protected data unavailable (config status=" +
+        "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=${identityFailure == null}" +
+        // Naming WHICH identity failure occurred is the difference between "the device is locked,
+        // this will pass" and "this process has no identity and may not create one", which need
+        // opposite reactions from whoever reads the log.
+        when (identityFailure) {
+            is DeviceIdentityAbsent -> ", deviceId absent and unmintable here"
+            is SecureStoreUnavailable -> ", deviceId unreadable (${identityFailure.detail})"
+            else -> ""
+        } +
+        (if (versionFailure != null) ", manifest version unreadable ($versionFailure)" else "") + ")"
