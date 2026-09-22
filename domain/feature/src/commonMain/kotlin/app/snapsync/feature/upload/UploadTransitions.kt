@@ -2,7 +2,6 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.model.UploadMechanism
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
@@ -11,8 +10,8 @@ import co.touchlab.kermit.Logger
  * How the app-driven engine is **kicked** (capability `upload-lifecycle`, "Triggers are delivered to the mechanism
  * and declined explicitly").
  *
- * Every trigger is delivered **unconditionally**, whatever mechanism is resolved: the engine's cycle decides at
- * its entry gate, declining as not resolved while the OS-driven mechanism runs. The caller does not ask whether
+ * Every trigger is delivered **unconditionally**: the engine's cycle decides at its entry gate, withholding when
+ * this process may not create (no usable access, or the rig's switch). The caller does not ask whether
  * the engine is interested, because a caller that asks is an *invoker-gate* — the shape this capability ruled
  * against ("The arm's direction gate lives at the choke point, never at the invoker"). Delivering to a held
  * mechanism instead is what used to strand every cold background wake on an idle stand-in: nothing but a
@@ -37,57 +36,64 @@ interface UploadTriggers {
 }
 
 /**
- * The app-driven engine (capability `ios-url-session-upload`): its triggers, plus the two verbs the membership
+ * The app-driven engine (capability `ios-url-session-upload`): its triggers, plus the three verbs the membership
  * transitions call.
  *
  * | verb | what it does |
  * |---|---|
- * | [arm] | signal a restart to the cycle (the start-time stranded rule), drain, arm the first `BGProcessingTask` |
- * | [disarm] | cancel in-flight transfers and the scheduled `BGProcessingTask`; the session stays intact |
+ * | [arm] | drain, and arm the first `BGProcessingTask` |
+ * | [disarm] | cancel the scheduled `BGProcessingTask` — nothing else; in-flight transfers finish and record |
+ * | [cancelTransfers] | cancel the in-flight transfers and delete their staged files — a **leave** only |
  *
- * Neither clears the ledger or repairs a row — a disarm's orphaned `REQUESTED` rows are demoted by the next arm's
- * restart rule, or by the OS-driven ritual's demote.
+ * None of them clears the ledger or repairs a row: nothing a transition does orphans a `REQUESTED` row, because
+ * no transition but a leave stops in-flight work and the leave clears the ledger (decision record
+ * `changes/both-uploaders-active`, D6).
  */
 interface AppUploadEngine : UploadTriggers {
     /** Begin or resume uploading for the configured membership. Idempotent. */
     suspend fun arm()
 
-    /** Cease uploading. Idempotent, and destroys no durable state. */
+    /** Stop new wakes. Idempotent, and destroys no durable state and no in-flight transfer. */
     suspend fun disarm()
+
+    /** Cancel every in-flight transfer (a leave). Idempotent, and touches no ledger row. */
+    suspend fun cancelTransfers()
 }
 
 /**
- * The upload arm: **what each membership transition does** to the two upload mechanisms (capability
- * `upload-lifecycle`, "Membership transitions reconcile the upload mechanisms in one tested place").
+ * The upload arm: **what each membership transition does** to the two uploaders (capability `upload-lifecycle`,
+ * "Membership transitions reconcile the upload mechanisms in one tested place").
  *
- * It holds **no state**. Every decision is derived afresh from the resolved kind ([resolve] —
- * `model/resolveUploadMechanism`, read at the moment of the transition), the membership's three-valued upload
- * posture, and, for the registration compare, the current grant. It replaced an arm that held one mechanism
- * instance, a kind → instance table, a relinquish wrapper and an idle stand-in: the facts they carried are the
- * table in [desired], and the rest was indirection.
+ * It holds **no state**. Every decision is derived afresh from whether a membership exists, the registration fact
+ * ([extensionRegistrable] — `model/extensionRegistrable`, read at the moment of the transition) and the current
+ * grant.
  *
- * Exactly one mechanism writes the ledger, and that is now **gated** rather than structural: each engine's cycle
- * declines at its own entry gate when it may not run, and these transitions keep the OS registration consistent
- * with resolution. The `:test:architecture` guard drives both.
+ * Both uploaders run: the app's creates under any usable grant, the extension under a full one, each deciding at
+ * its own entry gate. What is left to reconcile is the extension's registration — which **spans the membership**:
+ * registered at the join wherever the OS allows it, download-only included, and removed only at a leave — and
+ * whether the app's heartbeat is armed (decision record `changes/both-uploaders-active`, D5):
  *
- * **Forced vs compared.** A join forces the registration — the disable → demote → enable ritual repairs a stale
- * record that a bare enable would fail on with `3202`. Every other transition compares against what the OS
- * reports, and only under `GRANTED`: every write is refused under `LIMITED` (3311), and the OS's read is not
- * trustworthy under `NOT_DETERMINED`. So a launch no longer wipes and demotes the extension's in-flight jobs; a
- * stale record that still reads "enabled" waits for the next join.
+ * | transition | registration | app engine |
+ * |---|---|---|
+ * | join (after the share-set load and the save) | **forced** toggle where registrable | armed iff access usable |
+ * | re-provision of the joined event | not called — nothing | nothing |
+ * | reconfigure | nothing | armed iff access usable |
+ * | permission change, launch | compared: register if registrable and absent; never deregister | armed iff usable |
+ * | override change (rig) | deregister if switched off; else compared | armed iff usable |
+ * | leave | deregister | disarmed, transfers cancelled |
  *
- * **Stand-down first.** The app engine is disarmed before the extension is registered, and the extension
- * deregistered before the engine is armed, so neither is brought up over the other's live transfers.
+ * **Forced vs compared.** A join forces the toggle — it repairs a stale record that a bare enable would fail on
+ * with `3202`. Everywhere else the OS's own read decides, and only under `GRANTED` (where the extension is
+ * registrable): every write is refused under `LIMITED` (3311), and the OS's read is not trustworthy under
+ * `NOT_DETERMINED`. A compared register runs only where the OS reads **no** record, so it wipes no job.
  */
 class UploadTransitions(
-    /** The current resolved kind. Read fresh at every transition, never held. */
-    private val resolve: () -> UploadMechanism,
-    // The CURRENT membership's upload posture: `true` = joined and the direction includes upload, `false` =
-    // joined but download-only, `null` = **no event joined**. Three-valued, because collapsing "no membership"
-    // into a Boolean is what once armed a producer for an event that did not exist.
-    private val membershipIncludesUpload: () -> Boolean?,
-    /** The current grant — the only condition under which the OS's registration read can be trusted. */
+    /** Whether an event is configured now. Read fresh at every transition, never held. */
+    private val joined: () -> Boolean,
+    /** The current grant. */
     private val permission: () -> PermissionStatus,
+    /** The registration fact — `model/extensionRegistrable` over the OS fact, the grant and the rig's switch. */
+    private val extensionRegistrable: () -> Boolean,
     /** The OS-driven registration where this OS carries its selector; `null` below iOS 26.1. */
     private val registration: ExtensionRegistration?,
     /** The app-driven engine, obtained at first use (it owns a process-lifetime background session). */
@@ -97,85 +103,72 @@ class UploadTransitions(
 ) {
 
     /**
-     * A join — a first join or a switch, after the join-time load; or a re-provision of the joined event. The
-     * registration is **forced**: the one transition allowed to repair a stale record.
+     * A join — a first join or a switch, after the share-set load and the save. The registration is **forced**:
+     * the one transition allowed to repair a stale record. A re-provision of the joined event never reaches here
+     * (the membership entry is not run for it), so a re-scan can never wipe the extension's in-flight jobs.
      */
-    suspend fun onJoin() = log.invocation(logScope, "uploads.onJoin") { reconcile(forced = true) }
+    suspend fun onJoin() = log.invocation(logScope, "uploads.onJoin") {
+        if (extensionRegistrable()) registration?.register()
+        armIfUsable()
+    }
 
     /**
-     * A reconfigure whose new direction includes upload. (A disabling reconfigure calls nothing: in-flight
-     * uploads drain and the cycle's direction gate withholds new work — capability `reconfigure-membership`.)
+     * A reconfigure, in any direction. The registration is not touched — it spans the membership — and the app
+     * engine is kicked; the selection policy decides whether anything uploads (capability `reconfigure-membership`).
      */
-    suspend fun onReconfigure() = log.invocation(logScope, "uploads.onReconfigure") { reconcile(forced = false) }
+    suspend fun onReconfigure() = log.invocation(logScope, "uploads.onReconfigure") {
+        if (joined()) armIfUsable()
+    }
 
     /** A real change of the photo grant — never the permission `StateFlow`'s replayed first value. */
     suspend fun onPermissionChanged() =
-        log.invocation(logScope, "uploads.onPermissionChanged") { reconcile(forced = false) }
+        log.invocation(logScope, "uploads.onPermissionChanged") { compare(deregisterIfOff = false) }
 
     /**
-     * The development mechanism override was set or cleared (rig builds only). Compared, and immediate: the
-     * extension cannot read the override, so a pin away from the OS-driven mechanism must deregister it now
-     * rather than leave its permission-only gate to admit a second writer until the next transition.
+     * The rig's uploader switch was set or cleared (rig builds only). Compared, and immediate: the extension
+     * cannot read the switch, so turning it off must deregister it now.
      */
     suspend fun onOverrideChanged() =
-        log.invocation(logScope, "uploads.onOverrideChanged") { reconcile(forced = false) }
+        log.invocation(logScope, "uploads.onOverrideChanged") { compare(deregisterIfOff = true) }
 
     /**
-     * Host assembly — the app launched with its UI. Compared, so the extension's in-flight jobs survive a launch;
-     * and an arm where the app engine is wanted, which carries the start-time restart signal and the first
-     * heartbeat exactly as the old replay-driven start did. A cold background launch never reaches here.
+     * Host assembly — the app launched with its UI. Compared, so the extension's in-flight jobs survive a launch.
+     * A cold background launch never reaches here.
      */
-    suspend fun onLaunch() = log.invocation(logScope, "uploads.onLaunch") { reconcile(forced = false) }
+    suspend fun onLaunch() = log.invocation(logScope, "uploads.onLaunch") { compare(deregisterIfOff = false) }
 
     /**
-     * A leave, or a switch leaving the previous membership: stand everything down. The caller clears the upload
-     * ledger and the configured event afterwards (capability `leave-event`); nothing here touches either.
+     * A leave, or a switch leaving the previous membership: the one transition that stops in-flight work. The
+     * caller clears the upload ledger and the configured event afterwards (capability `leave-event`).
      */
     suspend fun onLeave() = log.invocation(logScope, "uploads.onLeave") {
         registration?.deregister()
-        appEngine().disarm()
+        val engine = appEngine()
+        engine.disarm()
+        engine.cancelTransfers()
     }
-
-    /** What the registration should be. [KEEP] is "no write is permitted, and none is needed". */
-    private enum class Registration { WANTED, NOT_WANTED, KEEP }
-
-    private class Desired(val registration: Registration, val appArmed: Boolean)
 
     /**
-     * The desired state. With no usable access the resolved kind is idle: disarm the app engine, and leave the
-     * registration alone — the extension withholds at its own gate, and every write would be refused anyway.
-     * Idle **with** usable access is a development pin ("run nothing"), and that is a pin away from the OS-driven
-     * mechanism like any other: the extension cannot read it, so it is deregistered.
+     * The compared reconcile. With no membership nothing is armed and nothing registered — a surviving record is
+     * left as it is, because only a leave deregisters. With one, register a record the OS reads absent (only where
+     * registrable, which implies `GRANTED`), deregister one the rig switched off, and arm iff access is usable.
      */
-    private fun desired(): Desired {
-        if (membershipIncludesUpload() != true) return Desired(Registration.NOT_WANTED, appArmed = false)
-        return when (resolve()) {
-            UploadMechanism.PHOTOKIT -> Desired(Registration.WANTED, appArmed = false)
-            UploadMechanism.URL_SESSION -> Desired(Registration.NOT_WANTED, appArmed = true)
-            UploadMechanism.IDLE -> Desired(idleRegistration(), appArmed = false)
+    private suspend fun compare(deregisterIfOff: Boolean) {
+        if (!joined()) return
+        val registration = registration
+        if (registration != null) {
+            val registrable = extensionRegistrable()
+            // The OS's read is trusted only under a full grant; anything else changes nothing.
+            val observed = if (permission() == PermissionStatus.GRANTED) registration.isRegistered() else null
+            when {
+                registrable && observed == false -> registration.register()
+                deregisterIfOff && !registrable && observed == true -> registration.deregister()
+            }
         }
+        armIfUsable()
     }
 
-    private fun idleRegistration(): Registration =
-        if (permission().grantsPhotoAccess) Registration.NOT_WANTED else Registration.KEEP
-
-    private suspend fun reconcile(forced: Boolean) {
-        val desired = desired()
-        // Stand-down first: disarming before a registration means the ritual's demote meets no live transfer,
-        // and disarming whenever the engine is unwanted cancels what a PREVIOUS process left running.
-        if (!desired.appArmed) appEngine().disarm()
-        reconcileRegistration(desired.registration, forced)
-        if (desired.appArmed) appEngine().arm()
-    }
-
-    private suspend fun reconcileRegistration(wanted: Registration, forced: Boolean) {
-        val registration = registration ?: return
-        // Compared: the OS's read, trusted only under a full grant; anything else changes nothing.
-        val observed = if (permission() == PermissionStatus.GRANTED) registration.isRegistered() else null
-        when (wanted) {
-            Registration.WANTED -> if (forced || observed == false) registration.register()
-            Registration.NOT_WANTED -> if (forced || observed == true) registration.deregister()
-            Registration.KEEP -> Unit
-        }
+    private suspend fun armIfUsable() {
+        if (permission().grantsPhotoAccess) appEngine().arm() else appEngine().disarm()
     }
 }

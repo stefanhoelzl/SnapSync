@@ -98,17 +98,6 @@ interface LedgerStore : TransferRecord {
     suspend fun rowsNeedingJob(): List<LedgerEntry>
 
     /**
-     * The `REQUESTED` keys — the candidates for the app-driven tier's stranded reconciliation
-     * (`ios-url-session-upload`).
-     *
-     * Deliberately narrower than [pendingResources], which that tier used to read for this and which
-     * returns the whole non-settled backlog. A `DISCOVERED` row is already back in the work read; re-surfacing
-     * it every cycle re-writes the row, signals a change, and reports a loss that did not happen — a device
-     * log shows one key "stranded" twelve times inside a single process, seven within sixteen seconds.
-     */
-    suspend fun requestedKeys(): Set<String>
-
-    /**
      * The rows the **device manifest** projects from (capability `device-manifest`): every row,
      * whatever its upload state.
      *
@@ -142,19 +131,6 @@ interface LedgerStore : TransferRecord {
      * Dings [changes] so watchers re-read the now-empty truth.
      */
     suspend fun clear()
-
-    /**
-     * Return every `REQUESTED` row to `DISCOVERED`, changing nothing else on those rows and leaving every other row
-     * untouched — an **app-side reset-family** op (alongside [clear]), not a per-key record, so a non-writer
-     * may run it (on iOS ≥26.1 the app, while the extension is the one recording process).
-     *
-     * The recovery for `REQUESTED` rows no transfer can settle any more — canonically the jobs the OS wiped
-     * when the extension was disabled: the engine never re-issues a `REQUESTED` key and no API surfaces the
-     * vanished job. It demotes rather than deletes because a `DISCOVERED` row needs a job, so the ledger's own
-     * work read ([rowsNeedingJob]) returns it on the next cycle — no walk, and so no discovery-cursor reset.
-     * Dings [changes] once, like [clear] (capability `sync-ledger`, "Requested-state reset").
-     */
-    suspend fun demoteRequested()
 
     /**
      * Atomically replace the entire store with [entries] (delete-all then insert-all in one

@@ -291,17 +291,4 @@ class IosPhotoKitUploadPlatform(
             }
         }
     }
-
-    /**
-     * No set — the honest answer for a durable OS queue. The system exposes exactly two job sets, `.retry` and
-     * `.acknowledge`, and no set of jobs still in flight; a job it holds survives this process, so this tier
-     * has no stranded population for the cycle to reconcile.
-     */
-    override suspend fun liveKeys(): Set<String>? = null
-
-    /** No set, for the same reason: a job the system holds is not lost when this process dies. */
-    override suspend fun lostKeys(): Set<String>? = null
-
-    /** Nothing to drop: this tier keeps no per-transfer state of its own — the system holds the jobs. */
-    override suspend fun discard(keys: Set<String>) = Unit
 }

@@ -126,37 +126,39 @@ uploaded the camera roll of a member who had been promised "you won't share your
 
 **The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` supplies only
 **facts** — the app-driven engine, the OS-driven registration where this OS carries it, whether it does, and
-any development override. What each membership transition does (join · reconfigure · permission change ·
-launch · leave) is decided by the tested, stateless `UploadTransitions` in `:domain`'s feature/upload, from
-`model/`'s `resolveUploadMechanism` read fresh at that moment. It calls four verbs: the extension's
-`register()` (the disable → demote → enable ritual — never a bare enable) and `deregister()`, and the app
-engine's `arm()` and `disarm()`. **None of them clears the ledger**: only a leave clears it and only a join
-loads it, as the membership use-cases' own steps (`upload-lifecycle`, `join-event`). What standing a mechanism
-down can leave behind is `REQUESTED` rows no transfer will settle, and whichever mechanism is brought up next
-demotes those to `DISCOVERED` — the ritual's demote, or the app engine's restart rule.
+the rig's per-uploader switch source. What each membership transition does (join · re-provision · reconfigure ·
+permission change · launch · leave) is decided by the tested, stateless `UploadTransitions` in `:domain`'s
+feature/upload, from `model/`'s `extensionRegistrable` read fresh at that moment. It calls five verbs: the
+extension's `register()` (the disable → enable ritual — never a bare enable) and `deregister()`, and the app
+engine's `arm()`, `disarm()` (the heartbeat only) and `cancelTransfers()` (a leave only). **None of them clears
+the ledger**: only a leave clears it and only a join loads it, as the membership use-cases' own steps
+(`upload-lifecycle`, `join-event`). And **no transition but a leave stops in-flight work**: the registration spans
+the membership (never removed by a reconfigure or a permission change), a revoke stops only new creation, and a
+re-provision of the joined event does nothing — so nothing is ever orphaned, and nothing needs repair
+(decision record `openspec/changes/both-uploaders-active`).
 
-**Exactly one process writes the ledger, and that is gated, not structural.** Every app-side trigger goes to
-the app engine unconditionally; its cycle's entry gate declines as *not resolved* while the OS-driven
-mechanism is the resolved one (touching nothing — not even the settle), and the extension's gate withholds
-without a full grant. The launch reconcile is called explicitly from host assembly — the permission
-`StateFlow`'s replay is no longer a transition — and it *compares* against the OS's registration rather than
-forcing the ritual, so a launch no longer wipes the extension's in-flight jobs; only a join forces it.
+**Both uploaders run, and that is by design.** Every app-side trigger goes to the app engine unconditionally; its
+cycle's entry gate withholds only without usable access (or when the rig switched it off), and the extension's
+withholds without a full grant. On ≥26.1 under a full grant both create, over the one App-Group ledger: a cycle
+picks only `DISCOVERED` rows and records `REQUESTED` only after its job exists, so an overlap is at worst a
+duplicate upload of the same object, and the guarded terminal write converges the row. The launch reconcile is
+called explicitly from host assembly — the permission `StateFlow`'s replay is no longer a transition — and it
+*compares* against the OS's registration, registering only a record the OS reads absent, so a launch never
+wipes the extension's in-flight jobs; only a join forces the ritual.
 
 This structure is load-bearing, not tidiness. The lifecycle *used* to live here as a pile of
 `if (useAppDrivenUpload)` branches, and because this module is wiring-only and untested, nothing caught
 that `provisionEvent` → `enableBackgroundUpload()` → `disableExtension()` resolved, on the app-driven tier,
 to a **full leave** (cancel transfers, cancel the heartbeat, wipe ledger + cursor) followed by a no-op
-enable. Joining an event tore the upload arm down and started nothing. Holding one mechanism *reference*
-also makes the tiers mutually exclusive **structurally**: starting two has no expression, because the arm
-can only name one. `ProducerExclusivityTest` guards what the compiler cannot — that no resolver cell yields
-a mechanism its OS cannot run, and that every switch observed stop-before-start.
+enable. Joining an event tore the upload arm down and started nothing. `ProducerExclusivityTest` guards what
+the compiler cannot — that the extension is never registrable below 26.1, and that no transition sequence
+deregisters or cancels anywhere but at a leave.
 
-**Single-writer invariant — the writer's process depends on the tier** (`sync-ledger`: exactly one
-record-writer; its process placement is a platform binding). On **iOS ≥26.1** the **extension** is the
-only `LedgerWriter` and the app constructs only reader/watcher (never a writer). On **iOS 18–26.0**
-there is no extension, so the **app** holds the single `LedgerWriter` — constructed in
-`UrlSessionUploadController` (the app-driven tier). Outside that controller, `:app:ios` still
-constructs no writer.
+**Ledger writers are owned by code, not by a process** (`sync-ledger`). The app holds a `LedgerWriter` on every
+OS version — constructed in `UrlSessionUploadController` through `uploadCore` — and on **iOS ≥26.1** the
+**extension** holds one too. Every write is one guarded transaction owned by named code: the cycle's record
+family, a transport's guarded terminal write, and the membership reset family. Outside that controller,
+`:app:ios` constructs no writer.
 
 ## Entitlements & Info.plist (the cross-process glue)
 
@@ -214,42 +216,35 @@ constructs no writer.
   com.apple.photos.background-upload` (under `EXAppExtensionAttributes`, the ExtensionKit iOS 26
   model).
 
-## iOS-version deviation & the two upload tiers
+## iOS-version deviation & the two uploaders
 
-App deploys **min iOS 18**. Upload runs on one of two tiers, **re-resolved at every transition** by the
-pure resolver (`model/`'s `resolveUploadMechanism`) from three inputs: `isOperatingSystemAtLeastVersion(26.1)`,
-the current photo permission, and an optional development override. `SnapSyncRoot`'s one switch decides only
-**presence** — whether this OS carries the OS-driven mechanism at all — and no entry point re-checks a flag.
-A once-per-process answer could not express this: the OS refuses to register the extension under a partial
-grant, so the resolved mechanism genuinely changes when permission does. On a production build the override
-is always `null` (its only writer is the rig's boot hook, not compiled in without `-Psnapsync.rig=true`), so
-a shipped process's tier is a function of the device it runs on **and** the grant the user gave.
+App deploys **min iOS 18**. There are two uploaders, and **both run** where both exist (decision record
+`openspec/changes/both-uploaders-active`): each decides at its own entry gate whether it may create, and an
+overlap is a duplicate upload of the same object, never a loss. `SnapSyncRoot`'s one switch decides only
+**presence** — whether this OS carries the OS-driven uploader at all (`isOperatingSystemAtLeastVersion(26.1)`).
+Whether the extension may be **registered** is `model/`'s pure `extensionRegistrable` over that fact, the current
+photo permission, and the rig's per-uploader switch (always `null` on a production build — its only writer is the
+rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
 
 - **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
   devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitExtensionRegistry` (`:adapter:ios:app-only`), the
   sole caller of that selector and of its read-back, reached through the `UploadExtensionRegistry` port by
   `OsDrivenRegistration` (`:domain` `feature/upload`), which is only
-  constructed where the OS carries this mechanism (≥26.1) — so it can never trap on a lower system. Under
-  a partial grant no registration write is attempted (every one is refused — 3311); a surviving record is
-  made inert by the extension's own gate, which withholds without a full grant. A later move to the iOS 27
-  async `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
-- **app-driven `URLSession` (`ios-url-session-upload`) — all of iOS 18–26.0, and ≥26.1 under a partial
-  grant.** No OS-driven upload runs here; the **main app process** performs uploads over a background
-  `URLSession` + `BGProcessingTask`, via `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler`
-  (`:adapter:ios:app-only`) driving the same `:domain` feature/upload `UploadCycle` through the
-  `BackgroundUploadPump`. On this tier the **app**
-  is the single `LedgerWriter` — below 26.1 no extension process exists, and at ≥26.1 under a partial grant
-  the extension is not registered, so the OS never launches it.
+  constructed where the OS carries this uploader (≥26.1) — so it can never trap on a lower system. The
+  registration spans the membership: registered at the join wherever the OS allows it (a full grant),
+  download-only included, and removed only at a leave. Under a partial grant no registration write is
+  attempted (every one is refused — 3311); a surviving record is invoked by the OS, and its extension withholds
+  at its own gate — it records and acknowledges, and creates nothing. A later move to the iOS 27 async
+  `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
+- **app-driven `URLSession` (`ios-url-session-upload`) — every iOS version, whenever access is usable.** The
+  **main app process** uploads over a background `URLSession` + `BGProcessingTask`, via
+  `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:adapter:ios:app-only`) driving the same `:domain`
+  feature/upload `UploadCycle` through the `BackgroundUploadPump`. Below 26.1 it is the only uploader; from 26.1
+  it runs beside the extension, both writing the one App-Group ledger (every write a guarded single transaction).
 
-**Forcing the app-driven tier on a device works through the rig.** `SNAPSYNC_FORCE_URLSESSION_UPLOAD` was
-deleted with the rest of the launch-trigger surface; its replacement is the `uploadMechanismOverride` input
-to `resolveUploadMechanism`, pinned over the control channel (`:test:rig`'s boot hook assigns the thunk, so
-a build made without `-Psnapsync.rig=true` cannot carry one). Without the rig, on the agent-driveable SE2
-(iOS 26.5) the app-driven mechanism is reachable only under a **`LIMITED`** photo grant, where the OS
-refuses to register the extension. That exercises the pump, the scheduler, the background `URLSession`,
-staging and ledger writing, but **not** the full-library discovery walk: a partial grant feeds discovery
-the in-memory selection snapshot instead of walking.
+**Exercising one uploader alone on a device works through the rig**: `POST /device/uploaders?app=on|off&extension=on|off`
+(`rig-channel`). `extension=off` deregisters the extension; `app=off` makes the app's uploader withhold.
 
 There is **no host axis** any more: nothing reads `SIMULATOR_DEVICE_NAME`, and there is no
 simulator-specific session. The transport used to be downgraded to a foreground session on the
@@ -259,11 +254,9 @@ simulator, on an unmeasured belief that a background one could not run there; me
 `handleEventsForBackgroundURLSession` on a simulator is still unproven.
 
 ⚠️ The OS's upload-job registration lives in the **system**, not the app, and survives relaunch and
-reinstall — so on a ≥26.1 device the extension must be **deregistered first** or it uploads behind the
-app-driven tier's back. The on-device loop is in the **`snapsync-device`** skill (root `CLAUDE.md` →
-*Runbooks*), and pinning which upload mechanism runs is `rig-channel`'s
-`POST /device/upload-mechanism`. Irrelevant on a real 18–26.0 device, where no
-appex can exist at all.
+reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the extension off with `rig-channel`'s
+`POST /device/uploaders?extension=off`. The on-device loop is in the **`snapsync-device`** skill (root
+`CLAUDE.md` → *Runbooks*). Irrelevant on a real 18–26.0 device, where no appex can exist at all.
 
 ## Gotchas
 

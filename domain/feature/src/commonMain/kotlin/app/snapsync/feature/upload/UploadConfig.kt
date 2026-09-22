@@ -2,7 +2,8 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.UploadMechanism
+import app.snapsync.model.UploaderPin
+import app.snapsync.model.grantsPhotoAccess
 
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
@@ -96,17 +97,9 @@ sealed interface CycleGate {
     data object NotJoined : CycleGate
 
     /**
-     * Joined, but this process's engine is not the mechanism resolution yields — the app engine while the
-     * OS-driven kind is resolved. Touch **nothing**: no settle, no ledger write, no manifest. Its transport
-     * holds no transfer for the rows the other process requested, so even its stranded pass would demote
-     * them — a second ledger writer (capability `upload-lifecycle`, "Exactly one mechanism writes the ledger").
-     */
-    data object NotResolved : CycleGate
-
-    /**
-     * Joined, but this process may not read the library for want of a full grant — the extension under any
-     * grant but `GRANTED`. Settle **narrowly** (acknowledge what the platform presented; create nothing) and
-     * publish nothing: a grant is temporary, so the empty manifest a declined direction publishes would wrongly
+     * Joined, but this process may not create — the extension under any grant but `GRANTED`, the app without
+     * usable access (or switched off by the rig). Settle **narrowly** (record and acknowledge what the platform
+     * presented; create nothing) and publish nothing: a grant is temporary, so the empty manifest a declined direction publishes would wrongly
      * blank this device's photos from the event.
      */
     data class Withheld(val config: UploadConfig) : CycleGate
@@ -119,40 +112,36 @@ sealed interface CycleGate {
  * Whether THIS process may run an upload cycle now (capability `upload-lifecycle`, "The upload cycle owns
  * its entry decision") — the per-process answer a root supplies and [cycleGate] consumes.
  *
- * Asymmetric by process, and each root states its own: the app admits exactly when resolution yields the
- * app-driven mechanism (under `LIMITED` too, scoped to the selection snapshot); the extension admits
- * exactly under `GRANTED`, read in its own process. Neither infers it from its selection scope — the
- * extension's default there is untrue under a partial grant.
+ * Asymmetric by process, and each root states its own: the app admits under any usable grant (`LIMITED`
+ * scoped to the selection snapshot); the extension admits exactly under `GRANTED`, read in its own process.
+ * Both may admit at once — on iOS ≥26.1 under a full grant both uploaders create, and an overlap is a duplicate
+ * of the same object, never a loss (decision record `changes/both-uploaders-active`, D2/D3). Neither infers it
+ * from its selection scope — the extension's default there is untrue under a partial grant.
  */
 enum class UploadAdmission {
-    /** This process's engine may run. */
+    /** This process's uploader may create. */
     Admit,
 
-    /** Another mechanism is the resolved one: decline and touch nothing. */
-    NotResolved,
-
-    /** No full grant in a process that would read the whole library: settle narrowly, publish nothing. */
+    /** This process may not create now: settle narrowly, publish nothing. */
     Withheld,
 }
 
 /**
- * The **app** process's admission: its engine runs exactly when resolution yields the app-driven mechanism.
+ * The **app** process's admission: its uploader creates under any usable grant — `GRANTED` or `LIMITED`, on every
+ * OS version, beside the extension where one is registered — unless the rig's [pin] turned it off.
  *
- * Idle resolves `NotResolved` rather than `Withheld` because the app engine never settles anything under a
- * mechanism it is not running — and with no usable access there is nothing of its own to settle. Under
- * `LIMITED` resolution yields the app-driven kind, so the app runs there, scoped to the selection snapshot.
+ * Without usable access it withholds rather than touching nothing: the narrow settle creates no job and reads
+ * no library, and a completion that arrives meanwhile still records through the transport's guarded write.
  */
-fun appAdmission(resolved: UploadMechanism): UploadAdmission = when (resolved) {
-    UploadMechanism.URL_SESSION -> UploadAdmission.Admit
-    UploadMechanism.PHOTOKIT, UploadMechanism.IDLE -> UploadAdmission.NotResolved
-}
+fun appAdmission(permission: PermissionStatus, pin: UploaderPin? = null): UploadAdmission =
+    if (permission.grantsPhotoAccess && pin?.app != false) UploadAdmission.Admit else UploadAdmission.Withheld
 
 /**
  * The **extension** process's admission: it runs exactly under a full grant, read in its own process.
  *
- * It reads permission, never resolution: the development override lives only in the app process's memory, so
- * the extension could not honour it anyway — a pin away from this mechanism is enforced by the app
- * deregistering it. And never its selection scope: the extension's default there (`Unrestricted`) is untrue
+ * It reads permission only: the rig's uploader switch lives in the app process's memory, so the extension could
+ * not honour it anyway — switching the extension off is enforced by the app deregistering it. And never its
+ * selection scope: the extension's default there (`Unrestricted`) is untrue
  * under a partial grant, which is exactly the case this answer exists for.
  */
 fun extensionAdmission(permission: PermissionStatus): UploadAdmission =
@@ -183,8 +172,8 @@ fun cycleGate(
     configReadable: Boolean,
     membership: JoinedMembership?,
     host: String?,
-    // Required, no default: "may this process run?" has no safe invented answer — `Admit` is the two-writer
-    // bug and anything else silently stops uploading.
+    // Required, no default: "may this process create?" has no safe invented answer — a wrong `Admit` reads the
+    // library without a grant, and a wrong `Withheld` silently stops uploading.
     admission: UploadAdmission,
     skipDetail: String = "",
 ): CycleGate {
@@ -194,7 +183,6 @@ fun cycleGate(
     // Decided here, BEFORE the cycle builds the membership's policy: building it reads the album structure,
     // and that read under `NOT_DETERMINED` presents iOS's permission dialog — from a background wake.
     return when (admission) {
-        UploadAdmission.NotResolved -> CycleGate.NotResolved
         UploadAdmission.Withheld -> CycleGate.Withheld(config)
         UploadAdmission.Admit -> CycleGate.Run(config, membership)
     }

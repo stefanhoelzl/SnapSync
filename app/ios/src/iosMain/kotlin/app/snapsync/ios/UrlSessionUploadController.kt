@@ -37,13 +37,12 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 
 /**
- * The app-driven (iOS 18–26.0) upload tier's composition root — the app-process analogue of
- * `UploadExtensionRoot`, but driving the shared `:domain` `feature/upload` `UploadCycle` over a background
- * `URLSession` instead of the PhotoKit OS-job queue. Assembled lazily by [SnapSyncRoot] on every OS: every
- * app-side trigger reaches it, and its cycle's entry gate declines while resolution yields the OS-driven
- * mechanism (capability `upload-lifecycle`). Where it runs, the **app is the
- * single `LedgerWriter`** — there is no extension process, so the cross-process single-writer concern
- * does not apply (`sync-ledger`: the record-writer's process placement is a platform binding).
+ * The app's uploader — the app-process analogue of `UploadExtensionRoot`, driving the shared `:domain`
+ * `feature/upload` `UploadCycle` over a background `URLSession` instead of the PhotoKit OS-job queue. Assembled
+ * lazily by [SnapSyncRoot] on every OS: every app-side trigger reaches it, and its cycle's entry gate withholds
+ * when the app may not create (capability `upload-lifecycle`). On iOS ≥26.1 under a full grant it runs **beside**
+ * the extension, both writing the one App-Group ledger — every write a guarded single transaction, and an overlap
+ * a duplicate upload of the same object, never a loss (decision record `changes/both-uploaders-active`).
  *
  * [BackgroundUploadPump] is the in-app reimplementation of the OS scheduler; its triggers are forwarded
  * from [SnapSyncRoot] (foreground, `BGProcessingTask`, background-session relaunch, per-completion) plus
@@ -116,8 +115,7 @@ class UrlSessionUploadController(
         appGroup = LEDGER_APP_GROUP,
         sessionIdentifier = SESSION_IDENTIFIER,
         // The adapter records terminal outcomes itself, the moment iOS delivers one, through the narrow
-        // `TransferRecord` the store satisfies. It reads no other ledger state: the stranded reconciliation
-        // is the cycle's, over the live set the adapter reports.
+        // `TransferRecord` the store satisfies. It reads no other ledger state.
         ledger = ledgerStore,
         // A slot just freed → top up (single-flight in the pump serialises it).
         onTerminal = { scope.launch { pump.onUploadCompleted() } },
@@ -149,6 +147,8 @@ class UrlSessionUploadController(
         log = log,
         logScope = IosLogScope,
         onCycleComplete = onCycleComplete,
+        // A late completion drives a cycle only while the app may create (the decision is the pump's).
+        mayCreate = graph.appMayCreate,
     )
 
     /**
@@ -232,13 +232,7 @@ class UrlSessionUploadController(
     // (`:domain` `feature/upload`). This class supplies only this tier's MECHANISM.
 
     /**
-     * Begin/resume uploading: **signal a restart** to the cycle, **arm the heartbeat**, then pump a cycle.
-     *
-     * The restart makes the next cycle to reach its stranded pass demote every `REQUESTED` row with no live
-     * task, once (`ios-url-session-upload`, "Stranded reconciliation: scoped each cycle, complete at a start").
-     * It is a flag the cycle consumes, not a pass run here: this call sits outside the pump's single flight.
-     * There is no staging sweep any more — it deleted the lost-transfer marker the per-cycle pass reads; the
-     * cycle discards lost transfers itself, after its pass.
+     * Begin/resume uploading: **arm the heartbeat**, then pump a cycle.
      *
      * `pump.onStart()` (not `onForeground()`) is what arms the heartbeat: it is the only trigger whose
      * re-arm is unconditional, and therefore the only one that can submit the FIRST `BGProcessingTask`.
@@ -247,7 +241,6 @@ class UrlSessionUploadController(
      * the tested pump, not here — this shell is wiring-only.
      */
     override suspend fun arm() = log.invocation("url-session.arm") {
-        cycle.signalRestart()
         pump.onStart()
     }
 
@@ -296,24 +289,28 @@ class UrlSessionUploadController(
     }
 
     /**
-     * Stop uploading (access revoked, a download-only membership, a leave, or the OS-driven mechanism taking
-     * over) — the `disarm()` half of the [AppUploadEngine] seam. Cancels in-flight transfers and the scheduled
-     * heartbeat, and **destroys no
-     * durable state**: the ledger and the discovery cursor are left intact.
+     * Stop new wakes (access revoked, or a leave) — the `disarm()` half of the [AppUploadEngine] seam: cancel the
+     * scheduled heartbeat, and **nothing else**. In-flight transfers finish and record through the delegate's
+     * guarded write (decision record `changes/both-uploaders-active`, D6); new creation is stopped by the cycle's
+     * own admission, not here.
      *
      * There is deliberately **no** destructive counterpart. The ledger is device-global dedup state — its
      * key is the bare filename with no event scoping, and leaving an event does not remove this device's
      * bytes from its storage partition — so a `COMPLETED` row stays *true* across a leave, a switch, and a
-     * re-join (`sync-ledger`, "Event-independent key"). Wiping it would force a re-upload of everything
-     * already stored on the next join, which is exactly what the old `leave()` did. Only a triggered
-     * reconciliation's `resetTo` ever re-baselines the ledger, from the authoritative device listing.
-     *
-     * No ledger repair runs here either: a cancelled transfer's `REQUESTED` row is recorded by its completion
-     * if one is delivered, and otherwise demoted by the next mechanism start's restart rule.
+     * re-join (`sync-ledger`, "Event-independent key"). Only a join's load re-baselines the ledger, and only
+     * a leave clears it.
      */
     override suspend fun disarm() = log.invocation("url-session.disarm") {
-        platform.cancelAll()
         scheduler.cancel()
+    }
+
+    /**
+     * Cancel every in-flight transfer and delete its staged file — a **leave** only (a switch leaves first). A
+     * cancelled task's `-999` completion is recorded by the delegate's guarded write, which matches no row once
+     * the leave has cleared the ledger.
+     */
+    override suspend fun cancelTransfers() = log.invocation("url-session.cancelTransfers") {
+        platform.cancelTransfers()
     }
 }
 
@@ -328,7 +325,9 @@ class AppGraphReads(
     // What upload discovery may read (capability `limited-photo-access`): the walk-vs-snapshot decision. A
     // composition that forgot it would walk the library under a partial grant, where the selection IS the scope.
     val selectionScope: () -> SelectionScope,
-    // Whether this engine's cycle may run now (capability `upload-lifecycle`): the answer from resolution. Every
-    // trigger reaches this engine; its entry gate declines while the OS-driven mechanism is the resolved one.
+    // Whether this engine's cycle may create now (capability `upload-lifecycle`): any usable grant, unless the rig
+    // switched the app off. Every trigger reaches this engine; its entry gate withholds otherwise.
     val admission: () -> UploadAdmission,
+    // The same answer as a Boolean, for the pump's completion re-pump (derived in `compose/`, not here).
+    val appMayCreate: () -> Boolean,
 )

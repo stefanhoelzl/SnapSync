@@ -189,9 +189,9 @@ therefore decide its membership **transition** first, with exactly three answers
 
 - **Stay** — the event being provisioned is the one already joined (a re-provision). Nothing SHALL be torn
   down and nothing SHALL be loaded, and the uploads SHALL be left exactly as they are: no registration
-  call (no disable → enable toggle), and no arm, disarm or cancel of the app's uploader. The provision
-  flow SHALL pass its transition answer into the upload arm's reconcile, and the arm SHALL return on
-  `Stay` — the rule lives in the feature, and the flow gains no branch (capability `upload-lifecycle`).
+  call (no disable → enable toggle), and no arm, disarm or cancel of the app's uploader: the provision's
+  `Stay` branch SHALL only save the config, and the upload arm's join transition SHALL be reached only through
+  the membership entry that `Join` and `LeavePrevious` run (capability `upload-lifecycle`).
   A re-scan changes nothing about the membership, and the toggle would wipe the extension's in-flight
   jobs; the stale-record repair does not need it, because a reinstall wipes the config and so always
   arrives as a real join. Decision record: `changes/both-uploaders-active`.
@@ -212,9 +212,11 @@ The provision SHALL then run in this order:
    `COMPLETED` row per resource the backend already holds, so nothing already stored re-uploads. On failure
    or timeout the ledger SHALL be **cleared** (`clear()`). Either way the new membership starts with nothing
    from before it. The load never blocks the provision.
-4. **Save** the config.
-5. Refresh status → start the uploads (the upload arm's join transition on `Join` and `LeavePrevious`;
-   nothing on `Stay`) → ensure the event album → start downloads and push.
+4. **Save** the config — on every answer.
+5. **Start the uploads** — on `Join` and `LeavePrevious` only (the upload arm's join transition, after the save,
+   so a registered extension never reads the previous membership's config); nothing on `Stay`. Steps 2–5 on an
+   entry are one ordered feature rule (the membership entry), so the provision flow keeps one call per branch.
+6. Refresh status → ensure the event album → start downloads and push.
 
 **Why clear on failure, not keep.** A leftover `COMPLETED` row inside the new window — left by a device
 that departed under the old contract, which kept the ledger, or by a leave whose best-effort clear failed —

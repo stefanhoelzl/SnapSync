@@ -31,8 +31,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
-| `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, NotResolved, Run, Skip, Withheld | no |
-| `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, NotResolved, Truncated, Unreadable, Withheld | no |
+| `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Run, Skip, Withheld | no |
+| `CycleOutcome` | `:domain:feature` | `:domain:feature` Declined, Drained, NotJoined, Truncated, Unreadable, Withheld | no |
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
@@ -61,7 +61,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts | no |
-| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore, UnreachedLedgerStore | yes |
+| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore | yes |
 | `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
 | `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope, IosThreadLogScope; `:domain:ports` NoOp, RecordingScope | no |
 | `ManifestPublisher` | `:domain:ports` | `:adapter:generic:app` HttpManifestPublisher; `:domain:feature` FakeUploader | yes |

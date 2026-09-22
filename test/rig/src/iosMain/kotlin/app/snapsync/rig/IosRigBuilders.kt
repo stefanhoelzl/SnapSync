@@ -194,12 +194,10 @@ fun deviceCommands(
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
     handleReport: (ProcessMetricReport) -> Unit,
 ): Map<String, RigCommand> = uploadJobDeviceCommands() + mapOf(
-    // The development pin on the upload mechanism — the channel's replacement for the deleted
-    // `SNAPSYNC_FORCE_URLSESSION_UPLOAD` (capability `upload-lifecycle`). Reports the pin AND what the
-    // app resolves with it, because a pin naming a mechanism this OS cannot run is clamped by the
-    // resolver and a pin is ignored entirely without usable photo access — so the two can disagree, and
-    // only one of them is what the app will actually do.
-    "upload-mechanism" to uploadMechanismCommand(
+    // The development switch per uploader (capability `upload-lifecycle`). Reports the switch AND the
+    // registration fact it produces, because the extension is never registrable below 26.1 or without a full
+    // grant, whatever the switch says.
+    "uploaders" to uploadersCommand(
         osSupportsOsDrivenUpload = { osSupportsOsDrivenUpload },
         permission = { photoAccess.permission.value },
         reconcile = { core().uploadTransitions.onOverrideChanged() },

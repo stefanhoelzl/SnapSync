@@ -2,7 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.UploadMechanism
+import app.snapsync.model.UploaderPin
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
@@ -174,15 +174,7 @@ class CycleGateTest {
     // ---- admission (capability `upload-lifecycle`, "The upload cycle owns its entry decision") ----------
 
     @Test
-    fun `an engine that is not the resolved mechanism is NotResolved`() {
-        assertEquals(
-            CycleGate.NotResolved,
-            gate(configReadable = true, membership = joined(), host = host, admission = UploadAdmission.NotResolved),
-        )
-    }
-
-    @Test
-    fun `a process without a full grant is Withheld and carries the config the narrow settle needs`() {
+    fun `a process that may not create is Withheld and carries the config the narrow settle needs`() {
         val gate = gate(configReadable = true, membership = joined(), host = host, admission = UploadAdmission.Withheld)
 
         assertIs<CycleGate.Withheld>(gate)
@@ -191,14 +183,12 @@ class CycleGateTest {
     }
 
     // The NOT_DETERMINED trap: building the policy reads the album structure, which prompts. The gate must
-    // decide both declines without invoking the supplier.
+    // decide the decline without invoking the supplier.
     @Test
-    fun `neither decline invokes the policy supplier`() {
+    fun `a withheld decline does not invoke the policy supplier`() {
         val forbidden: suspend () -> SelectionPolicy = { error("the gate must not build the policy") }
-        for (admission in listOf(UploadAdmission.NotResolved, UploadAdmission.Withheld)) {
-            val gate = gate(configReadable = true, membership = joined(policy = forbidden), host = host, admission = admission)
-            assertIs<CycleGate>(gate)
-        }
+        val gate = gate(configReadable = true, membership = joined(policy = forbidden), host = host, admission = UploadAdmission.Withheld)
+        assertIs<CycleGate.Withheld>(gate)
     }
 
     @Test
@@ -210,10 +200,20 @@ class CycleGateTest {
     }
 
     @Test
-    fun `the app admits exactly when the app-driven mechanism is resolved`() {
-        assertEquals(UploadAdmission.Admit, appAdmission(UploadMechanism.URL_SESSION))
-        assertEquals(UploadAdmission.NotResolved, appAdmission(UploadMechanism.PHOTOKIT))
-        assertEquals(UploadAdmission.NotResolved, appAdmission(UploadMechanism.IDLE))
+    fun `the app admits under any usable grant unless switched off`() {
+        for (permission in PermissionStatus.entries) {
+            val usable = permission == PermissionStatus.GRANTED || permission == PermissionStatus.LIMITED
+            val expected = if (usable) UploadAdmission.Admit else UploadAdmission.Withheld
+            assertEquals(expected, appAdmission(permission), "under $permission")
+            assertEquals(UploadAdmission.Withheld, appAdmission(permission, UploaderPin(app = false)), "switched off")
+            assertEquals(expected, appAdmission(permission, UploaderPin(extension = false)), "the other switch")
+        }
+    }
+
+    @Test
+    fun `under a full grant both processes admit`() {
+        assertEquals(UploadAdmission.Admit, appAdmission(PermissionStatus.GRANTED))
+        assertEquals(UploadAdmission.Admit, extensionAdmission(PermissionStatus.GRANTED))
     }
 
     @Test

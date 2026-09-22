@@ -14,61 +14,55 @@ Roots found:
 
 - `SnapSyncRoot` — `app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt`
 - `UploadExtensionRoot` — `app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt`
-- `UrlSessionUploadController` — `app/ios/src/iosMain/kotlin/app/snapsync/ios/UrlSessionUploadController.kt`
 
-| Constructed type | SnapSyncRoot | UploadExtensionRoot | UrlSessionUploadController |
-|---|---|---|---|
-| `AlbumCoordinator` | | x | |
-| `ApnsPushToken` | x | | |
-| `AppGraphReads` | x | | |
-| `AppPorts` | x | | |
-| `BackgroundEventsReceipts` | | | x |
-| `BackgroundUploadPump` | | | x |
-| `CutoffFormatter` | x | | |
-| `FileBackedConfigStore` | x | x | |
-| `FileLogWriter` | x | x | |
-| `HttpAttestClient` | x | | |
-| `HttpDeviceFilesSource` | x | | |
-| `HttpEventCreation` | x | | |
-| `HttpEventDirectory` | x | | |
-| `HttpEventJoin` | x | | |
-| `HttpEventRename` | x | | |
-| `HttpEventUnionSource` | x | | |
-| `HttpLeaveNotifier` | x | | |
-| `HttpManifestPublisher` | | x | x |
-| `IosAlbumManager` | x | x | |
-| `IosAlbumMapStore` | x | x | |
-| `IosAttestKey` | x | | |
-| `IosBackgroundScheduler` | | | x |
-| `IosDeviceLogSource` | x | | |
-| `IosDeviceManifestStore` | x | x | x |
-| `IosDiscovery` | | x | x |
-| `IosDownloadTransport` | x | | |
-| `IosLinkOpener` | x | | |
-| `IosPhotoLibraryImporter` | x | | |
-| `IosShareSheet` | x | | |
-| `IosStagedBytes` | x | | |
-| `IosUrlSessionUploadPlatform` | | | x |
-| `KeychainAttestStore` | x | x | |
-| `KeychainDeviceIdentity` | x | x | |
-| `KtorPushHttpClient` | x | | |
-| `MetricKitProcessMetricSource` | x | | |
-| `OsDrivenRegistration` | x | | |
-| `OsReceipt` | x | | |
-| `PhotoKitAssetPresence` | x | | |
-| `PhotoKitCandidateSource` | x | x | x |
-| `PhotoLibraryPermission` | x | | |
-| `PhotoSelectionSnapshotSource` | x | | |
-| `PlatformHandoff` | x | | |
-| `ProcessMetricHandler` | x | | |
-| `PublicNSLogWriter` | x | x | |
-| `PushRegistration` | x | | |
-| `PushTokenSource` | x | | |
-| `SentryDiagnosticsReporter` | x | x | x |
-| `StatusContainerHost` | x | | |
-| `StatusDiagnostics` | x | | |
-| `StatusSources` | x | | |
-| `UploadPorts` | | x | x |
-| `UploadPushReceiver` | | | x |
-| `UploadRecordPorts` | x | | |
-| `UrlSessionUploadController` | x | | |
+| Constructed type | SnapSyncRoot | UploadExtensionRoot |
+|---|---|---|
+| `AlbumCoordinator` | | x |
+| `ApnsPushToken` | x | |
+| `AppGraphReads` | x | |
+| `AppPorts` | x | |
+| `CutoffFormatter` | x | |
+| `FileBackedConfigStore` | x | x |
+| `FileLogWriter` | x | x |
+| `HttpAttestClient` | x | |
+| `HttpDeviceFilesSource` | x | |
+| `HttpEventCreation` | x | |
+| `HttpEventDirectory` | x | |
+| `HttpEventJoin` | x | |
+| `HttpEventRename` | x | |
+| `HttpEventUnionSource` | x | |
+| `HttpLeaveNotifier` | x | |
+| `HttpManifestPublisher` | | x |
+| `IosAlbumManager` | x | x |
+| `IosAlbumMapStore` | x | x |
+| `IosAttestKey` | x | |
+| `IosDeviceLogSource` | x | |
+| `IosDeviceManifestStore` | x | x |
+| `IosDiscovery` | | x |
+| `IosDownloadTransport` | x | |
+| `IosLinkOpener` | x | |
+| `IosPhotoLibraryImporter` | x | |
+| `IosShareSheet` | x | |
+| `IosStagedBytes` | x | |
+| `KeychainAttestStore` | x | x |
+| `KeychainDeviceIdentity` | x | x |
+| `KtorPushHttpClient` | x | |
+| `MetricKitProcessMetricSource` | x | |
+| `OsDrivenRegistration` | x | |
+| `OsReceipt` | x | |
+| `PhotoKitAssetPresence` | x | |
+| `PhotoKitCandidateSource` | x | x |
+| `PhotoLibraryPermission` | x | |
+| `PhotoSelectionSnapshotSource` | x | |
+| `PlatformHandoff` | x | |
+| `ProcessMetricHandler` | x | |
+| `PublicNSLogWriter` | x | x |
+| `PushRegistration` | x | |
+| `PushTokenSource` | x | |
+| `SentryDiagnosticsReporter` | x | x |
+| `StatusContainerHost` | x | |
+| `StatusDiagnostics` | x | |
+| `StatusSources` | x | |
+| `UploadPorts` | | x |
+| `UploadRecordPorts` | x | |
+| `UrlSessionUploadController` | x | |

@@ -22,8 +22,8 @@ import kotlin.test.assertTrue
  * being canceled), and the task's delegate receives no further callbacks"* — and the adapter used to
  * park that outcome in an `ArrayList` for a later `UploadCycle` to drain. The drain is gated on a
  * single-flight cycle measured in the field at 27 minutes, 65 minutes and 4h49m, so a process death in
- * between lost the fact outright: the row still read `REQUESTED` with no live task, the next cycle
- * called it stranded, and bytes that had already landed were sent again. One device uploaded the same
+ * between lost the fact outright: the row still read `REQUESTED` with no live task, the stranded repair of
+ * the time demoted it, and bytes that had already landed were sent again. One device uploaded the same
  * two photos three times over two days and its status screen said "uploading" throughout.
  *
  * **What makes this assertable without a device** is that the world can simulate the one thing that
@@ -74,51 +74,6 @@ class LostUploadAckIntegrationTest {
                 second.platform.created.isEmpty(),
                 "and its bytes are NEVER sent again — this is the whole defect: a lost acknowledgement " +
                     "used to read as a lost upload, and the photo was re-uploaded on every relaunch",
-            )
-        } finally {
-            next.cancel()
-        }
-    }
-
-    @Test
-    fun a_transfer_the_os_dropped_is_re_uploaded_without_asking_storage() = worldTest {
-        // The negative of the above, and the reason the stranded pass still exists. A force-quit or a
-        // dropped transfer delivers NO completion at all, so nothing records anything — the row rests
-        // `REQUESTED` with no live task and genuinely did not land. It must be re-uploaded.
-        //
-        // No device listing is fetched to decide that. `ios-url-session-upload` used to require a
-        // "not present in storage" check here, which the adapter never implemented; it existed to
-        // compensate for an outcome that was not recorded durably, and with the outcome recorded when the
-        // platform reports it, what reaches this pass genuinely did not land.
-        val scope = CoroutineScope(coroutineContext + Job())
-        val ledger = try {
-            val first = World(scope)
-            first.provision(eventId = EVENT, direction = Direction.Both)
-            first.addOwnAsset("A")
-            first.runUploadCycle()
-
-            assertTrue(
-                first.ledgerBackend.requestedKeys().isNotEmpty(),
-                "in flight, and the OS is about to drop it without telling anyone",
-            )
-            first.ledgerBackend
-        } finally {
-            scope.cancel()
-        }
-
-        val next = CoroutineScope(coroutineContext + Job())
-        try {
-            // A fresh world means a fresh session holding no tasks — exactly what a relaunch finds after
-            // the OS discarded the transfer.
-            val second = World(next, ledgerBackend = ledger)
-            second.provision(eventId = EVENT, direction = Direction.Both)
-            second.addOwnAsset("A")
-
-            second.runUploadCycle()
-
-            assertTrue(
-                second.platform.created.isNotEmpty(),
-                "a genuinely lost transfer is re-created rather than abandoned",
             )
         } finally {
             next.cancel()

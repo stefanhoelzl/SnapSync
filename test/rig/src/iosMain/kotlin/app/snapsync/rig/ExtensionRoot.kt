@@ -1,8 +1,5 @@
 package app.snapsync.rig
 
-import app.snapsync.model.PermissionStatus
-import app.snapsync.model.UploadMechanism
-import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.extensionLogDestination
@@ -53,15 +50,13 @@ private val extensionLane: CoroutineContext = newSingleThreadContext("snapsync-p
 fun extensionTriggerGroup(
     process: () -> Int,
     terminate: () -> Unit,
-    resolvedMechanism: () -> UploadMechanism,
-    permission: () -> PermissionStatus,
     excluded: Map<String, String>,
     log: Logger = Logger.withTag("rig"),
 ): TriggerGroup = TriggerGroup(
     lane = extensionLane,
     wired = mapOf(
         "processRawValue" to RigTrigger.Answering { _, body ->
-            invokeExtensionCycle(process, resolvedMechanism, permission, body, log)
+            invokeExtensionCycle(process, body, log)
         },
         // The OS is terminating a cycle. Wired rather than excluded: unlike the app root's scene
         // observers — whose entire content is whether the PLATFORM called them — this entry records what
@@ -76,12 +71,9 @@ fun extensionTriggerGroup(
 /**
  * Run one extension cycle and answer with what it produced.
  *
- * **Refused unless the resolved mechanism is the OS-driven one**, and the refusal names what resolved.
- * Under the app-driven mechanism the app's own engine holds a live `LedgerWriter`, and this cycle would be a
- * second one over the same App-Group ledger — breaching `sync-ledger`'s single-record-writer invariant,
- * which is silent when violated and has been expensive once already. Under the OS-driven mechanism the
- * app writes no ledger rows at all (it only toggles the registration), so the invoked cycle
- * genuinely is the sole writer: the shipped division of labour exactly.
+ * Not gated on any mechanism: both uploaders may write the one App-Group ledger, so this cycle is just another
+ * cycle over it, and the extension root's own admission (a full grant, read in its entry gate) decides what it
+ * may do — exactly as it does when the OS invokes it (decision record `changes/both-uploaders-active`, D8).
  *
  * Kermit's writer list is process-global and BOTH composition roots set it in their `init`, so touching the
  * extension root redirects the app's own log into `ext-debug.log` and would silence
@@ -91,20 +83,9 @@ fun extensionTriggerGroup(
  */
 private suspend fun invokeExtensionCycle(
     process: () -> Int,
-    resolvedMechanism: () -> UploadMechanism,
-    permission: () -> PermissionStatus,
     body: String?,
     log: Logger,
 ): String {
-    val resolved = resolvedMechanism()
-    if (resolved != UploadMechanism.PHOTOKIT) {
-        return """{"refused":"the resolved upload mechanism is ${resolved.diagnosticName}, not photokit",""" +
-            """"resolves":"${resolved.diagnosticName}","permission":"${permission().name}",""" +
-            """"why":"under ${resolved.diagnosticName} the app's own engine holds a live LedgerWriter; """ +
-            """invoking this cycle would put a second record-writer over one App-Group ledger",""" +
-            """"fix":"clear any pin with POST /device/upload-mechanism?value=none, and grant full photo """ +
-            """access — this tier resolves only under GRANTED on iOS >= 26.1"}""" + "\n"
-    }
     beginUploadJobCycle(body)?.let { refusal -> return refusal }
     val saved = Logger.config.logWriterList
     val raw = try {
@@ -147,18 +128,6 @@ internal expect suspend fun beginUploadJobCycle(body: String?): String?
 
 /** Render this invocation's answer — the raw processing result, plus whatever the target can report. */
 internal expect suspend fun endUploadJobCycle(raw: Int): String
-
-/** The mechanism the app resolves right now — the pin included, exactly as the arm sees it. */
-fun resolvedMechanism(
-    osSupportsOsDrivenUpload: Boolean,
-    permission: () -> PermissionStatus,
-): () -> UploadMechanism = {
-    resolveUploadMechanism(
-        backgroundUploadSupported = osSupportsOsDrivenUpload,
-        permission = permission(),
-        override = UploadMechanismPin.pinned(),
-    )
-}
 
 /**
  * How a `PHBackgroundResourceUploadProcessingResult` raw value reads back — the inverse of the tested

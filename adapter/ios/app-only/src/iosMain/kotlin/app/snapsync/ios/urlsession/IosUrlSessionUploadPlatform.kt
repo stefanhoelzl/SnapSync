@@ -29,7 +29,7 @@ import platform.darwin.NSObject
 import kotlin.coroutines.resume
 
 /**
- * The app-driven (iOS 18–26.0) implementation of `:domain`'s [BackgroundTransfer] port, backed on every
+ * The app-driven (every iOS version) implementation of `:domain`'s [BackgroundTransfer] port, backed on every
  * shipped binary by a **background `URLSession`** — the OS-owned durable queue the PhotoKit tier gets for
  * free, reimplemented in the app process. (The session's binding is fixed per compilation target; see
  * [transferSessionConfiguration].) `UploadCycle` runs unchanged over it; only the job lifecycle
@@ -40,22 +40,21 @@ import kotlin.coroutines.resume
  * - [fetchRetryJobs] is always **empty** — this platform grants no OS single retry; failures come back
  *   through [fetchAckJobs] as retry-spent and `UploadCycle` recreates them.
  * - The delegate records each terminal outcome the moment iOS delivers it, and deletes the staged file.
- * - [liveKeys] and [lostKeys] report what the session holds and what this transport began and lost (a staged
- *   file with no task); the cycle decides from them which `REQUESTED` rows are stranded, and then tells this
- *   adapter to [discard] the lost transfers' files.
+ * - Nothing reports which transfers were lost: a transfer ends with a completion (a cancel and a force-quit
+ *   both deliver `-999`, which records the row back to `DISCOVERED`), and one the OS drops silently is an
+ *   accepted residue (decision record `changes/both-uploaders-active`).
  *
  * Correctness is **at-least-once**: keys are deterministic and the edge PUT is idempotent, so a
  * re-send overwrites the same object. The ledger is the only durable state; the `URLSession` task list
  * is a transient executor reconciled by `taskDescription == key`. Delegate callbacks arrive on the
  * session's delegate queue (via [SessionDelegate], a separate `NSObject` — a Kotlin-interface class
- * cannot also be an ObjC supertype) while seam methods run on the cycle coroutine, so shared state
- * ([inFlight], [terminal]) is guarded by [lock].
+ * cannot also be an ObjC supertype) while seam methods run on the cycle coroutine; the only state they
+ * share is the session's own task list.
  *
  * **What is tested and what is not.** The decision this tier makes — how a delivered task completion maps
  * to a ledger outcome — lives in `UrlSessionOutcome.kt` beside this file and is exercised by
- * `UrlSessionOutcomeTest`; which `REQUESTED` rows count as stranded is the cycle's, over [liveKeys]. What remains
- * here is mechanism: the lock, the in-flight registry, byte staging, the lost-transfer listing, and the
- * session/delegate lifecycle. Those are device-verified and faked in the harness; their correctness is
+ * `UrlSessionOutcomeTest`. What remains here is mechanism: byte staging and the session/delegate lifecycle. Those
+ * are device-verified and faked in the harness; their correctness is
  * concurrency and filesystem behaviour, which extraction does not make more provable.
  */
 @OptIn(ExperimentalForeignApi::class)
@@ -68,7 +67,7 @@ class IosUrlSessionUploadPlatform(
     // cycle to collect does not survive the process. `markTerminal` is the guarded, non-suspending write that
     // lets a completion callback record before it returns (`sync-ledger`). Recording through [TransferRecord]
     // rather than a `LedgerWriter` is deliberate and narrow — see that spec's reader/writer split. It reads no
-    // other ledger state: which in-flight rows were lost is the cycle's decision, over [liveKeys].
+    // other ledger state.
     private val ledger: TransferRecord,
     private val cap: Int = 4,
     // Fired after each task reaches a terminal state — the composition root wires this to the pump's
@@ -198,52 +197,13 @@ class IosUrlSessionUploadPlatform(
      * terminal fact left to hand up; and a failure carries no live resource here, so there is nothing the
      * cycle could re-create in-cycle either — a failed key's row returns to `DISCOVERED`, and a later cycle
      * re-uploads it from the ledger's work read.
-     * The stranded reconciliation this pass used to run is the cycle's now, over [liveKeys]. `acknowledge`
-     * is gone too: the staged file is deleted where the transfer ends, which is also where it stops being
-     * usable.
+     * `acknowledge` is gone too: the staged file is deleted where the transfer ends, which is also where it
+     * stops being usable.
      */
     override suspend fun drainTerminals(): List<PlatformUploadJob> =
         log.invocation("platform.drainTerminals", result = { "${it.size} job(s)" }) {
             emptyList<PlatformUploadJob>()
         }
-
-    /**
-     * The ledger key of every task the session holds — the same live set [createJob]'s cap and [cancelAll]
-     * read, so the three cannot disagree. The cycle subtracts it from the `REQUESTED` rows: a task the OS
-     * dropped, or a force-quit cancelled, delivers no completion, and this is how its row is found.
-     */
-    override suspend fun liveKeys(): Set<String> = liveTaskKeys()
-
-    /**
-     * Every key with a staged file and no live task — the transfers this transport began and lost.
-     *
-     * The file is written before the task is created and deleted wherever a transfer ends inside a living
-     * process (the delegate's terminal record, a cancel, a failed create), so a file with no task is exactly a
-     * transfer that ended with no completion: the OS dropped it, or the process died under it. A `PhotoKit` job
-     * never stages, which is what keeps its rows out of the cycle's per-cycle pass.
-     *
-     * `null` when the staging directory or its listing is unavailable (no App-Group container, or a listing
-     * error): "cannot tell" is not "nothing lost", and an empty set would claim the second.
-     */
-    override suspend fun lostKeys(): Set<String>? {
-        val dir = stagingDir ?: return null
-        val live = liveTaskKeys()
-        val files = NSFileManager.defaultManager.contentsOfDirectoryAtURL(
-            dir, includingPropertiesForKeys = null, options = 0u, error = null,
-        ) ?: return null
-        return files.mapNotNull { (it as? NSURL)?.lastPathComponent }.filterTo(HashSet()) { it !in live }
-    }
-
-    /**
-     * Delete the staged files of [keys] — on the cycle's instruction, after its stranded pass.
-     *
-     * This replaces the start-time orphan sweep, which deleted every staged file with no live task before any
-     * cycle ran — destroying the very marker [lostKeys] reads. Only the cycle knows when a lost transfer's row
-     * can no longer be `REQUESTED`, so only the cycle says when its file may go.
-     */
-    override suspend fun discard(keys: Set<String>) {
-        keys.forEach { key -> stagedFileFor(key)?.let(::deleteFile) }
-    }
 
     /**
      * Force the (lazy) background session to be adopted for this process — on a
@@ -255,16 +215,16 @@ class IosUrlSessionUploadPlatform(
     }
 
     /**
-     * Cancel all in-flight transfers + clear staged files (on leave / disable / event switch).
+     * Cancel all in-flight transfers + clear their staged files — **at a leave only** (a switch leaves first).
+     * A revoke, a reconfigure and a disarm cancel nothing: in-flight transfers finish and record (decision record
+     * `changes/both-uploaders-active`, D6).
      *
      * Asks the SESSION which tasks exist rather than a registry of our own, so it also cancels transfers
      * this process never started — the ones a relaunch inherited, which are exactly the ones a leave must
-     * stop. Ledger rows are deliberately untouched here. Whether a cancelled task's completion is delivered
-     * is not measured and nothing depends on it: if it is, the delegate records the row; if it is not, the
-     * row stays `REQUESTED` until the next mechanism start demotes it (`ios-url-session-upload`, "Stranded
-     * reconciliation: scoped each cycle, complete at a start").
+     * stop. Ledger rows are deliberately untouched here: a cancelled task's `-999` completion is recorded by the
+     * delegate through the guarded write, which matches no row once the leave has cleared the ledger.
      */
-    suspend fun cancelAll() {
+    suspend fun cancelTransfers() {
         liveTasks().forEach { task ->
             task.cancel()
             task.taskDescription?.let { key -> stagedFileFor(key)?.let(::deleteFile) }
@@ -286,8 +246,8 @@ class IosUrlSessionUploadPlatform(
      * hands over only events still *waiting* to be processed. This used to append the outcome to an
      * in-memory list for a later `UploadCycle` to drain; the drain is gated on a single-flight cycle
      * measured in the field at 27 minutes, 65 minutes and 4h49m, so a process death in between lost the
-     * fact for good. The row then still read `REQUESTED` with no live task, the next cycle called it
-     * stranded, and bytes that had already landed were uploaded again — twice, in one field dump, 27h30m
+     * fact for good. The row then still read `REQUESTED` with no live task, the stranded repair of the time
+     * demoted it, and bytes that had already landed were uploaded again — twice, in one field dump, 27h30m
      * before the ledger caught up. ⏰ Re-check the once-only premise at the next iOS major.
      *
      * Synchronous, not scheduled. Once this returns the process's continued runtime is not ours to
@@ -298,7 +258,8 @@ class IosUrlSessionUploadPlatform(
      * [TransferRecord.markTerminal] is non-suspending for this reason.
      *
      * The staged file goes at the same moment: the transfer is over, so it can never be uploaded from
-     * again. Whatever a killed process leaves behind, the cycle discards after its stranded pass.
+     * again. A transfer that vanished with no completion leaves its file behind — an accepted residue, removed
+     * only if a leave's cancel finds the task (decision record `changes/both-uploaders-active`).
      */
     private fun recordTerminal(key: String, success: Boolean, error: UploadError?) {
         val state = if (success) TerminalOutcome.COMPLETED else TerminalOutcome.FAILED
@@ -352,7 +313,7 @@ class IosUrlSessionUploadPlatform(
 }
 
 /**
- * What a job reports when no media type was recorded for it — a stranded key, or a completion delivered
+ * What a job reports when no media type was recorded for it — a completion delivered
  * after the record was lost. It is the generic default because there genuinely is nothing to report, not
  * because a type was unavailable to look up.
  */

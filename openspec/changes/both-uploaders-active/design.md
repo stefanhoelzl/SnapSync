@@ -133,10 +133,12 @@ Why each cell:
   compared register runs only when the OS reads **no** record, so there are no jobs to wipe.
 - **`Stay` does nothing.** A re-scan changes nothing about the membership, the share-set load is already skipped
   there, and the stale-record repair does not need it: a reinstall wipes the config (the App Group goes with the
-  app), so a reinstalled device always arrives as a real join. `Provision` passes the switch decision into the
-  reconcile (`reconcileUploads(decision)` → `UploadTransitions.onProvision(decision)`, which returns on `Stay`), so
-  the flow gains no branch and stays inside its ceilings (cyclomatic 4, cognitive 2, 9 parameters) and the
-  transcriber's grammar; the rule lives in the feature.
+  app), so a reinstalled device always arrives as a real join. The join transition moves into
+  `MembershipEntry` (feature/membership), whose order becomes leave-previous → load → **save** → **start uploads**;
+  `Provision`'s `when` over the switch decision runs that entry on `Enter` and only `saveConfig` on `Stay`. One call
+  per branch, so the flow stays inside the transcriber's closed grammar (it admits no local `val`, which is why the
+  first attempt — passing the decision into a later `reconcileUploads(decision)` — was rejected by the
+  generator) and inside its ceilings; the ordering rule lives in the feature, tested in `MembershipEntryTest`.
 - **A switch.** `MembershipEntry` still calls the leave verb first (deregister + cancel + disarm), then the load
   replaces the ledger, then the join registers. The join's toggle on a switch therefore meets no live job of the
   new membership. This is the one place the design still cancels on a membership change, because a switch *is* a

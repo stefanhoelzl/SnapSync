@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.UploadExtensionRegistry
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
@@ -13,24 +12,22 @@ import co.touchlab.kermit.Logger
  * decision (capability `upload-lifecycle`); this class only performs them, correctly.
  *
  * Named for the need rather than the technology, because it lives in the platform-free core. It reaches the
- * platform through two ports — [UploadExtensionRegistry] for the registration record, and [LedgerStore] for the
- * repair — so it names no platform API at all, and the ritual and its repair are ordinary tested code.
+ * platform through one port — [UploadExtensionRegistry] for the registration record — so it names no platform
+ * API at all, and the ritual is ordinary tested code.
  *
  * Constructed **only** where the OS carries this mechanism at all: below iOS 26.1 the registration selector does
  * not exist, and the adapter behind [UploadExtensionRegistry] would trap.
  *
- * It receives no app-side trigger. It used to, as `OsDrivenUploadMechanism`, and declined all four one by one;
- * triggers now go to the app engine, whose entry gate declines while this mechanism is the resolved one.
- *
- * The app performs no upload or enumeration on this tier. It does touch the ledger at membership transitions —
- * the join-time load and the leave's clear, through the store's reset family, which a holder without the
- * `LedgerWriter` may invoke (`sync-ledger`) — and here, in the repair between disable and enable.
+ * It receives no app-side trigger: triggers go to the app's own uploader, which runs beside the extension
+ * (decision record `changes/both-uploaders-active`). It touches no ledger row: a registration spans the whole
+ * membership and is removed only at a leave, which clears the ledger, so no deregistration orphans a row that
+ * would need repair.
  */
 interface ExtensionRegistration {
-    /** Register the extension through the disable → demote → enable ritual — never a bare enable. */
+    /** Register the extension through the disable → enable ritual — never a bare enable. */
     suspend fun register()
 
-    /** Deregister the extension — the disable alone; it repairs nothing. */
+    /** Deregister the extension — the disable alone. */
     suspend fun deregister()
 
     /**
@@ -40,9 +37,8 @@ interface ExtensionRegistration {
     fun isRegistered(): Boolean?
 }
 
-/** [ExtensionRegistration] over the registration and ledger ports. */
+/** [ExtensionRegistration] over the registration port. */
 class OsDrivenRegistration(
-    private val ledgerStore: LedgerStore,
     private val registry: UploadExtensionRegistry,
     private val log: Logger = Logger.withTag("OsDrivenRegistration"),
     private val logScope: LogScope = LogScope.NoOp,
@@ -57,8 +53,10 @@ class OsDrivenRegistration(
      * `enable(true)` re-creates it cleanly — and the re-register is what reliably prompts the OS to
      * schedule `process()`. Idempotent-safe to repeat.
      *
-     * Between the disable and the enable it **repairs** the `REQUESTED` rows the disable orphaned, demoting
-     * them to `DISCOVERED` (see the body). This is the only place this mechanism touches the ledger.
+     * It no longer repairs anything between the two: the disable wipes the record's in-flight OS jobs, and the
+     * ritual runs only where none can be live — a join (after the share-set load replaced the ledger, and after a
+     * switch's leave deregistered), or a compared register where the OS reads no record at all. A re-provision of
+     * the joined event does not reach here (decision record `changes/both-uploaders-active`, D5).
      *
      * This ritual is **specific to this tier**: it exists to fix an OS registration record. The app-driven
      * tier has no such record, which is why applying this shape to it — the tier-blind
@@ -67,21 +65,10 @@ class OsDrivenRegistration(
      */
     override suspend fun register() = log.invocation(logScope, "photokit.register") {
         registry.setEnabled(false)
-        // THE REPAIR (capability `ios-photokit-upload`, "Re-registering the extension demotes orphaned REQUESTED
-        // rows"). The disable above wiped every in-flight OS job and no API surfaces a vanished one, so their
-        // `REQUESTED` rows would never move again. Every `REQUESTED` row is unsettleable right now: this tier's
-        // jobs are gone, and wherever the app-driven engine exists the transition disarmed it first. So the
-        // whole set is demoted — through the reset family, because on this tier the extension is the one
-        // recording process — and a `DISCOVERED` row returns through the ledger's work read with no walk.
-        //
-        // Awaited, off-main: it completes BEFORE the re-enable below, so a row the re-registered extension
-        // records can never be demoted by a repair still running.
-        demoteRequestedOffMain({ ledgerStore.demoteRequested() }, log = log) // Boolean; the seam returns Unit
         // The outcome IS the report. There used to be an `Info` line here claiming the extension had been
         // re-registered, logged unconditionally — so a device whose enable had just failed terminally at
         // `Error` also carried a plain statement that it had succeeded, in the one capability whose stated
-        // failure mode is that "nothing else will report it". Both halves of that claim were already made
-        // by the code that performed them: the enable by its own outcome, the repair by its own lines.
+        // failure mode is that "nothing else will report it". The enable reports itself through its own outcome.
         //
         // Deleted rather than made conditional, and the shell gate is what forces that: this module is held
         // at `CyclomaticComplexMethod` threshold 2, so a branch on the outcome is a decision it may not
@@ -92,13 +79,9 @@ class OsDrivenRegistration(
     }
 
     /**
-     * Deregister the extension — **and nothing else**, on a leave, a download-only join, and a pin away from this
-     * mechanism alike (capability `upload-lifecycle`).
-     *
-     * The disable wipes every in-flight OS job, and this deliberately repairs none of the `REQUESTED` rows it
-     * leaves: the repair belongs to whichever mechanism is **brought up** next, the one moment it is known that no
-     * other transfer is carrying those rows. On a leave nothing uploads until then; where the app engine is armed
-     * instead, its restart rule demotes them.
+     * Deregister the extension — **and nothing else**: at a leave (a switch leaves first), or the rig's
+     * `extension=off` (capability `upload-lifecycle`). The disable wipes every in-flight OS job; at a leave the
+     * ledger is cleared right after, and on the rig path the wipe is the test's intent.
      */
     override suspend fun deregister() = log.invocation(logScope, "photokit.deregister") {
         registry.setEnabled(false)

@@ -49,13 +49,6 @@ internal class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun demoteRequested() {
-        for (row in rows.entries) {
-            if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.DISCOVERED))
-        }
-        dings.tryEmit(Unit)
-    }
-
     override suspend fun resetTo(entries: List<LedgerEntry>) {
         // Build the next state fully before swapping, so the replacement is atomic from any
         // collector's view (mirrors the SQL transaction) and a failure before the swap leaves the
@@ -135,7 +128,4 @@ internal class InMemoryLedgerStore : LedgerStore {
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         rows.values.filter { it.state.needsJob }
             .sortedBy { it.key }
-
-    override suspend fun requestedKeys(): Set<String> =
-        rows.values.filter { it.state == LedgerState.REQUESTED }.mapTo(mutableSetOf()) { it.key }
 }

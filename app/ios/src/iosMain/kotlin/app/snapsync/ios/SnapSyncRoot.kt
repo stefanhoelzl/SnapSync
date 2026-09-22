@@ -63,8 +63,8 @@ import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
-import app.snapsync.model.UploadMechanism
-import app.snapsync.model.resolveUploadMechanism
+import app.snapsync.model.UploaderPin
+import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.OsReceipt
 import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
@@ -235,23 +235,22 @@ object SnapSyncRoot {
      * Whether this OS carries the OS-driven upload mechanism at all (iOS ≥26.1).
      *
      * This is the whole of what the shell still decides about uploads. It is **presence**, not behaviour:
-     * which mechanism *runs* is resolved from this fact plus the current permission plus any development
-     * override, by the pure `resolveUploadMechanism` in `:domain model/`, re-evaluated on every transition
-     * — because the OS never invokes the extension under a partial grant, so the mechanism genuinely
-     * changes when permission does, and a once-per-process answer could not say that.
+     * whether the extension may be registered is derived from this fact plus the current permission plus the
+     * rig's switch, by the pure `extensionRegistrable` in `:domain model/`, re-evaluated at every transition;
+     * the app's uploader runs on every OS, beside the extension.
      */
     internal val osSupportsOsDrivenUpload: Boolean = backgroundUploadSupported()
 
     /**
-     * Where a development pin on the upload mechanism comes from (capability `upload-lifecycle`).
+     * Where the rig's per-uploader switch comes from (capability `upload-lifecycle`).
      *
      * **A shipped build cannot carry one, and that is structural rather than probable.** The only writer
      * is the control channel's boot hook, whose source is not compiled into a build made without
      * `-Psnapsync.rig=true` — so in a production binary nothing can assign this and it stays the inert
-     * default forever. The mechanism a shipped process runs is a function of the device it runs on.
+     * default forever. What a shipped process uploads with is a function of the device and its grant.
      *
-     * It is a **thunk, replaced once at boot**, not a value: the arm re-resolves on every transition and
-     * reads through it each time, so the channel can change the pin live without touching this field
+     * It is a **thunk, replaced once at boot**, not a value: the admission and the registration fact read
+     * through it at every use, so the channel can change the pin live without touching this field
      * again, and without the graph being rebuilt. It is deliberately assignable *before* `app` is forced —
      * the hook must not force the graph on a cold background wake (`ios-app-shell`).
      *
@@ -260,7 +259,7 @@ object SnapSyncRoot {
      * on device — and needed a process-scoping rule to refuse one. Here the hazard cannot arise: the code
      * that writes this does not exist in the binary that must not honour it.
      */
-    internal var uploadMechanismOverrideSource: () -> UploadMechanism? = { null }
+    internal var uploaderPinSource: () -> UploaderPin? = { null }
 
     /**
      * The OS-driven registration, composed **only where its API exists**.
@@ -405,14 +404,9 @@ object SnapSyncRoot {
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
                 deviceLogSource = IosDeviceLogSource(),
-                // The tier this OS is on — the same OS fact this field has always carried, so a dump
-                // reads as it always did. Which mechanism is RUNNING is a newer, runtime-varying thing
-                // that a value computed once could not tell the truth about; `foregroundParams` reports
-                // that per trigger instead. Written as the resolver under a nominal full grant rather
-                // than a branch, so this module keeps deciding nothing.
-                diagnosticEnvironment = deviceDiagnosticEnvironment(
-                    resolveUploadMechanism(osSupportsOsDrivenUpload, PermissionStatus.GRANTED).diagnosticName,
-                ),
+                // Which uploaders this OS carries — a constant of the build. What each may do right now is
+                // runtime-varying, and the dump's state section reports it from the composition's own answers.
+                diagnosticEnvironment = deviceDiagnosticEnvironment(uploadersCarried(osSupportsOsDrivenUpload)),
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,
@@ -485,7 +479,7 @@ object SnapSyncRoot {
                 appDrivenUpload = { urlSessionUpload },
                 extensionRegistration = osDrivenRegistrationThunk,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                uploadMechanismOverride = uploadMechanismOverrideSource,
+                uploaderPin = uploaderPinSource,
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
@@ -570,11 +564,10 @@ object SnapSyncRoot {
         app.attestation.refresh()
     }
 
-    // The app-side handle on the extension's shared App-Group ledger, used for two narrow things only:
-    // a READ-ONLY aggregates read (`completed`/`pending`, via the composed counts source) and a
-    // reset-family `demoteRequested()` inside the extension re-register (recover jobs the disable wiped,
-    // capability `ios-photokit-upload`). No per-key record writes here — on the OS-driven tier the extension
-    // stays the sole record writer. WAL permits the concurrent cross-process read.
+    // The app-side handle on the shared App-Group ledger: the app's own uploader's `LedgerWriter` (built by
+    // `uploadCore`), the composed counts source's reads, and the membership reset family. On iOS ≥26.1 the
+    // extension writes the same ledger from its own process; every write is one guarded transaction owned by
+    // named code (capability `sync-ledger`; decision record `changes/both-uploaders-active`).
     private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
 
     // --- Photo download / import (capability `photo-download`) ---
@@ -1131,14 +1124,12 @@ object SnapSyncRoot {
     // can rescue a membership provisioned while access was already granted — the provision flow owns
     // that case.
 
-    // The two mechanisms this OS can carry. Both are `by lazy`: `OsDrivenRegistration` is
+    // The two uploaders this OS can carry. Both are `by lazy`: `OsDrivenRegistration` is
     // constructed only where its registration selector exists (≥26.1), so no code path can trap on a
-    // lower system. Which one RUNS is `resolveUploadMechanism`'s answer, re-read at every transition —
-    // on ≥26.1 under a partial grant BOTH are constructed and only the app-driven one is started.
-    // (What each membership transition does to them is composed in the app graph as
-    // `app.uploadTransitions`, over the resolved mechanism.)
+    // lower system. Both run where both exist, each deciding at its own entry gate. (What each membership
+    // transition does to them is composed in the app graph as `app.uploadTransitions`.)
     private val osDrivenRegistration: OsDrivenRegistration by lazy {
-        OsDrivenRegistration(ledgerStore, extensionRegistry, log, IosLogScope)
+        OsDrivenRegistration(extensionRegistry, log, IosLogScope)
     }
 
     // The registration port's adapter, chosen by compilation target (capability `ios-photokit-upload`).
@@ -1192,6 +1183,7 @@ object SnapSyncRoot {
                 permission = { permission.permission.value },
                 selectionScope = { app.selectionScope() },
                 admission = { app.appUploadAdmission() },
+                appMayCreate = { app.appMayCreate() },
             ),
             // Where this session's OS completion handler is released — the main lane, because UIKit
             // owns that handler and requires it (capability `ios-app-shell`). Named here, in the one
@@ -1216,12 +1208,9 @@ object SnapSyncRoot {
             },
         )
 
-    /** The `onForeground` invocation params. `force=` is gone with the launch flag that set it; a rig
-     *  build can still pin a mechanism, but it pins what these two values already report, so they say
-     *  everything either way. */
+    /** The `onForeground` invocation params: the app uploader's admission and the registration fact. */
     private fun foregroundParams(): String =
-        "mechanism=" +
-            resolveUploadMechanism(osSupportsOsDrivenUpload, permission.permission.value).diagnosticName +
+        "app=${app.appUploadAdmission().name} extensionRegistrable=${app.extensionRegistrableNow()}" +
             " osSupported=$osSupportsOsDrivenUpload"
 
     // ── The shell delegate every OS entry point passes through ──────────────────────────────────

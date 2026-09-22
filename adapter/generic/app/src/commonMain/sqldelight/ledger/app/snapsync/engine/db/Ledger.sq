@@ -126,14 +126,6 @@ FROM ledgerRow;
 deleteAll:
 DELETE FROM ledgerRow;
 
--- Demote the REQUESTED rows to DISCOVERED: the recovery for rows no transfer can settle any more (canonically
--- after an extension disable wipes the OS's in-flight upload jobs). The engine never re-issues a REQUESTED
--- key; a DISCOVERED row needs a job, so the work read returns it without a walk. Other rows are untouched.
-demoteRequested:
-UPDATE ledgerRow
-SET state = 'DISCOVERED'
-WHERE state = 'REQUESTED';
-
 -- Delete exactly the named rows, by primary key (capability `sync-ledger`). KEY-scoped on purpose: every
 -- caller holds evidence about individual rows, and the resources of one asset hold per-key states, so an
 -- asset-scoped delete would reach rows its caller never judged. The caller chunks the IN list below the
@@ -192,15 +184,6 @@ WHERE key = :key AND state = 'REQUESTED';
 -- may not be silent (`module-architecture`, "Absence is never silent").
 changedRows:
 SELECT changes();
-
--- The REQUESTED keys — the candidates for stranded reconciliation (capability
--- `ios-url-session-upload`). Deliberately NOT the whole non-settled backlog: a DISCOVERED row is already
--- back in the work read, and re-surfacing it every cycle re-writes the row, signals a change, and reports a
--- loss that did not happen. That defect put one key in a device log as "stranded" twelve times inside a
--- single process, seven of them within sixteen seconds.
-selectRequestedKeys:
-SELECT key FROM ledgerRow
-WHERE state = 'REQUESTED';
 
 -- The rows that need an upload job — the upload cycle's source of work (capability `sync-ledger`).
 --

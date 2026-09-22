@@ -55,10 +55,9 @@ Two variables survive, and neither is read by shipped code:
 
 Both live in build-property-gated source, so a production build contains neither the file nor the read.
 
-**Forcing the app-driven upload tier is a channel call:** `POST /device/upload-mechanism?value=photokit|url_session|idle|none`
-pins the resolved mechanism, clamped by the resolver to what this OS can run (load `rig-channel`). A
-`LIMITED` photo grant also reaches that tier, but exercises less: a partial grant feeds discovery the
-in-memory selection snapshot rather than walking the library.
+**Exercising one uploader alone is a channel call:** `POST /device/uploaders?app=on|off&extension=on|off`
+(load `rig-channel`). Both uploaders run by default on ≥26.1 under a full grant; `extension=off` deregisters
+the extension so the app's uploader runs alone.
 
 ## Reading the logs
 

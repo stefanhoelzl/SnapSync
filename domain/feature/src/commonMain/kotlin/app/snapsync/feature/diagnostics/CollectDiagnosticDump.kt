@@ -30,6 +30,13 @@ class CollectDiagnosticDump(
     private val downloads: DownloadStore,
     private val config: ConfigSource,
     private val permission: PhotoAccessStatusSource,
+    /**
+     * The upload facts at the moment of the dump — whether the extension is registrable, and the app uploader's
+     * admission — as labelled strings the composition derives from answers it already computes (capability
+     * `diagnostic-logging`). Both uploaders may be active at once, so there is no single tier to name
+     * (decision record `changes/both-uploaders-active`).
+     */
+    private val uploadFacts: () -> Map<String, String>,
     private val budgetBytes: Int = DIAGNOSTIC_LOG_BUDGET_BYTES,
 ) {
 
@@ -93,7 +100,8 @@ class CollectDiagnosticDump(
             put("build", environment.buildNumber)
             put("os", environment.osVersion)
             put("device", environment.deviceModel)
-            put("upload_tier", environment.uploadTier)
+            put("uploaders_carried", environment.uploadTier)
+            putAll(uploadFacts())
             put("upload_base", environment.uploadBase)
             put("reporter_environment", environment.reporterEnvironment)
             put("photo_permission", permission.name)

@@ -39,8 +39,8 @@ import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
-import app.snapsync.model.UploadMechanism
-import app.snapsync.model.resolveUploadMechanism
+import app.snapsync.model.UploaderPin
+import app.snapsync.model.extensionRegistrable
 import app.snapsync.flow.Background
 import app.snapsync.flow.DownloadBackstop
 import app.snapsync.flow.Foreground
@@ -114,8 +114,8 @@ import kotlinx.coroutines.withContext
  *
  * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
  * [onEventMinted]) bridge into the shell's entry surfaces; [appDrivenUpload] and [extensionRegistration]
- * are the mechanisms this OS can carry — which one may RUN is resolution's answer and not this bag's
- * (`upload-lifecycle`, "The upload mechanism is resolved, never selected"); [albumExcludedAssetIds]
+ * are the uploaders this OS can carry — both run, each deciding at its own entry gate (`upload-lifecycle`,
+ * "Both uploaders may run; an overlap is a duplicate, never a loss"); [albumExcludedAssetIds]
  * carries the app process's admit-on-doubt wrapper, shared verbatim with the own-device status
  * total so the two consumers of the policy can never diverge.
  */
@@ -204,22 +204,21 @@ class AppPorts(
      *  therefore live in one composition: this one for the domain, `SystemClock` for the UI
      *  formatter, and a test could pin one and leave the other running. */
     val clock: Clock,
-    /** The **app-driven** upload engine — always composed (it serves iOS 18–26.0 fully and every OS
-     *  under a partial grant); a thunk so it resolves lazily. Every app-side trigger reaches it, and its
-     *  cycle's entry gate declines while another mechanism is resolved (`upload-lifecycle`). */
+    /** The **app-driven** upload engine — always composed, on every OS version; a thunk so it resolves lazily.
+     *  Every app-side trigger reaches it, and its cycle's entry gate withholds when this process may not
+     *  create (`upload-lifecycle`). */
     val appDrivenUpload: () -> AppUploadEngine,
     /** The **OS-driven** registration where this OS carries its selector (iOS ≥26.1) — `null` elsewhere,
      *  keeping it entirely unconstructed where the selector does not exist. */
     val extensionRegistration: () -> ExtensionRegistration? = { null },
-    /** Whether this OS carries the OS-driven mechanism at all — an input to resolution, kept a plain
-     *  fact rather than derived from [extensionRegistration] so resolving never has the side effect of
+    /** Whether this OS carries the OS-driven mechanism at all — an input to the registration fact, kept a plain
+     *  fact rather than derived from [extensionRegistration] so asking never has the side effect of
      *  constructing a registration it is only asking about. */
     val osSupportsOsDrivenUpload: Boolean = false,
-    /** A development pin on the resolved mechanism, read fresh at every resolution. **Always `null` in a
-     *  production build**: its source exists only in a build made with the rig, so the mechanism a
-     *  shipped process runs is still a function of the device it runs on. It restores the deleted
-     *  `SNAPSYNC_FORCE_URLSESSION_UPLOAD` (decision record `2026-08-24-retire-launch-env-triggers`, D14). */
-    val uploadMechanismOverride: () -> UploadMechanism? = { null },
+    /** The rig's per-uploader switch, read fresh at every use. **Always `null` in a production build**: its
+     *  source exists only in a build made with the rig, so what a shipped process uploads with is still a
+     *  function of the device and its grant (decision record `changes/both-uploaders-active`, D8). */
+    val uploaderPin: () -> UploaderPin? = { null },
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
@@ -462,37 +461,39 @@ class AppCore internal constructor(
     // construction. Started, never awaited, by the act that triggered it.
     val albumGather: AlbumGather by lazy { albumGather(ports, albumCoordinator, scope, ::selectionPolicyForMembership) }
 
-    // The tier-neutral upload lifecycle (capability `upload-lifecycle`): which producer verb fires on
-    // which membership transition. The root defaults nothing — an absent membership is `null`, and
-    // the decision lives in the tested arm.
     /**
-     * The resolved upload mechanism (capability `upload-lifecycle`, "The upload mechanism is resolved, never
-     * selected") — read fresh wherever it is needed, never held: the mechanism is a function of runtime
-     * permission (the OS never invokes the extension under a partial grant — measured; `ios-photokit-upload`),
-     * so a captured answer would be stale exactly when it mattered.
+     * Whether the upload extension may be registered now (capability `upload-lifecycle`, "Whether the extension
+     * may be registered is one pure fact") — read fresh wherever it is needed, never held: it is a function of
+     * the runtime grant, so a captured answer would be stale exactly when it mattered.
      */
-    private val resolvedUploadMechanism: () -> UploadMechanism = {
-        resolveUploadMechanism(
-            backgroundUploadSupported = ports.osSupportsOsDrivenUpload,
+    val extensionRegistrableNow: () -> Boolean = {
+        extensionRegistrable(
+            osSupportsOsDrivenUpload = ports.osSupportsOsDrivenUpload,
             permission = ports.photoAccess.permission.value,
-            override = ports.uploadMechanismOverride(),
+            pin = ports.uploaderPin(),
         )
     }
 
     /**
-     * Whether the app-driven engine's cycle may run now — the app process's admission, which its entry gate
-     * consumes (capability `upload-lifecycle`, "Exactly one mechanism writes the ledger").
+     * Whether the app's uploader may create now — the app process's admission, which its entry gate consumes
+     * (capability `upload-lifecycle`, "The upload cycle owns its entry decision").
      */
-    val appUploadAdmission: () -> UploadAdmission = { appAdmission(resolvedUploadMechanism()) }
+    val appUploadAdmission: () -> UploadAdmission = {
+        appAdmission(ports.photoAccess.permission.value, ports.uploaderPin())
+    }
+
+    /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability
+     *  `ios-url-session-upload`, "The delegate records the terminal fact before it returns"). */
+    val appMayCreate: () -> Boolean = { appUploadAdmission() == UploadAdmission.Admit }
 
     // The upload arm (capability `upload-lifecycle`): what each membership transition does to the two
-    // mechanisms. Stateless — every decision is derived from resolution and the membership's three-valued
-    // posture at the moment of the transition; the root defaults nothing.
+    // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
+    // membership exists, at the moment of the transition; the root defaults nothing.
     val uploadTransitions: UploadTransitions by lazy {
         UploadTransitions(
-            resolve = resolvedUploadMechanism,
-            membershipIncludesUpload = { ports.configSource.config.value?.direction?.includesUpload },
+            joined = { ports.configSource.config.value != null },
             permission = { ports.photoAccess.permission.value },
+            extensionRegistrable = extensionRegistrableNow,
             registration = ports.extensionRegistration(),
             appEngine = ports.appDrivenUpload,
             log = ports.log,
@@ -838,14 +839,18 @@ class AppCore internal constructor(
 
     val provisionFlow: Provision by lazy {
         Provision(
-            reconcileUploads = { uploadTransitions.onJoin() },
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
             activeEventId = { ports.configSource.config.value?.eventId },
-            // The order (stop, backend leave, load) is `MembershipEntry`'s rule; the backend leave is
-            // awaited here, unlike the leave command's fire-and-forget, as it always was on this path.
-            enterMembership =
-                MembershipEntry({ uploadTransitions.onLeave() }, notifyLeave, { shareSetLoad.load() })::enter,
+            // The order (stop, backend leave, load, save, start uploads) is `MembershipEntry`'s rule; the backend
+            // leave is awaited here, unlike the leave command's fire-and-forget, as it always was on this path.
+            enterMembership = MembershipEntry(
+                stopUploads = { uploadTransitions.onLeave() },
+                notifyLeave = notifyLeave,
+                loadShareSet = { shareSetLoad.load() },
+                saveConfig = { cfg -> ports.configStore.save(cfg) },
+                startUploads = { uploadTransitions.onJoin() },
+            )::enter,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
             refreshStatus = { refreshStatusSources() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
@@ -1046,6 +1051,12 @@ class AppCore internal constructor(
             downloads = ports.downloadStore,
             config = ports.configSource,
             permission = ports.photoAccess,
+            uploadFacts = {
+                mapOf(
+                    "extension_registrable" to extensionRegistrableNow().toString(),
+                    "app_admission" to appUploadAdmission().name,
+                )
+            },
         )
     }
 
@@ -1058,7 +1069,7 @@ class AppCore internal constructor(
      *
      * The launch reconcile is explicit and the upload subscription skips the StateFlow's replayed value. It
      * used to ride that replay — every UI launch fired a "permission change" that forced the extension's
-     * disable → demote → enable, wiping its in-flight jobs on every launch. Launch now compares instead.
+     * re-registration, wiping its in-flight jobs on every launch. Launch now compares instead.
      *
      * Deliberately an **explicit step, not `init`** (step 8 C3, restoring the pre-C2 timing): the app
      * shell invokes it from its host-assembly path — the only place the collectors ever installed — so
