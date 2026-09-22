@@ -106,7 +106,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        SnapSyncRoot.shared.onSilentPush(userInfo: userInfo) {
+        SnapSyncRoot.shared.onSilentPush(payload: userInfo) {
             completionHandler(.newData)
         }
     }
