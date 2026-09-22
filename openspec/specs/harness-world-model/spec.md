@@ -143,6 +143,14 @@ and enrolls nobody. A v2 manifest publish from a device holding no membership SH
 creating one — modelling it as a create would let a device pass in the harness and fail against the real
 backend, which is the one divergence this world exists to make impossible.
 
+The v2 manifest publish SHALL also model the backend's **ordering by manifest version** (capability
+`api-endpoints`, "The v2 manifest publish is ordered by its version"): a publish whose version is strictly
+older than the membership's stored one changes nothing and is still answered as a success; an equal or newer
+one replaces the asset set and records its version; a versionless one replaces it and clears the stored
+version; and the v2 join clears it. The world counts applied and refused publishes separately, so a test can
+tell "refused as older" from "not published". Without it, a crossed pair that the real backend refuses would
+overwrite in the harness, and the device's handling of the refusal could not be tested.
+
 The direct manifest **injection helper** used to set up foreign devices is not a route and SHALL keep
 creating an active membership; constraining it would make test setup model an enrolment flow it is not
 exercising.
@@ -188,6 +196,12 @@ every seam that does not yet declare a version, which is all of them until the c
 
 - **WHEN** the v2 manifest sub-resource is called for a device that holds no membership in that event
 - **THEN** the request is refused and no membership is created as a side effect
+
+#### Scenario: An older v2 manifest is refused as a success
+
+- **WHEN** a member holding manifest version 9 publishes version 7 to the v2 manifest sub-resource
+- **THEN** the request succeeds, the asset set and the stored version are unchanged, and the world counts one
+  refused publish and no applied one
 
 #### Scenario: A v2 manifest does not reactivate a departed member
 

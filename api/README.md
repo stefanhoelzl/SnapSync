@@ -124,7 +124,7 @@ it itself, after the gate has passed.
 > since a snapshot at least as new is already stored. It wakes nobody. A publish with no `version`
 > (a v2 build that predates it) applies unconditionally and clears the stored version. The v2 join
 > clears it too, so a device whose counter restarted after a reinstall is never refused forever. v1
-> never reads or writes the column. Decision record: `openspec/changes/manifest-versions`.
+> never reads or writes the column. Decision record: `openspec/changes/archive/2026-09-22-manifest-versions`.
 
 ```
 GET  /api/v1/attest/challenge                              (UNGATED — it issues the input to attestation)

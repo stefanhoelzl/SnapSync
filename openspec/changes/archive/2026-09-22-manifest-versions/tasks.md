@@ -35,4 +35,4 @@
 - [x] 5.1 `./gradlew build` green (including the detekt tiers and `:test:architecture`); `./gradlew compileIosMainKotlinMetadata` green
 - [x] 5.2 `./gradlew architectureDiagrams` regenerated and committed if it changed
 - [x] 5.3 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` green
-- [ ] 5.4 At sync: update `device-manifest`'s Purpose, where "last write wins" becomes "ordered by the manifest version", and add a `changes/archive/<date>-manifest-versions` citation to `sync-ledger`'s Purpose
+- [x] 5.4 At sync: update `device-manifest`'s Purpose, where "last write wins" becomes "ordered by the manifest version", and add a `changes/archive/<date>-manifest-versions` citation to `sync-ledger`'s Purpose
