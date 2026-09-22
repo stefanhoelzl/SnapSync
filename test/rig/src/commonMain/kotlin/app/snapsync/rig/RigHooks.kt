@@ -53,19 +53,21 @@ class RigHooks(
     val deviceLog: DeviceLogSource,
     /**
      * The wired entry points, **grouped by composition root** — the group name is the `/os/<root>/…` path
-     * segment. Coverage against each root's `@PlatformEntry` population is gated per group, not curated.
+     * segment. Each group is meant to cover its root's `@PlatformEntry` population, wired or excluded with a
+     * reason — kept by review: the guard that once derived that population and compared it was retired
+     * (`74302d2b`), so nothing fails when a new entry is left unwired.
      *
      * Grouped rather than flat because the channel now reaches more than one root, and a flat map would
      * make two roots declaring an entry point of the same name **unrepresentable in the inventory**: a set
-     * comparison deduplicates the pair and drops one, while the guard still passes. Grouping removes that
+     * comparison deduplicates the pair and drops one, and nothing notices. Grouping removes that
      * hazard by construction instead of asserting about it, and it lets a route leaf stay equal to the
      * member name it invokes without either root renaming a member for disambiguation.
      */
     val triggerGroups: Map<String, TriggerGroup>,
     /**
      * Wired user commands, by name — the members of `StatusContainerHost`'s public command surface.
-     * Coverage against that population is gated exactly as [triggers] is: the set is derivable from source,
-     * so a hand-picked subset would be the rot the derivation exists to refuse.
+     * Meant to cover that population, as [triggerGroups] covers the entry points — and, like it, kept by review
+     * since the deriving guard was retired: a new command left unwired fails nothing.
      */
     val userCommands: Map<String, RigUserCommand>,
     /** User commands deliberately NOT wired, each with the reason that makes the omission safe. */

@@ -142,6 +142,13 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
  * this module is wiring-only and
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
  * shipped a provision path that destroyed its ledger and started nothing (capability `upload-lifecycle`).
+ *
+ * **The OS entries are the core's.** This root is the *driving adapter* of the app's inbound port
+ * [PlatformEntries] (spec `module-architecture`, "OS entry points cross an inbound port"): it implements the port
+ * by delegation to the core's `platformEntries`, so which flow an entry runs, which receipt holds its completion
+ * and how a background task or transfer channel is routed are written once, in `compose/`, and covered by the
+ * port's contract. What stays here is what only a root can do — the hooks the core cannot name ([rootEntries]),
+ * and the entries that are not the port's (`onLaunch`, the activity filter's doors, the log-only scene callbacks).
  */
 object SnapSyncRoot : PlatformEntries by rootEntries() {
 

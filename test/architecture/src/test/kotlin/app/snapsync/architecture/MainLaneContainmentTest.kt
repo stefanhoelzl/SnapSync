@@ -50,9 +50,13 @@ class MainLaneContainmentTest {
         // notifications; all three are main-thread-only.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoLibraryPermission.kt" to
             "UIApplication.openURL + presentLimitedLibraryPicker + a UIApplication notification observer",
-        // The app shell: injects the lane into the composition (`AppPorts.uiLane`), reads the
-        // main-thread-only `isProtectedDataAvailable`, and observes UIApplication lifecycle
-        // notifications. The ONE place in the app process that may name the lane.
+        // Reads the main-thread-only `isProtectedDataAvailable` for the background entry points' diagnostics
+        // (capability `ios-app-shell`). The read moved here from `SnapSyncRoot` when the shell became a driving
+        // adapter: the core's entries ask the `ProtectedStorage` port, and this adapter names the lane itself.
+        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProtectedStorage.kt" to
+            "UIApplication.isProtectedDataAvailable",
+        // The app shell: injects the lane into the composition (`AppPorts.uiLane`) and observes UIApplication
+        // lifecycle notifications. The ONE shell in the app process that may name the lane.
         "/app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to
             "injects AppPorts.uiLane; UIApplication reads and lifecycle observers",
         // The forge binary's entry point. It composes a UI and nothing else — there is no live core in

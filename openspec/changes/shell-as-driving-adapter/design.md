@@ -105,10 +105,19 @@ The implementations sit beside `snapSyncApp`/`uploadCore`. They carry, verbatim 
 
 `:domain:compose` cannot depend on `:ui:presentation`, yet `onOpenUrl` must reach `StatusContainerHost.onOpenUrl`.
 Three entries also touch the lazily assembled host first (foreground, push token, silent push), and the push token
-goes to the root's token-source adapter. These arrive as a small hooks value the root supplies when it asks the core
-for its entries (`core.platformEntries(hooks)`). Each hook is a call back into this process, which is
+goes to the root's token-source adapter. These arrive as a small hooks value the root supplies when it builds its entries
+(`platformEntries(core = { app }, hooks)`), together with a `markActive` hook for the scene rule's
+"has been active" record, which the foreground entry has always written first. Each hook is a call back into this process, which is
 "coordination within the core" rather than I/O, so function types are legitimate. They are not an `AppPorts`
 field: the host is built *from* `AppCore`, so the entries can only be built after it.
+
+**As built:** the entries take a *provider* of the core, not the core. A delegation expression is evaluated
+before the object's body, so the root's `by platformEntries(…)` runs at object initialisation. Building the
+`AppCore` there would move graph assembly to process start and break the property a cold background wake
+relies on. Resolving the core per call keeps assembly where the root's lazies always put it.
+`extensionEntries(ports = { … }, cycle = { … })` does the same for the extension. The protected-storage line of
+`onBackgroundTransfers` is written one dispatch after the (synchronous) routing, because the port's read may
+hop threads and the handler must be adopted before its session can report drained.
 
 ### D4. The shells delegate by `by`
 

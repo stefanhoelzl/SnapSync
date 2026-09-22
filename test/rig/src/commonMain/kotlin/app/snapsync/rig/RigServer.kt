@@ -128,8 +128,9 @@ class RigServer(
         // Namespaced by WHO is on the other side of the call: `/os` is what the platform invokes, `/user`
         // is what a finger reaches, `/device` is the machine under test. That is not taxonomy for its own
         // sake — it decides how each namespace can be held honest. `/os` and `/user` have populations
-        // sitting in source (`@PlatformEntry` members; the host's public command surface), so a guard
-        // derives them and a hand-picked list would rot. `/device` has no population to derive from.
+        // sitting in source (`@PlatformEntry` members; the host's public command surface) that the wired
+        // lists are meant to cover — by review since the deriving guard was retired, so a hand-picked list can
+        // rot unnoticed. `/device` has no population at all.
         routing {
             get("/health") { call.traced { call.respondText(hooks.health(port)) } }
 

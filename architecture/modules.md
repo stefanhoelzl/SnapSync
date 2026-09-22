@@ -90,10 +90,12 @@ flowchart LR
   test_contracts --> domain_ports
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic_app
+  test_integration --> domain_compose
   test_integration --> domain_feature
   test_integration --> domain_flow
   test_integration --> domain_model
   test_integration --> domain_ports
+  test_integration --> test_contracts
   test_integration --> test_world
   test_integration --> ui_presentation
   test_rig --> adapter_ios_app_only

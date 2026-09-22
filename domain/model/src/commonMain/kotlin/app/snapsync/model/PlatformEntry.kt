@@ -8,15 +8,20 @@ package app.snapsync.model
  *
  * What distinguishes an entry point is **who is on the other side of the call**. That is why a
  * read-model property presentation polls is not one, while the platform's request for the root view
- * is. `onOpenUrl` is not one either: it is reached from the activity entry and from the launch-env
- * trigger, never from the platform directly.
+ * is.
+ *
+ * Where a process's OS entries form an **inbound port** (`ports/PlatformEntries`, `ports/ExtensionEntries` —
+ * spec `module-architecture`, "OS entry points cross an inbound port"), the marker sits on the port's members,
+ * and the obligation below falls on the core's implementation of them; the composition root reaches them by
+ * delegation and holds no body to annotate. `onOpenUrl` is one of those members: the platform's link
+ * deliveries reach it through the tested activity filter.
  *
  * The marker is inert — Kotlin annotations execute nothing, so this cannot instrument anything by
- * itself. It exists to be **checked**: the `architecture-guards` entry-point guard derives the
- * population from the source (never from these annotations, which would inherit the hand-enumeration
- * hole this whole change exists to close) and asserts that each derived entry point carries this
- * marker *and* opens with the logging wrapper. So a missing annotation is a red build, not an
- * invisible omission, and the annotation is documentation the guard keeps honest.
+ * itself — and **nothing checks it**. A guard once derived the entry-point population from source and
+ * asserted each carried this marker and opened with the logging wrapper; it was retired (commit
+ * `74302d2b`) because it guarded diagnosability rather than behaviour, and `diagnostic-logging` states the
+ * obligation is now kept by review. A missing annotation fails no build: it is documentation of an
+ * obligation a reviewer looks for, not a proof that the obligation is met.
  *
  * The obligation it marks: **log the raw inputs before any decision, and name the outcome on exit.**
  * A platform callback that decides and returns without recording anything is indistinguishable in a
