@@ -30,7 +30,6 @@ required written description, the sheet that collects it, grouping by descriptio
 that record's constant-message decision), the tag-carried redaction exemption, and the full-height
 sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`; the per-report process-metric line: `changes/archive/2026-09-14-add-os-exit-attribution`; the thread-scoped claim and the measured overlap that retired serial delivery as the prefix's justification: `changes/archive/2026-09-14-thread-scoped-log-prefix`.
 ## Requirements
-
 ### Requirement: Per-process un-redacted device log
 
 Each process (the app and the upload extension) SHALL write its diagnostic log verbatim to its own
@@ -390,8 +389,11 @@ description behind a **fixed marker prefix**, and SHALL carry exactly five struc
 - **note** — the operator's description, verbatim. It is carried as its own section and not folded
   into `state`, which holds machine facts;
 - **state** — the facts a log tail may not contain: app marketing version and build number, OS
-  version and device model, resolved upload tier, photo-permission status, whether a membership is
-  held and its configuration, the baked upload base, the reporting environment, and **the surface the
+  version and device model, photo-permission status, the upload facts — whether the extension may be
+  registered (`extensionRegistrable`: the OS carries the selector and the grant is `GRANTED`), the
+  registration the OS reports where the app already reads it, and the app uploader's current admission
+  (both uploaders may be active at once, so there is no single resolved tier to name; decision record:
+  `changes/both-uploaders-active`) — whether a membership is held and its configuration, the baked upload base, the reporting environment, and **the surface the
   report was written from**. That last one is supplied by the UI as an opaque label, because the
   surfaces worth naming — the reconfigure surface, a pending switch, which join phase is showing —
   are screen-local by design: they touch no port, so they appear in no log line and no ledger row, and
@@ -428,6 +430,11 @@ port surface for diagnostics alone.
 #### Scenario: A dump carries all five sections
 - **WHEN** a dump is assembled on a joined device after both processes have logged
 - **THEN** it carries the note, state, ledger, app-log and extension-log sections in one event
+
+#### Scenario: The state section reports the upload facts, not a tier
+- **WHEN** a dump is assembled on iOS ≥26.1 under a full grant with the extension registered
+- **THEN** the state section reports that the extension is registrable, the OS-reported registration, and
+  the app uploader's admission, and names no single resolved upload tier
 
 #### Scenario: The state section names the surface the report came from
 - **WHEN** a report is sent from a screen-local surface such as the reconfigure screen
@@ -543,6 +550,7 @@ the state that decides whether an abandoned import becomes a duplicate.
 
 - **WHEN** an asset-creation commit reports failure
 - **THEN** the completion's error is logged, not only the resulting import outcome
+
 ### Requirement: An import that never returns is attributable
 
 Each per-asset photo-library import SHALL be traced with the uniform enter/exit invocation logging, naming
@@ -616,3 +624,4 @@ process woken briefly in the background may be killed before deferred work runs.
 - **WHEN** a report is delivered to a process woken in the background that is killed moments later
 - **THEN** the line has already been written, because it was written before the delivering call
   returned
+

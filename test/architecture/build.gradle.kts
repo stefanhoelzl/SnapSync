@@ -43,9 +43,9 @@ kotlin {
 dependencies {
     testImplementation(kotlin("test"))
     // ProducerExclusivityTest drives the REAL UploadTransitions and admission functions over fakes (capability
-    // `architecture-guards`, "The upload producers are never both started") — the one guard here that executes
-    // domain code rather than reading source: the invariant is behavioral (no reachable two-writer state), which
-    // no text scan can see.
+    // `architecture-guards`, "The upload transitions stop in-flight work only at a leave") — the one guard here
+    // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
+    // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
     testImplementation(project(":domain:feature"))
     testImplementation(libs.coroutines.test)

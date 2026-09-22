@@ -19,8 +19,11 @@ on it. The read discipline below is kept for a different reason: under a partial
 the scope, so reading it rather than walking the library is simply the correct source. Second, a
 partially-granted process **cannot change its upload-job registration at all** —
 `setUploadJobExtensionEnabled` is refused in both directions with `PHPhotosErrorAccessUserDenied` (3311) —
-so the ≥26.1 PhotoKit background-upload extension is never registered from `.limited` and the OS never
-invokes it there; hence uploads run the app-driven mechanism. Third, asset and album **creation** are
+so the ≥26.1 PhotoKit background-upload extension is never registered from `.limited`. A registration made
+under a full grant survives a downgrade and the OS still invokes it (measured 2026-09-21); its extension
+withholds there — it records and acknowledges, and creates nothing — and its in-flight jobs settle once access
+returns (measured 2026-09-22). Uploads under `.limited` are the app's uploader's, which creates under every usable
+grant (`changes/archive/2026-09-22-both-uploaders-active`). Third, asset and album **creation** are
 unrestricted under `.limited`; hence downloads and the event album need no special handling at all, and
 receive-only is a valid resting state.
 
@@ -35,7 +38,7 @@ Evidence: one device; re-measure at the next iOS major.
 `changes/archive/2026-08-25-collapse-upload-tier-seam` (D11, D11b; SE2 / iOS 26.6) **corrects fact 2** —
 the earlier reading, that registration *succeeds and lies* under `.limited`, is contradicted by
 measurement: both directions are refused, and the enable was reached only through a development
-mechanism override. Evidence: one device, one OS point release; re-measure at the iOS 27 GM
+override (since replaced by the control channel's per-uploader switch). Evidence: one device, one OS point release; re-measure at the iOS 27 GM
 re-assessment.
 ## Requirements
 ### Requirement: A limited grant is a working membership whose scope is the selection
@@ -378,14 +381,19 @@ discipline in the extension's code can prevent a decision taken before that code
 
 ### Requirement: Upload under limited uses the app-driven mechanism on every OS version
 
-A `LIMITED` membership's uploads SHALL run on the app-driven `URLSession` mechanism (capability
-`ios-url-session-upload`) regardless of OS version. On iOS ≥26.1 this is forced by measurement: the
-extension's registration cannot be changed while the app holds `.limited` — neither created nor removed
-(capability `ios-photokit-upload`) — so the OS-driven tier cannot be brought up there. Resolution
-therefore yields the app-driven kind under `LIMITED` (capability `upload-lifecycle`), and the app engine's
-entry gate admits its cycle there, scoped to the selection snapshot.
+A `LIMITED` membership's upload jobs SHALL be created by the app-driven `URLSession` mechanism (capability
+`ios-url-session-upload`) regardless of OS version. The app's cycle creates there because it creates under
+**every usable grant** — `GRANTED` or `LIMITED` (capability `upload-lifecycle`) — not because anything picks
+it for a partial grant: its entry gate admits the cycle, scoped to the selection snapshot. On iOS ≥26.1 the
+extension cannot take that role, by measurement: its registration cannot be changed while the app holds
+`.limited` — neither created nor removed (capability `ios-photokit-upload`) — so it is registrable only under
+`GRANTED`, and nothing registers it under a partial grant. Decision record: `changes/both-uploaders-active`.
 
-The extension SHALL **withhold** under `LIMITED` at its own entry gate, reading the grant in its own process.
+The extension SHALL **withhold** under `LIMITED` at its own entry gate, reading the grant in its own process:
+it acknowledges the jobs the OS presents and records their outcomes, and creates none. A surviving
+registration's in-flight jobs were measured to survive a round trip through `.limited` and settle once access
+returns (SE2, iOS 26.6, 2026-09-22; capability `ios-photokit-upload`, "The registration cannot be changed under a
+partial grant").
 A registration made under a full grant survives a downgrade (the deregistration is refused), and **the OS
 does invoke it there** — measured on the SE2, iOS 26.6, 2026-09-21: with a surviving record and a partial
 grant, `process()` ran four seconds after a new photo joined the selection. An extension cycle there would
@@ -396,12 +404,13 @@ the permission, never on its selection scope, whose default is untrue under a pa
 #### Scenario: A limited member on iOS ≥26.1 uploads via the app-driven tier
 - **WHEN** a member on iOS ≥26.1 holds a `LIMITED` grant with upload-inclusive direction and selects an
   in-scope photo
-- **THEN** the upload completes through the app-driven `URLSession` mechanism without any PhotoKit
-  extension invocation
+- **THEN** the upload completes through the app-driven `URLSession` mechanism, and no PhotoKit extension
+  job is created for it
 
 #### Scenario: An extension invoked under a limited grant withholds
 - **WHEN** a registration survives a downgrade to `LIMITED` and the OS invokes the extension
-- **THEN** the extension's cycle withholds: it walks nothing, creates no job, and publishes no manifest
+- **THEN** the extension's cycle withholds: it acknowledges and records the jobs presented, walks nothing,
+  creates no job, and publishes no manifest
 
 ### Requirement: A downgrade to limited narrows the visible set without breaking sync
 
@@ -432,14 +441,17 @@ The app SHALL treat the resulting `LIMITED→GRANTED` change as an ordinary scop
 of the existing downgrade requirement: the OS terminates the app when the grant changes in Settings,
 and the next cold launch composes the ordinary `GRANTED` state — the baseline covers the whole
 post-cutoff library under the selection policy, the selection-change observer is not registered, the
-launch reconcile brings up the mechanism resolution yields for `GRANTED` (capability `upload-lifecycle`),
-and the ledger guarantees photos uploaded under the limited selection are not re-uploaded.
+launch reconcile registers the extension where it is registrable and the OS reads no record (iOS ≥26.1,
+through the disable→enable ritual — capability `upload-lifecycle`), the app's cycle keeps creating as it
+does under every usable grant, and the ledger guarantees photos uploaded under the limited selection are not
+re-uploaded.
 
 #### Scenario: The upgrade resumes as an ordinary full grant
 - **WHEN** a member who uploaded photos under a `LIMITED` selection switches to Full Access in
   Settings and relaunches the app
-- **THEN** the app composes the ordinary `GRANTED` state — no selection-change observer, the
-  `GRANTED`-tier mechanism — and only newly-in-scope post-cutoff photos upload; nothing re-uploads
+- **THEN** the app composes the ordinary `GRANTED` state — no selection-change observer, the extension
+  registered on iOS ≥26.1 if the OS reads no record, the app still creating — and only newly-in-scope
+  post-cutoff photos upload; nothing re-uploads
 
 #### Scenario: The route raises no permission dialog
 - **WHEN** the member takes the in-app route to Full Access
@@ -451,7 +463,7 @@ and the ledger guarantees photos uploaded under the limited selection are not re
 The rule that no autonomous library read occurs under a partial grant SHALL be enforced by the upload
 **mechanism** that would perform the read — at its cycle's entry gate and in its discovery — not by the
 trigger fan-out that wakes it. A trigger SHALL be
-delivered to the resolved mechanism unconditionally (`upload-lifecycle`, "Triggers are delivered to the
+delivered to the mechanism unconditionally (`upload-lifecycle`, "Triggers are delivered to the
 mechanism and declined explicitly"), and the mechanism SHALL decide whether responding would read the
 library.
 
@@ -509,32 +521,4 @@ the library, and nothing about its contents says so.
 - **WHEN** an upload cycle runs under a partial grant before any selection snapshot has been captured
 - **THEN** it enqueues nothing, no row is deleted as absent from the walk, and the next observer emission
   re-runs discovery over the real selection
-
-### Requirement: A limited grant resolves the app-driven mechanism by resolution, not by a branch
-
-Under a partial grant the app-driven mechanism SHALL be the one **resolution** yields on every OS
-version (`upload-lifecycle`, "The upload mechanism is resolved, never selected").
-
-No deregistration SHALL be attempted under a partial grant. The platform refuses it with
-`PHPhotosErrorAccessUserDenied` (`ios-photokit-upload`, "The registration cannot be changed under a partial
-grant"), so an attempt could only ever report a refusal; the transitions' compared reconcile changes nothing
-under any grant other than `GRANTED` (`upload-lifecycle`). A record that already exists survives, and that is
-safe: the extension withholds at its own gate under a partial grant ("Upload under limited uses the app-driven
-mechanism on every OS version"), so a surviving record produces no second ledger writer, and a return to a full
-grant is a permission change whose compared reconcile re-registers through the disable → enable ritual if the
-record is gone.
-
-Where the app-driven kind is resolved under a **full** grant — which only a development mechanism override
-produces — the deregistration succeeds and is load-bearing (`upload-lifecycle`, "A mechanism override is a
-runtime input a shipped build cannot carry").
-
-#### Scenario: A downgrade to a limited grant attempts no registration change
-- **WHEN** photo access transitions from `GRANTED` to `LIMITED` on an OS carrying the OS-driven mechanism
-- **THEN** resolution yields the app-driven kind, the app engine is armed, and no registration write is
-  attempted
-
-#### Scenario: A surviving registration does not block the pump
-- **WHEN** a registration survives the downgrade
-- **THEN** the app-driven mechanism pumps regardless, the extension withholds if invoked, and exactly one
-  process writes ledger records
 

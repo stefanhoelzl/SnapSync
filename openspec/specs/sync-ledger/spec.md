@@ -4,16 +4,19 @@
 
 The engine's durable per-key upload memory: a backend storage seam (dumb row store that signals
 its own changes), a three-way capability split — reader (per-key, engine-facing), writer
-(records, single per platform, codified by construction), watcher (aggregate stream,
+(records, owned by named code, codified by construction), watcher (aggregate stream,
 status-facing) — and self-contained idempotent record operations. The ledger is what makes
 skipping provable, reports absorbable (at-least-once), full re-enumeration harmless, and status
 a read-only projection.
 
-**Single record-writer is the load-bearing invariant**, and its process placement is a platform binding, not
-a property of this seam: on iOS ≥26.1 the upload extension is the sole writer and the app holds a reader, a
-watcher, and the reset family it invokes at membership transitions (which records nothing); on iOS 18–26.0
-no extension exists, so the app holds it. Codifying the split as three
-capabilities — reader, writer, watcher — makes the invariant a compile-time fact rather than a convention.
+**Every write is owned by code and guarded in one transaction** — the load-bearing invariant. The cycle's
+`LedgerWriter` records, a transport's guarded terminal write settles, and the membership use-cases' reset family
+(the join-time load, the leave's clear, the device reset) replaces; each write carries its own guard in its own
+statement. How many **processes** hold a writer at once is not an invariant: on iOS ≥26.1 under a full grant
+both the app and the upload extension run a cycle over the one App-Group ledger, and write-after-act keeps an
+overlap to a duplicate upload of the same object (`changes/archive/2026-09-22-both-uploaders-active`, which retired the "single record-writer
+per platform" reading of this seam). Codifying the split as three capabilities — reader, writer, watcher —
+keeps which code may write a compile-time fact rather than a convention.
 
 Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
@@ -48,12 +51,12 @@ The ledger SHALL access storage exclusively through a `LedgerStore` interface wi
 read `get(key): LedgerEntry?`, the guarded record write `recordUnlessSettled(entry): Boolean` (see
 "Record operations" — a single-row upsert that never overwrites a row in a done state, and answers whether
 it applied), the guarded terminal write
-`markTerminal(key, outcome): Boolean` (see "Guarded terminal write"), the state-scoped read of `REQUESTED` keys, the bounded state-scoped read of
+`markTerminal(key, outcome): Boolean` (see "Guarded terminal write"), the bounded state-scoped read of
 rows that **need a job** (see "The DISCOVERED state and the ledger as the upload work source"), the
 manifest projection read and its detail backfill, the aggregate read
 `aggregates(): LedgerAggregates`, the per-asset done-ness read `assetProgress()` (see "Per-asset
 progress read"), a change signal `changes: Flow<Unit>`, `clear()` — a
-delete-all reset, `demoteRequested()` — return every `REQUESTED` row to `DISCOVERED` (see "Requested-state reset"), `resetTo(entries)` — an **atomic**
+delete-all reset, `resetTo(entries)` — an **atomic**
 delete-all-then-insert-all replacement, the key-targeted delete `deleteKeys(keys)` — delete exactly the
 rows whose `key` is among the arguments and no other — and the batch record write `recordAllUnlessSettled(entries)`
 (see "A walk re-reads only the assets the ledger does not fully know").
@@ -61,6 +64,12 @@ rows whose `key` is among the arguments and no other — and the batch record wr
 There is deliberately **no** unconditional per-row upsert (`put`). It was removed when the record path became
 guarded: with no production caller left, it could only serve as an unguarded door for the next production
 write. Tests seed a store through the guarded record write or `resetTo`, exactly as production writes it.
+
+There is deliberately **no** bulk demote of `REQUESTED` rows and **no** read of the `REQUESTED` keys. Both
+served only the repairs of a `REQUESTED` row whose transfer was gone — the registration ritual's demote and the
+stranded reconciliation — and those repairs existed only because a hand-off between the two uploaders
+cancelled or orphaned in-flight work. Both uploaders are now active and nothing hands off, so nothing orphans a
+row (capability `upload-lifecycle`). Decision record: `changes/both-uploaders-active`.
 
 There is deliberately **no** promotion and **no** uploaded-row read. A successful upload is recorded
 `COMPLETED` at the moment the platform reports it, so no state exists between "the bytes are stored" and
@@ -77,17 +86,18 @@ done-state guard and `markTerminal`'s `REQUESTED` guard — and each SHALL be
 enforced inside the storage statement itself, never by a read followed by a write. The reset family SHALL
 apply no precedence at all. A `LedgerEntry` SHALL carry `key`, `assetId`, and `state` (`DISCOVERED` |
 `REQUESTED` | `COMPLETED`), plus the manifest detail and the destination path described below.
-`clear()`, `demoteRequested()`, `resetTo`, an
+`clear()`, `resetTo`, an
 applied `deleteKeys`, an
 applied record write (a batch record write that applied to any row signals once for the whole batch), and an applied
 `markTerminal` SHALL each remove (and, for `resetTo`, then insert) or
 update the matching rows and signal `changes` **once** (so watchers re-read the
 now-current truth).
-`clear()`, `demoteRequested()`, `resetTo`, and `deleteKeys` are **reset/bulk** operations, not the
-per-key **record** operations; recording per-upload facts remains the single record-writer's job, so a
-non-writer holder of the backend may reset the store without breaching the
-single-record-writer invariant. `markTerminal` is a **record** operation and is exposed here deliberately —
-see "Reader and writer capability split" for why that does not breach the invariant. `assetId` is a second
+`clear()`, `resetTo`, and `deleteKeys` are **reset/bulk** operations, not the
+per-key **record** operations; recording per-upload facts remains the job of the code that owns it (a cycle's
+`LedgerWriter`), so a holder of the backend with no writer may reset the store without breaching the
+ledger's writer invariant (see "Reader and writer capability split"). `markTerminal` is a **record** operation
+and is exposed here deliberately — see "Reader and writer capability split" for why that does not breach the
+invariant. `assetId` is a second
 opaque field: the backend stores, groups, and
 matches it by equality but never interprets it (it does not know what an "asset" means — any value is
 valid, set by the caller), so the ledger remains a dumb, platform-neutral row store.
@@ -116,8 +126,9 @@ reach rows the read never selected.
 
 #### Scenario: There is no bulk delete of requested rows
 - **WHEN** the `LedgerStore` interface is inspected
-- **THEN** it declares no operation that deletes rows by state; the only bulk operation over `REQUESTED` rows
-  is `demoteRequested()`, which keeps them
+- **THEN** it declares no operation that deletes rows by state, and no bulk operation over `REQUESTED` rows at
+  all — a `REQUESTED` row leaves that state only through its own job's guarded terminal write, a per-key
+  record, or the reset family
 
 #### Scenario: There is no delete-by-asset
 - **WHEN** the `LedgerStore` interface is inspected
@@ -172,9 +183,11 @@ write, applied guarded write, and reset/bulk operation. A record write the guard
 SHALL NOT signal. A ding carries no payload and
 promises nothing beyond "re-read the truth" — consumers MUST treat it as a level trigger (conflation,
 duplicate dings, and signals missed while busy are all safe because every re-read queries current state).
-The signal is **in-process only**: the ledger is the extension's private upload memory and has no
-cross-process watcher, so the backend SHALL NOT post any cross-process (Darwin) notification, and there is
-no app-process observer to merge. The seam itself does not change.
+The signal is **in-process only**: the ledger is shared by both processes — each may write it (see
+"Reader and writer capability split") — but neither observes the other's writes through a signal; the app's
+status re-reads the ledger on its own triggers (capability `sync-status`, "LedgerCountsSource seam"). So
+the backend SHALL NOT post any cross-process (Darwin) notification, and there is no cross-process observer to
+merge. The seam itself does not change.
 
 #### Scenario: An applied record dings
 
@@ -188,37 +201,50 @@ no app-process observer to merge. The seam itself does not change.
 
 #### Scenario: No cross-process notification is posted
 
-- **WHEN** the extension process records within a `process()` cycle
+- **WHEN** either process records within a cycle
 - **THEN** no cross-process (Darwin) notification is posted, because no other process observes the ledger
+  through a signal
 
 ### Requirement: Reader and writer capability split
 
 The ledger SHALL expose a concrete shared `LedgerWriter` carrying both the record operations and the
 per-key query (`entry(key): LedgerEntry?`). Record and query semantics SHALL be implemented once in
 this shared class, delegating storage to the injected `LedgerStore`. There SHALL be no separate
-reader type: the writer is constructed only by the composition root that owns the engine (one per
-platform), and components that must not record are simply never handed a writer — app-side read
-access goes through `LedgerStore`'s read operations (`assetProgress()`, per `sync-status`), never
-through a writer instance. The app also invokes the **reset family** (`clear()`, `resetTo`) on the
-`LedgerStore` at membership transitions — a leave clears, a join loads (see "The ledger is the current
-membership's share set") — on **every** tier, including iOS ≥26.1, where it holds no writer. Those are not
-record operations (see "Storage seam — dumb row store"), so this does not breach the invariant below.
+reader type: the writer is constructed only by the upload cycle's shared assembly (`uploadCore`), once per
+process that runs a cycle — the app on **every** iOS version, and the extension on iOS ≥26.1 — and components
+that must not record are simply never handed a writer: status read access goes through `LedgerStore`'s read
+operations (`assetProgress()`, per `sync-status`), never through a writer instance. The app also invokes the
+**reset family** (`clear()`, `resetTo`) on the `LedgerStore` at membership transitions — a leave clears, a
+join loads (see "The ledger is the current membership's share set") — through the use cases that own them,
+not through a writer. Those are not record operations (see "Storage seam — dumb row store").
 
-**The invariant is that exactly one PROCESS records**, and its process placement is a platform binding — the
-extension on iOS ≥26.1, the app on iOS 18–26.0. Handing a writer instance only where recording is intended is
-the **mechanism** that codifies it, not the invariant itself. That mechanism is deliberately relaxed for one
-operation: `markTerminal` (see "Guarded terminal write") is declared on **`TransferRecord`** — a narrow
-interface `LedgerStore` extends, carrying only `markTerminal` and the read `entryForDestination` (see "The
-ledger records the destination a job was sent to") — because the party the platform tells that an upload
-terminated is a platform callback inside the record-writing process, and it cannot suspend. The invariant
-holds — that callback belongs to the one recording process — while the type-level codification does not cover
-it. A spec or a review that reads the type-level rule as the invariant will reach the wrong conclusion about
-this call, which is why both are stated.
+**The invariant is code ownership of each write, and that each write is one guarded transaction** — not how
+many processes write. Every ledger write SHALL be exactly one of: the running cycle's `LedgerWriter` record
+family (and its key-scoped prune), a transport's guarded `markTerminal`, or a named reset-family use case
+(the join-time load's `resetTo`, the leave's `clear()`, the device reset). Each SHALL be one storage
+transaction whose guard, where it has one, is inside the statement (see "Storage seam — dumb row store"), so
+it is safe against any other write landing between its read and its write — from the same process or the
+other one. How many processes hold a `LedgerWriter` at once is **not** an invariant: on iOS ≥26.1 under a
+full grant both the app's and the extension's cycles run over the one shared ledger, and a cycle in either
+process picks only `DISCOVERED` rows and records `REQUESTED` only after its job was created (write-after-act,
+capability `sync-engine`), so two cycles overlapping can at worst each upload the same key's identical bytes
+to the same destination, and the second terminal write of the pair is a declined no-op. Decision record:
+`changes/both-uploaders-active`.
+
+Handing a writer instance only to the cycle is the **mechanism** that confines the record family to the code
+that owns it. That mechanism is deliberately relaxed for one operation: `markTerminal` (see "Guarded terminal
+write") is declared on **`TransferRecord`** — a narrow interface `LedgerStore` extends, carrying only
+`markTerminal` and the read `entryForDestination` (see "The ledger records the destination a job was sent
+to") — because the party the platform tells that an upload terminated is a platform callback, and it cannot
+suspend. The ownership holds — the terminal write belongs to the transport whose job terminated, and its guard
+applies it only to a row still `REQUESTED` — while the type-level codification does not cover it. A spec or a
+review that reads the type-level rule as the invariant will reach the wrong conclusion about this call, which
+is why both are stated.
 
 A **transport** — an implementation of the upload transfer lifecycle (`BackgroundTransfer`) — SHALL receive a
 `TransferRecord` and SHALL NOT receive a `LedgerStore`. What a transport may touch in the ledger is therefore
-exactly the one guarded terminal write and the one destination lookup; every other read and write, including
-the decision which in-flight rows a transport has lost, belongs to the cycle.
+exactly the one guarded terminal write and the one destination lookup; every other read and write belongs to
+the cycle.
 
 No record operation other than `markTerminal` SHALL be added to `TransferRecord` or to `LedgerStore` on this
 argument; a further record operation belongs on the writer.
@@ -230,27 +256,27 @@ argument; a further record operation belongs on the writer.
 
 #### Scenario: Record access exists only where the writer is constructed
 
-- **WHEN** a component is composed without receiving the root's `LedgerWriter`
+- **WHEN** a component is composed without receiving the cycle's `LedgerWriter`
 - **THEN** it has no record operation available beyond `markTerminal` — it can otherwise read the ledger
   only through `LedgerStore`'s read operations, and write it only through the reset family
 
-#### Scenario: One process records
+#### Scenario: Both processes' cycles record over one ledger
 
-- **WHEN** the platform callback records a terminal upload through `TransferRecord` and the cycle records
-  through the `LedgerWriter`
-- **THEN** both are inside the single record-writing process for that tier, and no second process records
+- **WHEN** on iOS ≥26.1 under a full grant the app's cycle and the extension's cycle each record through their
+  own `LedgerWriter`, and a platform callback records a terminal upload through `TransferRecord`
+- **THEN** every write is one guarded transaction owned by that code, and no write overwrites a settled row
+  or claims a job another cycle created
 
 #### Scenario: A transport holds only the narrow surface
 
 - **WHEN** a transport adapter is composed
 - **THEN** it is handed a `TransferRecord`, and no other ledger read or write is reachable from it
 
-#### Scenario: The app resets the ledger without a writer
+#### Scenario: The app resets the ledger through the reset family
 
-- **WHEN** the app leaves an event or loads a join on iOS ≥26.1, where the extension is the one recording
-  process
-- **THEN** it calls `clear()` or `resetTo` on its `LedgerStore`, holds no `LedgerWriter`, and records no
-  per-key fact
+- **WHEN** the app leaves an event or loads a join, on any iOS version
+- **THEN** the owning use case calls `clear()` or `resetTo` on its `LedgerStore`, not a `LedgerWriter`, and
+  records no per-key fact
 
 ### Requirement: Record operations
 `LedgerWriter` SHALL provide `recordDiscovered`, `recordRequested`, and
@@ -273,8 +299,8 @@ done-state set is decided in Kotlin"). The guard SHALL be enforced **inside the 
 SQLDelight backend one `INSERT … ON CONFLICT(key) DO UPDATE … WHERE state NOT IN :doneStates`, with the set
 bound as a parameter — and SHALL NOT depend on a read the writer made first. A read-then-write is not atomic
 against a second writer, and a late record over a settled row would require a job for bytes the backend
-already holds. Transitions between non-done states (a retry `DISCOVERED → REQUESTED`, a failed or stranded
-transfer `REQUESTED → DISCOVERED`) SHALL still apply. A record the guard declined SHALL NOT be silent: the writer SHALL log
+already holds. Transitions between non-done states (a retry `DISCOVERED → REQUESTED`, a failed transfer
+`REQUESTED → DISCOVERED`) SHALL still apply. A record the guard declined SHALL NOT be silent: the writer SHALL log
 it, naming the key and the refused state.
 
 There is **no** writer operation that records `COMPLETED`. A completed upload is a fact the platform reports,
@@ -316,7 +342,7 @@ the write would say only what the row already says.
 - **WHEN** `recordFailed` has returned a key's row to `DISCOVERED` and `recordRequested` is then called for it
 - **THEN** `entry(key)` has state `REQUESTED`
 
-#### Scenario: A stranded transfer still returns a requested row to the work source
+#### Scenario: A failed transfer still returns a requested row to the work source
 - **WHEN** `recordFailed` is called for a key whose row is `REQUESTED`
 - **THEN** `entry(key)` has state `DISCOVERED`
 
@@ -596,10 +622,10 @@ it, which is why such a migration's effect is asserted by a test instead.
 
 The key-scoped delete (`deleteKeys`) SHALL be exposed on
 `LedgerWriter` (delegating to the backend) and SHALL NOT be exposed on any other app-facing ledger
-surface. It is a sync write by the single ledger writer, not the app-side `clear()` reset, and at
-the writer layer it consults no engine state first. Because only the engine's
-composition root constructs a `LedgerWriter`, prune access is confined to the single-writer process,
-preserving the single-writer invariant.
+surface. It is a sync write by the cycle's `LedgerWriter`, not the app-side `clear()` reset, and at
+the writer layer it consults no engine state first. Because only the upload cycle's shared assembly constructs
+a `LedgerWriter`, prune access is confined to the cycle — in whichever process runs it — preserving the
+ledger's code-ownership invariant (see "Reader and writer capability split").
 
 `deleteKeys(keys)` SHALL delete exactly the rows whose key is among the arguments, whatever their state, and
 SHALL write nothing and signal nothing when none of them has a row. It SHALL accept more keys than one storage
@@ -625,7 +651,7 @@ schema migration"). There is therefore no mark to set, no mark to clear, and no 
 
 - **WHEN** a component holds the ledger only as a `LedgerStore` reader (no writer)
 - **THEN** `deleteKeys` is not part of its sanctioned surface — it reaches the backend
-  only through the root-constructed `LedgerWriter`
+  only through the cycle's `LedgerWriter`
 
 ### Requirement: Pending-resource read
 
@@ -733,50 +759,6 @@ state. It SHALL return every row, leaving admission to the membership's policy.
 
 - **WHEN** the projection reads the rows it lists
 - **THEN** the read returns rows in every state, and excludes none
-
-### Requirement: Requested-state reset
-
-`LedgerStore` SHALL provide `demoteRequested()`: a bulk state change of **every row whose state is
-`REQUESTED`** to `DISCOVERED`, leaving every other field of those rows, and every `DISCOVERED` and `COMPLETED`
-row, untouched. It SHALL emit exactly one `changes` signal on success (like `clear`/`resetTo`). On the
-SQLDelight backend it SHALL be a single `UPDATE … SET state = 'DISCOVERED' WHERE state = 'REQUESTED'`. There SHALL
-be no operation that deletes rows by state: `clearRequested()` is removed.
-
-`demoteRequested` is an **app-side reset-family** operation — in the same family as `clear()` and `resetTo()`,
-**not** a per-key record operation. It SHALL be callable on the `LedgerStore` **without** a `LedgerWriter`, so a
-non-writer holder of the backend — the app process on iOS ≥26.1, where the extension is the one recording
-process — may invoke it without breaching the **single-record-writer invariant**. It applies no precedence and
-reads nothing first; it is one storage statement.
-
-It is the recovery for `REQUESTED` rows that **no transfer can settle any more**: the engine never re-issues a
-`REQUESTED` key, so without it such a photo is abandoned. Its canonical use is the iOS ≥26.1 PhotoKit tier's
-re-register, after a disable has wiped every in-flight OS job at once (`ios-photokit-upload`). A platform whose
-transfers can be enumerated recovers precisely instead (`ios-url-session-upload`).
-
-It demotes rather than deletes because a `DISCOVERED` row **needs a job** (see "The DISCOVERED state and the ledger
-as the upload work source"): the ledger's own work read returns it on the next cycle, so the recovery
-depends on no walk. A deleted row could only return through a walk that reads the asset's resources again,
-which a fully-recorded asset's walk skips (see "A walk re-reads only the assets the ledger does not fully
-know"). Demoting also keeps the row's recorded detail — `assetId`, role, content type, destination — which a
-deletion discarded and a rediscovery had to re-derive.
-
-#### Scenario: demoteRequested returns only REQUESTED rows to DISCOVERED
-
-- **WHEN** the store holds a `DISCOVERED`, a `REQUESTED`, and a `COMPLETED` row, and
-  `demoteRequested()` is called
-- **THEN** the `REQUESTED` row is now `DISCOVERED` with every other field unchanged, and the other two rows are
-  unchanged
-
-#### Scenario: demoteRequested emits one change signal
-
-- **WHEN** `demoteRequested()` succeeds over a store containing at least one `REQUESTED` row
-- **THEN** exactly one `changes` signal is emitted, so a watcher re-reads the now-current truth
-
-#### Scenario: A demoted row is returned by the work read without a walk
-
-- **WHEN** a key is `REQUESTED`, `demoteRequested()` runs, and the work source is read with no discovery
-- **THEN** the row is among the rows needing a job, so the next cycle re-creates its upload without
-  re-reading the asset's resources
 
 ### Requirement: The ledger is never pruned by the selection policy
 
@@ -914,8 +896,10 @@ on" and "this fact was recorded" have different consequences.
 upload job: no job is in flight for it and its bytes are not on the backend**. It SHALL be recorded for
 every resource a cycle's walk admitted and the engine judged to be new work, **before** any upload
 job is created for that cycle. It SHALL also be what a failed upload returns its row to — through the engine's
-failure record, a transport's terminal write, the stranded reconciliation, or `demoteRequested` — because a
-failure and a never-attempted discovery are the same fact to a producer. There is no separate failed state:
+failure record or a transport's terminal write — because a
+failure and a never-attempted discovery are the same fact to a producer. Nothing else returns a `REQUESTED` row
+to it: there is no stranded reconciliation and no bulk demote, because nothing orphans a `REQUESTED` row any
+more (decision record: `changes/both-uploaders-active`). There is no separate failed state:
 the engine retries forever with no attempt budget, so "an attempt was already made" decides nothing.
 `LedgerState` therefore has exactly three values: `DISCOVERED`, `REQUESTED` and `COMPLETED`.
 
@@ -927,14 +911,23 @@ row that needs a job is found by this read, never re-derived by the walk. The `L
 state-scoped read of the rows that need a job, and it SHALL return the `DISCOVERED` rows — whether never
 attempted or returned there by a failure.
 
+A cycle in **either** process SHALL pick its work only from these `DISCOVERED` rows, and SHALL NOT create a job
+for a `REQUESTED` or `COMPLETED` row. With both uploaders active over one ledger, that is what keeps a second
+cycle off the first one's in-flight work: a key the first cycle recorded `REQUESTED` is never offered to the
+second, so only two cycles picking the same `DISCOVERED` key before either records can duplicate an upload —
+identical bytes to the same destination, converged by the guarded terminal write (see "Reader and writer
+capability split").
+
 A row needing a job records that the policy admitted its asset **when the row was written**, which is not
 the same fact as the membership's *current* admission (`photo-selection-policy`). The cycle SHALL
 therefore admit the rows this read returns before resolving or enqueuing any of them, and any bound on
 how much work one cycle takes SHALL be applied to the **admitted** rows — bounding what a cycle
 **resolves**, never what it reads. A bound applied to the read instead can starve: rows are returned in a
-stable key order, so excluded rows sorting ahead of admitted ones would fill the batch on every cycle and
-admitted work further down would never be reached. What the bound exists to protect is the platform
-round-trip and, on the app-driven tier, the staged temp file — both of which follow the admitted rows.
+stable key order, so excluded rows sorting ahead of admitted ones would fill the bound on every cycle and
+admitted work further down would never be reached. The cycle resolves the admitted rows in small chunks and
+creates jobs until the platform refuses (`LIMIT_EXCEEDED`); the chunk bounds the resolves a refusal wastes,
+and creation is bounded only by the platform's refusal (capability `sync-engine`; decision record:
+`changes/both-uploaders-active`) — both of which follow the admitted rows.
 
 A row this read returned whose key the platform resolves to **nothing** SHALL have that row, and only that
 row, deleted (see "Deletion is a presence diff over an authoritative walk"). Its asset has left the library,
@@ -945,9 +938,7 @@ leaves the asset's settled rows alone: this read selects rows by key.
 `DISCOVERED` SHALL NOT be a done state, so a row in it counts toward the backlog everywhere. It SHALL
 nonetheless be **included** in the device-manifest projection: the manifest declares what this device
 intends to provide, and a resource the walk found and the policy admitted is precisely that (capability
-`device-manifest`). It SHALL NOT be a stranding candidate: the stranded reconciliation reads `REQUESTED`
-keys only, and surfacing a row that has no job as a lost transfer would record a failure that did not
-happen.
+`device-manifest`).
 
 #### Scenario: A discovered resource is recorded before any job exists
 
@@ -986,17 +977,18 @@ happen.
 - **THEN** it counts toward the pending aggregate and the pending-resource read, and it appears in the
   device-manifest projection for every membership whose policy admits its asset
 
-#### Scenario: A discovered row is never stranded
+#### Scenario: A second cycle does not re-pick an in-flight row
 
-- **WHEN** the stranded reconciliation runs while a `DISCOVERED` row exists with no live transfer
-- **THEN** that row is not surfaced as a lost transfer and is not written
+- **WHEN** one cycle has created a job for a key and recorded it `REQUESTED`, and a cycle in the other process
+  then reads the work source
+- **THEN** that key is not among the rows needing a job, and the second cycle creates no job for it
 
-#### Scenario: The batch bounds the resolved work, not the read
+#### Scenario: The bound applies to the resolved work, not the read
 
-- **WHEN** the rows needing a job exceed one cycle's batch and some of them are excluded by the
-  membership's current policy
-- **THEN** the cycle resolves at most one batch of **admitted** rows, and the excluded ones neither
-  consume the batch nor prevent admitted rows from being enqueued
+- **WHEN** the rows needing a job exceed what the platform accepts in one cycle and some of them are excluded
+  by the membership's current policy
+- **THEN** the cycle resolves and creates only **admitted** rows until the platform refuses, and the excluded
+  ones neither consume the bound nor prevent admitted rows from being enqueued
 
 #### Scenario: An excluded row is retained, not pruned
 
@@ -1224,7 +1216,7 @@ Two late writers can reach a cleared ledger, and neither SHALL be treated as a f
 - a **completion** already in flight when the ledger was cleared finds no row: `entryForDestination`
   answers nothing, the outcome is acknowledged and discarded, and the bytes are on the backend with no row.
   The next join's listing includes them, so its load seeds them `COMPLETED`;
-- a **cycle already running** in the extension when the app clears checked membership once at its start and
+- a **cycle already running** in either process when the app clears checked membership once at its start and
   may still record rows. Those can only be `DISCOVERED` or `REQUESTED` (no record operation writes
   `COMPLETED`), they lie outside any membership so no deciding reader acts on them, and the next join's clear
   removes them.
@@ -1265,9 +1257,9 @@ transition of this list.
 - **THEN** no row is found for its destination, nothing is written, and the next join's load seeds the stored
   resource `COMPLETED`
 
-#### Scenario: A late extension cycle's rows are removed at the next join
+#### Scenario: A late cycle's rows are removed at the next join
 
-- **WHEN** an extension cycle that started before a leave records `DISCOVERED` rows after the app cleared the
+- **WHEN** a cycle in either process that started before a leave records `DISCOVERED` rows after the app cleared the
   ledger
 - **THEN** those rows are dropped by the next join's `resetTo` or `clear()`, and no upload is made for them
   in between
@@ -1312,4 +1304,3 @@ the intersection is the caller's.
 - **WHEN** an asset's only `REQUESTED` row is recorded `COMPLETED` through `markTerminal`, and no cycle has
   run since
 - **THEN** `assetProgress()` answers that asset done
-
