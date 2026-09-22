@@ -16,11 +16,13 @@ import kotlin.test.assertTrue
  *
  * **What a test can and cannot reach here.** A Kotlin/Native test binary is not an app bundle: it has
  * no keychain-access-group entitlement, so `securityd` refuses it Keychain access entirely and every
- * call returns `errSecNotAvailable` (**-25291**). There is therefore no environment — simulator or
- * otherwise — in which a unit test can exercise the happy path: store an item, read its accessibility
- * class back, migrate a legacy item. Only a real app bundle on a device can do that, which is why this
- * capability's end-to-end evidence is the on-device diagnostic log (capability `ios-app-shell`) rather
- * than a test. This was discovered the hard way — the first version of this file assumed a working
+ * call returns `errSecNotAvailable` (**-25291**). The HOST is part of that fact: an unhosted Swift `.xctest`
+ * on the same simulator answers the same calls with `errSecMissingEntitlement` (-34018) instead. No test
+ * executable can LIVE-exercise the happy path — store an item, read its accessibility class back, migrate
+ * a legacy item; only the entitled app on a device can. That path is now covered anyway: the app runs
+ * `SecureStoreContract` on a device over the rig, recording every `SecItem*` call and iOS's answer, and
+ * `IosKeychainReplayContractTest` replays the recording against this adapter on every build (capability
+ * `port-contracts`). This was discovered the hard way — the first version of this file assumed a working
  * Keychain and failed 9 of its 19 assertions.
  *
  * What remains is not nothing. It is, in fact, **the bug itself**: an inaccessible Keychain is exactly

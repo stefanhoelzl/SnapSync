@@ -103,6 +103,8 @@ POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
+
+POST /contract/<name>                   run a port contract in-app; answers its RECORDING (see below)
 ```
 
 There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
@@ -117,6 +119,30 @@ build facts (which backend this build points at), and the OS's own view of the e
 or absent log is a `404` with a stated reason, never an empty `200`. It reads the **current** file only —
 a rolled `.1` sibling is not reachable this way.
 
+
+## `/contract/<name>` — recording a port contract on the device
+
+Capability `port-contracts`. A contract whose clauses need the **entitled** Keychain (`SecureStore`: the
+legacy-protection upgrade, a real write read back) cannot run in CI — a simulator test executable is
+refused every Keychain call. So it runs here, in-app, and every `SecItem*` call the adapter makes is
+recorded with iOS's answer; CI then **replays** that recording against the current adapter on every build.
+
+```bash
+curl -s -X POST localhost:18099/contract/SecureStore > test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec
+git diff test/contracts/recordings/        # review it like code, then commit it UNEDITED
+```
+
+- The body **is** the file: a provenance header (device, iOS, build, Kotlin, date), a `# live <CLAUSE>:`
+  line per clause saying how it went on the device, then one `[CLAUSE_ID]` block of `call -> answer` lines.
+  Never hand-edit it — the replay matches calls exactly and in order.
+- **Re-record when CI says `Diverged`**: the adapter now asks iOS something the recording does not hold.
+  A `Failed` on replay is different — iOS's recorded answer violates the clause — and re-recording will not
+  fix it; the code or the clause is wrong.
+- A `# live …: Failed(…)` line means the clause failed **on the device**. Commit it anyway if that is the
+  truth; the replay will then fail CI until the code or the clause is fixed, which is the point.
+- Two runs in a row should differ only in the header. If a block moves between runs, a volatile key is
+  unmasked — add it to `VOLATILE_KEYS` in `adapter/ios/ext-safe/src/rig/kotlin/…/KeychainTape.kt`.
+- `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
 
 ## `/os/photokit-ext` — the OS-driven upload tier's own root
 
