@@ -1,10 +1,10 @@
 ## 1. The contract module and its mechanism
 
-- [ ] 1.1 Create `:test:contracts` (jvm, iosSimulatorArm64, iosArm64; `commonMain` depends on `kotlin-test` and the port modules only); add it to `settings.gradle.kts` and to `module-architecture`'s contained group so `ModuleSetTest` passes
-- [ ] 1.2 Implement the mechanism in `commonMain`: `Clause` (id, required state, suspendable body), `Contract` (explicit clause list), `Binding` (host, kind `Fake`/`Live`/`Replay`, literal reachable-state set, `create(state)` → `Ready` | `Unreachable(reason)`), the `Host` enum (`JVM`, `IOS_SIM_KEXE`, `IOS_DEVICE_APP`), and the outcomes `Passed` / `Failed` / `NotRunHere` / `Diverged` / `NotWithin`
-- [ ] 1.3 Implement the runner: fresh instance per clause; declaration check (declared-but-unreachable and undeclared-but-ready are `Failed`); an early return never reads `Passed`; a CI entry point that runs every clause and fails once with the full outcome table on any `Failed`/`Diverged`
-- [ ] 1.4 Implement the recording format reader/writer in `commonMain` (provenance header, sorted `[CLAUSE_ID]` blocks of `call -> answer` lines, named volatile-key masking) with `commonTest` round-trip tests
-- [ ] 1.5 Unit-test the runner and outcomes in `commonTest` against toy contracts (runs on JVM and the simulator)
+- [x] 1.1 Create `:test:contracts` (jvm, iosSimulatorArm64, iosArm64; `commonMain` depends on `kotlin-test` and the port modules only); add it to `settings.gradle.kts` and to `module-architecture`'s contained group so `ModuleSetTest` passes
+- [x] 1.2 Implement the mechanism in `commonMain`: `Clause` (id, required state, suspendable body), `Contract` (explicit clause list), `Binding` (host, kind `Fake`/`Live`/`Replay`, literal reachable-state set, `create(state)` → `Ready` | `Unreachable(reason)`), the `Host` enum (`JVM`, `IOS_SIM_KEXE`, `IOS_DEVICE_APP`), and the outcomes `Passed` / `Failed` / `NotRunHere` / `Diverged` / `NotWithin`
+- [x] 1.3 Implement the runner: fresh instance per clause; declaration check (declared-but-unreachable and undeclared-but-ready are `Failed`); an early return never reads `Passed`; a CI entry point that runs every clause and fails once with the full outcome table on any `Failed`/`Diverged`
+- [x] 1.4 Implement the recording format reader/writer in `commonMain` (provenance header, sorted `[CLAUSE_ID]` blocks of `call -> answer` lines, named volatile-key masking) with `commonTest` round-trip tests
+- [x] 1.5 Unit-test the runner and outcomes in `commonTest` against toy contracts (runs on JVM and the simulator)
 - [ ] 1.6 On the Mac (ssh-mac loop): verify whether an `iosSimulatorArm64Test` binary can read a committed repo file at run time; if not, add a Gradle task that turns each committed `.rec` into a generated Kotlin constant for the replay test source set (the `.rec` stays the only source). Record the finding in design.md
 
 ## 2. Convert the storage contracts
