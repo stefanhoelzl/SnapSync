@@ -83,7 +83,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
 | `SecureStoreResolution` | `:domain:ports` | `:domain:ports` Adopted, Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
-| `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unrestricted | no |
+| `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Proceeding, Short | no |
 | `SharePresenter` | `:domain:ports` | `:adapter:ios:app-only` IosShareSheet | no |
 | `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes, RecordingStagedBytes; `:adapter:ios:app-only` IosStagedBytes | yes |

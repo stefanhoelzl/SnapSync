@@ -320,4 +320,35 @@ class PhotoKitJobMappingTest {
 
         assertNull(retryJobMatching(candidates, "ABC-123-primary.heic") { "XYZ-9-primary.heic" })
     }
+
+    // ---- whose row a job belongs to, and whether it is gone (`changes/selection-is-the-walk`, D3) ------------
+
+    private val v2 = "/api/v2/files/devices/D/ABC-123/primary"
+    private val v1 = "/api/v1/files/devices/D/ABC-123-primary.heic"
+
+    @Test
+    fun `a job whose destination the ledger recorded belongs to that row`() {
+        assertEquals(JobRow.Found("ABC-123-primary.heic"), jobRowOf(v2, null, "ABC-123-primary.heic", false))
+    }
+
+    @Test
+    fun `a byte-route job whose row the walk removed is pruned and not a fault`() {
+        // The photo left the library or the selection while its upload was in flight. Raising this at `Error`
+        // would file a crash-reporting event for every de-selection.
+        assertEquals(JobRow.Pruned, jobRowOf(v2, null, null, false))
+    }
+
+    @Test
+    fun `a pre-identity key is recovered only when its row exists`() {
+        assertEquals(JobRow.Found("ABC-123-primary.heic"), jobRowOf(v1, "ABC-123-primary.heic", null, true))
+        // Recovered on the strength of the path alone, it would hand the cycle a failure to retry for a photo
+        // that left — the re-upload this rule stops.
+        assertEquals(JobRow.Pruned, jobRowOf(v1, "ABC-123-primary.heic", null, false))
+    }
+
+    @Test
+    fun `a destination of no byte-route shape is unmappable`() {
+        assertEquals(JobRow.Unmappable, jobRowOf("/something/else", null, null, false))
+        assertEquals(JobRow.Unmappable, jobRowOf("/api/v2/files/devices/D/a/b/c", null, null, false))
+    }
 }

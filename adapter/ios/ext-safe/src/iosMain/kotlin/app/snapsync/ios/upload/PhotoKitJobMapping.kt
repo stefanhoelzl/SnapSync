@@ -132,6 +132,51 @@ internal fun legacyKeyOf(path: String): String? {
 }
 
 /**
+ * Whose row a presented job with a destination belongs to (capability `ios-photokit-upload`, "Completion and
+ * retry adjudication").
+ */
+sealed interface JobRow {
+    /** The row exists: settle it, re-create it, or retry it as the job's state says. */
+    data class Found(val key: String) : JobRow
+
+    /**
+     * A byte-route job whose row is gone — an authoritative walk deleted it because the photo left the library or
+     * the selection, possibly while the job was in flight. Expected, and answered quietly: acknowledged in place,
+     * nothing written, nothing handed to the cycle (decision record `changes/selection-is-the-walk`, D3).
+     */
+    data object Pruned : JobRow
+
+    /** A destination of no shape this build knows: an outcome discarded for a reason it cannot name — a fault. */
+    data object Unmappable : JobRow
+}
+
+/**
+ * Decide [JobRow] for a job whose destination is [path]: the row the ledger recorded for that destination
+ * ([rowByDestination]), else — for a pre-identity destination — the row its [legacyKey] names, when
+ * [legacyRowExists]; else [JobRow.Pruned] when the path is a byte route at all, and [JobRow.Unmappable] when it
+ * is not.
+ *
+ * A pre-identity key with no row is pruned too, never recovered on the strength of the path alone: recovering it
+ * would hand the cycle a failure to retry for a photo that left, which is the re-upload this rule exists to stop.
+ */
+fun jobRowOf(path: String, legacyKey: String?, rowByDestination: String?, legacyRowExists: Boolean): JobRow = when {
+    rowByDestination != null -> JobRow.Found(rowByDestination)
+    legacyKey != null && legacyRowExists -> JobRow.Found(legacyKey)
+    isByteRoute(path) -> JobRow.Pruned
+    else -> JobRow.Unmappable
+}
+
+/**
+ * Whether [path] is one of the two byte-route shapes this build has ever created a job for: the pre-identity
+ * `/files/devices/<deviceId>/<key>` or the identity-in-path `/files/devices/<deviceId>/<assetId>/<role>`.
+ */
+internal fun isByteRoute(path: String): Boolean {
+    val segments = path.split('/').filter { it.isNotEmpty() }
+    val devices = segments.indexOf("devices")
+    return devices > 0 && segments[devices - 1] == "files" && segments.size in (devices + 3)..(devices + 4)
+}
+
+/**
  * What a **terminal** job means: which ledger state to record, and whether the cycle must re-create it.
  *
  * This is a per-job decision, and it lived in [app.snapsync.ios.upload.IosPhotoKitUploadPlatform]'s

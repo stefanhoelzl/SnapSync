@@ -18,10 +18,16 @@ import app.snapsync.ports.UploadDiscovery
  *
  * - [SelectionScope.Unrestricted] → delegate to the platform walk, unchanged.
  * - [SelectionScope.Scoped] → return the snapshot as the discovery, **without any platform read**, and
- *   **never authoritative** (`fullEnumeration = false`): a selection snapshot is not the library, so it
- *   must never drive ledger deletion — an uploaded, later-deselected photo keeps its `COMPLETED` row
- *   (deselection is not withdrawal; upload is a publish). A snapshot the member put every photo into looks
- *   complete and still is not the library, which is why the flag is fixed here rather than inferred.
+ *   **authoritative** (`fullEnumeration = true`): under a partial grant the selection IS the gallery, so a
+ *   photo the snapshot no longer carries has left it, exactly as a photo a library walk no longer returns
+ *   has — de-selecting is deleting, and its rows go (capability `sync-ledger`, "Deletion is a presence diff
+ *   over an authoritative walk").
+ * - [SelectionScope.Unread] → **refuse**, on both reads. The app holds no selection yet, and every answer
+ *   this class could give deletes: an authoritative empty discovery says every photo left, and an empty
+ *   resolution says every row's asset is gone. The app's cycle is withheld while the scope is unread
+ *   (`appAdmission`), so this is a backstop — a throw fails one cycle, an answer loses rows.
+ *
+ * Decision record: `changes/selection-is-the-walk` (D1), which made a read snapshot authoritative.
  *
  * It wraps the library reads and nothing else. Free capacity, job creation and the terminal drain are the
  * transport's facts, and a partial photo grant changes what may be READ, never what a transport will accept.
@@ -45,6 +51,7 @@ class SelectionScopedDiscovery(
         when (val scope = selectionScope()) {
             SelectionScope.Unrestricted -> delegate.resourcesFor(keys)
             is SelectionScope.Scoped -> scope.resources.filter { it.filename in keys }
+            SelectionScope.Unread -> refuseUnread("resolve ${keys.size} key(s)")
         }
 
     override suspend fun discover(policy: SelectionPolicy): Discovery =
@@ -56,7 +63,14 @@ class SelectionScopedDiscovery(
                 // held candidates is honest: they genuinely are in hand, so nothing is deferred and
                 // nothing will need re-fetching by identifier later.
                 candidates = candidatesFromResources(scope.resources),
-                fullEnumeration = false,
+                fullEnumeration = true,
             )
+            SelectionScope.Unread -> refuseUnread("discover")
         }
+
+    private fun refuseUnread(what: String): Nothing =
+        throw IllegalStateException(
+            "cannot $what: the partial grant's selection has not been read yet — an unread selection is not " +
+                "an empty one, and answering it as empty would delete rows",
+        )
 }

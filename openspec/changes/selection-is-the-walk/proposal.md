@@ -59,7 +59,7 @@ None.
   listed.
 - `sync-ledger`: the selection is presence, not policy; deletion drops the `REQUESTED` exemption; a read
   selection snapshot counts as authoritative; the work source resolves one row at a time; the guarded
-  terminal write gains the foreground settle as a caller.
+  terminal write gains the foreground settle as a caller; `TransferRecord` gains the per-key read `get(key)`.
 - `device-manifest`: under a partial grant, de-selection retracts the photo from the manifest.
 - `upload-lifecycle`: the app's admission withholds while the selection is unread. A new requirement
   covers how a presented job whose row is gone is answered.
@@ -83,7 +83,7 @@ None.
 - `:adapter:ios:ext-safe` `IosPhotoKitUploadPlatform`: classifies a pruned row.
 - Tests: `UploadCycleTest`, `SelectionScopedDiscoveryTest`, `CycleGateTest`, the new settle test, and
   `:test:world` / `:test:integration` scenarios.
-- No schema change, no backend change, no new port operation. The per-device listing endpoint already
-  exists.
+- No schema change and no backend change; the per-device listing endpoint already exists. No new port
+  operation: the existing read `get(key)` moves from `LedgerStore` up to `TransferRecord`.
 - Sequencing: phase 8 ("manifest versions") also touches `device-manifest`. The two are independent;
   whichever merges second rebases its delta.

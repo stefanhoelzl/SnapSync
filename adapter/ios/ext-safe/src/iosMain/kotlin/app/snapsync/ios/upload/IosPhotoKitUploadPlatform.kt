@@ -49,8 +49,10 @@ import platform.Photos.PHPhotoLibrary
  * job was created (capability `sync-ledger`) — the destination being the only field reliably present for
  * every job state, since `resource` is nil for succeeded jobs. A job created by a build that predates
  * that column falls back to the destination's last path segment, which was the key under the
- * pre-identity byte shape and is null for any other; a job neither route resolves is counted and raised
- * at `Error`, never drained in silence. The `resource`, when still available, is reused to re-create a
+ * pre-identity byte shape and is null for any other — used only when a row exists for it. A byte-route job
+ * neither route resolves is **pruned**: its row was deleted because the photo left the library or the
+ * selection, so it is acknowledged, nothing is written, and it is logged at `Info`. A job whose destination
+ * has no byte-route shape at all is counted and raised at `Error`, never drained in silence. The `resource`, when still available, is reused to re-create a
  * retry-spent job. Both are captured as **nullable locals** before use: cinterop declares them non-null
  * and they are nil at runtime, and a null check against a non-null-typed value may be elided
  * (`05435ff9`, `8c8dbe28`). Do not "simplify" those two locals away — see `PhotoKitJobMapping.kt`'s KDoc
@@ -62,7 +64,7 @@ class IosPhotoKitUploadPlatform(
     // This adapter RECORDS terminal outcomes, rather than handing them to the cycle to record. The OS
     // job queue here IS durable — a succeeded job stays in the `.acknowledge` set until acknowledged —
     // so this tier never had the app-driven tier's loss; recording in place keeps one state machine across
-    // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the destination lookup.
+    // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the two row reads.
     private val ledger: TransferRecord,
 ) : BackgroundTransfer {
 
@@ -93,6 +95,7 @@ class IosPhotoKitUploadPlatform(
             )
             val out = ArrayList<PlatformUploadJob>()
             var unrecoverable = 0
+            var pruned = 0
             var index = 0uL
             while (index < jobs.count) {
                 val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
@@ -106,11 +109,12 @@ class IosPhotoKitUploadPlatform(
                         unrecoverable++
                     }
                     is FetchedJob.Emit -> {
-                        val key = resolveKey(classified)
-                        if (key == null) {
-                            unrecoverable++
-                            acknowledgeJob(job)
-                            continue
+                        val key = when (val row = rowFor(classified)) {
+                            is JobRow.Found -> row.key
+                            // The photo left the library or the selection, maybe mid-upload: answered, nothing
+                            // written, nothing handed back (capability `upload-lifecycle`).
+                            JobRow.Pruned -> { pruned++; acknowledgeJob(job); continue }
+                            JobRow.Unmappable -> { unrecoverable++; acknowledgeJob(job); continue }
                         }
                         // The adjudication is `terminalDisposition` (beside the other per-job decisions in
                         // PhotoKitJobMapping.kt, where it is tested); this body supplies only the effect.
@@ -133,6 +137,7 @@ class IosPhotoKitUploadPlatform(
                 acknowledgeJob(job)
             }
             reportUnrecoverable(unrecoverable, "drainTerminals")
+            reportPruned(pruned, "drainTerminals")
             out
         }
 
@@ -140,6 +145,7 @@ class IosPhotoKitUploadPlatform(
         val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
         val out = ArrayList<PlatformUploadJob>(jobs.count.toInt())
         var unrecoverable = 0
+        var pruned = 0
         var index = 0uL
         while (index < jobs.count) {
             val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
@@ -155,23 +161,22 @@ class IosPhotoKitUploadPlatform(
                     unrecoverable++
                     acknowledgeJob(job)
                 }
-                is FetchedJob.Emit -> {
-                    val key = resolveKey(classified)
-                    if (key == null) {
-                        unrecoverable++
-                        acknowledgeJob(job)
-                    } else {
-                        out += PlatformUploadJob(
-                            key = key,
-                            contentType = photoKitContentType(destination, resource),
-                            error = classified.error,
-                            data = resource,
-                        )
-                    }
+                is FetchedJob.Emit -> when (val row = rowFor(classified)) {
+                    is JobRow.Found -> out += PlatformUploadJob(
+                        key = row.key,
+                        contentType = photoKitContentType(destination, resource),
+                        error = classified.error,
+                        data = resource,
+                    )
+                    // Never handed to the cycle, which would decline to retry it and leave it un-acknowledged:
+                    // a job for a photo that left is answered HERE (capability `upload-lifecycle`).
+                    JobRow.Pruned -> { pruned++; acknowledgeJob(job) }
+                    JobRow.Unmappable -> { unrecoverable++; acknowledgeJob(job) }
                 }
             }
         }
         reportUnrecoverable(unrecoverable, "fetch")
+        reportPruned(pruned, "fetch")
         // (count is logged by the wrapping `platform.fetch*` invocation's exit line)
         return out
     }
@@ -184,24 +189,45 @@ class IosPhotoKitUploadPlatform(
      * last path segment, which was the key there — correct for a job created by the outgoing build and
      * for nothing else, which is why the classifier yields it only for that shape.
      */
-    private suspend fun resolveKey(emit: FetchedJob.Emit): String? =
-        ledger.entryForDestination(emit.destinationPath)?.key ?: emit.legacyKey
+    private suspend fun resolveKey(emit: FetchedJob.Emit): String? = (rowFor(emit) as? JobRow.Found)?.key
 
     /**
-     * Report jobs this cycle could not resolve to a row — at `Error`, so it reaches crash reporting.
+     * [resolveKey]'s full answer: the row by recorded destination, else — for a pre-identity destination — by
+     * its key, but only when that row exists; else pruned or unmappable ([jobRowOf] decides, and is tested).
+     */
+    private suspend fun rowFor(emit: FetchedJob.Emit): JobRow {
+        val byDestination = ledger.entryForDestination(emit.destinationPath)?.key
+        val legacyRowExists = byDestination == null && emit.legacyKey?.let { ledger.get(it) } != null
+        return jobRowOf(emit.destinationPath, emit.legacyKey, byDestination, legacyRowExists)
+    }
+
+    /**
+     * Report jobs whose destination this build cannot map at all — at `Error`, so it reaches crash reporting.
      *
-     * An unrecoverable job is an upload whose outcome is being discarded: its row stays `REQUESTED`,
-     * which no routine path clears, so the resource is never promoted, never enters the manifest, and is
-     * never visible to another member — while its bytes sit on the backend. Nothing else reports it
-     * (`module-architecture`, "Absence is never silent"), and a per-job warning would be a breadcrumb
-     * rather than an event, so the count is raised once per cycle and only when it is non-zero.
+     * An unmappable job is an upload whose outcome is being discarded for a reason this build cannot name: no
+     * destination, or one of no byte-route shape it ever created. Nothing else reports it (`module-architecture`,
+     * "Absence is never silent"), and a per-job warning would be a breadcrumb rather than an event, so the count
+     * is raised once per cycle and only when it is non-zero.
+     *
+     * A byte-route job whose row is simply gone is NOT this: see [reportPruned].
      */
     private fun reportUnrecoverable(count: Int, site: String) {
         if (count == 0) return
         log.e {
-            "$site: $count upload job(s) could not be resolved to a ledger row — their outcomes are " +
-                "discarded and those rows stay REQUESTED; nothing else will report this"
+            "$site: $count upload job(s) carried no destination this build can map — their outcomes are " +
+                "discarded; nothing else will report this"
         }
+    }
+
+    /**
+     * Report jobs answered as **pruned** — their row was deleted by an authoritative walk because the photo left
+     * the library or the selection, possibly mid-upload — at `Info`. Expected, not a fault: raising these at
+     * `Error` would put a crash-reporting event behind every photo deleted or de-selected while uploading
+     * (decision record `changes/selection-is-the-walk`, D3).
+     */
+    private fun reportPruned(count: Int, site: String) {
+        if (count == 0) return
+        log.i { "$site: $count upload job(s) belong to rows the walk removed — acknowledged, nothing written" }
     }
 
     private fun acknowledgeJob(job: PHAssetResourceUploadJob) {

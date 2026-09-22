@@ -271,8 +271,9 @@ class IosUrlSessionUploadPlatform(
             // Never silent (`module-architecture`, "Absence is never silent"): the guard matched no row,
             // so this key was not REQUESTED — already settled, or pruned. That is a different fact from
             // "recorded", and it is the only line that would show a completion arriving for a row we no
-            // longer hold.
-            log.w { "task terminal: $key -> $state applied to NO row (not REQUESTED — already settled, or pruned)" }
+            // longer hold. `Info`, not `Warn`: a pruned row is routine now — an authoritative walk deletes an
+            // in-flight row whose photo left the library or the selection (`changes/selection-is-the-walk`, D2).
+            log.i { "task terminal: $key -> $state applied to NO row (not REQUESTED — already settled, or pruned)" }
         }
         if (!success) log.i { "task terminal: $key failed with ${error ?: "«unspecified»"}" }
         onTerminal()

@@ -25,6 +25,7 @@ sequenceDiagram
   Foreground->>statusPoller: start()
   par concurrent — awaited before the flow returns
     Foreground--)effects: pumpUploads()
+    Foreground--)effects: settleStoredUploads()
     Foreground--)effects: refreshStatus()
     opt only when activeEventId() resolves
       Foreground--)downloadController: reconcile(…)
