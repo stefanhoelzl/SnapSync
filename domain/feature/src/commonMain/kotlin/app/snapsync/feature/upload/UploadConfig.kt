@@ -99,9 +99,10 @@ sealed interface CycleGate {
 
     /**
      * Joined, but this process may not create — the extension under any grant but `GRANTED`, the app without
-     * usable access, before its partial grant's selection has been read, or switched off by the rig. Settle **narrowly** (record and acknowledge what the platform
-     * presented; create nothing) and publish nothing: a grant is temporary, so the empty manifest a declined direction publishes would wrongly
-     * blank this device's photos from the event.
+     * usable access, before its partial grant's selection has been read, or switched off by the rig. Settle
+     * **narrowly** (record and acknowledge what the platform presented; create nothing) and publish nothing: a
+     * grant is temporary, so the empty manifest a declined direction publishes would wrongly blank this device's
+     * photos from the event.
      */
     data class Withheld(val config: UploadConfig) : CycleGate
 

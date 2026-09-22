@@ -35,7 +35,7 @@ class SelectionScopeTest {
     }
 
     @Test
-    fun `LIMITED before the first snapshot is unread, neither widened nor empty`() {
+    fun `LIMITED before the first snapshot is unread and neither widened nor empty`() {
         // THE LOAD-BEARING CASE. `null` is the gap between a grant turning partial and the first
         // observer emission. Collapsing it to Unrestricted would let discovery walk the whole library
         // under a grant whose entire point is that it may not; collapsing it to an empty Scoped would read

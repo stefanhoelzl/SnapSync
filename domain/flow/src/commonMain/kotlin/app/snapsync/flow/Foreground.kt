@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay in the shell (platform surfaces `flow/`
  * cannot reach); every step that touches a port ([reloadConfig] the membership re-read,
- * [pumpUploads] the tier pump, [refreshStatus] the read-model refreshes,
+ * [uploads] the tier pump and the stored-upload settle, [refreshStatus] the read-model refreshes,
  * [fetchEventDetails] the directory fetch, [activeEventId] the config read, [refreshAttestation] the
  * token wake) arrives as a `model`-typed effect lambda built in `compose/`.
  *
@@ -68,12 +68,8 @@ class Foreground(
     private val statusPoller: StatusCountsPoller,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
-    /** What the upload arm contributes to a foreground entry: the tier pump, a no-op wherever the resolved
-     *  mechanism declines (on iOS >=26.1 under a full grant the OS owns the scheduling). */
-    private val pumpUploads: suspend () -> Unit,
-    /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
-     *  `upload-state-reconciliation`) — the listing fetch and the guarded write, injected. */
-    private val settleStoredUploads: suspend () -> Unit,
+    /** What the upload side contributes to a foreground entry: two independent steps, see [ForegroundUploads]. */
+    private val uploads: ForegroundUploads,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
     /** The active event id, or `null` when unjoined — the config read, injected (a port touch). */
@@ -118,13 +114,13 @@ class Foreground(
             // Moving it here changes nothing about when `run()` returns — `coroutineScope` still awaits
             // it — so the shell's completion report to the OS stays truthful. It changes only what the
             // pump is allowed to hold up: itself (capability `sync-status`).
-            launch { pumpUploads() }
+            launch { uploads.pump() }
             // Beside the pump, NOT behind it (capability `upload-state-reconciliation`, "Foreground settles
             // in-flight rows the backend already stores"): bytes can land long before the OS acknowledges their
             // job, and the pump can await one cycle for many minutes — while this exists to correct the status
             // the member is looking at now. Its one write is the guarded terminal write the platform's callbacks
             // already make beside a running cycle, so it needs no ordering with it.
-            launch { settleStoredUploads() }
+            launch { uploads.settleStored() }
             launch { refreshStatus() }
             // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
             launch { activeEventId()?.let { downloadController.reconcile(it) } }
@@ -159,3 +155,20 @@ class Foreground(
         }
     }
 }
+
+/**
+ * What the upload side contributes to a [Foreground] entry: two steps the flow launches as **independent
+ * children**, neither sequenced behind the other.
+ *
+ * One parameter rather than two because the flow tier's constructor ceiling is a ratchet
+ * (`config/detekt/flow.yml`), and both are the upload side's; the flow still orders each on its own, and each
+ * still arrives as a `compose/`-built effect (flow-no-ports).
+ */
+class ForegroundUploads(
+    /** The tier pump — a no-op wherever the resolved mechanism declines (on iOS >=26.1 under a full grant the OS
+     *  owns the scheduling). It awaits a whole upload cycle, which can take many minutes after a long suspension. */
+    val pump: suspend () -> Unit,
+    /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
+     *  `upload-state-reconciliation`) — the listing fetch and the guarded write. */
+    val settleStored: suspend () -> Unit,
+)

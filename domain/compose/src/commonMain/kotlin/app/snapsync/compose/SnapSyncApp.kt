@@ -36,7 +36,6 @@ import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.version.AppVersionGate
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.ExtensionRegistration
-import app.snapsync.feature.upload.StoredUploadSettle
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
@@ -544,10 +543,6 @@ class AppCore internal constructor(
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(ports) }
 
-    // The foreground settle of in-flight uploads (capability `upload-state-reconciliation`), built in
-    // `storedUploadSettleFor`. App-only: the extension never settles from the listing.
-    private val storedUploadSettle: StoredUploadSettle by lazy { storedUploadSettleFor(ports) }
-
     // The in-place reconfigure use-case (capability `reconfigure-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
     // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
@@ -796,18 +791,8 @@ class AppCore internal constructor(
             membershipRefresh = membershipRefresh,
             statusPoller = statusCountsPoller,
             reloadConfig = ports.reloadConfig,
-            // Delivered unconditionally to the app engine; its cycle's entry gate declines while another
-            // mechanism is resolved (`upload-lifecycle`, "Triggers are delivered to the mechanism and
-            // declined explicitly").
-            //
-            // This used to branch on permission here — GRANTED to the tier's pump, LIMITED to the
-            // selection drain — and that branch was compensating for thunks that could not see the
-            // permission. It said exactly one thing: on an OS carrying the OS-driven mechanism under a
-            // full grant, do not pump, because the OS owns scheduling. That IS the resolution, and the
-            // engine's gate now says it once. (The two pump entry points it chose between have identical
-            // bodies; the choice was never between them.)
-            pumpUploads = { ports.appDrivenUpload().onForeground() },
-            settleStoredUploads = { storedUploadSettle.settle() },
+            // The tier pump and the stored-upload settle, built in `foregroundUploadsFor`.
+            uploads = foregroundUploadsFor(ports),
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,

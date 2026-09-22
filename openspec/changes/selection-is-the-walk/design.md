@@ -158,8 +158,12 @@ row is untouched, as is a row that settled meanwhile. A later OS acknowledgement
 and does nothing. No new ledger operation is added. `markTerminal` already dings `changes`, so the status
 poller and read-models pick up the settle.
 
-**Where it runs.** It is one more launch in `flow/Foreground`, next to `pumpUploads`, reached as a
-`compose/`-built effect (flow-no-ports), in the app process only. It is **not** sequenced behind the pump.
+**Where it runs.** It is one more launch in `flow/Foreground`, next to the pump, reached as a
+`compose/`-built effect (flow-no-ports), in the app process only. The pump and the settle arrive together in
+one `ForegroundUploads` bundle (`uploads.pump()`, `uploads.settleStored()`), which the flow launches as two
+independent children. It is one parameter rather than two because `Foreground`'s constructor sat at the flow
+tier's ceiling of 10. The user chose bundling over raising the ceiling or folding the settle into the pump
+effect, since folding would move the concurrency decision out of the flow. It is **not** sequenced behind the pump.
 The pump awaits a whole cycle, measured at up to 774 s after a long suspension (`SNAPSYNC-16`), and this
 settle exists precisely to correct the status on return. The handoff said the settle runs "on the app's
 writer lane". What that phrase is meant to protect holds without serialization, because the settle writes
