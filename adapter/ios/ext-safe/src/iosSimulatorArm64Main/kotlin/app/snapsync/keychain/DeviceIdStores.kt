@@ -5,6 +5,7 @@ package app.snapsync.keychain
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.StoredProtection
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -127,8 +128,14 @@ internal class AppGroupFileSecureStore(
         SecureStoreRead.Found(text, StoredProtection.BACKGROUND_READABLE)
     }
 
+    /**
+     * A store that cannot persist says so the way the port does — [SecureStoreUnavailable], which the
+     * composition roots catch and defer on — never with a bare `IllegalStateException` that nothing
+     * catches. Found by `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`), the first run it had.
+     */
     override fun write(value: String): Unit = memScoped {
-        val path = filePath() ?: error("App Group container '$LEDGER_APP_GROUP' unavailable — cannot persist the device id")
+        val path = filePath()
+            ?: throw SecureStoreUnavailable("App Group container '$LEDGER_APP_GROUP' unavailable — cannot persist the device id")
         val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData
             ?: error("device id did not encode as UTF-8")
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
@@ -137,7 +144,7 @@ internal class AppGroupFileSecureStore(
             options = NSDataWritingAtomic or NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication,
             error = errorVar.ptr,
         )
-        if (!ok) error("device-id file write failed: ${errorVar.value?.localizedDescription}")
+        if (!ok) throw SecureStoreUnavailable("device-id file write failed: ${errorVar.value?.localizedDescription}")
     }
 
     /** Nothing to migrate: [read] reports the protection this store always writes. */
