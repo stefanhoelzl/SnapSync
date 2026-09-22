@@ -89,16 +89,12 @@
 
 ## 7. Verification on real platforms
 
-- [ ] 7.1 Simulator (`ios-simulator` skill): a `LIMITED` grant with a seeded library — select, upload,
-      de-select, and confirm over the control channel that the rows are gone and the manifest omits the photo.
-      Re-select and confirm it is listed again. Cold-launch under `LIMITED` and confirm the first cycle
-      logs Withheld until the selection is read, and deletes nothing.
-- [ ] 7.2 Device (`snapsync-device` + `rig-channel`, lease first, an event created for the test): repeat the
-      2026-09-22 downgrade probe (`/device/uploaders?app=off`, airplane mode, narrow to 2 of 4, network back).
-      Expect: the 2 de-selected rows gone and unlisted, the 2 selected rows `COMPLETED` at the next foreground,
-      the status "In sync", and no `Error` line in `ext-debug.log` for the pruned jobs once full access
-      returns.
-- [ ] 7.3 Record the device result (date, build, iOS) in the design's Context or the PR description.
+- [x] 7.1 ~~Simulator~~ — not runnable: `simctl` has no limited photo grant (`ios-simulator` skill). The
+      partial-grant scenarios are covered over the real composed core instead
+      (`SelectionIsTheWalkIntegrationTest`, including the measured downgrade).
+- [x] 7.2 Device — done on the SE2 (iOS 26.6, 2026-09-22, rig Debug build of `6c81e2c6`); see the design's
+      "Device verification".
+- [x] 7.3 Recorded in the design ("Device verification").
 
 ## 8. At sync/archive time (not before; the user drives it)
 

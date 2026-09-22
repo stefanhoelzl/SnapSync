@@ -47,6 +47,26 @@ re-derived):
 - `resourcesFor` costs ~4.5 ms per request + ~3.45 ms per photo. For 100 photos: batch 1 took 0.80–0.94 s,
   batch 4 0.46 s, batch 16 0.37 s.
 
+### Device verification (SE2, iOS 26.6, 2026-09-22, rig Debug build of `6c81e2c6`)
+
+This replays the morning's downgrade probe on a fresh event created for the test, with the app's uploader
+switched off (`/device/uploaders?app=off`):
+
+1. Four camera photos were taken (Live Photos, so 8 resources), and airplane mode was turned on. A forced
+   extension cycle created all 8 jobs offline (one resolve and create per row, ~8 ms per create). The rows
+   were `REQUESTED`.
+2. Access was narrowed to `LIMITED` with 2 of the 4 selected, and the network was turned back on.
+3. At relaunch the app cycle logged `onForeground(app=Withheld …)` until the selection was read: the unread
+   scope withheld it. After the first selection emission it logged `4 row(s) of assets the walk no longer
+   returns — deleting them` (the 2 de-selected photos, both still `REQUESTED`), then `settled 2 in-flight
+   row(s) whose bytes the backend already stores`, then the manifest PUT.
+4. One more foreground settled the second selected photo, whose bytes had landed after the first listing.
+   The ledger read 1952 completed / 0 pending (1950 loaded at join + the 2 selected photos, with no row for
+   the de-selected ones), and the status read `InSync`.
+5. Access was returned to `GRANTED` and an extension cycle was forced. The drain logged `drainTerminals: 4
+   upload job(s) belong to rows the walk removed — acknowledged, nothing written` at `Info`. The selected
+   photos' 4 jobs found their rows already `COMPLETED` (no-op). No `Error` line was logged in either process.
+
 ## Goals / Non-Goals
 
 **Goals:**
