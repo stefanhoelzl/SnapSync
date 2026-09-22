@@ -184,9 +184,9 @@ class ProducerExclusivityTest {
                 "a compared transition wrote the registration under ${device.grant} — $where",
             )
         }
-        if (step is Step.Override && step.pin?.extension == false && device.joined &&
-            device.osSupported && device.grant == PermissionStatus.GRANTED
-        ) {
+        val switchedOff = step is Step.Override && step.pin?.extension == false
+        val couldDeregister = device.joined && device.osSupported && device.grant == PermissionStatus.GRANTED
+        if (switchedOff && couldDeregister) {
             assertTrue(!device.registration.registered, "switching the extension off left it registered — $where")
         }
         if (step == Step.Join && extensionRegistrable(device.osSupported, device.grant, device.pin)) {

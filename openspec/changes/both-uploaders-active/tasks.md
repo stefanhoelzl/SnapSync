@@ -50,11 +50,11 @@
 
 ## 8. Device verification (SE2, `rig-channel`, before merge)
 
-- [ ] 8.1 iOS ≥26.1, full grant: a new photo ends as one `COMPLETED` row whichever process uploaded it; the object exists once
-- [ ] 8.2 Re-scan the joined event: registration record and in-flight extension jobs survive (no disable in the log)
-- [ ] 8.3 `GRANTED → LIMITED → GRANTED`: nothing is cancelled, no registration write is attempted under `LIMITED`, every row ends settled
-- [ ] 8.4 Probe the open question: queue extension jobs under a full grant, downgrade to `.limited`, record whether the OS completes and presents them; write the result into `ios-photokit-upload` "The registration cannot be changed under a partial grant"
-- [ ] 8.5 Download-only membership: extension stays registered, its launches return `SKIPPED`, no heartbeat is re-armed, manifest is empty
+- [x] 8.1 iOS ≥26.1, full grant: a new photo ends as one `COMPLETED` row whichever process uploaded it; the object exists once
+- [x] 8.2 Re-scan the joined event: registration record and in-flight extension jobs survive (no disable in the log) — on device the link gate absorbs a repeated link before any provision runs; the `Stay` branch itself is pinned by `ProvisionTest`
+- [x] 8.3 `GRANTED → LIMITED → GRANTED`: nothing is cancelled, no registration write is attempted under `LIMITED`, every row ends settled
+- [x] 8.4 Probe the open question: queue extension jobs under a full grant, downgrade to `.limited`, record whether the OS completes and presents them; write the result into `ios-photokit-upload` "The registration cannot be changed under a partial grant"
+- [x] 8.5 Download-only membership: extension stays registered, its launches return `SKIPPED`, no heartbeat is re-armed, manifest is empty
 
 ## 9. Spec hygiene at sync/archive (Purpose sections cannot be edited through a delta)
 

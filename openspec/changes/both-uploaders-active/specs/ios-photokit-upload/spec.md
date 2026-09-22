@@ -315,12 +315,14 @@ to a full grant is a permission change whose compared register re-registers thro
 only if the record reads absent. Under a **full** grant a deregistration happens only at a leave or through a
 development uploader switch turning the extension off. Decision record: `changes/both-uploaders-active`.
 
-**Unmeasured:** whether the OS still completes and presents a surviving registration's **in-flight** jobs
-under `.limited` — that is, whether a withheld `process()` is handed them for acknowledgement and their objects
-land. If it does not, those rows stay `REQUESTED` until a full grant returns, which is the same exposure as a
-job the OS loses and is accepted on the same terms (`changes/both-uploaders-active`, Open Questions). Probe:
-full grant, queue several extension jobs, downgrade to `.limited`, observe `process()` and the objects. The
-result SHALL be recorded in this requirement.
+**Measured (SE2, iOS 26.6, 2026-09-22):** jobs a surviving registration queued under a full grant **survive** a
+`GRANTED → LIMITED → GRANTED` round trip. Four extension jobs were created under `GRANTED`, access was narrowed to
+`.limited` within about a minute, and a withheld `process()` forced about 45 s later was presented **none** of
+them — their rows stayed `REQUESTED`, and neither uploader touched them. After access returned to `GRANTED` the
+first OS invocation of the extension presented all four as succeeded, and its guarded write recorded them
+`COMPLETED`. Whether the bytes moved during the `.limited` interval or only after is not established; either way
+nothing was lost or duplicated. While access stays `.limited` those rows stay `REQUESTED`, which is the accepted
+exposure (`changes/both-uploaders-active`). ⏰ Re-measure at the next iOS major.
 
 #### Scenario: A limited grant never waits on the extension
 - **WHEN** photo access is `LIMITED` and an upload-inclusive membership has pending work
