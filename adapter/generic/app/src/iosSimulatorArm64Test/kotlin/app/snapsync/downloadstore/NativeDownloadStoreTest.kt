@@ -1,7 +1,14 @@
 package app.snapsync.downloadstore
 
 import app.snapsync.ports.DownloadStore
-import app.snapsync.world.DownloadStoreContract
+import app.snapsync.contracts.Binding
+import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.Entered
+import app.snapsync.contracts.Host
+import app.snapsync.contracts.DownloadStoreContract
+import app.snapsync.contracts.DownloadStoreState
+import app.snapsync.contracts.verify
+import kotlin.test.Test
 
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.downloadstore.db.DownloadDatabase
@@ -21,9 +28,20 @@ import app.snapsync.downloadstore.db.DownloadDatabase
  *
  * In-memory for test isolation; the on-disk path is exercised by the manual app run.
  */
-class NativeDownloadStoreTest : DownloadStoreContract() {
+class NativeDownloadStoreTest {
 
-    override fun createStore(): DownloadStore {
+    /** The contract, bound on this host (IOS_SIM_KEXE). Every clause starts from a fresh, empty store. */
+    private val binding = object : Binding<DownloadStoreState, DownloadStore> {
+        override val host = Host.IOS_SIM_KEXE
+        override val kind = BindingKind.Live
+        override val reaches = setOf(DownloadStoreState.EMPTY)
+        override fun create(state: DownloadStoreState, clauseId: String) = Entered.Ready(createStore())
+    }
+
+    @Test
+    fun `satisfies the DownloadStore contract`() = verify(DownloadStoreContract, binding)
+
+    private fun createStore(): DownloadStore {
         // A UNIQUE name per store, for the reason `NativeLedgerStoreTest` records: an in-memory
         // NativeSqliteDriver keyed by a fixed name uses a shared-cache `:memory:` db, so every
         // createStore() would reuse one database and leak rows across tests — unlike

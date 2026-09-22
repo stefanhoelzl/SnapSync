@@ -36,6 +36,9 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
+            // The fakes' own contract bindings (capability `port-contracts`): only this module's test
+            // source set can construct an `internal` fake in a chosen state.
+            implementation(project(":test:contracts"))
         }
     }
 }

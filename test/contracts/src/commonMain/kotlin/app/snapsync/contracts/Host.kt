@@ -30,3 +30,10 @@ enum class Host {
 
 /** Whether a binding is the honest fake, a real implementation run live, or a recording replayed. */
 enum class BindingKind { Fake, Live, Replay }
+
+/**
+ * The host this process is, for bindings compiled into a source set shared by several targets — the
+ * fakes' bindings in `commonTest`, which run on the JVM and the simulator alike. A binding for a single
+ * target names its host literally instead, which is what the contract-coverage gate reads.
+ */
+expect val currentHost: Host

@@ -1,7 +1,13 @@
 package app.snapsync.engine
 
 import app.snapsync.ports.LedgerStore
-import app.snapsync.world.LedgerStoreContract
+import app.snapsync.contracts.Binding
+import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.Entered
+import app.snapsync.contracts.Host
+import app.snapsync.contracts.LedgerStoreContract
+import app.snapsync.contracts.LedgerStoreState
+import app.snapsync.contracts.verify
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -15,9 +21,20 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
-class SqlDelightLedgerStoreTest : LedgerStoreContract() {
+class SqlDelightLedgerStoreTest {
 
-    override fun createBackend(): LedgerStore {
+    /** The contract, bound on this host (JVM). Every clause starts from a fresh, empty store. */
+    private val binding = object : Binding<LedgerStoreState, LedgerStore> {
+        override val host = Host.JVM
+        override val kind = BindingKind.Live
+        override val reaches = setOf(LedgerStoreState.EMPTY)
+        override fun create(state: LedgerStoreState, clauseId: String) = Entered.Ready(createBackend())
+    }
+
+    @Test
+    fun `satisfies the LedgerStore contract`() = verify(LedgerStoreContract, binding)
+
+    private fun createBackend(): LedgerStore {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         LedgerDatabase.Schema.create(driver)
         return SqlDelightLedgerStore(LedgerDatabase(driver))

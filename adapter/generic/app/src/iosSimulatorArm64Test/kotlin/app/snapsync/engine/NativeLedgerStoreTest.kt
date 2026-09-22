@@ -1,7 +1,14 @@
 package app.snapsync.engine
 
 import app.snapsync.ports.LedgerStore
-import app.snapsync.world.LedgerStoreContract
+import app.snapsync.contracts.Binding
+import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.Entered
+import app.snapsync.contracts.Host
+import app.snapsync.contracts.LedgerStoreContract
+import app.snapsync.contracts.LedgerStoreState
+import app.snapsync.contracts.verify
+import kotlin.test.Test
 
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.db.LedgerDatabase
@@ -12,9 +19,20 @@ import app.snapsync.engine.db.LedgerDatabase
  * creation, and the enum column adapter on Kotlin/Native. In-memory for test isolation; the on-disk
  * path is exercised by the manual app run.
  */
-class NativeLedgerStoreTest : LedgerStoreContract() {
+class NativeLedgerStoreTest {
 
-    override fun createBackend(): LedgerStore {
+    /** The contract, bound on this host (IOS_SIM_KEXE). Every clause starts from a fresh, empty store. */
+    private val binding = object : Binding<LedgerStoreState, LedgerStore> {
+        override val host = Host.IOS_SIM_KEXE
+        override val kind = BindingKind.Live
+        override val reaches = setOf(LedgerStoreState.EMPTY)
+        override fun create(state: LedgerStoreState, clauseId: String) = Entered.Ready(createBackend())
+    }
+
+    @Test
+    fun `satisfies the LedgerStore contract`() = verify(LedgerStoreContract, binding)
+
+    private fun createBackend(): LedgerStore {
         // A UNIQUE name per backend. An in-memory NativeSqliteDriver keyed by a fixed name uses a
         // shared-cache `:memory:` db, so every createBackend() would reuse one database and leak
         // rows across tests (unlike JdbcSqliteDriver.IN_MEMORY, which is private per driver — why

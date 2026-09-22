@@ -25,12 +25,9 @@ kover {
 // operator levers/wrappers that rig them (capability `harness-world-model`). Consumed by BOTH
 // `:app:desktop` (the full-stack harness) and `:test:integration`. Targets `jvm()` +
 // `iosSimulatorArm64` ONLY — it never links into a shipped framework, so no `iosArm64`; its
-// self-tests run on both per testing rule 1. `commonMain` also hosts the storage-seam CONTRACTS
-// (`LedgerStoreContract`, `DownloadStoreContract`, re-homed from the deleted `:domain:engine` /
-// `:domain:download-store` modules at step 10): a test source set cannot be depended on across
-// modules, and this is the one test-infra `commonMain` every implementor's test source set can
-// reach — which is why `kotlin("test")` is a commonMain dep here (test-only module, never on a
-// production classpath; same acceptance as the `MockEngine` mini-edge below).
+// self-tests run on both per testing rule 1. It hosts NO port contracts: those live in
+// `:test:contracts` (capability `port-contracts`), so this module's main code carries no assertion
+// library.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
@@ -53,20 +50,6 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.serialization.json)
-            // The re-homed storage-seam contracts carry @Test scenarios (see the module note above).
-            implementation(kotlin("test"))
-            implementation(libs.coroutines.test)
-        }
-        // kotlin-test's @Test on JVM comes from a framework artifact; the Kotlin plugin attaches it
-        // automatically to TEST compilations only, so a main-source-set contract names it explicitly.
-        //
-        // JUnit 4 specifically, because that is what the CONSUMERS of these contracts run on — this is
-        // NOT the build-wide default, and the comment used to claim it was ("the framework every jvm
-        // test task in this build runs on"). It isn't: `:test:architecture` and `:tools:diagrams` both
-        // call `useJUnitPlatform()` (JUnit 5), and the Compose UI tests pull JUnit 4 separately via
-        // `compose.desktop.uiTestJUnit4`. Match whichever framework the consuming task actually uses.
-        jvmMain.dependencies {
-            implementation(kotlin("test-junit"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

@@ -1,4 +1,4 @@
-package app.snapsync.world
+package app.snapsync.contracts
 
 import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource

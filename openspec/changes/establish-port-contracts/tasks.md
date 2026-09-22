@@ -9,11 +9,11 @@
 
 ## 2. Convert the storage contracts
 
-- [ ] 2.1 Move `LedgerStoreContract` to `:test:contracts` as clause values, one clause per existing `@Test`, same names and assertions, single `Empty` state
-- [ ] 2.2 Same for `DownloadStoreContract`
-- [ ] 2.3 Repoint the SQLDelight (jvm) and native-driver (sim) tests in `:adapter:generic:app` to bindings over the moved contracts
-- [ ] 2.4 Move the fake bindings from `:test:world` `commonTest` to `:adapter:generic:fake` `commonTest`
-- [ ] 2.5 Remove the contracts and the `commonMain` `kotlin-test` dependency from `:test:world`; confirm nothing else in its `commonMain` used it
+- [x] 2.1 Move `LedgerStoreContract` to `:test:contracts` as clause values, one clause per existing `@Test`, same names and assertions, single `Empty` state
+- [x] 2.2 Same for `DownloadStoreContract`
+- [x] 2.3 Repoint the SQLDelight (jvm) and native-driver (sim) tests in `:adapter:generic:app` to bindings over the moved contracts
+- [x] 2.4 Move the fake bindings from `:test:world` `commonTest` to `:adapter:generic:fake` `commonTest`
+- [x] 2.5 Remove the contracts and the `commonMain` `kotlin-test` dependency from `:test:world`; confirm nothing else in its `commonMain` used it
 - [ ] 2.6 Compare each of the four bindings' outcome tables with the pre-move test results — identical clause count, all `Passed`
 
 ## 3. The `SecureStore` contract, the fake and the live bindings

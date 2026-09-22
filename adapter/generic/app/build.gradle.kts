@@ -60,21 +60,18 @@ kotlin {
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
-        // The SQLDelight stores' contract-backed tests (re-homed from the deleted `:domain:engine` /
-        // `:domain:download-store` modules at migration step 10). The shared contracts live in
-        // `:test:world`'s commonMain — the one test-infra surface every implementor can reach — so
-        // these are per-target source sets, NOT the intermediate `iosTest`: `:test:world` has no
-        // `iosArm64`, and the device-arm test compilation must not ask for it (tests run on the
-        // simulator only, per testing rule 1).
+        // The SQLDelight stores' contract bindings (capability `port-contracts`). The contracts live in
+        // `:test:contracts`' commonMain. Per-target source sets rather than `iosTest` because each target
+        // brings its own SQLDelight driver (JDBC on the JVM, native on the simulator).
         val jvmTest by getting {
             dependencies {
-                implementation(project(":test:world"))
+                implementation(project(":test:contracts"))
                 implementation(libs.sqldelight.driver.sqlite)
             }
         }
         val iosSimulatorArm64Test by getting {
             dependencies {
-                implementation(project(":test:world"))
+                implementation(project(":test:contracts"))
                 implementation(libs.sqldelight.driver.native)
             }
         }
