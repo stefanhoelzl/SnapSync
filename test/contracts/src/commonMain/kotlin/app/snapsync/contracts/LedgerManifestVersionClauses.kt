@@ -1,59 +1,48 @@
-package app.snapsync.world
+package app.snapsync.contracts
 
 import app.snapsync.model.LedgerEntry
+import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerState
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 
-import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 
 /**
  * The manifest version of the storage seam (capability `sync-ledger`, "The manifest version orders the
  * device's manifest snapshots"): a counter that advances on every change that could alter the device
- * manifest's projection, and on nothing else. Run by every `LedgerStore` binding through
- * [LedgerStoreContract], which extends this class — a split for size only, like [LedgerRecordGuardContract].
+ * manifest's projection, and on nothing else. Part of [LedgerStoreContract]'s clause list — a split for size
+ * only, like [recordGuardClauses].
  *
  * "Advances" is asserted as "greater than", never as an exact step, except for the explicit bump: the SQLite
  * store advances once per row a statement touches, and the count is not part of the contract.
  */
-abstract class LedgerManifestVersionContract : LedgerRecordGuardContract() {
-
-    @Test
-    fun `a fresh store reads version zero`() = runTest {
-        assertEquals(0L, createBackend().manifestVersion())
+internal fun ClauseList<LedgerStoreState, LedgerStore>.manifestVersionClauses() {
+    clause("a fresh store reads version zero", LedgerStoreState.EMPTY) { backend ->
+        assertEquals(0L, backend.manifestVersion())
     }
 
-    @Test
-    fun `an inserted row advances the version`() = runTest {
-        val backend = createBackend()
+    clause("an inserted row advances the version", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry())
         assertTrue(backend.manifestVersion() > 0L)
     }
 
-    @Test
-    fun `a deleted row advances the version`() = runTest {
-        val backend = createBackend()
+    clause("a deleted row advances the version", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry())
         val before = backend.manifestVersion()
         backend.deleteKeys(listOf(entry().key))
         assertTrue(backend.manifestVersion() > before)
     }
 
-    @Test
-    fun `a delete that matched nothing leaves the version alone`() = runTest {
-        val backend = createBackend()
+    clause("a delete that matched nothing leaves the version alone", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry())
         val before = backend.manifestVersion()
         backend.deleteKeys(listOf("never-recorded"))
         assertEquals(before, backend.manifestVersion())
     }
 
-    @Test
-    fun `a detail backfill advances the version`() = runTest {
-        val backend = createBackend()
+    clause("a detail backfill advances the version", LedgerStoreState.EMPTY) { backend ->
         // A bare row, as the join-time load seeds it: no capture date, no role, no detail.
         backend.resetTo(listOf(LedgerEntry("A-primary.heic", "A", LedgerState.COMPLETED)))
         val before = backend.manifestVersion()
@@ -61,28 +50,22 @@ abstract class LedgerManifestVersionContract : LedgerRecordGuardContract() {
         assertTrue(backend.manifestVersion() > before)
     }
 
-    @Test
-    fun `a terminal write leaves the version alone`() = runTest {
+    clause("a terminal write leaves the version alone", LedgerStoreState.EMPTY) { backend ->
         // The manifest carries no upload state; a bump per finished upload would republish every cycle.
-        val backend = createBackend()
         backend.recordUnlessSettled(entry(state = LedgerState.REQUESTED))
         val before = backend.manifestVersion()
         assertTrue(backend.markTerminal(entry().key, TerminalOutcome.COMPLETED))
         assertEquals(before, backend.manifestVersion())
     }
 
-    @Test
-    fun `a record that changes only state or destination leaves the version alone`() = runTest {
-        val backend = createBackend()
+    clause("a record that changes only state or destination leaves the version alone", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(state = LedgerState.DISCOVERED))
         val before = backend.manifestVersion()
         backend.recordUnlessSettled(entry(state = LedgerState.REQUESTED, destinationPath = "/d"))
         assertEquals(before, backend.manifestVersion())
     }
 
-    @Test
-    fun `a record that changes a projected field advances the version`() = runTest {
-        val backend = createBackend()
+    clause("a record that changes a projected field advances the version", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(state = LedgerState.DISCOVERED))
         val before = backend.manifestVersion()
         val live = LedgerEntry(
@@ -94,9 +77,7 @@ abstract class LedgerManifestVersionContract : LedgerRecordGuardContract() {
         assertTrue(backend.manifestVersion() > before)
     }
 
-    @Test
-    fun `a declined record leaves the version alone`() = runTest {
-        val backend = createBackend()
+    clause("a declined record leaves the version alone", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry(state = LedgerState.COMPLETED))
         val before = backend.manifestVersion()
         val stale = LedgerEntry(entry().key, "B", LedgerState.DISCOVERED, creationDate = "2020-01-01T00:00:00Z")
@@ -104,9 +85,7 @@ abstract class LedgerManifestVersionContract : LedgerRecordGuardContract() {
         assertEquals(before, backend.manifestVersion())
     }
 
-    @Test
-    fun `the reset family advances the version and never resets it`() = runTest {
-        val backend = createBackend()
+    clause("the reset family advances the version and never resets it", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry())
         val afterRecord = backend.manifestVersion()
         backend.clear()
@@ -116,9 +95,7 @@ abstract class LedgerManifestVersionContract : LedgerRecordGuardContract() {
         assertTrue(backend.manifestVersion() > afterClear, "resetTo inserts rows, so it advances")
     }
 
-    @Test
-    fun `an explicit bump advances the version by exactly one`() = runTest {
-        val backend = createBackend()
+    clause("an explicit bump advances the version by exactly one", LedgerStoreState.EMPTY) { backend ->
         backend.recordUnlessSettled(entry())
         val before = backend.manifestVersion()
         backend.bumpManifestVersion()

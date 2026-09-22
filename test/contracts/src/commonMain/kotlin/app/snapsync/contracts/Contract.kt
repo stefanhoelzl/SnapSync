@@ -32,6 +32,24 @@ abstract class Contract<K : Enum<K>, T>(val name: String) {
 
     protected fun clause(id: String, state: K, body: suspend TestScope.(subject: T) -> Unit) =
         Clause(id, state, body)
+
+    /**
+     * Builds the clause list as a sequence of `clause(...) { }` statements rather than one comma-separated
+     * expression. Duplicate ids are refused here: recordings and addresses are keyed by them.
+     */
+    protected fun clauses(build: ClauseList<K, T>.() -> Unit): List<Clause<K, T>> =
+        ClauseList<K, T>().apply(build).built.also { list ->
+            val dup = list.groupBy { it.id }.filterValues { it.size > 1 }.keys
+            require(dup.isEmpty()) { "$name declares duplicate clause ids: $dup" }
+        }
+}
+
+class ClauseList<K : Enum<K>, T> internal constructor() {
+    internal val built = mutableListOf<Clause<K, T>>()
+
+    fun clause(id: String, state: K, body: suspend TestScope.(subject: T) -> Unit) {
+        built += Clause(id, state, body)
+    }
 }
 
 /**
