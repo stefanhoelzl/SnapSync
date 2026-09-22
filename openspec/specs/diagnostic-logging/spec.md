@@ -151,6 +151,12 @@ consequence is stated rather than left implicit — a new entry point that decid
 logging will not fail any build, and a defect of the shape described above will again be undiagnosable
 from a device log.
 
+Where a composition root reaches its process's **inbound port** by delegation (`module-architecture`,
+"OS entry points cross an inbound port"), the port's implementation in `compose/` SHALL write that entry's
+enter and exit lines, so the obligation sits in code that is covered rather than in the shell; the
+`@PlatformEntry` marker SHALL sit on the port's members. The marker is documentation of this obligation,
+checked by review; no guard derives or checks its population.
+
 **User taps SHALL be instrumented as entry points too**, decorated where the command bundle is
 built (spec `module-architecture`, "Commands cross one door": instances are decorated only in
 `compose/`), so that every line in the device log traces to a named trigger.
@@ -164,6 +170,12 @@ built (spec `module-architecture`, "Commands cross one door": instances are deco
 - **WHEN** a new delegate method forwards to a new composition-root member
 - **THEN** that member is instrumented with the enter/exit convention as part of the change, and its
   absence is caught in review rather than by a build failure
+
+#### Scenario: A delegated entry is logged by the core
+
+- **WHEN** the OS invokes an inbound-port member on a composition root
+- **THEN** the enter line, with the raw inputs, and the exit line naming the outcome come from the port's
+  implementation in `compose/`, and the root contributes no logging body of its own
 
 ### Requirement: Ambient entry-point context prefix
 

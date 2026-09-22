@@ -480,8 +480,10 @@ with no ObjC header — but `RawRepresentable` over `Int`). The mapping from `Cy
 system result SHALL be the tested, **exhaustive** Kotlin function
 `CycleResult.processingResultRawValue()` (`:domain` `ports/`, raw values pinned in `commonTest`:
 `failure` = 0, `processing` = 1, `completed` = 2; `completed` and `skipped` — nothing to do — both
-map to the completed raw value). The extension root SHALL expose it as `processRawValue()` (wiring
-only, no branch), and the Swift principal class SHALL construct the result via
+map to the completed raw value). The extension's cycle SHALL be reached through the extension's
+inbound port, `ExtensionEntries.process(): CycleResult`, implemented over `uploadCore` in `compose/` (`module-architecture`, "OS entry points cross an
+inbound port"); the extension root SHALL expose `processRawValue()` as that call with the mapping applied
+(wiring only, no branch), and the Swift principal class SHALL construct the result via
 `init?(rawValue:)`, mapping a `nil` (a raw value the SDK enum does not carry) to `.failure` — so
 an untaught value surfaces as a retried, visible failure, never a silently "successful" upload
 cycle. A future Kotlin `CycleResult` case cannot slip through untaught: the exhaustive `when`

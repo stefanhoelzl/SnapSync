@@ -23,6 +23,9 @@ Decision record: `changes/archive/2026-06-17-ios-first-target`; the retirement o
 the forge target's extraction: `changes/archive/2026-08-24-retire-launch-env-triggers`; the scene-rebuild
 rule, the create-don't-reuse contract and the placeholder's backdrop:
 `changes/archive/2026-08-26-stop-rebuilding-the-composed-scene`; subscribing for process-metric reports at process start: `changes/archive/2026-09-14-add-os-exit-attribution`.
+
+Decision record for the inbound ports and the shell as their driving adapter: `changes/archive/2026-09-22-shell-as-driving-adapter`.
+
 ## Requirements
 ### Requirement: iOS application shell
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a
@@ -364,10 +367,16 @@ build only — the source of the per-uploader development switch (the app's crea
 registration on/off). Whether the extension may be registered (`extensionRegistrable`: the OS carries it
 **and** the grant is `GRANTED`), and whether each uploader may create, are `upload-lifecycle`'s, re-read at
 every transition, and this spec SHALL NOT restate those rules. The root SHALL construct the OS-driven
-registration **only** where its selector exists, so a lower system cannot reach a trapping call. Every OS
-entry point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilentPush` /
-`runUploadHeartbeat` / `runDownloadBackstop` / `handleBackgroundUrlSession`) SHALL be a thin
-delegator to a single live shell delegate, re-checking no tier and deciding nothing.
+registration **only** where its selector exists, so a lower system cannot reach a trapping call. The root
+SHALL implement the app's inbound port `PlatformEntries` (`onForeground` / `onBackground` / `onOpenUrl` /
+`onPushToken` / `onSilentPush` / `onBackgroundTask` / `onBackgroundTransfers`) **by Kotlin delegation** to
+the implementation the shared composition builds (`module-architecture`, "OS entry points cross an inbound
+port"), supplying it only the in-process hooks it cannot name — the host's `onOpenUrl`, the host's lazy
+assembly, the push-token delivery, and the record that the app became active — and the adapter
+identifiers it routes by, as data. The root SHALL
+hold no hand-written forwarding for a port member, re-check no tier, and decide nothing; the only entry
+points it writes by hand are the ones outside the port (`onLaunch`, `onUserActivity`, and the log-only scene
+and registration-failure callbacks).
 
 The permission-grant subscriptions (the upload permission-change transition; sole-creator album ensure —
 see `event-album`) SHALL be installed by an explicit `AppCore.installPermissionSubscriptions()`
@@ -389,15 +398,15 @@ foreground-gated poll); the background entry drives the Background flow (which *
 and arms the backstop). A background launch installs the observers and simply never receives
 `didBecomeActive`. The scope SHALL outlive Compose
 recomposition so the source collector and container are not torn down with the view.
-`MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
-`host.onRequestPermission` / `host.onOpenSettings`, the leave action to `host.onLeaveEvent`, and
-the share action to `host.onShareInvite`; it SHALL collect the container's invite URL
-(`host.inviteUrl`) and pass it to `StatusScreen`, together with the root's shared
+`MainViewController` SHALL render `host.container.stateFlow` and pass `StatusScreen` the callback bundle
+built by the shared factory over the host (`sync-status-screen`, "The screen's callback bundle is built in
+one place") — writing no tap → intent binding of its own — together with the root's shared
 `CutoffFormatter` (the screen carries no system-reading default). `SnapSyncRoot` SHALL expose
 `onUserActivity(NSUserActivity)` — the scene delegate forwards every delivered activity **whole**,
 and the tested `model/` filter-and-dispatch (`forwardEventLink`) keeps only a browsing-web
 activity with a URL and routes its complete `absoluteString` to `onOpenUrl(String)`, which
-reaches the container's `onOpenUrl` intent (through the live delegate).
+reaches the container's `onOpenUrl` intent (through the inbound port's implementation and the root's host
+hook).
 
 #### Scenario: The root assembles the real stack
 
@@ -445,8 +454,8 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 #### Scenario: Permission action flows through the container
 
 - **WHEN** the user activates the gate's "Allow access" or "Open Settings"
-- **THEN** `MainViewController` invokes the container intent, which fires the bundle's
-  `requestAccess`/`openSettings` command, whose compose-built body calls the
+- **THEN** the shared callback bundle `MainViewController` renders with invokes the container intent,
+  which fires the bundle's `requestAccess`/`openSettings` command, whose compose-built body calls the
   `PhotoAccessRequester` port — the UI never calls PhotoKit directly and names no port
 
 #### Scenario: An event link flows through the container
@@ -454,14 +463,14 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 - **WHEN** `SnapSyncRoot.onUserActivity` receives a browsing-web activity carrying a
   `https://<link domain>/join#…` event link
 - **THEN** the tested filter routes the complete URL to `onOpenUrl`, which forwards (through the
-  live delegate) to the container's `onOpenUrl` intent, which decodes and (on success) saves via
+  inbound port's implementation and the root's host hook) to the container's `onOpenUrl` intent, which decodes and (on success) saves via
   the `ConfigStore` (the file-backed config store, whose App-Group file is its only storage),
   updating the `ConfigSource`
 
 #### Scenario: The leave action flows through the command bundle into the use-case
 
 - **WHEN** the user confirms the leave action in the joined layer
-- **THEN** `MainViewController` invokes `host.onLeaveEvent`, which fires the bundle's `leave`
+- **THEN** the shared callback bundle invokes `host.onLeaveEvent`, which fires the bundle's `leave`
   command — cancelling in-flight downloads, then running the composed `LeaveEvent` (stopping the
   uploads via the arm's leave transition — deregistering the extension, cancelling the app's transfers,
   stopping its heartbeat — then clearing the upload ledger through the `LedgerStore`'s reset
@@ -471,7 +480,7 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 #### Scenario: The share action flows through the command bundle into the platform share
 
 - **WHEN** the user activates the share action in the joined layer
-- **THEN** `MainViewController` invokes `host.onShareInvite`, which fires the bundle's `share`
+- **THEN** the shared callback bundle invokes `host.onShareInvite`, which fires the bundle's `share`
   command with the invite link, and the `SharePresenter` port the root supplied —
   `:adapter:ios:app-only`'s `IosShareSheet`, whose presenter walk is adapter technology mechanics —
   presents a `UIActivityViewController` carrying that link; the UI never constructs UIKit directly
@@ -490,6 +499,12 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
   background-`URLSession` relaunch, without the host-assembly path running
 - **THEN** touching the composed graph installs no permission-grant collector and runs no launch
   reconcile, so no registration is written and no engine is armed
+
+#### Scenario: The root writes no forwarding for a port member
+
+- **WHEN** the OS invokes a `PlatformEntries` member on `SnapSyncRoot`
+- **THEN** the call reaches the shared composition's implementation through compiler-generated delegation,
+  and no hand-written body in the root stands between them
 
 ### Requirement: On-disk native ledger on iOS
 
@@ -670,7 +685,11 @@ Every background entry point of both processes SHALL log, to the device diagnost
 import-tail backstop, its silent-push handler, its background-`URLSession` handler, and the extension's
 `process()`.
 
-The **app** SHALL log protected-data availability directly (it can ask `UIApplication`). The
+The **app** SHALL log protected-data availability read through the need-named `ProtectedStorage` port
+("is protected storage readable now?"), whose iOS adapter in `:adapter:ios:app-only` asks `UIApplication`;
+the line SHALL be written by the inbound port's implementation in `compose/` (`module-architecture`, "OS
+entry points cross an inbound port"), not by the shell. The port feeds this diagnostic only and SHALL NOT
+gate any work. The
 **extension** cannot: `UIApplication` is unavailable to app extensions and the platform offers no
 equivalent, so it SHALL instead log the status returned by each protected read it performed — every
 Keychain read and, since migration step 11a, the config-file read — the only
@@ -690,6 +709,12 @@ reached its protected state — and of diagnosing it when it does not.
 - **WHEN** a protected read (a Keychain item or the config file) fails during background work
 - **THEN** the logged line carries the entry-point prefix of the trigger that started it, so the failure
   is traceable to the backstop, the silent push, the URL-session handler, or the extension cycle
+
+#### Scenario: The protected-storage read reaches the log through a port
+
+- **WHEN** the app's silent-push, backstop, or background-transfer entry runs
+- **THEN** the logged protected-data state is the `ProtectedStorage` port's answer, and no `:domain` code
+  names `UIApplication`
 
 ### Requirement: Background triggers re-read the membership and fail cleanly before first unlock
 
@@ -741,15 +766,18 @@ ever observed in production.)
 Every OS-supplied completion handler the shell receives SHALL be released only after the work that wake
 triggered has completed, or after a per-entry-point deadline has expired, whichever comes first. Those
 handlers are the background-`URLSession` handler for **each** session
-(`handleEventsForBackgroundURLSession`), each `BGTask`'s `setTaskCompleted`, and the silent-push fetch
-handler. Releasing one declares to the system that the app is done and may be suspended; releasing it
+(`handleEventsForBackgroundURLSession`, reaching the core as `onBackgroundTransfers`), each `BGTask`'s
+`setTaskCompleted` (reaching it as `onBackgroundTask`), and the silent-push fetch handler.
+Releasing one declares to the system that the app is done and may be suspended; releasing it
 while the wake's work is merely *queued* is what freezes the process mid-flight.
 
 The handler SHALL be carried by a type whose only release path takes the work as a `suspend` block, so
 that releasing early is not expressible at a call site. That type SHALL live in `:domain` `ports/`, not in
 `:app:*` — the shell is wiring-only and untested by rule, so behaviour placed there cannot be covered.
-The shell SHALL construct it from the raw handler at the Kotlin edge; Swift SHALL continue to forward an
-opaque handler and decide nothing.
+The inbound port's implementation in `compose/` SHALL construct it from the raw handler it receives as a
+port argument (`module-architecture`, "OS entry points cross an inbound port"); the shell SHALL hand the
+handler over by delegation and construct nothing, and Swift SHALL continue to forward an opaque handler and
+decide nothing.
 
 The deadline SHALL be a per-entry-point constant, and where the OS offers its own expiry signal that
 signal SHALL take precedence over the constant. When the deadline expires the handler SHALL be released
@@ -988,8 +1016,9 @@ uploader's cycle decides at its entry gate, through the app's own admission, whe
 root SHALL NOT bind per-tier upload behaviour, and no entry point SHALL re-check a tier, the grant, or the
 registration. Decision record: `changes/both-uploaders-active`.
 
-The entry point SHALL construct the `OsReceipt` for its own OS wake, using the deadline named for that wake, and
-SHALL hold it across the delegated call — so the engine receives a plain `suspend` trigger and never holds a raw
+The entry point's implementation — the inbound port's, in `compose/` — SHALL construct the `OsReceipt` for its own
+OS wake, using the deadline named for that wake, and SHALL hold it across the delegated call —
+so the engine receives a plain `suspend` trigger and never holds a raw
 OS completion handler. A cycle that declines still returns, so the handler is still released.
 
 A cold background launch reaches the engine like any other entry: nothing about the host having been assembled
@@ -1009,7 +1038,32 @@ decides whether the trigger does work.
 
 #### Scenario: No entry point re-checks a tier
 
-- **WHEN** the shell's upload-driving entry points are inspected
+- **WHEN** the upload-driving entry points are inspected, in the inbound port's implementation and in the shell
 - **THEN** none of them branches on an upload tier, the grant or the registration, and none binds a
-  per-tier thunk
+  per-tier thunk; the only comparison among them routes a background task or transfer channel by the
+  identifier the OS delivered
 
+### Requirement: Background tasks are forwarded by the identifier the OS delivered
+
+Each `BGTaskScheduler` registration in the Swift shell SHALL forward the delivered task's own `task.identifier`,
+with a completion that completes the task, to the single inbound-port member `onBackgroundTask(identifier,
+completion)`; no registration SHALL name a Kotlin entry specific to one task. The core SHALL route the identifier
+to its handler (the download import-tail backstop, the upload heartbeat) and SHALL release the completion, logged,
+for an identifier it does not know. The registrations' identifier literals stay where the runtime-identity guard
+pins them (capability `architecture-guards`).
+
+Two registrations with the same shape, each naming its own Kotlin entry, compile whichever entry they name; the
+only Swift → Kotlin cross the compiler would not reject was that pair. Forwarding the identifier the OS delivered
+removes the choice from Swift.
+
+#### Scenario: The download backstop task fires
+
+- **WHEN** the OS launches the `app.snapsync.download.backstop` task
+- **THEN** Swift forwards that identifier to `onBackgroundTask`, the core runs the download backstop flow under
+  the backstop deadline, and the task is completed after the work
+
+#### Scenario: A registration block is copied for a new task
+
+- **WHEN** a third registration is added by copying an existing block
+- **THEN** it still forwards the identifier the OS delivers, so a copy cannot route the new task to an existing
+  task's handler; an identifier the core does not know is released and logged
