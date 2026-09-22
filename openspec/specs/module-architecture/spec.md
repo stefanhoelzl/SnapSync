@@ -42,9 +42,12 @@ existence; a module justified by no law is a package with a derived text gate in
 - **Contained modules** — each exists so that something is absent from a production build, governed
   by "A build-time-only module is contained by compilation, not by a runtime check": `:app:ios:forge`
   (its own binary target, linked under `-Psnapsync.forge`), `:test:rig` (contributes its own call
-  site into the iOS app shell, linked under `-Psnapsync.rig`). A contained module is grouped by the law that
-  governs it, **not** by its name prefix: these two are the same species and the containment law
-  describes exactly their two shapes.
+  site into the iOS app shell, linked under `-Psnapsync.rig`), `:test:contracts` (the port contracts,
+  linked under `-Psnapsync.rig` into the app and into the rig-gated source set of the extension-safe
+  adapter module; it withholds the test-assertion library from every other main source set — it is the
+  only module whose main code may assert). A contained module is grouped by the law that governs it,
+  **not** by its name prefix: these three are the same species and the containment law describes
+  exactly their shapes.
 - **Support modules** — never linked into any shipped-format binary, and exempt from the
   production-module laws: `:test:world`, `:test:integration`, `:test:architecture`,
   `:test:harness-driver`, `:tools:diagrams`.
@@ -575,6 +578,14 @@ inert branch. A separate target linking neither the shell module nor the live gr
 property the binary cannot express, rather than one that a set of no-op members must each preserve
 correctly.
 
+Where the contained module's consumer needs a withholding module's `internal` declarations — an
+adapter's operating-system seam, which the port-contract device binding records through — that
+withholding module's build script MAY add a source directory to its own source set **only under the
+same property**. The same all-or-nothing guarantee applies: without the property the directory is not on
+the compile path, and with it the directory and the contained module arrive together. The directory
+SHALL depend on nothing beyond the contained module, and no declaration SHALL be widened for it — reaching
+`internal` from inside the owning module is the reason it lives there.
+
 This is the inverse of `:adapter:generic:fake`, which never links into a shipped framework at all.
 
 A dev/test control surface SHALL NOT rely on **runtime** inertness in a shipped binary. A launch-environment
@@ -604,6 +615,11 @@ because the file reading it is absent from a production build.
   source alone would leave the shell naming a missing type
 - **THEN** it is given its own binary target over its own module, linking neither the shell module nor the
   live graph, rather than remaining an inert branch in the shipped one
+
+#### Scenario: A withholding module carries a property-gated source directory
+- **WHEN** a withholding module's build script adds a source directory only under a containment property
+- **THEN** a build without the property compiles none of it, the directory depends on nothing beyond the
+  contained module, and no declaration in the withholding module is widened for it
 
 #### Scenario: The module still withholds a dependency
 - **WHEN** the module is added to the module set

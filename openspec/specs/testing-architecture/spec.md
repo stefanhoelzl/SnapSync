@@ -51,7 +51,7 @@ Logic tests SHALL live in `commonTest`, so they compile and run on every target 
 — JVM as the fast loop and `iosSimulatorArm64` as the target that ships. A platform-specific test
 source set SHALL hold only what that platform's toolchain makes unrunnable elsewhere, and where a
 sibling target has an equivalent implementation the two SHALL meet in a shared contract hosted in
-`:test:world`'s `commonMain` (`LedgerStoreContract`, `DownloadStoreContract`).
+`:test:contracts`' `commonMain` (capability `port-contracts`).
 
 `commonTest` is where a test **goes** once placement is decided; it SHALL NOT be a reason to
 **move** code. Hoisting a platform-to-neutral translation into `model/` to reach the faster test
@@ -153,8 +153,9 @@ Feature tests that drive `:domain` subjects through the honest in-memory port im
 live in `:adapter:generic:fake`'s own `commonTest`. `:domain`'s test source set cannot reach those
 fakes: `:adapter:generic:fake` depends on `:domain`, so a test edge back from `:domain` is a project
 dependency cycle, and a test source set cannot be depended on across modules at all — which is the
-same constraint that puts the shared storage contracts in `:test:world`'s `commonMain`
-(`harness-world-model`).
+same constraint that puts the shared port contracts in `:test:contracts`' `commonMain`
+(`port-contracts`). The fakes' own contract bindings live in the same `commonTest`, for the same
+reason: only the fake module's test source set can construct an `internal` fake in a chosen state.
 
 `:domain`'s `commonTest` SHALL therefore hold only tests standing on pure functions or hand-written
 local doubles.
@@ -184,15 +185,21 @@ The `:test:*` modules SHALL exist only where they provide something a production
 SHALL remain exempt from the production-module laws (`module-architecture`, "The module set
 withholds"):
 
-- **`:test:world`** — the controllable in-memory world and the shared storage-seam contracts,
-  consumed by both `:app:desktop` and `:test:integration` (capability `harness-world-model`).
+- **`:test:world`** — the controllable in-memory world, consumed by both `:app:desktop` and
+  `:test:integration` (capability `harness-world-model`).
+- **`:test:contracts`** — the port-contract mechanism and every port contract, consumed by the
+  bindings' test source sets and linked into the app only under `-Psnapsync.rig=true` (capability
+  `port-contracts`).
 - **`:test:integration`** — the seam-to-UI-state surface above.
 - **`:test:architecture`** — JVM guards over the repository's own text (capability
   `architecture-guards`, which owns what each guard checks).
 - **`:test:harness-driver`** and **`:test:rig`** — non-gating dev infrastructure with no spec,
   contained at compile time.
 
-No production module's **main** source set SHALL depend on a `:test:*` module.
+No production module's **main** source set SHALL depend on a `:test:*` module. A source set that a
+build script adds only under a containment property (`module-architecture`, "A build-time-only module
+is contained by compilation, not by a runtime check") is not a main source set of a production build,
+and MAY depend on the contained module that property links.
 
 #### Scenario: A production module reaches for test infrastructure
 

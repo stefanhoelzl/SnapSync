@@ -38,14 +38,10 @@ backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`, `Fake
 The module SHALL declare targets `jvm()` and `iosSimulatorArm64` **only** (no `iosArm64` — it
 never links into a shipped framework), so its logic and self-tests execute on **both** JVM and the
 iOS simulator per capability `testing-architecture` ("Every test runs on every target its module
-declares"). Its `commonMain` SHALL also host the shared storage-seam
-contracts (`LedgerStoreContract`, `DownloadStoreContract`) — a test source set cannot be depended
-on across modules, and this is the one test-infra `commonMain` every implementor's test source set
-(`:test:world` commonTest for the fakes, `:adapter:generic:app` `jvmTest`/`iosSimulatorArm64Test` for
-the SQLDelight stores) can reach. It SHALL be consumed by **both** the desktop full-stack harness
+declares"). It SHALL NOT host port contracts: those live in `:test:contracts` (capability
+`port-contracts`), which is also the only test-infra module the device app may link. It SHALL be consumed by **both** the desktop full-stack harness
 (`:app:desktop`) and the `:test:integration` module. Nothing in a production `domain`/`adapter`
-module's **main** source sets SHALL depend on `:test:world` (the adapter test source sets extending
-the contracts are test compilations, so no production edge is introduced).
+module's **main** source sets SHALL depend on `:test:world`.
 
 #### Scenario: Runs on JVM and the simulator
 

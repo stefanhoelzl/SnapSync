@@ -129,14 +129,16 @@ Three roles SHALL be distinguished, and a module SHALL be placed in each deliber
 - **Bounded** — its own classes are measured against a bound. Every instrumented module except
   `:adapter:generic:fake`.
 - **Neither** — not instrumented, so its tests contribute nothing and its classes are not measured:
-  `:test:integration`, `:test:world`, `:test:architecture`, `:tools:diagrams`, and the modules with
+  `:test:integration`, `:test:world`, `:test:contracts`, `:test:architecture`, `:tools:diagrams`, and the modules with
   no test source set at all (`:app:desktop`, `:test:harness-driver`).
 
 `:adapter:generic:fake` is instrumented but **not** bounded, and the split is the point: the tests in
 its `commonTest` are `:domain`'s feature tests, hosted there only because a test source set cannot be
 depended on across modules (`testing-architecture`, "Fake-driven feature tests live in the fake
 module"), while the fakes themselves are test equipment and bounding them would ratchet the harness
-rather than the product. The same reasoning excludes `:test:world`'s classes.
+rather than the product. The same reasoning excludes `:test:world`'s classes, and `:test:contracts`':
+the contract mechanism and the contracts are test equipment. A contract bound from an instrumented
+module's own tests still credits that module, as the storage contracts always have.
 
 `:test:world` is additionally **not instrumented**, because its `commonTest` is the tier
 `testing-architecture` names in "The world hosts feature tests over the real stack" — real features

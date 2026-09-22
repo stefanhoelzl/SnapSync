@@ -396,10 +396,10 @@ whose applied/not-applied answer is read inside that statement's own transaction
 transaction; `deleteKeys` SHALL delete by primary key in chunks below every driver's bind-variable limit;
 `aggregates()` SHALL be a single
 SQL round-trip (an `assetId`-grouped query). Every `LedgerStore` implementation SHALL satisfy the
-shared `LedgerStoreContract` (hosted in `:test:world` commonMain since step 10): the JVM/sqlite and
-native (simulator) driver tests extend it from `:adapter:generic:app`'s test source sets, and
-`:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — extends it
-from `:test:world`'s own tests. Every other `LedgerStore` test double SHALL honour the record guard and
+shared `LedgerStoreContract` (hosted in `:test:contracts`, capability `port-contracts`): the JVM/sqlite
+and native (simulator) driver bindings live in `:adapter:generic:app`'s test source sets, and
+`:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — is bound
+from `:adapter:generic:fake`'s own tests. Every other `LedgerStore` test double SHALL honour the record guard and
 `deleteKeys` the same way, so no test passes against a store that does something the device does not. The
 native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
 factory over the App-Group container.
