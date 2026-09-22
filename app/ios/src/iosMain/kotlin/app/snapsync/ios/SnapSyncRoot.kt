@@ -58,6 +58,7 @@ import app.snapsync.download.IosStagedBytes
 import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.link.IosLinkOpener
 import app.snapsync.ports.PlatformHandoff
+import app.snapsync.ports.PlatformEntries
 import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
@@ -142,7 +143,7 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
  * shipped a provision path that destroyed its ledger and started nothing (capability `upload-lifecycle`).
  */
-object SnapSyncRoot {
+object SnapSyncRoot : PlatformEntries by spikeEntries() {
 
     init {
         // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
@@ -787,7 +788,7 @@ object SnapSyncRoot {
      * entry point here it is a thin pass-through to [shell], deciding nothing.
      */
     @PlatformEntry
-    fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
+    override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
         everActive = true
         shell.onForeground()
     }
@@ -799,7 +800,7 @@ object SnapSyncRoot {
      * idle/charging window even if no further download wakes the app (capability `photo-download`, 5.4).
      */
     @PlatformEntry
-    fun onBackground() = log.invocation("onBackground") { shell.onBackground() }
+    override fun onBackground() = log.invocation("onBackground") { shell.onBackground() }
 
     /**
      * Install the UIKit lifecycle observers and realize this object — called by the Swift
@@ -1043,7 +1044,7 @@ object SnapSyncRoot {
      * auto-confirms when the link carries `autoJoin=true` (the dev/headless trigger), or flashes the
      * invalid-link error. The app no longer provisions directly on scan — the gate owns that.
      */
-    fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") { shell.onOpenUrl(url) }
+    override fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") { shell.onOpenUrl(url) }
 
     /**
      * The OS delivered an APNs device token (capability `push-registration`), forwarded raw-hex from the
@@ -1051,8 +1052,7 @@ object SnapSyncRoot {
      * source; the registration collector PUTs `devices/<id>/config`. Idempotent across launches and
      * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
      */
-    @PlatformEntry
-    fun onPushToken(hex: String) =
+    internal fun spikePushToken(hex: String) =
         log.invocation("onPushToken", params = "hex=${hex.take(12)}…") { shell.onPushToken(hex) }
 
     /**
@@ -1081,8 +1081,8 @@ object SnapSyncRoot {
      * is assembled on a background launch. Non-throwing: a failure still calls [completion].
      */
     @PlatformEntry
-    fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) =
-        log.invocation("onSilentPush") { shell.onSilentPush(userInfo, completion) }
+    override fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) =
+        log.invocation("onSilentPush") { shell.onSilentPush(payload, completion) }
 
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
@@ -1420,3 +1420,15 @@ object SnapSyncRoot {
  */
 @OptIn(DelicateCoroutinesApi::class)
 private val compositionLane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-composition")
+
+// SPIKE (shell-as-driving-adapter task 1): proves a member implemented by `by` delegation is exported to ObjC
+// under the name Swift calls. Reverted once the Xcode build answers.
+private fun spikeEntries(): PlatformEntries = object : PlatformEntries {
+    override fun onForeground() = Unit
+    override fun onBackground() = Unit
+    override fun onOpenUrl(url: String) = Unit
+    override fun onPushToken(hex: String) = SnapSyncRoot.spikePushToken(hex)
+    override fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) = completion()
+    override fun onBackgroundTask(identifier: String, completion: () -> Unit) = completion()
+    override fun onBackgroundTransfers(channel: String, completion: () -> Unit) = completion()
+}
