@@ -6,22 +6,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.SceneMode
-import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
+import app.snapsync.ui.statusActions
 import app.snapsync.ui.components.LocalReduceMotion
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
 import platform.UIKit.UIColor
 import platform.UIKit.UIViewController
 import platform.UIKit.systemBackgroundColor
-import app.snapsync.ui.JoinGateActions
-import app.snapsync.ui.JoinedActions
-import app.snapsync.ui.AccessActions
-import app.snapsync.ui.SurfaceActions
-import app.snapsync.ui.SwitchActions
-import app.snapsync.ui.ParticipationActions
-import app.snapsync.ui.components.RangeChoiceActions
 
 /**
  * The iOS entry point. The Swift app (iosApp/) calls [MainViewController] to obtain the root
@@ -142,71 +134,8 @@ private fun composeScene(): UIViewController =
                 // The root's one system-bound formatter (migration step 9: the screen's default died with
                 // the through-ports repayment; forge and live share this same instance).
                 cutoff = SnapSyncRoot.cutoffFormatter,
-                actions = statusActions(host, photoPermission)
+                // The one tap → intent table (spec `sync-status-screen`); this shell binds no tap itself.
+                actions = statusActions(host, SnapSyncRoot.shareableCount, photoPermission),
             )
         }
     }
-
-/**
- * The wiring table from the container's intents to what the screen asks for.
- *
- * Its own function because it decides nothing — it is the shell's whole job, and keeping it out of the
- * entry point keeps that entry point readable as what it is (spec `module-architecture`, "Shells are
- * wiring only").
- */
-private fun statusActions(host: StatusContainerHost, photoPermission: PermissionStatus) =
-    StatusActions(
-                    join = JoinGateActions(
-                        onConfirmJoin = host::onConfirmJoin,
-                        onAcknowledgeAccess = host::onAcknowledgeAccess,
-                        onCancelJoin = host::onCancelJoin,
-                        onRetryLoad = host::onRetryLoad,
-                        onRetryJoin = host::onRetryJoin,
-                    ),
-                    joined = JoinedActions(
-                        onLeaveEvent = host::onLeaveEvent,
-                        onShareInvite = host::onShareInvite,
-                        onReconfigure = host::onReconfigure,
-                        // The heading rename (capability `event-rename`): the command, its lifecycle, and the
-                        // latch reset the screen fires once it has acted on a terminal value.
-                        onRenameEvent = host::onRenameEvent,
-                        onRenameStatusConsumed = host::onRenameStatusConsumed,
-                    ),
-                    access = AccessActions(
-                        onRequestPermission = host.access::onRequestPermission,
-                        onOpenSettings = host.access::onOpenSettings,
-                        onChoosePhotos = host.access::onChoosePhotos,
-                    ),
-                    surfaces = SurfaceActions(
-                    onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
-                    onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
-                    onRenameOpen = host.surfaces::onRenameOpen,
-                    onRenameDismiss = host.surfaces::onRenameDismiss,
-                    onOpenReconfigure = host.surfaces::onOpenReconfigure,
-                    onCancelReconfigure = host.surfaces::onCancelReconfigure,
-                    onReportBugOpen = host.surfaces::onReportBugOpen,
-                    onReportBugDismiss = host.surfaces::onReportBugDismiss,
-                ),
-                switch = SwitchActions(
-                        onConfirmSwitch = host::onConfirmSwitch,
-                        onCancelSwitch = host::onCancelSwitch,
-                    ),
-                    onSendDiagnostics = host.onSendDiagnostics,
-                    onCreateEvent = host::onCreateEvent,
-                    onOpenLink = { host.onOpenAppStore() },
-                    // The join-time shareable-count preview (capability `join-share-count`): the
-                    // permission-aware, no-network query, plus the live grant as its recompute trigger.
-                    participation = ParticipationActions(
-                    choices = RangeChoiceActions(
-                        onFromPreset = host.form::onFromPreset,
-                        onFromCustom = host.form::onFromCustom,
-                        onUntilPreset = host.form::onUntilPreset,
-                        onUntilCustom = host.form::onUntilCustom,
-                    ),
-                    onShareOn = host.form::onShareOn,
-                    onReceiveOn = host.form::onReceiveOn,
-                    onSaveToAlbum = host.form::onSaveToAlbum,
-                    shareableCount = SnapSyncRoot.shareableCount,
-                    photoPermission = photoPermission,
-                ),
-            )

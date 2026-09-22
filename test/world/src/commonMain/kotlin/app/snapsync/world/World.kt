@@ -10,6 +10,7 @@ import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.fake.inMemoryAttestClient
+import app.snapsync.fake.inMemoryProtectedStorage
 import app.snapsync.fake.inMemoryAttestKey
 import app.snapsync.fake.inMemoryAttestStore
 import app.snapsync.fake.inMemoryDeviceLogSource
@@ -474,6 +475,8 @@ class World(
                 sent = diagnosticsSent,
                 isConfigured = true,
             ),
+            // A device unlocked since boot: the background entry points record this, and nothing decides on it.
+            protectedStorage = inMemoryProtectedStorage(),
             // The device logs a dump reads back (capability `diagnostic-logging`) — empty until an
             // operator seeds them, which is honest: a world has no device writing log files.
             deviceLogSource = inMemoryDeviceLogSource(deviceLogs),

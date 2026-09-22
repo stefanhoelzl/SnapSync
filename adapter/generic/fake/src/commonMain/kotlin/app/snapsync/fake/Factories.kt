@@ -17,6 +17,7 @@ import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoSelectionChangeSource
+import app.snapsync.ports.ProtectedStorage
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
@@ -121,3 +122,7 @@ fun inMemoryStagedBytes(
     files: MutableSet<String> = mutableSetOf(),
     root: String = "staged:/",
 ): StagedBytes = InMemoryStagedBytes(files, root)
+
+/** [readable] is the caller's own cell: a device unlocked since boot by default. */
+fun inMemoryProtectedStorage(readable: MutableStateFlow<Boolean> = MutableStateFlow(true)): ProtectedStorage =
+    InMemoryProtectedStorage(readable)

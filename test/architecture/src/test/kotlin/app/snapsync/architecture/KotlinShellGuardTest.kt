@@ -21,10 +21,7 @@ import kotlin.test.fail
  * gate can never pass by scanning nothing (the `appShellSources` list going stale after a module
  * rename is precisely how the flip would have passed vacuously).
  *
- * The pinned sites (each carries its forcing proof as a comment at the suppression):
- *  - `SnapSyncRoot.kt` ×1 — the background-`URLSession` callback routing. UIKit delivers ONE app
- *    delegate callback for every session identifier, and this app owns two OS-reattached sessions.
- *    Expiry: dies with the 18–26.0 tier.
+ * The pinned site (it carries its forcing proof as a comment at the suppression):
  *  - `MainViewController.kt` ×1 — the one switch on the resolved `SceneMode`, which decides whether a
  *    Compose scene is composed at all (capability `ios-app-shell`). The DECIDING is `resolveScene`, pure
  *    and `commonTest`-covered; the sealed type exists so a third mode fails the compile. Expiry: dies
@@ -37,6 +34,11 @@ import kotlin.test.fail
  * the branches went away. That distinction is worth keeping in view: the decisions still exist, they are
  * simply no longer in the shipped shell, and they are no longer tested by anything either (a cost recorded
  * deliberately in `test/rig/build.gradle.kts`).
+ *
+ * `SnapSyncRoot.kt` held one more — the background-`URLSession` routing by session identifier — until the
+ * shell became a driving adapter (`shell-as-driving-adapter`): the routing moved into the core's implementation
+ * of the app's inbound port, where the port contract covers it, and the root reaches it by delegation. That pin
+ * left because the decision left the shell, and unlike the rig's, it is now tested.
  */
 class KotlinShellGuardTest {
 
@@ -98,7 +100,6 @@ class KotlinShellGuardTest {
 
     /** file (relative) → pinned `@Suppress("CyclomaticComplexMethod")` count. Exact, both directions. */
     private val pins: Map<String, Int> = mapOf(
-        "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to 1,
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/MainViewController.kt" to 1,
     )
 

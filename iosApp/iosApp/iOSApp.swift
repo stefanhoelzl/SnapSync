@@ -32,18 +32,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         ) { task in
             // Kotlin holds this task until the drain finishes; no expiry ⇒ the OS kills us instead.
             task.expirationHandler = { task.setTaskCompleted(success: false) }
-            SnapSyncRoot.shared.runDownloadBackstop {
+            SnapSyncRoot.shared.onBackgroundTask(identifier: task.identifier) {
                 task.setTaskCompleted(success: true)
             }
         }
         // The app-driven (iOS 18–26.0) upload heartbeat: tops up the background URLSession queue and
         // catches new captures while the app is closed. No-op on ≥26.1 (the PhotoKit extension runs).
+        // Both registrations forward the OS's own `task.identifier`, never their literal: Kotlin routes it, so a
+        // copied block cannot hand one task to the other's handler (capability `ios-app-shell`).
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.snapsync.upload.heartbeat",
             using: nil
         ) { task in
             task.expirationHandler = { task.setTaskCompleted(success: false) }
-            SnapSyncRoot.shared.runUploadHeartbeat {
+            SnapSyncRoot.shared.onBackgroundTask(identifier: task.identifier) {
                 task.setTaskCompleted(success: true)
             }
         }
@@ -74,7 +76,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {
-        SnapSyncRoot.shared.handleBackgroundUrlSession(identifier: identifier, completionHandler: completionHandler)
+        SnapSyncRoot.shared.onBackgroundTransfers(channel: identifier, completion: completionHandler)
     }
 
     // The OS delivered the APNs device token — forward it as lowercase hex to Kotlin, which registers it

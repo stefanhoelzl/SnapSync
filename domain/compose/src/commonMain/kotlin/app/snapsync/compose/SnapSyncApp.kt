@@ -95,6 +95,7 @@ import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
+import app.snapsync.ports.ProtectedStorage
 import kotlin.time.Instant
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
@@ -234,6 +235,10 @@ class AppPorts(
     /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
      *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
     val diagnosticsReporter: DiagnosticsReporter,
+    /** Whether protected storage is readable right now — recorded by the background entry points, deciding
+     *  nothing (capability `ios-app-shell`). Required, like the reporter: an entry that logged no answer would
+     *  look, in a device log, exactly like one that ran on an unlocked device. */
+    val protectedStorage: ProtectedStorage,
     /** The device logs a diagnostic dump reads back (capability `diagnostic-logging`). The default
      *  reads nothing: off-device compositions (world, harnesses) have no device logs, and a dump
      *  assembled there is honestly empty rather than fabricated. */
@@ -283,8 +288,8 @@ class AppPorts(
  * a locked background launch depends on.
  */
 class AppCore internal constructor(
-    private val scope: CoroutineScope,
-    private val ports: AppPorts,
+    internal val scope: CoroutineScope,
+    internal val ports: AppPorts,
 ) {
 
     init {

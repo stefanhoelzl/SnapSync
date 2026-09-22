@@ -59,6 +59,9 @@ import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.link.IosLinkOpener
 import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.PlatformEntries
+import app.snapsync.compose.EntryHooks
+import app.snapsync.compose.platformEntries
+import app.snapsync.protection.IosProtectedStorage
 import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
@@ -66,8 +69,6 @@ import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.uploadersCarried
-import app.snapsync.ports.OsReceipt
-import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.engine.iosLedgerStore
@@ -103,7 +104,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSDate
@@ -143,7 +143,7 @@ import platform.UIKit.UIApplicationWillResignActiveNotification
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
  * shipped a provision path that destroyed its ledger and started nothing (capability `upload-lifecycle`).
  */
-object SnapSyncRoot : PlatformEntries by spikeEntries() {
+object SnapSyncRoot : PlatformEntries by rootEntries() {
 
     init {
         // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
@@ -284,8 +284,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
     internal val osExtensionRegistryThunk: () -> UploadExtensionRegistry? =
         if (osSupportsOsDrivenUpload) ({ extensionRegistry }) else ({ null })
 
-    private val shell: Shell = LiveShell()
-
     /** BGTaskScheduler identifier for the download import-tail backstop — MUST match the Swift host's
      * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
     const val DOWNLOAD_BACKSTOP_TASK_ID: String = "app.snapsync.download.backstop"
@@ -305,32 +303,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
     val cutoffFormatter: CutoffFormatter by lazy {
         CutoffFormatter(now = SystemClock::now, zone = SystemTimeZone.current())
     }
-
-    /**
-     * Protected-data availability (capability `ios-app-shell`), read **directly** for the background
-     * entry points' diagnostics: the Keychain and the app/App-Group containers are unreadable before
-     * the first unlock since boot, and a background wake can land in exactly that window — this line
-     * in `debug.log` is the only way to see it after the fact. The defer-and-resume gate that used
-     * to sit here (`ProtectedDataGate`, `:domain:keychain`) is deleted (migration step 12, settled
-     * proof ④: zero deferrals across all production logs — dead code): the adapters distinguish
-     * unreadable from absent at every protected read, so a pre-first-unlock wake fails cleanly
-     * (nothing mints, clears, or leaves) and converges at the next trigger, whose flow re-reads the
-     * membership first (`AppPorts.reloadConfig`).
-     */
-    private suspend fun protectedDataAvailable(): Boolean =
-        // `UIApplication` is main-thread-only, and this scope no longer runs there (law "Dispatcher
-        // lanes are fixed by the composition") — so this read names the main lane explicitly instead
-        // of inheriting it. It is a property read, not work: nothing blocking may follow it onto main.
-        withContext(Dispatchers.Main) { protectedDataAvailableOnMain() }
-
-    /**
-     * The same read for entry points the OS already delivers **on the main thread**
-     * (`handleBackgroundUrlSession`, invoked by the app delegate), where hopping would be a
-     * round-trip to the thread we are on. Its name states the precondition, so the two forms cannot
-     * be confused: everything reached from the composition lane takes the suspending one above.
-     */
-    private fun protectedDataAvailableOnMain(): Boolean =
-        UIApplication.sharedApplication.isProtectedDataAvailable()
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
     // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
@@ -401,6 +373,8 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
                 // nothing else does.
                 uiLane = Dispatchers.Main,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
+                // Recorded by the background entry points; decides nothing (capability `ios-app-shell`).
+                protectedStorage = IosProtectedStorage(),
                 // The diagnostic dump's two device-side inputs (capability `diagnostic-logging`):
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
@@ -609,7 +583,7 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
     // dev/sideloaded builds, `production` for TestFlight/App Store. The token itself is OS-delivered
     // (the Swift AppDelegate forwards it via [onPushToken]); a rotation re-registers. Read through the
     // adapter, not inline: what an absent key becomes is a decision, and this shell holds none.
-    private val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
+    internal val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
 
     // Registers the device APNs token with the backend (PUT devices/<id>/config) over the shared Darwin
     // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
@@ -683,13 +657,13 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
      * live host: a marketing screenshot is rendered by a separate binary that does not link this module
      * at all.
      */
-    val renderHost: StatusContainerHost by lazy { shell.renderHost() }
+    val renderHost: StatusContainerHost by lazy { host }
 
     /** The join surface's shareable-count query (capability `join-share-count`) — the live query. */
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = shell.shareableCount
+    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = app::loadShareableCount
 
     /** The photo grant, the count's recompute trigger. */
-    val photoPermission: StateFlow<PermissionStatus> get() = shell.photoPermission
+    val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
     /**
      * Wrap a platform entry point that lives outside this object — today only
@@ -708,6 +682,11 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
      * is kept.
      */
     private var everActive: Boolean = false
+
+    /** Record that the app became active — the core's `onForeground` calls this first, as the entry always has. */
+    internal fun markActive() {
+        everActive = true
+    }
 
     /**
      * The scene generation this process has reached (capability `ios-app-shell`) — the value SwiftUI binds
@@ -780,27 +759,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
         everActive = true
         sceneGeneration
     }
-
-    /**
-     * The app became active (observed from Kotlin via `UIApplicationDidBecomeActive` — see
-     * [onLaunch]): refresh the status sources and start the foreground-gated ledger-counts poll so
-     * upload status moves live while the screen is shown (capability `sync-status`). Like every OS
-     * entry point here it is a thin pass-through to [shell], deciding nothing.
-     */
-    @PlatformEntry
-    override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
-        everActive = true
-        shell.onForeground()
-    }
-
-    /**
-     * The app is leaving the active state (`UIApplicationWillResignActive` — see [onLaunch]): stop
-     * the status poll (a suspended app cannot act on fresher counts) and queue the download
-     * import-tail backstop so any staged-but-unimported foreign assets get imported at the next
-     * idle/charging window even if no further download wakes the app (capability `photo-download`, 5.4).
-     */
-    @PlatformEntry
-    override fun onBackground() = log.invocation("onBackground") { shell.onBackground() }
 
     /**
      * Install the UIKit lifecycle observers and realize this object — called by the Swift
@@ -1004,18 +962,7 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
         }
     }
 
-    /**
-     * The `BGProcessingTask` import-tail backstop (capability `photo-download`, 5.4): drains any
-     * staged-but-not-yet-imported foreign assets when no further download event would wake the app
-     * (e.g. the last transfer overran its URLSession wake budget). OS-scheduled (idle/charging) via the
-     * Swift host's `BGTaskScheduler` registration; [onComplete] maps to `task.setTaskCompleted`.
-     * Discovery stays foreground-only — this imports already-downloaded work, it does not re-read the union.
-     */
-    @PlatformEntry
-    fun runDownloadBackstop(onComplete: () -> Unit) =
-        log.invocation("runDownloadBackstop") { shell.runDownloadBackstop(onComplete) }
-
-    /** Queue a `BGProcessingTask` request so the OS runs [runDownloadBackstop] at a future idle moment. */
+    /** Queue a `BGProcessingTask` request so the OS runs the download backstop (`onBackgroundTask`) at a future idle moment. */
     @OptIn(ExperimentalForeignApi::class)
     fun scheduleDownloadBackstop() {
         val request = BGProcessingTaskRequest(DOWNLOAD_BACKSTOP_TASK_ID)
@@ -1024,36 +971,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
         runCatching { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, null) }
             .onFailure { log.w(it) { "could not schedule download backstop" } }
     }
-
-    /**
-     * The system relaunched the app to finish background `URLSession` events (the Swift app delegate's
-     * `handleEventsForBackgroundURLSession` seam): the app-driven upload session (iOS 18–26.0) or the
-     * download session, routed by identifier inside the live shell.
-     */
-    @PlatformEntry
-    fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) =
-        log.invocation("handleBackgroundUrlSession", params = "identifier=$identifier") {
-            shell.handleBackgroundUrlSession(identifier, completionHandler)
-        }
-
-    /**
-     * An event link arrived (forwarded raw from the Swift entry point — the complete URL, fragment
-     * included, since the fragment carries the whole payload). Routed straight to
-     * the container's **join gate** (capability `join-event`): it decodes, and either opens the
-     * confirmation (a first join → full-screen; a different event while joined → switch dialog),
-     * auto-confirms when the link carries `autoJoin=true` (the dev/headless trigger), or flashes the
-     * invalid-link error. The app no longer provisions directly on scan — the gate owns that.
-     */
-    override fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") { shell.onOpenUrl(url) }
-
-    /**
-     * The OS delivered an APNs device token (capability `push-registration`), forwarded raw-hex from the
-     * Swift AppDelegate's `didRegisterForRemoteNotificationsWithDeviceToken`. Feed it to the token
-     * source; the registration collector PUTs `devices/<id>/config`. Idempotent across launches and
-     * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
-     */
-    internal fun spikePushToken(hex: String) =
-        log.invocation("onPushToken", params = "hex=${hex.take(12)}…") { shell.onPushToken(hex) }
 
     /**
      * APNs registration **failed** (capability `push-registration`), forwarded from the Swift
@@ -1071,18 +988,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
         log.invocation("onPushTokenFailure", params = "error=$description") {
             log.w { "APNs registration failed — no silent pushes will arrive: $description" }
         }
-
-    /**
-     * A silent (`content-available`) remote notification arrived (capability `push-registration`),
-     * its [userInfo] forwarded **whole** from the Swift AppDelegate (migration step 12 — the
-     * `eventId` extraction was a Swift `guard`; the tested `model/` codec owns it now, inside the
-     * SilentPush flow). The flow fans the push out to the arms' receivers, which — if it names the
-     * active event — reconcile downloads (union read + enqueue). Touch [host] so the download stack
-     * is assembled on a background launch. Non-throwing: a failure still calls [completion].
-     */
-    @PlatformEntry
-    override fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) =
-        log.invocation("onSilentPush") { shell.onSilentPush(payload, completion) }
 
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
@@ -1192,11 +1097,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
         )
     }
 
-    /** The upload heartbeat BGProcessingTask handler (app-driven tier). Registered in the Swift shell. */
-    @PlatformEntry
-    fun runUploadHeartbeat(onComplete: () -> Unit) =
-        log.invocation("runUploadHeartbeat") { shell.runUploadHeartbeat(onComplete) }
-
     /** Whether the iOS 26.1 background-upload API is present on this system. */
     @OptIn(ExperimentalForeignApi::class)
     private fun backgroundUploadSupported(): Boolean =
@@ -1208,188 +1108,6 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
             },
         )
 
-    /** The `onForeground` invocation params: the app uploader's admission and the registration fact. */
-    private fun foregroundParams(): String =
-        "app=${app.appUploadAdmission().name} extensionRegistrable=${app.extensionRegistrableNow()}" +
-            " osSupported=$osSupportsOsDrivenUpload"
-
-    // ── The shell delegate every OS entry point passes through ──────────────────────────────────
-
-    /**
-     * What every OS entry point delegates to.
-     *
-     * **One implementation** ([LiveShell]). It was once implemented per composition mode; the forge is a
-     * separate binary now and no switch chooses between them. What it still buys is enumerating the OS
-     * entry-point surface in one place, which is why it is kept — see the decision record
-     * `correct-superseded-composition-claims` (D2).
-     */
-    private interface Shell {
-        fun renderHost(): StatusContainerHost
-
-        /** The join-time shareable-count query (capability `join-share-count`). */
-        val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?
-
-        /** The photo grant, the count's recompute trigger. */
-        val photoPermission: StateFlow<PermissionStatus>
-        fun onForeground()
-        fun onBackground()
-        fun onOpenUrl(url: String)
-        fun onPushToken(hex: String)
-        fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit)
-        fun runUploadHeartbeat(onComplete: () -> Unit)
-        fun runDownloadBackstop(onComplete: () -> Unit)
-        fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit)
-    }
-
-    /**
-     * The live composition: the real stack.
-     *
-     * It takes **no tier thunks any more**. It used to take six, of which two were already identical
-     * between the tiers and the rest said "how is this mechanism kicked" — a question belonging to the
-     * mechanism, not to a table in a wiring-only module. Every OS entry point below now delegates to the
-     * *resolved* mechanism, which answers or declines for its own stated reason, so adding a third
-     * mechanism is a new producer rather than a new branch here.
-     */
-    private class LiveShell : Shell {
-        /** Touching [host] assembles the live stack (and installs the grant subscriptions). */
-        override fun renderHost(): StatusContainerHost = host
-
-        // The real permission-aware, no-network count query and the live grant (capability `join-share-count`).
-        override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = app::loadShareableCount
-        override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
-
-
-        override fun onForeground() {
-            // `scope.launch` because the flow is `suspend` now (law "A trigger flow never outlives its
-            // own run"). The entry line is the PUBLIC wrapper's — logging again here would emit two
-            // `→ onForeground` lines — so this reports the dispatch, not the flow. Acceptable only
-            // because this entry point carries no OS completion handler: nothing is falsely reported
-            // to the system, unlike the receipt paths.
-            scope.launch {
-                host
-                // The whole foreground coordination — membership re-read, attestation, pump, the
-                // foreground-gated status poll's start (the ding's replacement, spec `sync-status`),
-                // refresh / reconcile / name — is the flow's, and it is awaited.
-                app.foregroundFlow.run()
-            }
-        }
-
-        override fun onBackground() {
-            scope.launch {
-                // Stop the status poll + arm the backstop — the `flow/Background` trigger's coordination.
-                app.backgroundFlow.run()
-                log.i { "=== app entering background ===" }
-            }
-        }
-
-        // Braces, not `=`: the container's intent returns a Job and the seam is Unit.
-        override fun onOpenUrl(url: String) {
-            host.onOpenUrl(url)
-        }
-
-        override fun onPushToken(hex: String) {
-            // Touch [host] so the registration collector is running to observe it. No decision in Swift.
-            host
-            pushTokenSource.deliver(hex)
-        }
-
-        override fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) {
-            host
-            scope.launch {
-                // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
-                // HTTP + import lines it drives trace back to this push). The payload decode →
-                // membership re-read → attestation → cross-arm fan-out coordination is the
-                // `flow/SilentPush` trigger's (it absorbed FanOutPushReceiver); only the entry-point
-                // wrap and the OS completion handler stay shell-local.
-                // The OS handler is released by the receipt, after the fan-out or on its deadline —
-                // never before (capability `ios-app-shell`). The former `finally { completion() }` was
-                // structurally sound and still wrong: the flow it wrapped detached its own work, so the
-                // handler went out against a fan-out that had not started.
-                OsReceipt(
-                    entryPoint = "onSilentPush",
-                    deadline = ReceiptDeadlines.SILENT_PUSH,
-                    release = completion,
-                ).heldFor {
-                    log.invocation(
-                        "onSilentPush.run",
-                        params = "protectedData=${protectedDataAvailable()}",
-                    ) {
-                        app.silentPushFlow.run(userInfo)
-                    }
-                }
-            }
-        }
-
-        /**
-         * The `BGProcessingTask` heartbeat. The **entry point** holds the OS handler, for the deadline
-         * named for this wake, and the mechanism receives a plain `suspend` trigger — so no mechanism can
-         * fail to release a handler, because none ever holds one. Moved here from inside the app-driven
-         * controller: same scope, same deadline constant, same `heldFor`; only the construction site
-         * changed, and now a mechanism that declines still answers the OS.
-         */
-        override fun runUploadHeartbeat(onComplete: () -> Unit) {
-            scope.launch {
-                OsReceipt(
-                    entryPoint = "runUploadHeartbeat",
-                    deadline = ReceiptDeadlines.BACKGROUND_TASK,
-                    release = onComplete,
-                ).heldFor { urlSessionUpload.onBackgroundTask() }
-            }
-        }
-
-        override fun runDownloadBackstop(onComplete: () -> Unit) {
-            scope.launch {
-                // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import. The
-                // protected-data state rides the entry-point line (capability `ios-app-shell`): a
-                // background wake on a locked device is otherwise invisible, and it is the only place
-                // this class of bug shows up — no test can reach it. The membership re-read /
-                // attestation / import coordination is the `flow/DownloadBackstop` trigger's; only
-                // the entry-point wrap and re-arm stay shell-local.
-                try {
-                    OsReceipt(
-                        entryPoint = "runDownloadBackstop",
-                        deadline = ReceiptDeadlines.BACKGROUND_TASK,
-                        release = onComplete,
-                    ).heldFor {
-                        log.invocation("runDownloadBackstop.run", params = "protectedData=${protectedDataAvailable()}") {
-                            app.downloadBackstopFlow.run()
-                        }
-                    }
-                } finally {
-                    // Re-arm for the next idle window on EVERY path including a throw: a lost re-arm
-                    // silently ends the backstop chain. The task assertion itself is the receipt's,
-                    // released after the drain rather than after the dispatch.
-                    scheduleDownloadBackstop()
-                }
-            }
-        }
-
-        // PINNED shell decision (spec `module-architecture`, "Shells are wiring only" — pinned
-        // forms; inventory gated by KotlinShellGuardTest). Forcing proof: UIKit delivers ONE app
-        // delegate callback — `application(_:handleEventsForBackgroundURLSession:completionHandler:)`
-        // — for EVERY background URLSession identifier (API contract; there is no per-session
-        // registration surface), and this app owns two OS-reattached sessions (the 18–26.0 upload
-        // tier's and the download session). Mapping the OS-supplied identifier to its session owner
-        // is transcription of the callback's own discriminator, inexpressible anywhere but where
-        // both session objects live. Expiry: dies with the 18–26.0 app-driven tier (re-evaluate at
-        // iOS 27 GM, ~Sept 2026, with the async extension protocol).
-        @Suppress("CyclomaticComplexMethod")
-        override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
-            "handleBackgroundUrlSession.route",
-            params = "protectedData=${protectedDataAvailableOnMain()}",
-        ) {
-            // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download
-            // session. A wiring-forced routing decision: one OS callback serves two distinct sessions.
-            if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {
-                urlSessionUpload.onBackgroundSessionEvents(completionHandler)
-                return@invocation
-            }
-            // Downloads: the OS relaunched us to deliver background download completions. Adopt the
-            // session so its delegate fires (staging + import run), and invoke the OS handler once
-            // events drain.
-            app.downloadJobs.adoptBackgroundEvents(completionHandler)
-        }
-    }
 }
 
 /**
@@ -1421,14 +1139,23 @@ object SnapSyncRoot : PlatformEntries by spikeEntries() {
 @OptIn(DelicateCoroutinesApi::class)
 private val compositionLane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-composition")
 
-// SPIKE (shell-as-driving-adapter task 1): proves a member implemented by `by` delegation is exported to ObjC
-// under the name Swift calls. Reverted once the Xcode build answers.
-private fun spikeEntries(): PlatformEntries = object : PlatformEntries {
-    override fun onForeground() = Unit
-    override fun onBackground() = Unit
-    override fun onOpenUrl(url: String) = Unit
-    override fun onPushToken(hex: String) = SnapSyncRoot.spikePushToken(hex)
-    override fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) = completion()
-    override fun onBackgroundTask(identifier: String, completion: () -> Unit) = completion()
-    override fun onBackgroundTransfers(channel: String, completion: () -> Unit) = completion()
-}
+/**
+ * The core's implementation of the app's inbound port, with what the root holds and `:domain` cannot name (spec
+ * `module-architecture`, "OS entry points cross an inbound port"). [SnapSyncRoot] delegates [PlatformEntries] to
+ * this, so no forwarding body stands between an operating-system callback and the core.
+ *
+ * A top-level function because a delegation expression is evaluated before the object's body: the hooks are lambdas,
+ * resolved when the operating system first calls an entry, so nothing here assembles the graph early.
+ */
+private fun rootEntries(): PlatformEntries = platformEntries(
+    core = { SnapSyncRoot.app },
+    hooks = EntryHooks(
+        markActive = SnapSyncRoot::markActive,
+        openUrl = { url -> SnapSyncRoot.host.onOpenUrl(url) },
+        assembleHost = { SnapSyncRoot.host },
+        deliverPushToken = { hex -> SnapSyncRoot.pushTokenSource.deliver(hex) },
+        downloadBackstopTaskId = SnapSyncRoot.DOWNLOAD_BACKSTOP_TASK_ID,
+        uploadHeartbeatTaskId = UrlSessionUploadController.HEARTBEAT_TASK_IDENTIFIER,
+        uploadTransferChannel = UrlSessionUploadController.SESSION_IDENTIFIER,
+    ),
+)

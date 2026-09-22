@@ -23,10 +23,11 @@ import kotlinx.datetime.LocalDateTime
  * join gate, the joined layer, the access prompts, the switch confirmation. Seven fields for eighteen
  * callbacks, and a reader now finds a callback by asking which surface owns it.
  *
- * EVERY FIELD IS DEFAULTED, at both levels, exactly as the eighteen parameters were. That is what lets
- * each host wire only what it needs: the forge leaves join and reconfigure inert while the world harness
- * binds them to a real graph. A group that defaults to a default-constructed group keeps that property —
- * a host that wires no join actions writes nothing about them, as before.
+ * EVERY FIELD IS DEFAULTED, at both levels, for this module's own previews and component tests, which wire
+ * only the callbacks they exercise. A HOST never relies on the defaults: every host takes its bundle from
+ * [statusActions], the one table bound to a container (spec `sync-status-screen`, "The screen's callback
+ * bundle is built in one place"). Hosts used to write the table out themselves and lean on these defaults
+ * for what they skipped, which is how the store button ended up bound in one host and inert in the others.
  *
  * [onSendDiagnostics] stays NULLABLE rather than defaulting to an inert lambda, and that is a contract
  * rather than a convenience: a build with no reporting channel must wire no gesture at all, because an

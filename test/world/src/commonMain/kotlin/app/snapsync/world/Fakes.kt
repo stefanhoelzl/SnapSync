@@ -111,10 +111,25 @@ class OperatorUploadEngine : AppUploadEngine {
     override suspend fun disarm() {}
     override suspend fun cancelTransfers() {}
 
+    /** How many background-task wakes reached this engine — the inbound-port contract reads it. */
+    var backgroundTasks: Int = 0
+        private set
+
+    /** How many background-transfer handbacks reached this engine — the inbound-port contract reads it. */
+    var transferHandbacks: Int = 0
+        private set
+
     // The operator IS the trigger in the world harness: cycles happen when invoked by hand from the
-    // inspector, never off an OS callback, so every trigger answer here is "nothing".
+    // inspector, never off an OS callback, so every trigger answer here is "nothing" — counted, so a test can
+    // tell that an OS entry reached this engine rather than another.
     override suspend fun onForeground() {}
     override suspend fun onSilentPush(eventId: String) {}
-    override suspend fun onBackgroundTask() {}
+    override suspend fun onBackgroundTask() { backgroundTasks++ }
     override suspend fun onSelectionChanged() {}
+
+    // Nothing is in flight in the world, so there is nothing to absorb: the handler is released at once.
+    override fun onBackgroundTransfers(completion: () -> Unit) {
+        transferHandbacks++
+        completion()
+    }
 }
