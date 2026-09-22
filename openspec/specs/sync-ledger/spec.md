@@ -54,6 +54,10 @@ from `changes/archive/2026-09-22-manifest-versions`.
 The `FAILED` state (merged into `DISCOVERED`: a failure returns its row to the work source) and the `attempt`,
 `eventId` and `absent` columns, with the provenance and absence-mark sweeps, were retired by the `10.sqm`
 migration in `changes/archive/2026-09-21-shrink-the-ledger-row` — a one-way door whose rollback is a roll-forward.
+
+Moving the per-key read `get(key)` off `TransferRecord` back onto `LedgerStore`, once the v1 last-segment fallback
+it served was retired, came from `changes/archive/2026-09-22-retire-legacy-key-fallback`.
+
 ## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerStore` interface with the row
@@ -245,11 +249,12 @@ to the same destination, and the second terminal write of the pair is a declined
 Handing a writer instance only to the cycle is the **mechanism** that confines the record family to the code
 that owns it. That mechanism is deliberately relaxed for one operation: `markTerminal` (see "Guarded terminal
 write") is declared on **`TransferRecord`** — a narrow interface `LedgerStore` extends, carrying only
-`markTerminal` and two reads: `entryForDestination` (see "The ledger records the destination a job was sent
-to") and `get(key)`, the per-key row read. A transport needs the second read to tell a job whose row an
-authoritative walk deleted from one it can still settle (capability `ios-photokit-upload`, "Completion and
-retry adjudication"; decision record `changes/selection-is-the-walk`, D3) — because the party the platform tells that an upload terminated is a platform callback, and it cannot
-suspend. The ownership holds — the terminal write belongs to the transport whose job terminated, or to the foreground
+`markTerminal` and one read: `entryForDestination` (see "The ledger records the destination a job was sent
+to"). That read alone tells a job whose row an authoritative walk deleted from one a transport can still settle
+(capability `ios-photokit-upload`, "Completion and retry adjudication"). The per-key row read `get(key)` is
+`LedgerStore`'s, not `TransferRecord`'s: a transport needed it only for the v1 last-segment fallback, which is
+retired (decision record `changes/retire-legacy-key-fallback`). The relaxation exists because the party the
+platform tells that an upload terminated is a platform callback, and it cannot suspend. The ownership holds — the terminal write belongs to the transport whose job terminated, or to the foreground
 settle that found the key's bytes stored, and its guard applies it only to a row still `REQUESTED` — while the
 type-level codification does not cover it. A spec or a
 review that reads the type-level rule as the invariant will reach the wrong conclusion about this call, which
@@ -257,7 +262,7 @@ is why both are stated.
 
 A **transport** — an implementation of the upload transfer lifecycle (`BackgroundTransfer`) — SHALL receive a
 `TransferRecord` and SHALL NOT receive a `LedgerStore`. What a transport may touch in the ledger is therefore
-exactly the one guarded terminal write and the two row reads; every other read and write belongs to the
+exactly the one guarded terminal write and the destination read; every other read and write belongs to the
 cycle.
 
 No record operation other than `markTerminal` SHALL be added to `TransferRecord` or to `LedgerStore` on this
@@ -285,7 +290,8 @@ argument; a further record operation belongs on the writer. The foreground settl
 #### Scenario: A transport holds only the narrow surface
 
 - **WHEN** a transport adapter is composed
-- **THEN** it is handed a `TransferRecord`, and no other ledger read or write is reachable from it
+- **THEN** it is handed a `TransferRecord`, and no other ledger read or write is reachable from it — no
+  per-key row read included
 
 #### Scenario: The app resets the ledger through the reset family
 
@@ -1085,8 +1091,9 @@ order to perform the request at all, while a query or header may be normalized b
 not control.
 
 The column SHALL be **nullable**, and a row without it SHALL remain fully usable. Rows written by a build
-that predates this column exist on every device that upgrades, and the recovery that reads them is defined
-by the tier that owns it (capability `ios-photokit-upload`).
+that predates this column exist on every device that upgrades. No tier recovers a job's row by any other
+route: the v1 last-segment fallback is retired (capability `ios-photokit-upload`; decision record
+`changes/retire-legacy-key-fallback`), so a returned job can reach only a row that recorded its destination.
 
 Recording a destination SHALL NOT make the ledger key event-dependent or expiry-dependent. The key remains
 the bare, event-independent object name (see "Event-independent key"), and the destination is stable with
@@ -1106,7 +1113,7 @@ no expiry, so a row's recorded destination stays valid for as long as the row do
 #### Scenario: A row written before the column is still usable
 
 - **WHEN** a row predates this column and carries no destination path
-- **THEN** the row reads and writes normally, and its recovery falls to the tier-specific fallback
+- **THEN** the row reads and writes normally, but no returned upload job resolves to it
 
 #### Scenario: The key is unchanged
 

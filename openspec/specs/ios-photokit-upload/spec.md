@@ -29,6 +29,10 @@ The **Re-provision resets sync state** requirement was scoped explicitly to this
 The change-token advance was re-conditioned in `changes/archive/2026-08-27-fix-cap-truncation-loop` — from *every job was created* to *every fact
 the walk produced is durable* — which replaced the requirement that the token not advance on a
 cap-truncated cycle.
+
+The v1 last-segment fallback — recovering a returned job's key from a pre-identity destination — was retired, and
+a v1-shaped job made unmappable, in `changes/archive/2026-09-22-retire-legacy-key-fallback`.
+
 ## Requirements
 ### Requirement: Background upload extension target
 
@@ -195,8 +199,9 @@ destination request from the real `EdgeUploadRequestProvider` (a plain `PUT` to 
 system upload job via `creationRequestForJob(destination:resource:)`, and **then** report
 `UploadStarted(request)` to the engine so the ledger records `REQUESTED` (write-after-act — `REQUESTED`
 is recorded only after the job exists, never before). The engine remains **event-blind** and keys by
-the bare `filename`; ack-path recovery reads the destination URL's **last path segment**, which is the
-unchanged `filename` (the byte URL's last segment; format per `edge-upload-provider`). On
+the bare `filename`; ack-path recovery matches the job's destination path against the `destinationPath`
+recorded by that `REQUESTED` write (see "Completion and retry adjudication"), never the destination's last path
+segment, which under the v2 byte route is the resource's role (format per `edge-upload-provider`). On
 `AlreadyUploaded` it SHALL
 create no job and write nothing. Completion and failure outcomes are reduced into the ledger by the
 drain (see "Completion and retry adjudication"), so a success is recorded `COMPLETED` and a failure returns its
@@ -306,23 +311,25 @@ state, since `resource` is **nil for succeeded jobs** (the system releases it af
 byte route its last path segment is the resource's **role**, not the ledger key, so the key SHALL NOT be read
 from it.
 
-For a job whose destination path matches no recorded row — including one created by a build that predates
-the recorded path — the extension SHALL fall back to recovering the key from the destination URL's **last
-path segment**, which is correct for the v1 destination shape and for nothing else.
+The recorded destination path SHALL be the **only** route from a job to its row. There SHALL be no fallback
+that reads a key out of the destination: the v1 last-segment recovery, which served only jobs created before
+the v2 byte route shipped, is retired (decision record `changes/retire-legacy-key-fallback`). A row written
+before `destinationPath` existed therefore cannot be resolved from a job.
 
 A job whose destination has a recognised byte-route shape but whose **row is gone** SHALL be treated as
 **pruned**, not unrecoverable. The walk deletes a departed or de-selected asset's rows whatever their state
 (capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk"), so a late job for one
 is expected. A pruned job SHALL be acknowledged in place in whichever set presented it (`.retry` or
 `.acknowledge`), SHALL write nothing, SHALL NOT be emitted to the cycle, and SHALL be logged at `Info`
-(capability `upload-lifecycle`, "A presented job whose row is gone is answered and nothing more"). The v1
-last-segment fallback SHALL recover a key only when a row exists for it. A job it recovers no row for is
-pruned too. Reporting a pruned job at `Error` would raise a crash-reporting event for every photo deleted
-or de-selected mid-upload.
+(capability `upload-lifecycle`, "A presented job whose row is gone is answered and nothing more"). Reporting a
+pruned job at `Error` would raise a crash-reporting event for every photo deleted or de-selected mid-upload.
+The recognised byte-route shape SHALL be the v2 shape `/files/devices/<deviceId>/<assetId>/<role>` only.
 
 A job whose destination cannot be mapped to any known shape SHALL be **counted and reported at `Error`
 severity**, naming how many such jobs a cycle saw. It SHALL NOT be silently drained: an unmappable job means
-an upload whose outcome is being discarded for a reason this build does not understand.
+an upload whose outcome is being discarded for a reason this build does not understand. A job with a **v1**
+destination (`/files/devices/<deviceId>/<key>`) SHALL be treated as unmappable, not pruned: its row may still
+exist and be `REQUESTED`, which a quiet prune would hide.
 
 It SHALL likewise recover the job's **content type** from that same destination's `Content-Type` header
 (matched case-insensitively, a blank value treated as absent), falling back to the `resource`'s uniform
@@ -343,7 +350,7 @@ unrecoverable — or the system reports `appex failed to acknowledge jobs for pr
   expiry, nothing to re-mint), call `retryWithDestination(:)`, then report `UploadStarted` (records
   `REQUESTED`). The system job `retryWithDestination(:)` is applied to SHALL be
   found by the **same route** the job's key was recovered by — its destination path against the recorded
-  `destinationPath`, then the v1 last-segment fallback — and SHALL NOT be found by comparing the destination's
+  `destinationPath` — and SHALL NOT be found by comparing the destination's
   last path segment to the ledger key, which under the v2 route is the resource's role and matches no key.
   A retry whose system job is no longer in the `.retry` set SHALL be logged and SHALL NOT be silent.
 - **`fetchJobsWithAction(.acknowledge)` (terminal):** the adapter SHALL record the outcome into the ledger
@@ -378,9 +385,11 @@ job whose row exists, and SHALL NOT write any row for a pruned job, phantom or o
 - **THEN** the extension does not treat that segment as a ledger key, and no row keyed `primary` or `live`
   is ever written
 
-#### Scenario: A job created by the previous build still resolves
-- **WHEN** a job's destination path matches no recorded row and its shape is the v1 byte route
-- **THEN** the key is recovered from the destination's last path segment and the job is adjudicated normally
+#### Scenario: A v1-shaped job is unmappable, not resolved
+- **WHEN** a job in either set carries a v1 destination `/files/devices/<deviceId>/<key>`, whether or not a row
+  keyed by its last path segment exists
+- **THEN** no key is read from its path, nothing is written, it is not returned to the cycle, it is
+  acknowledged, and it is counted in the cycle's `Error`-severity unmappable report
 
 #### Scenario: An unmappable job is reported, not drained silently
 - **WHEN** a cycle presents one or more jobs whose destinations match no known byte-route shape
