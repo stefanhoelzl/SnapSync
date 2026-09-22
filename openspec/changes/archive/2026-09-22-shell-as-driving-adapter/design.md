@@ -219,6 +219,27 @@ No delta:
 - `push-registration`: the token still reaches `deliver`.
 - `harness-world-model`: open; see Open Questions.
 
+**Archive accounting (delta completeness, per touched module):**
+
+| Module | Capability | Delta, or why none |
+|---|---|---|
+| `:domain:ports` | `module-architecture` | delta ("OS entry points cross an inbound port") |
+| `:domain:compose` | `module-architecture` | delta (same requirement: the implementation's placement) |
+| `:domain:model` | `diagnostic-logging` | delta (the `@PlatformEntry` placement); the file's change is KDoc only |
+| `:domain:feature` | `upload-lifecycle` | none: `AppUploadEngine` gained a member the app uploader already implemented under another name, and no trigger or transition rule moved |
+| `:adapter:ios:app-only` | `ios-app-shell` | delta (protected-data state through `ProtectedStorage`) |
+| `:adapter:generic:fake` | `port-contracts` / `architecture-guards` (fake honesty) | none: one more honest fake behind the existing factory rule |
+| `:ui:screens` | `sync-status-screen` | delta ("The screen's callback bundle is built in one place") |
+| `:app:ios`, iOS Swift shell | `ios-app-shell` | delta (five requirements) |
+| `:app:ios:extension` | `ios-photokit-upload` | delta ("Cap-aware creation and tri-state processing result") |
+| `:app:ios:forge` | `sync-status-screen` | covered by that delta (it takes the shared factory) |
+| `:app:desktop` | `desktop-test-harness` / `full-stack-harness` | none: the pane takes the shared factory; those specs name the pane, not its table. Its store button, previously inert, is now bound like every host's |
+| `:test:world` | `harness-world-model` | none: inspection counters (`operatorEngine`, `backstopsScheduled`) and the cycle's `uploadPorts` exposed, which the operator-inspection rules already cover; no entry surface |
+| `:test:contracts` | `port-contracts` | delta (observation handles) |
+| `:test:integration` | `testing-architecture` | delta (the shell rule's residual) |
+| `:test:architecture` | `architecture-guards` | none: a pin left `KotlinShellGuardTest` and an allowlist entry moved within `MainLaneContainmentTest`; no requirement names either inventory's entries |
+| `:test:rig` | none (non-gating dev infra, no spec) | KDoc and trigger names only |
+
 ## Risks / Trade-offs
 
 - **[Risk] Delegated members might not export to ObjC under the names Swift calls.** → Settle by compile: the first
