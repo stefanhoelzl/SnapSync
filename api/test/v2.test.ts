@@ -364,6 +364,144 @@ Deno.test("manifest → does not reactivate a departed membership", async () => 
   db.close();
 });
 
+// ── The manifest version orders publishes (capability `api-endpoints`) ─────────────────────────────
+
+/** A manifest body carrying a manifest version; `version: undefined` leaves the field out. */
+const versioned = (
+  version: unknown,
+  assets: { assetId: string; creationDate: string; resources: Record<string, unknown>[] }[],
+) => JSON.stringify({ deviceId: D, version, assets });
+
+const ONE = (
+  id: string,
+) => [{
+  assetId: id,
+  creationDate: "2026-07-01T00:00:00Z",
+  resources: [RES(`${id}-primary.heic`)],
+}];
+
+async function heldAssets(db: Awaited<ReturnType<typeof storeWithEvent>>) {
+  return (await rows(db, `SELECT asset_id FROM event_assets ORDER BY asset_id`)).map((r) =>
+    r.asset_id
+  );
+}
+
+async function storedVersion(db: Awaited<ReturnType<typeof storeWithEvent>>) {
+  const m = await rows(
+    db,
+    `SELECT manifest_version FROM memberships WHERE event_id=? AND device_id=?`,
+    [E, D],
+  );
+  return m[0].manifest_version;
+}
+
+async function joined(db: Awaited<ReturnType<typeof storeWithEvent>>) {
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(JOIN_PATH, { method: "PUT" });
+  const put = (body: string) => app.request(MANIFEST_PATH, { method: "PUT", body });
+  return { app, put };
+}
+
+Deno.test("manifest version → a newer publish replaces the set and records its version", async () => {
+  const db = await storeWithEvent();
+  const { put } = await joined(db);
+  assertEquals((await put(versioned(7, ONE("A")))).status, 200);
+  assertEquals((await put(versioned(9, ONE("B")))).status, 200);
+  assertEquals(await heldAssets(db), ["B"]);
+  assertEquals(await storedVersion(db), 9);
+  db.close();
+});
+
+Deno.test("manifest version → an equal publish is accepted", async () => {
+  // Two publishes with one version carry one snapshot (the device's counter advances in the same
+  // transaction as every change the projection can see), so re-applying is harmless.
+  const db = await storeWithEvent();
+  const { put } = await joined(db);
+  await put(versioned(7, ONE("A")));
+  assertEquals((await put(versioned(7, ONE("B")))).status, 200);
+  assertEquals(await heldAssets(db), ["B"]);
+  db.close();
+});
+
+Deno.test("manifest version → an older publish is refused as 200 and changes nothing", async () => {
+  // The crossed pair this exists for: the app's and the extension's publishes cross in the network, and
+  // the older one lands last. It must not overwrite the newer snapshot.
+  const db = await storeWithEvent();
+  const { put } = await joined(db);
+  await put(versioned(9, ONE("B")));
+  const late = await put(versioned(7, ONE("A")));
+  assertEquals(late.status, 200, "an ordinary outcome, which the device treats as published");
+  assertEquals(await heldAssets(db), ["B"]);
+  assertEquals(await storedVersion(db), 9);
+  db.close();
+});
+
+Deno.test("manifest version → a refused publish changes nothing even when chunked into many statements", async () => {
+  // Every statement after the first carries the gate, so no chunk of a refused publish applies.
+  const db = await storeWithEvent();
+  const { put } = await joined(db);
+  await put(versioned(9, ONE("KEEP")));
+  const many = Array.from({ length: 300 }, (_, i) => ONE(`A${i}`)[0]);
+  assertEquals((await put(versioned(3, many))).status, 200);
+  assertEquals(await heldAssets(db), ["KEEP"]);
+  db.close();
+});
+
+Deno.test("manifest version → a refused publish wakes nobody, even when it would add a fetchable asset", async () => {
+  const db = await storeWithEvent();
+  const { app, pushed } = await withRecipient(db);
+  const put = (body: string) => app.request(MANIFEST_PATH, { method: "PUT", body });
+  await put(versioned(5, ONE("ASSET1")));
+  await app.request(BYTE_PATH, { method: "PUT", body: "x" });
+  assertEquals(pushed.length, 1);
+  await put(versioned(9, []));
+  assertEquals(pushed.length, 1, "a retraction wakes nobody");
+  // Would re-admit the stored asset — a widening — but it is older than the retraction, so it is refused.
+  assertEquals((await put(versioned(6, ONE("ASSET1")))).status, 200);
+  assertEquals(pushed.length, 1, "a refused publish changed nothing the union serves");
+  assertEquals(await heldAssets(db), []);
+  db.close();
+});
+
+Deno.test("manifest version → a versionless publish applies and clears the version", async () => {
+  // A v2 build that predates the field: today's behaviour, and the next versioned publish always wins.
+  const db = await storeWithEvent();
+  const { put } = await joined(db);
+  await put(versioned(9, ONE("A")));
+  assertEquals((await put(manifest(ONE("B")))).status, 200);
+  assertEquals(await heldAssets(db), ["B"]);
+  assertEquals(await storedVersion(db), null);
+  assertEquals((await put(versioned(1, ONE("C")))).status, 200);
+  assertEquals(await heldAssets(db), ["C"]);
+  db.close();
+});
+
+Deno.test("manifest version → an invalid version is 400 and writes nothing", async () => {
+  const db = await storeWithEvent();
+  const { put } = await joined(db);
+  await put(versioned(4, ONE("A")));
+  for (const bad of [-1, 1.5, "3", true, 2 ** 60]) {
+    assertEquals((await put(versioned(bad, ONE("B")))).status, 400, `version ${bad}`);
+  }
+  assertEquals(await heldAssets(db), ["A"]);
+  assertEquals(await storedVersion(db), 4);
+  db.close();
+});
+
+Deno.test("manifest version → a re-join clears it, so a restarted counter is accepted", async () => {
+  // The device id outlives the device's ledger database (it is a Keychain item), so a reinstalled device
+  // re-joins with its counter restarted. Without the join's reset every publish would be refused forever.
+  const db = await storeWithEvent();
+  const { app, put } = await joined(db);
+  await put(versioned(500, ONE("A")));
+  await app.request(JOIN_PATH, { method: "DELETE" });
+  await app.request(JOIN_PATH, { method: "PUT" });
+  assertEquals(await storedVersion(db), null);
+  assertEquals((await put(versioned(3, ONE("B")))).status, 200);
+  assertEquals(await heldAssets(db), ["B"]);
+  db.close();
+});
+
 // ── GET the union ──────────────────────────────────────────────────────────────────────────────────
 
 Deno.test("union → an asset is served only when every DECLARED role has arrived", async () => {

@@ -33,7 +33,12 @@ export function libsqlDb(url: string, authToken: string): Db {
     },
     async batch(statements: Statement[]) {
       // "write" is libSQL's transactional batch mode: the whole array applies or none of it does.
-      await handle.batch(statements.map((s) => ({ sql: s.sql, args: s.args ?? [] })), "write");
+      const results = await handle.batch(
+        statements.map((s) => ({ sql: s.sql, args: s.args ?? [] })),
+        "write",
+      );
+      // deno-lint-ignore no-explicit-any
+      return results.map((r: any) => ({ rowsAffected: Number(r.rowsAffected ?? 0) }));
     },
     transaction: onTransaction,
   });

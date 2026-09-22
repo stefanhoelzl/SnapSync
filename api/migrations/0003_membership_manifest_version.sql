@@ -1,0 +1,19 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
+-- 0003 — THE MANIFEST VERSION A MEMBERSHIP LAST ACCEPTED (capabilities `database`, `api-endpoints`)
+--
+-- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
+-- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
+--
+-- WHY: a device's app and its upload extension both publish the device manifest, and each publish is a
+-- full-state replace. Two publishes can cross in the network, and the older one landing last would leave
+-- the backend a snapshot behind while the device believed it current. Each v2 publish now carries a
+-- version that only grows, and the publish stores itself only when that version is not older than the
+-- one recorded here (decision record: `changes/manifest-versions`).
+--
+-- ADDITIVE AND DERIVES NOTHING. Every existing row lands NULL, which is the correct value for a membership
+-- that has never published a version: NULL admits the next publish, whatever its version. No copy, no
+-- rebuild, no data rewrite — the column is inert under the previous bundle, which never names it.
+--
+-- Writers (the named one-writer exception in `database`): the v2 manifest publish records the version it
+-- accepted; the join clears it to NULL when a membership starts or restarts. The v1 route never touches it.
+ALTER TABLE memberships ADD COLUMN manifest_version INTEGER;

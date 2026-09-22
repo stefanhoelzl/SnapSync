@@ -43,13 +43,15 @@ export function sqliteDb(path = ":memory:"): Db & { close(): void; exec(sql: str
     async batch(statements: Statement[]) {
       handle.exec("BEGIN");
       try {
-        for (const s of statements) run(s.sql, s.args ?? []);
+        const results = statements.map((s) => ({
+          rowsAffected: run(s.sql, s.args ?? []).rowsAffected,
+        }));
         handle.exec("COMMIT");
+        return await Promise.resolve(results);
       } catch (e) {
         handle.exec("ROLLBACK");
         throw e;
       }
-      await Promise.resolve();
     },
     async transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
       handle.exec("BEGIN");

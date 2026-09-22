@@ -65,7 +65,7 @@ CREATE TABLE memberships (
   event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   device_id TEXT NOT NULL,
   state     TEXT NOT NULL,
-  joined_at TEXT NOT NULL,
+  joined_at TEXT NOT NULL, manifest_version INTEGER,
   PRIMARY KEY (event_id, device_id)
 ) STRICT;
 
