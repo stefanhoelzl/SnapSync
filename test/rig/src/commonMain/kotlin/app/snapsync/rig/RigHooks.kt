@@ -172,7 +172,7 @@ class RigHooks(
      * What a receipted trigger's numbers mean **on this build's binding**, appended to the `note` that
      * already says what they do not answer.
      *
-     * Only `handleBackgroundUrlSession` earns a caveat, and only under `"default"`. That entry is the one
+     * Only `onBackgroundTransfers` earns a caveat, and only under `"default"`. That entry is the one
      * whose receipt is released by the session reporting its events drained — a callback a default session
      * never sends (`ios-url-session-upload`, "The transport binding is fixed by the compilation target") —
      * so on that binding the hold is *always* the deadline and the expiry says nothing about the app. The
@@ -184,7 +184,7 @@ class RigHooks(
      * did and did not exercise. A caller cannot read the numbers without reading this.
      */
     internal fun bindingCaveat(trigger: String): String =
-        if (trigger != "handleBackgroundUrlSession" || transferBinding == "background") {
+        if (trigger != "onBackgroundTransfers" || transferBinding == "background") {
             ""
         } else {
             ". NOTE transferBinding=default (iosSimulatorArm64): this exercised adopt + session-identifier " +

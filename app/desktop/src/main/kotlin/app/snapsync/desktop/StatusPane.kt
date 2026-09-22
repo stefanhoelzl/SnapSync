@@ -28,8 +28,8 @@ import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.ui.StatusActions
 import app.snapsync.ui.StatusScreen
+import app.snapsync.ui.statusActions
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
@@ -37,13 +37,6 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import app.snapsync.ui.JoinGateActions
-import app.snapsync.ui.JoinedActions
-import app.snapsync.ui.AccessActions
-import app.snapsync.ui.SurfaceActions
-import app.snapsync.ui.SwitchActions
-import app.snapsync.ui.ParticipationActions
-import app.snapsync.ui.components.RangeChoiceActions
 
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
@@ -179,57 +172,8 @@ fun StatusPane(
         StatusScreen(
             state = state,
             cutoff = cutoffFormatter,
-            actions = StatusActions(
-                join = JoinGateActions(
-                    onConfirmJoin = host::onConfirmJoin,
-                    onAcknowledgeAccess = host::onAcknowledgeAccess,
-                    onCancelJoin = host::onCancelJoin,
-                    onRetryLoad = host::onRetryLoad,
-                    onRetryJoin = host::onRetryJoin,
-                ),
-                joined = JoinedActions(
-                    onLeaveEvent = host::onLeaveEvent,
-                    onShareInvite = host::onShareInvite,
-                    onReconfigure = host::onReconfigure,
-                    // The heading rename (capability `event-rename`).
-                    onRenameEvent = host::onRenameEvent,
-                    onRenameStatusConsumed = host::onRenameStatusConsumed,
-                ),
-                access = AccessActions(
-                    onRequestPermission = host.access::onRequestPermission,
-                    onOpenSettings = host.access::onOpenSettings,
-                    onChoosePhotos = host.access::onChoosePhotos,
-                ),
-                surfaces = SurfaceActions(
-                    onConfirmLeaveOpen = host.surfaces::onConfirmLeaveOpen,
-                    onConfirmLeaveDismiss = host.surfaces::onConfirmLeaveDismiss,
-                    onRenameOpen = host.surfaces::onRenameOpen,
-                    onRenameDismiss = host.surfaces::onRenameDismiss,
-                    onOpenReconfigure = host.surfaces::onOpenReconfigure,
-                    onCancelReconfigure = host.surfaces::onCancelReconfigure,
-                    onReportBugOpen = host.surfaces::onReportBugOpen,
-                    onReportBugDismiss = host.surfaces::onReportBugDismiss,
-                ),
-                switch = SwitchActions(
-                    onConfirmSwitch = host::onConfirmSwitch,
-                    onCancelSwitch = host::onCancelSwitch,
-                ),
-                onCreateEvent = host::onCreateEvent,
-                participation = ParticipationActions(
-                    choices = RangeChoiceActions(
-                        onFromPreset = host.form::onFromPreset,
-                        onFromCustom = host.form::onFromCustom,
-                        onUntilPreset = host.form::onUntilPreset,
-                        onUntilCustom = host.form::onUntilCustom,
-                    ),
-                    onShareOn = host.form::onShareOn,
-                    onReceiveOn = host.form::onReceiveOn,
-                    onSaveToAlbum = host.form::onSaveToAlbum,
-                    shareableCount = shareableCount,
-                    photoPermission = photoPermission,
-                ),
-                onSendDiagnostics = host.onSendDiagnostics,
-            )
+            // The one tap → intent table (spec `sync-status-screen`), exactly as the shipped app binds it.
+            actions = statusActions(host, shareableCount, photoPermission),
         )
         }
     }

@@ -278,7 +278,7 @@ class UrlSessionUploadController(
     }
 
     /** The OS relaunched us to finish background transfers — hold the completion, let the session drain. */
-    fun onBackgroundSessionEvents(completion: () -> Unit) = log.invocation("url-session.onBackgroundSessionEvents") {
+    override fun onBackgroundTransfers(completion: () -> Unit) = log.invocation("url-session.onBackgroundSessionEvents") {
         // Adopt BEFORE reattaching, so the reattach is inside the bound: a session that never reports is
         // exactly the case the deadline exists for. (The clock starts a dispatch later, not on this line
         // — see `BackgroundEventsReceipts`.)

@@ -185,19 +185,17 @@ private fun triggers(): Map<String, RigTrigger> = mapOf(
     "onSilentPush" to RigTrigger.Receipted(ReceiptDeadlines.SILENT_PUSH.inWholeMilliseconds) { arg, done ->
         SnapSyncRoot.onSilentPush(mapOf("eventId" to arg), done)
     },
-    "runDownloadBackstop" to
-        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { _, done ->
-            SnapSyncRoot.runDownloadBackstop(done)
+    // The BGTask identifier is the argument, exactly as the OS delivers it: `app.snapsync.download.backstop`
+    // runs the import-tail backstop, `app.snapsync.upload.heartbeat` the app uploader's heartbeat.
+    "onBackgroundTask" to
+        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { arg, done ->
+            SnapSyncRoot.onBackgroundTask(arg.orEmpty(), done)
         },
-    "runUploadHeartbeat" to
-        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { _, done ->
-            SnapSyncRoot.runUploadHeartbeat(done)
-        },
-    // Exercises the session-identifier ROUTING — one of only two pinned complexity suppressions in
-    // `SnapSyncRoot`, and untestable by any other means.
-    "handleBackgroundUrlSession" to
+    // The transfer channel is the argument: the app uploader's session identifier, or any other for the downloads.
+    // The routing itself is the core's and contract-covered; on device this drives the real session adoption.
+    "onBackgroundTransfers" to
         RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_EVENTS.inWholeMilliseconds) { arg, done ->
-            SnapSyncRoot.handleBackgroundUrlSession(arg.orEmpty(), done)
+            SnapSyncRoot.onBackgroundTransfers(arg.orEmpty(), done)
         },
 )
 

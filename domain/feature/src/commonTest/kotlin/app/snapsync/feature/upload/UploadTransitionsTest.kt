@@ -46,6 +46,7 @@ class UploadTransitionsTest {
         override suspend fun onSilentPush(eventId: String) = Unit
         override suspend fun onBackgroundTask() = Unit
         override suspend fun onSelectionChanged() = Unit
+        override fun onBackgroundTransfers(completion: () -> Unit) = completion()
     }
 
     private class World(osSupported: Boolean = true, var grant: PermissionStatus, var joined: Boolean = true) {

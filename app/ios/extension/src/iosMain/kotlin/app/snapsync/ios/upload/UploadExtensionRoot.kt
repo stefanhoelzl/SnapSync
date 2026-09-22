@@ -6,6 +6,9 @@ import app.snapsync.ports.AttestStore
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
+import app.snapsync.compose.extensionEntries
+import app.snapsync.ports.ExtensionEntries
+import app.snapsync.logging.IosLogScope
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.PlatformEntry
@@ -22,7 +25,6 @@ import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.processingResultRawValue
-import app.snapsync.ports.runProcessCycle
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
@@ -63,7 +65,7 @@ import kotlinx.coroutines.runBlocking
  * ledger record-writer on its tier); the engine, which depends on config, is built per cycle
  * inside `uploadCore`.
  */
-object UploadExtensionRoot {
+object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 
     init {
         // Route kermit through a public NSLog writer AND a file writer. NSLog turns out to be
@@ -204,9 +206,10 @@ object UploadExtensionRoot {
      * wiring another tier lacks. Long-lived (one per process): the cycle re-reads the membership
      * per `run()`, so nothing here is per-invocation.
      */
-    private val cycle: UploadCycle by lazy {
-        uploadCore(
-            scope,
+    internal val cycle: UploadCycle by lazy { uploadCore(scope, ports) }
+
+    /** Everything the cycle is built over — held so the inbound port's implementation reads the same ledger and log. */
+    internal val ports: UploadPorts by lazy {
             UploadPorts(
                 appVersion = ::appMarketingVersion,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
@@ -237,61 +240,30 @@ object UploadExtensionRoot {
                 albumCoordinator = albumCoordinator,
                 token = { attestToken() },
                 log = log,
-            ),
-        )
+            )
     }
 
     /**
-     * Run one cycle and return its [CycleResult] — `COMPLETED` (drained, cursor advanced), `PROCESSING`
-     * (call me again, cursor un-advanced), `SKIPPED`, or `FAILED`.
+     * [process] as the iOS 26.1 `PHBackgroundResourceUploadProcessingResult` **raw value** — what the Swift principal
+     * class forwards into `init?(rawValue:)` (settled forcing proof ① of migration step 12: the system type is
+     * Swift-only, so the construction stays in Swift, but the decision — which case each [CycleResult] means — is the
+     * tested `processingResultRawValue` mapping in `:domain` `ports/`).
      *
-     * What is left here is exactly what cannot be shared with the other upload tier: the synchronous
-     * `runBlocking` contract (the OS invokes this and the process does not outlive it) and the
-     * pending→`PROCESSING` requeue (this tier alone cannot observe a completion while not running).
-     * Everything else the body used to do now lives in [UploadCycle], where both tiers reach it and a
-     * test can too. (The cross-process liveness ding this root used to post died at migration step
-     * 12 — the app's foreground-gated `aggregates()` poll replaced it; spec `sync-status`.)
-     */
-    fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
-        // The cycle, the pending→PROCESSING requeue, and the never-throw guard around both are
-        // `runProcessCycle` (`:domain` ports/, beside the raw-value mapping, so they are tested): a
-        // throwable escaping here crosses the ObjC boundary and aborts the extension process. This
-        // wiring supplies only the cycle, the ledger read, and the debug.log lines.
-        runProcessCycle(
-            run = { cycle.run() },
-            pending = { ledgerStore.aggregates().pending },
-            onCycleFinished = { log.i { "process: cycle finished — $it" } },
-            onCycleFailed = { log.e(it) { "process cycle failed" } },
-            onRequeue = { open -> log.i { "process: $open pending — requesting re-invocation" } },
-            onLateFailure = { log.e(it) { "process failed after the cycle — reporting FAILED" } },
-        )
-    } }
-
-    /**
-     * [process] as the iOS 26.1 `PHBackgroundResourceUploadProcessingResult` **raw value** — what the
-     * Swift principal class forwards into `init?(rawValue:)` (settled forcing proof ① of migration
-     * step 12: the system type is Swift-only, so the construction stays in Swift, but the decision —
-     * which case each [CycleResult] means — is the tested `processingResultRawValue` mapping in
-     * `:domain` `ports/`). Wiring only: no branch here a second tier could answer differently.
+     * The one hand-written line this root keeps for the inbound port: the operating system invokes the cycle
+     * synchronously and the process does not outlive it, so this blocks on the delegated [process]. Wiring only — no
+     * branch here a second tier could answer differently. [process] and [onTerminate] themselves reach the core by
+     * delegation (spec `module-architecture`, "OS entry points cross an inbound port").
      */
     @PlatformEntry
-    fun processRawValue(): Int = process().processingResultRawValue()
-
-    /**
-     * The OS is **terminating this cycle** — forwarded from the Swift principal's
-     * `notifyTermination()` (capability `diagnostic-logging`; spec `module-architecture`, "Absence is
-     * never silent").
-     *
-     * There is nothing to interrupt or persist: [process] is synchronous (`runBlocking`) and the
-     * process does not outlive it. That justifies doing no **work** here; it never justified
-     * recording **nothing**, which is what the Swift shell did before this entry existed. A
-     * terminated cycle then appeared in `ext-debug.log` as a `→ process` with no `← process` and no
-     * explanation — in the process that is hardest to read at all (an App-Group log needs a
-     * `SNAPSYNC_EXPORT_LOGS=1` launch and a USB pull). This line is the difference between "the OS
-     * killed us" and "we hung".
-     */
-    @PlatformEntry
-    fun onTerminate() = log.invocation("onTerminate") {
-        log.w { "the OS terminated this cycle — nothing in flight to persist (process() is synchronous)" }
-    }
+    fun processRawValue(): Int = runBlocking { process() }.processingResultRawValue()
 }
+
+/**
+ * The core's implementation of the extension's inbound port over this root's cycle. A top-level function because a
+ * delegation expression is evaluated before the object's body; both providers resolve on first call.
+ */
+private fun extensionRootEntries(): ExtensionEntries = extensionEntries(
+    ports = { UploadExtensionRoot.ports },
+    cycle = { UploadExtensionRoot.cycle },
+    logScope = IosLogScope,
+)

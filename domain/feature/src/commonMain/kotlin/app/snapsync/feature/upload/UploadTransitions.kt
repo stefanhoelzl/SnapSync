@@ -58,6 +58,13 @@ interface AppUploadEngine : UploadTriggers {
 
     /** Cancel every in-flight transfer (a leave). Idempotent, and touches no ledger row. */
     suspend fun cancelTransfers()
+
+    /**
+     * The operating system is handing back this engine's finished background transfers. [completion] is the
+     * operating system's handler: the engine holds it until it has absorbed them, or their deadline expires
+     * (capability `ios-app-shell`, "OS completion handlers are released only after their work completes").
+     */
+    fun onBackgroundTransfers(completion: () -> Unit)
 }
 
 /**

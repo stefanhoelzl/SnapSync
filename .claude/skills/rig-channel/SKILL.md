@@ -295,9 +295,12 @@ leaving behind. There is no coordinator imposing that order now that each comman
 ⚠️ **`onForeground` returns `202` and does NOT wait** — and it is the trigger you will reach for most.
 The platform hands it no completion handler, so neither does the rig. **Poll `/device/state`.**
 
-The four entries the OS *does* wait on — `onSilentPush`, `runDownloadBackstop`, `runUploadHeartbeat`,
-`handleBackgroundUrlSession` — block until the app releases the handler and return `heldMs` and
-`deadlineMs`.
+The three entries the OS *does* wait on — `onSilentPush`, `onBackgroundTask`, `onBackgroundTransfers` —
+block until the app releases the handler and return `heldMs` and `deadlineMs`. The last two take the
+identifier the OS would deliver as `arg`: `onBackgroundTask?arg=app.snapsync.download.backstop` (the
+import-tail backstop) or `?arg=app.snapsync.upload.heartbeat` (the app uploader's heartbeat), and
+`onBackgroundTransfers?arg=app.snapsync.upload.session` for the app uploader's session (any other channel
+routes to the downloads). An unknown task identifier is completed at once and logged.
 
 🧭 **The rig classifies nothing.** `OsReceipt.release` carries no outcome, so "released because the work
 finished" vs "released on the deadline" is **not** derivable from `heldMs`. The authoritative answer is
@@ -344,8 +347,8 @@ answer reports the switch and the registration fact it produces:
 {"app":true,"extension":false,"extensionRegistrable":false,"permission":"GRANTED","osSupportsOsDriven":true}
 ```
 
-To drive the app's uploader alone on a ≥26.1 device: `extension=off`, then fire `POST /os/app/runUploadHeartbeat`
-(the app uploader's entry point). The switch dies with the process.
+To drive the app's uploader alone on a ≥26.1 device: `extension=off`, then fire
+`POST /os/app/onBackgroundTask?arg=app.snapsync.upload.heartbeat` (the app uploader's heartbeat). The switch dies with the process.
 
 Note `/device/state`'s `build.uploadTier` is a **build fact** — which uploaders this OS carries
 (`app` or `app+extension`) — and does not move with the switch.

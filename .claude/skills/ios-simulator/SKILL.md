@@ -102,7 +102,7 @@ State these before writing a scenario against this host, or you will write one t
 
   - transfers do **not** survive suspension or process death — they run in-process;
   - the OS never relaunches the app for `handleEventsForBackgroundURLSession`. You can still fire the
-    `handleBackgroundUrlSession` trigger, but it exercises adopt + session-identifier routing ONLY;
+    `onBackgroundTransfers` trigger, but it exercises adopt + channel routing ONLY;
   - because a default session never sends `didFinishEventsForBackgroundURLSession`, that trigger's
     receipt **always** runs to its 20 s deadline and logs an expiry. **That expiry is the host, not a
     fault.** The app logs the whole caveat at session construction, and `/trigger` returns it in the

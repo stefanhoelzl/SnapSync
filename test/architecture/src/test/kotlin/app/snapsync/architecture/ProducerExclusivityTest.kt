@@ -69,6 +69,7 @@ class ProducerExclusivityTest {
         override suspend fun onSilentPush(eventId: String) = Unit
         override suspend fun onBackgroundTask() = Unit
         override suspend fun onSelectionChanged() = Unit
+        override fun onBackgroundTransfers(completion: () -> Unit) = completion()
     }
 
     /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */
