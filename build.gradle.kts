@@ -244,6 +244,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":test:harness-driver" to "harness",
     ":test:rig" to "harness",
     ":test:world" to "harness",
+    ":test:contracts" to "harness",
     ":tools:diagrams" to "harness",
 
     // Modules with no production source at all.

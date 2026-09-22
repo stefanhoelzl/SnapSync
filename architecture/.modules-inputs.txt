@@ -15,6 +15,7 @@ module :domain:flow
 module :domain:model
 module :domain:ports
 module :test:architecture
+module :test:contracts
 module :test:harness-driver
 module :test:integration
 module :test:rig
@@ -25,11 +26,12 @@ module :ui:presentation
 module :ui:screens
 edge :adapter:generic:app :domain:model
 edge :adapter:generic:app :domain:ports
-edge :adapter:generic:app :test:world
+edge :adapter:generic:app :test:contracts
 edge :adapter:generic:fake :domain:feature
 edge :adapter:generic:fake :domain:flow
 edge :adapter:generic:fake :domain:model
 edge :adapter:generic:fake :domain:ports
+edge :adapter:generic:fake :test:contracts
 edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain:model
 edge :adapter:ios:app-only :domain:ports
@@ -37,6 +39,7 @@ edge :adapter:ios:ext-safe :adapter:generic:app
 edge :adapter:ios:ext-safe :domain:feature
 edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports
+edge :adapter:ios:ext-safe :test:contracts
 edge :app:desktop :adapter:generic:app
 edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
@@ -74,6 +77,9 @@ edge :domain:flow :domain:model
 edge :domain:ports :domain:model
 edge :test:architecture :domain:feature
 edge :test:architecture :domain:model
+edge :test:contracts :domain:feature
+edge :test:contracts :domain:model
+edge :test:contracts :domain:ports
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic:app
 edge :test:integration :domain:feature

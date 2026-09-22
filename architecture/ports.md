@@ -79,7 +79,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameStatusSource` | `:domain:feature` | `:domain:feature` MutableRenameStatusSource | no |
 | `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
 | `SceneMode` | `:domain:model` | `:domain:model` Deferred, Live | no |
-| `SecureStore` | `:domain:ports` | `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosKeychain, NoSuchStore, StubSecureStore; `:domain:ports` FakeSecureStore | yes |
+| `SecureStore` | `:domain:ports` | `:adapter:generic:fake` InMemorySecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosKeychain, NoSuchStore, StubSecureStore; `:domain:ports` FakeSecureStore | yes |
 | `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
 | `SecureStoreResolution` | `:domain:ports` | `:domain:ports` Adopted, Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |

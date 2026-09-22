@@ -54,9 +54,9 @@
 
 ## 9. Documentation
 
-- [ ] 9.1 CLAUDE.md: add `:test:contracts` to the module list; update `:test:world` (no longer hosts the contracts) and `:adapter:ios:ext-safe` (the OS seam and the rig-gated source set)
-- [ ] 9.2 `rig-channel` skill: document the `/contract/<name>` verb and the record-then-commit procedure
-- [ ] 9.3 Rewrite `IosKeychainTest`'s KDoc where it says no environment can exercise the happy path: the entitled device recording, replayed every build, now does
+- [x] 9.1 CLAUDE.md: add `:test:contracts` to the module list; update `:test:world` (no longer hosts the contracts) and `:adapter:ios:ext-safe` (the OS seam and the rig-gated source set)
+- [x] 9.2 `rig-channel` skill: document the `/contract/<name>` verb and the record-then-commit procedure
+- [x] 9.3 Rewrite `IosKeychainTest`'s KDoc where it says no environment can exercise the happy path: the entitled device recording, replayed every build, now does
 
 ## 10. Verification
 
