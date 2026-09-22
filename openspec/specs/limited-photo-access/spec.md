@@ -40,6 +40,10 @@ the earlier reading, that registration *succeeds and lies* under `.limited`, is 
 measurement: both directions are refused, and the enable was reached only through a development
 override (since replaced by the control channel's per-uploader switch). Evidence: one device, one OS point release; re-measure at the iOS 27 GM
 re-assessment.
+`changes/archive/2026-09-22-selection-is-the-walk` made the selection the walk. A **read** selection
+snapshot is authoritative, so de-selecting a photo withdraws it from the event (this reverses "deselection
+is not withdrawal"). A selection **not yet read** is its own scope (`Unread`), and the app's upload cycle is
+withheld on it. Verified on an SE2 (iOS 26.6, 2026-09-22).
 ## Requirements
 ### Requirement: A limited grant is a working membership whose scope is the selection
 
@@ -417,15 +421,34 @@ the permission, never on its selection scope, whose default is untrue under a pa
 The app SHALL treat a grant change from `GRANTED` to `LIMITED` as an ordinary scope change. On that
 transition, previously-imported foreign assets are no longer visible to the app (iOS auto-adds
 app-created assets to the selection only at creation time — measured), and the own-photo scope narrows
-to the selection: already-uploaded photos remain in the event (upload is a publish), the ledger keeps
-its history, and the status total re-derives from the new scope. Nothing SHALL re-upload, and nothing
-SHALL treat the narrowed visibility as an error.
+to the selection. From the app's point of view the selection now **is** the gallery. The first upload
+cycle after the selection has been read is an authoritative walk (see "The read discipline is enforced
+at the mechanism, not at the trigger fan-out"). It removes the in-window rows of every photo outside the
+selection, whatever their upload state, so those photos leave the device manifest in the cycle that
+publishes it. Photos inside the selection keep their rows and are not re-uploaded. The status total
+re-derives from the new scope. Nothing SHALL treat the narrowed visibility as an error.
 
-#### Scenario: Downgrading does not disturb uploaded work
+A photo whose upload was in flight at the downgrade and that lies outside the selection may still finish
+uploading: its bytes land, and are listed in no manifest (capability `sync-ledger`, "Deletion is a
+presence diff over an authoritative walk"). A photo inside the selection whose upload finished while
+the extension was withheld settles at the next foreground from the backend's per-device listing
+(capability `upload-state-reconciliation`), not at the OS's next acknowledgement.
+
+Decision record: `changes/selection-is-the-walk` (D1, D2, D4). This reverses the earlier rule that
+already-uploaded photos stay in the event across a downgrade because "upload is a publish".
+
+#### Scenario: Downgrading withdraws the photos outside the selection
 - **WHEN** a member who uploaded photos under a full grant switches to limited with a selection that
-  excludes some of them
-- **THEN** the event retains every uploaded photo, no re-upload occurs, and the status reflects the new
+  excludes some of them, and the selection has been read
+- **THEN** the next cycle removes the excluded photos' rows and the manifest it publishes no longer lists
+  them, the selected photos keep their rows, no re-upload occurs, and the status reflects the new
   selection-defined total
+
+#### Scenario: An upload that landed during the downgrade settles at foreground
+- **WHEN** a selected photo's upload was queued under a full grant, its bytes landed after the grant
+  narrowed to limited, and the withheld extension never acknowledged it
+- **THEN** its row becomes `COMPLETED` at the next foreground, and the status stops reporting it as
+  outstanding
 
 ### Requirement: An upgrade to full access is an offered route and an ordinary transition
 
@@ -481,19 +504,32 @@ Relocating this gate SHALL preserve the behaviour it currently produces. It SHAL
 side effect of the move — if the relocated gate would admit a trigger the fan-out currently refuses, that
 widening is a separate decision requiring its own evidence.
 
-A selection-scoped discovery SHALL NOT report a full enumeration, so it is never authoritative for
-deletion and drives no ledger deletion (capability `sync-ledger`, "Deletion is a presence diff over an
-authoritative walk"). A snapshot is the member's selection, not the library: a photo absent from it may
-simply be de-selected, and an uploaded, later-deselected photo SHALL keep its `COMPLETED` row, because
-deselection is not withdrawal and an upload is a publish. This is also what makes the mechanism's own empty
-answer safe: where the count must distinguish an un-captured snapshot from an empty one, discovery need
-not, **because its empty answer is retryable and the count's is not**. An un-captured snapshot costs the
-upload arm one idle cycle, which the next observer emission re-runs; a snapshot treated as authoritative
-would instead delete the rows of every photo it did not carry.
+A selection snapshot that has been **read** SHALL be reported as a full enumeration: it is authoritative for
+deletion exactly as a full-library walk is under a full grant (capability `sync-ledger`, "Deletion is a
+presence diff over an authoritative walk"). Under a partial grant the selection is the gallery, from the
+app's point of view. What the snapshot holds may be shared, subject to the selection policy. What it no
+longer holds is removed from the ledger, and so from the device manifest, whatever its upload state:
+**de-selecting is deleting.** Re-selecting a removed photo records it as new work and re-uploads the same
+object idempotently. That duplicate is accepted.
 
-The reason this is stated as a requirement rather than left to the implementation is that the flag is easy
-to set wrongly for a snapshot that looks complete: a selection the member put every photo into is still not
-the library, and nothing about its contents says so.
+A snapshot that has **not been read yet** SHALL be a distinct scope (`Unread`), and SHALL NOT be treated as
+an empty selection anywhere on the upload path. Between a grant turning partial (or a cold launch under
+one) and the first selection read, the app holds no selection. An authoritative empty snapshot would
+delete the rows of every photo, and an empty answer to a key resolution means "gone" to the enqueue, which
+also deletes. So the app's upload cycle SHALL be **Withheld** while the scope is `Unread` (capability
+`upload-lifecycle`, "The upload cycle owns its entry decision"). It settles narrowly, and reads, creates,
+deletes and publishes nothing. The observer's first emission then triggers the cycle that runs. The
+selection-scoped discovery SHALL refuse to answer for an `Unread` scope, failing the call rather than
+returning an empty result, so that no caller that reaches it anyway can mistake "not read" for "nothing".
+
+The status total already draws the same distinction, for its own reason: an unread snapshot must not settle
+the screen (see "One discovery serves both the status total and the enqueue"). Both SHALL read the one
+snapshot cell, so they cannot disagree about whether the selection has been read.
+
+Decision record: `changes/selection-is-the-walk` (D1). It reverses the earlier requirement that a
+selection-scoped discovery never report a full enumeration because "deselection is not withdrawal and an
+upload is a publish". Its one real hazard, the un-read snapshot, is kept closed by the `Unread` scope
+rather than by making every snapshot non-authoritative.
 
 #### Scenario: A trigger that would walk the library is declined under a partial grant
 
@@ -509,16 +545,34 @@ the library, and nothing about its contents says so.
 - **THEN** whether it responds is decided by that mechanism's own reading of the discipline, not by a
   blanket refusal at the fan-out
 
-#### Scenario: A scoped discovery deletes nothing
+#### Scenario: De-selecting a photo withdraws it from the event
 
-- **WHEN** a selection-scoped discovery runs, and the member has de-selected a photo whose `COMPLETED` row
-  is in the event's window
-- **THEN** it reports no full enumeration, and no ledger row is deleted as absent from the walk, so the
-  de-selected photo stays listed
+- **WHEN** a read selection snapshot no longer carries a photo whose `COMPLETED` row is in the event's
+  window
+- **THEN** the discovery reports a full enumeration, the photo's rows are deleted, and the manifest that
+  cycle publishes no longer lists it
 
-#### Scenario: An un-captured snapshot costs an idle cycle, not lost photos
+#### Scenario: De-selecting a photo mid-upload withdraws it too
 
-- **WHEN** an upload cycle runs under a partial grant before any selection snapshot has been captured
-- **THEN** it enqueues nothing, no row is deleted as absent from the walk, and the next observer emission
-  re-runs discovery over the real selection
+- **WHEN** a read selection snapshot no longer carries a photo whose row is `REQUESTED`
+- **THEN** the row is deleted and the photo is not listed. The transfer may still complete, and its
+  terminal write applies to no row
+
+#### Scenario: Re-selecting a withdrawn photo shares it again
+
+- **WHEN** a photo whose rows a de-selection removed is selected again
+- **THEN** the next cycle records it as new work, re-uploads it to the same destination, and lists it again
+
+#### Scenario: An un-read snapshot withholds the cycle and deletes nothing
+
+- **WHEN** the app's upload cycle runs under a partial grant before any selection snapshot has been read,
+  while the ledger holds admitted `DISCOVERED` and `COMPLETED` rows
+- **THEN** the cycle is withheld: no row is deleted, no job is created, nothing is published, and the
+  observer's first emission starts the cycle that runs over the real selection
+
+#### Scenario: An un-read scope never answers empty
+
+- **WHEN** the selection-scoped discovery is asked to discover or to resolve keys while the scope is
+  `Unread`
+- **THEN** the call fails, and no empty result is returned
 

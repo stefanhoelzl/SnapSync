@@ -310,11 +310,19 @@ For a job whose destination path matches no recorded row — including one creat
 the recorded path — the extension SHALL fall back to recovering the key from the destination URL's **last
 path segment**, which is correct for the v1 destination shape and for nothing else.
 
-A job whose row cannot be recovered by either route SHALL be **counted and reported at `Error` severity**,
-naming how many such jobs a cycle saw. It SHALL NOT be silently drained: an unrecoverable job means an
-upload whose outcome is being discarded, and a device in that state uploads bytes that are never recorded,
-never listed in the manifest, and never visible to another member — with the row left `REQUESTED`, which no
-routine path clears.
+A job whose destination has a recognised byte-route shape but whose **row is gone** SHALL be treated as
+**pruned**, not unrecoverable. The walk deletes a departed or de-selected asset's rows whatever their state
+(capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk"), so a late job for one
+is expected. A pruned job SHALL be acknowledged in place in whichever set presented it (`.retry` or
+`.acknowledge`), SHALL write nothing, SHALL NOT be emitted to the cycle, and SHALL be logged at `Info`
+(capability `upload-lifecycle`, "A presented job whose row is gone is answered and nothing more"). The v1
+last-segment fallback SHALL recover a key only when a row exists for it. A job it recovers no row for is
+pruned too. Reporting a pruned job at `Error` would raise a crash-reporting event for every photo deleted
+or de-selected mid-upload.
+
+A job whose destination cannot be mapped to any known shape SHALL be **counted and reported at `Error`
+severity**, naming how many such jobs a cycle saw. It SHALL NOT be silently drained: an unmappable job means
+an upload whose outcome is being discarded for a reason this build does not understand.
 
 It SHALL likewise recover the job's **content type** from that same destination's `Content-Type` header
 (matched case-insensitively, a blank value treated as absent), falling back to the `resource`'s uniform
@@ -351,15 +359,14 @@ device manifest declared the resource when it was discovered (capability `device
 event-album placement happened when its upload was first enqueued (capability `event-album`). No later pass
 reads or re-settles the row.
 
-Only **retry-spent failures whose `resource` is still available** SHALL be returned from the drain, so the
-cycle can re-create them in the same cycle from a live resource. No succeeded job and no terminal fact SHALL
-cross the port.
+Only **retry-spent failures whose `resource` is still available and whose row exists** SHALL be returned
+from the drain, so the cycle can re-create them in the same cycle from a live resource. No succeeded job, no
+terminal fact and no pruned job SHALL cross the port.
 
-When the extension reconstructs a resource for a returned job whose **ledger row is absent**
-(pruned), it SHALL derive the resource `assetId` from the recovered key via the **shared**
-`assetIdFromUploadKey` parser (the exact inverse of `uploadKey`; see `gallery-status`) — never a
-placeholder such as an empty string — and SHALL record a terminal state only for a job whose row is
-recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
+When the extension reconstructs a resource for a returned job, it SHALL derive the resource `assetId` from
+the recovered key via the **shared** `assetIdFromUploadKey` parser (the exact inverse of `uploadKey`; see
+`gallery-status`) — never a placeholder such as an empty string. It SHALL record a terminal state only for a
+job whose row exists, and SHALL NOT write any row for a pruned job, phantom or otherwise.
 
 #### Scenario: A returned job is matched by its destination path
 - **WHEN** a job in the `.acknowledge` set carries a destination whose path equals the `destinationPath`
@@ -375,9 +382,18 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
 - **WHEN** a job's destination path matches no recorded row and its shape is the v1 byte route
 - **THEN** the key is recovered from the destination's last path segment and the job is adjudicated normally
 
-#### Scenario: An unrecoverable job is reported, not drained silently
-- **WHEN** a cycle presents one or more jobs whose rows cannot be recovered by either route
+#### Scenario: An unmappable job is reported, not drained silently
+- **WHEN** a cycle presents one or more jobs whose destinations match no known byte-route shape
 - **THEN** the count is reported at `Error` severity, and every such job is still acknowledged
+
+#### Scenario: A job for a pruned row is acknowledged quietly
+- **WHEN** a job in either set carries a v2 destination whose row the walk deleted
+- **THEN** it is acknowledged in place, nothing is written, it is not returned to the cycle, it is logged at
+  `Info`, and no `Error` is reported
+
+#### Scenario: A first failure for a pruned row is not retried
+- **WHEN** a job in the `.retry` set belongs to a row the walk deleted
+- **THEN** it is acknowledged, not handed to the cycle, and `retryWithDestination(:)` is not called
 
 #### Scenario: Succeeded job records COMPLETED
 - **WHEN** a job in the `.acknowledge` set has `state == Succeeded`
@@ -422,10 +438,14 @@ recoverable. It SHALL NOT write a row carrying a phantom `assetId=""`.
 - **THEN** the guarded write applies to nothing, the job is acknowledged, and nothing is written or
   re-created
 
-#### Scenario: A pruned-row completion derives assetId from the key
-- **WHEN** a succeeded job is recorded but its ledger row was already pruned (no entry)
-- **THEN** the guarded write applies to nothing, no phantom `assetId=""` row is created, and any resource
-  reconstructed for a re-create carries the `assetId` parsed from the recovered key by `assetIdFromUploadKey`
+#### Scenario: A pruned-row completion writes nothing
+- **WHEN** a succeeded or retry-spent job is presented but its ledger row was already pruned (no entry)
+- **THEN** no row is written, phantom or otherwise, the job is acknowledged, and nothing is returned for
+  re-creation
+
+#### Scenario: A reconstructed resource derives assetId from the key
+- **WHEN** a returned job's resource is reconstructed for a re-create
+- **THEN** it carries the `assetId` parsed from the recovered key by `assetIdFromUploadKey`
 
 ### Requirement: Cap-aware creation and tri-state processing result
 
@@ -555,8 +575,10 @@ the membership entry, which alone reaches the join transition and which a `Stay`
 
 The extension SHALL record that an asset has left the library by **deleting** its ledger rows, and only on
 the evidence capability `sync-ledger` defines ("Deletion is a presence diff over an authoritative walk"): an
-authoritative walk that did not return the asset, for rows inside the membership's capture window that no
-live job owns; or, for a single row that still needs a job, its key resolving to nothing. Each deletion is
+authoritative walk that did not return the asset, for rows inside the membership's capture window, whatever
+their upload state; or, for a single row that still needs a job, its key resolving to nothing. A row whose
+job is still in flight is deleted too. The job's later outcome finds no row and is answered as pruned (see
+"Completion and retry adjudication"). Each deletion is
 one ledger transaction with its guard in the statement (capability `sync-ledger`), so it stays safe while the
 app's cycle holds a `LedgerWriter` over the same ledger at the same time. No remote object is deleted: nothing on the device deletes an
 uploaded object, and reclamation belongs entirely to the nightly sweep (capability `scheduled-cleanup`).
@@ -592,6 +614,11 @@ suppresses the upload. The backend re-stores the role idempotently and wakes nob
 - **WHEN** an asset deleted before its upload completed leaves a `DISCOVERED` row
 - **THEN** its key resolves to nothing at enqueue and that row is deleted, the ledger reaches no pending
   rows, and `process()` can return `completed` instead of looping on `processing`
+
+#### Scenario: A deletion during an in-flight upload retracts the asset at once
+- **WHEN** an asset whose row is `REQUESTED` is deleted from the library and an authoritative walk runs
+- **THEN** the row is deleted and the next projected `device.json` omits the asset, and the job's later
+  outcome writes nothing
 
 #### Scenario: A walk deletes nothing outside its window
 - **WHEN** an authoritative walk completes and the ledger holds rows, outside the membership's capture

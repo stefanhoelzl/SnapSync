@@ -805,14 +805,22 @@ repeated per cycle again; what is no longer repeated is the resource read of eve
 no refill depends on the walk at all.
 
 What is CREATED SHALL be bounded only by **the platform's own refusal**, never by a guess at its capacity.
-The cycle SHALL walk the admitted rows in **chunks** of a small constant (`resolveChunk`, 4): resolve the
-chunk through `UploadDiscovery`, create each resolved row's job, and stop the **whole pass** at the first
-`LIMIT_EXCEEDED`. There SHALL be no capacity read and no fixed batch. Resolving a row costs a synchronous
-platform round-trip that nothing can interrupt — measured at 11 ms for one key, 19 ms for three and 54 ms for
-sixteen against a cap of four (iPhone12,8 / iOS 26.6) — so the chunk bounds what a refusal wastes to at most
-`resolveChunk − 1` resolved keys (≈33 ms). A chunk is a granularity, not a cap: both transports refuse
-honestly — this tier's `createJob` counts the session's live tasks, so its cap binds across a relaunch, and
-PhotoKit refuses at its own job limit. Decision record: `changes/both-uploaders-active` (D9).
+The cycle SHALL walk the admitted rows **one at a time**: resolve the row through `UploadDiscovery`, create
+its job, and stop the **whole pass** at the first `LIMIT_EXCEEDED`, before resolving the next row. There
+SHALL be no capacity read, no fixed batch and no resolve chunk. Both transports refuse honestly: this tier's
+`createJob` counts the session's live tasks, so its cap binds across a relaunch, and PhotoKit refuses at its
+own job limit.
+
+Resolving a row costs a synchronous platform round-trip that nothing can interrupt, measured at **~4.5 ms per
+request plus ~3.45 ms per photo** (rig probe, SE2 / iOS 26.6, 2026-09-22; 100 distinct images per run, two
+rounds plus a warm repeat, no cache effect). For 100 photos that is 0.80–0.94 s one at a time, against
+0.46 s in fours and 0.37 s in sixteens. The difference is accepted for simplicity. It applies only under a
+full grant: under a partial grant keys resolve from the selection snapshot already in hand, with no platform
+call (see "Ledger keys resolve to uploadable resources"). The earlier figure of "11 ms for one key"
+understated the per-photo cost this call carries.
+
+Decision records: `changes/both-uploaders-active` (D9), and `changes/selection-is-the-walk` (D5), which
+retired the resolve chunk.
 
 This bounds creation, never the read: the work-source read and the admission stay unbounded, because bounding
 the read starves.
@@ -843,8 +851,8 @@ the pump nothing to re-arm on.
 #### Scenario: The top-up creates until the platform refuses
 
 - **WHEN** a cycle enqueues more admitted rows than the platform will accept
-- **THEN** it resolves and creates chunk by chunk, stops the pass at the first `LIMIT_EXCEEDED`, resolves no
-  later chunk, and the work-source read itself stays unbounded
+- **THEN** it resolves and creates row by row, stops the pass at the first `LIMIT_EXCEEDED`, resolves no
+  later row, and the work-source read itself stays unbounded
 
 #### Scenario: A refusal truncates rather than reporting no work
 
@@ -852,11 +860,11 @@ the pump nothing to re-arm on.
 - **THEN** the cycle is reported truncated and publishes `PROCESSING`, so the trigger's re-arm policy is
   applied to a cycle that knows work remains
 
-#### Scenario: A refusal wastes at most the rest of its chunk
+#### Scenario: A refusal wastes no resolve
 
-- **WHEN** the refusal lands on the first row of a resolved chunk
-- **THEN** at most `resolveChunk − 1` resolved rows go uncreated, and they remain `DISCOVERED` for a later
-  cycle
+- **WHEN** `createJob` answers `LIMIT_EXCEEDED` for a row
+- **THEN** no further row is resolved in that pass, and every row not yet created remains `DISCOVERED` for a
+  later cycle
 
 #### Scenario: A backlog the platform accepts is not truncated
 
