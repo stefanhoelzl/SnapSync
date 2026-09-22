@@ -130,8 +130,7 @@ class ForegroundOrderingTest {
             ),
             statusPoller = statusPoller,
             reloadConfig = {},
-            pumpUploads = pumpForeground,
-            settleStoredUploads = settleStoredUploads,
+            uploads = ForegroundUploads(pump = pumpForeground, settleStored = settleStoredUploads),
             refreshStatus = refreshStatus,
             // No membership: the reconcile and the membership refresh short-circuit, leaving the pump,
             // the status refresh and the unconditional reclaim as the flow's children — which is exactly

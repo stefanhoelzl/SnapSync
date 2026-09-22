@@ -52,9 +52,10 @@ import platform.Photos.PHPhotoLibrary
  * pre-identity byte shape and is null for any other — used only when a row exists for it. A byte-route job
  * neither route resolves is **pruned**: its row was deleted because the photo left the library or the
  * selection, so it is acknowledged, nothing is written, and it is logged at `Info`. A job whose destination
- * has no byte-route shape at all is counted and raised at `Error`, never drained in silence. The `resource`, when still available, is reused to re-create a
- * retry-spent job. Both are captured as **nullable locals** before use: cinterop declares them non-null
- * and they are nil at runtime, and a null check against a non-null-typed value may be elided
+ * has no byte-route shape at all is counted and raised at `Error`, never drained in silence. The `resource`,
+ * when still available, is reused to re-create a retry-spent job. Both are captured as **nullable locals**
+ * before use: cinterop declares them non-null and they are nil at runtime, and a null check against a
+ * non-null-typed value may be elided
  * (`05435ff9`, `8c8dbe28`). Do not "simplify" those two locals away — see `PhotoKitJobMapping.kt`'s KDoc
  * for the full account.
  */
