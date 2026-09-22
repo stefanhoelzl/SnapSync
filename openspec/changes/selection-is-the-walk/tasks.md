@@ -1,0 +1,107 @@
+## 1. An unread selection is its own scope (D1)
+
+- [ ] 1.1 `model/SelectionScope.kt`: add `SelectionScope.Unread`; `selectionScope(LIMITED, null)` → `Unread`,
+      `selectionScope(LIMITED, list)` → `Scoped(list)`; rewrite the KDoc (the `Scoped(emptyList())` "honest
+      gap" reading is gone). Update every exhaustive `when` over the scope.
+- [ ] 1.2 `feature/upload/UploadConfig.kt`: `appAdmission` withholds under `LIMITED` while the scope is
+      `Unread`. Give it the input from the same cell (`compose/SnapSyncApp.appUploadAdmission` passes the
+      scope, or whether the snapshot has been read); `appMayCreate` follows automatically.
+- [ ] 1.3 `SelectionScopedDiscovery`: `Scoped` → `fullEnumeration = true`; `Unread` → throw from both
+      `discover` and `resourcesFor` (never an empty answer). Rewrite its KDoc.
+- [ ] 1.4 `compose/PermissionAwareCandidateSource` KDoc: remove the false "a scoped discovery … deletes nothing
+      … its empty answer is retryable" paragraph; state that both sides now read the one cell and both
+      distinguish unread from empty.
+- [ ] 1.5 Tests (commonTest): `CycleGateTest` (`LIMITED` + unread → `Withheld`; `LIMITED` + read, even empty →
+      `Admit`); `SelectionScopedDiscoveryTest` (read snapshot is authoritative; `Unread` throws on both calls);
+      an `UploadCycleTest` case pinning today's bug — `LIMITED`, unread, admitted `DISCOVERED` rows → nothing
+      deleted.
+
+## 2. Authoritative walks delete in-flight rows (D2)
+
+- [ ] 2.1 `UploadCycle.departedKeys`: drop the `state != REQUESTED` filter; rewrite its KDoc and the
+      `decide` comment that says a selection snapshot is not the library.
+- [ ] 2.2 Tests: an authoritative walk deletes an absent asset's `REQUESTED` row; a read selection snapshot
+      deletes a de-selected photo's `COMPLETED` and `REQUESTED` rows; the published manifest omits both; a
+      later `markTerminal` for the deleted key answers `false` and creates nothing; re-selecting records the
+      photo `DISCOVERED` again.
+
+## 3. A job whose row is gone is answered and nothing more (D3)
+
+- [ ] 3.1 `UploadCycle`: skip a row-less job before `adjudicateFailure` in `acknowledgePresented`,
+      `recreateRetrySpent`, and the `fetchRetryJobs` loop (no engine event, no `retryJob`, no `createJob`).
+      Also skip a done row in the `fetchRetryJobs` loop, as the other two paths already do.
+- [ ] 3.2 `TransferRecord`: add a key read (a read, not a record operation) so the PhotoKit adapter can confirm
+      a v1-fallback key's row. Implement it in `SqlDelightLedgerStore`, `InMemoryLedgerStore` (both copies)
+      and the world's fakes, and cover it in `LedgerStoreContract`.
+- [ ] 3.3 `IosPhotoKitUploadPlatform` / `PhotoKitJobMapping`: a recognised destination with no row is
+      **pruned** — acknowledge it in place in both `drainTerminals` and `fetch(.retry)`, write nothing, do not
+      emit it, and log it at `Info`. Keep `Error` only for `AcknowledgeToDrain` (unmappable). Emit a
+      retry-spent failure for re-creation only when its row exists. Update the `reportUnrecoverable` KDoc.
+      Put the decision in the pure mapping file so it is testable.
+- [ ] 3.4 `IosUrlSessionUploadPlatform.recordTerminal`: the "applied to NO row" line → `Info`, reworded as a
+      pruned row.
+- [ ] 3.5 Tests: `UploadCycleTest` — a withheld settle, a retry-spent re-create, and a first-failure retry for
+      a deleted key each write no row and create no job; a present `REQUESTED` row still retries.
+      Mapping-level test for the pruned classification.
+
+## 4. The foreground settles from the per-device listing (D4)
+
+- [ ] 4.1 `feature/upload`: the new settle use-case (working name `StoredUploadSettle`) over `LedgerStore`,
+      `DeviceFilesSource` and a device-id thunk: `pendingResources()` → nothing pending means no request →
+      `list(deviceId)` with a 15 s timeout → `markTerminal(key, COMPLETED)` for each pending listed key.
+      Failures logged as `ShareSetLoad` does (`Warn`; `Error` for `DeviceListingShapeException`). Never throws.
+- [ ] 4.2 `compose/SnapSyncApp`: build it and hand `flow/Foreground` a `settleStoredUploads` effect, in the
+      app composition only.
+- [ ] 4.3 `flow/Foreground`: one more `launch { settleStoredUploads() }` beside `pumpUploads`, not behind it.
+      Fix the flow KDoc's list of steps.
+- [ ] 4.4 Tests (commonTest, fakes): a `REQUESTED` listed key → `COMPLETED`; `DISCOVERED` listed → unchanged;
+      `REQUESTED` unlisted → unchanged; no pending rows → no request; failure/timeout → nothing changes; a
+      later `markTerminal(COMPLETED)` answers `false`.
+- [ ] 4.5 `:test:integration` over `:test:world`: the measured downgrade — jobs in flight under `GRANTED`, the
+      grant narrows to `LIMITED` with half of them selected, the backend receives all bytes, the extension is
+      withheld. After foreground: the selected rows are `COMPLETED`, the de-selected rows are gone, the
+      manifest lists only the selected photos, and the UiState reads in sync.
+
+## 5. Rider — batch size 1 (D5)
+
+- [ ] 5.1 `UploadCycle`: delete `RESOLVE_CHUNK` and the `chunked` loop. Per admitted row: place, resolve
+      (`resourcesFor(setOf(key))`), create, and stop at the first `LIMIT_EXCEEDED`. Rewrite the `enqueue` KDoc
+      (the "chunk is a granularity" text).
+- [ ] 5.2 Tests: a refusal stops the pass with no further resolve; album placement still precedes each row's
+      job creation.
+- [ ] 5.3 grep the tree for `RESOLVE_CHUNK`, `resolveChunk` and "11 ms" (code, specs, `architecture/`) and fix
+      what is left.
+
+## 6. Docs, diagrams, gates
+
+- [ ] 6.1 Remaining KDocs citing the old rules: `LedgerStore.manifestRows` ("a departed asset's rows are
+      deleted"), `SnapSyncApp.selectionScope`, and any "deselection is not withdrawal" / "never authoritative"
+      text (`grep -rn "not withdrawal\|never authoritative\|fullEnumeration = false"`).
+- [ ] 6.2 `./gradlew architectureDiagrams` (the Foreground flow changed) and commit the regenerated
+      `architecture/`.
+- [ ] 6.3 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` are green (detekt tiers included; no
+      ceiling raised).
+- [ ] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate selection-is-the-walk`.
+
+## 7. Verification on real platforms
+
+- [ ] 7.1 Simulator (`ios-simulator` skill): a `LIMITED` grant with a seeded library — select, upload,
+      de-select, and confirm over the control channel that the rows are gone and the manifest omits the photo.
+      Re-select and confirm it is listed again. Cold-launch under `LIMITED` and confirm the first cycle
+      logs Withheld until the selection is read, and deletes nothing.
+- [ ] 7.2 Device (`snapsync-device` + `rig-channel`, lease first, an event created for the test): repeat the
+      2026-09-22 downgrade probe (`/device/uploaders?app=off`, airplane mode, narrow to 2 of 4, network back).
+      Expect: the 2 de-selected rows gone and unlisted, the 2 selected rows `COMPLETED` at the next foreground,
+      the status "In sync", and no `Error` line in `ext-debug.log` for the pruned jobs once full access
+      returns.
+- [ ] 7.3 Record the device result (date, build, iOS) in the design's Context or the PR description.
+
+## 8. At sync/archive time (not before; the user drives it)
+
+- [ ] 8.1 `upload-state-reconciliation` Purpose: it no longer runs "once, at the join" only — add the
+      foreground settle to the Purpose's first paragraphs (a delta cannot edit a Purpose).
+- [ ] 8.2 `limited-photo-access` and `sync-ledger` Purposes: add a history line citing this change
+      (de-selection is deletion; the in-flight exemption retired).
+- [ ] 8.3 Run the three archive gates in `openspec/config.yaml` (Placeholder Purpose, Delta completeness —
+      account for `:domain`, `:adapter:ios:ext-safe`, `:adapter:ios:app-only`, `:adapter:generic:*`,
+      `:test:world`; Dead types — none expected, as `RESOLVE_CHUNK` is a `val`).
