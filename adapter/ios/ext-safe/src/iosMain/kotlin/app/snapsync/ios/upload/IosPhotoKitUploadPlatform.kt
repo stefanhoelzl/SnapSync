@@ -293,19 +293,6 @@ class IosPhotoKitUploadPlatform(
     }
 
     /**
-     * No number — and that is the honest answer here, not a gap.
-     *
-     * This tier's limit is the OS's own durable upload-job queue. We cannot read its depth, and it is
-     * unrelated to any bound this process could invent, so the system surfaces it exactly once: as
-     * `limitExceeded` at the moment a create is refused. A guessed ceiling would be a fiction the cycle
-     * would then resolve rows against; `null` sends it back to its own batch bound instead.
-     *
-     * The same shape as [fetchRetryJobs] and [drainTerminals] on the app-driven tier — a member the
-     * mechanism has nothing to give, answered with a constant rather than faked.
-     */
-    override suspend fun remainingCapacity(): Int? = null
-
-    /**
      * No set — the honest answer for a durable OS queue. The system exposes exactly two job sets, `.retry` and
      * `.acknowledge`, and no set of jobs still in flight; a job it holds survives this process, so this tier
      * has no stranded population for the cycle to reconcile.

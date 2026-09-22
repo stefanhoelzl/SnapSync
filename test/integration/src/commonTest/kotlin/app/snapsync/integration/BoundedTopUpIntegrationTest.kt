@@ -8,22 +8,22 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * A backlog larger than the platform's capacity drains without ever resolving a row the platform would
- * have refused — over the **real** stack (the same `snapSyncApp` core the device shells call).
+ * A backlog larger than the platform's job limit drains, each cycle creating until the platform refuses — over
+ * the **real** stack (the same `snapSyncApp` core the device shells call).
  *
  * Resolving a ledger row to an uploadable resource is a synchronous platform round-trip that nothing can
- * interrupt, so a row read past what the platform will accept is uninterruptible time spent on a job that
- * is never created. Measured on device (iPhone12,8 / iOS 26.6, 2026-09-09): 54 ms to resolve sixteen keys
- * against a cap of four, where one key costs 11 ms — and a cycle with every slot busy resolved sixteen to
- * create none.
- *
- * The assertion is deliberately a **count with repeats**, not a set: the waste this removes is repeated
- * work on the same rows across successive cycles, which a set of distinct keys hides completely.
+ * interrupt (measured on device, iPhone12,8 / iOS 26.6, 2026-09-09: ~11 ms per key). The cycle therefore
+ * resolves admitted rows a chunk at a time and stops at the first refusal, so the resolves a refusal wastes are
+ * bounded by one chunk per cycle — never the whole backlog. No capacity is asked of the platform: its refusal is
+ * the only signal (decision record `changes/both-uploaders-active`, D9).
  */
 class BoundedTopUpIntegrationTest {
 
+    /** The cycle's resolve chunk (`RESOLVE_CHUNK`, internal to `:domain:feature`). */
+    private val chunk = 4
+
     @Test
-    fun a_backlog_drains_without_resolving_a_row_the_platform_would_refuse() = worldTest {
+    fun a_backlog_drains_across_cycles_stopping_at_each_refusal() = worldTest {
         val w = World(this)
         w.provision("E")
         w.platform.jobLimit = 2 // far fewer slots than there is work
@@ -43,34 +43,28 @@ class BoundedTopUpIntegrationTest {
             w.platform.created.map { it.filename },
             "every asset was eventually enqueued",
         )
-        // THE POINT. One resolve per creation, across the whole drain. Before the bound, each cycle read up
-        // to the fixed batch and resolved every row in it to create at most `jobLimit` of them, paying the
-        // platform round-trip again for the same leftovers on the next cycle, and again on the one after.
-        assertEquals(
-            w.platform.created.size,
-            w.discovery.resolvedKeyCount,
-            "no row was resolved for a job the platform would not take",
-        )
         assertTrue(rounds > 1, "the backlog really did span several cycles")
+        assertTrue(
+            w.discovery.resolvedKeyCount - w.platform.created.size <= (rounds + 1) * (chunk - 1),
+            "each cycle wastes at most one chunk of resolves at its refusal",
+        )
     }
 
     @Test
-    fun a_cycle_with_every_slot_busy_makes_no_platform_read_and_still_reports_work_remaining() = worldTest {
+    fun a_cycle_with_every_slot_busy_resolves_at_most_one_chunk_and_reports_work_remaining() = worldTest {
         val w = World(this)
         w.provision("E")
         w.platform.jobLimit = 1
-        w.addOwnAsset("A")
-        w.addOwnAsset("B")
+        for (id in listOf("A", "B", "C", "D", "E", "F")) w.addOwnAsset(id)
 
         assertEquals(CycleResult.PROCESSING, w.runUploadCycle())
         val resolvedWhileFilling = w.discovery.resolvedKeyCount
 
-        // The one slot is occupied and nothing has completed. The ledger still holds B.
+        // The one slot is occupied and nothing has completed. The ledger still holds the rest.
         assertEquals(CycleResult.PROCESSING, w.runUploadCycle(), "backpressure, not an absence of work")
-        assertEquals(
-            resolvedWhileFilling,
-            w.discovery.resolvedKeyCount,
-            "a full platform costs no platform round-trip at all",
+        assertTrue(
+            w.discovery.resolvedKeyCount - resolvedWhileFilling <= chunk,
+            "a full platform costs one chunk of resolves, never the backlog",
         )
     }
 }

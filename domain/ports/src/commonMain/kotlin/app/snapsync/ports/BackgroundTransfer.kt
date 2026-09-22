@@ -42,30 +42,6 @@ interface BackgroundTransfer {
     suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest)
 
     /**
-     * How many upload jobs this platform will accept **right now**, or `null` where it cannot say.
-     *
-     * The bound on the cycle's work-source read. Resolving a ledger row to a [Resource] costs a
-     * synchronous platform round-trip that nothing can interrupt (see [UploadDiscovery.resourcesFor]), so a row resolved
-     * beyond what the platform will take is uninterruptible time spent on a job that is never created.
-     * Asking the platform is the only way to avoid that: it is the one party that knows its own limit.
-     *
-     * **`null` is an answer, not a failure.** A platform whose limit belongs to the OS — a durable job
-     * queue it cannot read — reports the absence of a number rather than a guess, and the caller falls
-     * back to its own bound. That is the same shape [fetchRetryJobs] and [drainTerminals] already take on
-     * the tier where the mechanism has nothing to give.
-     *
-     * **Advisory, and stale in both safe directions.** Transfers start and finish while the caller acts on
-     * this number, so it is never exact — and nothing needs it to be. Too low resolves fewer rows than it
-     * could, and the remainder stays in the ledger for the next cycle to read (capability `sync-ledger`).
-     * Too high is refused by [createJob]'s own [CreateResult.LIMIT_EXCEEDED], exactly as an unbounded read
-     * is refused today. There is no third outcome, so this needs no lock and no generation counter.
-     *
-     * A reported number is never negative: an implementation whose cap does not bind across process death
-     * clamps at zero rather than reporting the overshoot.
-     */
-    suspend fun remainingCapacity(): Int?
-
-    /**
      * The ledger keys of the transfers this transport still holds, or `null` where it cannot enumerate them
      * (capability `ios-url-session-upload`, "The transport reports the transfers it still holds").
      *
@@ -74,7 +50,7 @@ interface BackgroundTransfer {
      * delivers no completion and nothing else will ever move its row. The decision and the write are the
      * cycle's; the transport reads no ledger state to answer.
      *
-     * **`null` is an answer, not a failure** — the same shape as [remainingCapacity]. A transport whose queue
+     * **`null` is an answer, not a failure** — the same shape as [fetchRetryJobs]. A transport whose queue
      * is the OS's durable job store (it exposes a `.retry` and an `.acknowledge` set, and no set of jobs still
      * in flight) has no stranded population to reconcile, and an absent set makes the cycle reconcile nothing
      * rather than treat every `REQUESTED` row as lost.

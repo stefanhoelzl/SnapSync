@@ -86,12 +86,11 @@ class NarrowedScopeIntegrationTest {
     @Test
     fun excluded_rows_do_not_starve_admitted_work() = worldTest {
         // The one way to make this worse than the bug: admit AFTER a bounded read. `rowsNeedingJob`
-        // returns a stable key order, so an excluded backlog at the front would fill the batch on every
+        // returns a stable key order, so an excluded backlog at the front would fill a bounded read on every
         // cycle and the admitted row further down would never be reached — a permanent, silent stall.
         val w = World(this)
         w.provision("E", minPhotoDate = wide)
-        // More excluded rows than one cycle enqueues (`enqueueBatchSize` is 16), all sorting AHEAD of the
-        // admitted one by key.
+        // More excluded rows than several resolve chunks, all sorting AHEAD of the admitted one by key.
         repeat(20) { i -> w.addOwnAsset("A${(i + 1).toString().padStart(2, '0')}", creationDate = early) }
         w.addOwnAsset("Z01", creationDate = late)
 
