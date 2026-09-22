@@ -61,11 +61,20 @@ class RecordingTest {
     }
 
     @Test
-    fun `a reordered, different or extra call diverges`() {
+    fun `a reordered or different or extra call diverges`() {
         assertFailsWith<Divergence> { Replayer("A", listOf(Exchange("a()", "1"))).answer("b()") }
         val p = Replayer("A", listOf(Exchange("a()", "1")))
         p.answer("a()")
         assertFailsWith<Divergence> { p.answer("a()") }
+    }
+
+    @Test
+    fun `a recorded call never made diverges on exhaustion`() {
+        val p = Replayer("A", listOf(Exchange("a()", "1"), Exchange("b()", "2")))
+        p.answer("a()")
+        assertFailsWith<Divergence> { p.assertExhausted() }
+        p.answer("b()")
+        p.assertExhausted()
     }
 
     @Test

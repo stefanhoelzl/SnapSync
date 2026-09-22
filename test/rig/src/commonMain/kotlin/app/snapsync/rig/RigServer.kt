@@ -17,6 +17,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -140,6 +141,7 @@ class RigServer(
             get("/device/logs") { call.traced { call.respondLogs() } }
             get("/device/gallery") { call.traced { call.respondGallery() } }
             post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
+            post("/contract/{name}") { call.traced { call.respondContract() } }
         }
     }
 
@@ -238,6 +240,21 @@ class RigServer(
                 "\"note\":\"a user command is an intent, exactly as a tap is — poll /device/state\"}\n",
             status = HttpStatusCode.Accepted,
         )
+    }
+
+    /**
+     * `POST /contract/{name}` — run a port contract in-app and answer with its recording, to be committed
+     * unedited as `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`. Off the main lane, like the device
+     * commands: it blocks until every clause has run.
+     */
+    private suspend fun ApplicationCall.respondContract() {
+        val name = routeName("/contract")
+        val contract = hooks.contracts[name]
+            ?: return respondText(
+                excludedOrUnknown(name, emptyMap(), "contract"),
+                status = HttpStatusCode.NotFound,
+            )
+        respondText(withContext(Dispatchers.Default) { contract() })
     }
 
     /**

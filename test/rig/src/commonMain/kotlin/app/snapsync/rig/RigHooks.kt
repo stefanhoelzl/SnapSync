@@ -106,6 +106,12 @@ class RigHooks(
      * supplies the writing.
      */
     val publishBoundPort: (Int) -> Unit,
+    /**
+     * The port contracts this build can run in-app, by name — `POST /contract/<name>` (capability
+     * `port-contracts`). Each runs every clause against the device's real implementation, recording what it
+     * asked the operating system and what it was answered, and returns the recording to commit verbatim.
+     */
+    val contracts: Map<String, () -> String>,
 ) {
 
     /**

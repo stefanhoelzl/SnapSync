@@ -109,6 +109,13 @@ class Replayer(private val clauseId: String, private val exchanges: List<Exchang
         next++
         return expected.answer
     }
+
+    /** Every recorded call was made. Called when the clause's subject is disposed. */
+    fun assertExhausted() {
+        if (next < exchanges.size) {
+            throw Divergence("[$clauseId] ${exchanges.size - next} recorded call(s) were never made, first: ${exchanges[next].call}")
+        }
+    }
 }
 
 /**
