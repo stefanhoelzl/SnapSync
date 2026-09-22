@@ -6,7 +6,7 @@ The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` 
 **real** platform-agnostic stack against controllable in-memory infrastructure: the honest
 in-memory port implementations SHALL live in `:adapter:generic:fake` (package `app.snapsync.fake`; spec
 `module-architecture`), and `:test:world` SHALL hold the **operator rigging** around them — the
-backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`,
+backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`, `FakeUploadDiscovery`,
 `FakeDownloadTransport`, `FakePhotoLibraryImporter`, `FakeAlbumManager`,
 `MutablePhotoAccessStatusSource`) and the wrappers that own the honest fakes' state cells
 (`WorldGallery`, `RecordingDownloadStore`) — per the fake-honesty gate (`architecture-guards`).
