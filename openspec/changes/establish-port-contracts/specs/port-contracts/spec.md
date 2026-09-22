@@ -73,14 +73,20 @@ executes; a clause body SHALL have no operation that skips it, so an unexercised
 ### Requirement: Every clause runs against a real implementation on some host
 
 Every clause SHALL be reachable by at least one real implementation on at least one host: a `Live`
-binding that declares the clause's state reachable, or a `Replay` binding whose recording holds a block
-for the clause. A clause reachable only by a fake SHALL NOT exist. A belief about the platform that no
+binding on a host CI runs that declares the clause's state reachable, or a `Replay` binding whose recording
+holds a block for the clause. A host that some `Replay` binding names is a **recorded** host — CI never runs
+it — so a `Live` binding there counts only through its recording, never through its declaration. A clause reachable only by a fake SHALL NOT exist. A belief about the platform that no
 host can exercise belongs in the adapter's documentation with its evidence; a behaviour of the project's
 own logic belongs in an ordinary fake-backed test.
 
 #### Scenario: A clause only the fake reaches
 - **WHEN** a clause is added whose state every `Live` binding declares unreachable and no recording holds
 - **THEN** the build fails naming the clause
+
+#### Scenario: A device-only clause before anyone has recorded it
+- **WHEN** a clause's state is reachable only by the device's `Live` binding and no recording holds the
+  clause
+- **THEN** the build fails naming the clause, although the device binding declares the state reachable
 
 #### Scenario: A failing clause is hidden by an unreachable declaration
 - **WHEN** a clause fails on its only real host and that host's binding is changed to declare the state

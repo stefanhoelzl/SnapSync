@@ -5,7 +5,8 @@
 A `:test:architecture` gate SHALL derive, from the repository's text and the committed recordings, every
 contract's clause ids and the state each needs; every binding's host, kind and declared reachable states;
 and every recording's host and clause blocks. It SHALL fail, naming the clause, when a clause is reached
-by no `Live` binding's declaration and by no `Replay` binding's recording (capability `port-contracts`,
+by no declaration of a `Live` binding on a host CI runs, and by no `Replay` binding's recording — a host some
+`Replay` binding names being a recorded host, where only the recording counts (capability `port-contracts`,
 "Every clause runs against a real implementation on some host"). It SHALL fail when a `Host` value is named
 by no binding.
 
