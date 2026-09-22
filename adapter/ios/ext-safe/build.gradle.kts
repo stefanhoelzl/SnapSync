@@ -98,6 +98,9 @@ kotlin {
             // credential-recovery loop — can be exercised against a real response. The Darwin engine
             // cannot produce one without a server, and this module's tests deliberately stand up none.
             implementation(libs.ktor.client.mock)
+            // The Keychain and App-Group store bindings of `SecureStoreContract` (capability
+            // `port-contracts`). Bound here because the seam and `AppGroupFileSecureStore` are `internal`.
+            implementation(project(":test:contracts"))
         }
     }
 }
