@@ -262,9 +262,10 @@ later change.
 
 ## Risks / Trade-offs
 
-- **[Replay reads a committed file from a simulator test binary — unverified]** → verify early on the Mac;
-  if runtime file access fails, embed recordings at build time via a Gradle task generating a Kotlin
-  constant from the committed `.rec` (the file stays the single source; nothing is copied by hand).
+- **[Replay reads a committed file from a simulator test binary — unverified]** → resolved during
+  implementation by embedding rather than measuring: a Gradle task turns each committed `.rec` into a
+  generated Kotlin constant for the replay test source set, so the simulator never needs a repository path.
+  The `.rec` stays the single source; nothing is copied by hand.
 - **[Ordered exact matching over-fits]** — a harmless reordering reads `Diverged` → a re-record is cheap
   and the diff shows exactly what moved; ordering is behaviour for this port.
 - **[An iOS update changes an answer and nobody re-records]** → the header shows the iOS version; the
@@ -287,5 +288,4 @@ behaviour-preserving, and every other addition is test-only or rig-only).
 
 ## Open Questions
 
-- Runtime file access for replay on the simulator (see Risks) — settled during implementation.
 - Whether the app on the simulator earns a binding — measured during implementation, decided later.

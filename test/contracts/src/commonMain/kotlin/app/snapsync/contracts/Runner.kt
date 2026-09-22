@@ -12,29 +12,36 @@ fun <K : Enum<K>, T> run(contract: Contract<K, T>, binding: Binding<K, T>): List
 
 private fun <K : Enum<K>, T> runOne(clause: Clause<K, T>, binding: Binding<K, T>): Outcome {
     val declared = clause.state in binding.reaches
-    return when (val entered = binding.create(clause.state, clause.id)) {
+    // Entering a state is part of the clause too: a replaying binding's seeding calls can diverge.
+    val entered = try {
+        binding.create(clause.state, clause.id)
+    } catch (t: Throwable) {
+        return classify { throw t }
+    }
+    return when (entered) {
         is Entered.Unreachable ->
             if (declared) {
                 Outcome.Failed("the binding declares ${clause.state} reachable but answered Unreachable: ${entered.reason}")
             } else {
                 Outcome.NotRunHere(entered.reason)
             }
-        is Entered.Ready ->
-            try {
-                if (!declared) {
-                    Outcome.Failed("the binding produced ${clause.state}, which it does not declare reachable")
-                } else {
-                    execute(clause, entered.subject)
-                }
-            } finally {
-                entered.dispose()
+        is Entered.Ready -> {
+            val outcome = if (declared) {
+                execute(clause, entered.subject)
+            } else {
+                Outcome.Failed("the binding produced ${clause.state}, which it does not declare reachable")
             }
+            // Disposal is part of the clause: a replaying binding checks there that every recorded call was
+            // made, so a call the adapter silently STOPPED making diverges instead of replaying green.
+            val disposal = classify { entered.dispose() }
+            if (outcome == Outcome.Passed) disposal else outcome
+        }
     }
 }
 
-private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T): Outcome =
+private inline fun classify(block: () -> Unit): Outcome =
     try {
-        runTest { clause.body(this, subject) }
+        block()
         Outcome.Passed
     } catch (d: Divergence) {
         Outcome.Diverged(d.message ?: "diverged")
@@ -44,10 +51,14 @@ private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T): Outcome 
         Outcome.Failed("${t::class.simpleName}: ${t.message}")
     }
 
+private fun <K : Enum<K>, T> execute(clause: Clause<K, T>, subject: T): Outcome =
+    classify { runTest { clause.body(this, subject) } }
+
 /** One line per clause, in contract order — the table a failing run reports and a device run returns. */
 fun List<ClauseResult>.table(): String = joinToString("\n") { "${it.clauseId} ${it.outcome.render()}" }
 
-private fun Outcome.render(): String = when (this) {
+/** One outcome as the outcome table and a recording's header spell it. */
+fun Outcome.render(): String = when (this) {
     Outcome.Passed -> "Passed"
     is Outcome.Failed -> "Failed($message)"
     is Outcome.NotRunHere -> "NotRunHere($reason)"

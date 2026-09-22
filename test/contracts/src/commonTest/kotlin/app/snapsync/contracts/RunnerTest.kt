@@ -70,7 +70,7 @@ class RunnerTest {
     }
 
     @Test
-    fun `a divergence is Diverged, not Failed`() {
+    fun `a divergence is Diverged and not Failed`() {
         val contract = object : Contract<Toy, Replayer>("Replay") {
             override val clauses = listOf(clause("C", Toy.ON) { it.answer("unrecorded()") })
         }
@@ -81,6 +81,14 @@ class RunnerTest {
             override fun create(state: Toy, clauseId: String) = Entered.Ready(Replayer(clauseId, emptyList()))
         }
         assertIs<Outcome.Diverged>(run(contract, binding).single().outcome)
+    }
+
+    @Test
+    fun `a divergence raised while disposing is Diverged even after the body passed`() {
+        val binding = ToyBinding(setOf(Toy.ON, Toy.OFF)) { s ->
+            Entered.Ready(Switch(s == Toy.ON)) { throw Divergence("a recorded call was never made") }
+        }
+        assertTrue(run(ToyContract, binding).all { it.outcome is Outcome.Diverged })
     }
 
     @Test

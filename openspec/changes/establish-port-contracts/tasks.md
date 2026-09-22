@@ -5,7 +5,7 @@
 - [x] 1.3 Implement the runner: fresh instance per clause; declaration check (declared-but-unreachable and undeclared-but-ready are `Failed`); an early return never reads `Passed`; a CI entry point that runs every clause and fails once with the full outcome table on any `Failed`/`Diverged`
 - [x] 1.4 Implement the recording format reader/writer in `commonMain` (provenance header, sorted `[CLAUSE_ID]` blocks of `call -> answer` lines, named volatile-key masking) with `commonTest` round-trip tests
 - [x] 1.5 Unit-test the runner and outcomes in `commonTest` against toy contracts (runs on JVM and the simulator)
-- [ ] 1.6 On the Mac (ssh-mac loop): verify whether an `iosSimulatorArm64Test` binary can read a committed repo file at run time; if not, add a Gradle task that turns each committed `.rec` into a generated Kotlin constant for the replay test source set (the `.rec` stays the only source). Record the finding in design.md
+- [x] 1.6 Resolved by construction rather than measured: recordings are embedded at build time (`:adapter:ios:ext-safe:embedContractRecordings` turns each committed `.rec` into a generated Kotlin constant for the replay test source set; the `.rec` stays the only source), so the simulator test executable never reads a repository path
 
 ## 2. Convert the storage contracts
 
@@ -33,14 +33,14 @@
 
 ## 5. Recording on the device
 
-- [ ] 5.1 Add the rig-gated source set to `:adapter:ios:ext-safe` (compiled only under `-Psnapsync.rig=true`, depending on `:test:contracts` only) holding the recording seam and the `IOS_DEVICE_APP` `IosKeychain` binding (reaches `Empty`, `Holding(_, any)`; seeds legacy-protection items through the seam)
-- [ ] 5.2 Link `:test:contracts` into `:app:ios` under the same property; confirm a build without it contains none of either
-- [ ] 5.3 Add the `/contract/<name>` verb to `:test:rig`, taking the runner as a lambda wired in `:app:ios`'s rig hook; it answers with the recording text and the live outcome table
+- [x] 5.1 Add the rig-gated source set to `:adapter:ios:ext-safe` (compiled only under `-Psnapsync.rig=true`, depending on `:test:contracts` only) holding the recording seam and the `IOS_DEVICE_APP` `IosKeychain` binding (reaches `Empty`, `Holding(_, any)`; seeds legacy-protection items through the seam)
+- [x] 5.2 Link `:test:contracts` into `:app:ios` under the same property; confirm a build without it contains none of either
+- [x] 5.3 Add the `/contract/<name>` verb to `:test:rig`, taking the runner as a lambda wired in `:app:ios`'s rig hook; it answers with the recording text and the live outcome table
 - [ ] 5.4 Take the lease, build with `-Psnapsync.rig=true`, install on the entitled device, call the verb for `SecureStore`, and commit the returned text unedited as `test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec`; extend the masked volatile keys if a second run shows noise; release the lease
 
 ## 6. Replay in CI
 
-- [ ] 6.1 Add the replay binding in `:adapter:ios:ext-safe` `iosTest`: the current `IosKeychain` over a replaying seam reading the committed recording, reporting host `IOS_DEVICE_APP`; exact, ordered matching per clause; missing file or missing block is `Failed`
+- [x] 6.1 Add the replay binding in `:adapter:ios:ext-safe` `iosTest`: the current `IosKeychain` over a replaying seam reading the committed recording, reporting host `IOS_DEVICE_APP`; exact, ordered matching per clause; missing file or missing block is `Failed`
 - [ ] 6.2 Verify on the Mac: replay all `Passed`; a comment-only edit to `IosKeychain` still passes; changing the accessibility attribute `IosKeychain` writes reads `Diverged`; revert both
 
 ## 7. The contract-coverage gate
