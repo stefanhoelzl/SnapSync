@@ -242,12 +242,12 @@ class PhotoKitJobMappingTest {
     }
 
 
-    // ---- which shape a destination has, and therefore whether it carries a key --------------------
+    // ---- a destination yields its path, and nothing read out of it ------------------------------
 
     @Test
-    fun `an identity-in-path destination yields no legacy key`() {
-        // Its last segment is the ROLE. Reading that as a key would collapse every job in a cycle onto
-        // `primary` — silently, with each row left REQUESTED forever.
+    fun `a destination yields its path whatever its last segment`() {
+        // Under the v2 route the last segment is the ROLE. Reading that as a key would collapse every job in a
+        // cycle onto `primary` — silently, with each row left REQUESTED forever.
         val emit = assertIs<FetchedJob.Emit>(
             classifyPhotoKitJob(
                 destination = request("https://edge.example/api/v2/files/devices/D/ABC-123/primary"),
@@ -255,33 +255,7 @@ class PhotoKitJobMappingTest {
                 error = null,
             ),
         )
-        assertNull(emit.legacyKey)
-    }
-
-    @Test
-    fun `a pre-identity destination still carries its key in the last segment`() {
-        // The shape a job created by the outgoing build has; the fallback exists for exactly these.
-        val emit = assertIs<FetchedJob.Emit>(
-            classifyPhotoKitJob(
-                destination = request("https://edge.example/api/v1/files/devices/D/ABC-123-primary.heic"),
-                state = PHAssetResourceUploadJobStateSucceeded,
-                error = null,
-            ),
-        )
-        assertEquals("ABC-123-primary.heic", emit.legacyKey)
-        assertEquals("/api/v1/files/devices/D/ABC-123-primary.heic", emit.destinationPath)
-    }
-
-    @Test
-    fun `a destination naming no device partition carries no key`() {
-        val emit = assertIs<FetchedJob.Emit>(
-            classifyPhotoKitJob(
-                destination = request("https://edge.example/something/else"),
-                state = PHAssetResourceUploadJobStateSucceeded,
-                error = null,
-            ),
-        )
-        assertNull(emit.legacyKey)
+        assertEquals("/api/v2/files/devices/D/ABC-123/primary", emit.destinationPath)
     }
 
     // ---- which .retry job a retry re-points --------------------------------------------------------
@@ -299,16 +273,9 @@ class PhotoKitJobMappingTest {
             "mine" to failed("https://edge.example/api/v2/files/devices/D/ABC-123/primary"),
         )
 
-        val found = retryJobMatching(candidates, "ABC-123-primary.heic") { recorded[it.destinationPath] ?: it.legacyKey }
+        val found = retryJobMatching(candidates, "ABC-123-primary.heic") { recorded[it.destinationPath] }
 
         assertEquals("mine", found)
-    }
-
-    @Test
-    fun `a pre-identity retry job still resolves through the fallback`() = runBlocking {
-        val candidates = listOf("old" to failed("https://edge.example/api/v1/files/devices/D/ABC-123-primary.heic"))
-
-        assertEquals("old", retryJobMatching(candidates, "ABC-123-primary.heic") { it.legacyKey })
     }
 
     @Test
@@ -328,27 +295,26 @@ class PhotoKitJobMappingTest {
 
     @Test
     fun `a job whose destination the ledger recorded belongs to that row`() {
-        assertEquals(JobRow.Found("ABC-123-primary.heic"), jobRowOf(v2, null, "ABC-123-primary.heic", false))
+        assertEquals(JobRow.Found("ABC-123-primary.heic"), jobRowOf(v2, "ABC-123-primary.heic"))
     }
 
     @Test
     fun `a byte-route job whose row the walk removed is pruned and not a fault`() {
         // The photo left the library or the selection while its upload was in flight. Raising this at `Error`
         // would file a crash-reporting event for every de-selection.
-        assertEquals(JobRow.Pruned, jobRowOf(v2, null, null, false))
+        assertEquals(JobRow.Pruned, jobRowOf(v2, null))
     }
 
     @Test
-    fun `a pre-identity key is recovered only when its row exists`() {
-        assertEquals(JobRow.Found("ABC-123-primary.heic"), jobRowOf(v1, "ABC-123-primary.heic", null, true))
-        // Recovered on the strength of the path alone, it would hand the cycle a failure to retry for a photo
-        // that left — the re-upload this rule stops.
-        assertEquals(JobRow.Pruned, jobRowOf(v1, "ABC-123-primary.heic", null, false))
+    fun `a v1 destination is unmappable and never resolved from its last segment`() {
+        // The v1 fallback is retired (`changes/retire-legacy-key-fallback`, D2). Its row may still exist and be
+        // REQUESTED, so a quiet prune would hide it: it is reported instead.
+        assertEquals(JobRow.Unmappable, jobRowOf(v1, null))
     }
 
     @Test
     fun `a destination of no byte-route shape is unmappable`() {
-        assertEquals(JobRow.Unmappable, jobRowOf("/something/else", null, null, false))
-        assertEquals(JobRow.Unmappable, jobRowOf("/api/v2/files/devices/D/a/b/c", null, null, false))
+        assertEquals(JobRow.Unmappable, jobRowOf("/something/else", null))
+        assertEquals(JobRow.Unmappable, jobRowOf("/api/v2/files/devices/D/a/b/c", null))
     }
 }

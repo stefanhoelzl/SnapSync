@@ -47,12 +47,11 @@ import platform.Photos.PHPhotoLibrary
  *
  * A returned job is resolved to its ledger row by the **destination path** the ledger recorded when the
  * job was created (capability `sync-ledger`) — the destination being the only field reliably present for
- * every job state, since `resource` is nil for succeeded jobs. A job created by a build that predates
- * that column falls back to the destination's last path segment, which was the key under the
- * pre-identity byte shape and is null for any other — used only when a row exists for it. A byte-route job
- * neither route resolves is **pruned**: its row was deleted because the photo left the library or the
+ * every job state, since `resource` is nil for succeeded jobs — and it is the only route: the v1
+ * last-segment fallback is retired (`changes/retire-legacy-key-fallback`). A byte-route job it does not
+ * resolve is **pruned**: its row was deleted because the photo left the library or the
  * selection, so it is acknowledged, nothing is written, and it is logged at `Info`. A job whose destination
- * has no byte-route shape at all is counted and raised at `Error`, never drained in silence. The `resource`,
+ * has no byte-route shape at all — a v1 destination included — is counted and raised at `Error`, never drained in silence. The `resource`,
  * when still available, is reused to re-create a retry-spent job. Both are captured as **nullable locals**
  * before use: cinterop declares them non-null and they are nil at runtime, and a null check against a
  * non-null-typed value may be elided
@@ -65,7 +64,7 @@ class IosPhotoKitUploadPlatform(
     // This adapter RECORDS terminal outcomes, rather than handing them to the cycle to record. The OS
     // job queue here IS durable — a succeeded job stays in the `.acknowledge` set until acknowledged —
     // so this tier never had the app-driven tier's loss; recording in place keeps one state machine across
-    // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the two row reads.
+    // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the destination read.
     private val ledger: TransferRecord,
 ) : BackgroundTransfer {
 
@@ -183,24 +182,19 @@ class IosPhotoKitUploadPlatform(
     }
 
     /**
-     * The ledger row a returned job belongs to, or null when neither route finds one.
+     * The ledger row a returned job belongs to, or null when none is found.
      *
      * The destination this job was addressed to is what the ledger recorded when the job was created
-     * (capability `sync-ledger`), so it is the primary route. The fallback is the pre-identity shape's
-     * last path segment, which was the key there — correct for a job created by the outgoing build and
-     * for nothing else, which is why the classifier yields it only for that shape.
+     * (capability `sync-ledger`), so it is the route — the only one.
      */
     private suspend fun resolveKey(emit: FetchedJob.Emit): String? = (rowFor(emit) as? JobRow.Found)?.key
 
     /**
-     * [resolveKey]'s full answer: the row by recorded destination, else — for a pre-identity destination — by
-     * its key, but only when that row exists; else pruned or unmappable ([jobRowOf] decides, and is tested).
+     * [resolveKey]'s full answer: the row by recorded destination, else pruned or unmappable ([jobRowOf]
+     * decides, and is tested).
      */
-    private suspend fun rowFor(emit: FetchedJob.Emit): JobRow {
-        val byDestination = ledger.entryForDestination(emit.destinationPath)?.key
-        val legacyRowExists = byDestination == null && emit.legacyKey?.let { ledger.get(it) } != null
-        return jobRowOf(emit.destinationPath, emit.legacyKey, byDestination, legacyRowExists)
-    }
+    private suspend fun rowFor(emit: FetchedJob.Emit): JobRow =
+        jobRowOf(emit.destinationPath, ledger.entryForDestination(emit.destinationPath)?.key)
 
     /**
      * Report jobs whose destination this build cannot map at all — at `Error`, so it reaches crash reporting.
@@ -259,8 +253,8 @@ class IosPhotoKitUploadPlatform(
 
     /**
      * The system job currently offered for `.retry` whose destination resolves to [key] — by the SAME route
-     * the drain resolves rows by ([resolveKey]: the recorded destination path, then the v1 last-segment
-     * fallback), so a retry and a drain can never disagree about which row a job belongs to.
+     * the drain resolves rows by ([resolveKey]: the recorded destination path), so a retry and a drain can
+     * never disagree about which row a job belongs to.
      *
      * It used to compare the destination's last path segment to the key, which under the identity-in-path
      * byte route is the resource's ROLE and matches no key: every free retry found nothing, the OS spent it,

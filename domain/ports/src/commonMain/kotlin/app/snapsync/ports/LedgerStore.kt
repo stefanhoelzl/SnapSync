@@ -23,6 +23,18 @@ interface LedgerStore : TransferRecord {
     val changes: Flow<Unit>
 
     /**
+     * The row for [key], or null when there is none.
+     *
+     * Absence: null means "no such row", and ONLY that — a backend that cannot read throws rather
+     * than answering empty, so this seam never has to encode "could not tell". That is what lets a
+     * caller treat null as a fact about the ledger instead of a fact about the storage.
+     *
+     * Not on [TransferRecord]: no transport reads a row by key since the v1 last-segment fallback was retired
+     * (decision record `changes/retire-legacy-key-fallback`).
+     */
+    suspend fun get(key: String): LedgerEntry?
+
+    /**
      * Upsert one complete row — **unless the row already there is in a done state**
      * ([app.snapsync.model.DONE_STATES]); answers whether it applied.
      *
