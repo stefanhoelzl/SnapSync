@@ -3,11 +3,12 @@
 ## Purpose
 
 How the `api/` is **deployed** and how it is **configured** — one capability, because on this
-platform they are the same argument (below). A path-scoped GitHub Actions workflow runs the Deno checks
-on every branch, bundles to a single file, and on `main` deploys that bundle to **bunny Edge
-Scripting** — the one runtime. The device-facing origin is the custom domain `snapsync.stho.net` (a zone
-we control via Bunny DNS, publicly-trusted cert), `CNAME`'d to the bunny pull zone that fronts the Edge
-Script. Isolated from the Gradle/iOS workflows; no Bunny credential in source.
+platform they are the same argument (below). An unfiltered GitHub Actions check workflow runs the Deno
+checks on every branch as a required gate; the `api` job of the repository's single main-only deploy
+workflow bundles to a single file and deploys it to **bunny Edge Scripting** — the one runtime — whenever
+the backend changed since the commit that is live. The device-facing origin is the custom domain
+`snapsync.stho.net` (a zone we control via Bunny DNS, publicly-trusted cert), `CNAME`'d to the bunny pull
+zone that fronts the Edge Script. Isolated from the Gradle/iOS workflows; no Bunny credential in source.
 
 **Why configuration lives here, and why it lives in source.** Bunny issues **no scoped API key**:
 writing an Edge Script's environment variables requires the full-access **account** key, which also owns
@@ -53,30 +54,49 @@ the fold of the former `backend-config` capability into this one),
 workflow and became a required status check, making the gate pre-merge rather than pre-deploy),
 `changes/archive/2026-09-07-adopt-bunny-cli-migrations` (migrations applied by the platform runner, and
 the deploy-time assertion that the deployed store's shape is the one the migrations build).
+`changes/archive/2026-09-22-unify-main-deploy-workflow` (the deploy moved into one main-only deploy
+workflow shared with the site and App Store metadata deployers, gated on a path diff against the LIVE
+commit rather than the previous push, which makes a displaced pending run lossless).
 ## Requirements
-### Requirement: Path-scoped, isolated workflow; deploy on main only
+### Requirement: Unfiltered check workflow; main-only deploy job gated on the live commit
 
-The system SHALL provide **two** GitHub Actions workflows for the backend, both isolated from the
-Gradle/iOS workflows (each its own workflow file; neither SHALL couple to the Gradle build or iOS jobs):
+The system SHALL provide the backend's CI as two separate things, neither coupled to the Gradle build or
+the iOS jobs:
 
-- a **check workflow** that runs the check set (below) on **every push to any branch**, carrying **no
-  path filter at all**, so the status check it posts appears on every ref. A required status check that
-  is never posted is permanently pending, so a path-filtered check workflow would freeze every merge
-  whose diff falls outside the filter;
-- a **deploy workflow**, path-scoped to the backend sources and everything that decides what ships
-  inside the bundle (`api/**`, the workflow file itself, `deployments/**`, and
-  `scripts/resolve-deployment.py`), which SHALL run its deploy step **only** when the ref is `main`.
+- a **check workflow**, its own workflow file, that runs the check set (below) on **every push to any
+  branch** and carries **no path filter at all**, so the status check it posts appears on every ref. A
+  required status check that is never posted stays pending forever, so a path-filtered check workflow would
+  freeze every merge whose diff falls outside the filter;
+- a **deploy job** in the repository's single **deploy workflow**. That workflow SHALL be triggered **only**
+  by a push to `main` and SHALL carry no workflow-level path filter, because it also hosts deployers with
+  other trigger sets. The deploy job SHALL NOT run on any other ref.
 
-On `main` the deploy workflow SHALL deploy the bundled backend to the **bunny Edge Script** — the single
-runtime. Neither workflow SHALL hold or use any Deno Deploy credential, and neither SHALL configure
-platform environment variables (there are none they can set — see "Non-secret configuration is
-source-owned").
+On `main` the deploy job SHALL deploy the bundled backend to the **bunny Edge Script**, the single runtime.
+Neither the check workflow nor the deploy job SHALL hold or use any Deno Deploy credential, and neither
+SHALL configure platform environment variables (there are none they can set; see "Non-secret configuration
+is deployment-resolved, not environment-owned").
 
-The deploy workflow's path scope covers `deployments/**` and `scripts/resolve-deployment.py` because
-the resolver and the authored deployments decide what ships inside the bundle (capability
-`deployment-configuration`), so a change to either SHALL redeploy. It does **not** cover
-`screenshots/**`: the marketing page moved to the Astro `site/` module, which `site-deploy.yml` ships,
-so a capture refresh triggers that workflow and not this one.
+**When the deploy job runs.** It SHALL run when any file in its path set differs between the commit
+currently **live**, as the deployed bundle's health route reports it (see "A health route reports the
+deployed bundle's identity"), and the pushed commit. The path set is `api/**`, the deploy workflow file,
+`deployments/**` and `scripts/resolve-deployment.py`. The resolver and the authored deployments decide what
+ships inside the bundle (capability `deployment-configuration`), so a change to either SHALL redeploy. The
+set does **not** cover `screenshots/**` or `site/**`: the site deploy ships those.
+
+The baseline SHALL be the live commit, **not** the push's previous head (`github.event.before`). A pending
+run can be displaced: a concurrency group holds one pending run, and a newer one cancels it. Against
+`github.event.before`, a displaced run's backend change would be absent from every later run's diff and
+would never deploy. Against the live commit, any later run still sees it. If the health route cannot be
+read, or names a commit that is not in the pushed commit's history, the deploy job SHALL **run** (fail open):
+a redundant deploy is probed and harmless, while a skipped one leaves production silently behind `main`.
+
+**Deploys are serialized.** The deploy workflow SHALL run in a single concurrency group with
+`cancel-in-progress: false`. A deploy that has published must still be probed, and two deploys running at
+once would let one run's probe observe the other's bundle, a false red.
+
+**Not a required check.** The deploy job, like every job in the deploy workflow, SHALL NOT be a required
+status check. It never runs on a pull request, so as a required check it would never be posted and every
+merge would freeze.
 
 #### Scenario: The check workflow runs on any branch, whatever the diff touches
 
@@ -89,27 +109,45 @@ so a capture refresh triggers that workflow and not this one.
 - **THEN** the check workflow still runs on that branch and its status check is posted, so a merge
   waiting on it is not blocked forever
 
-#### Scenario: The deploy workflow runs on a backend change
+#### Scenario: The deploy job runs on a backend change
 
-- **WHEN** a push to any branch touches files under `api/**`
-- **THEN** the deploy workflow runs
+- **WHEN** a push to `main` touches files under `api/**` that differ from the live commit
+- **THEN** the deploy job runs and ships the bundle to the bunny Edge Script
 
-#### Scenario: The deploy workflow runs on a configuration change
+#### Scenario: The deploy job runs on a configuration change
 
-- **WHEN** a push to any branch touches files under `deployments/**` or `scripts/resolve-deployment.py`
-- **THEN** the deploy workflow runs, so a change to what ships inside the bundle redeploys
+- **WHEN** a push to `main` touches files under `deployments/**` or `scripts/resolve-deployment.py`
+- **THEN** the deploy job runs, so a change to what ships inside the bundle redeploys
 
-#### Scenario: A capture refresh does not trigger the deploy workflow
+#### Scenario: A change outside the path set does not deploy the backend
 
-- **WHEN** a push touches only files under `screenshots/**`
-- **THEN** the deploy workflow does not run, because the marketing page is shipped by `site-deploy.yml`
+- **WHEN** a push to `main` touches only files outside the path set (e.g. only `screenshots/**` or `docs`)
+  and the live commit's api paths already equal the pushed commit's
+- **THEN** the deploy job is skipped
 
-#### Scenario: Deploys to bunny only on main
+#### Scenario: A displaced run's backend change still deploys
 
-- **WHEN** a push lands on `main`
-- **THEN** the deploy step runs, shipping the bundle to the bunny Edge Script
-- **AND WHEN** a push lands on a non-`main` branch
-- **THEN** the deploy step is skipped
+- **WHEN** a push to `main` changing `api/**` queues behind a running deploy, and its pending run is then
+  cancelled by a later docs-only push
+- **THEN** the later run diffs against the live commit, which predates the backend change, so the deploy
+  job runs and ships it
+
+#### Scenario: An unreadable live commit fails open
+
+- **WHEN** the health route cannot be read, or reports a commit not in the pushed commit's history
+- **THEN** the deploy job runs
+
+#### Scenario: Nothing deploys the backend off main
+
+- **WHEN** a commit is pushed to any branch other than `main`
+- **THEN** the deploy workflow does not run, and nothing bundles or deploys the backend outside the check
+  workflow
+
+#### Scenario: Two merges in quick succession do not race
+
+- **WHEN** two pushes land on `main` while a deploy is running
+- **THEN** their deploy runs wait for it rather than cancelling it, so every published bundle is probed by
+  the run that published it
 
 ### Requirement: Device-facing origin is a custom domain under our control
 

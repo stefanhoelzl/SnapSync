@@ -78,8 +78,8 @@
 // floor. Raise the minimum without raising the floor and every developer, every sideload and every
 // simulator is locked out of the backend by a screen telling them to install from the App Store — while
 // TestFlight and release builds, which compute a version off the release tag, are entirely fine. That
-// asymmetry is why it is invisible until someone tries to work. `api-deploy.yml` asserts the relation
-// (it parses this line), so a half-move fails the run rather than the dev loop.
+// asymmetry is why it is invisible until someone tries to work. `api.yml`'s suite asserts the relation
+// (`min-app-version-floor.test.ts` parses this line), so a half-move fails review rather than the dev loop.
 //
 // DELIBERATELY NOT in the generated fragment: the floor is RELEASE POLICY, not a deployment fact and not
 // a build-channel fact. Every deployment ships the same floor, and moving it into the resolver would put

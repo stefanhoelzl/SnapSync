@@ -30,8 +30,8 @@ BUNNY = {
 }
 # Every key the inventory marks required for a `bunny` deployment must appear here, or `standard()`
 # builds an INCOMPLETE deployment and 20 unrelated tests fail on the missing key rather than on what
-# they assert. That is how adding the two database keys broke this suite — and, because api-deploy is
-# the only workflow that runs it and is not a required check, the break reached `main` green.
+# they assert. That is how adding the two database keys broke this suite — and, because the api deploy workflow was
+# the only workflow that runs it and was not a required check, the break reached `main` green.
 SECRETS = {
     "apnsPrivateKey": {"env": "TEST_APNS_KEY"},
     "attestTokenKey": {"env": "TEST_TOKEN_KEY"},

@@ -81,9 +81,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       # The deployment resolver's own suite (capability `deployment-configuration`), and the ONLY place
-      # it runs — `api-deploy.yml` shed its copy when the api checks became a gate.
+      # it runs — the api deploy workflow shed its copy when the api checks became a gate.
       # A TEST THAT CAN ONLY FAIL AFTER MERGE IS NOT A GATE. This suite used to run only in
-      # `api-deploy.yml`, whose deploy triggers on PUSH TO MAIN, so it could only fail after a merge:
+      # the api deploy workflow, whose deploy triggers on PUSH TO MAIN, so it could only fail after a merge:
       # adding two required inventory keys broke 20 of these 30 tests, the PR merged clean, and the
       # deploy failed on main with production still serving the previous bundle. This job was added in
       # response — but as a NON-REQUIRED check, which `/ship`'s auto-merge ignores, so the conclusion

@@ -12,7 +12,7 @@
 //    migrations — silently, and permanently, since no later migration would ever reconcile it.
 // ③ A MIGRATION THAT APPLIED BUT DID NOT DO WHAT ITS AUTHOR THOUGHT.
 //
-// WHERE IT RUNS, AND WHY THAT IS TWO PLACES. `api-deploy.yml` calls it on both sides of its pending
+// WHERE IT RUNS, AND WHY THAT IS TWO PLACES. deploy.yml's `api` job calls it on both sides of its pending
 // branch, and the cost of failing differs enormously between them:
 //   · NOTHING PENDING → before the window decision. The store is already expected to match, so a
 //     mismatch fails the run before anything is published and before any window opens. This is where
