@@ -45,8 +45,8 @@
 
 ## 7. The contract-coverage gate
 
-- [ ] 7.1 Add the gate to `:test:architecture` (derived scope over contracts, bindings, recordings; literal-declaration parsing that fails loudly on an unreadable form; a non-vacuity twin per group; unused `Host` values fail)
-- [ ] 7.2 Prove it: a temporary clause no real binding reaches fails the gate naming it; a binding with a computed declaration fails naming the binding; revert both
+- [x] 7.1 Add the gate to `:test:architecture` (derived scope over contracts, bindings, recordings; literal-declaration parsing that fails loudly on an unreadable form; a non-vacuity twin per group; unused `Host` values fail)
+- [x] 7.2 Prove it: a temporary clause no real binding reaches fails the gate naming it; a binding with a computed declaration fails naming the binding; revert both
 
 ## 8. The simulator app, measured once
 
