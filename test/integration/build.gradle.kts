@@ -34,6 +34,9 @@ kotlin {
             implementation(project(":domain:feature"))
             implementation(project(":domain:flow"))
             implementation(project(":test:world"))
+            // The inbound ports' contracts, bound here over the world (capability `port-contracts`).
+            implementation(project(":test:contracts"))
+            implementation(project(":domain:compose"))
             implementation(project(":ui:presentation"))
             // The real Ktor clients some tests drive (HttpEventDirectory, KtorPushHttpClient) moved
             // to the adapter layer at migration step 4.

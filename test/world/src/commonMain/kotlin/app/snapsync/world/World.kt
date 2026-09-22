@@ -242,6 +242,11 @@ class World(
      *  the `registerPush` effect below increments it, so a test can assert the join path fired it. */
     var registerPushCount: Int = 0
         private set
+
+    /** Counts the download backstop queued by the real flows — the Background flow arms it, and the backstop entry
+     *  re-queues it however it ends — so a test can tell those entries apart (capability `photo-download`). */
+    var backstopsScheduled: Int = 0
+        private set
     val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
 
@@ -456,7 +461,8 @@ class World(
     var nowMillis: Long = 0L
 
     /** One engine for the process, as on a device (it owns a process-lifetime session there). */
-    private val operatorEngine = OperatorUploadEngine()
+    /** The app-driven uploader the world stands in with — inert, and counting the OS wakes that reach it. */
+    val operatorEngine: OperatorUploadEngine = OperatorUploadEngine()
 
     /**
      * The REAL app graph (spec `module-architecture`, "One shared composition"): the same
@@ -534,6 +540,7 @@ class World(
             },
             // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
             registerPush = { registerPushCount++ },
+            scheduleBackstop = { backstopsScheduled++ },
             onEventMinted = { eventId -> onEventMinted(eventId) },
             log = logs.logger("World"),
         ),
@@ -813,9 +820,10 @@ class World(
      * leave, or switch takes effect on the next cycle. The world carries no gate, reconciler, or
      * manifest-producer wiring of its own — a wiring difference from production is impossible.
      */
-    val cycle: UploadCycle by lazy {
-        uploadCore(
-            scope,
+    val cycle: UploadCycle by lazy { uploadCore(scope, uploadPorts) }
+
+    /** What [cycle] is built over — the extension tier's inbound port reads its ledger and log from the same bundle. */
+    val uploadPorts: UploadPorts by lazy {
             UploadPorts(
                 diagnosticsReporter = inMemoryDiagnosticsReporter(),
                 // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
@@ -837,8 +845,7 @@ class World(
                 albumCoordinator = core.albumCoordinator,
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.
                 token = { null },
-            ),
-        )
+            )
     }
 
     /**

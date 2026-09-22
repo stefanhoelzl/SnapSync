@@ -14,27 +14,27 @@
 ## 3. Inbound ports and the core's implementation (module-architecture)
 
 - [x] 3.1 Declare `PlatformEntries` and `ExtensionEntries` in `:domain:ports` with `@PlatformEntry` on their members
-- [ ] 3.2 Add the `ProtectedStorage` port; its iOS adapter in `:adapter:ios:app-only`; its honest fake in `:adapter:generic:fake` (`FakeHonestyTest` green)
+- [x] 3.2 Add the `ProtectedStorage` port; its iOS adapter in `:adapter:ios:app-only`; its honest fake in `:adapter:generic:fake` (`FakeHonestyTest` green)
 - [x] 3.3 Widen `AppUploadEngine` with `onBackgroundTransfers(completion)`; rename `UrlSessionUploadController.onBackgroundSessionEvents` to implement it; update the world's fake engine
 - [x] 3.4 Implement `PlatformEntries` in `:domain:compose` (`AppCore.platformEntries(hooks)`): move `LiveShell`'s bodies verbatim, including the `OsReceipt` deadlines, the `log.invocation` wrapping, the protected-storage log field, and the backstop re-schedule in `finally`; route `onBackgroundTask`/`onBackgroundTransfers` by the identifiers the hooks carry, and release plus log an unknown one
 - [x] 3.5 Implement `ExtensionEntries` over `uploadCore` in `:domain:compose` (moving `runProcessCycle`'s call site and `onTerminate`'s log)
-- [ ] 3.6 Confirm no platform constant entered `model/`, `ports/` or `feature/`, and that `compileIosMainKotlinMetadata` is green
+- [x] 3.6 Confirm no platform constant entered `model/`, `ports/` or `feature/`, and that `compileIosMainKotlinMetadata` is green
 
 ## 4. The shells delegate
 
 - [x] 4.1 `SnapSyncRoot : PlatformEntries by …`, supplying the hooks (host `onOpenUrl`, host assembly, push-token delivery) and the BGTask and upload-channel identifiers; delete `Shell`, `LiveShell`, and the per-entry forwarding members; keep `onLaunch`, `onUserActivity`/`deliverUserActivity`, `onSwiftUiOpenUrl` and the log-only callbacks, now calling the port where they forward
 - [x] 4.2 `UploadExtensionRoot : ExtensionEntries by …`; `processRawValue()` becomes `runBlocking { process() }.processingResultRawValue()`
 - [x] 4.3 Swift: both `BGTaskScheduler.register` blocks call `SnapSyncRoot.shared.onBackgroundTask(task.identifier)`; `handleEventsForBackgroundURLSession` calls `onBackgroundTransfers`
-- [ ] 4.4 `KotlinShellGuardTest`: drop the `SnapSyncRoot.kt` pin (the routing suppression is gone) and update its KDoc; `SwiftShellGuardTest` still green; `detektAppShell` green
+- [x] 4.4 `KotlinShellGuardTest`: drop the `SnapSyncRoot.kt` pin (the routing suppression is gone) and update its KDoc; `SwiftShellGuardTest` still green; `detektAppShell` green
 - [x] 4.5 Rig: update `Boot.kt`'s trigger wiring for the renamed entries, and keep `/os` routes driving the same entry points
 
 ## 5. The contracts (port-contracts)
 
-- [ ] 5.1 In `:test:contracts`: `PlatformEntriesContract` and `ExtensionEntriesContract` with state vocabularies, `…Observations` interfaces and the subject types (design D7). Document in KDoc why there is no fake binding and why `onTerminate` has no clause
-- [ ] 5.2 Clauses per design D7's starting set, each asserting outcomes only, with "completion released exactly once, after the work" where an entry takes one
-- [ ] 5.3 Bindings in `:test:integration` over `World.core` (`Live`, `JVM` and `IOS_SIM_KEXE`); add the `:test:contracts` dependency; decide here whether `World` needs an entry surface (the design's open question), and add a `harness-world-model` delta if it does
+- [x] 5.1 In `:test:contracts`: `PlatformEntriesContract` and `ExtensionEntriesContract` with state vocabularies, `…Observations` interfaces and the subject types (design D7). Document in KDoc why there is no fake binding and why `onTerminate` has no clause
+- [x] 5.2 Clauses per design D7's starting set, each asserting outcomes only, with "completion released exactly once, after the work" where an entry takes one
+- [x] 5.3 Bindings in `:test:integration` over `World.core` (`Live`, `JVM` and `IOS_SIM_KEXE`); add the `:test:contracts` dependency; decide here whether `World` needs an entry surface (the design's open question), and add a `harness-world-model` delta if it does — decided: no entry surface and no delta. The bindings call `platformEntries({ w.core }, hooks)` / `extensionEntries(...)` themselves; `World` gained only inspection (`operatorEngine` counters, `backstopsScheduled`, the cycle's `uploadPorts`), which the spec's operator-inspection rules already cover
 - [ ] 5.4 `ContractCoverageTest` green (every clause has a real host); run both suites on JVM and on `iosSimulatorArm64` (the Mac runner or CI)
-- [ ] 5.5 Mutation check: route `onSilentPush` to the upload arm only and confirm a clause fails; then restore
+- [x] 5.5 Mutation check: route `onSilentPush` to the upload arm only and confirm a clause fails; then restore
 
 ## 6. Documentation
 
