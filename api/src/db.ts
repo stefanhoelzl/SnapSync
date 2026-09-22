@@ -55,10 +55,14 @@ export type WriteResult = { rowsAffected: number };
  * (`PROBE-FINDINGS.md` §4.1). `transaction` is the interactive form — a round-trip per statement, and
  * therefore reserved for the ONE caller that needs its other property: it runs against the PRIMARY, which
  * is what keeps the nightly sweep from deleting a live event on a stale replica read (design.md D9).
+ *
+ * `batch` answers one `WriteResult` per statement, in order. The versioned manifest publish reads its
+ * FIRST statement's count to learn whether it won the version comparison — the answer has to come from
+ * inside the transaction, because a read afterwards could see a newer publish that landed in between.
  */
 export interface Db {
   execute(sql: string, args?: unknown[]): Promise<{ rows: Row[]; rowsAffected: number }>;
-  batch(statements: Statement[]): Promise<void>;
+  batch(statements: Statement[]): Promise<WriteResult[]>;
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>;
 }
 
@@ -148,6 +152,13 @@ export type MembershipState = "active" | "departed";
  * ⚠️ `rowsAffected === 0` CONFLATES TWO ANSWERS — at capacity (`409`) and no such event (`404`) — because
  * the capacity subquery yields NULL for a missing event and the `WHERE` is then false. Callers MUST
  * disambiguate with `readEvent` rather than pick one; see `enroll`.
+ *
+ * A (re)join CLEARS `manifest_version` — the one column the join writes that the manifest publish owns, and
+ * the named one-writer exception in `database`. A join starts a new sequence of manifests: the device's
+ * version counter lives in its local ledger database while its identity (a Keychain item) outlives that
+ * database, so a re-joined device whose counter restarted would otherwise have every publish refused as
+ * older, forever. The write is a lifecycle reset, not a second source for the version — nothing merges it
+ * with the publish's (decision record `changes/manifest-versions`, D7). A first join inserts NULL anyway.
  */
 const ENROLL = `
   INSERT INTO memberships (event_id, device_id, state, joined_at)
@@ -158,7 +169,7 @@ const ENROLL = `
       OR (SELECT COUNT(*) FROM memberships WHERE event_id = ?)
          < (SELECT capacity FROM events WHERE id = ?)
     )
-  ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'active'`;
+  ON CONFLICT (event_id, device_id) DO UPDATE SET state = 'active', manifest_version = NULL`;
 
 /** What an enrollment attempt resolved to — the three answers a route must tell apart. */
 export type EnrollOutcome = "enrolled" | "full" | "no-such-event";
@@ -258,34 +269,65 @@ export type ManifestAssetEntry = {
  * no statement at all, so it can never remove a row an earlier publish recorded. Under the old schema
  * that was `MAX(uploaded, …)`; under row-existence semantics it is simply "never delete", which is the
  * same guarantee spelled without a column.
+ *
+ * ORDERED, on v2 (capability `api-endpoints`, "The v2 manifest publish is ordered by its version"). The
+ * FIRST statement records the publish's manifest version, and when the publish carries one it matches only
+ * if the stored version is absent or not newer — so its count is the verdict: `1` won, `0` refused. Every
+ * later statement is then gated on the stored version now being exactly this one, which is true iff the
+ * first statement matched: a refused publish applies none of itself, however many statements (chunks) it
+ * spans, and all of it is one transaction (capability `database`). Equal is admitted — two publishes with
+ * one version carry one snapshot, so re-applying it is harmless. A publish with NO version (a v2 build that
+ * predates it) clears the stored version and is ungated: today's behaviour, and the next versioned publish
+ * always wins. `legacy` never touches the column — v1 is frozen.
  */
 export function publishStatements(
   eventId: string,
   deviceId: string,
   assets: ManifestAssetEntry[],
-  opts: { legacy: boolean },
+  opts: { legacy: true } | { legacy: false; version: number | null },
 ): Statement[] {
   const out: Statement[] = [];
+  // The v2 gate appended to every statement after the first; empty for v1 and for a versionless publish.
+  let gate = "";
+  let gateArgs: unknown[] = [];
   if (opts.legacy) {
     out.push({
       sql: `UPDATE memberships SET state = 'active' WHERE event_id = ? AND device_id = ?`,
       args: [eventId, deviceId],
     });
+  } else if (opts.version === null) {
+    out.push({
+      sql: `UPDATE memberships SET manifest_version = NULL WHERE event_id = ? AND device_id = ?`,
+      args: [eventId, deviceId],
+    });
+  } else {
+    out.push({
+      sql: `UPDATE memberships SET manifest_version = ?
+            WHERE event_id = ? AND device_id = ?
+              AND (manifest_version IS NULL OR manifest_version <= ?)`,
+      args: [opts.version, eventId, deviceId, opts.version],
+    });
+    gate = ` AND EXISTS (SELECT 1 FROM memberships
+                         WHERE event_id = ? AND device_id = ? AND manifest_version = ?)`;
+    gateArgs = [eventId, deviceId, opts.version];
   }
   out.push({
-    sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?`,
-    args: [eventId, deviceId],
+    sql: `DELETE FROM event_assets WHERE event_id = ? AND device_id = ?${gate}`,
+    args: [eventId, deviceId, ...gateArgs],
   });
   for (const a of assets) {
+    // `INSERT … SELECT … WHERE` rather than `VALUES`, so the insert can carry the gate. With no gate the
+    // `WHERE 1` makes it the plain insert it always was.
     out.push({
       sql: `INSERT INTO event_assets (event_id, device_id, asset_id, creation_date, roles)
-            VALUES (?, ?, ?, ?, ?)`,
+            SELECT ?, ?, ?, ?, ? WHERE 1${gate}`,
       args: [
         eventId,
         deviceId,
         a.assetId,
         a.creationDate,
         JSON.stringify(a.resources.map((r) => r.role)),
+        ...gateArgs,
       ],
     });
     if (!opts.legacy) continue;

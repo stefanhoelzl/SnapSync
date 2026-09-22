@@ -245,6 +245,41 @@ Deno.test("manifest publish → enrolls the device and records its assets, 201",
   db.close();
 });
 
+Deno.test("manifest publish → ignores a manifest version entirely: no compare, no write", async () => {
+  // The manifest version orders v2 only (capability `api-endpoints`); v1 is frozen. A v1 body carrying
+  // a `version` is handled exactly as one without, an older one is not refused, and the column is never
+  // written.
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const put = (version: number, key: string) =>
+    app.request(MANIFEST_PATH, {
+      method: "PUT",
+      body: JSON.stringify({
+        deviceId: D,
+        version,
+        assets: [{
+          assetId: key,
+          creationDate: "2026-07-01T00:00:00Z",
+          resources: [RES(`${key}.heic`)],
+        }],
+      }),
+    });
+  assertEquals((await put(9, "A")).status, 201);
+  assertEquals((await put(3, "B")).status, 201);
+  assertEquals(
+    await rows(db, `SELECT asset_id FROM event_assets WHERE event_id=?`, [E]),
+    [{ asset_id: "B" }],
+  );
+  assertEquals(
+    await rows(db, `SELECT manifest_version FROM memberships WHERE event_id=? AND device_id=?`, [
+      E,
+      D,
+    ]),
+    [{ manifest_version: null }],
+  );
+  db.close();
+});
+
 Deno.test("manifest publish → is a FULL-STATE replace: an omitted asset is removed", async () => {
   const db = await storeWithEvent();
   const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });

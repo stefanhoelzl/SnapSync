@@ -29,7 +29,7 @@ reached through the one narrow `Db` port in `db.ts`:
 
 ```
 events        id, name, created_at, starts_at, ends_at, capacity, lifetime_seconds
-memberships   (event_id → events, device_id), state ∈ {active, departed}, joined_at
+memberships   (event_id → events, device_id), state ∈ {active, departed}, joined_at, manifest_version (nullable)
 event_assets  (event_id, device_id → memberships), asset_id, creation_date
 resources     (device_id, key), asset_id, role, content_type, filename, uploaded
 devices       device_id, created_at, attest_key/env/attested_at/token_expires_at, push_* (nullable)
@@ -115,6 +115,16 @@ it itself, after the gate has passed.
 > write is usually the **byte upload**, which wakes the event when its resource was the last
 > declared role missing. The manifest publish wakes members only when it makes an asset newly
 > fetchable — a widening that re-admits already-stored assets.
+>
+> **A second v2 difference: the manifest publish is ordered.** A device's app and its upload
+> extension both publish, so two full-state publishes can cross in the network. The v2 body carries
+> an optional `version` (a non-negative safe integer that only grows on the device), and the publish
+> stores itself only when that version is not older than `memberships.manifest_version`, decided
+> inside its one atomic batch. A strictly older publish changes nothing and still answers `200`,
+> since a snapshot at least as new is already stored. It wakes nobody. A publish with no `version`
+> (a v2 build that predates it) applies unconditionally and clears the stored version. The v2 join
+> clears it too, so a device whose counter restarted after a reinstall is never refused forever. v1
+> never reads or writes the column. Decision record: `openspec/changes/manifest-versions`.
 
 ```
 GET  /api/v1/attest/challenge                              (UNGATED — it issues the input to attestation)

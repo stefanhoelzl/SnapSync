@@ -315,6 +315,19 @@ function parseManifestAssets(body: { assets?: unknown }): ManifestAssetEntry[] |
   return out;
 }
 
+/**
+ * Read a v2 manifest body's optional `version` (capability `api-endpoints`, "The v2 manifest publish is
+ * ordered by its version"): the number, `null` when the field is absent (a build that predates it), or
+ * `undefined` when it is present but not a non-negative safe integer — a `400`. Safe-integer rather than
+ * any number because the comparison is exact: a value past 2^53 would already have been rounded by the
+ * JSON parse, and two distinct device versions could compare equal.
+ */
+function parseManifestVersion(body: { version?: unknown }): number | null | undefined {
+  if (body.version === undefined || body.version === null) return null;
+  const v = body.version;
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
+}
+
 // 7 days — the S3 presign maximum. The device re-presigns (re-reads the union) on every foreground well
 // within this window, so a queued background download that outlives one URL self-heals with a fresh one.
 const PRESIGN_EXPIRY_SECONDS = 604800;
@@ -1668,12 +1681,16 @@ export function createApp(
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
     let assets: ManifestAssetEntry[] | null;
+    let version: number | null | undefined;
     try {
-      assets = parseManifestAssets(await c.req.json());
+      const body = await c.req.json();
+      assets = parseManifestAssets(body);
+      version = parseManifestVersion(body);
     } catch {
       return c.text("invalid body", 400);
     }
     if (assets === null) return c.text("invalid manifest", 400);
+    if (version === undefined) return c.text("invalid version", 400);
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
@@ -1706,16 +1723,29 @@ export function createApp(
     } catch (e) {
       console.error(`v2 manifest: fetchability lookup failed for ${eventId}/${deviceId}: ${e}`);
     }
+    // ORDERED by the body's manifest version, inside the one transaction (see `publishStatements`): the
+    // first statement's count is the verdict. A refused publish is an ORDINARY outcome of the app and the
+    // upload extension publishing at once — a snapshot at least as new is already stored — so it answers
+    // `200` like a won one, and the device treats it as published.
+    let won: boolean;
     try {
-      await db.batch(publishStatements(eventId, deviceId, assets, { legacy: false }));
+      const results = await db.batch(
+        publishStatements(eventId, deviceId, assets, { legacy: false, version }),
+      );
+      won = results[0].rowsAffected > 0;
     } catch (e) {
       console.error(`v2 manifest: publish failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
+    if (!won) {
+      console.log(`v2 manifest: older version ${version} refused for ${eventId}/${deviceId}`);
+      return c.body(null, 200);
+    }
     // AFTER THE COMMIT, never inside it: a recipient woken before the write is visible would read the
     // union and find the very state the notification announced to be missing. Best-effort — the response
     // is the transaction's outcome and is never changed by a push that failed, the same split the byte
-    // route already draws for its database write.
+    // route already draws for its database write. Only a publish that WON wakes anyone: a refused one
+    // changed nothing the union serves.
     if (addsFetchable) await notifyMembers(eventId, deviceId);
     return c.body(null, 200);
   });
