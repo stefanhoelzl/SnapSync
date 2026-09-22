@@ -26,14 +26,23 @@ import platform.Foundation.writeToFile
  * code the device runs, with the one platform lookup it cannot have replaced.
  */
 internal fun withTempDirectory(block: (String) -> Unit) {
-    val manager = NSFileManager.defaultManager
-    val path = NSTemporaryDirectory().trimEnd('/') + "/snapsync-test-" + NSUUID().UUIDString()
-    manager.createDirectoryAtPath(path, withIntermediateDirectories = true, attributes = null, error = null)
+    val path = newTempDirectory()
     try {
         block(path)
     } finally {
-        manager.removeItemAtPath(path, error = null)
+        removeDirectory(path)
     }
+}
+
+/** A fresh, empty directory; the caller removes it with [removeDirectory] (a contract binding's dispose). */
+internal fun newTempDirectory(): String {
+    val path = NSTemporaryDirectory().trimEnd('/') + "/snapsync-test-" + NSUUID().UUIDString()
+    NSFileManager.defaultManager.createDirectoryAtPath(path, withIntermediateDirectories = true, attributes = null, error = null)
+    return path
+}
+
+internal fun removeDirectory(path: String) {
+    NSFileManager.defaultManager.removeItemAtPath(path, error = null)
 }
 
 /** The file's text, or `null` when it does not exist — the shape assertions here want. */

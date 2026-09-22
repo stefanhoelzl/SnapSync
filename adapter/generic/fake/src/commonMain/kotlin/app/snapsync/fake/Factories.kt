@@ -17,6 +17,9 @@ import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoSelectionChangeSource
+import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import app.snapsync.ports.StagedBytes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +46,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 fun inMemoryLedgerStore(): LedgerStore = InMemoryLedgerStore()
 
 fun inMemoryDownloadStore(): DownloadStore = InMemoryDownloadStore()
+
+/**
+ * An empty store, one already holding [value] under [protection], or — [unavailable] — one that cannot
+ * be read at all (a device not unlocked since boot).
+ */
+fun inMemorySecureStore(
+    value: String? = null,
+    protection: StoredProtection = StoredProtection.BACKGROUND_READABLE,
+    unavailable: Boolean = false,
+): SecureStore = InMemorySecureStore(value?.let { SecureStoreRead.Found(it, protection) }, unavailable)
+
 
 fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestStore()
 

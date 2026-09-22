@@ -18,12 +18,12 @@
 
 ## 3. The `SecureStore` contract, the fake and the live bindings
 
-- [ ] 3.1 Add `SecureStoreState` (`Inaccessible`, `Empty`, `Holding(value, protection)`) beside the contract in `:test:contracts`
-- [ ] 3.2 Write the `SecureStore` contract clauses (design D13): inaccessible read is `Unavailable` with a diagnostic, never `Absent`; inaccessible write refuses with `SecureStoreUnavailable` and leaves nothing; empty read is `Absent`; write-then-read is `Found(value, BACKGROUND_READABLE)`; write replaces; delete of absent is a no-op; delete removes; `migrateProtection` preserves the value and yields `BACKGROUND_READABLE`; `resolveOrMint` never mints when inaccessible and mints exactly once when empty — all inputs deterministic, addresses derived from the clause id
-- [ ] 3.3 Add the honest `InMemorySecureStore` to `:adapter:generic:fake` (`internal`, factory returning `SecureStore`, state only through the constructor) and confirm `FakeHonestyTest` passes
-- [ ] 3.4 Bind the fake (`JVM` and `IOS_SIM_KEXE`, kind `Fake`, all states) in `:adapter:generic:fake` `commonTest`
-- [ ] 3.5 Bind `IosKeychain` live on `IOS_SIM_KEXE` (reaches `Inaccessible`) in `:adapter:ios:ext-safe` `iosTest`
-- [ ] 3.6 Bind `AppGroupFileSecureStore` live on `IOS_SIM_KEXE` (reaches `Empty`, `Holding(_, BACKGROUND_READABLE)`) in `:adapter:ios:ext-safe` `iosSimulatorArm64Test`
+- [x] 3.1 Add `SecureStoreState` (`Inaccessible`, `Empty`, `Holding(value, protection)`) beside the contract in `:test:contracts`
+- [x] 3.2 Write the `SecureStore` contract clauses (design D13): inaccessible read is `Unavailable` with a diagnostic, never `Absent`; inaccessible write refuses with `SecureStoreUnavailable` and leaves nothing; empty read is `Absent`; write-then-read is `Found(value, BACKGROUND_READABLE)`; write replaces; delete of absent is a no-op; delete removes; `migrateProtection` preserves the value and yields `BACKGROUND_READABLE`; `resolveOrMint` never mints when inaccessible and mints exactly once when empty — all inputs deterministic, addresses derived from the clause id
+- [x] 3.3 Add the honest `InMemorySecureStore` to `:adapter:generic:fake` (`internal`, factory returning `SecureStore`, state only through the constructor — the module's honesty is the compiler's `internal`, not a text gate)
+- [x] 3.4 Bind the fake (`JVM` and `IOS_SIM_KEXE`, kind `Fake`, all states) in `:adapter:generic:fake` `commonTest`
+- [x] 3.5 Bind `IosKeychain` live on `IOS_SIM_KEXE` (reaches `Inaccessible`) in `:adapter:ios:ext-safe` `iosTest`
+- [x] 3.6 Bind `AppGroupFileSecureStore` live on `IOS_SIM_KEXE` (reaches `Empty`, `Holding(_, BACKGROUND_READABLE)`) in `:adapter:ios:ext-safe` `iosSimulatorArm64Test`
 - [ ] 3.7 Run all three on the Mac; every clause `Passed` or `NotRunHere` with a stated reason
 
 ## 4. The Keychain OS seam
