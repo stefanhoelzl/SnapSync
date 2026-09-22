@@ -288,8 +288,8 @@ whose size is bounded by the in-window library, not by the ledger.
 
 **Liveness is trigger-driven, plus a foreground-gated poll.** The ledger counts SHALL be re-read on
 **foreground entry**, on each tick of the **foreground-gated poll** (see "Foreground-gated
-ledger-counts poll" — the replacement for the deleted extension liveness notification), and, on the
-app-driven tier, after **each in-process pump cycle** (see `ios-url-session-upload`). A re-read ledger
+ledger-counts poll" — the replacement for the deleted extension liveness notification), and after **each
+in-process pump cycle** of the app's own uploader (see `ios-url-session-upload`). A re-read ledger
 answer SHALL be intersected with the admitted set the gallery source **last published**; a ledger re-read
 SHALL NOT re-derive the selection policy or re-enumerate the library to obtain a fresh set. A failed ledger
 read SHALL retain the last good counts rather than regress (so a transient read error never drops
@@ -369,12 +369,14 @@ The seam and its general implementation SHALL live in `feature/status` and take 
 (the ledger-independence rule of "Module placement plugs the engine leak" holds) and the
 read-failure behavior is testable platform-free. The iOS composition root SHALL supply a read
 that reads the shared App-Group ledger **read-only** — calling only the backend's per-asset done-ness read
-(`iosLedgerStore().assetProgress()`), never a record write, `clear` or `resetTo` — so the **extension remains
-the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The ledger's `aggregates()` read
+(`iosLedgerStore().assetProgress()`), never a record write, `clear` or `resetTo` — so **status writes
+nothing**: every ledger write belongs to the code that owns it (the upload cycles' `LedgerWriter`s, a
+transport's guarded terminal write, the membership use cases' reset family — capability `sync-ledger`,
+"Reader and writer capability split"), and the status read is handed none of them. The ledger's `aggregates()` read
 is not the status read (it remains for its other callers, capability `sync-ledger`). The cross-process read
-is safe under the ledger driver's WAL mode (one writer plus concurrent readers). `refresh()`
-SHALL be invoked on **foreground entry**, on each **foreground-gated poll tick**, and, on
-the app-driven tier, after **each pump cycle**. On any read failure the value SHALL retain its
+is safe under the ledger driver's WAL mode (writes serialized — from either process — with concurrent readers). `refresh()`
+SHALL be invoked on **foreground entry**, on each **foreground-gated poll tick**, and after **each app
+pump cycle**. On any read failure the value SHALL retain its
 last good `LedgerCounts` — which, before any successful read, is the **un-read** value, never a
 read empty answer. A settable fake SHALL exist for tests and the desktop harness.
 
@@ -399,9 +401,9 @@ read empty answer. A settable fake SHALL exist for tests and the desktop harness
 - **THEN** the all-done and not-done asset sets are taken from a single `assetProgress()` round-trip, so the
   two sets are disjoint and never double-count a photo
 
-#### Scenario: Read-only access preserves the single-writer invariant
+#### Scenario: Read-only access writes nothing
 - **WHEN** the iOS `LedgerCountsSource` reads the ledger
-- **THEN** it calls only the per-asset done-ness read and never a write; the app constructs no `LedgerWriter`
+- **THEN** it calls only the per-asset done-ness read and never a write, and it is handed no `LedgerWriter`
 
 #### Scenario: A failed read keeps the last good counts
 - **WHEN** `refresh()` cannot read the ledger (absent file, open error)
@@ -501,8 +503,8 @@ download reconcile, so it typically reads the download projection *before* disco
 first tick is therefore what **repairs** that entry read, and one cadence is enough for a union fetch to land; a
 slower fetch is caught by the tick after it.
 
-The poll is **tier-neutral**: on the app-driven tier it is redundant beside the pump's in-process refresh and
-harmless; a tier conditional here would re-introduce the enumerated-invokers failure class. This poll replaces the
+The poll is **tier-neutral**: where the app's uploader cycles it is redundant beside the pump's in-process
+refresh and harmless; a tier conditional here would re-introduce the enumerated-invokers failure class. This poll replaces the
 extension's cross-process Darwin liveness notification (deleted — see `ios-photokit-upload`): the poll needs no
 cross-process channel and cannot miss a signal, because the read is the truth.
 
@@ -556,7 +558,7 @@ alongside the status refresh, the download reconcile, the staged-byte reclaim an
 refresh; the flow SHALL still return only when every child has finished, so its completion report to
 the OS remains truthful (`module-architecture`, "A trigger flow never outlives its own run").
 
-The app-driven tier's pump awaits a whole upload cycle, and a cycle's discovery walk can remain
+The app uploader's pump awaits a whole upload cycle, and a cycle's discovery walk can remain
 outstanding for as long as the app was suspended — 774 seconds, measured on device (`SNAPSYNC-16`,
 build 0.3(605), iOS 18.7.9). Sequencing the status refresh behind it means a member whose visit is
 shorter than that unwinding sees **no read value at all**, which is precisely the condition under

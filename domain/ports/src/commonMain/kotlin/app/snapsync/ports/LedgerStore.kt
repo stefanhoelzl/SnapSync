@@ -139,8 +139,8 @@ interface LedgerStore : TransferRecord {
      * (the caller supplies `state`; no clock stamping here). Dings [changes]
      * **once** on success. It applies no precedence — a settled row is replaced like any other. This is a
      * reset-family op (alongside [clear]) — the app-side
-     * join seed uses it; it is **not** a per-key record, so it does not breach the single-record-writer
-     * invariant.
+     * join seed uses it; it is **not** a per-key record, and it is owned by that membership use-case
+     * (capability `sync-ledger`, "Reader and writer capability split").
      */
     suspend fun resetTo(entries: List<LedgerEntry>)
 

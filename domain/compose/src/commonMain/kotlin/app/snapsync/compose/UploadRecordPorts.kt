@@ -14,9 +14,9 @@ import app.snapsync.ports.LedgerStore
  * The app **reads** through this bundle — the status counts' per-asset progress read and the diagnostic
  * dump's aggregates — and **resets** through it at membership transitions: the join-time load `resetTo`s
  * (or clears) the ledger, and a leave clears it (capability `upload-state-reconciliation`). Both resets are
- * the store's reset family, which a holder without the `LedgerWriter` may invoke without breaching the
- * single record-writer — the extension on iOS >=26.1, the app's own upload tier on 18-26.0 (capability
- * `sync-ledger`, "Reader and writer capability split"). Nothing composed over this bundle records a row.
+ * the store's reset family, owned by the membership use-cases — each one guarded transaction (capability
+ * `sync-ledger`, "Reader and writer capability split"). Records are the upload cycle's own, through its
+ * `LedgerWriter`, in whichever process runs it. Nothing composed over this bundle records a row.
  */
 class UploadRecordPorts(
     /** The app-side ledger handle: the reads above, and the reset family at join and leave. */

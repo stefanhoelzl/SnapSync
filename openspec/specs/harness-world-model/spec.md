@@ -227,9 +227,9 @@ every seam that does not yet declare a version, which is all of them until the c
 The world SHALL provide a fake `BackgroundTransfer` that models the OS upload-job lifecycle as an
 operator-driven, **inspectable** queue implementing every seam method. Like the device transports, it SHALL
 receive the ledger only as a `TransferRecord` (`sync-ledger`) and SHALL record each terminal outcome through
-its guarded `markTerminal`; it SHALL serve no library read. Like the OS-driven queue it models, it SHALL
-report the absence of a live set from `liveKeys()` and of a lost set from `lostKeys()`, and hold nothing for
-`discard` to drop, so the world runs no stranded reconciliation.
+its guarded `markTerminal`; it SHALL serve no library read. Like every transport, it SHALL expose no capacity
+read and no live-set, lost-set or discard member: the cycle creates until `createJob` refuses, and no cycle
+reconciles stranded rows (decision record: `changes/both-uploaders-active`).
 `createJob` SHALL enqueue a PENDING job and return `CREATED`, unless a **settable job-limit** is reached
 (returning `LIMIT_EXCEEDED`) or a forced create-failure is set (returning `FAILED`). An operator **complete**
 action SHALL deposit the job's object key into the backend object store **store-direct** (byte transfer
@@ -258,10 +258,11 @@ inspectable so tests assert the lifecycle, not only the final outcome.
   resources hold `DISCOVERED` rows, and the cycle still
   published its device manifest
 
-#### Scenario: The fake queue reports neither live nor lost transfers
+#### Scenario: The job-limit is the only bound on creation
 
-- **WHEN** the world's upload cycle reaches its stranded pass
-- **THEN** the fake queue reports no live set and no lost set, so no `REQUESTED` row is returned to `DISCOVERED` by that pass
+- **WHEN** the world's upload cycle enqueues more admitted rows than the settable job-limit allows
+- **THEN** it creates jobs until `createJob` returns `LIMIT_EXCEEDED` and stops that pass there, having read
+  no capacity from the queue
 
 #### Scenario: The fake queue holds no ledger store
 

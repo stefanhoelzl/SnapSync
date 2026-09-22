@@ -130,8 +130,9 @@ enrollment** commit the join by saving the config (`eventId`, the loaded name, t
 and **`endsAt`**, the **clamped** capture-date **range** — `minPhotoDate` floor-clamped and `maxPhotoDate`
 ceiling-clamped, see below and capability `photo-selection-policy` — the chosen participation
 **direction**, **and whether the join opted into an event album — `saveToAlbum`**, capability
-`event-album`) and, **when the chosen direction includes upload** (`Both` or `UploadOnly`), enabling the
-background-upload producer.
+`event-album`) and, for **every** direction, starting the membership's uploads through the upload arm's
+join transition (capability `upload-lifecycle`): the upload extension is registered wherever the OS allows
+it, and the app's uploader is armed when photo access is usable.
 
 Enrollment writes **no manifest**. Joining and contributing are separate requests: the join creates or
 reactivates the membership and is the only request that decides capacity, while the manifest publish
@@ -152,8 +153,14 @@ the interactive confirm, the switch confirm, the retry, and the `autoJoin` path 
 range alike. The single `JoinEvent` choke point bounds hostile-link values from **both** sides, so a link
 can never widen a membership below the event's start nor above the event's declared end.
 
-When the chosen direction is `DownloadOnly` the producer SHALL **not** be enabled — the device still
-enrolls and still runs the download machinery, but contributes no photos. Enrollment SHALL be performed
+When the chosen direction is `DownloadOnly` the uploads SHALL be started exactly as for any other
+direction — the extension registered where the OS allows it, the app's uploader armed — and the device
+still enrolls and still runs the download machinery, but contributes no photos. It contributes none because
+its selection policy admits nothing: each cycle declines on the policy (no walk, a settle, the empty
+manifest, `SKIPPED`, so the app's heartbeat is never re-armed; capability `upload-lifecycle`). No direction
+check SHALL stand in the join, the transitions, or either uploader. Keeping the registration is what lets a
+later reconfigure to upload need no registration step, and what keeps a deregistration from wiping jobs.
+Decision record: `changes/both-uploaders-active`. Enrollment SHALL be performed
 for **all** directions, so a download-only device is an enumerable, notifiable, event-alive member exactly
 like a contributor; enrollment SHALL make the device a member immediately — before any photo upload — by
 creating the membership itself rather than by any document it writes. A contributing device's asset
@@ -210,10 +217,12 @@ effects (the enrollment request and the producer enable) SHALL be injected so th
 - **THEN** no manifest is written by the join, the membership's existing asset set is left intact, and the
   manifest producer's skip-if-unchanged record is not invalidated
 
-#### Scenario: A download-only confirm enrolls but does not enable the producer
-- **WHEN** the user confirms with direction `DownloadOnly` and enrollment succeeds
-- **THEN** the config is saved with direction `DownloadOnly`, the upload producer is **not** enabled, and
-  the device is still an enrolled member
+#### Scenario: A download-only confirm enrolls and starts uploads that contribute nothing
+- **WHEN** the user confirms with direction `DownloadOnly` and enrollment succeeds on iOS ≥26.1 under a
+  full grant
+- **THEN** the config is saved with direction `DownloadOnly`, the device is an enrolled member, the upload
+  extension is registered and the app's uploader armed like any join's, and every upload cycle declines on
+  the policy, uploading nothing and publishing the empty manifest
 
 #### Scenario: An upload-only confirm enables the producer
 - **WHEN** the user confirms with direction `UploadOnly` and enrollment succeeds
@@ -448,7 +457,7 @@ than parking on a retryable error state.
 
 #### Scenario: autoJoin honors an explicit dev/test direction override
 - **WHEN** an event link with `autoJoin = true` carries `direction = download` and its details load
-- **THEN** the auto-fired confirm provisions with direction `DownloadOnly` (the producer is not enabled)
+- **THEN** the auto-fired confirm provisions with direction `DownloadOnly`
 
 #### Scenario: autoJoin honors an explicit dev/test saveToAlbum override
 - **WHEN** an event link with `autoJoin = true` carries `saveToAlbum = true` and its details load
@@ -943,7 +952,13 @@ The upload ledger is the **current membership's share set** (capability `sync-le
 therefore decide its membership **transition** first, with exactly three answers:
 
 - **Stay** — the event being provisioned is the one already joined (a re-provision). Nothing SHALL be torn
-  down and nothing SHALL be loaded.
+  down and nothing SHALL be loaded, and the uploads SHALL be left exactly as they are: no registration
+  call (no disable → enable toggle), and no arm, disarm or cancel of the app's uploader: the provision's
+  `Stay` branch SHALL only save the config, and the upload arm's join transition SHALL be reached only through
+  the membership entry that `Join` and `LeavePrevious` run (capability `upload-lifecycle`).
+  A re-scan changes nothing about the membership, and the toggle would wipe the extension's in-flight
+  jobs; the stale-record repair does not need it, because a reinstall wipes the config and so always
+  arrives as a real join. Decision record: `changes/both-uploaders-active`.
 - **Join** — no membership is configured (a first join, and every join reached after a leave — including
   the interactive switch, whose confirm runs the leave before this join commits).
 - **LeavePrevious** — a different event is configured (a switch reached by a route that provisions over a
@@ -961,9 +976,11 @@ The provision SHALL then run in this order:
    `COMPLETED` row per resource the backend already holds, so nothing already stored re-uploads. On failure
    or timeout the ledger SHALL be **cleared** (`clear()`). Either way the new membership starts with nothing
    from before it. The load never blocks the provision.
-4. **Save** the config.
-5. Refresh status → arm the upload mechanism → ensure the event album → start downloads and push
-   (unchanged).
+4. **Save** the config — on every answer.
+5. **Start the uploads** — on `Join` and `LeavePrevious` only (the upload arm's join transition, after the save,
+   so a registered extension never reads the previous membership's config); nothing on `Stay`. Steps 2–5 on an
+   entry are one ordered feature rule (the membership entry), so the provision flow keeps one call per branch.
+6. Refresh status → ensure the event album → start downloads and push.
 
 **Why clear on failure, not keep.** A leftover `COMPLETED` row inside the new window — left by a device
 that departed under the old contract, which kept the ledger, or by a leave whose best-effort clear failed —
@@ -982,9 +999,9 @@ the next join clears anyway, or (switch) the previous membership over a reloaded
 simply re-records its work (`DISCOVERED` rows are re-found by the walk; stored bytes are already
 `COMPLETED`). Neither loses a photo. The leave and the load are one ordered entry into the new membership
 (`MembershipEntry`), asked of the transition once, before the save — after the save it would always answer
-`Stay`. The load also runs **before** the arm, so the first cycle the arm starts already sees the loaded rows; on the
-OS-driven tier a first join has no registered extension until the arm starts, so the load cannot race a
-cycle. `Stay` SHALL NOT load: a reset there would drop the `DISCOVERED`/`REQUESTED` rows of a live
+`Stay`. The load also runs **before** the arm, so the first cycle the arm starts already sees the loaded rows; a
+registration that survives from before the join (a device reset leaves one) finds no membership until the
+save, so its cycle declines and cannot race the load either. `Stay` SHALL NOT load: a reset there would drop the `DISCOVERED`/`REQUESTED` rows of a live
 membership without stopping anything.
 
 The load SHALL run for **every** direction, including download-only, so a member who later enables upload
@@ -995,8 +1012,8 @@ device. The load SHALL touch no download-store row (capability `download-store`)
 The rule SHALL live in a `feature/membership` use-case over the `LedgerStore` and `DeviceFilesSource` ports;
 the shared composition SHALL hand the provision flow a `suspend () -> Unit` effect built over it, since the
 flow may not name a port (capability `module-architecture`). The app process performs the load on every
-tier, including where the upload extension is the ledger's record-writer (capability `sync-ledger` permits a
-non-writer holder the reset family).
+tier: the load is one of the reset-family writes whose code owns it, a guarded one-transaction write that
+is safe whichever process's cycle is running (capability `sync-ledger`).
 
 #### Scenario: A first join loads the ledger from the listing
 - **WHEN** a join commits with no membership configured and the device's stored-file listing is fetched
@@ -1031,5 +1048,12 @@ non-writer holder the reset family).
 
 #### Scenario: A download-only join still loads
 - **WHEN** a join commits with direction `DownloadOnly`
-- **THEN** the ledger is still cleared and loaded from the listing, and no upload producer is enabled
+- **THEN** the ledger is still cleared and loaded from the listing, and the uploads are started like any
+  join's, the policy admitting nothing
+
+#### Scenario: Re-provisioning the joined event leaves the uploads untouched
+- **WHEN** the event already joined is provisioned again while the upload extension is registered with
+  jobs in flight and the app's uploader has transfers in flight
+- **THEN** no registration call is made, the app's uploader is neither armed, disarmed nor cancelled, and
+  the in-flight jobs and transfers continue and record their completions
 

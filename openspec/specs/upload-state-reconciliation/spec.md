@@ -300,11 +300,11 @@ the ledger, or after a leave whose best-effort clear failed — would suppress a
 forever, with no error. Only the network fetch is bounded; the `resetTo` and `clear()` are single atomic
 storage operations and are not timed.
 
-The load SHALL run **once per membership change**, in the app process, on **every** upload tier — including
-iOS ≥26.1, where the extension is the ledger's only record-writer: `resetTo` and `clear()` are reset-family
-operations a non-writer may invoke (capability `sync-ledger`). It SHALL run **before** the membership's
-config is saved (and, on a switch, after uploads are stopped) and **before** the upload mechanism is armed
-for it, so no cycle can ever see the new membership over the previous membership's ledger and the first
+The load SHALL run **once per membership change**, in the app process, on **every** iOS version:
+`resetTo` and `clear()` are reset-family operations owned by this use case, not record operations of a
+cycle's writer (capability `sync-ledger`, "Reader and writer capability split"). It SHALL run **before** the
+membership's config is saved (and, on a switch, after uploads are stopped) and **before** either uploader is
+registered or armed for it, so no cycle can ever see the new membership over the previous membership's ledger and the first
 cycle the arm starts already sees the seed. A crash between the load and the save leaves either (first join)
 an unjoined device holding a loaded ledger, which the next join clears anyway, or (switch) the previous
 membership over a reloaded ledger, whose next walk simply re-records its work (`DISCOVERED` rows are
@@ -313,8 +313,8 @@ use-case over the `LedgerStore` and `DeviceFilesSource` ports; `flow/Provision` 
 effect (the flow-no-ports gate).
 
 A re-provision of the **already-joined** event SHALL NOT load, clear, or reset anything: a `resetTo` there
-would drop the `DISCOVERED` and `REQUESTED` rows of a live membership without stopping the mechanism that
-owns them.
+would drop the `DISCOVERED` and `REQUESTED` rows of a live membership without stopping the uploaders whose
+jobs own them.
 
 A **confirmed-successful** listing SHALL be treated as **authoritative** — whether it reports every, some, or
 **none** of the device's resources. A successful **empty** listing seeds nothing, and cannot be a transient
@@ -376,8 +376,8 @@ the assets the ledger does not fully know").
 #### Scenario: The load precedes arming
 
 - **WHEN** a first join or a switch provisions, on iOS 18–26.0 or on iOS ≥26.1
-- **THEN** the app runs the load before saving the config and before arming the upload mechanism, so the
-  first cycle for the membership sees the loaded ledger
+- **THEN** the app runs the load before saving the config and before registering or arming either uploader,
+  so the first cycle for the membership, in either process, sees the loaded ledger
 
 #### Scenario: A not-yet-stored resource uploads idempotently
 
@@ -427,14 +427,14 @@ the shared App-Group store.
 
 #### Scenario: A cycle never fetches the listing
 
-- **WHEN** the upload cycle runs on either tier, joined or not
+- **WHEN** the upload cycle runs in either process, joined or not
 - **THEN** it makes no per-device listing request and reads no join marker
 
 #### Scenario: A contributing membership goes straight to its work
 
 - **WHEN** a cycle runs for a joined, contributing membership
-- **THEN** it proceeds from its entry gate to its direction gate with no reconciliation step and no
-  deferral outcome between them
+- **THEN** it proceeds from its entry gate to its admission and the membership's selection policy with no
+  reconciliation step and no deferral outcome between them
 
 #### Scenario: The not-joined path writes nothing
 

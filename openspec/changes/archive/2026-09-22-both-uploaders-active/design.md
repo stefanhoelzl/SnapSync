@@ -277,3 +277,23 @@ process with one `COMPLETED` row; a re-scan of the joined event leaves registrat
 - **Does a device reset deregister?** `ResetDeviceState` clears the config but not the registration; under D5
   registration spans the membership, so arguably a reset is a leave. Not decided here; the extension's gate sees no
   membership after a reset and declines (`NotJoined`), so the residue is an inert record.
+
+## Archive gates (2026-09-22)
+
+1. **Placeholder Purpose** — none in the tree. The Purposes this change made false were rewritten at archive:
+   `upload-lifecycle`, `sync-ledger`, `ios-photokit-upload`, `ios-url-session-upload`, `device-manifest`,
+   `limited-photo-access` (task 9.1).
+2. **Delta completeness** — modules the diff touched, and the capability that accounts for each:
+   `:adapter:generic:app` (`SqlDelightLedgerStore`, `Ledger.sq`) → `sync-ledger`; `:adapter:generic:fake` →
+   `sync-ledger`, `diagnostic-logging`; `:adapter:ios:app-only` → `ios-url-session-upload`; `:adapter:ios:ext-safe`
+   → `ios-photokit-upload`; `:app:ios` → `ios-app-shell`, `ios-url-session-upload`; `:domain:compose` →
+   `upload-lifecycle`, `diagnostic-logging`; `:domain:feature` → `upload-lifecycle`, `join-event`,
+   `reconfigure-membership`, `diagnostic-logging`; `:domain:flow` → `join-event`; `:domain:model` →
+   `upload-lifecycle`, `diagnostic-logging`; `:domain:ports` → `sync-ledger`, `ios-url-session-upload`;
+   `:test:architecture` → `architecture-guards`; `:test:world` → `harness-world-model`. No delta needed:
+   `:test:integration` (tests only — behavior is specified by the capabilities above) and `:test:rig`
+   (non-gating dev infrastructure with no spec, per `CLAUDE.md`; its switch is specified in `upload-lifecycle`).
+3. **Dead types** — removed and absent elsewhere: `UploadMechanism` (named in `upload-lifecycle` only in the
+   sentence recording its replacement — accounted), `UploadAdmission.NotResolved`, `UploadMechanismPin`,
+   `Desired`/`Registration` (private to the old `UploadTransitions`; the spec hits for "Registration" are the
+   generic word), and test-only types. No spec names a removed type as live.
