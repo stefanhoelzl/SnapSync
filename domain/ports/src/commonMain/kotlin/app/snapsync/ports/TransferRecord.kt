@@ -5,8 +5,9 @@ import app.snapsync.model.TerminalOutcome
 
 /**
  * The narrow ledger surface a **transport** receives (capability `sync-ledger`, "Reader and writer capability
- * split"): the one guarded terminal write a platform callback records through, and the two row reads that
- * resolve a returned job to its row — by destination, and by key. [LedgerStore] extends it; a transport is handed this and nothing wider.
+ * split"): the one guarded terminal write a platform callback records through, and the one row read that
+ * resolves a returned job to its row — by destination. [LedgerStore] extends it; a transport is handed this and
+ * nothing wider.
  *
  * It adds no logic and decides nothing — it **restricts**. A transport still records the terminal fact the
  * platform hands it, because that write must land before a non-suspending callback returns, and no call into
@@ -25,25 +26,14 @@ interface TransferRecord {
      * field a succeeded job reliably carries, and under a byte route that names identity in its path the
      * ledger key is no longer recoverable from it (capability `ios-photokit-upload`).
      *
-     * A row recorded before the ledger kept a destination carries null and is never matched here, which
-     * is correct rather than lossy — such a row is recovered by the tier's own fallback.
+     * A row recorded before the ledger kept a destination carries null and is never matched here, and no
+     * other route reaches it: the v1 last-segment fallback is retired (decision record
+     * `changes/retire-legacy-key-fallback`).
+     *
+     * Null is also how a transport tells a job whose row an authoritative walk deleted — its photo left the
+     * library or the selection, possibly mid-upload — from one it can still settle.
      */
     suspend fun entryForDestination(destinationPath: String): LedgerEntry?
-
-    /**
-     * The row for [key], or null when there is none.
-     *
-     * Absence: null means "no such row", and ONLY that — a backend that cannot read throws rather
-     * than answering empty, so this seam never has to encode "could not tell". That is what lets a
-     * caller treat null as a fact about the ledger instead of a fact about the storage.
-     *
-     * On this narrow surface because a transport must tell a job whose row an authoritative walk deleted —
-     * its photo left the library or the selection, possibly mid-upload — from one it can still settle, and the
-     * pre-destination fallback recovers a key with no row lookup of its own (capability `ios-photokit-upload`;
-     * decision record `changes/selection-is-the-walk`, D3). A read, so the one-record-operation rule below is
-     * untouched.
-     */
-    suspend fun get(key: String): LedgerEntry?
 
     /**
      * Record how one upload terminated — [outcome]'s state becomes the row's (`COMPLETED` for a success; a

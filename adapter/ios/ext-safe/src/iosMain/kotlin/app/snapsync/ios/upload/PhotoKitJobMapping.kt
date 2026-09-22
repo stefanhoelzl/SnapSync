@@ -66,15 +66,12 @@ sealed interface FetchedJob {
     /**
      * The job carries a destination this cycle can work from.
      *
-     * [destinationPath] is what the ledger recorded when the job was created, and is the primary way back
-     * to the row. [legacyKey] is the destination's last path segment, and is a ledger key **only** when
-     * the destination has the pre-identity byte shape — one segment after the device partition. Under a
-     * route that names identity in its path that segment is the resource's ROLE, which is why it is null
-     * there rather than a key that would collapse every job onto `primary`.
+     * [destinationPath] is what the ledger recorded when the job was created, and is the only way back to
+     * the row. No key is read out of it: under the v2 byte route its last segment is the resource's ROLE,
+     * and reading that as a key would collapse every job onto `primary` (`changes/retire-legacy-key-fallback`).
      */
     data class Emit(
         val destinationPath: String,
-        val legacyKey: String?,
         val state: PhotoKitJobState,
         val error: UploadError?,
     ) : FetchedJob
@@ -92,8 +89,7 @@ sealed interface FetchedJob {
  *
  * The destination is the only field reliably present for every job state, since `resource` is nil once a
  * job has succeeded (capability `ios-photokit-upload`, "Completion and retry adjudication"). What it
- * yields is the destination's **path**, which the ledger recorded at creation — plus, when the
- * destination has the pre-identity shape, the last path segment, which was the ledger key there.
+ * yields is the destination's **path**, which the ledger recorded at creation.
  *
  * Deciding the shape here rather than at the call site is what makes it testable: a job object cannot be
  * constructed, so the loop that consumes this is verified only on a device. [destination] is nullable on
@@ -108,27 +104,9 @@ fun classifyPhotoKitJob(
     val path = destination?.URL?.path ?: return FetchedJob.AcknowledgeToDrain
     return FetchedJob.Emit(
         destinationPath = path,
-        legacyKey = legacyKeyOf(path),
         state = photoKitJobState(state),
         error = error?.let { photoKitUploadError(it) },
     )
-}
-
-/**
- * The ledger key a **pre-identity** byte destination carries in its last path segment, or null when the
- * destination does not have that shape.
- *
- * The old shape ends `/files/devices/<deviceId>/<key>` — exactly one segment after the device — and the
- * key was recoverable for free because it happened to be that segment. The identity-in-path shape ends
- * `/files/devices/<deviceId>/<assetId>/<role>`, whose last segment is the role: reading it as a key would
- * collapse every job in a cycle onto `primary`, silently. So the shape decides, and anything else yields
- * null rather than a guess.
- */
-internal fun legacyKeyOf(path: String): String? {
-    val segments = path.split('/').filter { it.isNotEmpty() }
-    val devices = segments.indexOf("devices")
-    if (devices < 0) return null
-    return segments.getOrNull(devices + 2)?.takeIf { segments.size == devices + 3 }
 }
 
 /**
@@ -152,28 +130,28 @@ sealed interface JobRow {
 
 /**
  * Decide [JobRow] for a job whose destination is [path]: the row the ledger recorded for that destination
- * ([rowByDestination]), else — for a pre-identity destination — the row its [legacyKey] names, when
- * [legacyRowExists]; else [JobRow.Pruned] when the path is a byte route at all, and [JobRow.Unmappable] when it
+ * ([rowByDestination]); else [JobRow.Pruned] when the path is a byte route at all, and [JobRow.Unmappable] when it
  * is not.
  *
- * A pre-identity key with no row is pruned too, never recovered on the strength of the path alone: recovering it
- * would hand the cycle a failure to retry for a photo that left, which is the re-upload this rule exists to stop.
+ * The recorded destination is the ONLY route. The v1 last-segment fallback is retired
+ * (`changes/retire-legacy-key-fallback`), so a v1-shaped job is unmappable rather than pruned: its row may still
+ * exist and be `REQUESTED`, and a quiet prune would hide that.
  */
-fun jobRowOf(path: String, legacyKey: String?, rowByDestination: String?, legacyRowExists: Boolean): JobRow = when {
+fun jobRowOf(path: String, rowByDestination: String?): JobRow = when {
     rowByDestination != null -> JobRow.Found(rowByDestination)
-    legacyKey != null && legacyRowExists -> JobRow.Found(legacyKey)
     isByteRoute(path) -> JobRow.Pruned
     else -> JobRow.Unmappable
 }
 
 /**
- * Whether [path] is one of the two byte-route shapes this build has ever created a job for: the pre-identity
- * `/files/devices/<deviceId>/<key>` or the identity-in-path `/files/devices/<deviceId>/<assetId>/<role>`.
+ * Whether [path] is the byte-route shape this build creates jobs for: the v2 identity-in-path
+ * `/files/devices/<deviceId>/<assetId>/<role>`. The v1 `/files/devices/<deviceId>/<key>` is deliberately NOT one
+ * any more — a job carrying it is unmappable, and reported (`changes/retire-legacy-key-fallback`, D2).
  */
 internal fun isByteRoute(path: String): Boolean {
     val segments = path.split('/').filter { it.isNotEmpty() }
     val devices = segments.indexOf("devices")
-    return devices > 0 && segments[devices - 1] == "files" && segments.size in (devices + 3)..(devices + 4)
+    return devices > 0 && segments[devices - 1] == "files" && segments.size == devices + 4
 }
 
 /**
@@ -305,8 +283,8 @@ fun photoKitUploadError(error: NSError): UploadError =
 
 /**
  * The `.retry` job to re-point for [key]: the first candidate whose classified destination resolves to [key]
- * through [resolve] — the drain's own route (the recorded destination path, then the v1 last-segment fallback)
- * — or null when none does, including a candidate with no destination at all.
+ * through [resolve] — the drain's own route, the recorded destination path — or null when none does,
+ * including a candidate with no destination at all.
  *
  * Generic over the job so it can be exercised without a `PHAssetResourceUploadJob`, which no host can
  * construct. It never compares a destination's last path segment to [key]: under the identity-in-path byte
