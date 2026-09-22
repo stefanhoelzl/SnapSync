@@ -14,7 +14,7 @@
 - [x] 2.3 Repoint the SQLDelight (jvm) and native-driver (sim) tests in `:adapter:generic:app` to bindings over the moved contracts
 - [x] 2.4 Move the fake bindings from `:test:world` `commonTest` to `:adapter:generic:fake` `commonTest`
 - [x] 2.5 Remove the contracts and the `commonMain` `kotlin-test` dependency from `:test:world`; confirm nothing else in its `commonMain` used it
-- [ ] 2.6 Compare each of the four bindings' outcome tables with the pre-move test results — identical clause count, all `Passed`
+- [x] 2.6 Compare each of the four bindings' outcome tables with the pre-move test results — identical clause count, all `Passed`
 
 ## 3. The `SecureStore` contract, the fake and the live bindings
 
@@ -24,12 +24,13 @@
 - [x] 3.4 Bind the fake (`JVM` and `IOS_SIM_KEXE`, kind `Fake`, all states) in `:adapter:generic:fake` `commonTest`
 - [x] 3.5 Bind `IosKeychain` live on `IOS_SIM_KEXE` (reaches `Inaccessible`) in `:adapter:ios:ext-safe` `iosTest`
 - [x] 3.6 Bind `AppGroupFileSecureStore` live on `IOS_SIM_KEXE` (reaches `Empty`, `Holding(_, BACKGROUND_READABLE)`) in `:adapter:ios:ext-safe` `iosSimulatorArm64Test`
-- [ ] 3.7 Run all three on the Mac; every clause `Passed` or `NotRunHere` with a stated reason
+- [x] 3.7 Run all three on the Mac; every clause `Passed` or `NotRunHere` with a stated reason
+- [x] 3.8 (Found by the contract on its first run) `AppGroupFileSecureStore.write` threw a bare `IllegalStateException` when the container was unavailable or the write failed; it now throws `SecureStoreUnavailable`, which the composition roots catch and defer on. Simulator-target test equipment; no spec states its failure type, so no delta
 
 ## 4. The Keychain OS seam
 
 - [x] 4.1 Introduce an `internal` seam in `:adapter:ios:ext-safe` over `SecItemAdd` / `SecItemCopyMatching` / `SecItemUpdate` / `SecItemDelete`, with the real implementation calling the platform; route `IosKeychain` through it with no behaviour change
-- [ ] 4.2 Confirm `IosKeychainTest`, `KeychainDeviceIdentityTest`, `KeychainAttestStoreTest` and `KeychainContainmentTest` pass unchanged
+- [x] 4.2 Confirm `IosKeychainTest`, `KeychainDeviceIdentityTest`, `KeychainAttestStoreTest` and `KeychainContainmentTest` pass unchanged
 
 ## 5. Recording on the device
 

@@ -74,6 +74,8 @@ end-to-end on one small external system, the Keychain behind `SecureStore`.
   source set in `:adapter:ios:ext-safe`; a `/contract/<name>` rig verb (`:test:rig`, wired from
   `:app:ios`'s rig hook); the committed recording `SecureStore@IOS_DEVICE_APP.rec`.
 - **Changed:** `IosKeychain` calls the Keychain through an internal seam (behaviour-preserving);
+  `AppGroupFileSecureStore.write` now refuses with `SecureStoreUnavailable` instead of a bare
+  `IllegalStateException` — the first defect the `SecureStore` contract caught, on its first run;
   `:test:world` loses the two contracts and its `commonMain` `kotlin-test` dependency; the fake bindings of
   the storage contracts move from `:test:world` to `:adapter:generic:fake`.
 - **Build/CI:** the replay runs in the existing `iosSimulatorArm64Test` job; a device session (lease +
