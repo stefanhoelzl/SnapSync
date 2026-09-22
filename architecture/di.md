@@ -22,6 +22,7 @@ Roots found:
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
 | `CutoffFormatter` | x | |
+| `EntryHooks` | x | |
 | `FileBackedConfigStore` | x | x |
 | `FileLogWriter` | x | x |
 | `HttpAttestClient` | x | |
@@ -42,6 +43,7 @@ Roots found:
 | `IosDownloadTransport` | x | |
 | `IosLinkOpener` | x | |
 | `IosPhotoLibraryImporter` | x | |
+| `IosProtectedStorage` | x | |
 | `IosShareSheet` | x | |
 | `IosStagedBytes` | x | |
 | `KeychainAttestStore` | x | x |
@@ -49,7 +51,6 @@ Roots found:
 | `KtorPushHttpClient` | x | |
 | `MetricKitProcessMetricSource` | x | |
 | `OsDrivenRegistration` | x | |
-| `OsReceipt` | x | |
 | `PhotoKitAssetPresence` | x | |
 | `PhotoKitCandidateSource` | x | x |
 | `PhotoLibraryPermission` | x | |

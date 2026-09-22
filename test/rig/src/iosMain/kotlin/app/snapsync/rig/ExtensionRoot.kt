@@ -64,7 +64,7 @@ fun extensionTriggerGroup(
         "onTerminate" to RigTrigger.Fire { terminate() },
     ),
     // Supplied by the hook, beside the app root's, so the whole exclusion inventory sits in one file — the
-    // file a reviewer reads and the guard derives from.
+    // file a reviewer reads (no guard derives it any more; the one that did was retired in `74302d2b`).
     excluded = excluded,
 )
 

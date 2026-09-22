@@ -82,10 +82,12 @@ edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic:app
+edge :test:integration :domain:compose
 edge :test:integration :domain:feature
 edge :test:integration :domain:flow
 edge :test:integration :domain:model
 edge :test:integration :domain:ports
+edge :test:integration :test:contracts
 edge :test:integration :test:world
 edge :test:integration :ui:presentation
 edge :test:rig :adapter:ios:app-only

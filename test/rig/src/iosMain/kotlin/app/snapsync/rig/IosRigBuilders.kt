@@ -43,8 +43,9 @@ private val log = Logger.withTag("rig")
  *
  * Four are wired because four are what an operator needs to reach an event end-to-end without a finger:
  * create it, confirm the join it opens, abandon that join, and leave afterwards. The rest are excluded with
- * the reason that makes each omission safe, and the coverage guard holds this map against the host's own
- * public surface — so a new command on the host fails the build until someone says which of the two it is.
+ * the reason that makes each omission safe. A guard once held this map against the host's own public surface,
+ * so a new command failed the build until someone said which of the two it was; it was retired in `74302d2b`,
+ * and a new command is now classified by review.
  */
 fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> = mapOf(
     "leave" to RigUserCommand { host().onLeaveEvent() },

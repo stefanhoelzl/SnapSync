@@ -38,13 +38,13 @@
 
 ## 6. Documentation
 
-- [ ] 6.1 Correct the KDocs of `PlatformEntry`, `RigHooks` and `Boot.kt`: no guard derives or checks the population
-- [ ] 6.2 Update `MainViewController`'s and `SnapSyncRoot`'s KDocs for the delegation; update CLAUDE.md's module lines for `:domain` (inbound ports in `ports/`, their implementation in `compose/`) and `:app:ios`, and drop the retired `LawsDigestTest` from the `:test:architecture` line
-- [ ] 6.3 `./gradlew architectureDiagrams` and commit
+- [x] 6.1 Correct the KDocs of `PlatformEntry`, `RigHooks` and `Boot.kt`: no guard derives or checks the population
+- [x] 6.2 Update `MainViewController`'s and `SnapSyncRoot`'s KDocs for the delegation; update CLAUDE.md's module lines for `:domain` (inbound ports in `ports/`, their implementation in `compose/`) and `:app:ios`, and drop the retired `LawsDigestTest` from the `:test:architecture` line
+- [x] 6.3 `./gradlew architectureDiagrams` and commit
 
 ## 7. Verify and ship
 
-- [ ] 7.1 `./gradlew build` green, including `compileIosMainKotlinMetadata`
-- [ ] 7.2 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate shell-as-driving-adapter --strict` green
+- [x] 7.1 `./gradlew build` green, including `compileIosMainKotlinMetadata`
+- [x] 7.2 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate shell-as-driving-adapter --strict` green
 - [ ] 7.3 Branch → PR → `/ship --keep-workspace`, label `internal`
 - [ ] 7.4 On device (after the internal TestFlight build lands): foreground, silent push and backstop entries log as before under the new entry names

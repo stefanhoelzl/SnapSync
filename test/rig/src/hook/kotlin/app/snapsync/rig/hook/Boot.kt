@@ -207,15 +207,17 @@ private fun triggers(): Map<String, RigTrigger> = mapOf(
  * work. Neither is a record of whether the PLATFORM called it, which is what makes the app root's scene
  * observers undriveable.
  *
- * The function exists rather than being omitted because the coverage guard derives every group's exclusions
- * from a named function: a group with none would be a group whose omissions could not be read, and "nothing
- * is excluded" and "nothing could be looked at" are not the same answer.
+ * The function exists rather than being omitted so every group states its exclusions in a named place: a group
+ * with none would be a group whose omissions could not be read, and "nothing is excluded" and "nothing could be
+ * looked at" are not the same answer. (A guard once derived these and compared them with the `@PlatformEntry`
+ * population; it was retired in `74302d2b`, so the comparison is a reviewer's.)
  */
 private fun excludedExtensionTriggers(): Map<String, String> = emptyMap()
 
 /**
  * EXCLUDED entry points, each with the consequence that makes the omission safe rather than an oversight.
- * The coverage guard asserts wired + excluded equals the derived `@PlatformEntry` population, exactly.
+ * Wired + excluded is meant to equal the root's `@PlatformEntry` population, exactly — kept by review, since
+ * the guard that asserted it was retired (`74302d2b`).
  */
 private fun excludedTriggers(): Map<String, String> = mapOf(
     "onLaunch" to

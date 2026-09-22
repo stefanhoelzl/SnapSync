@@ -88,7 +88,8 @@ SHALL implement the app's inbound port `PlatformEntries` (`onForeground` / `onBa
 `onPushToken` / `onSilentPush` / `onBackgroundTask` / `onBackgroundTransfers`) **by Kotlin delegation** to
 the implementation the shared composition builds (`module-architecture`, "OS entry points cross an inbound
 port"), supplying it only the in-process hooks it cannot name — the host's `onOpenUrl`, the host's lazy
-assembly, and the push-token delivery — and the adapter identifiers it routes by, as data. The root SHALL
+assembly, the push-token delivery, and the record that the app became active — and the adapter
+identifiers it routes by, as data. The root SHALL
 hold no hand-written forwarding for a port member, re-check no tier, and decide nothing; the only entry
 points it writes by hand are the ones outside the port (`onLaunch`, `onUserActivity`, and the log-only scene
 and registration-failure callbacks).
