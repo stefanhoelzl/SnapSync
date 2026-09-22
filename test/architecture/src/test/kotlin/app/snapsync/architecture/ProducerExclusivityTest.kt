@@ -9,6 +9,7 @@ import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
+import app.snapsync.model.selectionScope
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -133,7 +134,7 @@ class ProducerExclusivityTest {
         for (permission in PermissionStatus.entries) {
             for (pin in listOf(null, UploaderPin(), UploaderPin(app = false), UploaderPin(extension = false))) {
                 val usable = permission == PermissionStatus.GRANTED || permission == PermissionStatus.LIMITED
-                val app = appAdmission(permission, pin) == UploadAdmission.Admit
+                val app = appAdmission(permission, selectionScope(permission, emptyList()), pin) == UploadAdmission.Admit
                 assertEquals(usable && pin?.app != false, app, "app under $permission / $pin")
             }
             val ext = extensionAdmission(permission) == UploadAdmission.Admit

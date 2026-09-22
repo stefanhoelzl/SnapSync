@@ -9,14 +9,15 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.UploadDiscovery
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
  * The read-discipline gate (capability `limited-photo-access`): under a [SelectionScope.Scoped],
- * discovery consumes the snapshot with NO platform read; under [SelectionScope.Unrestricted] it
- * delegates unchanged, and a snapshot is never authoritative (it must not drive ledger deletion).
+ * discovery consumes the snapshot with NO platform read and is authoritative (the selection is the gallery,
+ * so de-selecting is deleting); under [SelectionScope.Unrestricted] it delegates unchanged; under
+ * [SelectionScope.Unread] it refuses, because every answer it could give would delete rows.
  */
 /** An admitting policy over [cutoff] — the shape the cycle hands the discovery. */
 private suspend fun admitting(cutoff: String): SelectionPolicy =
@@ -65,14 +66,14 @@ class SelectionScopedDiscoveryTest {
             discovery.candidates.map { it.facts.assetId },
             "the snapshot crosses verbatim — wrapped as HELD candidates, nothing re-read",
         )
-        // A snapshot is not the library — a de-selected photo is not a deleted one, so it must never drive
-        // ledger deletion (capability `limited-photo-access`).
-        assertFalse(discovery.fullEnumeration)
+        // Under a partial grant the selection IS the gallery: a photo it no longer carries has left, so a read
+        // snapshot drives ledger deletion exactly as a library walk does (`changes/selection-is-the-walk`, D1).
+        assertTrue(discovery.fullEnumeration)
     }
 
     @Test
-    fun an_empty_snapshot_is_still_not_authoritative() = runTest {
-        // Everything de-selected, or not yet captured: no candidates, and no evidence that anything left.
+    fun a_read_empty_snapshot_is_authoritative() = runTest {
+        // Everything de-selected: a real answer, read from the platform — every photo left the selection.
         val delegate = RecordingDelegate()
         val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Scoped(emptyList()) }
 
@@ -80,7 +81,20 @@ class SelectionScopedDiscoveryTest {
 
         assertEquals(0, delegate.discoverCalls)
         assertTrue(discovery.candidates.isEmpty())
-        assertFalse(discovery.fullEnumeration)
+        assertTrue(discovery.fullEnumeration)
+    }
+
+    @Test
+    fun an_unread_scope_refuses_both_reads_and_never_answers_empty() = runTest {
+        // Not yet read is not empty. An empty discovery would be authoritative and delete every row; an empty
+        // resolution would delete every row that needs a job. Refusing fails one cycle; answering loses rows.
+        val delegate = RecordingDelegate()
+        val scoped = SelectionScopedDiscovery(delegate) { SelectionScope.Unread }
+
+        assertFailsWith<IllegalStateException> { scoped.discover(admitting("2026-01-01T00:00:00Z")) }
+        assertFailsWith<IllegalStateException> { scoped.resourcesFor(setOf("A")) }
+        assertEquals(0, delegate.discoverCalls, "an unread scope must not fall through to a platform walk")
+        assertEquals(0, delegate.resolveCalls, "an unread scope must not fall through to a platform read")
     }
 
     // ---- the ledger-driven resolve, under the same discipline (capability `sync-ledger`) ------------

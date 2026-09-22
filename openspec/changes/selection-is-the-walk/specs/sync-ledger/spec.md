@@ -1,5 +1,84 @@
 ## MODIFIED Requirements
 
+### Requirement: Reader and writer capability split
+
+The ledger SHALL expose a concrete shared `LedgerWriter` carrying both the record operations and the
+per-key query (`entry(key): LedgerEntry?`). Record and query semantics SHALL be implemented once in
+this shared class, delegating storage to the injected `LedgerStore`. There SHALL be no separate
+reader type: the writer is constructed only by the upload cycle's shared assembly (`uploadCore`), once per
+process that runs a cycle — the app on **every** iOS version, and the extension on iOS ≥26.1 — and components
+that must not record are simply never handed a writer: status read access goes through `LedgerStore`'s read
+operations (`assetProgress()`, per `sync-status`), never through a writer instance. The app also invokes the
+**reset family** (`clear()`, `resetTo`) on the `LedgerStore` at membership transitions — a leave clears, a
+join loads (see "The ledger is the current membership's share set") — through the use cases that own them,
+not through a writer. Those are not record operations (see "Storage seam — dumb row store").
+
+**The invariant is code ownership of each write, and that each write is one guarded transaction** — not how
+many processes write. Every ledger write SHALL be exactly one of: the running cycle's `LedgerWriter` record
+family (and its key-scoped prune), a guarded `markTerminal` — a transport's, or the app's foreground settle of
+in-flight rows the backend already stores (capability `upload-state-reconciliation`, "Foreground settles
+in-flight rows the backend already stores") — or a named reset-family use case (the join-time load's
+`resetTo`, the leave's `clear()`, the device reset). Each SHALL be one storage
+transaction whose guard, where it has one, is inside the statement (see "Storage seam — dumb row store"), so
+it is safe against any other write landing between its read and its write — from the same process or the
+other one. How many processes hold a `LedgerWriter` at once is **not** an invariant: on iOS ≥26.1 under a
+full grant both the app's and the extension's cycles run over the one shared ledger, and a cycle in either
+process picks only `DISCOVERED` rows and records `REQUESTED` only after its job was created (write-after-act,
+capability `sync-engine`), so two cycles overlapping can at worst each upload the same key's identical bytes
+to the same destination, and the second terminal write of the pair is a declined no-op. Decision record:
+`changes/both-uploaders-active`.
+
+Handing a writer instance only to the cycle is the **mechanism** that confines the record family to the code
+that owns it. That mechanism is deliberately relaxed for one operation: `markTerminal` (see "Guarded terminal
+write") is declared on **`TransferRecord`** — a narrow interface `LedgerStore` extends, carrying only
+`markTerminal` and two reads: `entryForDestination` (see "The ledger records the destination a job was sent
+to") and `get(key)`, the per-key row read. A transport needs the second read to tell a job whose row an
+authoritative walk deleted from one it can still settle (capability `ios-photokit-upload`, "Completion and
+retry adjudication"; decision record `changes/selection-is-the-walk`, D3) — because the party the platform tells that an upload terminated is a platform callback, and it cannot
+suspend. The ownership holds — the terminal write belongs to the transport whose job terminated, or to the foreground
+settle that found the key's bytes stored, and its guard applies it only to a row still `REQUESTED` — while the
+type-level codification does not cover it. A spec or a
+review that reads the type-level rule as the invariant will reach the wrong conclusion about this call, which
+is why both are stated.
+
+A **transport** — an implementation of the upload transfer lifecycle (`BackgroundTransfer`) — SHALL receive a
+`TransferRecord` and SHALL NOT receive a `LedgerStore`. What a transport may touch in the ledger is therefore
+exactly the one guarded terminal write and the two row reads; every other read and write belongs to the
+cycle.
+
+No record operation other than `markTerminal` SHALL be added to `TransferRecord` or to `LedgerStore` on this
+argument; a further record operation belongs on the writer. The foreground settle is a second *caller* of
+`markTerminal`, not a second operation, and it SHALL record only `COMPLETED`.
+
+#### Scenario: Writer reads what it wrote
+
+- **WHEN** a `LedgerWriter` records an entry and `entry(key)` is called on the same instance
+- **THEN** the recorded entry is returned
+
+#### Scenario: Record access exists only where the writer is constructed
+
+- **WHEN** a component is composed without receiving the cycle's `LedgerWriter`
+- **THEN** it has no record operation available beyond `markTerminal` — it can otherwise read the ledger
+  only through `LedgerStore`'s read operations, and write it only through the reset family
+
+#### Scenario: Both processes' cycles record over one ledger
+
+- **WHEN** on iOS ≥26.1 under a full grant the app's cycle and the extension's cycle each record through their
+  own `LedgerWriter`, and a platform callback records a terminal upload through `TransferRecord`
+- **THEN** every write is one guarded transaction owned by that code, and no write overwrites a settled row
+  or claims a job another cycle created
+
+#### Scenario: A transport holds only the narrow surface
+
+- **WHEN** a transport adapter is composed
+- **THEN** it is handed a `TransferRecord`, and no other ledger read or write is reachable from it
+
+#### Scenario: The app resets the ledger through the reset family
+
+- **WHEN** the app leaves an event or loads a join, on any iOS version
+- **THEN** the owning use case calls `clear()` or `resetTo` on its `LedgerStore`, not a `LedgerWriter`, and
+  records no per-key fact
+
 ### Requirement: The ledger is never pruned by the selection policy
 
 The ledger SHALL record every resource whose bytes are on the backend for an event, and that record

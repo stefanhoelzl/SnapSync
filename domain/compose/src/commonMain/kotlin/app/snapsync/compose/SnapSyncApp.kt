@@ -36,6 +36,7 @@ import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.version.AppVersionGate
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.ExtensionRegistration
+import app.snapsync.feature.upload.StoredUploadSettle
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
@@ -479,7 +480,9 @@ class AppCore internal constructor(
      * (capability `upload-lifecycle`, "The upload cycle owns its entry decision").
      */
     val appUploadAdmission: () -> UploadAdmission = {
-        appAdmission(ports.photoAccess.permission.value, ports.uploaderPin())
+        // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
+        // the same derivation discovery reads through `selectionScope()`.
+        appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.uploaderPin())
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability
@@ -540,6 +543,10 @@ class AppCore internal constructor(
     // The join-time load (capability `upload-state-reconciliation`), built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(ports) }
+
+    // The foreground settle of in-flight uploads (capability `upload-state-reconciliation`), built in
+    // `storedUploadSettleFor`. App-only: the extension never settles from the listing.
+    private val storedUploadSettle: StoredUploadSettle by lazy { storedUploadSettleFor(ports) }
 
     // The in-place reconfigure use-case (capability `reconfigure-membership`): rewrite the joined
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
@@ -671,7 +678,8 @@ class AppCore internal constructor(
     // ---- Selection-driven reads under a partial grant (capability `limited-photo-access`) -----------
     // The latest selection snapshot (set only by the selection subscription below). The walk-vs-snapshot
     // decision is DERIVED per read from current permission + this cell, so it has exactly one owner and
-    // no stored mode can go stale across a permission flip.
+    // no stored mode can go stale across a permission flip. `null` is "not read yet", which is NOT an empty
+    // selection: it derives `SelectionScope.Unread`, and the app's upload admission withholds on it.
     private val latestSelectionSnapshot = MutableStateFlow<List<Resource>?>(null)
 
     /**
@@ -799,6 +807,7 @@ class AppCore internal constructor(
             // engine's gate now says it once. (The two pump entry points it chose between have identical
             // bodies; the choice was never between them.)
             pumpUploads = { ports.appDrivenUpload().onForeground() },
+            settleStoredUploads = { storedUploadSettle.settle() },
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,

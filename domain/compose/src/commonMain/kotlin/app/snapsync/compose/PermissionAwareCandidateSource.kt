@@ -47,10 +47,12 @@ import kotlinx.coroutines.flow.StateFlow
  * resource read (~110 ms each), while the foreground status refresh is two SQLite reads and an in-memory
  * count. The refresh wins, every time.
  *
- * The sibling collapse in `AppCore.selectionScope()` — the same cell, the same `?: emptyList()` — is
- * **kept**, and deliberately: a scoped discovery is never authoritative and deletes nothing, so its
- * empty answer costs one idle cycle that the next emission re-runs. Its answer is retryable; a settled
- * screen is not.
+ * The upload side draws the same distinction from the same cell. `AppCore.selectionScope()` derives
+ * `SelectionScope.Unread` from a null snapshot, and the app's upload cycle is withheld while it is unread.
+ * It once collapsed null to an empty selection, on the belief that a scoped discovery deletes nothing. That
+ * was never true: the enqueue resolved every row that needed a job against the empty snapshot and deleted
+ * each one as gone. And since a read snapshot became authoritative (de-selecting is deleting), an empty one
+ * would delete every row (decision record `changes/selection-is-the-walk`, D1).
  *
  * Seated in `compose/` because choosing between two ports by a third port's state is composition, and
  * because `AppPorts` is where both halves are already available.

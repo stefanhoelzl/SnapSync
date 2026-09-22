@@ -2,10 +2,12 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
+import app.snapsync.model.selectionScope
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -204,15 +206,33 @@ class CycleGateTest {
         for (permission in PermissionStatus.entries) {
             val usable = permission == PermissionStatus.GRANTED || permission == PermissionStatus.LIMITED
             val expected = if (usable) UploadAdmission.Admit else UploadAdmission.Withheld
-            assertEquals(expected, appAdmission(permission), "under $permission")
-            assertEquals(UploadAdmission.Withheld, appAdmission(permission, UploaderPin(app = false)), "switched off")
-            assertEquals(expected, appAdmission(permission, UploaderPin(extension = false)), "the other switch")
+            val read = selectionScope(permission, emptyList())
+            assertEquals(expected, appAdmission(permission, read), "under $permission")
+            assertEquals(UploadAdmission.Withheld, appAdmission(permission, read, UploaderPin(app = false)), "switched off")
+            assertEquals(expected, appAdmission(permission, read, UploaderPin(extension = false)), "the other switch")
         }
     }
 
     @Test
+    fun `the app withholds under a partial grant until the selection has been read`() {
+        // An unread selection is not an empty one: a read snapshot is an authoritative walk, so a cycle over an
+        // unread one would delete every row (`changes/selection-is-the-walk`, D1). A read EMPTY selection admits —
+        // it is a real answer, and a receive-only member's resting state.
+        assertEquals(UploadAdmission.Withheld, appAdmission(PermissionStatus.LIMITED, SelectionScope.Unread))
+        assertEquals(
+            UploadAdmission.Admit,
+            appAdmission(PermissionStatus.LIMITED, selectionScope(PermissionStatus.LIMITED, emptyList())),
+        )
+        assertEquals(
+            UploadAdmission.Withheld,
+            appAdmission(PermissionStatus.LIMITED, selectionScope(PermissionStatus.LIMITED, null)),
+            "the derivation of a null snapshot is what withholds",
+        )
+    }
+
+    @Test
     fun `under a full grant both processes admit`() {
-        assertEquals(UploadAdmission.Admit, appAdmission(PermissionStatus.GRANTED))
+        assertEquals(UploadAdmission.Admit, appAdmission(PermissionStatus.GRANTED, SelectionScope.Unrestricted))
         assertEquals(UploadAdmission.Admit, extensionAdmission(PermissionStatus.GRANTED))
     }
 

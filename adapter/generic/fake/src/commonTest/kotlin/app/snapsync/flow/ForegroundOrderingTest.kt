@@ -54,6 +54,7 @@ class ForegroundOrderingTest {
         val pumpEntered = CompletableDeferred<Unit>()
         val neverReturns = CompletableDeferred<Unit>()
         var refreshed = false
+        var settled = false
         var runReturned = false
 
         // On `backgroundScope`, and read with `runCurrent()` below rather than `advanceUntilIdle()`:
@@ -70,6 +71,7 @@ class ForegroundOrderingTest {
                 neverReturns.await() // the suspended-walk cycle, in miniature
             },
             refreshStatus = { refreshed = true },
+            settleStoredUploads = { settled = true },
         )
 
         val run = launch {
@@ -80,6 +82,7 @@ class ForegroundOrderingTest {
 
         assertTrue(pumpEntered.isCompleted, "the pump must still be invoked — it is a child, not a step removed")
         assertTrue(refreshed, "the status refresh must not wait on the pump")
+        assertTrue(settled, "nor must the settle of uploads the backend already stores — it corrects that status")
         assertFalse(runReturned, "run() must still await every child — the OS is told the truth")
 
         // Releasing the pump lets the flow finish, confirming it really was awaiting it all along.
@@ -97,6 +100,7 @@ class ForegroundOrderingTest {
         statusPoller: StatusCountsPoller,
         pumpForeground: suspend () -> Unit,
         refreshStatus: suspend () -> Unit,
+        settleStoredUploads: suspend () -> Unit = {},
         onReclaim: () -> Unit = {},
     ): Foreground {
         val configSource = FakeConfigSource()
@@ -127,6 +131,7 @@ class ForegroundOrderingTest {
             statusPoller = statusPoller,
             reloadConfig = {},
             pumpUploads = pumpForeground,
+            settleStoredUploads = settleStoredUploads,
             refreshStatus = refreshStatus,
             // No membership: the reconcile and the membership refresh short-circuit, leaving the pump,
             // the status refresh and the unconditional reclaim as the flow's children — which is exactly

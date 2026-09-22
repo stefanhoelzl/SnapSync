@@ -22,6 +22,7 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
@@ -43,6 +44,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -220,6 +222,9 @@ class UploadCycleTest {
         onDiscovery: suspend (String, SelectionPolicy) -> Boolean = { _, _ -> true },
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
+        // The platform itself by default; a test about the partial-grant read discipline wraps it in the
+        // production `SelectionScopedDiscovery`.
+        library: UploadDiscovery = platform,
     ): UploadCycle {
         val effectivePolicy = policy ?: admitting(TEST_CUTOFF)
         val ledger = LedgerWriter(backend)
@@ -233,7 +238,7 @@ class UploadCycleTest {
             engineFor = { SyncEngine(StubUploadRequestProvider(), ledger) },
             ledger = ledger,
             platform = platform,
-            library = platform,
+            library = library,
             onDiscovery = onDiscovery,
             placeInAlbum = placeInAlbum,
             log = log,
@@ -940,8 +945,8 @@ class UploadCycleTest {
 
     // ---- Deletion is a presence diff over an authoritative walk (capability `sync-ledger`) ----------------
     // The walk is bounded by the policy's capture range and the ledger is device-global, so "not returned"
-    // means gone only inside that window, only when the walk read the library itself, and never for a row
-    // a live job still owns.
+    // means gone only inside that window and only when the walk is authoritative — the library read under a
+    // full grant, or a read selection under a partial one — whatever the row's state.
 
     /** A dated row, seeded directly: what a walk, a seed or an earlier event left behind. */
     private suspend fun InMemoryLedgerStore.row(
@@ -994,8 +999,8 @@ class UploadCycleTest {
 
     @Test
     fun a_walk_that_is_not_authoritative_deletes_nothing() = runTest {
-        // A partial grant's selection snapshot, or a library the platform could not read: both arrive as
-        // `fullEnumeration = false`, and neither is the library.
+        // A library the platform could not read arrives as `fullEnumeration = false`: no evidence that anything
+        // left it. (A READ selection snapshot is authoritative — see the partial-grant tests below.)
         val backend = InMemoryLedgerStore()
         backend.row("deselected-photo.jpg")
         val platform = FakePlatform(fullEnumeration = false)
@@ -1006,7 +1011,9 @@ class UploadCycleTest {
     }
 
     @Test
-    fun an_in_flight_row_outlives_its_asset_until_it_settles() = runTest {
+    fun an_in_flight_row_is_deleted_with_its_asset_and_its_late_completion_writes_nothing() = runTest {
+        // The photo left, so it leaves the manifest THIS cycle, not when its job settles
+        // (`changes/selection-is-the-walk`, D2). The job may still land its bytes; they are listed nowhere.
         val backend = InMemoryLedgerStore()
         backend.row("gone-photo.jpg")
         backend.row("gone-video.mov", state = LedgerState.REQUESTED)
@@ -1015,16 +1022,108 @@ class UploadCycleTest {
         cycleOver(backend, platform).run()
 
         assertNull(backend.get("gone-photo.jpg"), "the settled row goes")
-        assertEquals(
-            LedgerState.REQUESTED, backend.get("gone-video.mov")?.state,
-            "a live job owns it, and its terminal write matches only a REQUESTED row",
-        )
+        assertNull(backend.get("gone-video.mov"), "the in-flight row goes with it")
 
-        // The job lands; the next authoritative walk takes the row.
-        backend.markTerminal("gone-video.mov", TerminalOutcome.COMPLETED)
+        assertFalse(
+            backend.markTerminal("gone-video.mov", TerminalOutcome.COMPLETED),
+            "the late completion's guarded write applies to no row",
+        )
+        assertNull(backend.get("gone-video.mov"), "and creates none")
+    }
+
+    // ---- A presented job whose row is gone is answered and nothing more (capability `upload-lifecycle`) ----
+
+    @Test
+    fun a_withheld_settle_records_nothing_for_a_deleted_row() = runTest {
+        // Before this rule, the engine's failure record — guarded only against a SETTLED row — recreated the row
+        // bare: never admitted, never deleted, pending forever.
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
+
+        cycle(backend, platform, readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) }).run()
+
+        assertTrue(platform.drained, "the presented jobs are still drained")
+        assertNull(backend.get("gone-primary.heic"), "no row is recorded for a key the ledger does not hold")
+        assertEquals(0, backend.pendingResources().size)
+    }
+
+    @Test
+    fun a_retry_spent_failure_for_a_deleted_row_is_not_re_created() = runTest {
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(ackJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)), ledger = backend)
+
         cycleOver(backend, platform).run()
 
-        assertNull(backend.get("gone-video.mov"))
+        assertTrue(platform.created.isEmpty(), "no job is created for a photo that left")
+        assertNull(backend.get("gone-primary.heic"), "and no row is recorded")
+    }
+
+    @Test
+    fun a_first_failure_for_a_deleted_row_is_not_retried() = runTest {
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(retryJobs = listOf(platformJob("gone-primary.heic", UploadError.Network)))
+
+        cycleOver(backend, platform).run()
+
+        assertTrue(platform.retried.isEmpty(), "a photo that left is not uploaded again")
+        assertNull(backend.get("gone-primary.heic"), "no REQUESTED row is recorded for it")
+    }
+
+    @Test
+    fun a_first_failure_for_a_present_row_is_still_retried() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("here-primary.heic", assetId = "here")
+        val platform = FakePlatform(retryJobs = listOf(platformJob("here-primary.heic", UploadError.Network)))
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(listOf("here-primary.heic"), platform.retried.map { it.key })
+        assertEquals(LedgerState.REQUESTED, backend.get("here-primary.heic")?.state)
+    }
+
+    // ---- Under a partial grant the selection is the walk (capability `limited-photo-access`) ---------------
+
+    @Test
+    fun a_read_selection_deletes_the_rows_of_a_de_selected_photo_whatever_their_state() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.row("kept-photo.jpg")
+        backend.row("dropped-photo.jpg")
+        backend.row("flying-photo.jpg", state = LedgerState.REQUESTED)
+        val platform = FakePlatform()
+        val selection = listOf(resource("kept-photo.jpg", "kept"))
+        val published = mutableListOf<List<String>>()
+
+        cycle(
+            backend, platform,
+            library = SelectionScopedDiscovery(platform) { SelectionScope.Scoped(selection) },
+            onDiscovery = { _, policy ->
+                published += projectDeviceManifest("D", backend.manifestRows(), policy).assets.map { it.assetId }
+                true
+            },
+        ).run()
+
+        assertEquals(LedgerState.COMPLETED, backend.get("kept-photo.jpg")?.state, "a selected photo is present")
+        assertNull(backend.get("dropped-photo.jpg"), "de-selecting is deleting")
+        assertNull(backend.get("flying-photo.jpg"), "in flight or not")
+        assertEquals(listOf(listOf("kept")), published, "the manifest that cycle publishes lists only the selection")
+    }
+
+    @Test
+    fun an_unread_selection_deletes_nothing_even_if_a_cycle_reaches_it() = runTest {
+        // The app's admission withholds on an unread selection, so a cycle never gets here in production. This
+        // pins the backstop: collapsed to an empty selection, the enqueue resolved every DISCOVERED row against
+        // it and deleted each one as gone (`changes/selection-is-the-walk`, D1).
+        val backend = InMemoryLedgerStore()
+        backend.row("waiting-photo.jpg", state = LedgerState.DISCOVERED)
+        backend.row("done-photo.jpg")
+        val platform = FakePlatform()
+
+        val cycle = cycle(backend, platform, library = SelectionScopedDiscovery(platform) { SelectionScope.Unread })
+
+        assertFailsWith<IllegalStateException> { cycle.run() }
+        assertEquals(LedgerState.DISCOVERED, backend.get("waiting-photo.jpg")?.state, "no row is deleted")
+        assertEquals(LedgerState.COMPLETED, backend.get("done-photo.jpg")?.state)
+        assertTrue(platform.created.isEmpty())
     }
 
     @Test

@@ -23,13 +23,6 @@ interface LedgerStore : TransferRecord {
     val changes: Flow<Unit>
 
     /**
-     * Absence: null means "no such row", and ONLY that — a backend that cannot read throws rather
-     * than answering empty, so this seam never has to encode "could not tell". That is what lets a
-     * caller treat null as a fact about the ledger instead of a fact about the storage.
-     */
-    suspend fun get(key: String): LedgerEntry?
-
-    /**
      * Upsert one complete row — **unless the row already there is in a done state**
      * ([app.snapsync.model.DONE_STATES]); answers whether it applied.
      *
@@ -108,8 +101,9 @@ interface LedgerStore : TransferRecord {
      * decision behind it: `api-endpoints` came to describe a manifest that declares intent while
      * `device-manifest` still required the completed projection.
      *
-     * It filters on nothing: a departed asset's rows are deleted by the walk that shows it gone, so every row
-     * is one this device still holds. **Admission is the policy's**, applied by the projection: the
+     * It filters on nothing: a departed asset's rows — gone from the library, or de-selected under a partial
+     * grant, in flight or not — are deleted by the walk that shows it gone, so every row is one this device
+     * still holds. **Admission is the policy's**, applied by the projection: the
      * capture-date bounds, and with them the exclusion of a row whose `creationDate` is still bare, whose
      * empty value sorts before every real cutoff. Restating that here would be a second copy of an
      * admission rule (capability `photo-selection-policy`).

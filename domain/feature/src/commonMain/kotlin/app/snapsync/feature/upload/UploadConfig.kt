@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.grantsPhotoAccess
 
@@ -98,7 +99,7 @@ sealed interface CycleGate {
 
     /**
      * Joined, but this process may not create — the extension under any grant but `GRANTED`, the app without
-     * usable access (or switched off by the rig). Settle **narrowly** (record and acknowledge what the platform
+     * usable access, before its partial grant's selection has been read, or switched off by the rig. Settle **narrowly** (record and acknowledge what the platform
      * presented; create nothing) and publish nothing: a grant is temporary, so the empty manifest a declined direction publishes would wrongly
      * blank this device's photos from the event.
      */
@@ -132,9 +133,19 @@ enum class UploadAdmission {
  *
  * Without usable access it withholds rather than touching nothing: the narrow settle creates no job and reads
  * no library, and a completion that arrives meanwhile still records through the transport's guarded write.
+ *
+ * It withholds too while the [scope] is [SelectionScope.Unread] — a partial grant whose selection has not been
+ * read yet. A read selection snapshot is an authoritative walk, so a cycle run over an unread one would take the
+ * absence of a selection for the absence of every photo and delete their rows (capability
+ * `limited-photo-access`; decision record `changes/selection-is-the-walk`, D1). The scope is derived from the
+ * same snapshot cell discovery reads, so admission and discovery cannot disagree about whether it was read.
  */
-fun appAdmission(permission: PermissionStatus, pin: UploaderPin? = null): UploadAdmission =
-    if (permission.grantsPhotoAccess && pin?.app != false) UploadAdmission.Admit else UploadAdmission.Withheld
+fun appAdmission(permission: PermissionStatus, scope: SelectionScope, pin: UploaderPin? = null): UploadAdmission =
+    if (permission.grantsPhotoAccess && scope != SelectionScope.Unread && pin?.app != false) {
+        UploadAdmission.Admit
+    } else {
+        UploadAdmission.Withheld
+    }
 
 /**
  * The **extension** process's admission: it runs exactly under a full grant, read in its own process.

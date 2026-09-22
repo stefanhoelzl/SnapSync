@@ -35,13 +35,13 @@ class SelectionScopeTest {
     }
 
     @Test
-    fun `LIMITED before the first snapshot scopes to nothing rather than widening`() {
+    fun `LIMITED before the first snapshot is unread, neither widened nor empty`() {
         // THE LOAD-BEARING CASE. `null` is the gap between a grant turning partial and the first
         // observer emission. Collapsing it to Unrestricted would let discovery walk the whole library
-        // under a grant whose entire point is that it may not.
-        val scope = selectionScope(PermissionStatus.LIMITED, null)
-        assertIs<SelectionScope.Scoped>(scope)
-        assertEquals(emptyList(), scope.resources, "an unknown selection is an empty scope, not a free one")
+        // under a grant whose entire point is that it may not; collapsing it to an empty Scoped would read
+        // as "every photo was de-selected" to an authoritative walk, and delete every row
+        // (`changes/selection-is-the-walk`, D1).
+        assertSame(SelectionScope.Unread, selectionScope(PermissionStatus.LIMITED, null))
     }
 
     @Test

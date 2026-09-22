@@ -207,6 +207,10 @@ class UploadCycle(
         // (stable, no expiry — the provider re-derives the identical destination locally). Below the
         // direction gate, because it creates jobs.
         for (job in platform.fetchRetryJobs()) {
+            // A job whose row the walk removed is not retried: the photo left the library or the selection
+            // (capability `upload-lifecycle`). A transport hands over only jobs whose row exists and answers
+            // the rest itself, so skipping one here leaves nothing un-acknowledged.
+            if (isGone(job)) continue
             val retry = adjudicateFailure(engine, job) ?: continue
             platform.retryJob(job, retry.request)
             engine.handle(SyncEvent.UploadStarted(retry.request))
@@ -294,8 +298,9 @@ class UploadCycle(
                     departedKeys = if (discovery.fullEnumeration) {
                         departedKeys(rows, presentAssetIds, ready.policy)
                     } else {
-                        // A selection snapshot, or a library the platform could not read: neither is the
-                        // library, so neither is evidence that anything left it (capability `sync-ledger`).
+                        // A library the platform could not read is no evidence that anything left it
+                        // (capability `sync-ledger`). A read selection snapshot IS authoritative — under a
+                        // partial grant the selection is the gallery — and an unread one never gets here.
                         emptyList()
                     },
                 ),
@@ -305,8 +310,8 @@ class UploadCycle(
 
     /**
      * The rows an **authoritative** walk shows are gone (capability `sync-ledger`, "Deletion is a presence
-     * diff over an authoritative walk"): every row whose asset is inside the policy's window, that the walk
-     * did not return, and that no live job owns.
+     * diff over an authoritative walk"): every row whose asset is inside the policy's window and that the walk
+     * did not return, whatever its state.
      *
      * **Presence is the walk's whole candidate set**, never the admitted set. The retired retain-live
      * reconcile was fed the admitted set, so raising a capture cutoff discarded the `COMPLETED` rows of
@@ -318,9 +323,11 @@ class UploadCycle(
      * delete. A bare row's empty date sorts before every cutoff, so it is never judged here. Deciding by
      * this derivation rather than by comparing dates keeps the capture-date rule in one place.
      *
-     * **A `REQUESTED` row is left alone.** A live platform job owns it until its terminal write lands, and
-     * that write matches only a `REQUESTED` row — deleting it would turn a normal completion into a
-     * reported "moved on". The first authoritative walk after it settles deletes it.
+     * **Whatever the row's state** — an in-flight (`REQUESTED`) row included. The photo left the library or,
+     * under a partial grant, the selection, so it leaves the manifest this cycle rather than when its job
+     * settles. The job may still land its bytes; its guarded terminal write then matches no row and applies to
+     * nothing, and a failure presented for the key is answered and forgotten (see [isGone]). Decision record:
+     * `changes/selection-is-the-walk` (D2).
      */
     private suspend fun departedKeys(
         // Every row the ledger holds; after the absence sweep none is excluded.
@@ -330,7 +337,7 @@ class UploadCycle(
     ): List<String> {
         val inWindow = admittedAssetIds(rows, policy)
         return rows
-            .filter { it.assetId in inWindow && it.assetId !in present && it.state != LedgerState.REQUESTED }
+            .filter { it.assetId in inWindow && it.assetId !in present }
             .map { it.key }
     }
 
@@ -798,15 +805,33 @@ class UploadCycle(
      */
     private suspend fun acknowledgePresented(engine: SyncEngine) {
         for (job in platform.drainTerminals()) {
+            if (isGone(job)) continue
             if (ledger.entry(job.key)?.state?.isDone == true) continue
             adjudicateFailure(engine, job)
         }
     }
 
+    /**
+     * Whether [job]'s row is gone — deleted by an authoritative walk because its photo left the library or,
+     * under a partial grant, the selection, possibly while the job was in flight (capability `upload-lifecycle`,
+     * "A presented job whose row is gone is answered and nothing more"). Such a job is answered and nothing
+     * more: no engine event, no retry, no re-creation.
+     *
+     * Checked before the engine, because the engine cannot tell: its failure record is an upsert guarded only
+     * against a SETTLED row, so a late failure for a missing one recreated it — bare, with no capture date, so
+     * never admitted, never in a walk's window, never deleted, and pending forever. Decision record:
+     * `changes/selection-is-the-walk` (D3).
+     */
+    private suspend fun isGone(job: PlatformUploadJob): Boolean =
+        (ledger.entry(job.key) == null).also { gone ->
+            if (gone) log.i { "presented job ${job.key} has no row — its photo left; answered, nothing written" }
+        }
+
     private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {
         var capHit = false
         val returned = platform.drainTerminals()
         for (job in returned) {
+            if (isGone(job)) continue
             // At-least-once: the platform can hand back a failure for a key that has since settled (its
             // own guarded write already declined to touch it). Adjudicating anyway would drive the engine
             // to record a failure over a COMPLETED row and re-upload bytes that are stored — the failure
