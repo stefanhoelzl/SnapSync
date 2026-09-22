@@ -26,13 +26,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
 
 /**
- * How many admitted rows one resolve round-trip takes. A granularity, not a cap: creation stops at the
- * platform's own `LIMIT_EXCEEDED`, and this bounds only the resolves a refusal mid-chunk wastes. Four matches the
- * app-driven transport's in-flight cap (decision record `changes/both-uploaders-active`, D9).
- */
-internal const val RESOLVE_CHUNK = 4
-
-/**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
  * retry), then walk the library, record what it found, and create jobs from the ledger — all gated by the
  * [engine]. This is the testable core: it depends only on the [engine], the [ledger] (to reconstruct
@@ -439,19 +432,19 @@ class UploadCycle(
      * [admittedAssetIds] is the same derivation the device manifest projects through, so what leaves the
      * device and what it declares cannot disagree.
      *
-     * The batch bounds only what is RESOLVED — the ADMITTED rows, never the read. Bounding the read would
-     * starve: rows come back in a stable key order, so excluded rows sorting ahead of admitted ones would
-     * fill the slice on every cycle and the admitted work further down would never be reached. What is
-     * created is bounded by the platform on top of that, which is the only thing that knows how many
-     * transfers it will take — and on the app-driven tier that same limit bounds staged temp-file disk, so
-     * asking for more than it will accept costs a resolve, never a write.
+     * The platform's refusal bounds only what is RESOLVED and CREATED — the ADMITTED rows, never the read.
+     * Bounding the read would starve: rows come back in a stable key order, so excluded rows sorting ahead of
+     * admitted ones would fill the slice on every cycle and the admitted work further down would never be
+     * reached. The platform is the only thing that knows how many transfers it will take — and on the
+     * app-driven tier that same limit bounds staged temp-file disk, so asking for more than it will accept
+     * costs nothing: the pass stops at the refusal, before the next resolve.
      */
     private suspend fun enqueue(ready: Ready): Enqueued {
         val needJob = ledger.rowsNeedingJob()
         if (needJob.isEmpty()) return Enqueued(created = 0, truncated = false)
 
         val admitted = admittedAssetIds(needJob, ready.policy)
-        // Admit, THEN bound: no excluded row costs a platform round-trip, and none consumes a batch slot.
+        // Admit, THEN create: no excluded row costs a platform round-trip.
         val eligible = needJob.filter { it.assetId in admitted }
         if (eligible.isEmpty()) {
             log.i { "${needJob.size} row(s) need a job; the membership's policy admits none of them" }
@@ -459,56 +452,51 @@ class UploadCycle(
         }
 
         // Then create until the PLATFORM refuses (capability `ios-url-session-upload`, "The producer tops up from
-        // the ledger"). Resolving a row costs a synchronous platform round-trip that nothing can interrupt, so
-        // rows are resolved a chunk at a time: a refusal mid-chunk wastes at most `RESOLVE_CHUNK - 1` resolves.
-        // The chunk is a granularity, not a guess at a cap — both transports refuse honestly, and the refusal is
-        // what reports truncation. Decision record: `changes/both-uploaders-active` (D9).
+        // the ledger"), one row at a time: resolve it, create its job, and stop at the first refusal before the
+        // next resolve. Both transports refuse honestly, and the refusal is what reports truncation. Measured
+        // resolve cost ~4.5 ms per request + ~3.45 ms per photo, and only under a full grant (a partial grant
+        // resolves from the snapshot in hand); batching saved a few hundred ms per hundred photos, which did not
+        // pay for the chunk. Decision record: `changes/selection-is-the-walk` (D5).
         var created = 0
-        for (chunk in eligible.chunked(RESOLVE_CHUNK)) {
-            val pass = createChunk(ready, chunk)
-            created += pass.created
-            if (pass.truncated) return Enqueued(created, truncated = true)
-        }
-        return Enqueued(created, truncated = false)
-    }
-
-    /**
-     * Resolve [rows] and create a job for each, stopping at the platform's first `LIMIT_EXCEEDED`. A row whose
-     * key resolves to nothing has left the library (or the selection) and is deleted by key — see [enqueue].
-     */
-    private suspend fun createChunk(ready: Ready, rows: List<LedgerEntry>): Enqueued {
-        val byKey = library.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
-        placeFirstEnqueued(ready, rows, byKey)
-        var created = 0
-        for (row in rows) {
-            val resource = byKey[row.key]
-            if (resource == null) {
-                log.i { "cannot resolve ${row.key} — its asset is gone; deleting that row" }
-                ledger.deleteKeys(listOf(row.key))
-                continue
-            }
-            // Through the engine, never around it: it is the one place that decides whether a key uploads,
-            // and it mints the request. A row that settled between the read above and here answers
-            // `AlreadyUploaded` and is skipped.
-            val decision = ready.engine.handle(SyncEvent.ResourceChanged(resource))
-            if (decision !is SyncDecision.Work) continue
-            when (platform.createJob(decision.request, resource)) {
-                CreateResult.CREATED -> {
-                    ready.engine.handle(SyncEvent.UploadStarted(decision.request))
-                    created++
-                }
+        for (row in eligible) {
+            when (createOne(ready, row)) {
+                CreateResult.CREATED -> created++
                 // Backpressure, not failure — and the only signal that work remains. The row stays as it was
                 // (it still needs a job), so the next cycle finds it in the same read.
                 CreateResult.LIMIT_EXCEEDED -> return Enqueued(created, truncated = true)
-                CreateResult.FAILED -> Unit // not created → no UploadStarted; the row still needs a job
+                CreateResult.FAILED, null -> Unit
             }
         }
         return Enqueued(created, truncated = false)
     }
 
     /**
-     * Event-album placement (capability `event-album`) for the photos this pass is about to enqueue: the
-     * slice's `DISCOVERED` rows whose resource resolved. One best-effort call.
+     * Resolve [row] and create its job, answering what the platform said — or null when no creation was
+     * attempted. A row whose key resolves to nothing has left the library (or the selection) and is deleted by
+     * key — see [enqueue].
+     */
+    private suspend fun createOne(ready: Ready, row: LedgerEntry): CreateResult? {
+        val resource = library.resourcesFor(setOf(row.key)).firstOrNull { it.filename == row.key }
+        if (resource == null) {
+            log.i { "cannot resolve ${row.key} — its asset is gone; deleting that row" }
+            ledger.deleteKeys(listOf(row.key))
+            return null
+        }
+        placeFirstEnqueued(ready, row)
+        // Through the engine, never around it: it is the one place that decides whether a key uploads, and it
+        // mints the request. A row that settled between the read above and here answers `AlreadyUploaded` and
+        // is skipped.
+        val decision = ready.engine.handle(SyncEvent.ResourceChanged(resource))
+        if (decision !is SyncDecision.Work) return null
+        return platform.createJob(decision.request, resource).also { result ->
+            if (result == CreateResult.CREATED) ready.engine.handle(SyncEvent.UploadStarted(decision.request))
+            // FAILED: not created → no UploadStarted; the row still needs a job.
+        }
+    }
+
+    /**
+     * Event-album placement (capability `event-album`) for the photo this pass is about to enqueue: a
+     * `DISCOVERED` row whose resource resolved. One best-effort call.
      *
      * **Before** any job is created, deliberately. Creating a job records `REQUESTED` durably, so a process
      * death between that write and a later placement would leave a photo that no pass ever places — nothing
@@ -518,17 +506,14 @@ class UploadCycle(
      *
      * A failure the ledger returned to `DISCOVERED` is placed again when this pass re-creates it — harmless for
      * the same reason, and the album gather already re-places the whole own set with no record, so nothing
-     * relies on "placed once". The slice has already been admitted by the membership's current policy, so a
+     * relies on "placed once". The row has already been admitted by the membership's current policy, so a
      * photo a narrowing change excluded is never placed. Placement never gates job creation.
      *
      * Decision records: `changes/retire-uploaded-state` (D2), `changes/shrink-the-ledger-row` (D5).
      */
-    private suspend fun placeFirstEnqueued(ready: Ready, rows: List<LedgerEntry>, byKey: Map<String, Resource>) {
-        if (!ready.saveToAlbum) return
-        val assetIds = rows.filter { it.state == LedgerState.DISCOVERED && it.key in byKey }
-            .mapTo(mutableSetOf()) { it.assetId }
-        if (assetIds.isEmpty()) return
-        runCatching { placeInAlbum(ready.eventId, assetIds) }
+    private suspend fun placeFirstEnqueued(ready: Ready, row: LedgerEntry) {
+        if (!ready.saveToAlbum || row.state != LedgerState.DISCOVERED) return
+        runCatching { placeInAlbum(ready.eventId, setOf(row.assetId)) }
             .onFailure { log.w(it) { "event-album placement failed this cycle" } }
     }
 

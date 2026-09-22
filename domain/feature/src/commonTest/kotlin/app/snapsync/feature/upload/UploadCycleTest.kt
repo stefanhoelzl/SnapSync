@@ -868,32 +868,35 @@ class UploadCycleTest {
     }
 
     // ---- The top-up creates until the platform refuses ---------------------------------------------------
-    // Resolving a row costs a synchronous, uninterruptible platform round-trip, so rows are resolved a chunk
-    // at a time and the pass stops at the platform's first refusal: the waste is bounded by one chunk.
+    // Resolving a row costs a synchronous, uninterruptible platform round-trip, so rows are resolved one at a
+    // time and the pass stops at the platform's first refusal: the waste is the refused row's own resolve.
 
     @Test
-    fun a_refusal_stops_the_pass_and_wastes_at_most_one_chunk_of_resolves() = runTest {
+    fun a_refusal_stops_the_pass_with_no_further_resolve() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = (1..10).map { resource("r${it.toString().padStart(2, '0')}") }, limitAfter = 2)
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(2, platform.created.size, "creation stops at the refusal")
-        assertTrue(platform.resolvedKeys.size <= RESOLVE_CHUNK, "no chunk past the refusal is resolved")
+        assertEquals(
+            setOf("r01", "r02", "r03"), platform.resolvedKeys,
+            "the two created rows and the refused one — nothing past the refusal is resolved",
+        )
         assertEquals(CycleResult.PROCESSING, result, "the platform refused, so work remains")
         assertEquals(LedgerState.DISCOVERED, backend.get("r10")?.state, "the remainder is remembered")
     }
 
     @Test
-    fun a_backlog_the_platform_accepts_whole_drains_across_chunks() = runTest {
+    fun a_backlog_the_platform_accepts_whole_drains_in_one_pass() = runTest {
         // The regression this guards: truncation is observed ONLY through a refusal now. A pass that reaches
-        // the end of the admitted rows without one has created everything, whatever the chunk size.
+        // the end of the admitted rows without one has created everything.
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = (1..10).map { resource("r${it.toString().padStart(2, '0')}") })
 
         val result = cycleOver(backend, platform).run()
 
-        assertEquals(10, platform.created.size, "every admitted row got a job, across several chunks")
+        assertEquals(10, platform.created.size, "every admitted row got a job")
         assertEquals(CycleResult.COMPLETED, result, "no refusal, no backlog")
     }
 
@@ -1860,8 +1863,8 @@ class UploadCycleTest {
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
 
-        assertEquals(listOf(setOf("a", "b")), placed.calls, "one placement for the slice")
-        assertEquals(listOf(0), placed.createdAtCall, "made before any job existed — it waits for no upload")
+        assertEquals(listOf(setOf("a"), setOf("b")), placed.calls, "one placement per row")
+        assertEquals(listOf(0, 1), placed.createdAtCall, "each made before its own job existed — it waits for no upload")
         assertEquals(listOf("a", "b"), platform.created.map { it.filename }, "and the jobs follow")
     }
 
@@ -1887,7 +1890,7 @@ class UploadCycleTest {
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
 
-        assertEquals(listOf(setOf("f", "n")), placed.calls, "one placement for the slice, the failure included")
+        assertEquals(listOf(setOf("f"), setOf("n")), placed.calls, "one placement per row, the failure included")
         assertEquals(setOf("f", "n"), platform.created.map { it.filename }.toSet(), "both are enqueued")
     }
 
@@ -1973,14 +1976,17 @@ class UploadCycleTest {
     }
 
     @Test
-    fun a_job_limit_leaves_the_slice_placed_and_the_next_cycle_places_only_what_still_waits() = runTest {
+    fun a_job_limit_leaves_the_refused_row_placed_and_the_next_cycle_places_only_what_still_waits() = runTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("a"), resource("b"), resource("c")), limitAfter = 1)
         val placed = Placements(platform)
 
         val first = cycle(backend, platform, placeInAlbum = placed.hook).run()
         assertEquals(CycleResult.PROCESSING, first)
-        assertEquals(listOf(setOf("a", "b", "c")), placed.calls, "placed before the platform refused")
+        assertEquals(
+            listOf(setOf("a"), setOf("b")), placed.calls,
+            "the refused row was placed before the platform refused it; nothing past it was reached",
+        )
         assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state, "the refused rows still wait")
 
         platform.freeSlots()
@@ -1988,7 +1994,7 @@ class UploadCycleTest {
 
         // Repeating a placement is free — adding an asset already in the collection is a no-op — and only
         // the rows that never got a job are repeated.
-        assertEquals(setOf("b", "c"), placed.calls[1])
+        assertEquals(listOf(setOf("b"), setOf("c")), placed.calls.drop(2))
     }
 
     @Test
