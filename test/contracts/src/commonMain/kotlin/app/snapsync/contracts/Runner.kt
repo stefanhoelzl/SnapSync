@@ -67,6 +67,13 @@ fun Outcome.render(): String = when (this) {
 }
 
 /**
+ * The prefix a contract's answer carries when the process running it is NOT the host that contract records
+ * for — a simulator app asked for a device recording, say. A channel serving contracts answers such a body
+ * with a refusal status, so it cannot be redirected into a recording file unnoticed.
+ */
+const val CONTRACT_REFUSED: String = "refused: "
+
+/**
  * The CI entry point: runs the whole contract and fails ONCE, with the full outcome table, if any clause is
  * [Outcome.Failed] or [Outcome.Diverged]. `NotRunHere` never fails a run by itself — whether it is
  * admissible is the contract-coverage gate's question.

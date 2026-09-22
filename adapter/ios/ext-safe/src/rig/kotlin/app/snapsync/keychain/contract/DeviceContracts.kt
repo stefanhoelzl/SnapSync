@@ -1,6 +1,7 @@
 package app.snapsync.keychain.contract
 
 import app.snapsync.contracts.Binding
+import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
@@ -13,6 +14,7 @@ import app.snapsync.keychain.SystemKeychainApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.ports.SecureStore
 import platform.Foundation.NSDate
+import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSISO8601DateFormatter
 
 /**
@@ -47,19 +49,36 @@ internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<S
  * device concluded when it was recorded), then one block per clause.
  */
 fun deviceContracts(): Map<String, () -> String> = mapOf(
-    SecureStoreContract.name to {
-        val recorder = Recorder()
-        val results = run(SecureStoreContract, DeviceKeychainBinding(recorder))
-        val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
-        val header = listOf(
-            "contract" to SecureStoreContract.name,
-            "host" to Host.IOS_DEVICE_APP.name,
-            "device" to env.deviceModel,
-            "os" to env.osVersion,
-            "build" to env.buildNumber,
-            "kotlin" to KotlinVersion.CURRENT.toString(),
-            "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
-        ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
-        recorder.recording(header).render()
-    },
+    SecureStoreContract.name to { recordSecureStore() },
 )
+
+/**
+ * Runs `SecureStoreContract` against the real Keychain of THIS app and renders the recording.
+ *
+ * It refuses on a simulator. A simulator app is not [Host.IOS_DEVICE_APP]: its Keychain answers `-34018`
+ * (`errSecMissingEntitlement`) to an explicit-group query, because `simulator.entitlements` omits
+ * `keychain-access-groups` on purpose and `RuntimeIdentityTest` pins that absence (measured here
+ * 2026-09-22, iOS 26.2). A recording taken there would file simulator answers under the device's name —
+ * the host confusion the `-25291`/`-34018` pair exists to prevent.
+ */
+private fun recordSecureStore(): String {
+    if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
+        return CONTRACT_REFUSED +
+            "this process is a simulator app, not ${Host.IOS_DEVICE_APP}. Its Keychain answers -34018 " +
+            "(errSecMissingEntitlement) to an explicit-group query, so a recording taken here would be " +
+            "filed under the wrong host. Record on an entitled device.\n"
+    }
+    val recorder = Recorder()
+    val results = run(SecureStoreContract, DeviceKeychainBinding(recorder))
+    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val header = listOf(
+        "contract" to SecureStoreContract.name,
+        "host" to Host.IOS_DEVICE_APP.name,
+        "device" to env.deviceModel,
+        "os" to env.osVersion,
+        "build" to env.buildNumber,
+        "kotlin" to KotlinVersion.CURRENT.toString(),
+        "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
+    ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
+    return recorder.recording(header).render()
+}
