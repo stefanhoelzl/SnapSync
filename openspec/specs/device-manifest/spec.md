@@ -232,14 +232,20 @@ authoritative walk"), so the projection that same cycle publishes stops listing 
 happens before the manifest is projected, so a cycle never publishes an asset its own walk found gone.
 
 Presence is a fact about the library, not about scope. A row is judged gone only when its asset is inside
-the membership's capture window and absent from a walk that read the library itself, never because the
-selection policy stopped admitting it. The projection applies the policy on its own, and a row the policy
-excludes is simply not listed. A walk that is not authoritative (a partial grant's selection snapshot, or an
-unreadable library) retracts nothing.
+the membership's capture window and absent from an authoritative walk, never because the selection policy
+stopped admitting it. The projection applies the policy on its own, and a row the policy excludes is simply
+not listed. Under a partial grant the member's selection is the library from the app's point of view, so a
+selection snapshot that has been read is an authoritative walk. **A de-selected photo is retracted**
+exactly as a deleted one is (capability `limited-photo-access`). A walk that is not authoritative (an
+unreadable library) retracts nothing, and a selection that has not been read yet never reaches a walk.
 
-Deletion-tracking is **exhaustive for a full grant**: there is no change token to expire, so a deletion is
-observed by the next authoritative walk whenever it runs. Under a partial grant a settled row is never
-retracted by the walk, because deselection is not withdrawal (capability `limited-photo-access`).
+A row's upload state does not delay its retraction: an in-flight (`REQUESTED`) row is deleted with its
+asset, so the manifest stops listing the photo in the cycle that saw it leave, even if its bytes land
+afterwards. Such bytes are listed in no manifest.
+
+Deletion-tracking is **exhaustive under both grants**: there is no change token to expire, so a deletion or
+a de-selection is observed by the next authoritative walk whenever it runs. Decision record:
+`changes/selection-is-the-walk` (D1, D2), which reversed "a partial grant retracts nothing".
 
 This supersedes two earlier requirements: that deletion be recorded by **marking** rows from the change
 feed's removal signal, with no reconcile backstop; and, before that, that pruning be driven "incrementally
@@ -270,10 +276,22 @@ re-stores each role idempotently.
 - **THEN** the first authoritative walk afterwards retracts it; no signal needs to have been received at the
   moment of deletion
 
-#### Scenario: A partial grant retracts nothing
+#### Scenario: De-selection retracts the listing
 
-- **WHEN** under a partial grant the member de-selects a listed photo
-- **THEN** the photo stays listed, because a selection snapshot is not evidence of absence
+- **WHEN** under a partial grant the member de-selects a listed photo, and the next cycle runs over the read
+  selection
+- **THEN** the photo's rows are deleted and the manifest that cycle publishes no longer lists it
+
+#### Scenario: An in-flight photo is retracted before its upload settles
+
+- **WHEN** a photo whose row is `REQUESTED` leaves the library or the selection, and an authoritative walk
+  runs
+- **THEN** the manifest that cycle publishes no longer lists it, whether or not its bytes land afterwards
+
+#### Scenario: An unread selection retracts nothing
+
+- **WHEN** under a partial grant the app's cycle runs before the selection has been read
+- **THEN** the cycle is withheld and publishes no manifest, so nothing is retracted
 
 ### Requirement: Write-only in v1
 

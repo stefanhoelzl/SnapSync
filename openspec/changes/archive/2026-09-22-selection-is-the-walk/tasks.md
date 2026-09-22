@@ -98,10 +98,10 @@
 
 ## 8. At sync/archive time (not before; the user drives it)
 
-- [ ] 8.1 `upload-state-reconciliation` Purpose: it no longer runs "once, at the join" only — add the
+- [x] 8.1 `upload-state-reconciliation` Purpose: it no longer runs "once, at the join" only — add the
       foreground settle to the Purpose's first paragraphs (a delta cannot edit a Purpose).
-- [ ] 8.2 `limited-photo-access` and `sync-ledger` Purposes: add a history line citing this change
+- [x] 8.2 `limited-photo-access` and `sync-ledger` Purposes: add a history line citing this change
       (de-selection is deletion; the in-flight exemption retired).
-- [ ] 8.3 Run the three archive gates in `openspec/config.yaml` (Placeholder Purpose, Delta completeness —
+- [x] 8.3 Run the three archive gates in `openspec/config.yaml` (Placeholder Purpose, Delta completeness —
       account for `:domain`, `:adapter:ios:ext-safe`, `:adapter:ios:app-only`, `:adapter:generic:*`,
       `:test:world`; Dead types — none expected, as `RESOLVE_CHUNK` is a `val`).

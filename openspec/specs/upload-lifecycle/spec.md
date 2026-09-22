@@ -179,8 +179,9 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly fo
   the upload ledger belongs to the leave itself (capability `leave-event`), an explicit app action; the
   cycle does not detect or repair a membership change, and there is no leave-side step for it to run.
 - **Withheld** — joined, but this process may not create: the extension under any grant other than
-  `GRANTED`; the app under any grant other than `GRANTED` or `LIMITED`, or while the control channel has
-  switched its creation off. The cycle SHALL settle narrowly ("Settling with the platform is owed regardless
+  `GRANTED`; the app under any grant other than `GRANTED` or `LIMITED`, under `LIMITED` while the selection
+  has not been read yet (capability `limited-photo-access`), or while the control channel has switched its
+  creation off. The cycle SHALL settle narrowly ("Settling with the platform is owed regardless
   of the cycle's other outcomes") and SHALL create no job, walk nothing, and publish nothing.
 - **Run** — joined, configured, and admitted. The cycle SHALL proceed to its contribution gate and phases.
 
@@ -196,7 +197,11 @@ background wake must never raise it.
 
 **Admission is per process and asymmetric.** The app process SHALL admit exactly under a usable grant —
 `GRANTED` or `LIMITED` — unless the control channel has switched its creation off: under `LIMITED` it runs
-scoped to the selection snapshot, and under `GRANTED` it runs alongside a registered extension. It SHALL NOT
+scoped to the selection snapshot, and under `GRANTED` it runs alongside a registered extension. Under
+`LIMITED` it SHALL admit only once the selection has been read, and SHALL withhold while the selection
+scope is `Unread`. An unread selection is not an empty one: a cycle run over it would delete the rows of
+every photo (decision record `changes/selection-is-the-walk`, D1). The admission SHALL read the same
+snapshot cell the selection scope is derived from, so the two cannot disagree. It SHALL NOT
 consult the registration state. The extension SHALL admit exactly under `GRANTED`, read from its own process;
 it SHALL NOT infer admission from its selection scope, whose default (`Unrestricted`) is untrue under a
 partial grant. Decision record: `changes/both-uploaders-active` (D3).
@@ -269,7 +274,13 @@ not "no identity" (capability `device-identity`, which never reports absence: an
 
 #### Scenario: A limited grant admits the app and withholds the extension
 - **WHEN** photo access is `LIMITED` on an OS carrying the OS-driven mechanism
-- **THEN** the app engine's cycle runs scoped to the selection snapshot, and an extension cycle withholds
+- **THEN** the app engine's cycle runs scoped to the selection snapshot once the selection has been read,
+  and an extension cycle withholds
+
+#### Scenario: An unread selection withholds the app
+- **WHEN** photo access is `LIMITED` and the app's cycle runs before the first selection read
+- **THEN** the outcome is Withheld: the cycle settles narrowly, reads nothing, creates no job, deletes no row,
+  and publishes no manifest
 
 #### Scenario: A full grant admits both processes
 - **WHEN** photo access is `GRANTED` on an OS carrying the OS-driven mechanism
@@ -836,4 +847,47 @@ Decision record: `changes/both-uploaders-active` (D1, D2).
 - **WHEN** photo access is `GRANTED` on an OS carrying the OS-driven mechanism, with a joined membership
 - **THEN** the extension is registered and the app engine's cycle is admitted, and neither is stood down to
   make room for the other
+
+### Requirement: A presented job whose row is gone is answered and nothing more
+
+A presented job whose key has **no ledger row** SHALL be answered to the platform and SHALL leave no trace,
+whether it is a first failure for retry, a terminal outcome, or a retry-spent failure:
+
+- the transport SHALL acknowledge it, as it must every presented job, and SHALL write nothing for it;
+- it SHALL NOT be retried, re-created, or reported to the engine. No settle or retry path SHALL record a row
+  for a key the ledger does not hold.
+
+A row goes missing by design: an authoritative walk deletes a departed asset's rows whatever their state,
+including a `REQUESTED` row whose job is still in flight (capability `sync-ledger`, "Deletion is a presence
+diff over an authoritative walk"). The photo was deleted from the library or, under a partial grant,
+de-selected. A late outcome for it is expected. Before this rule, a late failure reached the engine,
+whose failure record is an upsert guarded only against a *settled* row. That recreated the row as a bare
+`DISCOVERED` row (its `assetId` parsed from the key, no capture date). The row was never admitted, so it was
+never uploaded or listed. It was never in any walk's window either, so it was never deleted, and it counted
+as pending forever. A first-failure retry went further: it re-uploaded the photo the walk had just removed.
+
+The rule SHALL hold on every settle and retry path of the cycle — the narrow settle of a withheld cycle, the
+re-creation of retry-spent failures, and the first-failure retry loop — **before** the engine is consulted.
+The PhotoKit transport SHALL enforce it on its side as well: it SHALL emit a presented job to the cycle only
+when the job's row exists, and SHALL acknowledge a job whose row is gone in place (capability
+`ios-photokit-upload`, "Completion and retry adjudication"). So a job the cycle declines is never one left
+un-acknowledged (error 50008).
+
+Decision record: `changes/selection-is-the-walk` (D3).
+
+#### Scenario: A late failure for a deleted row records nothing
+- **WHEN** a withheld cycle's narrow settle is presented a failure whose key has no row
+- **THEN** the job is acknowledged, no row is recorded, and the ledger's pending count is unchanged
+
+#### Scenario: A retry-spent failure for a deleted row is not re-created
+- **WHEN** a running cycle is handed a retry-spent failure whose key has no row
+- **THEN** no engine event is raised, no job is created, and no row is recorded
+
+#### Scenario: A first failure for a deleted row is not retried
+- **WHEN** the platform presents a first failure for retry whose key has no row
+- **THEN** the job is acknowledged, not retried, and no `REQUESTED` row is recorded
+
+#### Scenario: A late failure for a present row is still retried
+- **WHEN** a presented failure's key has a `REQUESTED` row
+- **THEN** it is adjudicated as before: the row returns to `DISCOVERED`, and the retry or re-creation is made
 

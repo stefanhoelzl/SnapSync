@@ -5,9 +5,12 @@
 Ask the backend which resources it already holds **for this device**, and make the local record agree.
 That is the whole operation; everything else here is when it runs and what it is allowed to conclude.
 
-It runs **once, at the join**: a provision into a new membership — a first join or a switch, never a
-re-provision of the joined event — pulls the **device's** stored-file listing and makes the upload ledger
-exactly that set, one `COMPLETED` row per already-stored resource. A device therefore re-uploads **nothing**
+It runs at **two** moments. **At the join**, a provision into a new membership — a first join or a switch,
+never a re-provision of the joined event — pulls the **device's** stored-file listing and makes the upload
+ledger exactly that set, one `COMPLETED` row per already-stored resource. **At every foreground**, the app
+asks the same listing which of its in-flight (`REQUESTED`) rows already have their bytes stored, and settles
+those through the guarded terminal write. The OS's acknowledgement of an upload can lag its bytes, or never
+arrive at all (decision record `changes/archive/2026-09-22-selection-is-the-walk`, D4). A device therefore re-uploads **nothing**
 it has already contributed, whichever event it contributed it for: the listing is per-**device** and
 event-independent. A listing that cannot be fetched leaves the ledger empty instead and blocks nothing; its
 only cost is re-uploading what the backend already holds, idempotently and bounded by the event window.
@@ -25,7 +28,8 @@ Decision records under `changes/archive/` cite that former name and are delibera
 
 Decision records: `changes/archive/2026-06-27-add-rejoin-reconciliation` (the seed),
 `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` (both tiers), and
-`changes/archive/2026-09-21-join-loads-leave-clears` (the load moves to the join).
+`changes/archive/2026-09-21-join-loads-leave-clears` (the load moves to the join), and
+`changes/archive/2026-09-22-selection-is-the-walk` (the foreground settle of in-flight rows).
 ## Requirements
 ### Requirement: Event file list seam
 
@@ -404,8 +408,9 @@ be traded for retry state that could strand a device behind a gate.
 #### Scenario: A failed load costs idempotent re-uploads
 
 - **WHEN** a join's load failed and the backend already holds some of the membership's admitted resources
-- **THEN** the next cycles upload those resources again to the same destinations, and no later cycle or
-  foreground fetches the listing to recover them
+- **THEN** the next cycles upload those resources again to the same destinations, and nothing re-seeds the
+  ledger from the listing to recover them: no later cycle fetches it, and the foreground settle ("Foreground
+  settles in-flight rows the backend already stores") only settles rows that already have a job in flight
 
 ### Requirement: The upload cycle does not detect membership changes
 
@@ -440,4 +445,71 @@ the shared App-Group store.
 
 - **WHEN** a cycle runs with no membership configured
 - **THEN** it uploads nothing and writes neither the ledger nor any marker
+
+### Requirement: Foreground settles in-flight rows the backend already stores
+
+On every foreground entry, the **app** SHALL ask the backend which resources it stores for this device, and
+SHALL record `COMPLETED` for every `REQUESTED` row whose key the listing contains. It SHALL:
+
+1. read the ledger's pending rows, and make no request when there are none;
+2. fetch the **per-device** listing (`list(deviceId)`, see "Event file list seam"), bounded by the same
+   15-second timeout as the join-time load;
+3. for each pending key the listing contains, record `COMPLETED` through the guarded terminal write
+   (`markTerminal(key, COMPLETED)`, capability `sync-ledger`), which applies only while the row is still
+   `REQUESTED`.
+
+It SHALL write nothing else. It SHALL NOT touch a `DISCOVERED` or `COMPLETED` row, SHALL NOT record `FAILED`,
+SHALL NOT create or delete a row, and SHALL NOT seed or reset the ledger. It SHALL mark nothing done without
+the backend listing the key's stored bytes. A listing entry exists only after a completed upload of that
+key (see "A join loads the ledger from the per-device listing" for why a successful listing is
+authoritative). Bytes stored by an earlier upload of the same key are the same object, so they settle the
+row just as well.
+
+A failed or timed-out fetch SHALL be logged, at `Warn` for a transport failure or timeout and at `Error`
+for a listing this build cannot decode. It SHALL change nothing, and SHALL leave no flag, retry or gate
+behind: the next foreground asks again.
+
+**Why.** An upload's bytes can land long before the OS acknowledges the job, and sometimes the
+acknowledgement never reaches this ledger at all. Under a full grant the PhotoKit extension learns of a
+completion only at its next invocation. After a downgrade to a partial grant it is withheld and is presented
+nothing: measured on an SE2 (iOS 26.6, 2026-09-22), four objects landed within ~30 s while their rows stayed
+`REQUESTED` and the status read `Syncing` until full access returned. The backend is the one party that
+knows, and the status the member looks at on foreground is what this corrects. A later acknowledgement then
+finds a settled row, and its guarded write applies to nothing.
+
+The settle SHALL run in the app process only, as a trigger step of its own. It SHALL NOT run inside the
+upload cycle (see "The upload cycle does not detect membership changes") and SHALL NOT be sequenced behind
+the upload pump, which can await a single cycle for many minutes after a long suspension. It needs no
+serialization with a cycle, because its one write is the guarded terminal write the platform's own
+callbacks already make beside a running cycle. It SHALL NOT run in the upload extension. Decision record:
+`changes/selection-is-the-walk` (D4).
+
+#### Scenario: A stored in-flight upload settles at foreground
+- **WHEN** the app enters the foreground while the ledger holds a `REQUESTED` row whose key the per-device
+  listing contains
+- **THEN** that row becomes `COMPLETED`, and the status counts it as done
+
+#### Scenario: A row without stored bytes is left alone
+- **WHEN** a `REQUESTED` row's key is absent from the listing
+- **THEN** the row stays `REQUESTED`
+
+#### Scenario: Only in-flight rows are settled
+- **WHEN** the listing contains the key of a `DISCOVERED` row
+- **THEN** the row stays `DISCOVERED`, and no other state is written
+
+#### Scenario: Nothing pending, nothing fetched
+- **WHEN** the app enters the foreground with no pending ledger rows
+- **THEN** no listing request is made
+
+#### Scenario: A failed listing changes nothing
+- **WHEN** the listing fetch fails or times out
+- **THEN** no row changes, the failure is logged, and the next foreground tries again
+
+#### Scenario: A late acknowledgement after the settle is a no-op
+- **WHEN** a row the settle recorded `COMPLETED` is later acknowledged by the OS as succeeded
+- **THEN** the guarded write applies to nothing and the row stays `COMPLETED`
+
+#### Scenario: The extension never settles from the listing
+- **WHEN** the upload extension runs a cycle
+- **THEN** it makes no per-device listing request
 

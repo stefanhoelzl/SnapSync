@@ -42,6 +42,11 @@ The `UPLOADED` state and its promotion (added in `changes/archive/2026-08-26-fix
 retired, the guarded terminal write narrowed to a `TerminalOutcome`, and the `8.sqm` rewrite added in
 `changes/archive/2026-09-15-retire-uploaded-state`.
 
+Deleting in-flight (`REQUESTED`) rows along with their departed asset, treating a read partial-grant selection
+as an authoritative walk (de-selecting is deleting), the per-row enqueue that retired the resolve chunk, the
+per-key read on `TransferRecord`, and the foreground settle as a second `markTerminal` caller came from
+`changes/archive/2026-09-22-selection-is-the-walk`.
+
 The `FAILED` state (merged into `DISCOVERED`: a failure returns its row to the work source) and the `attempt`,
 `eventId` and `absent` columns, with the provenance and absence-mark sweeps, were retired by the `10.sqm`
 migration in `changes/archive/2026-09-21-shrink-the-ledger-row` — a one-way door whose rollback is a roll-forward.
@@ -220,8 +225,10 @@ not through a writer. Those are not record operations (see "Storage seam — dum
 
 **The invariant is code ownership of each write, and that each write is one guarded transaction** — not how
 many processes write. Every ledger write SHALL be exactly one of: the running cycle's `LedgerWriter` record
-family (and its key-scoped prune), a transport's guarded `markTerminal`, or a named reset-family use case
-(the join-time load's `resetTo`, the leave's `clear()`, the device reset). Each SHALL be one storage
+family (and its key-scoped prune), a guarded `markTerminal` — a transport's, or the app's foreground settle of
+in-flight rows the backend already stores (capability `upload-state-reconciliation`, "Foreground settles
+in-flight rows the backend already stores") — or a named reset-family use case (the join-time load's
+`resetTo`, the leave's `clear()`, the device reset). Each SHALL be one storage
 transaction whose guard, where it has one, is inside the statement (see "Storage seam — dumb row store"), so
 it is safe against any other write landing between its read and its write — from the same process or the
 other one. How many processes hold a `LedgerWriter` at once is **not** an invariant: on iOS ≥26.1 under a
@@ -234,20 +241,24 @@ to the same destination, and the second terminal write of the pair is a declined
 Handing a writer instance only to the cycle is the **mechanism** that confines the record family to the code
 that owns it. That mechanism is deliberately relaxed for one operation: `markTerminal` (see "Guarded terminal
 write") is declared on **`TransferRecord`** — a narrow interface `LedgerStore` extends, carrying only
-`markTerminal` and the read `entryForDestination` (see "The ledger records the destination a job was sent
-to") — because the party the platform tells that an upload terminated is a platform callback, and it cannot
-suspend. The ownership holds — the terminal write belongs to the transport whose job terminated, and its guard
-applies it only to a row still `REQUESTED` — while the type-level codification does not cover it. A spec or a
+`markTerminal` and two reads: `entryForDestination` (see "The ledger records the destination a job was sent
+to") and `get(key)`, the per-key row read. A transport needs the second read to tell a job whose row an
+authoritative walk deleted from one it can still settle (capability `ios-photokit-upload`, "Completion and
+retry adjudication"; decision record `changes/selection-is-the-walk`, D3) — because the party the platform tells that an upload terminated is a platform callback, and it cannot
+suspend. The ownership holds — the terminal write belongs to the transport whose job terminated, or to the foreground
+settle that found the key's bytes stored, and its guard applies it only to a row still `REQUESTED` — while the
+type-level codification does not cover it. A spec or a
 review that reads the type-level rule as the invariant will reach the wrong conclusion about this call, which
 is why both are stated.
 
 A **transport** — an implementation of the upload transfer lifecycle (`BackgroundTransfer`) — SHALL receive a
 `TransferRecord` and SHALL NOT receive a `LedgerStore`. What a transport may touch in the ledger is therefore
-exactly the one guarded terminal write and the one destination lookup; every other read and write belongs to
-the cycle.
+exactly the one guarded terminal write and the two row reads; every other read and write belongs to the
+cycle.
 
 No record operation other than `markTerminal` SHALL be added to `TransferRecord` or to `LedgerStore` on this
-argument; a further record operation belongs on the writer.
+argument; a further record operation belongs on the writer. The foreground settle is a second *caller* of
+`markTerminal`, not a second operation, and it SHALL record only `COMPLETED`.
 
 #### Scenario: Writer reads what it wrote
 
@@ -775,7 +786,12 @@ upload is recorded and re-enabling the direction re-uploads nothing.
 
 Deletion from the **library** is a different fact, and SHALL be decided only by **presence**, never by
 admission: a row is removed when an authoritative walk of the library shows its asset is gone (see
-"Deletion is a presence diff over an authoritative walk"). The retired retain-live reconcile was fed the
+"Deletion is a presence diff over an authoritative walk"). Under a partial grant the member's selection
+**is** the library, from the app's point of view, so leaving the selection is a fact of presence, not of
+policy. A read selection snapshot is an authoritative walk, and de-selecting a photo removes its rows
+(capability `limited-photo-access`; decision record `changes/selection-is-the-walk`, D1). The policy rules
+this requirement protects — the capture range, the direction, the origin exclusions — still remove
+nothing. The retired retain-live reconcile was fed the
 policy-admitted set, which is exactly the conflation this requirement forbids; presence-driven deletion is
 fed the walk's whole candidate set and judges only rows inside the policy's window, so narrowing the
 policy moves rows **out** of the set it may delete rather than into it.
@@ -852,6 +868,13 @@ one record operation a platform callback reaches through `TransferRecord` rather
 "Reader and writer capability split"), which is why the set it may record is fixed by its type rather than by
 convention: a callback SHALL NOT be able to claim that a job exists (`REQUESTED`) through it.
 
+It has exactly one caller that is not a platform callback: the app's foreground settle, which records
+`COMPLETED` for a `REQUESTED` row whose bytes the backend's per-device listing reports stored (capability
+`upload-state-reconciliation`, "Foreground settles in-flight rows the backend already stores"). That caller
+uses the same operation, under the same guard, and SHALL NOT record `FAILED`. The guard is what lets it run
+beside a cycle with no shared lock, as the callback does (decision record `changes/selection-is-the-walk`,
+D4).
+
 It SHALL be **non-suspending**, so a platform callback that cannot call a suspending function may record
 through it directly.
 
@@ -890,6 +913,12 @@ on" and "this fact was recorded" have different consequences.
 - **WHEN** a caller attempts to record `REQUESTED` through `markTerminal`
 - **THEN** the build fails, because the parameter's type admits only the outcomes `COMPLETED` and `FAILED`
 
+#### Scenario: The foreground settle and a late acknowledgement converge
+
+- **WHEN** the foreground settle records `COMPLETED` for a `REQUESTED` row, and the OS later acknowledges
+  that row's job as succeeded
+- **THEN** the acknowledgement's guarded write applies to nothing, and the row stays `COMPLETED`
+
 ### Requirement: The DISCOVERED state and the ledger as the upload work source
 
 `LedgerState` SHALL carry a `DISCOVERED` value meaning **the resource's asset was admitted and its key needs an
@@ -924,10 +953,11 @@ therefore admit the rows this read returns before resolving or enqueuing any of 
 how much work one cycle takes SHALL be applied to the **admitted** rows — bounding what a cycle
 **resolves**, never what it reads. A bound applied to the read instead can starve: rows are returned in a
 stable key order, so excluded rows sorting ahead of admitted ones would fill the bound on every cycle and
-admitted work further down would never be reached. The cycle resolves the admitted rows in small chunks and
-creates jobs until the platform refuses (`LIMIT_EXCEEDED`); the chunk bounds the resolves a refusal wastes,
-and creation is bounded only by the platform's refusal (capability `sync-engine`; decision record:
-`changes/both-uploaders-active`) — both of which follow the admitted rows.
+admitted work further down would never be reached. The cycle resolves the admitted rows **one at a time**
+and creates each one's job until the platform refuses (`LIMIT_EXCEEDED`), so a refusal wastes no resolve.
+Creation is bounded only by the platform's refusal, which follows the admitted rows (capability
+`sync-engine`; decision records: `changes/both-uploaders-active`, and `changes/selection-is-the-walk` D5,
+which retired the resolve chunk).
 
 A row this read returned whose key the platform resolves to **nothing** SHALL have that row, and only that
 row, deleted (see "Deletion is a presence diff over an authoritative walk"). Its asset has left the library,
@@ -1083,10 +1113,12 @@ no expiry, so a row's recorded destination stays valid for as long as the row do
 The upload cycle SHALL delete a ledger row because its asset left the library **only** when all of the
 following hold:
 
-1. **The walk is authoritative.** The cycle's discovery reported `fullEnumeration`: it read the library
-   itself, under a full grant, and the read succeeded, so every asset inside the policy's capture window was
-   returned. A partial grant's selection snapshot is not the library (capability `limited-photo-access`),
-   and an unreadable library returns nothing, so neither is evidence of absence. A walk that is not
+1. **The walk is authoritative.** The cycle's discovery reported `fullEnumeration`. Either it read the
+   library itself under a full grant and the read succeeded, so every asset inside the policy's capture
+   window was returned; or, under a partial grant, it returned a selection snapshot that **has been read**,
+   which is the whole gallery from the app's point of view (capability `limited-photo-access`). An
+   unreadable library returns nothing and is not evidence of absence. A selection that has not been read
+   yet never reaches a walk: the app's cycle is withheld while it is unread. A walk that is not
    authoritative SHALL delete nothing.
 2. **The row is inside the walk's window.** The row's asset is admitted by the membership's policy through
    the same row-admission derivation the device manifest and the enqueue use (`admittedAssetIds`). The
@@ -1096,9 +1128,15 @@ following hold:
    deleted this way.
 3. **The asset is absent from the walk.** Presence SHALL be the asset ids of **every** candidate the walk
    returned, before admission. Being in the library is not a question of scope.
-4. **The row is not `REQUESTED`.** A live platform job owns a `REQUESTED` row until its terminal write lands,
-   and that write matches only a `REQUESTED` row. The row is deleted by the first authoritative walk after it
-   settles.
+
+A row's upload state SHALL NOT exempt it. A `REQUESTED` row is deleted like any other. Its transfer may
+still complete, and then its guarded terminal write matches no row and applies to nothing ("Guarded
+terminal write"). The bytes land and are listed in no manifest, because the manifest projects the rows. A
+failure or retry the platform later presents for that key SHALL write nothing and SHALL NOT be retried
+(capability `upload-lifecycle`, "A presented job whose row is gone is answered and nothing more"). The
+earlier exemption kept a photo that had left the library (or the selection) listed until its job settled.
+It existed only because a late terminal write for a missing row was treated as an anomaly, and it no longer
+is one (decision record `changes/selection-is-the-walk`, D2).
 
 The cycle SHALL decide the deletion from the same walk that supplies presence, and SHALL apply it through
 `deleteKeys` before it records that walk's discoveries and before it publishes the device manifest, so a
@@ -1107,7 +1145,9 @@ departed photo is never listed by the cycle that saw it leave.
 A second path deletes one row at a time: a ledger key the cycle asked the platform to resolve for a job that
 resolves to **nothing** SHALL have **that row** deleted, and no other (see "The DISCOVERED state and the
 ledger as the upload work source"). It needs no authoritative gate, because it only ever reaches a row that
-still needs a job, and deleting one costs a re-discovery, never a photo.
+still needs a job, and deleting one costs a re-discovery, never a photo. It SHALL NOT be reached with a
+selection that has not been read: an unread scope answers no resolution at all (capability
+`limited-photo-access`), because an empty answer there would delete every admitted row that needs a job.
 
 #### Scenario: A departed in-window asset's rows are deleted
 - **WHEN** an authoritative walk does not return asset `X`, whose `COMPLETED` rows carry a capture date the
@@ -1125,19 +1165,32 @@ still needs a job, and deleting one costs a re-discovery, never a photo.
   asset
 - **THEN** the row is kept
 
-#### Scenario: A selection snapshot deletes nothing
-- **WHEN** the cycle runs under a partial grant, the member has de-selected a photo whose `COMPLETED` row is
-  in-window, and the scoped discovery does not return it
-- **THEN** no row is deleted, because the discovery was not authoritative
+#### Scenario: A read selection snapshot deletes a de-selected photo's rows
+- **WHEN** the cycle runs under a partial grant with a read selection snapshot, and the member has
+  de-selected a photo whose `COMPLETED` row is in-window
+- **THEN** the discovery is authoritative, the photo's rows are deleted, and the manifest that cycle
+  publishes no longer lists it
+
+#### Scenario: An un-read selection deletes nothing
+- **WHEN** the app's cycle runs under a partial grant before the selection has been read
+- **THEN** the cycle is withheld and no row is deleted, by the walk or by the enqueue's resolve
 
 #### Scenario: An unreadable walk deletes nothing
 - **WHEN** the platform reports the library not readable and the discovery returns no candidates
 - **THEN** no row is deleted
 
-#### Scenario: An in-flight row outlives its asset until it settles
+#### Scenario: An in-flight row is deleted with its asset
 - **WHEN** an authoritative walk does not return asset `X`, one of whose rows is `REQUESTED`
-- **THEN** that row is kept and `X`'s settled rows are deleted; once the job's terminal write lands, the next
-  authoritative walk deletes the remaining row
+- **THEN** all of `X`'s in-window rows are deleted, including the `REQUESTED` one, and the manifest that cycle
+  publishes no longer lists `X`
+
+#### Scenario: A late completion for a deleted row writes nothing
+- **WHEN** the transfer of a `REQUESTED` row the walk deleted then succeeds
+- **THEN** its guarded terminal write applies to no row, no row is created, and `X` stays unlisted
+
+#### Scenario: A late failure for a deleted row writes nothing
+- **WHEN** the platform presents a failure for a key whose row the walk deleted
+- **THEN** no row is recorded for that key, no retry is made, and no job is created
 
 #### Scenario: A resolve failure deletes only its own key
 - **WHEN** a `DISCOVERED` row `X-live.mov` resolves to nothing while its sibling `X-primary.heic` is
@@ -1304,3 +1357,4 @@ the intersection is the caller's.
 - **WHEN** an asset's only `REQUESTED` row is recorded `COMPLETED` through `markTerminal`, and no cycle has
   run since
 - **THEN** `assetProgress()` answers that asset done
+
