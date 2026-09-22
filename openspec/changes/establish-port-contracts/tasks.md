@@ -51,7 +51,8 @@
 
 ## 8. The simulator app, measured once
 
-- [ ] 8.1 Using the `ios-simulator` runbook, run the rig contract verb for `SecureStore` in the ad-hoc-signed app on a simulator and record what its Keychain answers; write the result into the `port-contracts` host matrix (design D8) and do NOT add a binding in this change
+- [x] 8.1 Measured once on a simulator: the ad-hoc-signed app answers `-34018` to every explicit-group query (iOS 26.2). No binding added; written into `port-contracts`' host matrix
+- [x] 8.2 (Found by 8.1) A contract refuses to record in a process that is not its host — the simulator run produced a recording labelled `IOS_DEVICE_APP` — and the channel answers that refusal `409`
 
 ## 9. Documentation
 

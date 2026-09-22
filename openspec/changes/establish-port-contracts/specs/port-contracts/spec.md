@@ -108,13 +108,19 @@ The known host matrix, which the next binding starts from:
 | `JVM` | JVM test | none |
 | `IOS_SIM_KEXE` | Kotlin/Native `test.kexe` spawned by `simctl`, unentitled | every `SecItem*` call answers `-25291` (`errSecNotAvailable`) |
 | simulator `.xctest` (unbound) | Swift test bundle, no `TEST_HOST` | answers `-34018` (`errSecMissingEntitlement`) |
-| simulator app (unbound) | the app bundle, ad-hoc signed | not measured |
+| simulator app (unbound) | the app bundle, ad-hoc signed | `-34018` to an explicit-group query: `simulator.entitlements` omits `keychain-access-groups` (measured 2026-09-22, iOS 26.2) |
 | `IOS_DEVICE_APP` | the entitled app on a device | accessible |
 | device extension (unbound) | the upload extension process | not measured |
 
 #### Scenario: An iOS update changes an answer
 - **WHEN** a re-recording on a newer iOS version yields a different answer on `IOS_DEVICE_APP`
 - **THEN** it is a change on the same host, visible in that host's recording history, not a new host
+
+#### Scenario: A contract is asked to record on a host it does not record for
+- **WHEN** a contract that records for one host is run in a process that is a different host — a simulator
+  app asked for the device's recording
+- **THEN** it refuses instead of recording, and the channel answers a refusal status, so its answer cannot be
+  redirected into a recording filed under a host it never ran on
 
 #### Scenario: Two processes on one simulator
 - **WHEN** a binding runs in the simulator's Kotlin/Native test executable

@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
+import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.presentation.StatusContainerHost
 import co.touchlab.kermit.Logger
@@ -254,7 +255,12 @@ class RigServer(
                 excludedOrUnknown(name, emptyMap(), "contract"),
                 status = HttpStatusCode.NotFound,
             )
-        respondText(withContext(Dispatchers.Default) { contract() })
+        // A contract that finds itself on the wrong host answers with the refusal marker rather than a
+        // recording: a 200 would let a caller redirect it straight into a `.rec` file under a host name it
+        // never ran on. The `when` lives here because the hook file may hold no decisions.
+        val body = withContext(Dispatchers.Default) { contract() }
+        val status = if (body.startsWith(CONTRACT_REFUSED)) HttpStatusCode.Conflict else HttpStatusCode.OK
+        respondText(body, status = status)
     }
 
     /**

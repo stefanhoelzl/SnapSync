@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.ports.DeviceLogSource
 import kotlin.coroutines.CoroutineContext
 

@@ -54,6 +54,10 @@ kotlin {
             // the presentation read-model it serializes. Platform-bound verbs arrive as injected lambdas
             // the host shell builds — the same shape `flow/` uses for port touches — so this module names
             // no platform API and an Android target would be a build-file edit, not a rewrite.
+            // The port contracts it can run in-app on a device (capability `port-contracts`), and the
+            // refusal marker the `/contract` route answers 409 on. Both modules are contained the same
+            // way: linked only under `-Psnapsync.rig=true`.
+            api(project(":test:contracts"))
             api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:compose"))

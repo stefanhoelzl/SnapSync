@@ -256,9 +256,14 @@ byte for byte and yields `BACKGROUND_READABLE`; `resolveOrMint` never mints when
 exactly once when empty. `migrateProtection` from `RESTRICTED` has exactly one real host — the device
 recording — which is what makes that recording required rather than optional.
 
-The app on the simulator is **measured once** during implementation (what its Keychain answers, given
-`simulator.entitlements` omits `keychain-access-groups`) before deciding whether it earns a binding in a
-later change.
+The app on the simulator was **measured once** during implementation: it answers `-34018`
+(`errSecMissingEntitlement`) to every explicit-group query, because `simulator.entitlements` omits
+`keychain-access-groups` (iOS 26.2, 2026-09-22). It earns no binding here — it reaches none of the states
+the device reaches — and the measurement is recorded in `port-contracts`' host matrix.
+
+That measurement also found a defect in this design: the device binding names its host statically, so
+running the verb in a simulator app produced a recording labelled `IOS_DEVICE_APP`. A contract now refuses
+to record in a process that is not its host, and the channel answers that refusal with `409`.
 
 ## Risks / Trade-offs
 
