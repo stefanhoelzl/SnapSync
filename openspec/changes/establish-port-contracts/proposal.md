@@ -65,6 +65,7 @@ end-to-end on one small external system, the Keychain behind `SecureStore`.
   every other main source set; the containment law admits a property-gated source set inside a
   withholding module.
 - `architecture-guards`: the contract-coverage gate.
+- `coverage-bounds`: `:test:contracts` joins the not-instrumented modules (test equipment).
 
 ## Impact
 

@@ -58,11 +58,13 @@ Every clause run against a binding SHALL end in exactly one of: `Passed`; `Faile
 implementation, or a recorded answer, violates the clause; `NotRunHere(reason)` — the binding cannot reach
 the clause's state; `Diverged(message)` — on replay, the clause made an operating-system call the
 recording does not hold; `NotWithin(T)` — a bounded wait on an operating-system callback expired. A clause
-SHALL NOT end without an outcome, and an early return from a clause body SHALL NOT read as `Passed`.
+SHALL NOT end without an outcome. Whether a clause runs SHALL be decided by its binding before the body
+executes; a clause body SHALL have no operation that skips it, so an unexercised clause cannot report
+`Passed`.
 
-#### Scenario: A clause body returns early
-- **WHEN** a clause body returns before asserting anything
-- **THEN** the outcome is not `Passed` unless the clause's assertions ran
+#### Scenario: A host cannot produce a clause's state
+- **WHEN** a binding cannot enter the state a clause needs
+- **THEN** the clause reads `NotRunHere(reason)` without its body running, and never `Passed`
 
 #### Scenario: A replay meets an unrecorded call
 - **WHEN** the adapter under replay makes a call its recording does not hold
