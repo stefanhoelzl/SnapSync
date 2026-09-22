@@ -27,8 +27,9 @@ lives:
 
 After every step it SHALL assert that the extension is never registered below iOS 26.1; that no registration
 write is attempted under a non-`GRANTED` grant; that **no transition deregisters except a leave or switching the
-extension off**; that **no transition cancels transfers except a leave**; that a re-provision of the joined event
-makes no registration call; and that no enable bypasses the disable → enable toggle.
+extension off**; that **no transition cancels transfers except a leave**; and that no enable bypasses the
+disable → enable toggle. That a re-provision of the joined event reaches no transition at all is the provision
+flow's own test (its `Stay` branch only saves the config).
 
 "No duplicate job starts in a normal sequence" is a property of the cycle, not of the transitions, and SHALL be
 asserted by the cycle's own tests (two cycles over one ledger, run one after the other: the second creates
@@ -40,7 +41,7 @@ that nothing repairs any more, because the demote and the stranded rules that us
 Decision record: `changes/both-uploaders-active` (D11).
 
 #### Scenario: A transition that stops in-flight work fails the build
-- **WHEN** a transitions change makes a join, a re-provision, a reconfigure, a permission change or a launch
+- **WHEN** a transitions change makes a join, a reconfigure, a permission change or a launch
   deregister the extension or cancel the app's transfers
 - **THEN** the guard fails the build
 
@@ -57,9 +58,10 @@ Decision record: `changes/both-uploaders-active` (D11).
 - **WHEN** a transitions change registers the extension without the leading disable
 - **THEN** the guard fails the build
 
-#### Scenario: A re-provision that touches the registration fails the build
-- **WHEN** a transitions change makes a re-provision of the joined event read or write the registration
-- **THEN** the guard fails the build
+#### Scenario: A re-provision that reaches the upload transitions fails the build
+- **WHEN** a change makes a re-provision of the joined event reach the upload transitions (so it could read or
+  write the registration)
+- **THEN** the provision flow's own test fails the build
 
 #### Scenario: A switch that leaves the extension registered fails the build
 - **WHEN** a change stops the switch from triggering the registration reconcile, so switching the extension off

@@ -233,45 +233,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
     }
 
     @Test
-    fun `demoteRequested returns only REQUESTED rows to DISCOVERED and keeps their detail`() = runTest {
-        val backend = createBackend()
-        val requested = entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED)
-        backend.recordUnlessSettled(entry(key = "D-photo.jpg", assetId = "D", state = LedgerState.DISCOVERED))
-        backend.recordUnlessSettled(requested)
-        backend.recordUnlessSettled(entry(key = "C-photo.jpg", assetId = "C", state = LedgerState.COMPLETED))
-
-        backend.demoteRequested()
-
-        // The orphaned REQUESTED row is kept, demoted, and otherwise field-for-field what was recorded.
-        assertEquals(requested.withState(LedgerState.DISCOVERED), backend.get("R-photo.jpg"))
-        assertEquals(LedgerState.DISCOVERED, backend.get("D-photo.jpg")?.state)
-        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state) // dedup truth kept
-    }
-
-    @Test
-    fun `a demoted row is returned by the work read without a walk`() = runTest {
-        val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
-
-        backend.demoteRequested()
-
-        assertTrue(backend.rowsNeedingJob().any { it.key == "R-photo.jpg" })
-    }
-
-    @Test
-    fun `demoteRequested dings an active changes collector`() = runTest {
-        val backend = createBackend()
-        backend.recordUnlessSettled(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
-
-        backend.demoteRequested()
-        runCurrent()
-
-        assertEquals(1, dings)
-    }
-
-    @Test
     fun `resetTo with an empty baseline empties the store`() = runTest {
         val backend = createBackend()
         backend.recordUnlessSettled(entry(key = "a", assetId = "a"))
@@ -388,7 +349,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         assertEquals(LedgerState.DISCOVERED, row.state, "a failure is recorded as needing a job")
         assertEquals("/a.heic", row.destinationPath, "every other column preserved")
         assertEquals(listOf("a.heic"), backend.rowsNeedingJob().map { it.key })
-        assertEquals(emptySet(), backend.requestedKeys())
     }
 
     @Test
@@ -412,21 +372,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
 
         assertEquals(1, dings, "it changed the truth, so watchers must re-read it")
         job.cancel()
-    }
-
-    @Test
-    fun `requestedKeys is REQUESTED only - never the whole backlog`() = runTest {
-        val backend = createBackend()
-        val writer = LedgerWriter(backend)
-        writer.recordRequested(res("flight.heic", "A"))
-        writer.recordFailed(res("bad.heic", "B"))
-        backend.seedCompleted(res("done.heic", "C"))
-        writer.recordRequested(res("up.heic", "D"))
-        backend.markTerminal("up.heic", TerminalOutcome.COMPLETED)
-
-        // A failed row is already back in the work read and a COMPLETED row has landed; handing either to the
-        // stranded pass re-reports a loss that did not happen.
-        assertEquals(setOf("flight.heic"), backend.requestedKeys())
     }
 
     @Test
@@ -511,9 +456,6 @@ abstract class LedgerStoreContract : LedgerRecordGuardContract() {
         // ...and it IS declared: the manifest states what this device will provide, and the backend
         // keeps the asset out of the union until every declared role has a resource.
         assertEquals(listOf("a.heic"), backend.manifestRows().map { it.key })
-        // ...and it is not a stranding candidate: a row that never had a job cannot be a lost transfer,
-        // and surfacing it would write a failure that did not happen.
-        assertEquals(emptySet(), backend.requestedKeys())
     }
 
     @Test

@@ -33,13 +33,12 @@ State these before writing a scenario against this host, or you will write one t
   exists). Accepted everywhere-gap: the device needs taps for it too.
 - **No APNs token** — `no valid "aps-environment" entitlement string found`. `simctl push` never contacts
   Apple, so a synthetic token through the `onPushToken` trigger is the way in.
-- **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** The tier
-  resolves to `photokit` here under a full grant, exactly as it does on a ≥26.1 device, and it now runs:
+- **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** Under a full
+  grant the extension is registrable here, exactly as on a ≥26.1 device, and its root now runs:
   `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCore`,
   the entry gate, real PhotoKit discovery, the real selection policy, the real
-  App-Group ledger and a real backend are all exercised. **Do not pin `url_session` for a photokit
-  scenario any more** — the pin is now only for exercising the app-driven tier, and the trigger refuses
-  outright while a pin is in force (two `LedgerWriter`s over one ledger).
+  App-Group ledger and a real backend are all exercised. Both uploaders run over the one
+  ledger by design; to exercise one alone use `POST /device/uploaders?app=off` or `?extension=off`.
 
   What this target substitutes, and nothing else, is the **OS upload-job subsystem**: the registration
   record and the job queue. You play the OS for both.
@@ -88,8 +87,8 @@ State these before writing a scenario against this host, or you will write one t
   gallery census is not clean proof either: a simulator ships with stock photos, so a device that imported
   3 reads `total: 9`.
 
-  **The app-driven tier still works here too**, and `POST /device/upload-mechanism?value=url_session` is
-  how you reach it (check `resolves`, not just `pinned`). Two members of one event, both directions, were
+  **The app's uploader runs here too** (both uploaders run by default); `POST /device/uploaders?extension=off`
+  makes it run alone. Two members of one event, both directions, were
   measured that way on 2026-08-26: A uploaded three photos and B — joined `DownloadOnly` off A's invite
   link — downloaded and imported all three.
 

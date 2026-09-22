@@ -100,7 +100,8 @@ platform will not say. Both transports refuse honestly (`LIMIT_EXCEEDED`), so th
   (`UploadCycle` stranded pass + capacity bound out, chunked create-until-refused in; `StrandedKeys.kt`,
   `DemoteRequested.kt` deleted; `OsDrivenRegistration` without the demote; `UploadConfig` admission;
   `UploadTransitions` new desired-state table + Stay; `BackgroundUploadPump` gated re-pump), `compose/`
-  (`SnapSyncApp` wiring), `flow/Provision` (the reconcile takes the switch decision). Adapters:
+  (`SnapSyncApp` wiring), `feature/membership/MembershipEntry` (gains save + start uploads), `flow/Provision`
+  (`Stay` only saves). Adapters:
   `IosUrlSessionUploadPlatform` (−capacity/−live/−lost/−discard), `IosPhotoKitUploadPlatform`,
   `SimulatorUploadJobQueue`, `SqlDelightLedgerStore` + `Ledger.sq` (drop two queries), the fakes.
   Shells: `UrlSessionUploadController` (disarm, leave cancel), `SnapSyncRoot`, `UploadExtensionRoot`

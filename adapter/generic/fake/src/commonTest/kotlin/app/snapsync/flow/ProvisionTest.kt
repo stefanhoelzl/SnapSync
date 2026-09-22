@@ -79,7 +79,7 @@ class ProvisionTest {
         // set is loaded before the save too.
         assertEquals("leave:$eventA", order.first())
         assertEquals(
-            listOf("leave:$eventA", "load", "save:$eventB", "refresh", "arm", "album"),
+            listOf("leave:$eventA", "load", "save:$eventB", "arm", "refresh", "album"),
             order.take(6),
         )
         // Step 7 is concurrent, so membership is asserted rather than order — but both are awaited.
@@ -97,6 +97,7 @@ class ProvisionTest {
         assertTrue(order.none { it.startsWith("leave:") }, "a re-scan left its own event: $order")
         assertTrue("load" !in order, "a re-scan reset the live membership's ledger: $order")
         assertEquals("save:$eventA", order.first())
+        assertTrue("arm" !in order, "a re-scan must not reach the upload arm — its registration would wipe jobs: $order")
     }
 
     @Test
@@ -166,8 +167,6 @@ class ProvisionTest {
         registerPush: suspend () -> Unit = { order += "push" },
     ): Provision {
         return Provision(
-            // The join transition's own decisions are `UploadTransitionsTest`'s; here it is one step.
-            reconcileUploads = { order += "arm" },
             downloadController = DownloadController(
                 union = RecordingUnion(order),
                 store = InMemoryDownloadStore(),
@@ -179,8 +178,14 @@ class ProvisionTest {
             ),
             albumCoordinator = AlbumCoordinator(RecordingAlbums(order, saveToAlbum), albumStore),
             activeEventId = activeEventId,
-            // The entry's inner order (stop, leave, load) is `MembershipEntryTest`'s; here it is one step.
-            enterMembership = { previous -> previous?.let { order += "leave:$it" }; order += "load" },
+            // The entry's inner order (stop, leave, load, save, start uploads) is `MembershipEntryTest`'s; here it
+            // is recorded in that order so the flow's placement of it is visible.
+            enterMembership = { previous, cfg ->
+                previous?.let { order += "leave:$it" }
+                order += "load"
+                saveConfig(cfg)
+                order += "arm"
+            },
             saveConfig = saveConfig,
             refreshStatus = { order += "refresh" },
             isGranted = isGranted,

@@ -102,7 +102,7 @@ GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the ap
 POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
-POST /device/upload-mechanism?value=…   pin the resolved upload tier (see below)
+POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
 ```
 
 There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
@@ -138,9 +138,9 @@ reasoning that makes a receipted trigger receive its completion handler.
 It runs on **its own serial thread, never main**. The extension process has no main lane, and running its
 `runBlocking` on the app's UI thread would freeze the app for the whole cycle.
 
-⚠️ **Refused unless the resolved mechanism is `photokit`**, naming what resolved. Under `url_session` the
-app's own arm holds a live `LedgerWriter` and this cycle would be a second one over the same App-Group
-ledger. Clear any pin first (`POST /device/upload-mechanism?value=none`) and hold a full photo grant.
+**Not gated on any mechanism.** Both uploaders write the one App-Group ledger by design, so this cycle is
+just another cycle over it; the extension root's own admission decides what it may do — under anything but a
+full grant it withholds (records and acknowledges, creates nothing), exactly as when the OS invokes it.
 
 **On a device** this drives the **real** OS job queue — forcing a cycle on demand instead of waiting for
 the OS to schedule one. Send no body there; the OS holds the queue and a body is refused rather than
@@ -299,33 +299,27 @@ failed to bind". The rig logs a bind failure at `Error` naming the address and p
 pullable **without** the rig (`apps pull … Documents/debug.log`) — read it before guessing. The usual
 cause is a previous instance still alive holding the port; SIGKILL it (the global `ios-device` skill's restart recipe).
 
-## Pinning the upload tier
+## Switching an uploader off
 
-`SNAPSYNC_FORCE_URLSESSION_UPLOAD` was deleted with the rest of the launch-trigger surface. Its
-replacement landed in `d21a511e` as a channel verb — a development pin on the *resolved* mechanism,
-with no production writer:
+Both uploaders run where both exist (the app's on every OS, the extension beside it from iOS 26.1 under a full
+grant). To exercise one alone there is a development switch per uploader, with no production writer:
 
 ```
-POST /device/upload-mechanism?value=photokit|url_session|idle|none
+POST /device/uploaders?app=on|off&extension=on|off
+POST /device/uploaders?reset
 ```
 
-It answers with what you asked for AND what the app will actually do, because a pin naming a mechanism
-this OS cannot run is clamped by the resolver:
+`app=off` makes the app's uploader withhold (it records completions, creates nothing). `extension=off` makes
+the extension unregistrable, and the reconcile the command triggers **deregisters it now** — the extension cannot
+read app memory, so off must be a deregistration (which wipes its in-flight OS jobs: the test's intent). The
+answer reports the switch and the registration fact it produces:
 
 ```json
-{"pinned":"url_session","resolves":"url_session","permission":"GRANTED","osSupportsOsDriven":true}
+{"app":true,"extension":false,"extensionRegistrable":false,"permission":"GRANTED","osSupportsOsDriven":true}
 ```
 
-Verified 2026-08-25 on the SE2 (iOS 26.5.2): pinning `url_session` on a ≥26.1 device under a **full**
-grant drove real uploads through the app-driven pump. Fire `POST /os/app/runUploadHeartbeat` to kick it —
-`runUploadHeartbeat` is the app-driven tier's entry point and does nothing for the OS-driven one, whose
-extension the OS invokes on its own cadence.
+To drive the app's uploader alone on a ≥26.1 device: `extension=off`, then fire `POST /os/app/runUploadHeartbeat`
+(the app uploader's entry point). The switch dies with the process.
 
-Note `/device/state`'s `build.uploadTier` is a **build fact** and does not move with the pin; the pin
-response's `resolves` is the live answer.
-
-(Before this verb existed, the app-driven tier was reachable only under a `LIMITED` grant, where the
-extension **cannot be registered at all** — `setUploadJobExtensionEnabled` is refused in both
-directions with `PHPhotosErrorAccessUserDenied` 3311, so `resolveUploadMechanism` yields the
-app-driven mechanism there. That route still works but exercises less: a partial grant feeds discovery
-the in-memory selection snapshot instead of walking the library.)
+Note `/device/state`'s `build.uploadTier` is a **build fact** — which uploaders this OS carries
+(`app` or `app+extension`) — and does not move with the switch.

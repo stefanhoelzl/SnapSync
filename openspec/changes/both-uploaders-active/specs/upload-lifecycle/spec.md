@@ -622,7 +622,7 @@ The decision of **what each transition does** SHALL live in the transitions obje
 `feature/upload` zone, not in a composition root, and SHALL be tested in `commonTest` against a fake
 registration and a fake app-driven engine. It SHALL hold **no mutable state**: every decision is derived
 afresh from whether a membership exists, the current photo permission, the registration fact ("Whether the
-extension may be registered is one pure fact"), and — for a provision — the provision's switch decision.
+extension may be registered is one pure fact").
 
 The membership's **direction SHALL NOT be an input**. A download-only membership is the selection policy
 admitting nothing, which each cycle reads at its entry ("The arm's direction gate lives at the choke point,
@@ -658,9 +658,10 @@ Why each cell:
   record, so there are no jobs to wipe.
 - **`Stay` does nothing.** A re-scan of the joined event changes nothing about the membership, the share-set
   load is already skipped there, and the stale-record repair does not need it: a reinstall wipes the config (the
-  App Group goes with the app), so a reinstalled device always arrives as a real join. The provision flow SHALL
-  pass its switch decision into the reconcile and the transitions object SHALL decide on it, so the rule lives in
-  the feature and the flow gains no branch.
+  App Group goes with the app), so a reinstalled device always arrives as a real join. The join transition
+  SHALL be reached only through the membership entry (leave the previous membership, load, save, start
+  uploads — one ordered feature rule), which the provision runs on a real entry and never on `Stay`; the
+  provision's `Stay` branch only saves the config, so the flow keeps one call per branch.
 - **A switch** calls the leave first (deregister, disarm, cancel transfers), then the load replaces the ledger,
   then the join registers — so the join's toggle meets no live job of the new membership. This is the one place
   a membership change still cancels work, because a switch *is* a leave, and the rows are replaced anyway.

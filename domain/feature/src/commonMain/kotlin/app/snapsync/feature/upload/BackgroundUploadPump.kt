@@ -46,8 +46,8 @@ import kotlinx.coroutines.sync.withLock
  * in a background context the re-armed [scheduler] wakes the app.
  *
  * **SKIPPED never re-arms — this overrides every trigger below.** A cycle that returns
- * [CycleResult.SKIPPED] declined because this membership contributes nothing, or because this engine is not
- * the resolved mechanism (capability `upload-lifecycle`). That answer cannot change until a transition, and
+ * [CycleResult.SKIPPED] declined because this membership contributes nothing, or because this process may not
+ * create now (capability `upload-lifecycle`). That answer cannot change until a transition, and
  * every transition that makes this engine eligible arrives as [onStart] — so scheduling anything here would
  * wake the device forever to decline again. See
  * [shouldSchedule], which states the policy over the whole enum so a new variant must be decided, not
@@ -83,6 +83,13 @@ class BackgroundUploadPump(
     // PhotoKit extension's cross-process liveness ding — here an in-process ledger-counts re-read).
     // Best-effort: a failure never disturbs the cycle drain or the re-arm.
     private val onCycleComplete: suspend () -> Unit = {},
+    // Whether the app's uploader may create right now — its admission, read fresh at each completion. A late
+    // completion (a `-999` after a revoke, a transfer finishing after a leave) is always RECORDED by the
+    // transport's guarded write; it drives a cycle only when this answers `true`, so late completions after a
+    // hand-off no longer keep the app cycling (the 2026-09-16 field observation; decision record
+    // `changes/both-uploaders-active`, D7). Defaulted for the tests that are not about admission; the one
+    // production caller passes the composition's own answer.
+    private val mayCreate: () -> Boolean = { true },
 ) {
     private val mutex = Mutex()
 
@@ -147,8 +154,15 @@ class BackgroundUploadPump(
         drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
-    /** An upload finished while foregrounded (a slot freed): pump the next batch. */
+    /**
+     * An upload finished (a slot freed): pump the next batch — **only if the app may create now**. The completion
+     * itself was already recorded by the transport before this was called.
+     */
     suspend fun onUploadCompleted() = log.invocation(logScope, "pump.onUploadCompleted") {
+        if (!mayCreate()) {
+            log.i { "upload completed; the app may not create now — recorded, no cycle driven" }
+            return@invocation
+        }
         drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
     }
 

@@ -12,8 +12,7 @@ import app.snapsync.model.TerminalOutcome
  * platform hands it, because that write must land before a non-suspending callback returns, and no call into
  * the core can be made from there: a callback into a feature would bypass "Commands cross one door"
  * (`module-architecture`), and every flow command suspends. What a transport can no longer reach is every other
- * read and write of the ledger — including the decision which in-flight rows it has lost, which is the cycle's,
- * over the live set the transport reports (`BackgroundTransfer.liveKeys`).
+ * read and write of the ledger.
  *
  * Decision record: `changes/transport-only-seam` (D4, D5).
  */
@@ -37,10 +36,12 @@ interface TransferRecord {
      * whether it applied. [TerminalOutcome] fixes that set, so a callback can never claim a job exists
      * (`REQUESTED`) through this verb.
      *
-     * The guard is the operation's purpose. Two writers reach a row holding no shared lock — a platform
-     * callback recording that an upload terminated, on the platform's own queue, and the upload cycle's
-     * stranded pass on the composition lane — so a read-then-write pair is not atomic against the one that
-     * does not take the lock. Putting the condition in the write is what makes a fact recorded underneath
+     * The guard is the operation's purpose. Several writers reach a row holding no shared lock — a platform
+     * callback recording that an upload terminated, on the platform's own queue; the upload cycle on its lane;
+     * and, on iOS ≥26.1 under a full grant, the other process's cycle and callbacks over the same App-Group
+     * ledger (decision record `changes/both-uploaders-active`) — so a read-then-write pair is not atomic against
+     * the one that does not take the lock. A duplicate completion of the same key (two uploaders overlapping)
+     * applies once and answers `false` the second time. Putting the condition in the write is what makes a fact recorded underneath
      * a stale read impossible to clobber. (`photo-download` reached the same conclusion for the same
      * reason: *"the guard SHALL live in the store's write rather than in a caller's preceding read"*.)
      *

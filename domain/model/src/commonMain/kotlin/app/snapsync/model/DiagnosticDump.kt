@@ -64,6 +64,9 @@ class DiagnosticDump(
  * The platform facts the shell knows and `:domain` cannot read for itself — supplied as a transcribed
  * value rather than a port, because every field is a constant of the running build.
  *
+ * [uploadTier] names which uploaders this OS carries (`model/uploadersCarried`) — a constant of the build, never
+ * which one runs: both may.
+ *
  * [uploadBase] is the same baked host the boot banner names, and [reporterEnvironment] distinguishes
  * a deliberately DSN-injected dev build from a production one — without it, a dump from the
  * on-device verification path is indistinguishable from a real user's.

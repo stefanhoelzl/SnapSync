@@ -103,13 +103,13 @@ class CompositionSeamTest {
                 "nullability IS that OS answer, and it must be a call rather than a value the bundle " +
                 "carries so the registration is never constructed where its selector does not exist. " +
                 "What it returns reaches the platform only through the UploadExtensionRegistry port",
-            "uploadMechanismOverride" to
-                "reads a development pin on the resolved mechanism, re-read per resolution so the pin " +
-                "can change without rebuilding the graph. `null` in a production build not by " +
-                "convention but by CONSTRUCTION: the only writer of the root thunk behind it is the " +
-                "control channel's boot hook, whose source is absent from a build made without the " +
-                "channel's build property — so a shipped binary has nothing able to assign it, and the " +
-                "mechanism it runs stays a function of the device alone",
+            "uploaderPin" to
+                "reads the rig's per-uploader switch, re-read at every use so it can change without " +
+                "rebuilding the graph. `null` in a production build not by convention but by " +
+                "CONSTRUCTION: the only writer of the root thunk behind it is the control channel's boot " +
+                "hook, whose source is absent from a build made without the channel's build property — so " +
+                "a shipped binary has nothing able to assign it, and what it uploads with stays a function " +
+                "of the device and its grant",
             // The lambda carries the tier's FAILURE POSTURE, which a shared port would erase: the app
             // admits on doubt, the extension lets a throw fail the cycle (stated at the field).
             "albumExcludedAssetIds" to
@@ -153,10 +153,10 @@ class CompositionSeamTest {
                 "and an absent host must skip the cycle, not crash it. EXPIRY: if the destination ever " +
                 "becomes runtime-resolved (the open uploadBase question), it is a port",
             "admission" to
-                "whether THIS process may run a cycle now (capability `upload-lifecycle`): the app's " +
-                "answer is the core's own resolution, the extension's a status read of its own photo " +
-                "grant — a call because both change between cycles, and required because either " +
-                "default would be a silent answer to the two-writer question",
+                "whether THIS process may create now (capability `upload-lifecycle`): the app's answer " +
+                "is its own usable grant, the extension's a status read of its own full grant — a call " +
+                "because both change between cycles, and required because a default would silently " +
+                "admit the extension to read the whole library under a partial grant",
             "selectionScope" to
                 "what discovery may read right now (capability `limited-photo-access`), derived by the " +
                 "app composition from current permission plus the in-memory snapshot — a call and not a " +

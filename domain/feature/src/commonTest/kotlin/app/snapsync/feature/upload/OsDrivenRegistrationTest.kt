@@ -1,38 +1,26 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.RegistrationOutcome
-import app.snapsync.model.LedgerAggregates
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
-import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.PendingResource
-import app.snapsync.model.isDone
-import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.UploadExtensionRegistry
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The OS-driven registration's **ritual and its repair** — the two things it exists to get right, and neither
- * of which could be tested at all until this class left `:app:ios`.
+ * The OS-driven registration's **ritual** — the one thing it exists to get right, and which could not be tested
+ * at all until this class left `:app:ios`.
  *
- * Both defend against damage that is invisible when it happens and terminal afterwards. A bare enable
- * against a stale configuration record fails with `3202`, after which the OS never launches the extension
- * and nothing reports it. A disable wipes every in-flight upload job while leaving their ledger rows
- * `REQUESTED` forever, because no API can enumerate what vanished. Before, the only way to exercise either
- * was to contrive a physical device into the state it defends against.
+ * It defends against damage that is invisible when it happens and terminal afterwards: a bare enable against a
+ * stale configuration record fails with `3202`, after which the OS never launches the extension and nothing
+ * reports it. Before, the only way to exercise it was to contrive a physical device into that state.
  */
 class OsDrivenRegistrationTest {
 
     /**
      * A registry that records the order of what it was asked, and can be made to refuse.
      *
-     * Ordering is the point rather than a convenience: the whole hazard this class documents is a repair
-     * racing the re-enable it precedes.
+     * Ordering is the point rather than a convenience: a bare enable is the hazard this class exists to avoid.
      */
     private class RecordingRegistry(
         private val log: MutableList<String>,
@@ -55,79 +43,15 @@ class OsDrivenRegistrationTest {
     }
 
 
-    /**
-     * A ledger holding only what this class touches: `REQUESTED` rows and the demote that repairs them. The
-     * demote is recorded into the shared [log], so its order against the registration calls is asserted.
-     *
-     * Local rather than `:adapter:generic:fake`'s honest double, because that module depends on `:domain`
-     * and this test lives inside it. Everything unreached is `TODO()` rather than a quiet default — a fake
-     * that silently answered a call this class was not supposed to make would hide exactly the regression
-     * worth catching.
-     */
-    private class RequestedRowsLedger(private val log: MutableList<String>) : UnreachedLedgerStore() {
-        private val rows = mutableMapOf<String, LedgerEntry>()
-
-        fun requested(key: String) {
-            rows[key] = LedgerEntry(key = key, assetId = key, state = LedgerState.REQUESTED)
-        }
-
-        override val changes: Flow<Unit> = emptyFlow()
-        override suspend fun aggregates() = LedgerAggregates(
-            pending = rows.values.count { it.state == LedgerState.REQUESTED },
-            completed = rows.values.count { it.state == LedgerState.COMPLETED },
-        )
-        override suspend fun assetProgress(): Map<String, Boolean> = TODO("not reached by this mechanism")
-
-        fun stateOf(key: String): LedgerState? = rows[key]?.state
-
-        override suspend fun demoteRequested() {
-            log += "demote"
-            for (row in rows.entries) {
-                if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.DISCOVERED))
-            }
-        }
-
-        override suspend fun get(key: String): LedgerEntry? = rows[key]
-        override suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean {
-            if (rows[entry.key]?.state?.isDone == true) return false
-            rows[entry.key] = entry
-            return true
-        }
-    }
-
-    /**
-     * Every member this mechanism must never reach, refusing loudly.
-     *
-     * Split out of [RequestedRowsLedger] rather than defaulted into it: the discipline above — no quiet
-     * answers — is the point, and it is cheaper to keep when the refusals live in one place that a
-     * subclass overrides only what it genuinely uses. A port that grows then costs one line here instead
-     * of one line in every double.
-     */
-    private abstract class UnreachedLedgerStore : LedgerStore {
-        override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
-            TODO("not reached by this mechanism")
-        override suspend fun pendingResources(): List<PendingResource> = TODO("not reached by this mechanism")
-        override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean = TODO("not reached by this mechanism")
-        override suspend fun rowsNeedingJob(): List<LedgerEntry> = TODO()
-        override suspend fun requestedKeys(): Set<String> = TODO("not reached by this mechanism")
-        override suspend fun manifestRows(): List<LedgerEntry> = TODO("not reached by this mechanism")
-        override suspend fun backfillManifestDetail(entry: LedgerEntry) = TODO("not reached by this mechanism")
-        override suspend fun clear() = TODO("not reached by this mechanism")
-        override suspend fun resetTo(entries: List<LedgerEntry>) = TODO("not reached by this mechanism")
-        override suspend fun recordAllUnlessSettled(entries: List<LedgerEntry>): Int = TODO("not reached by this mechanism")
-        override suspend fun deleteKeys(keys: Collection<String>) = TODO("not reached by this mechanism")
-    }
-
     private fun mechanism(
         log: MutableList<String>,
-        ledger: RequestedRowsLedger = RequestedRowsLedger(log),
         registry: RecordingRegistry = RecordingRegistry(log),
-    ) = OsDrivenRegistration(ledger, registry) to registry
+    ) = OsDrivenRegistration(registry) to registry
 
     // ── The ritual ────────────────────────────────────────────────────────────────────────────────
 
     /**
-     * `start()` is a **disable→enable toggle**, never a bare enable. The system's record survives app
+     * `register()` is a **disable→enable toggle**, never a bare enable. The system's record survives app
      * delete/reinstall and reboot, so a record left by a prior or differently-signed build makes a bare
      * enable fail with `3202` — and the leading disable is what removes it.
      */
@@ -137,23 +61,6 @@ class OsDrivenRegistrationTest {
         val (mechanism, _) = mechanism(log)
         mechanism.register()
         assertEquals(listOf("disable", "enable"), log.filter { it == "disable" || it == "enable" })
-    }
-
-    /**
-     * The ordering the class's own KDoc records as a fixed defect: a fire-and-forget repair raced the
-     * immediate re-enable and could reach the *re-enabled* extension's fresh rows. So the repair must sit
-     * between the disable that orphans the rows and the enable that could record new ones, and be complete
-     * before the enable, not merely started before it.
-     */
-    @Test
-    fun `the REQUESTED demote runs between the disable and the re-enable`() = runTest {
-        val log = mutableListOf<String>()
-        val ledger = RequestedRowsLedger(log)
-        ledger.requested("a.jpg")
-        val (mechanism, _) = mechanism(log, ledger)
-        mechanism.register()
-        assertEquals(listOf("disable", "demote", "enable"), log, "the repair must sit inside the toggle, in order")
-        assertEquals(LedgerState.DISCOVERED, ledger.stateOf("a.jpg"), "the orphaned row must be demoted, not dropped")
     }
 
     /** A stale record is replaced rather than rejected: the disable finds one, the enable re-creates it. */
@@ -184,27 +91,21 @@ class OsDrivenRegistrationTest {
         assertTrue(!registry.isEnabled(), "a refused enable must not leave the app believing it registered")
     }
 
-    // ── The repair belongs to the start ───────────────────────────────────────────────────────────
+    // ── Deregistration ────────────────────────────────────────────────────────────────────────────
 
     /**
-     * `stop()` is the disable **and nothing else** — on a leave and on a relinquish to the app-driven
-     * mechanism alike. The rows the disable orphans are repaired by whichever mechanism starts next, the one
-     * moment no other transfer can be carrying them; a repair here would reach rows a starting app-driven
-     * mechanism owns. There is no narrower hand-off verb any more because there is nothing left to narrow.
+     * Deregistration is the disable **and nothing else** — at a leave, or the rig's `extension=off`. Neither verb
+     * touches the ledger any more: nothing orphans a row that needs repair, because a registration spans the whole
+     * membership and a leave clears the ledger (decision record `changes/both-uploaders-active`).
      */
     @Test
-    fun `deregister touches the registration and repairs nothing`() = runTest {
+    fun `deregister is the disable alone`() = runTest {
         val log = mutableListOf<String>()
-        val ledger = RequestedRowsLedger(log)
-        val (mechanism, registry) = mechanism(log, ledger)
-        // Seeded AFTER the ritual, deliberately: `start()` repairs, so a row planted before it would be
-        // demoted by the verb that is not under test.
+        val (mechanism, registry) = mechanism(log)
         mechanism.register()
-        ledger.requested("a.jpg")
         log.clear()
         mechanism.deregister()
-        assertTrue(!registry.isEnabled(), "stop must deregister")
-        assertEquals(listOf("disable"), log, "stop must touch nothing but the registration")
-        assertEquals(LedgerState.REQUESTED, ledger.stateOf("a.jpg"), "stop must leave the repair to the next start")
+        assertTrue(!registry.isEnabled(), "deregister must deregister")
+        assertEquals(listOf("disable"), log, "deregister must touch nothing but the registration")
     }
 }

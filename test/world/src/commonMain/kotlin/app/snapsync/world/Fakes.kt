@@ -109,6 +109,7 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
 class OperatorUploadEngine : AppUploadEngine {
     override suspend fun arm() {}
     override suspend fun disarm() {}
+    override suspend fun cancelTransfers() {}
 
     // The operator IS the trigger in the world harness: cycles happen when invoked by hand from the
     // inspector, never off an OS callback, so every trigger answer here is "nothing".

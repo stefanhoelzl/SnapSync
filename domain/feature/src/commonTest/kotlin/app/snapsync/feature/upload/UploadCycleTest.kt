@@ -109,18 +109,6 @@ class UploadCycleTest {
         // seeded without a matching `discovered` resource would otherwise be deleted as departed.
         private val fullEnumeration: Boolean = false,
     ) : BackgroundTransfer, UploadDiscovery {
-        /**
-         * What this platform says it still holds. `null` — the default — is a durable queue that cannot say, so
-         * the stranded pass reconciles nothing in every test that does not ask for it. A property rather than a
-         * constructor parameter: the constructor sits at the `tests` tier's parameter ceiling.
-         */
-        var live: Set<String>? = null
-        /** What this platform says it began and lost. `null` — the default — is a queue that cannot say. */
-        var lost: Set<String>? = null
-        /** Every `discard` instruction the cycle issued, in order. */
-        val discarded = mutableListOf<Set<String>>()
-        /** Runs at each `discard`, so a test can observe the ledger at the moment the instruction arrives. */
-        var onDiscard: suspend (Set<String>) -> Unit = {}
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
@@ -141,9 +129,6 @@ class UploadCycleTest {
         private var creates = 0
 
         override suspend fun fetchRetryJobs() = retryJobs
-        override suspend fun liveKeys(): Set<String>? = live
-        override suspend fun lostKeys(): Set<String>? = lost
-        override suspend fun discard(keys: Set<String>) { onDiscard(keys); discarded += keys }
         override suspend fun drainTerminals(): List<PlatformUploadJob> {
             drained = true
             succeeded.forEach { ledger?.markTerminal(it, TerminalOutcome.COMPLETED) }
@@ -289,36 +274,36 @@ class UploadCycleTest {
         assertNull(platform.discoverPolicyArg, "the library is not walked")
     }
 
-    // ---- Admission (capability `upload-lifecycle`, "Exactly one mechanism writes the ledger") ---------------
+    // ---- Admission (capability `upload-lifecycle`, "The upload cycle owns its entry decision") -------------
+
+    // ---- Two uploaders over one ledger (decision record `changes/both-uploaders-active`, D2) ---------------
 
     @Test
-    fun a_not_resolved_cycle_touches_nothing_not_even_the_settle() = runTest {
-        // The app engine while the extension is the resolved mechanism: the extension's REQUESTED rows have no
-        // transfer on THIS transport, so a stranded pass here would demote them — a second ledger writer.
+    fun a_second_cycle_over_the_same_ledger_never_re_picks_an_in_flight_row() = runTest {
+        // The app's cycle and the extension's cycle share one App-Group ledger. Write-after-act is what makes
+        // that safe: the first records REQUESTED only after its job exists, and a cycle picks only DISCOVERED.
         val backend = InMemoryLedgerStore()
-        backend.inFlight("ext-primary.heic", assetId = "ext")
-        backend.inFlight("done-primary.heic", assetId = "done")
-        val touched = mutableListOf<String>()
-        val platform = FakePlatform(
-            discovered = listOf(resource("A-primary.heic")),
-            succeeded = listOf("done-primary.heic"),
-            ledger = backend,
-            fullEnumeration = true,
-        ).apply { lost = setOf("ext-primary.heic"); live = emptySet() }
+        val first = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+        val second = FakePlatform(discovered = listOf(resource("a"), resource("b")))
 
-        val result = cycle(
-            backend, platform,
-            readGate = { CycleGate.NotResolved },
-            onDiscovery = { _, _ -> touched += "manifest"; true },
-        ).run()
+        cycleOver(backend, first).run()
+        cycleOver(backend, second).run()
 
-        assertEquals(CycleResult.SKIPPED, result, "declined — and the pump schedules nothing on SKIPPED")
-        assertFalse(platform.drained, "no settle: this engine is not the one the OS is presenting jobs to")
-        assertEquals(LedgerState.REQUESTED, backend.get("ext-primary.heic")?.state, "the other writer's row is untouched")
-        assertEquals(LedgerState.REQUESTED, backend.get("done-primary.heic")?.state, "nothing drained, nothing recorded")
-        assertEquals(emptyList<String>(), touched, "no manifest — not even an empty one")
-        assertTrue(platform.created.isEmpty(), "no upload job")
-        assertNull(platform.discoverPolicyArg, "the library is not walked")
+        assertEquals(listOf("a", "b"), first.created.map { it.filename })
+        assertTrue(second.created.isEmpty(), "no duplicate job start in a normal sequence")
+        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+    }
+
+    @Test
+    fun an_overlapping_duplicate_completion_is_a_guarded_no_op() = runTest {
+        // Both uploaders happened to create a job for the same key. Whichever completion lands first settles the
+        // row; the second matches no REQUESTED row and changes nothing.
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("dup-primary.heic", assetId = "dup")
+
+        assertTrue(backend.markTerminal("dup-primary.heic", TerminalOutcome.COMPLETED))
+        assertFalse(backend.markTerminal("dup-primary.heic", TerminalOutcome.FAILED), "the late duplicate is refused")
+        assertEquals(LedgerState.COMPLETED, backend.get("dup-primary.heic")?.state, "the row converges")
     }
 
     @Test
@@ -333,7 +318,7 @@ class UploadCycleTest {
             succeeded = listOf("done-primary.heic"),
             ackJobs = listOf(platformJob("spent-primary.heic", UploadError.Network)),
             ledger = backend,
-        ).apply { lost = setOf("lost-primary.heic"); live = emptySet() }
+        )
 
         val result = cycle(
             backend, platform,
@@ -349,42 +334,9 @@ class UploadCycleTest {
             "a retry-spent failure is adjudicated back to the work read — but not re-created here",
         )
         assertTrue(platform.created.isEmpty(), "no job is created, retries included")
-        assertEquals(LedgerState.REQUESTED, backend.get("lost-primary.heic")?.state, "no stranded pass")
-        assertTrue(platform.discarded.isEmpty(), "no lost-transfer discard either")
+        assertEquals(LedgerState.REQUESTED, backend.get("lost-primary.heic")?.state, "an in-flight row is left to its completion")
         assertEquals(emptyList<String>(), touched, "a temporary grant state publishes no manifest")
         assertNull(platform.discoverPolicyArg, "the library is not walked")
-    }
-
-    @Test
-    fun a_not_resolved_cycle_leaves_a_signalled_restart_pending() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("orphan-primary.heic", assetId = "orphan")
-        val platform = FakePlatform(ledger = backend).apply { live = emptySet(); lost = emptySet() }
-        var resolved = false
-        val c = cycle(
-            backend, platform,
-            readGate = {
-                if (resolved) {
-                    CycleGate.Run(
-                        UploadConfig(TEST_HOST, TEST_EVENT),
-                        JoinedMembership(TEST_EVENT, { admitting(TEST_CUTOFF) }, saveToAlbum = false),
-                    )
-                } else {
-                    CycleGate.NotResolved
-                }
-            },
-        )
-        c.signalRestart()
-
-        c.run()
-        assertEquals(LedgerState.REQUESTED, backend.get("orphan-primary.heic")?.state)
-
-        resolved = true
-        c.run()
-        assertEquals(
-            LedgerState.DISCOVERED, backend.get("orphan-primary.heic")?.state,
-            "the restart survived the declined cycle and was applied by the first admitted one",
-        )
     }
 
     @Test
@@ -751,149 +703,6 @@ class UploadCycleTest {
         assertTrue(platform.created.isEmpty())
     }
 
-    // ---- The stranded reconciliation (capability `ios-url-session-upload`) -----------------------------
-    // Decided HERE, over the sets the transport reports — the transfers it holds and the ones it began and lost —
-    // no longer inside the app-driven adapter, where no host test could reach it.
-
-    @Test
-    fun a_requested_row_the_transport_lost_is_recorded_failed() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("lost-primary.heic")
-        backend.inFlight("running-primary.heic")
-
-        cycleOver(backend, FakePlatform().apply { lost = setOf("lost-primary.heic") }).run()
-
-        assertEquals(
-            LedgerState.DISCOVERED, backend.get("lost-primary.heic")?.state,
-            "no completion will ever arrive for a transfer the transport lost, so the cycle records it",
-        )
-        assertEquals(LedgerState.REQUESTED, backend.get("running-primary.heic")?.state, "not lost: untouched")
-    }
-
-    @Test
-    fun a_requested_row_the_transport_never_began_is_left_to_whoever_carries_it() = runTest {
-        // No live transfer here and not lost here: another transport may be carrying it. Only a start may
-        // demote it, never an ordinary cycle.
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("other-primary.heic")
-
-        cycleOver(backend, FakePlatform().apply { live = emptySet(); lost = emptySet() }).run()
-
-        assertEquals(LedgerState.REQUESTED, backend.get("other-primary.heic")?.state)
-    }
-
-    @Test
-    fun a_transport_that_cannot_enumerate_strands_nothing() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("a-primary.heic")
-        val platform = FakePlatform().apply { live = null; lost = null }
-
-        cycleOver(backend, platform).run()
-
-        assertEquals(LedgerState.REQUESTED, backend.get("a-primary.heic")?.state, "a durable queue loses nothing")
-        assertEquals(emptyList<Set<String>>(), platform.discarded, "nothing to discard where nothing can be lost")
-    }
-
-    @Test
-    fun a_start_demotes_every_row_without_a_live_transfer_once() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("unstaged-primary.heic") // e.g. left by the other mechanism, or by an older build
-        backend.inFlight("running-primary.heic")
-        val platform = FakePlatform().apply { live = setOf("running-primary.heic"); lost = emptySet() }
-        val cycle = cycleOver(backend, platform)
-
-        cycle.signalRestart()
-        cycle.run()
-
-        assertEquals(LedgerState.DISCOVERED, backend.get("unstaged-primary.heic")?.state, "the restart rule needs no marker")
-        assertEquals(LedgerState.REQUESTED, backend.get("running-primary.heic")?.state, "a live transfer is untouched")
-
-        backend.inFlight("later-primary.heic")
-        cycle.run()
-
-        assertEquals(
-            LedgerState.REQUESTED, backend.get("later-primary.heic")?.state,
-            "the restart applies once; the next cycle is back on the per-cycle rule",
-        )
-    }
-
-    @Test
-    fun a_restart_waits_for_a_cycle_that_reaches_its_stranded_pass() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("unstaged-primary.heic")
-        var readable = false
-        val cycle = cycle(
-            backend,
-            FakePlatform().apply { live = emptySet(); lost = emptySet() },
-            readGate = {
-                if (readable) {
-                    CycleGate.Run(
-                        UploadConfig(host = TEST_HOST, eventId = TEST_EVENT),
-                        JoinedMembership(eventId = TEST_EVENT, policy = { admitting(TEST_CUTOFF) }, saveToAlbum = true),
-                    )
-                } else {
-                    CycleGate.Skip("protected data unavailable")
-                }
-            },
-        )
-
-        cycle.signalRestart()
-        cycle.run()
-        assertEquals(LedgerState.REQUESTED, backend.get("unstaged-primary.heic")?.state, "an unreadable cycle repairs nothing")
-
-        readable = true
-        cycle.run()
-        assertEquals(LedgerState.DISCOVERED, backend.get("unstaged-primary.heic")?.state, "the restart was still pending")
-    }
-
-    @Test
-    fun lost_transfers_are_discarded_only_after_their_rows_left_requested() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("lost-primary.heic")
-        val statesAtDiscard = mutableListOf<LedgerState?>()
-        val platform = FakePlatform().apply {
-            lost = setOf("lost-primary.heic")
-            onDiscard = { keys -> for (key in keys) statesAtDiscard += backend.get(key)?.state }
-        }
-
-        cycleOver(backend, platform).run()
-
-        assertEquals(listOf(setOf("lost-primary.heic")), platform.discarded)
-        assertEquals(listOf<LedgerState?>(LedgerState.DISCOVERED), statesAtDiscard, "the marker must outlive REQUESTED")
-    }
-
-    @Test
-    fun a_stranded_candidate_that_settled_before_the_write_is_left_as_it_stands() = runTest {
-        // The candidates are read before the write, and the two are not atomic. Model a row the platform's
-        // callback recorded COMPLETED in between by handing the pass a stale REQUESTED set.
-        val backend = InMemoryLedgerStore()
-        backend.completed(resource("done-primary.heic", "done"))
-        val stale = object : LedgerStore by backend {
-            override suspend fun requestedKeys(): Set<String> = setOf("done-primary.heic")
-        }
-
-        cycle(stale, FakePlatform().apply { lost = setOf("done-primary.heic") }).run()
-
-        assertEquals(
-            LedgerState.COMPLETED, backend.get("done-primary.heic")?.state,
-            "the guard in the write, not the read, keeps a settled row from being clobbered",
-        )
-    }
-
-    @Test
-    fun a_declined_cycle_still_reconciles_stranded_rows() = runTest {
-        val backend = InMemoryLedgerStore()
-        backend.inFlight("lost-primary.heic")
-
-        val result = decliningCycle(backend, FakePlatform().apply { lost = setOf("lost-primary.heic") }).run()
-
-        assertEquals(CycleResult.SKIPPED, result)
-        assertEquals(
-            LedgerState.DISCOVERED, backend.get("lost-primary.heic")?.state,
-            "the reconciliation rides the settlement a declined cycle still owes, exactly as the drain did",
-        )
-    }
-
     @Test
     fun retry_spent_failure_re_creates_from_the_job_resource_and_is_acknowledged() = runTest {
         val backend = InMemoryLedgerStore()
@@ -906,6 +715,53 @@ class UploadCycleTest {
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("a"), platform.created.map { it.filename }) // re-created
         assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+    }
+
+    @Test
+    fun retry_spent_failures_past_the_platform_limit_are_left_for_the_work_read() = runTest {
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordRequested(resource("a", "a"))
+        LedgerWriter(backend).recordRequested(resource("b", "b"))
+        val platform = FakePlatform(
+            discovered = listOf(resource("a", "a"), resource("b", "b")),
+            ackJobs = listOf(platformJob("a", UploadError.Network), platformJob("b", UploadError.Network)),
+            ledger = backend,
+            limitAfter = 1,
+        )
+
+        val result = cycleOver(backend, platform).run()
+
+        assertEquals(listOf("a"), platform.created.map { it.filename }, "the limit stops the re-creation")
+        assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state, "the refused one waits in the work read")
+        assertEquals(CycleResult.PROCESSING, result)
+    }
+
+    @Test
+    fun a_retry_spent_failure_without_its_resource_is_not_re_created() = runTest {
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordRequested(resource("a", "a"))
+        val job = PlatformUploadJob(key = "a", contentType = "image/jpeg", error = UploadError.Network, data = null)
+        // The platform is full, so the enqueue pass cannot re-create it from the ledger either.
+        val platform = FakePlatform(discovered = listOf(resource("a", "a")), ackJobs = listOf(job), ledger = backend, limitAfter = 0)
+
+        cycleOver(backend, platform).run()
+
+        assertTrue(platform.created.isEmpty(), "no resource to re-create from")
+        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "the failure is adjudicated back to the work read")
+    }
+
+    @Test
+    fun a_retry_spent_failure_for_a_settled_row_is_neither_adjudicated_nor_re_created() = runTest {
+        // Two uploaders can overlap: the other one's completion may have settled the row first.
+        val backend = InMemoryLedgerStore()
+        backend.completed(resource("a", "a"))
+        val platform = FakePlatform(ackJobs = listOf(platformJob("a", UploadError.Network)), ledger = backend)
+
+        cycleOver(backend, platform).run()
+        cycle(backend, platform, readGate = { CycleGate.Withheld(UploadConfig(TEST_HOST, TEST_EVENT)) }).run()
+
+        assertTrue(platform.created.isEmpty())
+        assertEquals(LedgerState.COMPLETED, backend.get("a")?.state, "a settled row is never re-opened")
     }
 
     @Test

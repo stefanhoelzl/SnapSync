@@ -164,16 +164,8 @@ class SqlDelightLedgerStore(
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         queries.selectNeedingJob(NEEDS_JOB_STATES, ::toEntry).executeAsList()
 
-    override suspend fun requestedKeys(): Set<String> =
-        queries.selectRequestedKeys().executeAsList().toSet()
-
     override suspend fun clear() {
         queries.deleteAll()
-        dings.tryEmit(Unit)
-    }
-
-    override suspend fun demoteRequested() {
-        queries.demoteRequested()
         dings.tryEmit(Unit)
     }
 

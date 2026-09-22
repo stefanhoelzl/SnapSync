@@ -450,4 +450,30 @@ class BackgroundUploadPumpTest {
         assertEquals(1, runs)
         assertEquals(1, scheduler.scheduled)
     }
+
+    // ---- a late completion re-pumps only when the app may create ----------------------------------
+
+    /**
+     * The transport records every completion before it calls the pump. The pump then drives a cycle only if the
+     * app may create now — late `-999`s after a revoke or a leave must not keep the app cycling (decision record
+     * `changes/both-uploaders-active`, D7).
+     */
+    @Test
+    fun a_completion_while_the_app_may_not_create_drives_no_cycle() = runTest {
+        val scheduler = FakeScheduler()
+        var runs = 0
+        var mayCreate = false
+        val pump = BackgroundUploadPump(
+            runCycle = { runs++; CycleResult.COMPLETED },
+            scheduler = scheduler,
+            mayCreate = { mayCreate },
+        )
+
+        pump.onUploadCompleted()
+        assertEquals(0, runs, "withheld: recorded by the transport, no cycle driven")
+
+        mayCreate = true
+        pump.onUploadCompleted()
+        assertEquals(1, runs, "admitted: the freed slot is topped up")
+    }
 }

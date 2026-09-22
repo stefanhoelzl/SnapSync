@@ -4,7 +4,6 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.LedgerState
-import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
 
@@ -96,20 +95,6 @@ class LedgerWriter(
      * the single writer and asks through this one seam.
      */
     suspend fun rowsNeedingJob(): List<LedgerEntry> = backend.rowsNeedingJob()
-
-    /**
-     * The `REQUESTED` keys — the candidates for the cycle's stranded reconciliation (capability
-     * `ios-url-session-upload`), read on the writer's face because the cycle that reconciles is the single
-     * writer.
-     */
-    suspend fun requestedKeys(): Set<String> = backend.requestedKeys()
-
-    /**
-     * Return a stranded in-flight row to `DISCOVERED`, through the same guarded [LedgerStore.markTerminal] the
-     * platform's callback uses — so a row that settled between the caller's read and this write is never
-     * clobbered. Answers whether it applied; `false` means the row moved on, which the caller reports.
-     */
-    fun markStranded(key: String): Boolean = backend.markTerminal(key, TerminalOutcome.FAILED)
 
     /**
      * Record a state transition, carrying the manifest detail off the resource that caused it — and

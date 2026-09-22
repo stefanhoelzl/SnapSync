@@ -177,7 +177,7 @@ provision that changes the membership loads it — and SHALL make **no registrat
 no-op for uploads. A re-scan changes nothing about the membership, so the extension's in-flight jobs SHALL
 survive it. The stale-record repair does not need it: a reinstall wipes the config with the App Group, so a
 reinstalled device always arrives as a real join, whose forced toggle repairs the record. The rule lives in
-the transitions feature, which the provision hands its switch decision (decision record:
+the membership entry, which alone reaches the join transition and which a `Stay` never runs (decision record:
 `changes/both-uploaders-active`, D5).
 
 #### Scenario: Valid re-scan re-baselines and re-projects to the new event

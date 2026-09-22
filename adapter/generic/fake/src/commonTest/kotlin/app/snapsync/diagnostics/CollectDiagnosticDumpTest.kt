@@ -68,6 +68,7 @@ class CollectDiagnosticDumpTest {
         permission = object : PhotoAccessStatusSource {
             override val permission: StateFlow<PermissionStatus> = MutableStateFlow(permission)
         },
+        uploadFacts = { mapOf("extension_registrable" to "false", "app_admission" to "Admit") },
         budgetBytes = budget,
     )
 
@@ -129,14 +130,17 @@ class CollectDiagnosticDumpTest {
                 buildNumber = "512",
                 osVersion = "iOS 26.5",
                 deviceModel = "iPhone12,8",
-                uploadTier = "photokit",
+                uploadTier = "app+extension",
                 uploadBase = "https://snapsync.stho.net/api/v2",
                 reporterEnvironment = "production",
             ),
         ).collect(NOTE, SCREEN)
 
         assertEquals("512", dump.state["build"])
-        assertEquals("photokit", dump.state["upload_tier"])
+        assertEquals("app+extension", dump.state["uploaders_carried"])
+        assertEquals("false", dump.state["extension_registrable"], "the upload facts, not a single tier")
+        assertEquals("Admit", dump.state["app_admission"])
+        assertEquals(null, dump.state["upload_tier"], "both uploaders may be active: there is no single tier")
         assertEquals("https://snapsync.stho.net/api/v2", dump.state["upload_base"])
         assertEquals("LIMITED", dump.state["photo_permission"])
         assertEquals("true", dump.state["joined"])

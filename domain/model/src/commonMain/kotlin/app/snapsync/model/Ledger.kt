@@ -58,8 +58,7 @@ class LedgerEntry(
         destinationPath == other.destinationPath
 
     /**
-     * The same row in [state], every other field unchanged — what a bulk state change such as
-     * `LedgerStore.demoteRequested` does to each row it matches.
+     * The same row in [state], every other field unchanged.
      */
     fun withState(state: LedgerState): LedgerEntry = LedgerEntry(
         key = key,
@@ -116,8 +115,9 @@ enum class LedgerState {
      * the assets the ledger does not fully know"): the work lives in this row, not in a re-read.
      *
      * It is recorded **before** the first `createJob` of a cycle. It does not mean a job exists — that is
-     * [REQUESTED], and the write-after-act invariant keeping those distinct is what lets the stranded pass
-     * treat a `REQUESTED` row with no live task as a lost transfer.
+     * [REQUESTED], and the write-after-act invariant keeping those distinct is what lets two uploaders share one
+     * ledger: a cycle picks only this state, so a row another cycle already has in flight is never re-picked
+     * (decision record `changes/both-uploaders-active`).
      *
      * Not a done state ([isDone]) and **does** need a job ([needsJob]), so it counts toward the backlog
      * everywhere. It is nonetheless DECLARED in the device manifest: that document states what this device

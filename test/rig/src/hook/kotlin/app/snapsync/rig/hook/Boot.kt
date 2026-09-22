@@ -14,14 +14,12 @@ import app.snapsync.rig.RigServer
 import app.snapsync.ios.upload.UploadExtensionRoot
 import app.snapsync.rig.RigTrigger
 import app.snapsync.rig.extensionTriggerGroup
-import app.snapsync.rig.resolvedMechanism
 import app.snapsync.rig.TriggerGroup
 import app.snapsync.rig.RigUserCommand
-import app.snapsync.rig.UploadMechanismPin
+import app.snapsync.rig.UploaderSwitch
 import app.snapsync.rig.deviceCommands
 import app.snapsync.rig.galleryReader
-import app.snapsync.model.PermissionStatus
-import app.snapsync.model.resolveUploadMechanism
+import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.osExtensionEnabled
 import app.snapsync.rig.rigPort
 import app.snapsync.rig.userCommands
@@ -65,19 +63,19 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * exactly what a real entry point would.
  */
 /**
- * The upload-mechanism pin's **only** touch on production: point the composition root's override thunk at
- * the channel's holder, before anything forces the graph.
+ * The uploader switch's **only** touch on production: point the composition root's switch thunk at the
+ * channel's holder, before anything forces the graph.
  *
  * A bare assignment, deliberately — this file is inside the shell gate's scanned roots and may hold no
- * decisions. Everything the pin does (parsing, clamping, reporting what actually resolves) is in
- * `:test:rig`, on the far side of the seam. `SnapSyncRoot.uploadMechanismOverrideSource` defaults to
+ * decisions. Everything the switch does (parsing, reporting what it produces) is in `:test:rig`, on the far
+ * side of the seam. `SnapSyncRoot.uploaderPinSource` defaults to
  * `{ null }` and this line is its only assigner anywhere, so a build compiled without
  * `-Psnapsync.rig=true` — which contains none of this file — cannot carry a pin at all.
  */
 @EagerInitialization
 @Suppress("unused")
-private val uploadMechanismPin: Unit = run {
-    SnapSyncRoot.uploadMechanismOverrideSource = UploadMechanismPin::pinned
+private val uploaderSwitch: Unit = run {
+    SnapSyncRoot.uploaderPinSource = UploaderSwitch::pinned
 }
 
 @EagerInitialization
@@ -103,12 +101,8 @@ private fun startRig() = RigServer(
  */
 private fun iosHooks() = RigHooks(
     bootedAt = NSDate().description,
-    // The tier this OS is on, which is what this field has always reported. Which mechanism is RUNNING
-    // is now a runtime fact that changes with permission, so it is not a boot-time value.
-    uploadTier = resolveUploadMechanism(
-        backgroundUploadSupported = SnapSyncRoot.osSupportsOsDrivenUpload,
-        permission = PermissionStatus.GRANTED,
-    ).diagnosticName,
+    // Which uploaders this OS carries — a build constant. What each may do now varies with the grant.
+    uploadTier = uploadersCarried(SnapSyncRoot.osSupportsOsDrivenUpload),
     uploadBase = bakedUploadBase(),
     // A compile-time fact, read rather than derived: the adapter that CHOSE the binding is the one that
     // reports it, so the rig cannot disagree with the transport about what this build does.
@@ -135,11 +129,6 @@ private fun iosHooks() = RigHooks(
             // `SnapSyncRoot.app` and `.host`, and for the same reason.
             process = { UploadExtensionRoot.processRawValue() },
             terminate = { UploadExtensionRoot.onTerminate() },
-            resolvedMechanism = resolvedMechanism(
-                osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
-                permission = { SnapSyncRoot.permission.permission.value },
-            ),
-            permission = { SnapSyncRoot.permission.permission.value },
             excluded = excludedExtensionTriggers(),
         ),
     ),

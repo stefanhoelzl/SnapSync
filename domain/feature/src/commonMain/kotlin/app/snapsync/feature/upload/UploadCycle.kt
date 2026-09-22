@@ -116,9 +116,6 @@ class UploadCycle(
     // different reasons — and now stated once instead of copied.
     private val deviceManifestTimeoutMs: Long = 12_000L,
 ) {
-    /** Set by [signalRestart], cleared by the stranded pass that applies the restart rule. */
-    private var restartSignalled = false
-
     /**
      * One cycle, in four stages: **settle** establishes what is true, **decide** reads, **update**
      * writes what is ours, **publish** writes what the event can see.
@@ -169,20 +166,13 @@ class UploadCycle(
                 log.i { "skipping cycle — no joined event / host" }
                 return Settled.Short(CycleOutcome.NotJoined)
             }
-            CycleGate.NotResolved -> {
-                // Another mechanism is the resolved one (capability `upload-lifecycle`). Touch NOTHING — not
-                // even the settle: this transport holds no transfer for the rows the other process requested,
-                // so its stranded pass would demote them. Routine: every trigger reaches this engine.
-                log.i { "skipping cycle — this engine is not the resolved upload mechanism; nothing settled or written" }
-                return Settled.Short(CycleOutcome.NotResolved)
-            }
             is CycleGate.Withheld -> {
-                // No full grant in a process that would read the whole library. Still owed: acknowledging what
-                // the platform presented (50008 otherwise). Not owed, and not safe: creating work or demoting
-                // rows while another process may be the writer.
+                // This process may not create now (the extension without a full grant; the app without usable
+                // access, or switched off by the rig). Still owed: recording and acknowledging what the platform
+                // presented (50008 otherwise). Not owed, and not safe: reading the library or creating work.
                 acknowledgePresented(engineFor(gate.config))
                 log.i {
-                    "cycle withheld — no full photo grant in this process; presented jobs acknowledged, " +
+                    "cycle withheld — this process may not create now; presented jobs acknowledged, " +
                         "nothing created, nothing published"
                 }
                 return Settled.Short(CycleOutcome.Withheld)
@@ -571,8 +561,8 @@ class UploadCycle(
 
             // A temporary state of this process, not of the membership: publish NOTHING. The empty manifest a
             // declined direction publishes would remove this device's photos from every member's view the
-            // moment a grant flipped, or whenever the other process happened to be the resolved one.
-            CycleOutcome.NotResolved, CycleOutcome.Withheld -> Unit
+            // moment a grant flipped.
+            CycleOutcome.Withheld -> Unit
 
             // A membership that shares nothing publishes an EMPTY manifest: that is the honest statement
             // of its state, and leaving a stale one in place would keep advertising photos the member has
@@ -692,12 +682,7 @@ class UploadCycle(
             override val result get() = CycleResult.SKIPPED
         }
 
-        /** This process's engine is not the resolved mechanism. Nothing was touched. */
-        data object NotResolved : CycleOutcome {
-            override val result get() = CycleResult.SKIPPED
-        }
-
-        /** No full grant here: the presented jobs were acknowledged, nothing was created. */
+        /** This process may not create now: the presented jobs were acknowledged, nothing was created. */
         data object Withheld : CycleOutcome {
             override val result get() = CycleResult.SKIPPED
         }
@@ -808,8 +793,8 @@ class UploadCycle(
      * The **narrow** settle of a withheld cycle (capability `upload-lifecycle`, "Settling with the platform is
      * owed regardless of the cycle's other outcomes"): record and acknowledge every terminal job the platform
      * presented — the drain does both — and adjudicate the retry-spent failures it hands back, returning their
-     * rows to `DISCOVERED`. Unlike [recreateRetrySpent] it creates no job and runs no stranded pass: either
-     * would write the ledger for work this process may not own.
+     * rows to `DISCOVERED`. Unlike [recreateRetrySpent] it creates no job — not even a retry's replacement — because
+     * a withheld process may not create (decision record `changes/both-uploaders-active`, D3).
      */
     private suspend fun acknowledgePresented(engine: SyncEngine) {
         for (job in platform.drainTerminals()) {
@@ -821,8 +806,6 @@ class UploadCycle(
     private suspend fun recreateRetrySpent(engine: SyncEngine): Boolean {
         var capHit = false
         val returned = platform.drainTerminals()
-        // The transport reported what it still holds; which in-flight rows it has lost is decided here.
-        reconcileStranded()
         for (job in returned) {
             // At-least-once: the platform can hand back a failure for a key that has since settled (its
             // own guarded write already declined to touch it). Adjudicating anyway would drive the engine
@@ -838,66 +821,6 @@ class UploadCycle(
             }
         }
         return capHit
-    }
-
-    /**
-     * Return to `DISCOVERED` every `REQUESTED` row whose transfer was lost (capability `ios-url-session-upload`,
-     * "Stranded reconciliation: scoped each cycle, complete at a start"), then have the transport discard what
-     * it kept for its lost transfers.
-     *
-     * A transfer the OS dropped, or a force-quit cancelled, delivers no completion at all, so nothing else will
-     * ever move that row — and the engine never re-issues a `REQUESTED` key, so without this the photo is
-     * abandoned silently. Which rule applies is [strandedEachCycle] normally and [strandedAtStart] once after
-     * [signalRestart]; a transport that answers `null` for the set a rule needs reconciles nothing, and a
-     * pending restart then stays pending.
-     *
-     * Two things this deliberately does NOT do. It considers nothing but `REQUESTED` rows: a `DISCOVERED` row
-     * is already back in the work read, and re-reporting it every cycle claimed a loss that did not happen (a field log
-     * showed one key "stranded" twelve times inside a single process). And it does not ask storage whether the
-     * bytes landed: with the terminal outcome recorded when the platform reports it, what is left here
-     * genuinely did not land, and a re-PUT is idempotent and cheaper than a listing.
-     *
-     * The candidates are read before the write and the two are not atomic; the guard in the write, not the
-     * read, is what keeps a row that settled in between from being clobbered. The discard comes last and reads
-     * the lost set afresh: by then none of those rows can still be `REQUESTED`, and no transfer is begun until
-     * this same single-flight cycle creates jobs.
-     */
-    private suspend fun reconcileStranded() {
-        val atStart = restartSignalled
-        val candidates = strandedCandidates(atStart) ?: return
-        if (atStart) restartSignalled = false
-        for (key in candidates) {
-            if (ledger.markStranded(key)) {
-                val why = if (atStart) "no live task at a start" else "transfer lost"
-                log.i { "reconcile: stranded REQUESTED $key ($why) — returned to DISCOVERED to re-upload" }
-            } else {
-                // Not silent: the row moved on under us, which is a different fact from "recorded".
-                log.i { "reconcile: stranded $key settled underneath this pass — left as it stands" }
-            }
-        }
-        platform.lostKeys()?.takeIf { it.isNotEmpty() }?.let { platform.discard(it) }
-    }
-
-    /** The keys the applicable rule selects, or `null` where the transport cannot answer the set it needs. */
-    private suspend fun strandedCandidates(atStart: Boolean): List<String>? =
-        if (atStart) {
-            platform.liveKeys()?.let { live -> strandedAtStart(pending = ledger.requestedKeys(), live = live) }
-        } else {
-            platform.lostKeys()?.let { lost -> strandedEachCycle(pending = ledger.requestedKeys(), lost = lost) }
-        }
-
-    /**
-     * A mechanism start happened: the next stranded pass applies [strandedAtStart] once, instead of the
-     * per-cycle rule.
-     *
-     * A flag rather than a pass run here, because the caller — a mechanism's `start()` — sits outside the
-     * pump's single flight, where reading live transfers and `REQUESTED` rows could interleave with a job
-     * creation and demote a transfer that is live. Consumed by whichever cycle next reaches its stranded pass,
-     * so a start that coalesces into a running drain still gets its repair. Process state by design: a process
-     * that dies before a cycle consumes it loses it, and the next process's start signals it again.
-     */
-    fun signalRestart() {
-        restartSignalled = true
     }
 
 }

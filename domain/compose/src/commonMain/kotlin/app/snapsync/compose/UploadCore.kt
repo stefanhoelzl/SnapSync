@@ -60,19 +60,20 @@ class UploadPorts(
     val diagnosticsReporter: DiagnosticsReporter,
     /**
      * Whether this process may run a cycle now (capability `upload-lifecycle`, "The upload cycle owns its entry
-     * decision"), read once per gate. Required, with **no default**: the app answers from resolution (admit
-     * only when the app-driven mechanism is the resolved one), the extension from its own photo grant (admit
-     * only under `GRANTED`), and a default would state either answer silently — one of them is the two-writer
-     * bug. It is decided before the membership's policy is built, so an undetermined grant never reaches the
+     * decision"), read once per gate. Required, with **no default**: the app answers from its grant (admit under
+     * any usable grant), the extension from its own photo grant (admit only under `GRANTED`), and a default
+     * would state either answer silently — for the extension, a wrong admit reads the whole library under a
+     * partial grant. It is decided before the membership's policy is built, so an undetermined grant never reaches the
      * album read that prompts.
      */
     val admission: () -> UploadAdmission,
     /**
      * What upload discovery may read (capability `limited-photo-access`): [SelectionScope.Unrestricted]
      * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
-     * platform read. The default keeps every full-grant composition byte-identical — the extension
-     * root never sees a partial grant (the OS does not invoke it there), and the world opts in per
-     * test. Derived by the app composition from current permission + the latest snapshot.
+     * platform read. The default keeps every full-grant composition byte-identical — the extension root
+     * keeps it because it never reads the library under a partial grant: the OS does invoke a surviving
+     * registration there (measured SE2/26.6, 2026-09-21), but its admission withholds before any read — and
+     * the world opts in per test. Derived by the app composition from current permission + the latest snapshot.
      */
     val selectionScope: () -> SelectionScope = { SelectionScope.Unrestricted },
     val manifestStore: DeviceManifestStore,

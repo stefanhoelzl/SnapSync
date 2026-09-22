@@ -54,7 +54,7 @@ class TransportLedgerGateTest {
             offenders.isEmpty(),
             "these transport adapters reference LedgerStore:\n  ${offenders.joinToString("\n  ")}\n" +
                 "A transport receives a TransferRecord — the guarded terminal write and the destination lookup — " +
-                "and nothing wider. Which in-flight rows it has lost is the cycle's decision, over liveKeys(). " +
+                "and nothing wider. " +
                 "See `sync-ledger`, \"Reader and writer capability split\".",
         )
     }

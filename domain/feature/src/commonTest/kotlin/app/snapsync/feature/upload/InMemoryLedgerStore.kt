@@ -41,13 +41,6 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun demoteRequested() {
-        for (row in entries.entries) {
-            if (row.value.state == LedgerState.REQUESTED) row.setValue(row.value.withState(LedgerState.DISCOVERED))
-        }
-        dings.tryEmit(Unit)
-    }
-
     override suspend fun resetTo(seed: List<LedgerEntry>) {
         val next = seed.associateByTo(mutableMapOf()) { it.key }
         entries.clear()
@@ -122,7 +115,4 @@ class InMemoryLedgerStore : LedgerStore {
     override suspend fun rowsNeedingJob(): List<LedgerEntry> =
         entries.values.filter { it.state.needsJob }
             .sortedBy { it.key }
-
-    override suspend fun requestedKeys(): Set<String> =
-        entries.values.filter { it.state == LedgerState.REQUESTED }.mapTo(mutableSetOf()) { it.key }
 }

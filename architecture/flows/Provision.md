@@ -22,11 +22,9 @@ sequenceDiagram
   alt switchDecision(activeEventId(), cfg.eventId) = is SwitchDecision.Enter
     Provision->>effects: enterMembership(…)
   else switchDecision(activeEventId(), cfg.eventId) = SwitchDecision.Stay
-    Note over Provision: nothing
+    Provision->>effects: saveConfig(…)
   end
-  Provision->>effects: saveConfig(…)
   Provision->>effects: refreshStatus()
-  Provision->>effects: reconcileUploads()
   Provision->>albumCoordinator: ensureAlbum(…)
   par concurrent — awaited before the flow returns
     Provision--)downloadController: reconcile(…)

@@ -1,19 +1,21 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.PermissionStatus
-import app.snapsync.model.UploadMechanism
-import app.snapsync.model.resolveUploadMechanism
+import app.snapsync.model.UploaderPin
+import app.snapsync.model.extensionRegistrable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The membership transitions (capability `upload-lifecycle`, "Membership transitions reconcile the upload
- * mechanisms in one tested place"), over the REAL resolver and fakes for the two mechanisms.
+ * mechanisms in one tested place"), over the REAL registration fact and fakes for the registration and the app
+ * engine.
  *
- * Every assertion is on the ORDERED log of mechanism verbs, because order is half of what this class decides:
- * stand-down first, so the ritual's demote never meets a live app transfer and the app engine is never armed over
- * a live extension registration.
+ * Every assertion is on the ORDERED log of verbs. The table under test (decision record
+ * `changes/both-uploaders-active`, D5): the registration spans the membership and only a leave deregisters or
+ * cancels. A re-provision of the joined event never reaches the transitions at all (`ProvisionTest`).
  */
 class UploadTransitionsTest {
 
@@ -39,21 +41,22 @@ class UploadTransitionsTest {
     private class FakeEngine(private val log: MutableList<String>) : AppUploadEngine {
         override suspend fun arm() { log += "arm" }
         override suspend fun disarm() { log += "disarm" }
+        override suspend fun cancelTransfers() { log += "cancel" }
         override suspend fun onForeground() = Unit
         override suspend fun onSilentPush(eventId: String) = Unit
         override suspend fun onBackgroundTask() = Unit
         override suspend fun onSelectionChanged() = Unit
     }
 
-    private class World(osSupported: Boolean = true, var grant: PermissionStatus, var posture: Boolean? = true) {
+    private class World(osSupported: Boolean = true, var grant: PermissionStatus, var joined: Boolean = true) {
         val log = mutableListOf<String>()
-        var pin: UploadMechanism? = null
+        var pin: UploaderPin? = null
         val registration = FakeRegistration(log, { grant })
         private val engine = FakeEngine(log)
         val transitions = UploadTransitions(
-            resolve = { resolveUploadMechanism(osSupported, grant, pin) },
-            membershipIncludesUpload = { posture },
+            joined = { joined },
             permission = { grant },
+            extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
             registration = registration.takeIf { osSupported },
             appEngine = { engine },
         )
@@ -61,179 +64,180 @@ class UploadTransitionsTest {
         fun clear() = log.clear()
     }
 
-    // ---- join: forced -----------------------------------------------------------------------------------
+    // ---- join -------------------------------------------------------------------------------------------
 
     @Test
-    fun `a join under a full grant disarms the app engine — then registers through the ritual`() = runTest {
+    fun `a join under a full grant registers through the toggle and arms the app`() = runTest {
         val w = World(grant = PermissionStatus.GRANTED)
         w.registration.registered = true // a stale record that still reads "enabled": a join repairs it anyway
 
         w.transitions.onJoin()
 
-        assertEquals(listOf("disarm", "register"), w.log)
+        assertEquals(listOf("register", "arm"), w.log)
     }
 
     @Test
-    fun `a join under a limited grant forces the deregistration — then arms the app engine`() = runTest {
+    fun `a join under a limited grant arms the app and attempts no registration write`() = runTest {
         val w = World(grant = PermissionStatus.LIMITED)
 
         w.transitions.onJoin()
 
-        assertEquals(listOf("deregister", "arm"), w.log, "the forced write is attempted; its refusal is the platform's")
+        assertEquals(listOf("arm"), w.log)
     }
 
     @Test
-    fun `a download-only join stands everything down`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED, posture = false)
-        w.registration.registered = true
-
-        w.transitions.onJoin()
-
-        assertEquals(listOf("disarm", "deregister"), w.log)
-        assertEquals(false, w.registration.registered)
-    }
-
-    @Test
-    fun `a join below iOS 26_1 only arms the app engine`() = runTest {
+    fun `a join below 26_1 arms the app alone`() = runTest {
         val w = World(osSupported = false, grant = PermissionStatus.GRANTED)
 
         w.transitions.onJoin()
 
-        assertEquals(listOf("arm"), w.log, "no registration exists to touch where its selector does not")
+        assertEquals(listOf("arm"), w.log)
     }
 
     @Test
-    fun `a join without usable access disarms and leaves the registration alone`() = runTest {
-        val w = World(grant = PermissionStatus.NOT_DETERMINED)
+    fun `a join without usable access registers nothing and disarms`() = runTest {
+        val w = World(grant = PermissionStatus.DENIED)
 
         w.transitions.onJoin()
 
         assertEquals(listOf("disarm"), w.log)
     }
 
-    // ---- compared transitions ---------------------------------------------------------------------------
+    // ---- reconfigure ------------------------------------------------------------------------------------
 
     @Test
-    fun `reconfiguring a download-only membership to upload registers the extension it lost at the join`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED, posture = false)
-        w.transitions.onJoin()
-        w.clear()
+    fun `a reconfigure never touches the registration and arms the app`() = runTest {
+        val w = World(grant = PermissionStatus.GRANTED)
+        w.registration.registered = true
 
-        w.posture = true
         w.transitions.onReconfigure()
 
-        assertEquals(listOf("disarm", "register"), w.log, "compared: wanted and absent registers")
-        assertEquals(true, w.registration.registered)
+        assertEquals(listOf("arm"), w.log)
+    }
+
+    // ---- permission change and launch: compared, never deregister ----------------------------------------
+
+    @Test
+    fun `a permission upgrade registers a missing record and arms the app`() = runTest {
+        val w = World(grant = PermissionStatus.GRANTED)
+
+        w.transitions.onPermissionChanged()
+
+        assertEquals(listOf("register", "arm"), w.log)
     }
 
     @Test
-    fun `a launch with a live registration writes nothing to it`() = runTest {
+    fun `a permission change finding the record present writes nothing`() = runTest {
         val w = World(grant = PermissionStatus.GRANTED)
         w.registration.registered = true
 
-        w.transitions.onLaunch()
+        w.transitions.onPermissionChanged()
 
-        assertEquals(listOf("disarm"), w.log, "the extension's in-flight jobs survive the launch")
+        assertEquals(listOf("arm"), w.log)
     }
 
     @Test
-    fun `a launch with the registration missing registers through the ritual`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
-
-        w.transitions.onLaunch()
-
-        assertEquals(listOf("disarm", "register"), w.log)
-    }
-
-    @Test
-    fun `a launch on the app-driven mechanism arms it`() = runTest {
-        val w = World(osSupported = false, grant = PermissionStatus.GRANTED)
-
-        w.transitions.onLaunch()
-
-        assertEquals(listOf("arm"), w.log, "the arm carries the restart signal and the first heartbeat")
-    }
-
-    @Test
-    fun `limited to full disarms the app engine before registering`() = runTest {
+    fun `a downgrade to limited cancels nothing and writes no registration`() = runTest {
         val w = World(grant = PermissionStatus.LIMITED)
-        w.transitions.onJoin()
-        w.clear()
+        w.registration.registered = true // survived the downgrade
 
-        w.grant = PermissionStatus.GRANTED
         w.transitions.onPermissionChanged()
 
-        assertEquals(listOf("disarm", "register"), w.log)
+        assertEquals(listOf("arm"), w.log)
+        assertTrue(w.registration.registered)
     }
 
     @Test
-    fun `full to limited attempts no registration write and arms the app engine`() = runTest {
+    fun `revocation disarms the heartbeat and cancels nothing`() = runTest {
+        for (grant in listOf(PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED)) {
+            val w = World(grant = grant)
+            w.registration.registered = true
+
+            w.transitions.onPermissionChanged()
+
+            assertEquals(listOf("disarm"), w.log, "$grant")
+            assertTrue(w.registration.registered, "$grant: the registration is left as it is")
+        }
+    }
+
+    @Test
+    fun `a grant with no event configured arms nothing and registers nothing`() = runTest {
+        for (grant in PermissionStatus.entries) {
+            val w = World(grant = grant, joined = false)
+
+            w.transitions.onPermissionChanged()
+            w.transitions.onLaunch()
+            w.transitions.onReconfigure()
+
+            assertEquals(emptyList(), w.log, "$grant")
+        }
+    }
+
+    @Test
+    fun `a launch compares and registers only`() = runTest {
         val w = World(grant = PermissionStatus.GRANTED)
-        w.transitions.onJoin()
+        w.transitions.onLaunch()
+        assertEquals(listOf("register", "arm"), w.log)
+
         w.clear()
-
-        w.grant = PermissionStatus.LIMITED
-        w.transitions.onPermissionChanged()
-
-        assertEquals(listOf("arm"), w.log, "compared under a partial grant changes nothing — it would be refused")
-        assertEquals(true, w.registration.registered, "the record survives; the extension withholds at its gate")
+        w.transitions.onLaunch()
+        assertEquals(listOf("arm"), w.log, "a present record is left alone — its in-flight jobs survive a launch")
     }
 
-    @Test
-    fun `revocation disarms the app engine and leaves the registration`() = runTest {
-        val w = World(osSupported = false, grant = PermissionStatus.GRANTED)
-        w.transitions.onJoin()
-        w.clear()
-
-        w.grant = PermissionStatus.DENIED
-        w.transitions.onPermissionChanged()
-
-        assertEquals(listOf("disarm"), w.log)
-    }
+    // ---- the rig switch ---------------------------------------------------------------------------------
 
     @Test
-    fun `a grant with no membership arms nothing and registers nothing`() = runTest {
-        val w = World(grant = PermissionStatus.NOT_DETERMINED, posture = null)
-
-        w.grant = PermissionStatus.GRANTED
-        w.transitions.onPermissionChanged()
-
-        assertEquals(listOf("disarm"), w.log, "no event, no arm — the join is what brings a mechanism up")
-    }
-
-    @Test
-    fun `a pin to the app-driven mechanism under a full grant deregisters the extension`() = runTest {
+    fun `switching the extension off deregisters it now and nothing else does`() = runTest {
         val w = World(grant = PermissionStatus.GRANTED)
-        w.transitions.onJoin()
-        w.clear()
+        w.registration.registered = true
+        w.pin = UploaderPin(extension = false)
 
-        w.pin = UploadMechanism.URL_SESSION
+        w.transitions.onPermissionChanged()
+        assertEquals(listOf("arm"), w.log, "a permission change never deregisters, even when switched off")
+
+        w.clear()
         w.transitions.onOverrideChanged()
+        assertEquals(listOf("deregister", "arm"), w.log)
 
-        assertEquals(listOf("deregister", "arm"), w.log, "the extension cannot read the pin; deregistering it can")
-        assertEquals(false, w.registration.registered)
-    }
-
-    @Test
-    fun `a pin to idle under a full grant deregisters the extension too`() = runTest {
-        val w = World(grant = PermissionStatus.GRANTED)
-        w.transitions.onJoin()
         w.clear()
-
-        w.pin = UploadMechanism.IDLE
+        w.pin = null
         w.transitions.onOverrideChanged()
-
-        assertEquals(listOf("disarm", "deregister"), w.log, "\"run nothing\" must reach the extension, which cannot read it")
+        assertEquals(listOf("register", "arm"), w.log, "switching it back on registers the missing record")
     }
 
     // ---- leave ------------------------------------------------------------------------------------------
 
     @Test
-    fun `a leave stands everything down — whatever the grant`() = runTest {
+    fun `a leave deregisters then disarms and cancels the app's transfers`() = runTest {
+        val w = World(grant = PermissionStatus.GRANTED)
+        w.registration.registered = true
+
+        w.transitions.onLeave()
+
+        assertEquals(listOf("deregister", "disarm", "cancel"), w.log)
+    }
+
+    @Test
+    fun `below 26_1 a leave and a compared reconcile touch only the app engine`() = runTest {
+        val w = World(osSupported = false, grant = PermissionStatus.GRANTED)
+
+        w.transitions.onPermissionChanged()
+        w.transitions.onLeave()
+
+        assertEquals(listOf("arm", "disarm", "cancel"), w.log)
+    }
+
+    @Test
+    fun `only a leave cancels transfers`() = runTest {
         for (grant in PermissionStatus.entries) {
             val w = World(grant = grant)
-            w.transitions.onLeave()
-            assertEquals(listOf("deregister", "disarm"), w.log, "under $grant")
+            w.transitions.onJoin()
+            w.transitions.onReconfigure()
+            w.transitions.onPermissionChanged()
+            w.transitions.onLaunch()
+            w.transitions.onOverrideChanged()
+            assertTrue("cancel" !in w.log, "$grant: ${w.log}")
+            assertTrue("deregister" !in w.log, "$grant: ${w.log}")
         }
     }
 }
