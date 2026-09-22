@@ -63,6 +63,6 @@
 ## 10. Verification
 
 - [ ] 10.1 `./gradlew build` green, including `:test:architecture`, `detektAppShell` and the `architectureDiagrams` freshness check (regenerate and commit if the module graph changed)
-- [ ] 10.2 All `iosSimulatorArm64Test`s green on the Mac
+- [x] 10.2 All `iosSimulatorArm64Test`s green on the Mac
 - [ ] 10.3 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate establish-port-contracts --strict` pass
 - [ ] 10.4 Before archive: give `port-contracts` a real `## Purpose` (the archive mints a placeholder) and run the three archive gates in `openspec/config.yaml`
