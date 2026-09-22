@@ -93,6 +93,7 @@ edge :test:rig :adapter:ios:ext-safe
 edge :test:rig :domain:compose
 edge :test:rig :domain:model
 edge :test:rig :domain:ports
+edge :test:rig :test:contracts
 edge :test:rig :ui:presentation
 edge :test:world :adapter:generic:app
 edge :test:world :adapter:generic:fake

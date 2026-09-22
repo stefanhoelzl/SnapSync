@@ -101,6 +101,7 @@ flowchart LR
   test_rig --> domain_compose
   test_rig --> domain_model
   test_rig --> domain_ports
+  test_rig --> test_contracts
   test_rig --> ui_presentation
   test_world --> adapter_generic_app
   test_world --> adapter_generic_fake
