@@ -30,10 +30,6 @@ import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.create
-import platform.Security.SecItemAdd
-import platform.Security.SecItemCopyMatching
-import platform.Security.SecItemDelete
-import platform.Security.SecItemUpdate
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessGroup
@@ -101,11 +97,16 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
  *
  * Decision record: `changes/archive/2026-07-20-fix-split-device-identity`.
  */
-class IosKeychain(
+class IosKeychain internal constructor(
     private val service: String,
     private val account: String,
-    private val accessGroup: String? = null,
+    private val accessGroup: String?,
+    /** Where the four `SecItem*` calls go: the real Keychain, or — in a contract run — a recording. */
+    private val keychain: KeychainApi,
 ) : SecureStore {
+
+    constructor(service: String, account: String, accessGroup: String? = null) :
+        this(service, account, accessGroup, SystemKeychainApi)
 
     /**
      * One query returns **both** the value and its accessibility class, so detecting a legacy item
@@ -117,7 +118,7 @@ class IosKeychain(
         CFDictionaryAddValue(query, kSecReturnAttributes, kCFBooleanTrue)
         CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
         val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
+        val status = keychain.copyMatching(query, result.ptr)
         CFRelease(query)
 
         // The load-bearing distinction: ONLY item-not-found means "there is no value". Every other
@@ -208,7 +209,7 @@ class IosKeychain(
         val cfData = CFBridgingRetain(value.encodeToByteArray().toNSData())
         CFDictionaryAddValue(addQuery, kSecValueData, cfData)
         applyWrittenAttributes(addQuery)
-        val status = SecItemAdd(addQuery, null)
+        val status = keychain.add(addQuery)
         CFRelease(addQuery)
         CFBridgingRelease(cfData)
         if (status != errSecSuccess) throw SecureStoreUnavailable(diagnostic(status))
@@ -223,7 +224,7 @@ class IosKeychain(
         val query = baseQuery()
         val attributes = newDictionary()
         applyWrittenAttributes(attributes)
-        val status = SecItemUpdate(query, attributes)
+        val status = keychain.update(query, attributes)
         CFRelease(query)
         CFRelease(attributes)
         // Best-effort: a device that cannot be migrated right now keeps its (readable) item and retries
@@ -235,7 +236,7 @@ class IosKeychain(
 
     override fun delete() {
         val deleteQuery = baseQuery()
-        SecItemDelete(deleteQuery)
+        keychain.delete(deleteQuery)
         CFRelease(deleteQuery)
     }
 

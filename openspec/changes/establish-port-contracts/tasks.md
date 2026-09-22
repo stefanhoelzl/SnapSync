@@ -28,7 +28,7 @@
 
 ## 4. The Keychain OS seam
 
-- [ ] 4.1 Introduce an `internal` seam in `:adapter:ios:ext-safe` over `SecItemAdd` / `SecItemCopyMatching` / `SecItemUpdate` / `SecItemDelete`, with the real implementation calling the platform; route `IosKeychain` through it with no behaviour change
+- [x] 4.1 Introduce an `internal` seam in `:adapter:ios:ext-safe` over `SecItemAdd` / `SecItemCopyMatching` / `SecItemUpdate` / `SecItemDelete`, with the real implementation calling the platform; route `IosKeychain` through it with no behaviour change
 - [ ] 4.2 Confirm `IosKeychainTest`, `KeychainDeviceIdentityTest`, `KeychainAttestStoreTest` and `KeychainContainmentTest` pass unchanged
 
 ## 5. Recording on the device

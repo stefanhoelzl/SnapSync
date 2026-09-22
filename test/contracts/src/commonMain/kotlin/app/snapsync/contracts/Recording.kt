@@ -13,7 +13,7 @@ package app.snapsync.contracts
  * # device: iPhone SE (2nd generation)
  * ...
  * [CLAUSE_ID]
- * SecItemAdd(acct=a pdmn=ck svce=s v_Data=x) -> 0
+ * add(acct=a pdmn=ck svce=s v_Data=x) -> 0
  * ```
  *
  * Header lines are `# key: value` in insertion order; blocks are sorted by clause id; each line is

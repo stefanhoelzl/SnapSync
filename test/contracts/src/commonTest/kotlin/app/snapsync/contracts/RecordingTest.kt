@@ -11,10 +11,10 @@ class RecordingTest {
         # contract: SecureStore
         # host: IOS_DEVICE_APP
         [B]
-        SecItemDelete(acct=b) -> -25300
+        remove(acct=b) -> -25300
         [A]
-        SecItemAdd(acct=a pdmn=ck) -> 0
-        SecItemCopyMatching(acct=a) -> 0 pdmn=ck
+        add(acct=a pdmn=ck) -> 0
+        find(acct=a) -> 0 pdmn=ck
     """.trimIndent() + "\n"
 
     @Test
@@ -31,7 +31,7 @@ class RecordingTest {
     fun `malformed input names the line`() {
         val e = assertFailsWith<IllegalArgumentException> { Recording.parse("[A]\nno arrow here\n") }
         assertTrue("line 2" in e.message.orEmpty(), e.message)
-        assertFailsWith<IllegalArgumentException> { Recording.parse("SecItemAdd() -> 0\n") }
+        assertFailsWith<IllegalArgumentException> { Recording.parse("add() -> 0\n") }
         assertFailsWith<IllegalArgumentException> { Recording.parse("[A]\n[A]\n") }
     }
 
