@@ -26,6 +26,13 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
 
 /**
+ * How many admitted rows one resolve round-trip takes. A granularity, not a cap: creation stops at the
+ * platform's own `LIMIT_EXCEEDED`, and this bounds only the resolves a refusal mid-chunk wastes. Four matches the
+ * app-driven transport's in-flight cap (decision record `changes/both-uploaders-active`, D9).
+ */
+internal const val RESOLVE_CHUNK = 4
+
+/**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
  * retry), then walk the library, record what it found, and create jobs from the ledger — all gated by the
  * [engine]. This is the testable core: it depends only on the [engine], the [ledger] (to reconstruct
@@ -108,17 +115,6 @@ class UploadCycle(
     // overruns gets the worker force-killed with error 50001); the app tier's is prudence. Same number,
     // different reasons — and now stated once instead of copied.
     private val deviceManifestTimeoutMs: Long = 12_000L,
-    // How many rows one cycle RESOLVES from the ledger. Defaulted, like the budgets above, because there
-    // is a safe value: it bounds a platform round-trip, never a durable write. What is CREATED is bounded
-    // by the platform itself — which is the only thing that knows how many transfers it will take, and on
-    // the app-driven tier the same limit bounds staged temp-file disk.
-    //
-    // It is now the FALLBACK, not the bound. A platform that knows its own capacity reports it
-    // (`BackgroundTransfer.remainingCapacity`) and that answer bounds the read, so this number no longer has to
-    // be a compromise between two tiers whose limits are unrelated. What remains is the job it was always
-    // described as doing: a first walk on a large library records a row per outstanding resource, and an
-    // unbounded read on a platform that will not say how many it wants would try to resolve them all.
-    private val enqueueBatchSize: Int = 16,
 ) {
     /** Set by [signalRestart], cleared by the stranded pass that applies the restart rule. */
     private var restartSignalled = false
@@ -465,20 +461,25 @@ class UploadCycle(
             return Enqueued(created = 0, truncated = false)
         }
 
-        // Then ask the PLATFORM what it will take, and bound the slice by that. Resolving a row costs a
-        // synchronous platform round-trip that nothing can interrupt, so every admitted row taken past
-        // what will be accepted is uninterruptible time spent on a job that is never created — measured
-        // at 54 ms for sixteen keys against a cap of four, where one key costs 11 ms. This bounds the
-        // RESOLVE, never the read: bounding the read would starve, for the reason stated above.
-        // A platform that will not say (`null`) falls back to the batch, which is what that constant is for.
-        val bound = platform.remainingCapacity() ?: enqueueBatchSize
-        // Backpressure, not absence of work: the platform is full and admitted rows still need a job.
-        // Reporting this as a drained cycle would publish COMPLETED over a non-empty backlog, and a
-        // completion-driven trigger would re-arm nothing while those rows sat in the ledger. It is checked
-        // AFTER the admission above, so "the policy admits none of them" still reports drained.
-        if (bound <= 0) return Enqueued(created = 0, truncated = true)
-        val rows = eligible.take(bound)
+        // Then create until the PLATFORM refuses (capability `ios-url-session-upload`, "The producer tops up from
+        // the ledger"). Resolving a row costs a synchronous platform round-trip that nothing can interrupt, so
+        // rows are resolved a chunk at a time: a refusal mid-chunk wastes at most `RESOLVE_CHUNK - 1` resolves.
+        // The chunk is a granularity, not a guess at a cap — both transports refuse honestly, and the refusal is
+        // what reports truncation. Decision record: `changes/both-uploaders-active` (D9).
+        var created = 0
+        for (chunk in eligible.chunked(RESOLVE_CHUNK)) {
+            val pass = createChunk(ready, chunk)
+            created += pass.created
+            if (pass.truncated) return Enqueued(created, truncated = true)
+        }
+        return Enqueued(created, truncated = false)
+    }
 
+    /**
+     * Resolve [rows] and create a job for each, stopping at the platform's first `LIMIT_EXCEEDED`. A row whose
+     * key resolves to nothing has left the library (or the selection) and is deleted by key — see [enqueue].
+     */
+    private suspend fun createChunk(ready: Ready, rows: List<LedgerEntry>): Enqueued {
         val byKey = library.resourcesFor(rows.mapTo(mutableSetOf()) { it.key }).associateBy { it.filename }
         placeFirstEnqueued(ready, rows, byKey)
         var created = 0
@@ -499,21 +500,13 @@ class UploadCycle(
                     ready.engine.handle(SyncEvent.UploadStarted(decision.request))
                     created++
                 }
-                // Backpressure, not failure. The row stays as it was — it still needs a job — so the next
-                // cycle finds it in the same read with nothing to remember in between.
+                // Backpressure, not failure — and the only signal that work remains. The row stays as it was
+                // (it still needs a job), so the next cycle finds it in the same read.
                 CreateResult.LIMIT_EXCEEDED -> return Enqueued(created, truncated = true)
                 CreateResult.FAILED -> Unit // not created → no UploadStarted; the row still needs a job
             }
         }
-        // Admitted rows this pass could not take. Bounding the slice to what the platform will accept
-        // REMOVES the signal that used to carry truncation: it was observed by `createJob` refusing, and a
-        // pass that never offers more than will be accepted is never refused. Without this the cycle would
-        // publish COMPLETED over a backlog for every capacity below it — the same stall the zero case
-        // guards, spread across every partial one.
-        //
-        // EXACT, not a heuristic: the read is unbounded, so the admitted set is the whole remaining
-        // backlog and the comparison is the truth rather than an inference from a filled slice.
-        return Enqueued(created, truncated = rows.size < eligible.size)
+        return Enqueued(created, truncated = false)
     }
 
     /**

@@ -1,10 +1,10 @@
 ## 1. Half B — create until refused (own commit)
 
-- [ ] 1.1 `UploadCycle.enqueue`: after admission, walk the admitted rows in chunks of `resolveChunk = 4` — resolve the chunk via `library.resourcesFor`, delete unresolvable rows, create each resolved row's job through the engine, and return at the first `LIMIT_EXCEEDED` with `truncated = true`; a pass that exhausts the admitted rows is not truncated
-- [ ] 1.2 Delete `enqueueBatchSize` and its comment block from `UploadCycle`'s constructor
-- [ ] 1.3 Delete `BackgroundTransfer.remainingCapacity` and its implementations: `IosUrlSessionUploadPlatform`, `IosPhotoKitUploadPlatform`, `SimulatorUploadJobQueue`, `FakeBackgroundTransfer` (`:test:world`), `UploadCycleTest`'s `FakePlatform`
-- [ ] 1.4 `UploadCycleTest`: truncation is observed only through `LIMIT_EXCEEDED`; a refusal mid-chunk wastes at most `resolveChunk − 1` resolves; a backlog smaller than the platform's cap drains in one pass; remove the capacity-bound tests
-- [ ] 1.5 `./gradlew build` green; commit
+- [x] 1.1 `UploadCycle.enqueue`: after admission, walk the admitted rows in chunks of `resolveChunk = 4` — resolve the chunk via `library.resourcesFor`, delete unresolvable rows, create each resolved row's job through the engine, and return at the first `LIMIT_EXCEEDED` with `truncated = true`; a pass that exhausts the admitted rows is not truncated
+- [x] 1.2 Delete `enqueueBatchSize` and its comment block from `UploadCycle`'s constructor
+- [x] 1.3 Delete `BackgroundTransfer.remainingCapacity` and its implementations: `IosUrlSessionUploadPlatform`, `IosPhotoKitUploadPlatform`, `SimulatorUploadJobQueue`, `FakeBackgroundTransfer` (`:test:world`), `UploadCycleTest`'s `FakePlatform`
+- [x] 1.4 `UploadCycleTest`: truncation is observed only through `LIMIT_EXCEEDED`; a refusal mid-chunk wastes at most `resolveChunk − 1` resolves; a backlog smaller than the platform's cap drains in one pass; remove the capacity-bound tests
+- [x] 1.5 `./gradlew build` green; commit
 
 ## 2. The ledger loses its repairs
 
