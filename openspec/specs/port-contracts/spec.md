@@ -17,7 +17,7 @@ of a port's clauses**; this spec states the mechanism around them: states, hosts
 rule that every clause must run against a real implementation somewhere, and how a host CI cannot reach is
 recorded at the operating-system boundary and replayed against the current adapter on every build.
 
-Decision record: `changes/archive/<id>-establish-port-contracts`.
+Decision record: `changes/archive/2026-09-22-establish-port-contracts`.
 
 ## Requirements
 

@@ -65,4 +65,4 @@
 - [x] 10.1 `./gradlew build` green, including `:test:architecture`, `detektAppShell` and the `architectureDiagrams` freshness check (regenerate and commit if the module graph changed)
 - [x] 10.2 All `iosSimulatorArm64Test`s green on the Mac
 - [x] 10.3 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate establish-port-contracts --strict` pass
-- [ ] 10.4 Before archive: give `port-contracts` a real `## Purpose` (the archive mints a placeholder) and run the three archive gates in `openspec/config.yaml`
+- [x] 10.4 Archive gates (openspec/config.yaml) run before archiving: (1) no spec carries a placeholder Purpose — `port-contracts` got a real one at sync; (2) delta completeness — every module the diff touches is accounted for, with a reason where no delta was needed (ext-safe write-refusal is unpinned by `device-identity`, which pins reads; `download-store` names no contract; `complexity-budgets` derives tier membership; `:test:rig` has no spec by design); (3) dead types — `InMemory*StoreTest`, `LedgerRecordGuardContract` and `LedgerManifestVersionContract` exist nowhere and are named by no spec
