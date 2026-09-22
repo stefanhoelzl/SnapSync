@@ -37,12 +37,12 @@
 - [x] 5.1 Add the rig-gated source set to `:adapter:ios:ext-safe` (compiled only under `-Psnapsync.rig=true`, depending on `:test:contracts` only) holding the recording seam and the `IOS_DEVICE_APP` `IosKeychain` binding (reaches `Empty`, `Holding(_, any)`; seeds legacy-protection items through the seam)
 - [x] 5.2 Link `:test:contracts` into `:app:ios` under the same property; confirm a build without it contains none of either
 - [x] 5.3 Add the `/contract/<name>` verb to `:test:rig`, taking the runner as a lambda wired in `:app:ios`'s rig hook; it answers with the recording text and the live outcome table
-- [ ] 5.4 Take the lease, build with `-Psnapsync.rig=true`, install on the entitled device, call the verb for `SecureStore`, and commit the returned text unedited as `test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec`; extend the masked volatile keys if a second run shows noise; release the lease
+- [x] 5.4 Take the lease, build with `-Psnapsync.rig=true`, install on the entitled device, call the verb for `SecureStore`, and commit the returned text unedited as `test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec`; extend the masked volatile keys if a second run shows noise; release the lease
 
 ## 6. Replay in CI
 
 - [x] 6.1 Add the replay binding in `:adapter:ios:ext-safe` `iosTest`: the current `IosKeychain` over a replaying seam reading the committed recording, reporting host `IOS_DEVICE_APP`; exact, ordered matching per clause; missing file or missing block is `Failed`
-- [ ] 6.2 Verify on the Mac: replay all `Passed`; a comment-only edit to `IosKeychain` still passes; changing the accessibility attribute `IosKeychain` writes reads `Diverged`; revert both
+- [x] 6.2 Verify on the Mac: replay all `Passed`; a comment-only edit to `IosKeychain` still passes; changing the accessibility attribute `IosKeychain` writes reads `Diverged`; revert both
 
 ## 7. The contract-coverage gate
 
