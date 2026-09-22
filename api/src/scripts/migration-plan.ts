@@ -1,6 +1,6 @@
 // DOES THIS DEPLOY TOUCH THE SCHEMA? (capabilities `database`, `backend-deployment`)
 //
-// `api-deploy.yml` branches a MAINTENANCE WINDOW on this answer, so it is the most consequential thing
+// deploy.yml's `api` job branches a MAINTENANCE WINDOW on this answer, so it is the most consequential thing
 // in the pipeline that is not itself a deploy step. It asks `bunny db migrations list` — which never
 // creates the tracking table, so asking is read-only against a store that has never migrated — and
 // re-emits the answer as the exit-code contract the workflow already speaks.
@@ -21,7 +21,7 @@
 
 import { MIGRATIONS_DIR } from "../dev/replay.ts";
 
-/** Exit code for "at least one migration is unapplied". Read by `api-deploy.yml`. */
+/** Exit code for "at least one migration is unapplied". Read by deploy.yml's `api` job. */
 export const PENDING_EXIT_CODE = 10;
 
 /** One entry of `bunny db migrations list --output json`. */

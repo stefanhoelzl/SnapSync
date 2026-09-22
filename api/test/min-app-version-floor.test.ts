@@ -9,9 +9,9 @@
 // whole hazard: nothing goes red, and it is invisible until someone tries to work.
 //
 // It lives here, in the api suite, because `api.yml` runs on EVERY ref with no path filter and is a
-// required check — so this fails in review whichever of the two files moved. `api-deploy.yml` would have
-// been the wrong home twice over: it is path-filtered (an xcconfig change would never trigger it) and it
-// runs after merge.
+// required check — so this fails in review whichever of the two files moved. The deploy (deploy.yml's `api` job) would have
+// been the wrong home twice over: it is gated on the api's paths (an xcconfig change would never trigger
+// it) and it runs after merge.
 
 import { assert } from "@std/assert";
 import { MIN_APP_VERSION } from "../src/config.ts";

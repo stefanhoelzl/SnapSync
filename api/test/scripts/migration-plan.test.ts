@@ -1,6 +1,6 @@
 // THE WINDOW DECISION (capabilities `database`, `backend-deployment`).
 //
-// What `api-deploy.yml` branches a production outage on. Wrong in either direction is expensive: a false
+// What deploy.yml's `api` job branches a production outage on. Wrong in either direction is expensive: a false
 // "none" publishes new code onto an un-migrated store, and a false "pending" imposes a 503 window on a
 // deploy that changes no schema.
 //

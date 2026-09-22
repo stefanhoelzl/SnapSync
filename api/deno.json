@@ -10,7 +10,7 @@
     "config": "python3 ../scripts/resolve-deployment.py prod --quiet",
     "config:local": "python3 ../scripts/resolve-deployment.py local --quiet",
     // The MAINTENANCE deployment (capability `backend-deployment`): identical to `prod` in every value
-    // but the window flag, because both extend the same component. `api-deploy.yml` publishes this
+    // but the window flag, because both extend the same component. deploy.yml's `api` job publishes this
     // bundle, migrates, then republishes the `prod` one.
     "config:maintenance": "python3 ../scripts/resolve-deployment.py maintenance --quiet",
     // --allow-read/--allow-write are for the dev filesystem shim's contract test, which writes into a
@@ -56,7 +56,7 @@
   // The project's own lint rules, declared here rather than on a workflow command line so that CI
   // and a developer's local `deno lint` run the SAME rule set (capability `backend-deployment`).
   // `complexity.ts` carries this backend's cyclomatic ceiling — the TypeScript half of capability
-  // `complexity-budgets`. It needs no new CI step: `api-deploy.yml` already gates on `deno lint`.
+  // `complexity-budgets`. It needs no new CI step: `api.yml` already gates on `deno lint`.
   "lint": {
     "plugins": ["./src/lint/complexity.ts"]
   }

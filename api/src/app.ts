@@ -859,7 +859,7 @@ export function createApp(
   );
 
   // The BOOT PROBE's target (capability `backend-deployment`). Answers with the commit this bundle was
-  // built from, so `api-deploy.yml` can tell the deploy it just made from the one that was already live —
+  // built from, so deploy.yml's `api` job can tell the deploy it just made from the one that was already live —
   // `POST /code` + `POST /publish` succeed whether or not the bundle can boot, and a bare `200` cannot
   // distinguish a new deployment from an old corpse still being served.
   //

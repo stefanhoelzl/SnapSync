@@ -1,5 +1,5 @@
 // The post-deploy BOOT PROBE (capability `backend-deployment`). Runs OUT of the Edge Script — a Deno
-// program `api-deploy.yml` invokes after `POST /publish`, exactly as `nightly-cleanup.yml` invokes the
+// program deploy.yml's `api` job invokes after `POST /publish`, exactly as `nightly-cleanup.yml` invokes the
 // sweep beside it.
 //
 // WHY IT EXISTS. `POST /code` + `POST /publish` succeed whether or not the deployed bundle can BOOT, so a

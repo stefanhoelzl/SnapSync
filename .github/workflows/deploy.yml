@@ -1,121 +1,217 @@
-name: api-deploy
+name: deploy
 
-# Deploys the api upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
-# is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to the pull zone fronting
-# the Edge Script. Path-scoped to the api sources and isolated from the Gradle/iOS workflows.
-# Capabilities: backend-deployment, deployment-configuration.
+# EVERYTHING A MERGE TO `main` SHIPS, EXCEPT THE iOS BUILD — one workflow, `main` only. Every CHECK lives
+# in its own unfiltered gate workflow (api.yml, site.yml, appstore.yml, build.yml, ios.yml, …); this file
+# holds only the deployers those gates have already cleared. Capabilities: backend-deployment,
+# deployment-configuration, web-site, ios-appstore-metadata. Decision record: the
+# `unify-main-deploy-workflow` change under `openspec/changes/archive/`.
 #
-# THE CHECK SET IS NOT HERE, AND ITS ABSENCE IS THE POINT. `api.yml`'s `api-test` job runs
-# fmt/lint/type-check/tests on every ref and is a REQUIRED status check on `main`'s branch ruleset,
-# so a commit CANNOT reach `main` unless they passed on the PR that carried it. Re-running them here
-# would be a second copy of a gate that has already fired.
+#   * changes                  — decides whether the backend changed since the commit that is LIVE
+#   * api                      — publishes the api bundle to bunny Edge Scripting (only when `changes` says so)
+#   * site                     — mirror-deploys the Astro site to the storage `site/` prefix (every push)
+#   * appstore-metadata-apply  — applies the committed listing text to the editable App Store version
+#                                (every push: the file wins over console edits, capability ios-appstore-metadata)
 #
-# It used to be the other way round — the checks ran here, ordered before the deploy step, and were
-# required by nothing. `/ship` arms auto-merge and auto-merge waits on REQUIRED checks only, so a PR
-# that broke the backend merged green and this workflow failed on `main` instead, with the deploy
-# skipped and production silently serving the previous bundle. A check that can only fail after merge
-# is not a gate. Do NOT move the check set back into this file: it is path-scoped (below), and a
-# path-filtered required check never posts on a PR outside its filter, which freezes every such merge.
+# ⚠️ NO JOB IN THIS FILE MAY EVER BE A REQUIRED STATUS CHECK. This workflow never runs on a pull request, so
+# its contexts are never posted there, and GitHub treats a required check that is never posted as
+# permanently PENDING — every merge would freeze, with no error anywhere. The gates are the required checks;
+# `main`'s branch ruleset (which `/ship` owns, no committed copy) must never name a context from this file.
 #
-# What this leaves uncovered, stated rather than implied: merges are rebase-only, so the commit on
-# `main` is not the commit `api-test` ran against, and nothing re-checks it here. The ruleset admits
-# no bypass actor, so the CONTENT was checked before it was admitted; the boot probe below is what
-# witnesses that what actually shipped boots and serves.
+# NOTHING HERE RE-RUNS A GATE. Merges are rebase-only onto an up-to-date branch (the ruleset is strict and
+# admits no bypass actor), so the CONTENT on `main` has passed every required check before it arrived. A
+# deployer that re-checked it would be a second copy of a gate that has already fired.
 #
-# This workflow ships CODE ONLY — it configures nothing on the platform. bunny issues no scoped API key
-# (writing an Edge Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage
-# zone and our DNS zone), so CI holds only the script-scoped deploy key. Every non-secret value is
-# therefore RESOLVED FROM A DEPLOYMENT (`deployments/`, `scripts/resolve-deployment.py`) and ships inside
-# the bundle with the code that reads it — the same anti-drift property source constants used to give,
-# without pinning the values into the source of one toolchain. Only genuine SECRETS live in the Edge
-# Script env, set once by hand, and the bundle carries their variable NAMES, never their values.
+# TESTFLIGHT IS DELIBERATELY NOT HERE. `ios-deliver` stays in ios.yml because it is bound to that run three
+# ways: it consumes the Release archive `ios-build` just produced (artifacts would have to cross runs, or
+# the 5-10 min archive be repeated), its CFBundleVersion IS ios.yml's `run_number` (a new workflow's
+# numbering restarts at 1, below every build TestFlight holds, and ios-appstore-promote.yml resolves a
+# build number back to an ios.yml run), and it also delivers a dispatched BRANCH — which "main only"
+# excludes by definition.
 #
-# THERE IS A POST-PUBLISH BOOT PROBE, and it is required. `POST /code` + `POST /publish` succeed whether
-# or not the script can boot, so the deploy step alone does NOT prove the script serves — that is how the
-# previous runtime stayed fail-closed for two weeks with CI green throughout. `migrate-runtime-to-bunny`
-# declined a probe CONDITIONALLY ("prevention replaces detection... anything that reintroduces
-# platform-side required config reintroduces the silent-corpse failure with nothing watching"); the
-# condition has fired, so detection is back.
-#
-# BE PRECISE ABOUT WHICH HALF IT RESTORES. The probe witnesses that the script BOOTED and that THIS bundle
-# is serving. It does NOT witness that any configured value is CORRECT: a value that is present but wrong
-# boots and probes green — which is the other half of the 2026-07 outage, where BUNNY_STORAGE_ZONE named
-# a zone that does not exist. Probe coverage is exactly the set of faults startup turns into a throw, so
-# a new platform-side value is only covered if it is declared in a deployment (readable, diffable) or
-# made to fail closed at boot.
-#
-# BUNNY'S OWN ROLLBACK IS STILL UNAVAILABLE. Measured on run 32748912239: the script-scoped deploy key
-# returns 401 on both `GET /compute/script/<id>/releases` and `GET /compute/script/<id>`. Release
-# re-publish needs the ACCOUNT key, which CI is forbidden to hold.
-#
-# SO THIS WORKFLOW BRINGS ITS OWN, and it is narrow on purpose. Every green deploy archives its bundle as
-# `bundle-<sha>`; a deploy that opens a maintenance window first reads the LIVE commit from `/health` and
-# proves that commit's archive is retrievable, and on failure republishes it. That covers exactly one
-# failure: a migrating deploy that left the window open. A NON-migrating deploy that goes red still leaves
-# whatever is live, live, and a human fixes it forward — unchanged.
-#
-# ── WHAT A MIGRATING DEPLOY DOES, AND WHY ────────────────────────────────────────────────────────────
-#
-# Migrate-before-publish is correct and stays: a failed migration must not leave new code on an old store.
-# But it leaves an interval — between the migration landing and the new bundle serving, the PREVIOUS
-# bundle answers requests against the MIGRATED store, with statements written for a shape that no longer
-# exists. So when (and only when) a migration is pending, this workflow publishes a maintenance bundle
-# first, waits until it is observed serving, migrates, then publishes the real bundle and waits again.
-#
-# The flag rides INSIDE the bundle because it has to: CI holds only the script-scoped deploy key and
-# cannot write the Edge Script's environment, so which code is published is the only lever it has. The
-# maintenance and real bundles are the same commit resolved from two deployments that differ in one key,
-# which is why `/health` reports the window state and both probes assert it — the sha cannot tell them
-# apart. Capability `backend-deployment`; decision record
-# `openspec/changes/archive/2026-08-27-add-deploy-maintenance-mode/design.md`.
-#
-# ── THE STORE'S SHAPE IS ASSERTED, ON BOTH BRANCHES ──────────────────────────────────────────────────
-#
-# The migrations are applied by the PLATFORM runner (`bunny db migrations`), and this workflow checks that
-# the store it produced is the one the repository describes — comparing the deployed `sqlite_master`
-# against what replaying `api/migrations/*.sql` builds. Nothing else observes the DEPLOYED shape: every
-# other check runs against a replay on a different engine.
-#
-# It runs in whichever position is cheap for that branch. With nothing pending the store should already
-# match, so the assertion happens BEFORE the window decision and a mismatch costs no outage — which is
-# also where a store hand-edited through `bunny db shell` is caught, since that happens between deploys.
-# With a migration pending it runs after applying and before the real bundle publishes, inside the window
-# the restore path already knows how to lift.
+# NO WORKFLOW-LEVEL `paths:` FILTER, because the jobs have different trigger sets. Only `api` is gated, and
+# it is gated against the LIVE commit, not `github.event.before` — see the `changes` job for why that
+# difference decides whether a backend change can be silently lost.
 
 on:
   push:
-    paths:
-      - "api/**"
-      # The marketing page's screenshots are no longer embedded here — they are built into the Astro
-      # `site/` module and shipped by `site-deploy.yml`. A `screenshots/**` refresh triggers that
-      # workflow, not this one. Capability `web-site`.
-      - ".github/workflows/api-deploy.yml"
-      # The resolver and the authored deployments decide what ships inside the bundle, so a change to
-      # either must redeploy (capability `deployment-configuration`).
-      - "deployments/**"
-      - "scripts/resolve-deployment.py"
-      # `scripts/resolve_deployment_test.py` is deliberately NOT here. It was, while this workflow ran
-      # the resolver's suite; that suite is now build.yml's required `resolver-test` job, and a change
-      # to a test cannot alter what ships inside the bundle, so it must not trigger a deploy.
+    # `main` only. A `vX.Y` tag is a release receipt and triggers nothing (a `branches:` filter excludes
+    # tags, matching the gate workflows).
+    branches: [main]
 
-# Serialize deploys. Without this, two merges to `main` in quick succession race and the FIRST run's
-# probe observes the SECOND run's bundle — a false red, and a probe that cries wolf is worse than none.
-# `cancel-in-progress: false` because a deploy that has already published must still be probed.
-# (`nightly-cleanup.yml` uses the same pattern for the same reason.)
+# ONE group for the whole workflow, never cancelling a run in progress: runs execute one at a time.
+# Two reasons, one per property it buys:
+#   ① a deploy that has already published must still be probed, and two concurrent api deploys would let
+#     the FIRST run's probe observe the SECOND run's bundle — a false red, and a probe that cries wolf is
+#     worse than none (`nightly-cleanup.yml` serializes for the same reason);
+#   ② a group holds ONE pending run, and a newer pending run CANCELS the older one even with
+#     cancel-in-progress: false. That displacement is harmless here ONLY because nothing a run would have
+#     done is lost by skipping it: `site` and `appstore-metadata-apply` run on every push, and `api` diffs
+#     against the live commit, so the next run still sees a displaced run's backend change.
+# Cost, accepted: a site mirror or metadata apply may wait a few minutes behind an api maintenance window.
 concurrency:
-  group: api-deploy
+  group: deploy
   cancel-in-progress: false
 
-# `actions: read` is what lets the capture and rollback steps reach `bundle-<sha>` from EARLIER RUNS via
-# the artifacts API — `actions/download-artifact` addresses only this run's artifacts. Stated explicitly
-# rather than inherited, so the deploy path's token carries exactly these two and nothing else.
-permissions:
-  contents: read
-  actions: read
+# Nothing by default; each job grants exactly its own. They share a file, so a workflow-wide grant would
+# hand one job's reach to all of them (only `api` needs `actions: read`).
+permissions: {}
 
 jobs:
-  test-and-deploy:
+  # ── Did the backend change since what is LIVE? ─────────────────────────────────────────────────────
+  #
+  # THE BASELINE IS THE LIVE COMMIT, NOT `github.event.before`, and that choice is the difference between
+  # a lost deploy and a late one. Because every `main` push enters the one concurrency group above, a
+  # pending run can be DISPLACED: an api merge queues behind a running deploy, a docs merge queues behind
+  # it and cancels it, and a `before..sha` diff of the docs push contains no api path — the api change
+  # would never deploy, and nothing anywhere would be red. Diffing from the commit `/health` reports as
+  # serving, any later run still sees it. (When the api deploys lived in their own path-filtered workflow
+  # this could not happen: only api pushes ever entered that group.)
+  #
+  # It is also self-healing: an api deploy that went red BEFORE publishing leaves the old commit live, so
+  # the next push to `main` retries it rather than forgetting it.
+  #
+  # FAIL OPEN. An unreadable `/health`, a `dev`/empty sha, or a sha that is not an ancestor of this commit
+  # all answer "deploy". A redundant deploy is probed and harmless; a skipped one leaves production behind
+  # `main` with no signal at all.
+  changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      api: ${{ steps.diff.outputs.api }}
+    steps:
+      # Full history: the live commit can be any number of merges behind this one.
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The origin comes from the RESOLVED deployment, never restated here — the same read the api job's
+      # probes and rollback capture make.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
+      # The api path set: everything that decides what ships inside the bundle. `deployments/**` and the
+      # resolver decide the bundle's configuration (capability `deployment-configuration`), and this file
+      # decides how it ships. NOT here: `screenshots/**` and `site/**` (the `site` job ships them), and
+      # `scripts/resolve_deployment_test.py` (a test cannot alter the bundle; build.yml's required
+      # `resolver-test` runs it).
+      - name: Did the api change since the live commit?
+        id: diff
+        run: |
+          DOMAIN=$(sed -n 's/^domain=//p' build/deployment.properties)
+          decide() { echo "api=$1" >> "$GITHUB_OUTPUT"; echo "api=$1 — $2"; }
+          BODY=$(curl -fsS --max-time 30 "https://$DOMAIN/health") || {
+            decide true "could not read https://$DOMAIN/health, deploying (fail open)"; exit 0; }
+          LIVE=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha",""))') || LIVE=""
+          if [ -z "$LIVE" ] || [ "$LIVE" = "dev" ]; then
+            decide true "the live bundle reports sha '$LIVE', which names no commit (fail open)"; exit 0
+          fi
+          if ! git merge-base --is-ancestor "$LIVE" HEAD 2>/dev/null; then
+            decide true "live commit $LIVE is not in this commit's history (fail open)"; exit 0
+          fi
+          CHANGED=$(git diff --name-only "$LIVE" HEAD -- \
+            'api/' 'deployments/' 'scripts/resolve-deployment.py' '.github/workflows/deploy.yml')
+          if [ -n "$CHANGED" ]; then
+            printf '%s\n' "$CHANGED"
+            decide true "the api changed since live commit $LIVE"
+          else
+            decide false "nothing the api ships changed since live commit $LIVE"
+          fi
+
+  # ── The api: bunny Edge Scripting ──────────────────────────────────────────────────────────────────
+  #
+  # Deploys the api upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
+  # is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to the pull zone fronting
+  # the Edge Script. Runs only when `changes` finds the api changed since the live commit.
+  # Capabilities: backend-deployment, deployment-configuration.
+  #
+  # THE CHECK SET IS NOT HERE, AND ITS ABSENCE IS THE POINT. `api.yml`'s `api-test` job runs
+  # fmt/lint/type-check/tests on every ref and is a REQUIRED status check on `main`'s branch ruleset,
+  # so a commit CANNOT reach `main` unless they passed on the PR that carried it. Re-running them here
+  # would be a second copy of a gate that has already fired.
+  #
+  # It used to be the other way round — the checks ran here, ordered before the deploy step, and were
+  # required by nothing. `/ship` arms auto-merge and auto-merge waits on REQUIRED checks only, so a PR
+  # that broke the backend merged green and the deploy failed on `main` instead, with the deploy
+  # skipped and production silently serving the previous bundle. A check that can only fail after merge
+  # is not a gate. Do NOT move the check set back into this job: it runs only on `main`, and a required
+  # check that never posts on a PR freezes every merge.
+  #
+  # What this leaves uncovered, stated rather than implied: merges are rebase-only, so the commit on
+  # `main` is not the commit `api-test` ran against, and nothing re-checks it here. The ruleset admits
+  # no bypass actor, so the CONTENT was checked before it was admitted; the boot probe below is what
+  # witnesses that what actually shipped boots and serves.
+  #
+  # This job ships CODE ONLY — it configures nothing on the platform. bunny issues no scoped API key
+  # (writing an Edge Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage
+  # zone and our DNS zone), so CI holds only the script-scoped deploy key. Every non-secret value is
+  # therefore RESOLVED FROM A DEPLOYMENT (`deployments/`, `scripts/resolve-deployment.py`) and ships inside
+  # the bundle with the code that reads it — the same anti-drift property source constants used to give,
+  # without pinning the values into the source of one toolchain. Only genuine SECRETS live in the Edge
+  # Script env, set once by hand, and the bundle carries their variable NAMES, never their values.
+  #
+  # THERE IS A POST-PUBLISH BOOT PROBE, and it is required. `POST /code` + `POST /publish` succeed whether
+  # or not the script can boot, so the deploy step alone does NOT prove the script serves — that is how the
+  # previous runtime stayed fail-closed for two weeks with CI green throughout. `migrate-runtime-to-bunny`
+  # declined a probe CONDITIONALLY ("prevention replaces detection... anything that reintroduces
+  # platform-side required config reintroduces the silent-corpse failure with nothing watching"); the
+  # condition has fired, so detection is back.
+  #
+  # BE PRECISE ABOUT WHICH HALF IT RESTORES. The probe witnesses that the script BOOTED and that THIS bundle
+  # is serving. It does NOT witness that any configured value is CORRECT: a value that is present but wrong
+  # boots and probes green — which is the other half of the 2026-07 outage, where BUNNY_STORAGE_ZONE named
+  # a zone that does not exist. Probe coverage is exactly the set of faults startup turns into a throw, so
+  # a new platform-side value is only covered if it is declared in a deployment (readable, diffable) or
+  # made to fail closed at boot.
+  #
+  # BUNNY'S OWN ROLLBACK IS STILL UNAVAILABLE. Measured on run 32748912239: the script-scoped deploy key
+  # returns 401 on both `GET /compute/script/<id>/releases` and `GET /compute/script/<id>`. Release
+  # re-publish needs the ACCOUNT key, which CI is forbidden to hold.
+  #
+  # SO THIS JOB BRINGS ITS OWN, and it is narrow on purpose. Every green deploy archives its bundle as
+  # `bundle-<sha>`; a deploy that opens a maintenance window first reads the LIVE commit from `/health` and
+  # proves that commit's archive is retrievable, and on failure republishes it. That covers exactly one
+  # failure: a migrating deploy that left the window open. A NON-migrating deploy that goes red still leaves
+  # whatever is live, live, and a human fixes it forward — unchanged.
+  #
+  # ── WHAT A MIGRATING DEPLOY DOES, AND WHY ────────────────────────────────────────────────────────────
+  #
+  # Migrate-before-publish is correct and stays: a failed migration must not leave new code on an old store.
+  # But it leaves an interval — between the migration landing and the new bundle serving, the PREVIOUS
+  # bundle answers requests against the MIGRATED store, with statements written for a shape that no longer
+  # exists. So when (and only when) a migration is pending, this job publishes a maintenance bundle
+  # first, waits until it is observed serving, migrates, then publishes the real bundle and waits again.
+  #
+  # The flag rides INSIDE the bundle because it has to: CI holds only the script-scoped deploy key and
+  # cannot write the Edge Script's environment, so which code is published is the only lever it has. The
+  # maintenance and real bundles are the same commit resolved from two deployments that differ in one key,
+  # which is why `/health` reports the window state and both probes assert it — the sha cannot tell them
+  # apart. Capability `backend-deployment`; decision record
+  # `openspec/changes/archive/2026-08-27-add-deploy-maintenance-mode/design.md`.
+  #
+  # ── THE STORE'S SHAPE IS ASSERTED, ON BOTH BRANCHES ──────────────────────────────────────────────────
+  #
+  # The migrations are applied by the PLATFORM runner (`bunny db migrations`), and this job checks that
+  # the store it produced is the one the repository describes — comparing the deployed `sqlite_master`
+  # against what replaying `api/migrations/*.sql` builds. Nothing else observes the DEPLOYED shape: every
+  # other check runs against a replay on a different engine.
+  #
+  # It runs in whichever position is cheap for that branch. With nothing pending the store should already
+  # match, so the assertion happens BEFORE the window decision and a mismatch costs no outage — which is
+  # also where a store hand-edited through `bunny db shell` is caught, since that happens between deploys.
+  # With a migration pending it runs after applying and before the real bundle publishes, inside the window
+  # the restore path already knows how to lift.
+  #
+  # `actions: read` is what lets the capture and rollback steps reach `bundle-<sha>` from EARLIER RUNS via
+  # the artifacts API — `actions/download-artifact` addresses only this run's artifacts. Those artifacts are
+  # looked up repo-wide BY NAME, so bundles archived by the former `api-deploy.yml` still restore.
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -153,16 +249,15 @@ jobs:
       # ── The runner that applies them ─────────────────────────────────────────────────────────────
       #
       # The migration runner is the platform's (capability `database`). It authenticates with `--url` and
-      # `--token` — the two database secrets this workflow already holds — so adopting it needs NO bunny
+      # `--token` — the two database secrets this job already holds — so adopting it needs NO bunny
       # account key and does not widen what a compromised deploy path can reach.
       #
       # DELIBERATELY UNPINNED. `db migrations` is self-labelled experimental and the package ships often,
       # so a breaking release can arrive on a merge that has nothing to do with it. That is accepted:
       # ordering covers both places it could bite — the pending check below runs BEFORE the live-bundle
       # capture, so a broken CLI fails the run before any window opens, and a failure during `apply`
-      # lands inside the window, which the restore path at the bottom of this file lifts.
+      # lands inside the window, which the restore path at the bottom of this job lifts.
       - name: Install the bunny CLI
-        if: github.ref == 'refs/heads/main'
         run: npm install -g @bunny.net/cli
 
       # ── Does this deploy touch the schema at all? ────────────────────────────────────────────────
@@ -177,7 +272,6 @@ jobs:
       # exists to prevent. So `10` means pending, `0` means none, and ANY other code is fatal here.
       - name: Is a migration pending?
         id: plan
-        if: github.ref == 'refs/heads/main'
         working-directory: api
         env:
           BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
@@ -211,7 +305,7 @@ jobs:
       # does not match the new snapshot yet, so asserting here would fail every migrating deploy. The
       # post-migrate half below covers that case instead.
       - name: The deployed store matches the migrations
-        if: github.ref == 'refs/heads/main' && steps.plan.outputs.pending == 'false'
+        if: steps.plan.outputs.pending == 'false'
         working-directory: api
         env:
           BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
@@ -237,7 +331,7 @@ jobs:
       # 90-day retention, or if the last deploy went red and never archived.
       - name: Capture the live bundle, and prove it can be restored
         id: live
-        if: github.ref == 'refs/heads/main' && steps.plan.outputs.pending == 'true'
+        if: steps.plan.outputs.pending == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -365,14 +459,12 @@ jobs:
             exit 1
           }
 
-      # --- Deploy: main only. Feature-branch pushes still bundle and verify the stamp, so a bundling
-      #     failure surfaces on the branch, but do not ship to the single live script. Idempotent:
-      #     re-deploys overwrite the same script_id.
+      # --- Deploy. Idempotent: re-deploys overwrite the same script_id. (A bundling failure surfaces
+      #     on the branch through `api.yml`'s required `api-test`, which bundles and checks the stamp.)
       #
       #     This is the ONE publish of the real bundle, on both paths: without a pending migration it
       #     ships the artifact built above, and with one it ships the re-bundle that lifts the window. ---
       - name: Deploy to bunny Edge Scripting
-        if: github.ref == 'refs/heads/main'
         uses: BunnyWay/actions/deploy-script@main
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
@@ -389,7 +481,6 @@ jobs:
       # this assertion a run that published the real bundle but never propagated it would report success
       # with the device API serving 503 to every phone.
       - name: Probe the deployed script
-        if: github.ref == 'refs/heads/main'
         run: |
           # The origin comes from the RESOLVED deployment, never restated here — a literal in this file
           # would be a copy no guard inspects, and if DNS moved the probe would go green against a host
@@ -406,7 +497,7 @@ jobs:
       # Keyed by commit, which is what `/health` reports and therefore what a later run can ask for.
       #
       # NOT IN THE STORAGE ZONE, for two independent reasons. `BUNNY_STORAGE_ACCESS_KEY` is not this
-      # workflow's to hold (above), and a rollback has to work when bunny is the thing misbehaving — an
+      # job's to hold (above), and a rollback has to work when bunny is the thing misbehaving — an
       # artifact here is a separate failure domain from the platform being deployed to. Precedent:
       # `ios-deliver` parks each build's dSYMs the same way.
       #
@@ -434,7 +525,6 @@ jobs:
       # opens, never at rollback time, so an expired archive costs a refused deploy rather than a stuck
       # outage — and re-seeding it is one non-migrating deploy.
       - name: Archive this bundle for a future rollback
-        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ github.sha }}
@@ -498,3 +588,101 @@ jobs:
           cd api
           deno run --allow-net src/scripts/probe.ts \
             --origin="https://$DOMAIN" --sha="${{ steps.live.outputs.sha }}" --maintenance=false
+
+  # ── The site: the storage `site/` prefix ───────────────────────────────────────────────────────────
+  #
+  # Builds the browser-facing Astro site (site/) and mirror-deploys it to the bunny storage `site/` prefix
+  # (capability web-site). The api Edge Script proxies that prefix (serveSiteObject), so this ships the
+  # marketing landing and the /join page as static assets, OFF the api bundle.
+  #
+  # EVERY PUSH, NO GATE. The mirror is idempotent (upload, then delete stale keys) and the build is ~25 s, so
+  # running it on a push that could not affect it costs less than any mechanism deciding whether it could.
+  # It does not repeat `npm run check`: no commit reaches `main` without site.yml's required `site-build`
+  # having passed. It still builds, because the deploy mirrors the build output.
+  #
+  # TWO RUNTIMES, deliberately: the site BUILD runs under NODE (astro:assets/rolldown fail under Deno's
+  # npm-compat), while the deploy + self-containment scripts run under DENO — they reuse the api's own
+  # storage client (api/src/{storage,config}.ts), matching the api's tooling. The api/ backend stays
+  # Deno-only.
+  #
+  # It holds ONLY the storage-zone password (BUNNY_STORAGE_ACCESS_KEY) — the same secret the nightly sweep
+  # uses — and NEVER the bunny account key (which owns DNS + every user's photos), nor the api job's
+  # script-scoped deploy key. Routing is not configured here: it lives in the api bundle as source-owned
+  # code (no pull-zone edge rules). Capability backend-deployment.
+  site:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # The site reads the resolved deployment for its canonical URLs, and the mirror deploy builds its
+      # storage Config from the same rendering — so the zone it writes to can never differ from the one
+      # the api proxy reads. Renderings are generated, never committed, so this step is required.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+
+      - name: Install
+        working-directory: site
+        run: npm ci
+
+      - name: Build
+        working-directory: site
+        run: npm run build
+
+      # Mirror-deploy. Deno: uploads the new build, then deletes stale objects — never clears first.
+      - name: Mirror-deploy to bunny storage
+        working-directory: site
+        env:
+          BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
+        run: npm run deploy
+
+  # ── The App Store listing text ─────────────────────────────────────────────────────────────────────
+  #
+  # Resolves the currently EDITABLE App Store version at run time and pushes the committed listing text to
+  # its localizations, declaratively (file wins; absent field = no-op). It never edits a version in review
+  # and never creates one; with no editable version it is a green no-op. Capability ios-appstore-metadata.
+  #
+  # EVERY PUSH, NO GATE: "file wins" means a console edit is overwritten by the next push to `main`, whatever
+  # that push touched. Its gate is appstore.yml's required `appstore-metadata-validate`, which has passed on
+  # this content — so no `needs:` (it could not reach another workflow's job anyway). Text only: the
+  # screenshots are uploaded by the release (ios-appstore-promote.yml), never by a push.
+  #
+  # Reuses the EXISTING Admin ASC key (no new secret, no Xcode/keychain/cert). The metadata tool `asc` is a
+  # pinned, checksum-verified third-party binary (see asc_fetch.sh).
+  appstore-metadata-apply:
+    name: appstore-metadata-apply
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The same Admin key ios-build / ios-deliver use — asc reads its OWN var names.
+      # No new secret is introduced. (Design open question: a scoped key would be safer than Admin.)
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      ASC_BYPASS_KEYCHAIN: "1"
+      DO_NOT_TRACK: "1"
+      ASC_APP_ID: "6781692480"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # The listing's domain-derived URLs (marketing, support, privacy policy) are RENDERED from the
+      # resolved deployment, so the store can never advertise a host the app and backend have moved off
+      # (capability `deployment-configuration`). The committed files stay hand-written copy carrying a
+      # `{{domain}}` placeholder; renderings are generated, never committed.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+      - name: Fetch pinned asc
+        run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
+      - name: Resolve editable version and apply the listing
+        env:
+          ASC: ${{ runner.temp }}/asc
+        run: bash .github/scripts/asc_metadata_apply.sh

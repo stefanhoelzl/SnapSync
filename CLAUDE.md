@@ -203,7 +203,7 @@ reverse of what it once asserted.
 **Every number in a tier file is a ceiling that may only fall**: lowering one is ordinary work, raising
 one needs a stated forcing proof in the PR. Nothing enforces that — it is a ratchet carried by the
 contract at the head of each config. `api/` carries the same measure through
-`api/src/lint/complexity.ts`, a `deno lint` plugin under the `deno lint` gate `api-deploy.yml` already
+`api/src/lint/complexity.ts`, a `deno lint` plugin under the `deno lint` gate `api.yml` already
 runs (no published Deno rule measures complexity).
 
 ⚠️ **Compose trades these rules against each other, which is why `ui.yml` still holds three.**

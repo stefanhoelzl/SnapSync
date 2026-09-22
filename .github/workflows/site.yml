@@ -1,18 +1,18 @@
 # The site's check gate (capability web-site). One job, `site-build`, building the Astro `site/` module
 # and running its full check set — type-check, formatting, self-containment — on EVERY ref.
 #
-# It is the site counterpart of api.yml, split from site-deploy.yml for the same reason api.yml is split
-# from api-deploy.yml:
+# It is the site counterpart of api.yml, split from the deploy (deploy.yml's `site` job) for the same
+# reason api.yml is:
 #
 # ① NO PATH FILTER, deliberately. GitHub treats a required status check that is never posted as
 # permanently PENDING, so a path-filtered required check freezes every PR whose diff falls outside the
-# filter — forever, with no error anywhere. site-deploy.yml IS path-filtered (it must be: it deploys), so
-# while the gate lived there its context came and went with the diff and could not be required — a PR
-# that broke the site build merged anyway, because `/ship`'s auto-merge waits on REQUIRED checks only.
+# filter — forever, with no error anywhere. The deploy was path-filtered when the gate lived beside it, so
+# its context came and went with the diff and could not be required — a PR that broke the site build
+# merged anyway, because `/ship`'s auto-merge waits on REQUIRED checks only.
 # Every required check in this repository comes from an unfiltered job for this reason. Do NOT add a
 # `paths:` filter here; the build is ~25s, so running it on a diff that cannot affect it is cheap.
 #
-# ② site-deploy.yml deliberately does not repeat `npm run check`: no commit can reach `main` without this
+# ② the deploy deliberately does not repeat `npm run check`: no commit can reach `main` without this
 # having passed. It still builds, because the deploy needs the output.
 #
 # It carries its own concurrency group rather than sharing build.yml's bare `github.ref` one, so neither
@@ -47,7 +47,7 @@ jobs:
         with:
           node-version: "22"
 
-      # `check:selfcontained` runs under Deno (see site-deploy.yml's TWO RUNTIMES note).
+      # `check:selfcontained` runs under Deno (see deploy.yml's `site` job, TWO RUNTIMES note).
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x

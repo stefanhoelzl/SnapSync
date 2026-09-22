@@ -2,27 +2,26 @@
 # `api-test`, running the full Deno check set — fmt, lint, type-check, tests — plus the bundle and its
 # commit stamp, on EVERY ref.
 #
-# THIS IS THE THING THAT KEEPS A BROKEN BACKEND OFF `main`, and it is a separate workflow from
-# api-deploy.yml for two reasons that both matter.
+# THIS IS THE THING THAT KEEPS A BROKEN BACKEND OFF `main`, and it is a separate workflow from the
+# deploy (deploy.yml's `api` job) for two reasons that both matter.
 #
 # ① NO PATH FILTER, deliberately. GitHub treats a required status check that is never posted as
 # permanently PENDING, so a path-filtered required check freezes every PR whose diff falls outside the
-# filter — forever, with no error anywhere. api-deploy.yml IS path-filtered (it must be: it deploys),
-# which is precisely why its context could not simply be added to the ruleset and why these steps live
-# here instead. Every required check in this repository comes from an unfiltered job for this reason
-# (see build.yml's and ios.yml's `on:` comments). Do NOT add a `paths:` filter here.
+# filter — forever, with no error anywhere. The deploy runs only on `main` and only when the api changed,
+# which is precisely why its context can never be added to the ruleset and why these steps live here
+# instead. Every required check in this repository comes from an unfiltered job for this reason (see
+# build.yml's and ios.yml's `on:` comments). Do NOT add a `paths:` filter here.
 #
-# ② The check set used to live in api-deploy.yml, ordered before its deploy step, and was required by
-# NOTHING. `/ship` arms auto-merge, and auto-merge waits on REQUIRED checks only, so a PR that broke the
-# backend went red and merged anyway; api-deploy then failed on `main` before its deploy step, leaving
-# `main` broken with production silently serving the previous bundle and nothing watching. A check that
-# can only fail after merge is not a gate. Now it is one — and api-deploy.yml deliberately does not
-# repeat it, because no commit can reach `main` without this having passed.
+# ② The check set used to live in the deploy workflow, ordered before its deploy step, and was required
+# by NOTHING. `/ship` arms auto-merge, and auto-merge waits on REQUIRED checks only, so a PR that broke
+# the backend went red and merged anyway; the deploy then failed on `main` before its deploy step,
+# leaving `main` broken with production silently serving the previous bundle and nothing watching. A
+# check that can only fail after merge is not a gate. Now it is one — and the deploy deliberately does
+# not repeat it, because no commit can reach `main` without this having passed.
 #
 # It is isolated from the Gradle/iOS workflows (its own file, coupled to neither) — a standing
 # requirement of capability backend-deployment — and carries its own concurrency group rather than
-# sharing build.yml's, whose `cancel-in-progress` would let a main-branch run be cancelled out from
-# under a deploy that api-deploy.yml (cancel-in-progress: false) runs to completion.
+# sharing build.yml's or deploy.yml's.
 name: api
 
 on:
@@ -99,8 +98,8 @@ jobs:
 
       # Bundling is a check too, not only a deploy step: an import that does not resolve, or a bundle
       # that outgrows the Edge Scripting 10 MB script limit, fails here rather than on `main`.
-      # api-deploy.yml bundles again for real — artifacts do not cross workflows, and it needs the file
-      # on disk for the deploy action.
+      # deploy.yml's `api` job bundles again for real — this run's artifact is not the deploy's, and it
+      # needs the file on disk for the deploy action.
       - name: Bundle
         working-directory: api
         run: deno task bundle
