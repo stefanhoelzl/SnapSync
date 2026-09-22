@@ -414,7 +414,8 @@ factory over the App-Group container.
 
 ### Requirement: Ledger schema migration
 The SQLDelight schema SHALL be versioned and ship migrations that bring an existing on-device
-`ledger.db` (in the App-Group container, which survives app reinstall) to the current schema. The
+`ledger.db` (in the App-Group container, which survives an app update though not a delete-and-reinstall —
+measured on device, capability `upload-lifecycle`) to the current schema. The
 migration that drops the `updatedAt` column SHALL be **row-preserving** — existing rows, including
 `COMPLETED` ones, SHALL survive it (the dropped column is neither the primary key nor indexed), so an
 app update keeps the ledger's recorded state and forces no re-enumeration or re-reconcile. It is a
