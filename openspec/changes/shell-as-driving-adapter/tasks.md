@@ -33,7 +33,7 @@
 - [x] 5.1 In `:test:contracts`: `PlatformEntriesContract` and `ExtensionEntriesContract` with state vocabularies, `…Observations` interfaces and the subject types (design D7). Document in KDoc why there is no fake binding and why `onTerminate` has no clause
 - [x] 5.2 Clauses per design D7's starting set, each asserting outcomes only, with "completion released exactly once, after the work" where an entry takes one
 - [x] 5.3 Bindings in `:test:integration` over `World.core` (`Live`, `JVM` and `IOS_SIM_KEXE`); add the `:test:contracts` dependency; decide here whether `World` needs an entry surface (the design's open question), and add a `harness-world-model` delta if it does — decided: no entry surface and no delta. The bindings call `platformEntries({ w.core }, hooks)` / `extensionEntries(...)` themselves; `World` gained only inspection (`operatorEngine` counters, `backstopsScheduled`, the cycle's `uploadPorts`), which the spec's operator-inspection rules already cover
-- [ ] 5.4 `ContractCoverageTest` green (every clause has a real host); run both suites on JVM and on `iosSimulatorArm64` (the Mac runner or CI)
+- [x] 5.4 `ContractCoverageTest` green (every clause has a real host); run both suites on JVM and on `iosSimulatorArm64` (the Mac runner or CI)
 - [x] 5.5 Mutation check: route `onSilentPush` to the upload arm only and confirm a clause fails; then restore
 
 ## 6. Documentation
