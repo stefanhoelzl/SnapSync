@@ -39,6 +39,34 @@ dependencies {
     testImplementation(libs.kotlinx.serialization.json)
 }
 
+// ---- The all-real journeys (capability `testing-architecture`, "All-real journeys are the contracts' safety net") ----
+//
+// A few end-to-end runs with EVERY system real: the rig build of the iOS app on two simulators, the real backend
+// served locally, the real photo library. Written against the same typed client as the tests above, and run ONLY by
+// the `ios-contracts` CI job (`scripts/sim-contracts`), which boots the simulators and the backend and passes their
+// addresses. Outside `build` by construction: this task is never a dependency of `check`. It FAILS — never skips —
+// when an address is missing, so a job that forgot to pass one cannot pass with nothing run.
+val journeys: SourceSet by sourceSets.creating
+dependencies {
+    "journeysImplementation"(project(":test:control"))
+    "journeysImplementation"(kotlin("test-junit"))
+    "journeysImplementation"(libs.coroutines.core)
+    "journeysImplementation"(libs.kotlinx.serialization.json)
+    "journeysImplementation"(libs.ktor.client.cio)
+}
+tasks.register<Test>("journeys") {
+    description = "The all-real journeys against two simulator apps and a local backend (ios-contracts only)."
+    group = "verification"
+    testClassesDirs = journeys.output.classesDirs
+    classpath = journeys.runtimeClasspath
+    useJUnit()
+    // Journeys wait on real simulators and a real backend; each wait states its own bound.
+    outputs.upToDateWhen { false }
+    listOf("appA", "appB", "backend").forEach { name ->
+        providers.gradleProperty("snapsync.journey.$name").orNull?.let { systemProperty("snapsync.journey.$name", it) }
+    }
+}
+
 tasks.test {
     // JUnit 4: the contracts module (on the runtime path through the rig) binds kotlin-test to JUnit 4 in its main
     // code, and two kotlin-test framework bindings cannot coexist (the same reason `:test:control` gives).

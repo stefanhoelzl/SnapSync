@@ -15,6 +15,13 @@
 # build/sim-contracts/, which CI keeps as an artifact: the outcome tables, and on a no-answer the screenshot
 # and log, because a pending system alert is visible only in a screenshot.
 #
+# Then the ALL-REAL JOURNEYS (capability `testing-architecture`, "All-real journeys are the contracts' safety net"):
+# a second fresh simulator, the real backend served locally on the address the `local` deployment bakes into the
+# build (127.0.0.1:8080), and `:test:integration:journeys` driving both apps through the typed client. Before any
+# of that, each app's `GET /device` is read once: a vocabulary entry either host leaves unclassified fails the run.
+# It FAILS on a backend that never answers, an incomplete advertisement, and any journey failure; the backend's
+# output and both apps' logs go to build/sim-contracts/ with the rest.
+#
 # Dev infrastructure: loads nothing on Linux. Runbook: the `ios-simulator` skill.
 set -u
 
@@ -36,6 +43,18 @@ if ! command -v applesimutils >/dev/null; then
 fi
 
 python3 scripts/resolve-deployment.py local >/dev/null || fail "could not render the local deployment"
+
+# The real backend, on the loopback address the `local` deployment bakes into the build. `dev:local` rather than
+# `serve.ts --ephemeral`, which exits when its stdin closes and so cannot be backgrounded from a script. Its store is
+# the runner's own, fresh per run. Warmed with one request, because a cold deno exceeds the app's 5 s HTTP timeout.
+command -v deno >/dev/null || fail "deno is not on PATH — the journeys need the real backend"
+( cd api && deno task dev:local ) > "$OUT/backend.log" 2>&1 &
+BACKEND_PID=$!
+BACKEND="http://127.0.0.1:8080/api/v2"
+i=0
+until curl -s --max-time 5 -o /dev/null "$BACKEND/events/00000000-0000-4000-8000-000000000000"; do
+    i=$((i + 1)); [ $i -lt 90 ] || { tail -40 "$OUT/backend.log"; fail "the local backend never answered on $BACKEND"; }; sleep 2
+done
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build \
     > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
@@ -44,38 +63,72 @@ APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesi
 scripts/sim-sign "$APP" || fail "sim-sign"
 
 DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 16')" || fail "could not create a simulator"
-# The simulator is this run's alone, and so is its port: every simulator shares the Mac's loopback, so a second
+# Member B of the journeys, created and booted alongside A so the two boots overlap.
+DEVICE_B="$(xcrun simctl create "journeys-b-$$" 'iPhone 16')" || fail "could not create the second simulator"
+cleanup() {
+    kill "${FIXTURE_PID:-}" "${BACKEND_PID:-}" 2>/dev/null
+    for d in "$DEVICE" "$DEVICE_B"; do
+        xcrun simctl shutdown "$d" >/dev/null 2>&1; xcrun simctl delete "$d" >/dev/null 2>&1
+    done
+}
+trap cleanup EXIT
+# Each simulator is this run's alone, and so is its port: every simulator shares the Mac's loopback, so a second
 # instance on the default 18099 fails to bind while a curl reaches the FIRST one and answers plausibly.
-trap 'xcrun simctl shutdown "$DEVICE" >/dev/null 2>&1; xcrun simctl delete "$DEVICE" >/dev/null 2>&1' EXIT
-RIG_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-xcrun simctl boot "$DEVICE" && xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not boot"
-xcrun simctl install "$DEVICE" "$APP" || fail "install"
-applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
-    || fail "could not grant photo access"
+free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+RIG_PORT="$(free_port)"
+RIG_PORT_B="$(free_port)"
+xcrun simctl boot "$DEVICE" || fail "the simulator did not boot"
+xcrun simctl boot "$DEVICE_B" || fail "the second simulator did not boot"
+xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
+xcrun simctl bootstatus "$DEVICE_B" -b >/dev/null || fail "the second simulator did not finish booting"
+for d in "$DEVICE" "$DEVICE_B"; do
+    xcrun simctl install "$d" "$APP" || fail "install on $d"
+    applesimutils --byId "$d" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
+        || fail "could not grant photo access on $d"
+done
 # The loopback peer the transfer contracts exchange bytes with (scripts/transfer-fixture.py). Started BEFORE the app, and
 # asked to answer, so a fixture that is not up fails here by name rather than as every transport clause's transfer error.
-FIXTURE_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+FIXTURE_PORT="$(free_port)"
 python3 scripts/transfer-fixture.py --port "$FIXTURE_PORT" --log "$OUT/transfer-fixture.log" &
 FIXTURE_PID=$!
-trap 'kill "$FIXTURE_PID" 2>/dev/null; xcrun simctl shutdown "$DEVICE" >/dev/null 2>&1; xcrun simctl delete "$DEVICE" >/dev/null 2>&1' EXIT
 i=0
 until curl -sf --max-time 2 "http://127.0.0.1:$FIXTURE_PORT/_health" >/dev/null; do
     i=$((i + 1)); [ $i -lt 30 ] || fail "the transfer fixture never answered on $FIXTURE_PORT"; sleep 1
 done
 FIXTURE="http://127.0.0.1:$FIXTURE_PORT"
 
-SIMCTL_CHILD_SNAPSYNC_RIG_PORT="$RIG_PORT" xcrun simctl launch "$DEVICE" app.snapsync >/dev/null || fail "launch"
-
+# Launch the app on simulator $1 with rig port $2, and wait for it to publish that port.
+launch() {
+    SIMCTL_CHILD_SNAPSYNC_RIG_PORT="$2" xcrun simctl launch "$1" app.snapsync >/dev/null || fail "launch on $1"
+    data="$(xcrun simctl get_app_container "$1" app.snapsync data)"
+    i=0
+    while [ ! -f "$data/Documents/rig.port" ] && [ $i -lt 90 ]; do sleep 2; i=$((i + 1)); done
+    if [ ! -f "$data/Documents/rig.port" ]; then
+        xcrun simctl io "$1" screenshot "$OUT/no-answer-$1.png" >/dev/null 2>&1
+        cp "$data/Documents/debug.log" "$OUT/debug-$1.log" 2>/dev/null
+        fail "the app on $1 never published its rig port (screenshot and log in $OUT)"
+    fi
+    [ "$(cat "$data/Documents/rig.port")" = "$2" ] || fail "the app on $1 bound $(cat "$data/Documents/rig.port"), not $2"
+}
+launch "$DEVICE" "$RIG_PORT"
+launch "$DEVICE_B" "$RIG_PORT_B"
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
-i=0
-while [ ! -f "$DATA/Documents/rig.port" ] && [ $i -lt 90 ]; do sleep 2; i=$((i + 1)); done
-if [ ! -f "$DATA/Documents/rig.port" ]; then
-    xcrun simctl io "$DEVICE" screenshot "$OUT/no-answer.png" >/dev/null 2>&1
-    cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
-    fail "the app never published its rig port (screenshot and log in $OUT)"
-fi
-PORT="$(cat "$DATA/Documents/rig.port")"
-[ "$PORT" = "$RIG_PORT" ] || fail "the app bound $PORT, not the $RIG_PORT it was given"
+DATA_B="$(xcrun simctl get_app_container "$DEVICE_B" app.snapsync data)"
+PORT="$RIG_PORT"
+
+# Each app host's classification of the control vocabulary, read once: nothing else checks the app host's
+# advertisement for completeness, and an unclassified entry answers 500 only when someone asks.
+for p in "$RIG_PORT" "$RIG_PORT_B"; do
+    code="$(curl -sS -o "$OUT/device-$p.json" -w '%{http_code}' "http://127.0.0.1:$p/device")"
+    [ "$code" = 200 ] || { cat "$OUT/device-$p.json"; fail "GET /device on $p answered $code"; }
+    python3 - "$OUT/device-$p.json" <<'PY' || fail "the app host on $p leaves vocabulary entries unaccounted"
+import json, sys
+ad = json.load(open(sys.argv[1]))
+gaps = ad.get("unclassified", []) + ad.get("outsideVocabulary", [])
+print("advertisement:", ad.get("host"), len(ad.get("honoured", [])), "honoured,", len(ad.get("refused", {})), "refused")
+sys.exit(1 if gaps else 0)
+PY
+done
 
 curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fail "GET /contract"
 [ -s "$OUT/registry" ] || fail "the simulator app registers no contract"
@@ -91,6 +144,17 @@ for name in $(cat "$OUT/registry"); do
     # A bounded wait on an OS callback that expired ran nothing: on a host CI runs live, that is not coverage.
     if grep -q ' NotWithin(' "$OUT/$name.txt"; then echo "  -> a clause's callback never came"; status=1; fi
 done
-cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
-[ $status -eq 0 ] || fail "see the outcome tables above"
+[ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null; fail "see the outcome tables above"; }
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
+
+# The journeys, against both apps and the backend. A failure is read first as a contract clause nobody wrote.
+./gradlew --no-daemon -q :test:integration:journeys \
+    -Psnapsync.journey.appA="http://127.0.0.1:$RIG_PORT" \
+    -Psnapsync.journey.appB="http://127.0.0.1:$RIG_PORT_B" \
+    -Psnapsync.journey.backend="$BACKEND" > "$OUT/journeys.log" 2>&1
+journeys=$?
+cp -R test/integration/build/test-results/journeys "$OUT/journeys-results" 2>/dev/null
+cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
+cp "$DATA_B/Documents/debug.log" "$OUT/debug-b.log" 2>/dev/null
+[ $journeys -eq 0 ] || { tail -60 "$OUT/journeys.log"; fail "a journey failed (log in $OUT)"; }
+echo "sim-contracts: every registered contract passed, and the journeys passed" | tee "$OUT/result"

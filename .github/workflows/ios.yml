@@ -637,7 +637,9 @@ jobs:
     # in-app port contracts on a simulator on every push"). Parallel to ios-build and ios-test, with no
     # `needs:` edge, for the reason those two carry none: a red gate must never skip another's required check.
     #
-    # WHAT IT RUNS: the port contracts whose bindings live in the APP — the simulator app is the only
+    # WHAT IT RUNS: the port contracts whose bindings live in the APP, then the all-real journeys against two
+    # simulator apps and the real backend served locally (capability `testing-architecture`, "All-real journeys are
+    # the contracts' safety net"). First, the port contracts whose bindings live in the APP — the simulator app is the only
     # simulator process `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real
     # full grant (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). The
     # registry is whatever `GET /contract` lists for this host; `scripts/sim-contracts` runs every entry and
@@ -662,7 +664,12 @@ jobs:
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
-      - name: Run the simulator app's port contracts
+      # The real backend the journeys run against (capability `ios-ci`, "Run the in-app port contracts on a
+      # simulator on every push"): `scripts/sim-contracts` serves `api/` locally on the address the build bakes in.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run the simulator app's port contracts and the journeys
         # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed
         # `snapsync.rig=true` would link the control channel into every shipped build.
         run: |
