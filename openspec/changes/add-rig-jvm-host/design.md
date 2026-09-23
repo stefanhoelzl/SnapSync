@@ -217,6 +217,11 @@ job's bytes to the device-facing upload route through the backend's transfer cli
 than store-direct. The byte model behind it is unchanged, so every existing assertion on `store.objectsOf`
 still holds.
 
+*As built:* the neutral reads, the levers and the HTTP seeding live in their own class, `NeutralBackend`, exposed
+as `World.neutral`. Adding them to `World` itself took it past its `TooManyFunctions` ceiling (42), and a
+ceiling may only fall (`complexity-budgets`). The minted-id helpers stay on `World`, because a provision
+writes the world's own membership cells as well as the backend.
+
 *Alternative rejected:* pointing only the `Http*` clients at Deno. The server would see joins and manifests
 but never bytes, so any event-union assertion over Deno would be wrong by construction.
 

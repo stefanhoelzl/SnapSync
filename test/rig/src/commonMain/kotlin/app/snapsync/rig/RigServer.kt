@@ -57,10 +57,10 @@ private val json = Json { encodeDefaults = true; prettyPrint = true }
  * The dev/test **control channel**: an HTTP server running inside the app so an agent can force
  * OS-callback entry points and read live state, over `pymobiledevice3 usbmux forward` + `curl`.
  *
- * Linked into `:app:ios` ONLY under `-Psnapsync.rig=true`; a production build contains none of this.
- * Dev infrastructure, non-gating, no spec — the same posture as `:test:harness-driver`, and honest for
- * the same reason it states: every surface here is a mechanical projection of a contract that already
- * exists elsewhere, so there is no second way-to-drive that can rot or lie.
+ * Linked into `:app:ios` ONLY under `-Psnapsync.rig=true`; a production build contains none of this. The
+ * same server is the JVM host's (`JvmRigHost`), over a world — one protocol, two hosts (capability
+ * `testing-architecture`, "One control protocol, served by two hosts"). Every surface is a mechanical
+ * projection of a contract that already exists elsewhere, so there is no second way-to-drive that can rot or lie.
  *
  * ## The core arrives as a THUNK, never a value
  * [core] and [host] are thunks on purpose. `SnapSyncRoot.app` and `.host` are `by lazy` deliberately —

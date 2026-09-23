@@ -8,8 +8,9 @@ description: >-
   "join an event on device", "create an event", "seed photos", "wipe the
   gallery", "reset the device", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
-  anything touching /os, /user, /device or usbmux forward 18099. To install or
-  launch a build first, load `snapsync-device`.
+  anything touching /os, /user, /device or usbmux forward 18099 — or the SAME
+  protocol served by the JVM host over a world (`:test:rig:runJvmHost`, no
+  device, no lock). To install or launch a build first, load `snapsync-device`.
 ---
 
 # rig-channel — driving the app's entry points over HTTP
@@ -20,9 +21,10 @@ background-`URLSession` relaunch, so a headless host fires **neither**: a fully 
 access granted and the tier armed will sit there running **no cycle at all**, and nothing says so.
 
 `:test:rig` is a Ktor CIO server that runs inside the app and lets you drive those entry points and
-read the state back. It is **dev infrastructure: non-gating, no spec** — every surface is a
-mechanical projection of a contract specified elsewhere, so there is no second way-to-drive that can
-rot or lie.
+read the state back. Its protocol is specified (capability `testing-architecture`, "One control protocol,
+served by two hosts") and served by **two hosts**: this app host, and a JVM host over a `:test:world` world
+(see "The JVM host" below). Every surface is a projection of a contract specified elsewhere, so there is no
+second way-to-drive that can rot or lie.
 
 To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `snapsync-device` (which has
 you load the global `ios-device` skill first).
@@ -98,6 +100,8 @@ no population to derive from, so it is hand-listed and small.
 
 ```
 GET  /health                            rig=up, port, boot instant — liveness ONLY
+GET  /device                            what THIS host honours and refuses of the shared vocabulary
+                                        (RigVocabulary), each refusal with its reason; 500 names a gap
 
 POST /os/<root>/<entry>?arg=…           the real @PlatformEntry member, invoked as the platform invokes it
                                         <root> is app | photokit-ext — WHOSE entry point, since the
@@ -117,8 +121,10 @@ POST /contract/<name>                   run a port contract in-app; answers its 
                                         OUTCOME TABLE (simulator app) — see below
 ```
 
-There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
-excluded**, which was the only part that carried information; the names live here.
+There is **no inventory route** for excluded members: asking for one returns **the reason it is excluded**.
+What `GET /device` lists is different — the shared vocabulary both hosts speak — and a verb in it that this
+host cannot honour answers **`409` with the reason**, never `404` and never a success that did nothing. On
+this host the world levers are refused; on a device, the simulator-only upload-job verbs are too.
 
 **`/device/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
 declared, so the encoder is compiler-generated. It also carries what `UiState` deliberately omits: the
@@ -394,3 +400,31 @@ To drive the app's uploader alone on a ≥26.1 device: `extension=off`, then fir
 
 Note `/device/state`'s `build.uploadTier` is a **build fact** — which uploaders this OS carries
 (`app` or `app+extension`) — and does not move with the switch.
+
+## The JVM host — the same protocol with no device
+
+`:test:rig` also has a `jvm()` target: `JvmRigHost` serves the **unchanged** server and routes over a
+`:test:world` `World`, whose `core` is the real `AppCore` from the same `snapSyncApp`. No phone, no lock, no
+build on a Mac:
+
+```bash
+./gradlew :test:rig:runJvmHost -Psnapsync.rigBackend=mini   # or deno: the REAL api/ via :test:edge
+# prints one line once bound:  RIG-JVM READY <port>
+curl -s localhost:<port>/device            # honoured + refused (reasons) for THIS host
+```
+
+- `mini` is the in-memory mini-edge; `deno` starts the real `api/` (`serve.ts --ephemeral`, loopback-only).
+  On `deno`, a lever only an in-memory store can pull (`device/backend/offline`, …) answers `409`
+  "unavailable on this backend".
+- Same `/os`, `/user`, `/device/state` shapes as the app. `os/app/onSceneContinueActivity?arg=<link>` reaches
+  the inbound port's open-URL entry, `os/photokit-ext/processRawValue` runs the world's upload cycle.
+- The **world levers** the app refuses: `device/jobs` (live keys), `device/jobs/complete[?key=]` (the "OS"
+  finishes a transfer — a real PUT to the backend), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
+  `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
+  `device/import/fail-next`, `device/membership/unreadable?on=`, `device/downloads/stage|reconcile`,
+  `device/album/place?album=&asset=`, `device/foreign-device?device=&assets=a,b[&event=]`, `device/status/refresh`.
+- `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
+- Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception).
+- Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
+  contains that string: it matches itself.
+

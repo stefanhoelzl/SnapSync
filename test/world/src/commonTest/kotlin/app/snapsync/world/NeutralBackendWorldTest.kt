@@ -21,10 +21,10 @@ class NeutralBackendWorldTest {
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
         w.platform.completeJob("A-primary.jpg")
 
-        assertEquals(w.store.objectsOf(w.ownDeviceId), w.objectsOf(w.ownDeviceId).orFail())
-        assertTrue("A-primary.jpg" in w.objectsOf(w.ownDeviceId).orFail())
-        assertEquals(true, w.isRegistered(eventId).orFail())
-        assertEquals(false, w.isRegistered("00000000-0000-4000-8000-00000000dead").orFail())
+        assertEquals(w.store.objectsOf(w.ownDeviceId), w.neutral.objectsOf(w.ownDeviceId).orFail())
+        assertTrue("A-primary.jpg" in w.neutral.objectsOf(w.ownDeviceId).orFail())
+        assertEquals(true, w.neutral.isRegistered(eventId).orFail())
+        assertEquals(false, w.neutral.isRegistered("00000000-0000-4000-8000-00000000dead").orFail())
     }
 
     @Test
@@ -32,13 +32,13 @@ class NeutralBackendWorldTest {
         val w = World(this)
         val eventId = w.provisionMinted()
         w.addForeignDeviceMinted("F", listOf(World.foreignAsset("X")), eventId)
-        assertTrue(w.unionOf(eventId).orFail().any { it.deviceId == "F" && it.assetId == "X" })
+        assertTrue(w.neutral.unionOf(eventId).orFail().any { it.deviceId == "F" && it.assetId == "X" })
     }
 
     @Test
     fun a_mini_edge_lever_is_available_and_does_what_it_says() = worldTest {
         val w = World(this)
-        assertIs<Answer.Available<Unit>>(w.setBackendOffline(true))
+        assertIs<Answer.Available<Unit>>(w.neutral.setOffline(true))
         assertTrue(w.backendOffline)
     }
 
@@ -48,7 +48,7 @@ class NeutralBackendWorldTest {
         w.provisionMinted()
         w.addOwnAsset("A")
         w.runUploadCycle()
-        w.setBackendOffline(true).orFail()
+        w.neutral.setOffline(true).orFail()
         w.platform.completeJob("A-primary.jpg")
         assertTrue("A-primary.jpg" !in w.store.objectsOf(w.ownDeviceId), "nothing landed on a 502")
     }

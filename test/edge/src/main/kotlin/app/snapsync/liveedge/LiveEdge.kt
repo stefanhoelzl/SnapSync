@@ -41,7 +41,8 @@ import kotlinx.coroutines.runBlocking
 object LiveEdge {
 
     private val apiDir: File = File(
-        System.getProperty("snapsync.apiDir") ?: error("snapsync.apiDir is not set — run through Gradle (the consumer contract is in test/edge/build.gradle.kts)"),
+        System.getProperty("snapsync.apiDir")
+            ?: error("snapsync.apiDir is not set — run through Gradle (the consumer contract: test/edge/build.gradle.kts)"),
     )
 
     private val storeRoot: File = File(System.getProperty("snapsync.liveEdgeStore") ?: "build/live-edge")

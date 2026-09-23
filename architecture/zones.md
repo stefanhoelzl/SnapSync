@@ -22,6 +22,7 @@ flowchart LR
   end
   subgraph test
     test_contracts[":test:contracts"]
+    test_edge[":test:edge"]
   end
   subgraph ui
     ui_components[":ui:components"]
@@ -31,6 +32,7 @@ flowchart LR
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> test_contracts
+  adapter_generic_app --> test_edge
   adapter_generic_fake --> domain_compose
   adapter_generic_fake --> domain_feature
   adapter_generic_fake --> domain_flow

@@ -1,22 +1,5 @@
 package app.snapsync.world
 
-import app.snapsync.model.encodeToJson
-import app.snapsync.ports.UnionAsset
-import io.ktor.client.request.get
-import io.ktor.client.request.post
-import io.ktor.client.request.put
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
 import app.snapsync.push.HttpPushTokenPublisher
@@ -754,75 +737,11 @@ class World(
     // ---- backend-neutral inspection, levers and minted event ids -------------------------------
     //
     // Capability `harness-world-model`, "Neutral inspection and minted event ids beside the mini-edge-only
-    // surface". Everything the backend's public HTTP surface can carry goes over the world's own real clients,
-    // so it is written ONCE for both backends; what only an in-memory store can answer is an explicit
-    // [Answer.Unavailable] on any other backend, never an empty value or a silent no-op.
+    // surface". The reads and levers are [neutral]'s; the minted-id helpers are here, because a provision is
+    // the world's own membership as much as the backend's.
 
-    /** The object keys the backend lists for [deviceId] — its per-device listing, over HTTP. */
-    suspend fun objectsOf(deviceId: String): Answer<Set<String>> =
-        Answer.Available(deviceFiles.list(deviceId).getOrThrow().map { it.key }.toSet())
-
-    /** The event-wide union the backend serves for [eventId], over HTTP. */
-    suspend fun unionOf(eventId: String): Answer<List<UnionAsset>> =
-        Answer.Available(unionSource.union(eventId).getOrThrow())
-
-    /** Whether the backend knows [eventId] — its details route answering `200` rather than `404`. */
-    suspend fun isRegistered(eventId: String): Answer<Boolean> {
-        val status = client.get("$host/events/$eventId").status
-        return when (status) {
-            HttpStatusCode.OK -> Answer.Available(true)
-            HttpStatusCode.NotFound -> Answer.Available(false)
-            else -> error("the event details route answered ${status.value} for $eventId")
-        }
-    }
-
-    /** The manifest the backend holds for [deviceId] in [eventId]. */
-    fun manifestOf(eventId: String, deviceId: String): Answer<DeviceManifest?> =
-        onMiniEdge("the manifest read", "the real edge serves no route that reads a manifest back") {
-            it.manifestOf(eventId, deviceId)
-        }
-
-    /** How many manifest publishes the backend STORED for this membership. */
-    fun publishesOf(eventId: String, deviceId: String): Answer<Int> =
-        onMiniEdge("the publish counter", NOT_ON_THE_HTTP_SURFACE) { it.publishesOf(eventId, deviceId) }
-
-    /** How many manifest publishes the backend REFUSED as older than the one it holds. */
-    fun refusedPublishesOf(eventId: String, deviceId: String): Answer<Int> =
-        onMiniEdge("the refused-publish counter", NOT_ON_THE_HTTP_SURFACE) { it.refusedPublishesOf(eventId, deviceId) }
-
-    /** The manifest version the backend stores for this membership. */
-    fun manifestVersionOf(eventId: String, deviceId: String): Answer<Long?> =
-        onMiniEdge("the stored manifest version", NOT_ON_THE_HTTP_SURFACE) { it.manifestVersionOf(eventId, deviceId) }
-
-    /** Backend-offline, as a neutral lever — see [backendOffline] for what it drives. */
-    fun setBackendOffline(offline: Boolean): Answer<Unit> =
-        onMiniEdge("backend-offline", "nothing makes the real edge answer 502") { it.offline = offline }
-
-    /** The minimum app version the backend demands (capability `min-app-version`); `null` turns the gate off. */
-    fun setMinAppVersion(minimum: String?): Answer<Unit> =
-        onMiniEdge("the minimum-app-version lever", "the real edge fixes its minimum version when it starts") {
-            it.minAppVersion = minimum
-        }
-
-    /** Devices an event admits before its join answers `409` (capability `event-limits`). */
-    fun setCapacity(capacity: Int): Answer<Unit> =
-        onMiniEdge("the capacity lever", "the real edge fixes its capacity when it starts") { it.capacity = capacity }
-
-    /** The nightly sweep deleting [eventId] (capability `scheduled-cleanup`). */
-    fun sweepEvent(eventId: String): Answer<Unit> =
-        onMiniEdge("the event sweep", NOT_RUNTIME_DRIVABLE) { it.sweepEvent(eventId) }
-
-    /** A storage reset wiping [deviceId]'s bytes. */
-    fun wipeBytes(deviceId: String): Answer<Unit> =
-        onMiniEdge("the byte wipe", NOT_RUNTIME_DRIVABLE) { it.wipeBytes(deviceId) }
-
-    /** The backend collecting one of [deviceId]'s objects. */
-    fun collectBytes(deviceId: String, filename: String): Answer<Unit> =
-        onMiniEdge("the byte collection", NOT_RUNTIME_DRIVABLE) { it.collectBytes(deviceId, filename) }
-
-    private inline fun <T> onMiniEdge(operation: String, why: String, read: (BackendStore) -> T): Answer<T> =
-        (backend as? MiniEdgeBackend)?.let { Answer.Available(read(it.store)) }
-            ?: Answer.unavailable(backend, operation, why)
+    /** The backend-neutral reads and levers — the same calls over the mini-edge and the real backend. */
+    val neutral: NeutralBackend by lazy { NeutralBackend(backend, client, host, deviceFiles, unionSource) }
 
     /**
      * [provision], with the event id **the backend mints** — the only kind the real backend accepts, and the
@@ -838,8 +757,8 @@ class World(
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
     ): String {
-        val eventId = createEventOnBackend(name, startsAt.at.iso, endsAt?.at?.iso)
-        joinOnBackend(eventId, ownDeviceId)
+        val eventId = neutral.createEvent(name, startsAt.at.iso, endsAt?.at?.iso)
+        neutral.join(eventId, ownDeviceId)
         activate(eventId, name, minPhotoDate, startsAt, maxPhotoDate, endsAt, direction, saveToAlbum)
         return eventId
     }
@@ -854,59 +773,15 @@ class World(
         assets: List<DeviceManifestAsset>,
         eventId: String? = null,
     ): String {
-        val event = eventId ?: createEventOnBackend(DEFAULT_EVENT_NAME, DEFAULT_STARTS_AT, endsAt = null)
-        joinOnBackend(event, deviceId)
+        val event = eventId ?: neutral.createEvent(DEFAULT_EVENT_NAME, DEFAULT_STARTS_AT, endsAt = null)
+        neutral.join(event, deviceId)
         assets.forEach { asset ->
-            asset.resources.forEach { resource ->
-                checkedOnBackend(
-                    "upload ${resource.key} for $deviceId",
-                    client.put(
-                        "$host/files/devices/$deviceId/${asset.assetId}/${resource.role.wire}" +
-                            "?filename=${resource.filename}",
-                    ) {
-                        contentType(ContentType.Image.JPEG)
-                        setBody(SEEDED_BYTES)
-                    },
-                )
-            }
+            asset.resources.forEach { resource -> neutral.upload(deviceId, asset.assetId, resource) }
         }
-        checkedOnBackend(
-            "publish $deviceId's manifest",
-            client.put("$host/events/$event/devices/$deviceId/manifest") {
-                contentType(ContentType.Application.Json)
-                setBody(foreignManifest(deviceId, assets).encodeToJson())
-            },
-        )
+        neutral.publish(event, foreignManifest(deviceId, assets))
         return event
     }
 
-    private suspend fun createEventOnBackend(name: String, startsAt: String, endsAt: String?): String {
-        val body = buildJsonObject {
-            put("name", name)
-            put("startsAt", startsAt)
-            endsAt?.let { put("endsAt", it) }
-        }
-        val response = checkedOnBackend(
-            "create event",
-            client.post("$host/events") {
-                contentType(ContentType.Application.Json)
-                setBody(body.toString())
-            },
-        )
-        return Json.parseToJsonElement(response.bodyAsText()).jsonObject.getValue("eventId").jsonPrimitive.content
-    }
-
-    private suspend fun joinOnBackend(eventId: String, deviceId: String) {
-        checkedOnBackend("join $deviceId to $eventId", client.put("$host/events/$eventId/devices/$deviceId"))
-    }
-
-    private suspend fun checkedOnBackend(step: String, response: HttpResponse): HttpResponse {
-        check(response.status.isSuccess()) {
-            "world setup step '$step' was refused by the ${backend.name} backend: HTTP ${response.status.value} " +
-                response.bodyAsText()
-        }
-        return response
-    }
 
     /**
      * Join/provision an event: register its marker, load the upload ledger from this device's stored-file
@@ -1115,14 +990,6 @@ class World(
     }
 
     companion object {
-        private const val NOT_ON_THE_HTTP_SURFACE =
-            "the real edge keeps it in its database and serves no route that reads it"
-        private const val NOT_RUNTIME_DRIVABLE =
-            "the real edge runs it on its own schedule, and no route drives it at runtime"
-
-        /** A minimal JPEG, as the backend contracts' setup seeds one — the bytes are never read back. */
-        private val SEEDED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
-
         const val DEFAULT_DATE: String = "2026-06-01T10:00:00Z"
 
         /**
