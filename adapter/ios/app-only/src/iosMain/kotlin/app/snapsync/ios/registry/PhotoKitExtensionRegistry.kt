@@ -4,15 +4,12 @@ package app.snapsync.ios.registry
 
 import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.registrationOutcome
+import app.snapsync.objc.ObjCFailure
+import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.UploadExtensionRegistry
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.value
 import platform.Foundation.NSError
 import platform.Photos.PHPhotoLibrary
 
@@ -53,21 +50,21 @@ internal class PhotoKitExtensionRegistry(private val log: Logger) : UploadExtens
      * not" as a side effect of doing its job — which the read-back cannot reliably do, being
      * grant-dependent.
      */
-    override suspend fun setEnabled(enabled: Boolean): RegistrationOutcome = memScoped {
-        val errorVar = alloc<ObjCObjectVar<NSError?>>()
-        val ok = PHPhotoLibrary.sharedPhotoLibrary()
-            .setUploadJobExtensionEnabled(enabled, error = errorVar.ptr)
-        val error = errorVar.value
+    override suspend fun setEnabled(enabled: Boolean): RegistrationOutcome {
+        val write = checkedObjC("setUploadJobExtensionEnabled") {
+            PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = it)
+        }
+        val error = write.exceptionOrNull() as ObjCFailure?
         val outcome = registrationOutcome(
             enabling = enabled,
-            ok = ok,
+            ok = write.isSuccess,
             errorDomain = error?.domain,
             errorCode = error?.code,
         )
         // No branch: the outcome carries Kermit's own severity, so this renders without deciding. An
         // `Error` here is what `crash-reporting` carries onward as field telemetry.
         log.log(outcome.severity, log.tag, null, outcome.message)
-        outcome
+        return outcome
     }
 
     /**

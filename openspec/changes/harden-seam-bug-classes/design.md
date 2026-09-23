@@ -183,18 +183,24 @@ have no single call site to check.
 
 ### D9. ObjC boundary helpers
 
-In `:adapter:ios:ext-safe`, `objcBoundary(log, name) { }` catches `Throwable`, logs it at `Error`, and
-returns a fallback value. `checkedObjC(log, name) { errPtr -> call(errPtr) }` allocates the `NSError**`,
-reads the `Boolean` result, and returns a `Result` that carries the domain, code and description.
+In `:adapter:ios:ext-safe` (`app.snapsync.objc`), `objcBoundary(log, name[, fallback]) { }` catches `Throwable`,
+logs it at `Error`, and returns the fallback (or `Unit`). `checkedObjC(name) { errPtr -> call(errPtr) }` allocates
+the `NSError**`, reads the `Boolean` result, and returns a `Result<Unit>` whose failure is an `ObjCFailure`
+carrying the domain, code and description; `checkedObjCValue` is the same for a call that reports success as a
+non-nil value. As built, `checkedObjC` takes no logger: whether a failure is a fault, a warning or expected is
+the call site's to say (removing an already-absent file is expected, and `Throwable.isNoSuchFile` names that
+case), and the log writer rolling its own file has nowhere to log.
 
-The following move to these helpers:
-- `IosPhotoLibraryImporter`'s change and completion blocks;
-- `IosUrlSessionUploadPlatform`'s delegate;
-- `IosDownloadTransport`'s delegate;
-- `PhotoSelectionObserver`;
-- MetricKit;
-- every `performChangesAndWait(…, error = null)` call site;
-- `BGTaskScheduler.submitTaskRequest`.
+The following moved to these helpers:
+- `IosPhotoLibraryImporter`'s change and completion blocks (the completion's settle has its own fallback, so a
+  throw while settling still resumes the caller);
+- the delegates of `IosUrlSessionUploadPlatform`, `IosDownloadTransport`, `PhotoSelectionObserver` and MetricKit;
+- every other block handed to ObjC: `dispatch_async` bodies, notification-observer blocks (the root's two
+  included), the authorization and App Attest completions, `getAllTasksWithCompletionHandler`,
+  `writeDataForAssetResource`;
+- every `performChangesAndWait` call, `BGTaskScheduler.submitTaskRequest`, `setUploadJobExtensionEnabled`, and
+  every `NSFileManager`/`NSData` call that reports through `NSError**` (the config store's reads and writes
+  keep their absence classification exactly).
 
 The `scheduleDownloadBackstop` duplicate is removed with D3.
 

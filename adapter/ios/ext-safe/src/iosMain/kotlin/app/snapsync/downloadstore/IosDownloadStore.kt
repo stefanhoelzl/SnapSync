@@ -1,10 +1,12 @@
 package app.snapsync.downloadstore
 
-import app.snapsync.ports.SuppressionSource
-
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.downloadstore.db.DownloadDatabase
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.isNoSuchFile
+import app.snapsync.ports.SuppressionSource
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
@@ -55,7 +57,9 @@ private fun protectDownloadFiles(basePath: String) {
         NSFileProtectionKey to NSFileProtectionCompleteUntilFirstUserAuthentication,
     )
     for (suffix in listOf("", "-wal", "-shm")) {
-        NSFileManager.defaultManager.setAttributes(attributes, "$basePath/$DOWNLOAD_DB_NAME$suffix", error = null)
+        val path = "$basePath/$DOWNLOAD_DB_NAME$suffix"
+        checkedObjC("setAttributes") { NSFileManager.defaultManager.setAttributes(attributes, path, error = it) }
+            .onFailure { if (!it.isNoSuchFile) Logger.withTag("downloadStore").w(it) { "file protection not set on $path" } }
     }
 }
 

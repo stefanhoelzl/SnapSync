@@ -1,13 +1,16 @@
 package app.snapsync.download
 
+import app.snapsync.ios.urlsession.transferSessionConfiguration
+import app.snapsync.logging.invocation
+import app.snapsync.model.PlatformEntry
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.checkedObjCValue
+import app.snapsync.objc.isNoSuchFile
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.TransferOutcome
-
-import app.snapsync.logging.invocation
-import app.snapsync.ios.urlsession.transferSessionConfiguration
-import app.snapsync.model.PlatformEntry
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -111,7 +114,11 @@ class IosDownloadTransport(
     private fun outcomeOf(task: NSURLSessionDownloadTask, location: NSURL): TransferOutcome {
         val http = task.response as? NSHTTPURLResponse
         val received = location.path
-            ?.let { NSFileManager.defaultManager.attributesOfItemAtPath(it, error = null) }
+            ?.let { path ->
+                checkedObjCValue("attributesOfItemAtPath") { NSFileManager.defaultManager.attributesOfItemAtPath(path, error = it) }
+                    .onFailure { log.w(it) { "the finished download's size is unreadable — judged as 0 bytes" } }
+                    .getOrNull()
+            }
             ?.get(NSFileSize) as? NSNumber
         return TransferOutcome(
             statusCode = http?.statusCode?.toInt(),
@@ -128,18 +135,14 @@ class IosDownloadTransport(
     /** Move the finished temp file into durable App-Group staging; last-write-wins on a re-download. */
     private fun moveToStaging(tempUrl: NSURL, destination: String): Boolean {
         val fm = NSFileManager.defaultManager
-        fm.createDirectoryAtPath(
-            destination.substringBeforeLast('/'),
-            withIntermediateDirectories = true,
-            attributes = null,
-            error = null,
-        )
-        fm.removeItemAtPath(destination, error = null)
-        if (!fm.moveItemAtURL(tempUrl, NSURL.fileURLWithPath(destination), error = null)) {
-            log.w { "failed to stage $destination" }
-            return false
-        }
-        return true
+        checkedObjC("createDirectoryAtPath") {
+            fm.createDirectoryAtPath(destination.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = it)
+        }.onFailure { log.w(it) { "staging directory for $destination could not be created" } }
+        checkedObjC("removeItemAtPath") { fm.removeItemAtPath(destination, error = it) }
+            .onFailure { if (!it.isNoSuchFile) log.w(it) { "a previous $destination could not be removed" } }
+        return checkedObjC("moveItemAtURL") { fm.moveItemAtURL(tempUrl, NSURL.fileURLWithPath(destination), error = it) }
+            .onFailure { log.w(it) { "failed to stage $destination" } }
+            .isSuccess
     }
 
     /**
@@ -156,8 +159,10 @@ class IosDownloadTransport(
             session: NSURLSession,
             downloadTask: NSURLSessionDownloadTask,
             didFinishDownloadingToURL: NSURL,
-        ) = transport.log.invocation("download.didFinishDownloading", severity = Severity.Debug) {
-            transport.onFinished(downloadTask, didFinishDownloadingToURL)
+        ) = objcBoundary(transport.log, "download.didFinishDownloading") {
+            transport.log.invocation("download.didFinishDownloading", severity = Severity.Debug) {
+                transport.onFinished(downloadTask, didFinishDownloadingToURL)
+            }
         }
 
         @PlatformEntry
@@ -165,7 +170,7 @@ class IosDownloadTransport(
             session: NSURLSession,
             task: NSURLSessionTask,
             didCompleteWithError: NSError?,
-        ) = transport.log.invocation(
+        ) = objcBoundary(transport.log, "download.didComplete") { transport.log.invocation(
             "download.didComplete",
             // Domain and code, not just `localizedDescription`. iOS renders NSURLErrorUnknown as the
             // literal string "unknown error", which names nothing an operator can act on or search for —
@@ -176,7 +181,7 @@ class IosDownloadTransport(
             severity = Severity.Debug,
         ) {
             transport.onComplete(task, didCompleteWithError)
-        }
+        } }
 
         /**
          * The session died and was **not** killed by us (we never invalidate). Tell the owner so it
@@ -184,16 +189,17 @@ class IosDownloadTransport(
          * `NSException` Kotlin/Native cannot catch — an abort.
          */
         @PlatformEntry
-        override fun URLSession(session: NSURLSession, didBecomeInvalidWithError: NSError?) {
-            transport.log.w { "background session invalidated by the system: ${didBecomeInvalidWithError?.localizedDescription}" }
-            transport.host.onInvalidated()
-        }
+        override fun URLSession(session: NSURLSession, didBecomeInvalidWithError: NSError?) =
+            objcBoundary(transport.log, "download.didBecomeInvalid") {
+                transport.log.w { "background session invalidated by the system: ${didBecomeInvalidWithError?.localizedDescription}" }
+                transport.host.onInvalidated()
+            }
 
         // Session-level, not per-task: INFO.
         @PlatformEntry
         override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
-            transport.log.invocation("download.didFinishEvents") {
-                transport.host.onBackgroundEventsFinished()
+            objcBoundary(transport.log, "download.didFinishEvents") {
+                transport.log.invocation("download.didFinishEvents") { transport.host.onBackgroundEventsFinished() }
             }
     }
 }

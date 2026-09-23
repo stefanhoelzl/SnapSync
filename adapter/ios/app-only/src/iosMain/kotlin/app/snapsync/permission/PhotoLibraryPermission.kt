@@ -1,15 +1,15 @@
 package app.snapsync.permission
 
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.logging.invocation
 import app.snapsync.model.PermissionStatus
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
-
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSNotification
-import app.snapsync.logging.invocation
-import co.touchlab.kermit.Logger
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
@@ -17,11 +17,11 @@ import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHPhotoLibrary
 import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
-import platform.darwin.dispatch_async
-import platform.darwin.dispatch_get_main_queue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.darwin.NSObjectProtocol
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * The iOS PhotoKit adapter — the first real platform implementation. One object implementing both
@@ -59,15 +59,17 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
         ) { _: NSNotification? ->
             // PLATFORM ENTRY POINT (spec `diagnostic-logging`): the OS calls this observer body, so
             // it records that it was called and what it read. Once per foreground: INFO.
-            log.invocation("photoPermission.onDidBecomeActive", result = { status: PermissionStatus -> "$status" }) {
-                read().also { state.value = it }
+            objcBoundary(log, "photoPermission.onDidBecomeActive") {
+                log.invocation("photoPermission.onDidBecomeActive", result = { status: PermissionStatus -> "$status" }) {
+                    read().also { state.value = it }
+                }
             }
         }
 
     override fun request() {
         // Fire-and-forget: the result lands on the source via read(), per the port contract.
         PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { _ ->
-            state.value = read()
+            objcBoundary(log, "photoPermission.request.completion") { state.value = read() }
         }
     }
 
@@ -97,7 +99,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
         // Same main-queue hop and presenter walk as `openSettings`/`IosShareSheet`, for the same two
         // reasons: UIKit rejects presentation from a covered controller, and presentation asserts the
         // main queue (presenting off-main traps with SIGTRAP) while commands can arrive on any lane.
-        dispatch_async(dispatch_get_main_queue()) {
+        dispatch_async(dispatch_get_main_queue()) { objcBoundary(log, "choosePhotos") {
             var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
             while (presenter?.presentedViewController != null) {
                 presenter = presenter.presentedViewController
@@ -107,7 +109,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
             // category on PHPhotoLibrary — not in Photos, which is why PhotosUI is imported above and
             // why this can only ever be an app-only adapter.
             presenter?.let { PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it) }
-        }
+        } }
     }
 
     override fun openSettings() {
@@ -118,7 +120,9 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
         // "Dispatcher lanes are fixed by the composition"). The command that calls this is on the main
         // lane too; this makes the adapter correct for any caller rather than only that one.
         dispatch_async(dispatch_get_main_queue()) {
-            UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
+            objcBoundary(log, "openSettings") {
+                UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
+            }
         }
     }
 

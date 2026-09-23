@@ -2,10 +2,11 @@
 
 package app.snapsync.gallery
 
-
-import app.snapsync.ports.DeviceManifestStore
-
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.isNoSuchFile
+import app.snapsync.ports.DeviceManifestStore
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSData
@@ -46,6 +47,7 @@ class IosDeviceManifestStore(
 ) : DeviceManifestStore {
 
     private val fileManager = NSFileManager.defaultManager
+    private val log = Logger.withTag("deviceManifest")
 
     private val dir: NSURL? = containerPath
         ?.let { NSURL.fileURLWithPath(it, isDirectory = true) }
@@ -58,7 +60,8 @@ class IosDeviceManifestStore(
     /** Deletes the file: absent and "not believed" are the same state, which `loadLastUploaded` reads. */
     override fun clearLastUploaded() {
         val url = fileUrl(LAST_UPLOADED) ?: return
-        fileManager.removeItemAtURL(url, error = null)
+        checkedObjC("removeItemAtURL") { fileManager.removeItemAtURL(url, error = it) }
+            .onFailure { if (!it.isNoSuchFile) log.w(it) { "clearLastUploaded: the file stays, so the manifest is still believed" } }
     }
 
     private fun fileUrl(name: String): NSURL? = dir?.URLByAppendingPathComponent(name)
@@ -71,7 +74,9 @@ class IosDeviceManifestStore(
 
     private fun writeString(name: String, content: String) {
         val container = dir ?: return
-        fileManager.createDirectoryAtURL(container, withIntermediateDirectories = true, attributes = null, error = null)
+        checkedObjC("createDirectoryAtURL") {
+            fileManager.createDirectoryAtURL(container, withIntermediateDirectories = true, attributes = null, error = it)
+        }.onFailure { log.w(it) { "manifest directory could not be created — the write below fails" } }
         val url = fileUrl(name) ?: return
         val data = (content as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData ?: return
         data.writeToURL(url, atomically = true)

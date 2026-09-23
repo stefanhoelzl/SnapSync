@@ -4,6 +4,7 @@ import app.snapsync.logging.IosThreadLogScope
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.flattenToDottedKeys
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.ProcessMetricSource
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
@@ -112,20 +113,22 @@ internal class MetricKitSubscriber(
 ) : NSObject(), MXMetricManagerSubscriberProtocol {
 
     @PlatformEntry
-    override fun didReceiveMetricPayloads(payloads: List<*>) =
+    override fun didReceiveMetricPayloads(payloads: List<*>) = objcBoundary(log, "didReceiveMetricPayloads") {
         log.invocation(IosThreadLogScope, "didReceiveMetricPayloads", params = "count=${payloads.size}") {
             payloads.forEach { payload ->
                 (payload as? MXMetricPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
         }
+    }
 
     @PlatformEntry
-    override fun didReceiveDiagnosticPayloads(payloads: List<*>) =
+    override fun didReceiveDiagnosticPayloads(payloads: List<*>) = objcBoundary(log, "didReceiveDiagnosticPayloads") {
         log.invocation(IosThreadLogScope, "didReceiveDiagnosticPayloads", params = "count=${payloads.size}") {
             payloads.forEach { payload ->
                 (payload as? MXDiagnosticPayload)?.let { deliver(it.dictionaryRepresentation()) }
             }
         }
+    }
 
     /**
      * Convert and hand over, **inline** — before the callback returns.

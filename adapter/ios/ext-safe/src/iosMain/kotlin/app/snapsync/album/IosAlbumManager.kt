@@ -3,17 +3,13 @@
 package app.snapsync.album
 
 import app.snapsync.model.normalizeAssetId
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.AlbumManager
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.value
 import platform.Foundation.NSDate
-import platform.Foundation.NSError
 import platform.Foundation.NSISO8601DateFormatWithFractionalSeconds
 import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
 import platform.Foundation.NSISO8601DateFormatter
@@ -37,23 +33,22 @@ class IosAlbumManager(
     private val log: Logger = Logger.withTag("IosAlbumManager"),
 ) : AlbumManager {
 
-    override suspend fun ensureCreated(name: String): String? = memScoped {
+    override suspend fun ensureCreated(name: String): String? {
         var placeholderId: String? = null
-        val errorVar = alloc<ObjCObjectVar<NSError?>>()
-        PHPhotoLibrary.sharedPhotoLibrary().performChangesAndWait(
-            changeBlock = {
-                val req = PHAssetCollectionChangeRequest.creationRequestForAssetCollectionWithTitle(name)
-                placeholderId = req.placeholderForCreatedAssetCollection.localIdentifier
-            },
-            error = errorVar.ptr,
+        return checkedObjC("ensureCreated") { error ->
+            PHPhotoLibrary.sharedPhotoLibrary().performChangesAndWait(
+                changeBlock = {
+                    objcBoundary(log, "ensureCreated.changeBlock") {
+                        val req = PHAssetCollectionChangeRequest.creationRequestForAssetCollectionWithTitle(name)
+                        placeholderId = req.placeholderForCreatedAssetCollection.localIdentifier
+                    }
+                },
+                error = error,
+            )
+        }.fold(
+            onSuccess = { placeholderId },
+            onFailure = { log.w(it) { "ensureCreated failed" }; null },
         )
-        val error = errorVar.value
-        if (error != null) {
-            log.w { "ensureCreated failed: code=${error.code} ${error.localizedDescription}" }
-            null
-        } else {
-            placeholderId
-        }
     }
 
     override suspend fun exists(albumLocalId: String): Boolean {
@@ -131,16 +126,16 @@ class IosAlbumManager(
             log.i { "add: none of ${rawLocalIds.size} localIds resolve to assets — nothing to add" }
             return
         }
-        memScoped {
-            val errorVar = alloc<ObjCObjectVar<NSError?>>()
+        checkedObjC("add") { error ->
             PHPhotoLibrary.sharedPhotoLibrary().performChangesAndWait(
                 changeBlock = {
-                    // PHFetchResult conforms to NSFastEnumeration, so it is a valid addAssets argument.
-                    PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)?.addAssets(assets)
+                    objcBoundary(log, "add.changeBlock") {
+                        // PHFetchResult conforms to NSFastEnumeration, so it is a valid addAssets argument.
+                        PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)?.addAssets(assets)
+                    }
                 },
-                error = errorVar.ptr,
+                error = error,
             )
-            errorVar.value?.let { log.w { "add commit failed: code=${it.code} ${it.localizedDescription}" } }
-        }
+        }.onFailure { log.w(it) { "add commit failed" } }
     }
 }

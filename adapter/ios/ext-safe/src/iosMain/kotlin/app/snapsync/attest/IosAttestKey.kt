@@ -1,21 +1,23 @@
 package app.snapsync.attest
 
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.AttestKey
-
+import co.touchlab.kermit.Logger
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.usePinned
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 import platform.CoreCrypto.CC_SHA256
 import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.create
 import platform.posix.memcpy
+
 
 /**
  * The real [AttestKey], over Apple's `DCAppAttestService`.
@@ -40,30 +42,39 @@ class IosAttestKey internal constructor(
 
     constructor() : this(SystemAppAttestApi)
 
+    private val log = Logger.withTag("attestKey")
+
     override fun isSupported(): Boolean = service.isSupported()
 
     override suspend fun generateKey(): String = suspendCoroutine { cont ->
+        // The completion is what Objective-C calls (through SystemAppAttestApi): contained, like every such block.
         service.generateKey { keyId, error ->
-            if (keyId != null) cont.resume(keyId) else cont.resumeWithException(attestError("generateKey", error))
+            objcBoundary(log, "generateKey.completion") {
+                if (keyId != null) cont.resume(keyId) else cont.resumeWithException(attestError("generateKey", error))
+            }
         }
     }
 
     override suspend fun attest(keyId: String, challenge: String): ByteArray =
         suspendCoroutine { cont ->
             service.attestKey(keyId, sha256(challenge)) { data, error ->
-                val bytes = data?.toByteArray()
-                if (bytes != null) cont.resume(bytes) else cont.resumeWithException(attestError("attestKey", error))
+                objcBoundary(log, "attestKey.completion") {
+                    val bytes = data?.toByteArray()
+                    if (bytes != null) cont.resume(bytes) else cont.resumeWithException(attestError("attestKey", error))
+                }
             }
         }
 
     override suspend fun assert(keyId: String, challenge: String): ByteArray =
         suspendCoroutine { cont ->
             service.generateAssertion(keyId, sha256(challenge)) { data, error ->
-                val bytes = data?.toByteArray()
-                if (bytes != null) {
-                    cont.resume(bytes)
-                } else {
-                    cont.resumeWithException(attestError("generateAssertion", error))
+                objcBoundary(log, "generateAssertion.completion") {
+                    val bytes = data?.toByteArray()
+                    if (bytes != null) {
+                        cont.resume(bytes)
+                    } else {
+                        cont.resumeWithException(attestError("generateAssertion", error))
+                    }
                 }
             }
         }

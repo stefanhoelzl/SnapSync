@@ -1,7 +1,10 @@
 package app.snapsync.download
 
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.isNoSuchFile
 import app.snapsync.ports.StagedBytes
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 
@@ -59,10 +62,15 @@ class IosStagedBytes(
         return "$container/download-staging"
     }
 
+    private val log = Logger.withTag("stagedBytes")
+
     override suspend fun release(paths: List<String>) {
         if (paths.isEmpty()) return
         val fm = NSFileManager.defaultManager
-        paths.forEach { fm.removeItemAtPath(it, error = null) }
+        paths.forEach { path ->
+            checkedObjC("removeItemAtPath") { fm.removeItemAtPath(path, error = it) }
+                .onFailure { if (!it.isNoSuchFile) log.w(it) { "release: $path stays on disk" } }
+        }
     }
 
     /**

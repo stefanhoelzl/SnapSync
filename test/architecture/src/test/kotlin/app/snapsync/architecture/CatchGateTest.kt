@@ -32,6 +32,8 @@ class CatchGateTest {
             "the cancellation-keeping helpers themselves",
         "/domain/ports/src/commonMain/kotlin/app/snapsync/ports/BackgroundTransfer.kt" to
             "runProcessCycle: the extension's ObjC boundary — any throwable, cancellation included, aborts the process",
+        "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/objc/ObjCBoundary.kt" to
+            "objcBoundary: every Kotlin block and delegate method ObjC calls — nothing may unwind into ObjC frames",
     )
 
     private val productionRoots = listOf("/domain/", "/adapter/", "/app/", "/ui/")
