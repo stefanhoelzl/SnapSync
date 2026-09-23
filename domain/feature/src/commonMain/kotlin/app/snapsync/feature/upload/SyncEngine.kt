@@ -79,17 +79,41 @@ class SyncEngine(
         log.i { "$arm key=${decision.request.resource.filename}" }
     }
 
-    /** Pure query: read the ledger, mint for `Work`, write nothing (recording is [started]). */
-    private suspend fun decide(resource: Resource): SyncDecision {
-        val entry = ledger.entry(resource.filename)
-        // COMPLETED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
-        // DISCOVERED or absent → fresh upload. DISCOVERED is a row the walk wrote, or one a failure returned,
-        // for a resource with nothing in flight, so re-deriving it must answer `Work` exactly as an absent row
-        // does — otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
-        return when (entry?.state) {
-            LedgerState.COMPLETED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded
-            LedgerState.DISCOVERED, null -> SyncDecision.Upload(provider.provide(resource))
+    /**
+     * Whether [resource] is work — the answer [handle] of a [SyncEvent.ResourceChanged] would give, WITHOUT
+     * minting the request that answer carries. For a caller that only records what the walk found and acts
+     * later: minting there built a request (and read the device token) only to throw it away, and the act
+     * re-derives it through [handle], which mints the one that is used.
+     *
+     * The same classification as [decide] ([needsJob]), so the engine stays the one place deciding whether a
+     * key uploads. Writes nothing. A `true` answer logs the line [handle]'s `Upload` arm logs, so the device log
+     * reads exactly as when the caller asked [handle].
+     */
+    suspend fun isWork(resource: Resource): Boolean =
+        needsJob(ledger.entry(resource.filename)?.state).also { work ->
+            if (work) log.i { "Upload key=${resource.filename}" }
         }
+
+    /** Pure query: read the ledger, mint for `Work`, write nothing (recording is [started]). */
+    private suspend fun decide(resource: Resource): SyncDecision =
+        if (needsJob(ledger.entry(resource.filename)?.state)) {
+            SyncDecision.Upload(provider.provide(resource))
+        } else {
+            SyncDecision.AlreadyUploaded
+        }
+
+    /**
+     * The one classification of a ledger state: does its key need a job?
+     *
+     * COMPLETED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
+     * DISCOVERED or absent → fresh upload. DISCOVERED is a row the walk wrote, or one a failure returned,
+     * for a resource with nothing in flight, so re-deriving it must answer `Work` exactly as an absent row
+     * does — otherwise the state the cycle writes to remember its own backlog would suppress that backlog.
+     * Exhaustive with no `else`, so a new state fails to compile until it is classified here.
+     */
+    private fun needsJob(state: LedgerState?): Boolean = when (state) {
+        LedgerState.COMPLETED, LedgerState.REQUESTED -> false
+        LedgerState.DISCOVERED, null -> true
     }
 
     private suspend fun retry(failed: UploadRequest): SyncDecision {

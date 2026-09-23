@@ -17,6 +17,8 @@ import app.snapsync.model.UploadRequest
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotSame
@@ -277,5 +279,54 @@ class SyncEngineTest {
         // Absent ledger entry → Upload, regardless of assetId (decide reads only filename).
         val decision = engine.handle(SyncEvent.ResourceChanged(resource(assetId = "anything")))
         assertIs<SyncDecision.Upload>(decision)
+    }
+
+    // ---- isWork: the decision without the request ----
+
+    @Test
+    fun `isWork answers what handle would for every ledger state without minting or writing`() = runTest {
+        val states: List<LedgerState?> = LedgerState.entries + null
+        for (state in states) {
+            val resource = resource(filename = "key-${state ?: "absent"}.heic", assetId = "a-${state ?: "absent"}")
+            if (state != null) store.recordUnlessSettled(resource.toLedgerRow(state))
+            val before = ledger.entry(resource.filename)
+            val mintedBefore = provider.invocations.size
+
+            val work = engine.isWork(resource)
+
+            assertEquals(mintedBefore, provider.invocations.size, "isWork must not mint ($state)")
+            assertEquals(before, ledger.entry(resource.filename), "isWork must not write ($state)")
+            assertEquals(
+                engine.handle(SyncEvent.ResourceChanged(resource)) is SyncDecision.Work,
+                work,
+                "isWork and handle must classify $state identically — the engine is the one place that decides",
+            )
+        }
+    }
+
+    @Test
+    fun `isWork is true for an unknown or discovered key and false for a requested or completed one`() = runTest {
+        assertTrue(engine.isWork(resource(filename = "new.heic")))
+
+        val discovered = resource(filename = "discovered.heic")
+        store.recordUnlessSettled(discovered.toLedgerRow(LedgerState.DISCOVERED))
+        assertTrue(engine.isWork(discovered))
+
+        val requested = resource(filename = "requested.heic")
+        store.recordUnlessSettled(requested.toLedgerRow(LedgerState.REQUESTED))
+        assertFalse(engine.isWork(requested))
+
+        val completed = resource(filename = "completed.heic")
+        store.recordUnlessSettled(completed.toLedgerRow(LedgerState.COMPLETED))
+        assertFalse(engine.isWork(completed))
+
+        assertEquals(0, provider.invocations.size, "no request is minted to answer the question")
+    }
+
+    @Test
+    fun `isWork is untouched by a provider that would fail`() = runTest {
+        provider.nextFailure = IllegalStateException("provider down")
+
+        assertTrue(engine.isWork(resource()), "nothing is minted, so nothing can fail")
     }
 }
