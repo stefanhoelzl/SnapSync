@@ -17,7 +17,8 @@ of a port's clauses**; this spec states the mechanism around them: states, hosts
 rule that every clause must run against a real implementation somewhere, and how a host CI cannot reach is
 recorded at the operating-system boundary and replayed against the current adapter on every build.
 
-Decision record: `changes/archive/2026-09-22-establish-port-contracts`.
+Decision records: `changes/archive/2026-09-22-establish-port-contracts`; the injected-location rule and the
+App-Group container column, `changes/archive/2026-09-23-contract-app-group-stores`.
 
 ## Requirements
 
@@ -115,6 +116,14 @@ it — so a `Live` binding there counts only through its recording, never throug
 host can exercise belongs in the adapter's documentation with its evidence; a behaviour of the project's
 own logic belongs in an ordinary fake-backed test.
 
+A real adapter whose storage location is **injected** — a fresh temporary directory, or a fresh preferences
+suite, in place of the App-Group container — SHALL count as a real implementation for the clauses it runs:
+every call it makes to the operating system is the one production makes, except the single lookup that
+resolves the location. That lookup SHALL NOT be counted as covered by an injected binding. A clause about
+the location being **unavailable** SHALL be entered by constructing the adapter with its production default,
+so the host's own answer to the lookup — not a value the binding passed — drives the adapter's
+unavailable branch.
+
 #### Scenario: A clause only the fake reaches
 - **WHEN** a clause is added whose state every `Live` binding declares unreachable and no recording holds
 - **THEN** the build fails naming the clause
@@ -129,6 +138,17 @@ own logic belongs in an ordinary fake-backed test.
   unreachable
 - **THEN** the clause has no real host and the build fails
 
+#### Scenario: A file store over an injected directory
+- **WHEN** a live binding constructs a file-backed adapter over a fresh temporary directory for a readable
+  state
+- **THEN** its clauses count as run against a real implementation, and none of them counts as coverage of
+  the container lookup
+
+#### Scenario: An unavailable container is the host's own answer
+- **WHEN** a live binding on `IOS_SIM_KEXE` enters a store's unavailable state
+- **THEN** it constructs the adapter with its default location, whose App-Group lookup the unentitled
+  executable answers with `nil`, rather than passing an absent location itself
+
 ### Requirement: Hosts are a closed set of what changes reachable states
 
 A host SHALL be a value of a closed `Host` enum whose identity is platform × process kind × entitlements —
@@ -139,14 +159,18 @@ with a run. The enum SHALL hold only hosts that some binding names; this change 
 
 The known host matrix, which the next binding starts from:
 
-| host | process | Keychain, as measured |
-|---|---|---|
-| `JVM` | JVM test | none |
-| `IOS_SIM_KEXE` | Kotlin/Native `test.kexe` spawned by `simctl`, unentitled | every `SecItem*` call answers `-25291` (`errSecNotAvailable`) |
-| simulator `.xctest` (unbound) | Swift test bundle, no `TEST_HOST` | answers `-34018` (`errSecMissingEntitlement`) |
-| simulator app (unbound) | the app bundle, ad-hoc signed | `-34018` to an explicit-group query: `simulator.entitlements` omits `keychain-access-groups` (measured 2026-09-22, iOS 26.2) |
-| `IOS_DEVICE_APP` | the entitled app on a device | accessible |
-| device extension (unbound) | the upload extension process | not measured |
+| host | process | Keychain, as measured | App-Group container, as measured |
+|---|---|---|---|
+| `JVM` | JVM test | none | none |
+| `IOS_SIM_KEXE` | Kotlin/Native `test.kexe` spawned by `simctl`, unentitled | every `SecItem*` call answers `-25291` (`errSecNotAvailable`) | the lookup answers `nil` |
+| simulator `.xctest` (unbound) | Swift test bundle, no `TEST_HOST` | answers `-34018` (`errSecMissingEntitlement`) | not measured |
+| simulator app (unbound) | the app bundle, ad-hoc signed | `-34018` to an explicit-group query: `simulator.entitlements` omits `keychain-access-groups` (measured 2026-09-22, iOS 26.2) | available under the ad-hoc signature `scripts/sim-sign` applies; an unsigned build has none (measured 2026-08-09) |
+| `IOS_DEVICE_APP` | the entitled app on a device | accessible | available |
+| device extension (unbound) | the upload extension process | not measured | available — the extension's ledger, config and log live there |
+
+No host enforces file data protection before first unlock in a way a binding can enter: the simulator
+implements none (a platform belief, not measured here), and the rig drives only a running, unlocked app. A clause conditioned on protected data being
+unavailable therefore has no real host.
 
 #### Scenario: An iOS update changes an answer
 - **WHEN** a re-recording on a newer iOS version yields a different answer on `IOS_DEVICE_APP`

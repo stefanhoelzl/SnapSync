@@ -258,3 +258,18 @@ Rollback is a revert.
 
 - None blocking. Whether an `IOS_SIM_APP` host is worth adding is left to the first phase that needs
   cross-process clauses.
+
+## Delta completeness (archive gate)
+
+| module touched | owning capability | delta, or why none |
+|---|---|---|
+| `:test:contracts` | `port-contracts` | delta: the injected-location rule and the App-Group host column. The five contracts themselves are clause code, which `port-contracts` makes the specification; no spec restates them. |
+| `:adapter:generic:fake` | `harness-world-model` (the doubles the world stands on) | delta: the world's config ports are `InMemoryConfigStore`. Behaviour elsewhere: the manifest fake gained constructor state, and the empty-log answer moved from `""` to `null` to match the device, which the port's own KDoc already required. |
+| `:adapter:ios:ext-safe` | `event-link` (config file) · `diagnostic-logging` (log reader) | `event-link` delta: a container input, and `clear` failing without a container. `diagnostic-logging`: none needed. It requires a tail "cut at a line boundary" from the current file, and the fix only stops discarding a first line that was never cut, which satisfies that more exactly. The manifest and album-map changes are test-only. |
+| `:adapter:ios:app-only` | `download-store` | none: `IosStagedBytes` gains a defaulted container provider, still resolved lazily, and the shell passes nothing. |
+| `:test:world` | `harness-world-model` | delta, as above. |
+| `leave-event` (spec only) | `leave-event` | delta: the outdated "Keychain copy first" ordering is replaced by the failing-`clear` guarantee. |
+| `architecture/` | `architecture-diagrams` | none: regenerated output. |
+| `CLAUDE.md` | none (docs) | none: the stale module-map lines are corrected. |
+
+Dead-type gate: the two hits (`InMemoryDeviceManifestStore`, `IosStagedBytes`) are changed declaration lines, not removals. `AppGroupProbeTest` was never on `main`.

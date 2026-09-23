@@ -446,7 +446,18 @@ runtime-identity literal (capability `architecture-guards`) — holding a **vers
 its `saveToAlbum`), so the background upload extension reads the `eventId`, the cutoff, and the
 album flag from the same file the app writes. The envelope codec and the read algorithm SHALL be
 pure `:domain` functions covered in `commonTest` (JVM **and** iOS simulator); the adapter SHALL
-contain only file IO and error mapping.
+contain only file IO and error mapping. The container's location SHALL be a constructor input
+defaulting to the shared App-Group container, so a test can run the adapter's own file IO and error
+mapping over a directory it owns (capability `port-contracts`); both composition roots SHALL pass
+nothing.
+
+An **unresolvable container** — the App-Group lookup answering nothing, which only a build without the
+App-Group entitlement reaches — SHALL be treated as *unreadable* on every member: the read reports
+unreadable (never no-config), and **both** `save` and `clear` SHALL fail rather than report success,
+leaving `config` unchanged. A `clear` that could not reach its store and returned anyway would show
+the setup gate while a file it never deleted resurrects the membership at the next launch — the
+half-completed leave the failing `clear` exists to prevent (capability `leave-event`). Deleting a file
+that is **definitively missing** remains success.
 
 Writes SHALL be **atomic** (temp file + rename) under
 `NSFileProtectionCompleteUntilFirstUserAuthentication` — readable while the device is locked once
@@ -572,6 +583,17 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
 
 - **WHEN** the adapter is constructed with no file present
 - **THEN** `config.value` is `null`
+
+#### Scenario: Clear without a container fails rather than leaving silently
+
+- **WHEN** `clear()` is invoked and the App-Group container cannot be resolved
+- **THEN** `clear()` fails, `config` keeps its value, and the leave treats the device as still joined
+  rather than showing the setup gate over a membership it never removed
+
+#### Scenario: Clear of a missing file succeeds
+
+- **WHEN** `clear()` is invoked, the container resolves, and no config file exists
+- **THEN** `clear()` succeeds, the read reports no config, and `config` is `null`
 
 ### Requirement: A repeated delivery of the same link is acted on once
 
