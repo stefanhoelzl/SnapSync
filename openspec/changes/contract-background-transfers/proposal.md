@@ -18,7 +18,7 @@ stay out of reach.
 
 - **Three port contracts** in `:test:contracts`, hand-written as clause values:
   - **`BackgroundTransfer`**: **one** contract for both upload tiers, because `port-contracts` allows one per
-    port. It holds the tier-neutral clauses. This change binds the honest fake and `IosUrlSessionUploadPlatform`.
+    port. It holds the tier-neutral clauses. This change binds the world's double and `IosUrlSessionUploadPlatform`.
     The PhotoKit tier (phase 6b) may add bindings, and PhotoKit-only clauses, to this contract. It does not
     write a second one.
   - **`DownloadTransport`**: its outcomes are observed through the `DownloadTransportHost` a clause supplies,
@@ -33,9 +33,12 @@ stay out of reach.
   `BGTaskScheduler` is expected to be unavailable on a simulator (measured as part of this change). Its calls
   go through a new `internal` seam in `:adapter:ios:app-only`, shaped like `KeychainApi`. The device run goes
   over the rig, and the recording is replayed in `iosTest`.
-- **Honest fakes** in `:adapter:generic:fake`: `inMemoryBackgroundTransfer`, `inMemoryDownloadTransport`
-  (both over an in-memory object server) and `inMemoryBackgroundScheduler`. `:test:world`'s
-  `FakeBackgroundTransfer` and `FakeDownloadTransport` become wrappers that keep the operator levers.
+- **The world's doubles are the `Fake` bindings.** `:test:world`'s `FakeBackgroundTransfer` and
+  `FakeDownloadTransport` are bound directly, in `:test:world` `commonTest`, with the binding playing the network
+  through their existing operator actions. That licenses the doubles every world and integration test stands
+  on, rather than a second fake beside them. A clause they fail is fixed in the double. Only
+  `BackgroundScheduler` gains a new honest fake (`inMemoryBackgroundScheduler`), because no world double exists
+  for it.
 - **A port-contracts rule for target-bound configuration.** An adapter whose platform configuration is fixed
   per compilation target counts as a real implementation for the clauses it runs on the target that compiles
   it. The configuration lookup, and every property only the other binding has, are not counted as covered.
@@ -69,21 +72,22 @@ None.
 - `ios-ci`: `ios-contracts` starts the loopback transfer fixture server before launching the app.
 - `testing-architecture`: the app's byte transfers, apart from their background lifecycle, are asserted on
   the simulator app, and the contracts' declared reach is where the device-only surface starts.
-- `harness-world-model`: the world's transfer doubles wrap honest fakes in `:adapter:generic:fake` rather
-  than being levered fakes of their own.
+- `harness-world-model`: the world's transfer doubles are the transfer contracts' `Fake` bindings, and a
+  clause they fail is fixed in the double.
 
 ## Impact
 
 - **New:**
   - The three contracts, their state vocabularies and observation handles (`:test:contracts`).
-  - The three honest fakes, and their bindings in `:adapter:generic:fake` `commonTest`.
+  - `inMemoryBackgroundScheduler` and its binding (`:adapter:generic:fake`); the world doubles' bindings
+    (`:test:world` `commonTest`).
   - The live bindings and registry entries in `:adapter:ios:app-only`'s rig source set.
   - The `BGTaskScheduler` seam, its device binding, and its replay test (`:adapter:ios:app-only`).
   - `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`.
   - The fixture server (`scripts/`).
 - **Changed:**
   - `IosBackgroundScheduler`: routes through the seam.
-  - `:test:world`: its transfer doubles become wrappers.
+  - `:test:world`: its transfer doubles are fixed wherever a clause shows them dishonest.
   - `scripts/sim-contracts` and the rig's contract verb: they pass the fixture base URL.
   - `ContractCoverageTest`: picks up the new clauses with no path list.
 - **Adapters may change.** A clause that fails against a real adapter is fixed in the adapter
