@@ -42,18 +42,22 @@ class JoinSeamsTest {
         assertSame(SharePresenter.None, handoff.share)
         assertSame(LinkOpener.None, handoff.links)
 
-        // Inert means it returns, not that it throws or is absent.
-        handoff.share.share("https://example.invalid/join")
-        handoff.links.open("https://example.invalid/app")
+        // Inert means it answers — that nothing was handed off — not that it throws or is absent.
+        assertTrue(handoff.share.share("https://example.invalid/join") is Handoff.Refused)
+        assertTrue(handoff.links.open("https://example.invalid/app") is Handoff.Refused)
     }
 
     @Test
-    fun a_supplied_handoff_is_the_one_used() {
+    fun a_supplied_handoff_is_the_one_used() = runTest {
         val opened = mutableListOf<String>()
         val shared = mutableListOf<String>()
         val handoff = PlatformHandoff(
-            share = object : SharePresenter { override fun share(text: String) { shared += text } },
-            links = object : LinkOpener { override fun open(url: String) { opened += url } },
+            share = object : SharePresenter {
+                override suspend fun share(text: String): Handoff = Handoff.Accepted.also { shared += text }
+            },
+            links = object : LinkOpener {
+                override suspend fun open(url: String): Handoff = Handoff.Accepted.also { opened += url }
+            },
         )
 
         handoff.share.share("invite")

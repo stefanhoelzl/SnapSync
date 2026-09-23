@@ -57,6 +57,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ExtensionEntries` | `:domain:ports` | `:app:ios:extension` UploadExtensionRoot | no |
 | `ExtensionRegistration` | `:domain:feature` | `:domain:feature` FakeRegistration, OsDrivenRegistration; `:test:architecture` PlatformRegistration | yes |
 | `GalleryStatusSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryGalleryStatusSource; `:domain:feature` OwnDeviceGalleryStatusSource | yes |
+| `Handoff` | `:domain:ports` | `:domain:ports` Accepted, Refused | no |
 | `ImportResult` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:adapter:ios:app-only` PhotoKitAssetPresence; `:domain:compose` PermissionAwareAssetPresence, RecordingLibrary; `:test:world` WorldAssetPresence | yes |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |

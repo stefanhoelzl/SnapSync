@@ -154,8 +154,9 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     "onReportBugDismiss" to
         "dismisses that sheet, which the channel never opens.",
     "onShareInvite" to
-        "presents a UIActivityViewController and observes no result, so there is nothing to report and a " +
-        "modal is left on screen. The invite URL itself is already in /device/state.",
+        "presents a UIActivityViewController and leaves the modal on screen for a finger to dismiss. " +
+        "The presentation itself is SharePresenterContract, run live by POST /contract/SharePresenter; the " +
+        "invite URL is already in /device/state.",
     "onSendDiagnostics" to
         "sends a diagnostic dump to the operator's Bugsink instance. Driving it from a rig would fill the " +
         "issue with runs nobody triaged; /device/logs reaches the same content without the round trip.",

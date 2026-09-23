@@ -22,7 +22,9 @@ App-Group container column, `changes/archive/2026-09-23-contract-app-group-store
 part of the implementation under contract, and the observation handle over outcomes a port cannot return,
 `changes/archive/2026-09-23-contract-backend-clients`; the simulator-app host, grant preconditions, and binding
 the composition production calls, `changes/archive/2026-09-23-photokit-contracts`; masking minted identifiers and
-credential material in a recording, `changes/archive/2026-09-23-device-credential-contracts`.
+credential material in a recording, `changes/archive/2026-09-23-device-credential-contracts`; a contract
+registered on two hosts, and the real-clock bound on a platform callback,
+`changes/archive/2026-09-23-contract-platform-handoffs`.
 
 ## Requirements
 
@@ -114,6 +116,11 @@ SHALL NOT end without an outcome. Whether a clause runs SHALL be decided by its 
 executes; a clause body SHALL have no operation that skips it, so an unexercised clause cannot report
 `Passed`.
 
+A clause that waits on an operating-system callback SHALL bound the wait on the **real** clock. A clause body
+runs under a test scheduler whose virtual clock skips an idle wait at once, so a bound measured there would
+expire before a callback delivered on the platform's main queue could arrive, and would report `NotWithin`
+for a platform that answered.
+
 #### Scenario: A host cannot produce a clause's state
 - **WHEN** a binding cannot enter the state a clause needs
 - **THEN** the clause reads `NotRunHere(reason)` without its body running, and never `Passed`
@@ -121,6 +128,13 @@ executes; a clause body SHALL have no operation that skips it, so an unexercised
 #### Scenario: A replay meets an unrecorded call
 - **WHEN** the adapter under replay makes a call its recording does not hold
 - **THEN** the clause reads `Diverged`, distinct from `Failed`, and the remedy is to re-record
+
+#### Scenario: A clause waits for the platform to answer on its main queue
+
+- **WHEN** a clause hands a URL to the platform and waits for the completion the platform calls on its main
+  queue
+- **THEN** the wait is bounded on the real clock, so a platform that answers within the bound reads `Passed`
+  or `Failed` on its answer, and one that does not reads `NotWithin`
 
 ### Requirement: Every clause runs against a real implementation on some host
 
@@ -359,6 +373,12 @@ through the rig's contract verb, failing on any `Failed` outcome, any refusal, o
 registry SHALL be a source-level list the contract-coverage gate reads. Such a host SHALL NOT be recorded:
 record and replay exist for hosts CI cannot run.
 
+One contract MAY be registered for a recorded host and an in-app CI host at once, when its states split
+between them — a state that would take the process under test away from the foreground is recorded on the
+device, while the rest run live on the simulator app. The rig's contract verb SHALL then run the entry
+registered for the host it is running on; an entry for another host SHALL still answer with its own refusal,
+so a recording can never be taken on the wrong host by naming it.
+
 Clauses run live in a shared system that cannot be reset between them — a photo library, whose deletions
 need a person's confirmation — SHALL be isolated by addresses derived from the clause id (capture dates,
 titles, identifiers), and SHALL NOT delete what they seed; the job SHALL start each run from a fresh
@@ -374,3 +394,10 @@ simulator.
 - **WHEN** two clauses each seed assets into the simulator's shared photo library
 - **THEN** each reads only the capture-date window derived from its own id, so neither sees the other's
   assets and neither deletes anything
+
+#### Scenario: One contract is registered for the device and the simulator app
+
+- **WHEN** a contract has a recording entry for the device and a live entry for the simulator app, and its
+  verb is called in the simulator app
+- **THEN** the simulator app's live entry runs and answers its outcome table, and on the device the same verb
+  answers the recording

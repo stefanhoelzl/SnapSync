@@ -55,6 +55,10 @@ class MainLaneContainmentTest {
         // adapter: the core's entries ask the `ProtectedStorage` port, and this adapter names the lane itself.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProtectedStorage.kt" to
             "UIApplication.isProtectedDataAvailable",
+        // The hand-off contracts' simulator-app binding (rig-gated): disposing a clause dismisses the share
+        // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.
+        "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/HandoffContracts.kt" to
+            "dismisses the UIActivityViewController a clause presented",
         // The app shell: injects the lane into the composition (`AppPorts.uiLane`) and observes UIApplication
         // lifecycle notifications. The ONE shell in the app process that may name the lane.
         "/app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to

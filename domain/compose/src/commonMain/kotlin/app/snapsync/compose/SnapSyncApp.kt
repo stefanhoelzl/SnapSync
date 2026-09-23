@@ -89,6 +89,7 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
+import app.snapsync.ports.Handoff
 import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PhotoLibraryImporter
@@ -941,11 +942,12 @@ class AppCore internal constructor(
     }
 
     /**
-     * A command that presents platform UI, run on the main lane ([AppPorts.uiLane]). Fire-and-forget:
-     * the outcome of a system sheet or prompt arrives through a read-model, never as a return value.
+     * A command that presents platform UI, run on the main lane ([AppPorts.uiLane]). Fire-and-forget: the
+     * outcome of a system sheet or prompt arrives through a read-model. A hand-off's [Handoff] is the one
+     * return value, and it is only rendered onto the tap's line by [result] — nothing acts on it.
      */
-    private fun onUiLane(name: String, block: suspend () -> Unit) {
-        scope.launch(ports.uiLane) { tapLog.invocation(ports.logScope, name) { block() } }
+    private fun <T> onUiLane(name: String, result: (T) -> String = { "" }, block: suspend () -> T) {
+        scope.launch(ports.uiLane) { tapLog.invocation(ports.logScope, name, result = result) { block() } }
     }
 
     val userCommands: UserCommands by lazy {
@@ -989,10 +991,18 @@ class AppCore internal constructor(
             // Share is pure platform (a system sheet over the top view controller). Decorated like the
             // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
             // instrumentation exists to eliminate.
-            share = { url -> onUiLane("tap.share") { ports.handoff.share.share(url) } },
+            share = { url ->
+                onUiLane("tap.share", result = { h: Handoff -> "$h" }) {
+                    tapLog.recordingRefusal("tap.share", ports.handoff.share.share(url))
+                }
+            },
             // Leaving the app for the store page (capability `min-app-version`) — UI lane and
             // instrumented, like every other platform-surface command.
-            openLink = { url -> onUiLane("tap.openLink") { ports.handoff.links.open(url) } },
+            openLink = { url ->
+                onUiLane("tap.openLink", result = { h: Handoff -> "$h" }) {
+                    tapLog.recordingRefusal("tap.openLink", ports.handoff.links.open(url))
+                }
+            },
             // The permission user-taps (capability `permission-gate`), bound to the requester port here
             // so presentation never names it (migration step 9). `requestAccess` returns nothing and
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.
@@ -1170,3 +1180,13 @@ fun snapSyncApp(
     scope: CoroutineScope,
     ports: AppPorts,
 ): AppCore = AppCore(scope, ports)
+
+/**
+ * Records a hand-off to the platform ([PlatformHandoff]) that did not happen. Nothing acts on a [Handoff], but a
+ * refusal is logged at `Error`, because the user then tapped and nothing happened — on the update-required screen,
+ * to the only remedy the screen offers (spec `module-architecture`, "Absence is never silent"). `Error` is what
+ * reaches the operator from a production build (capability `crash-reporting`).
+ */
+private fun Logger.recordingRefusal(name: String, handoff: Handoff): Handoff = handoff.also {
+    if (it is Handoff.Refused) e { "$name: nothing was handed off — ${it.reason}" }
+}

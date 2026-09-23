@@ -6,8 +6,9 @@ package app.snapsync.ports
  * Two ports, one question. [share] offers text to a chooser the user picks a destination from
  * (capability `event-link`); [links] leaves for whichever app claims a URL (capability
  * `min-app-version`). What groups them is everything that governs how they are called and what may be
- * assumed of them: both are **fire-and-forget** (there is no outcome this app is entitled to know or
- * act on, and nothing in `UiState` depends on one), both run on the **main lane** because presenting or
+ * assumed of them: both answer a [Handoff] that **nothing acts on** (nothing in `UiState` depends on
+ * one) but that is recorded, because a hand-off that did NOT happen leaves the user who asked still
+ * here with nothing to show for the tap; both run on the **main lane** because presenting or
  * leaving asserts the platform's UI thread, and both are inert off-device, where there is no platform
  * to hand anything to.
  *
@@ -19,7 +20,8 @@ package app.snapsync.ports
  * rather than being forgotten.
  *
  * Both default to their inert instances, so a composition with no platform to reach — the desktop
- * harnesses, the world — writes nothing about either.
+ * harnesses, the world — writes nothing about either. Both are contracted (capability `port-contracts`):
+ * `LinkOpenerContract` and `SharePresenterContract` in `:test:contracts`.
  */
 class PlatformHandoff(
     val share: SharePresenter = SharePresenter.None,
