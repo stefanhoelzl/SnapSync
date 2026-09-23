@@ -25,6 +25,11 @@ import kotlin.test.assertTrue
  * The transcriber is the third enforcement — `coroutineScope { launch { … } }` is in the closed flow
  * grammar and an escaping `scope.launch` is not, so a detaching flow also fails diagram generation
  * (capability `architecture-diagrams`).
+ *
+ * A third rule sits beside the two doors: a flow's concurrent children are ISOLATED — one that throws cancels
+ * none of its siblings. A bare `coroutineScope { launch … }` does not isolate (the foreground pump's throw
+ * cancelled the status refresh beside it, B4), so a flow fans out only through `fanOut`, and `launch`/`async`
+ * appear nowhere else in the zone.
  */
 class ZoneFlowLifetimeTest {
 
@@ -68,6 +73,24 @@ class ZoneFlowLifetimeTest {
             violations.isEmpty(),
             "flow-lifetime gate violations (law: module-architecture " +
                 "\"A trigger flow never outlives its own run\"):\n  " + violations.joinToString("\n  "),
+        )
+    }
+
+    @Test
+    fun `flows fan out only through the isolating helper`() {
+        val files = ZoneGates.requireZone("flow-lifetime", "flow")
+        val helper = files.singleOrNull { it.name == "FanOut.kt" }
+            ?: error("flow fan-out gate: FanOut.kt is gone — the one sanctioned fan-out moved; re-point this gate")
+        val offenders = (files - helper).flatMap { file ->
+            ZoneGates.stripComments(file.readText()).lines().withIndex()
+                .filter { (_, line) -> Regex("""(?<![\w.])(launch|async)\s*[{(]|\bcoroutineScope\s*\{""").containsMatchIn(line) }
+                .map { (i, line) -> "${file.name}:${i + 1} fans out outside `fanOut` (`${line.trim()}`)" }
+        }
+        assertTrue(
+            offenders.isEmpty(),
+            "a flow's concurrent children must be isolated — one that throws may not cancel its siblings (law \"A " +
+                "trigger flow never outlives its own run\"). Use `fanOut(\"Flow\") { child(\"name\") { … } }`.\n" +
+                offenders.joinToString("\n"),
         )
     }
 }

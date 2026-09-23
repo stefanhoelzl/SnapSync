@@ -155,6 +155,17 @@ class ProvisionTest {
         assertTrue(returned)
     }
 
+    /** B4, on the join: a failed push registration cancels nothing — the reconcile still runs, `run()` still returns. */
+    @Test
+    fun `a failing push registration cancels none of its siblings`() = runTest {
+        val order = mutableListOf<String>()
+        val flow = provision(order = order, registerPush = { throw IllegalStateException("keychain locked") })
+
+        flow.run(config(eventB)) // must not throw
+
+        assertTrue("reconcile:$eventB" in order, "the download reconcile ran beside the failed registration")
+    }
+
     // ---- scaffolding ----------------------------------------------------------------------------
 
     private fun provision(

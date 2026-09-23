@@ -5,8 +5,6 @@ import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.SwitchDecision
 import app.snapsync.feature.membership.switchDecision
 import app.snapsync.model.EventConfig
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * The **provision** trigger flow — the shared path for a scanned/typed event link and a freshly created
@@ -100,9 +98,9 @@ class Provision(
         //    Concurrent, so a slow network PUT never blocks the reconcile — but AWAITED (law "A trigger
         //    flow never outlives its own run"): a join whose reconcile and registration are merely
         //    queued when `run()` returns is a join the caller cannot truthfully report as finished.
-        coroutineScope {
-            launch { downloadController.reconcile(cfg.eventId) }
-            launch { registerPush() }
+        fanOut("Provision") {
+            child("reconcile") { downloadController.reconcile(cfg.eventId) }
+            child("registerPush") { registerPush() }
         }
     }
 }

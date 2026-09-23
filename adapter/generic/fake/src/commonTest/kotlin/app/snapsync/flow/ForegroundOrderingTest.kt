@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import kotlinx.coroutines.async
 import kotlin.time.Instant
 import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
@@ -92,6 +93,39 @@ class ForegroundOrderingTest {
         assertTrue(runReturned, "run() returns once its children — the pump included — are done")
 
         run.cancel()
+        poller.stop()
+    }
+
+    /**
+     * B4: a pump that THROWS — `BackgroundUploadPump.drive` rethrows whatever its cycle threw — used to cancel its
+     * siblings, because the flow fanned out with a bare `coroutineScope`: the status refresh and the settle never
+     * ran, and `run()` itself threw at the shell. The `sync-status` spec: a failure in one refresh SHALL NOT
+     * cancel its siblings.
+     */
+    @Test
+    fun `a pump that throws cancels none of its siblings and run still returns`() = runTest {
+        val counts = MutableLedgerCountsSource()
+        val poller = StatusCountsPoller(backgroundScope, { counts.refresh() })
+        val gate = CompletableDeferred<Unit>()
+        var refreshed = false
+        var settled = false
+
+        val flow = foreground(
+            statusPoller = poller,
+            // Throws only once its siblings have started, so a cancellation — not a head start — is what the
+            // assertions below would catch.
+            pumpForeground = { gate.await(); throw IllegalStateException("the cycle threw") },
+            refreshStatus = { gate.await(); refreshed = true },
+            settleStoredUploads = { gate.await(); settled = true },
+        )
+
+        val run = async { flow.run() }
+        runCurrent()
+        gate.complete(Unit)
+        run.await() // must not throw
+
+        assertTrue(refreshed, "the status refresh ran to completion despite the pump's failure")
+        assertTrue(settled, "and so did the settle")
         poller.stop()
     }
 
