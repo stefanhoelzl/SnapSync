@@ -20,7 +20,6 @@ Roots found:
 | `AlbumCoordinator` | | x |
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
-| `CutoffFormatter` | x | |
 | `EntryHooks` | x | |
 | `FileBackedConfigStore` | x | x |
 | `FileLogWriter` | x | x |
@@ -60,9 +59,6 @@ Roots found:
 | `PublicNSLogWriter` | x | x |
 | `PushTokenSource` | x | |
 | `SentryDiagnosticsReporter` | x | x |
-| `StatusContainerHost` | x | |
-| `StatusDiagnostics` | x | |
-| `StatusSources` | x | |
 | `UploadPorts` | | x |
 | `UploadRecordPorts` | x | |
 | `UrlSessionUploadController` | x | |
