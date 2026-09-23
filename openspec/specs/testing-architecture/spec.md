@@ -300,8 +300,12 @@ Where the testable surface of such a system stops SHALL be stated by the port co
 (capability `port-contracts`), not by smoke tests that call the platform without asserting an outcome: a
 binding's literal set of reachable states names what a host exercises, and a clause no real host reaches is
 not written. PhotoKit under a full grant, asset and album creation, and imports are reachable on the
-simulator app and are therefore asserted there; the upload-job subsystem, a partial grant, and the
-limited-access alert's arming remain device-only. A smoke test SHALL remain only for a device-only surface
+simulator app and are therefore asserted there; so are the app's byte transfers — both app-process
+`URLSession` transports, over the default session the simulator target binds, with everything but the
+background session's lifecycle (capability `port-contracts`, "An adapter bound per compilation target is real
+for the clauses it runs there"). The upload-job subsystem, a partial grant, the limited-access alert's arming,
+the background session's lifecycle, and `BGTaskScheduler` remain device-only; the scheduler is reached through
+a device recording replayed on every build. A smoke test SHALL remain only for a device-only surface
 no contract yet binds, and SHALL name the change expected to replace it.
 
 A test that appears to cover such behaviour asserts a copy of the platform's constants against
@@ -325,6 +329,11 @@ Kotlin/Native distribution instead (`architecture-guards`).
 - **WHEN** a simulator smoke test still calls an unbound device-only surface, such as the upload-job fetch
 - **THEN** its documentation names the change expected to replace it with a contract
 
+#### Scenario: A byte transfer is covered by a contract, not by a device-only claim
+
+- **WHEN** it is in question whether the download transport stages an accepted body at the owner's path
+- **THEN** the answer is the `DownloadTransport` contract's live binding on the simulator app, and only the
+  background session's lifecycle stays a recorded measurement
 ### Requirement: Build-property-gated source sets are compiled and run by CI, tests included
 
 CI SHALL compile every build-property-gated source set on every push, and that obligation SHALL cover a
