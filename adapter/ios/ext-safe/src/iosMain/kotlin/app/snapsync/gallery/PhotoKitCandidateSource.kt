@@ -57,9 +57,10 @@ import platform.UniformTypeIdentifiers.UTType
  * `internal`; established by compile). Expiry: a release that publishes it. Blocking on main would still
  * trip the 10 s scene-update watchdog (`0x8BADF00D`) — that is simply no longer reachable from here.
  *
- * Wiring-only and untestable (PhotoKit, device/simulator only); [PhotoKitSmokeTest] confirms the glue runs
- * on the simulator, the rule translation is pinned by [PhotoKitCandidateSourceTest], and the pure mapping
- * it feeds is unit-tested in `commonTest`.
+ * Held to `CandidateSourceContract` (capability `port-contracts`) through the grant-aware composition production
+ * calls: on the simulator's test executable without a grant, and in the simulator app under a full one. The rule
+ * translation is pinned by [PhotoKitCandidateSourceTest], and the pure mapping it feeds is unit-tested in
+ * `commonTest`.
  */
 @OptIn(ExperimentalForeignApi::class)
 class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery")) : CandidateSource {
