@@ -153,6 +153,11 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 - Two runs in a row should differ only in the header. If a block moves between runs, a volatile key is
   unmasked — add it to `VOLATILE_KEYS` in `adapter/ios/ext-safe/src/rig/kotlin/…/KeychainTape.kt`.
 - `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
+- **`BackgroundScheduler`** records the same way (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`).
+  It runs against the production heartbeat identifier (`BGTaskScheduler` accepts only identifiers the
+  plist lists), so ⚠️ **the run leaves the rig build's upload heartbeat CANCELLED** — the app's next trigger
+  (a foreground, a completed cycle) re-arms it. Its volatile key (`begin`, the absolute earliest-begin
+  date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.
 
 ## `/contract` on the simulator app — the PhotoKit contracts, live
 
@@ -172,8 +177,14 @@ curl -s -X POST localhost:$PORT/contract/AlbumManager     # "# host: IOS_SIM_APP
 - The contracts **seed photos and never delete them** (a delete raises a confirmation someone must tap).
   Each clause owns a one-day capture window in 1980–1999, so repeat runs only add assets. Use a fresh
   simulator when the library's size matters.
-- `SecureStore` is **not** in the simulator's list: it records only on an entitled device, and asking
-  for it here answers `409`.
+- `SecureStore` and `BackgroundScheduler` are **not** in the simulator's list: they record only on an
+  entitled device, and asking for either here answers `409`.
+- **The transfer contracts** (`BackgroundTransfer`, `DownloadTransport`) run both `URLSession` transports
+  against a loopback peer, `scripts/transfer-fixture.py`, whose address the verb takes as `?fixture=`:
+  `python3 scripts/transfer-fixture.py --port 8123 --log /tmp/fx.log &` then
+  `curl -s -X POST "localhost:$PORT/contract/DownloadTransport?fixture=http://127.0.0.1:8123"`. Without the
+  parameter the run is **refused whole** (`409`). The simulator target binds a DEFAULT session, so these
+  evidence everything but the background session's lifecycle (see `TransferSessions.kt`).
 
 ## `/os/photokit-ext` — the OS-driven upload tier's own root
 

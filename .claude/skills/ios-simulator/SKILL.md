@@ -220,8 +220,9 @@ seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 
 The simulator app is the host (`IOS_SIM_APP`) where the photo-library contracts meet real PhotoKit under a
 full grant, and CI runs them on every push (`ios-contracts`). `scripts/sim-contracts` is that job, start to
-finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, launch, then every entry of
-`GET /contract`. It fails on any `Failed(…)`, a refusal, or an empty registry. Run it on a Mac session to
+finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, the loopback transfer fixture
+(`scripts/transfer-fixture.py`, for the two `URLSession` contracts), launch, then every entry of
+`GET /contract`. It fails on any `Failed(…)` or `NotWithin(…)`, a refusal, or an empty registry. Run it on a Mac session to
 reproduce a red job. The contracts **seed photos and never delete them**, because deleting raises a
 confirmation that needs a finger. See `rig-channel` for the verb.
 
