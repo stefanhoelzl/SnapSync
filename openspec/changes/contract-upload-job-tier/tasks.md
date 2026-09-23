@@ -20,7 +20,7 @@
 - [x] 3.2 `:test:contracts`: `UploadExtensionRegistryContract` — state vocabulary (record present / absent, per
       grant) and clauses: enable → registered and read back; disable of an absent record; the `3311` refusal in
       both directions under a partial grant; outcomes classified by `registrationOutcome`
-- [ ] 3.3 Bindings: `Fake` over `SimulatorExtensionRecord`; `Live` device bindings (rig source set of
+- [x] 3.3 Bindings: `Fake` over `SimulatorExtensionRecord`; `Live` device bindings (rig source set of
       app-only) for `GRANTED` and `LIMITED`; `Replay` bindings for both recordings in app-only `iosTest`
 
 ## 4. The upload-job seam and PhotoKit clauses
@@ -56,7 +56,7 @@
       the result file, answer it verbatim or a distinct timeout status
 - [x] 5.5 `:test:rig`: the receiver answers 8b's route grammar (`TransferFixture`) under `/api/v2`, and writes each
       landed route and its content type into the App Group
-- [ ] 5.6 Confirm a production build contains none of 5.1–5.5 (no `app.snapsync.rig` or contract symbols in the
+- [x] 5.6 Confirm a production build contains none of 5.1–5.5 (no `app.snapsync.rig` or contract symbols in the
       extension binary)
 
 ## 6. Record on the device and land the findings
@@ -65,7 +65,7 @@
       under the device lock; unjoined, full grant
 - [x] 6.2 First extension run (one call, in-body waits): killed at the budget — jobs the extension creates upload
       only after `process()` returns. Redesigned to presented states prepared across calls (design D4)
-- [ ] 6.3 Record `BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec` (staged, one run per presented-state clause;
+- [x] 6.3 Record `BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec` (staged, one run per presented-state clause;
       the first staged recording, committed red, showed the retry-spent job carries no resource) — re-record after
       the fix below and commit it green
 - [x] 6.4 Finding — `resource` nil on a retry-spent job, confirmed inside the extension: the adapter fetches the
@@ -73,7 +73,7 @@
 - [x] 6.5 Finding — the destination guard: the extension created a job for `""`; `createJob`/`retryJob` now refuse
       a destination that is not an http(s) URL with a host (`isUploadDestination`, shared with the substitute)
 - [x] 6.6 Record `UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec` and `…LIMITED.rec` (all five clauses Passed)
-- [ ] 6.7 End the session with the lock released; revert `deployments/local.json`
+- [x] 6.7 End the session with the lock released; revert `deployments/local.json`
 
 ## 7. `onTerminate`, docs and retirement
 
@@ -84,12 +84,12 @@
       and the 50008 acknowledgement obligation, with their evidence
 - [x] 7.4 Runbooks: `rig-channel` (the extension-host verb, the receiver, backoff after an overrun) and
       `snapsync-device` (recording the registry under two grants)
-- [ ] 7.5 `./gradlew build`, `compileIosMainKotlinMetadata`, and `./gradlew architectureDiagrams` if the module
+- [x] 7.5 `./gradlew build`, `compileIosMainKotlinMetadata`, and `./gradlew architectureDiagrams` if the module
       graph changed; `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`
 
 ## 8. Archive preparation
 
 - [ ] 8.1 Add this change to the Purpose's decision-record lists of `port-contracts` and `ios-photokit-upload`
-- [ ] 8.2 Delta accounting per module touched (`:adapter:ios:ext-safe`, `:adapter:ios:app-only`,
+- [x] 8.2 Delta accounting per module touched (`:adapter:ios:ext-safe`, `:adapter:ios:app-only`,
       `:app:ios:extension`, `:test:contracts`, `:test:rig`, `:domain:compose`, `:test:architecture`): name the
       capability delta, or record why none is needed (`:domain:compose`: a log line, no spec states its meaning)

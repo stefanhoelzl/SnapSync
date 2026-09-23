@@ -278,3 +278,21 @@ finding holds) and a log line.
   the jobs one call can create, the clause is not written and the cap stays documented.
 - Whether `resource` is nil inside the extension as well (D9).
 - Whether the OS answers job-API calls identically inside `process()` (the recording will say).
+
+## Archive: delta accounting
+
+Every module the change touched, and the capability that accounts for it:
+
+| module / path | accounted by |
+|---|---|
+| `:test:contracts` | `port-contracts` (the host, grant-keyed recordings, the receiver-as-stimulus rule, cross-call state entry, the extension run through the App Group) |
+| `:adapter:ios:ext-safe` | `port-contracts` (the `UploadJobApi` seam, the extension bindings and runner); `ios-photokit-upload` (a retry-spent job re-created from the photo's live resource; the destination guard; the loopback base; the measured invocation facts); `testing-architecture` (`PhotoKitSmokeTest` retired) |
+| `:adapter:ios:app-only` | `port-contracts` (the registration seam and its bindings); the simulator registry substitute's fresh record needs no delta — behaviour-preserving for the app |
+| `:app:ios:extension` | `module-architecture` (the substituted entries directory) |
+| `:test:rig` | `port-contracts` (the `?host=` selector, the timeout status, the upload receiver); the simulator driver's `destination` field needs no delta — `:test:rig` is non-gating dev infrastructure with no spec |
+| `:domain:compose` | none needed: `onTerminate` logs at `Info` with its measured meaning, and no spec states that line |
+| `:domain:ports` | none needed: `ExtensionEntries.onTerminate`'s KDoc only |
+| `:test:architecture` | `architecture-guards` (the coverage gate reads grants; the recordings are declared inputs of the guard task) |
+| `:test:world` | none needed: its `BackgroundTransfer` binding declares the presented states unreachable, behaviour unchanged |
+| the simulator job-queue substitute (`:adapter:ios:ext-safe` `iosSimulatorArm64Main`) | `ios-photokit-upload`, "The upload-job subsystem binding is fixed by the compilation target" — unchanged; the substitute now decides as the real adapter does, which that requirement already asks of it |
+
