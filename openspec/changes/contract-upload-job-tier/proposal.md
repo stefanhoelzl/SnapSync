@@ -25,15 +25,16 @@ contract can run where production runs it — inside the extension — without w
   extension, which makes the OS invoke it; a rig build's extension runs the requested contract instead of the
   upload cycle and writes the recording back to the App Group, which the rig's existing contract verb returns
   verbatim. The run returns well inside the budget, because a killed call is followed by a 6–11 minute backoff.
-- **An upload receiver inside the app**: jobs upload to a loopback path the rig answers, with the status each
-  clause's setup chose (200, 403, 500). The binding stays `Live`: the HTTP answer is a stimulus that puts the
+- **An upload receiver inside the app**: jobs upload to a loopback route the rig answers in 8b's fixture
+  grammar, with the status the clause chose; it writes what landed into the App Group for the extension to read. The binding stays `Live`: the HTTP answer is a stimulus that puts the
   OS queue into a state, not an obligation of the port.
-- **Clauses in two ordered stages within one call** — creating jobs, then acknowledging and retrying them. Each
-  clause's binding enters its own job state at construction (succeeded, failed once, retry spent), so no
-  clause depends on another's body.
+- **One `process()` call runs the whole contract.** Every job state settles within seconds, so 8b's clauses —
+  which create their jobs in the clause body and poll until the outcome is recorded — run as written; the fixture
+  reads they poll are recorded alongside the job calls, so a replay stops each poll where the device did.
 - **PhotoKit bindings on 8b's `BackgroundTransferContract`** (phase 8b owns the contract and its
-  tier-neutral clauses): the PhotoKit job states, PhotoKit-only clauses (every presented job is acknowledged),
-  the extension-host binding, and a `Fake` binding for `SimulatorUploadJobQueue`.
+  tier-neutral clauses): one new state, `SINGLE_FREE_RETRY`, carrying the PhotoKit-only clauses (offered for
+  retry, re-pointed, retry spent handed up, every presented job acknowledged); the extension-host binding; and a
+  `Fake` binding for `SimulatorUploadJobQueue`.
 - **`UploadExtensionRegistry` contracted** on `IOS_DEVICE_APP` (production calls it from the app) through a
   two-call seam in `PhotoKitExtensionRegistry`, recorded under **both** a full and a partial grant; the
   refusal under a partial grant (`3311`) becomes a recorded clause. `SimulatorExtensionRecord` gets a `Fake`

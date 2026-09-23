@@ -28,7 +28,7 @@ A throwaway rig build (never committed) measured what this design rests on:
 | question | answer |
 |---|---|
 | registration against `http://127.0.0.1:18099/api/v2` | succeeds; disable and enable both return `true`, the read-back is `true` |
-| job API from the app process | create, fetch (both actions), retry and acknowledge all succeed |
+| job API from the app process | create, fetch (both actions), retry and acknowledge all succeed, and assetsd uploads app-created jobs (production calls it only from the extension, which is why it is recorded there — D1) |
 | delivery to a loopback receiver in the app | assetsd PUTs the full body 0.1–5 s after creation, plaintext, user agent `assetsd … CFNetwork` |
 | a 200 answer | job `Succeeded` (4), in the acknowledge set only |
 | a 403 or 500 answer | job `Failed` (3), in **both** the retry and acknowledge sets, `error` nil; no automatic re-send |
@@ -122,54 +122,58 @@ replace a call path rather than add a call site. `module-architecture`'s contain
 redirect `process()`. A mutable hook in the shell that the rig assigns — a permanently compiled seam, which
 the containment law forbids.
 
-### D4. Two stages in one call; each clause's binding enters its own job state
+### D4. One call; 8b's clauses as written, plus one PhotoKit-only state
 
-Every job state settles in 0.1–5 s, far inside the budget, so a whole run fits in one `process()` call. The
-clauses are ordered in two stages by what they test:
+8b's `BackgroundTransferContract` (merged first) shapes the clauses: each creates its own job **in the clause
+body** against a fixture route that answers what the clause chose, then polls `drainTerminals()` until the
+outcome is recorded — the bounded-wait pattern, `NotWithin` on expiry. Every job state settles in 0.1–5 s, so
+the whole contract fits one `process()` call; nothing crosses calls.
 
-- **Stage 1, creation**: a valid request is `CREATED`; a destination that is not an http(s) URL with a host is
-  `FAILED` without a job; the in-flight cap is `LIMIT_EXCEEDED` (if reachable within the budget — see Open
-  Questions).
-- **Stage 2, settlement**: a succeeded job is recorded `COMPLETED` in the ledger and acknowledged; a job that
-  failed once is offered for retry, and a retry re-points it; a retry-spent job is recorded, acknowledged, and
-  returned for re-creation when its resource is live; a job whose row is gone is acknowledged and nothing is
-  written; every presented job is acknowledged.
+The tier-neutral clauses cannot state the PhotoKit tier's single free retry: the URLSession tier answers it
+trivially, and no clause may be reached only by a fake. So this change adds **one state**, `SINGLE_FREE_RETRY`
+— "the tier offers a failed transfer once for retry before settling it" — which the URLSession bindings declare
+unreachable, and the PhotoKit-only clauses on it:
 
-Each stage-2 clause's **binding** creates the job state it needs at construction — a job aimed at a receiver
-path that answers the status it needs, then a wait until the OS presents it (D5) — exactly as
-`port-contracts` requires ("Clauses are conditioned on states that bindings enter at construction"). No clause
-consumes another's jobs, so no amendment and no cascade.
+- a transfer the destination refused is offered by `fetchRetryJobs()`;
+- `retryJob` re-points it, and the retried transfer lands and is recorded `COMPLETED`;
+- a transfer refused again is not offered again, and `drainTerminals()` hands it up for re-creation when its
+  resource is live (finding D9);
+- every presented job is acknowledged: after a drain, none is presented again.
 
-*Alternatives:* chaining stage 2 through stage 1's clause bodies — would need `port-contracts` to admit
-states entered by another clause's body and a run order, for no state one call cannot reach. Spreading stages
-across `process()` calls — 5 min per stage and a 6–11 min backoff on any overrun.
+`AT_CAP` is declared unreachable in the extension: the PhotoKit cap is not known, and filling it with jobs that
+never answer would outlast the budget. `AT_CAP_DEFERS` keeps its real host in 8b's simulator-app binding.
 
-### D5. The seam: PhotoKit calls as data, and a wait is one call
+*Alternatives:* a binding that enters each job state before the clause — the shape this design first had, before
+8b's contract existed; the clauses are 8b's, and they create in the body. Splitting the run across two calls —
+rejected by the operator: one call, sized under the budget.
+
+### D5. The seam: PhotoKit calls as data, and every input a poll reads is recorded
 
 `IosPhotoKitUploadPlatform` gains an `internal` seam, `UploadJobApi`, over the operating-system effects it
 makes, and nothing else changes in the adapter's logic:
 
-- `fetch(action)` → a list of plain job facts: destination URL, state, error domain/code, whether a resource
-  is present, and an opaque handle token;
-- `create(request, resource)`, `retry(handle, request)`, `acknowledge(handle)` → the OS's answer (ok, error
-  domain/code);
-- `awaitPresented(destination, action, timeout)` → the facts of that job once the OS presents it in that set,
-  or a timeout.
+- `fetch(set)` → a list of plain job facts: destination path, `Content-Type` header, state, error, whether a
+  resource is present and its type, and opaque handles for the job and the resource;
+- `create(request, resource)`, `retry(job, request)`, `acknowledge(job)` → the OS's answer (ok, code, description).
 
-The wait is **one** seam call, so the number of polls behind it — which varies run to run — never reaches a
-recording, and replay stays exact and in order. It is used only by binding setup; clause bodies call the
-adapter, which never waits.
+8b's clauses **poll**: `awaitWithin { drainTerminals(); landed(route) != null && row == COMPLETED }`. On a device
+the number of polls varies run to run. It replays exactly anyway, provided every input the poll's condition reads
+comes from the recording: replay answers each call instantly, in recorded order, so the loop stops at the same
+iteration it stopped at on the device. So in the extension binding:
 
-Converting a real `PHAssetResourceUploadJob` into facts is the one thing replay cannot cover; it stays in
-`PhotoKitJobMapping.kt`'s documentation with the nil-field evidence, and the extension recording is its
-evidence on the device.
+- the seam's calls are recorded;
+- the fixture reads — `objects.landed(route)` — are recorded too, as `landed(route) -> <content type>|none`;
+- the ledger the adapter records through is a fresh SQLDelight store in a temporary file per clause, deterministic
+  given its inputs (the in-memory fakes do not link into device builds).
 
-Replay runs in `:adapter:ios:ext-safe` `iosTest` on `IOS_SIM_KEXE`, beside `IosKeychainReplayContractTest`.
-Handle tokens and timestamps are volatile keys, masked in the recording.
+Converting a real `PHAssetResourceUploadJob` into facts is the one step replay cannot cover; it stays in
+`PhotoKitJobMapping.kt`'s documentation with the nil-field evidence, and the extension recording is its evidence
+on the device. Replay runs in `:adapter:ios:ext-safe` `iosTest` on `IOS_SIM_KEXE`, beside
+`IosKeychainReplayContractTest`; handle tokens and timestamps are masked.
 
-*Alternatives:* a seam at the Objective-C object level — a `PHAssetResourceUploadJob` has no public
-initializer, so replay would need a hand-written job stand-in, the object-shaped model phase 6 rejected (D2).
-Recording each poll — every run would diverge.
+*Alternatives:* a seam at the Objective-C object level — a job has no public initializer, so replay would need a
+hand-written job stand-in, the object-shaped model phase 6 rejected (D2). A one-call `awaitPresented` wait — it
+suited bindings that enter job states, which 8b's clauses do not use.
 
 ### D6. Preconditions: checked where only a person can fix them, automatic where they can be undone
 
@@ -182,25 +186,29 @@ In this order, before the run request is written:
 
 The membership check comes first because the re-registration is what destroys jobs.
 
-### D7. The upload receiver lives in the app, and its answer is a stimulus
+### D7. The upload receiver lives in the app, speaks 8b's route grammar, and its answer is a stimulus
 
-The rig build bakes `http://127.0.0.1:18099/api/v2` as its upload base (the rig's own port, through the
-existing `local` deployment), and the rig answers `PUT /api/v2/contract/<CLAUSE_ID>/<status>` with that
-status. The app is running for the whole run — its rig verb is waiting — so the receiver is up when assetsd
-delivers.
+The rig build bakes `http://127.0.0.1:18099/api/v2` as its upload base (the rig's own port, through the existing
+`local` deployment). A clause's route is `base + TransferFixture.path(...)`, and the rig answers
+`/api/v2/<Contract>/<CLAUSE_ID>/<name>/<answer>` exactly as `scripts/transfer-fixture.py` does for the simulator
+app — `s200-n0-len`, `s500-…`, `hold` — so one grammar serves every transfer host. The app is running for the whole
+run — its rig verb is waiting — so the receiver is up when assetsd delivers.
 
-`port-contracts` makes a binding over a stand-in service `Fake`, because a stand-in decides the answers a
-port's obligations are about. Here the obligations are the OS queue's and the adapter's: record the outcome,
-acknowledge, offer for retry, re-point. No clause asserts what the receiver answered; the answer is what puts
-a job into the state a clause needs, as a seeded asset puts a library into one. The binding therefore stays
-`Live`, and `port-contracts` states the distinction.
+The extension cannot read the app's memory, so the receiver writes each landed route, with its content type, into
+the App Group; the extension binding's `FixtureObjects` reads it from there, through the recorder.
 
-A loopback IP literal is exempt from App Transport Security, and the local deployment already bakes one; the
-probe measured that assetsd honours it. `ios-photokit-upload`'s "MUST be HTTPS" is corrected to "HTTPS for
-every non-loopback host".
+`port-contracts` makes a binding over a stand-in service `Fake`, because a stand-in decides the answers a port's
+obligations are about. Here the obligations are the OS queue's and the adapter's: record the outcome, acknowledge,
+offer for retry, re-point. No clause asserts what the receiver answered; the answer is what puts a job into the
+state a clause needs, as a seeded asset puts a library into one. The binding therefore stays `Live`, and
+`port-contracts` states the distinction.
 
-*Alternatives:* the local backend through a tunnel — real refusals only, no 500 on demand, a tunnel per
-session. A receiver in the extension — the OS uploads after `process()` may have returned.
+A loopback IP literal is exempt from App Transport Security, and the local deployment already bakes one; the probe
+measured that assetsd honours it. `ios-photokit-upload`'s "MUST be HTTPS" is corrected to "HTTPS for every
+non-loopback host".
+
+*Alternatives:* the local backend through a tunnel — real refusals only, no 500 on demand, a tunnel per session. A
+receiver in the extension — the OS uploads after `process()` may have returned.
 
 ### D8. `UploadExtensionRegistry` recorded on `IOS_DEVICE_APP` under both grants
 
