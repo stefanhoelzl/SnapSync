@@ -9,6 +9,8 @@ download store's imported rows. A later join reloads the ledger from the device'
 nothing already stored is uploaded again (`changes/archive/2026-09-21-join-loads-leave-clears`). Covers the leave sequence and its best-effort
 semantics, the local-only guarantee, the joined-layer-only affordance and its confirmation, and the
 presentation seam that triggers it.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: Leave use-case resets local event state
 

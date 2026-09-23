@@ -44,6 +44,8 @@ re-assessment.
 snapshot is authoritative, so de-selecting a photo withdraws it from the event (this reverses "deselection
 is not withdrawal"). A selection **not yet read** is its own scope (`Unread`), and the app's upload cycle is
 withheld on it. Verified on an SE2 (iOS 26.6, 2026-09-22).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: A limited grant is a working membership whose scope is the selection
 

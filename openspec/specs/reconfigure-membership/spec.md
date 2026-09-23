@@ -18,6 +18,8 @@ widen their own contribution above the event's start, visibly and on purpose.
 
 Decision record: `changes/archive/2026-07-21-add-reconfigure-membership`,
 `changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the settings surface reads reduced state).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: A joined member changes participation settings in place, without leaving
 

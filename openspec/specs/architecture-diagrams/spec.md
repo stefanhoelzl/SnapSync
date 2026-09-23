@@ -13,6 +13,7 @@ regression and the harness-mirror drift — renders as a visible anomalous cell 
 introduces it.
 
 Decision record: `changes/archive/2026-07-17-establish-target-architecture` (D9).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ## Requirements
 
