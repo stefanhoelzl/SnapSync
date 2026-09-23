@@ -22,6 +22,12 @@ fun extensionEntries(
     ports: () -> UploadPorts,
     cycle: () -> UploadCycle,
     logScope: LogScope = LogScope.NoOp,
+    /**
+     * Drop this process's in-memory copy of the device token, so the invocation reads the one the app last
+     * stored (capability `device-attestation`). The app renews into the shared Keychain item, which the
+     * extension's copy cannot see; re-reading at every OS invocation bounds that copy's staleness to one.
+     */
+    rereadCredential: () -> Unit = {},
 ): ExtensionEntries =
     object : ExtensionEntries {
         private val log get() = ports().log
@@ -31,7 +37,11 @@ fun extensionEntries(
         // and abort the extension process.
         override suspend fun process(): CycleResult = log.invocation(logScope, "process", result = { "$it" }) {
             runProcessCycle(
-                run = { cycle().run() },
+                // Inside the guarded run, so nothing the re-read could raise escapes across the ObjC boundary.
+                run = {
+                    rereadCredential()
+                    cycle().run()
+                },
                 pending = { ports().ledger.aggregates().pending },
                 onCycleFinished = { log.i { "process: cycle finished — $it" } },
                 onCycleFailed = { log.e(it) { "process cycle failed" } },

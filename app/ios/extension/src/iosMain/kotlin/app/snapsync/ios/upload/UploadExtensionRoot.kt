@@ -6,7 +6,7 @@ import app.snapsync.compose.UploaderProcess
 import app.snapsync.model.SelectionScope
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.gallery.PhotoKitGrantRead
-import app.snapsync.ports.AttestStore
+import app.snapsync.feature.trust.CachedAttestStore
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
@@ -174,8 +174,12 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
      * `readExisting` throws rather than return null, so discarding it here without a word threw away
      * the one fact that distinguishes the two. Whether the cycle should *stop* on -34018 instead of
      * 401-looping is a separate question, deliberately left open.
+     *
+     * Held in memory between re-reads ([CachedAttestStore]) — every request and every upload request built
+     * reads it, and a Keychain read each time was a measurable cost. Re-read at every `process()` invocation
+     * (the app renews into the shared item) and on every rejection (the compare-and-clear reads the Keychain).
      */
-    private val attestStore: AttestStore by lazy { KeychainAttestStore() }
+    internal val attestStore: CachedAttestStore by lazy { CachedAttestStore(KeychainAttestStore()) }
 
     private fun attestToken(): String? = runCatchingCancellable { attestStore.token() }
         .onFailure { log.w(it) { "attest token unreadable — proceeding unauthenticated (expect 401)" } }
@@ -278,4 +282,5 @@ internal fun productionExtensionEntries(): ExtensionEntries = extensionEntries(
     ports = { UploadExtensionRoot.ports },
     cycle = { UploadExtensionRoot.cycle },
     logScope = IosLogScope,
+    rereadCredential = { UploadExtensionRoot.attestStore.reread() },
 )
