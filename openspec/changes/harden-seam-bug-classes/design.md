@@ -91,6 +91,25 @@ problem, and reach still isn't decidable from types alone (the spec already reco
 
 `SecureStore.resolveOrMint(readLegacy)` takes `legacy: SecureStore?`.
 
+**As built (G1):**
+- The membership refresh is its own small port, `ConfigRefresh` (implemented by `FileBackedConfigStore`),
+  not a method on `ConfigSource`. Adding it to `ConfigSource` would have forced every read-only fake to
+  implement a refresh verb.
+- The extension's admission became `UploadPorts.process: UploaderProcess`, a sealed tier kind. `App` carries
+  the app's in-core admission callback; `Extension` carries a `PhotoGrantRead` port, and `uploadCore`
+  applies `extensionAdmission` itself.
+- The album read is `AlbumManager` plus a declared `AlbumLookupFailure` (`AdmitOnDoubt` for the app tier,
+  `FailCycle` for the extension). That keeps each tier's existing failure answer, and the world's app-tier
+  cycle now admits on doubt as the app's does.
+- The rig's uploader-pin seam in the iOS root is a named `fun interface UploaderPinSource`. It is still
+  assigned once at boot by the rig hook (the one late-bound seam the shell keeps, and not function-typed),
+  and the root now reads it at every use instead of capturing it.
+- Three seams stay pinned rather than becoming ports, because each is a deliberate zone decision stated at
+  its class: `ReadingLedgerCountsSource.read` keeps ledger types out of `feature/status`,
+  `MembershipEntry.saveConfig` lets the entry's tests record its ordered steps, and
+  `DownloadController.downloadEnabled` is a stated three-valued derivation. The two ledger writes
+  (`clearLedger`, `bumpManifestVersion`) stay lambdas because ledger writes are confined to `compose/`.
+
 `onEventMinted` stays a lambda. It is a callback into presentation that cannot throw, and it is pinned.
 
 ### D4. `UserQueries` and the query decorator
@@ -119,7 +138,12 @@ becomes a rig-provided constructor input of the root's shell.
 
 ### D6. No defaulted lambdas; `StatusActions` is built by one factory
 
-The lambda-default ban applies to `UserCommands`, `StatusActions`, and every feature and flow constructor.
+The lambda-default ban applies to **constructor parameters**: `UserCommands`, `StatusActions` and its groups,
+and every feature, flow and adapter constructor. Parameters of ordinary functions, such as the
+`invocation(result = …)` log formatter or a helper's optional hook, are not seams and are not covered.
+Applied literally to every function parameter, the rule would have reached about 100 sites that wire nothing.
+A production binding that a test replaces lives in a secondary constructor (`KeychainDeviceIdentity(role)`,
+`AppGroupFileSecureStore(fileName)`).
 
 The three hand-copied `StatusActions` tables (the iOS shell, the forge, and the desktop pane) are replaced by
 `StatusContainerHost.statusActions(…)` in `:ui:screens`. With no defaults, a new action has to be wired

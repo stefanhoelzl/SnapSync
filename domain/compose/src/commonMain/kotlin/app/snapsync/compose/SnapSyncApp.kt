@@ -963,15 +963,11 @@ class AppCore internal constructor(
      */
     val userQueries: UserQueries by lazy {
         UserQueries(
-            loadJoinDetails = { eventId ->
-                awaitingOnCoreLane("query.loadJoinDetails", params = "eventId=$eventId") {
-                    joinEvent.loadDetails(eventId).toJoinLoad()
-                }
+            loadJoinDetails = { id ->
+                awaitingOnCoreLane("query.loadJoinDetails", "eventId=$id") { joinEvent.loadDetails(id).toJoinLoad() }
             },
             shareableCount = { cutoff, until ->
-                awaitingOnCoreLane("query.shareableCount", result = { n: Int? -> "count=$n" }) {
-                    loadShareableCount(cutoff, until)
-                }
+                awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }
             },
         )
     }

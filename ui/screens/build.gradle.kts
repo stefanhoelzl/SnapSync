@@ -42,6 +42,8 @@ kotlin {
             // The multiplatform `runComposeUiTest` API (no JUnit4 rule — that artifact is JVM-only).
             @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
             implementation(compose.uiTest)
+            // `StatusActionsWiringTest` drives a real container, whose intents run on coroutines.
+            implementation(libs.coroutines.test)
         }
         jvmTest.dependencies {
             // Skiko's desktop native binaries — the JVM renderer the offscreen scene draws into.

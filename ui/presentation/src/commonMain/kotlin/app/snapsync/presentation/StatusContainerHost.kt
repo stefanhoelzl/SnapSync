@@ -299,25 +299,25 @@ class StatusContainerHost(
                     range?.let { CountKey(it.chosenFrom, it.chosenUntil, grant) }
                 }
                     .distinctUntilChanged()
-                    .collectLatest { key -> if (key != null) countInto(key) }
+                    .collectLatest { key ->
+                        if (key == null) return@collectLatest
+                        shareCountState.value = ShareCount.Counting
+                        shareCountState.value = try {
+                            queries.shareableCount(key.from, key.until)?.let { ShareCount.Ready(it) } ?: ShareCount.Unavailable
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            // A failed read is no count, not a crash: the row is omitted (capability `join-share-count`).
+                            log("shareable count failed: ${e.message}")
+                            ShareCount.Unavailable
+                        }
+                    }
             }
         }
 
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: PermissionStatus)
 
-    private suspend fun countInto(key: CountKey) {
-        shareCountState.value = ShareCount.Counting
-        shareCountState.value = try {
-            queries.shareableCount(key.from, key.until)?.let { ShareCount.Ready(it) } ?: ShareCount.Unavailable
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // A failed read is no count, not a crash: the row is omitted (capability `join-share-count`).
-            log("shareable count failed: ${e.message}")
-            ShareCount.Unavailable
-        }
-    }
 
     /**
      * Flash the transient invalid-link error (capability `event-link`): a link arrived that the decoder

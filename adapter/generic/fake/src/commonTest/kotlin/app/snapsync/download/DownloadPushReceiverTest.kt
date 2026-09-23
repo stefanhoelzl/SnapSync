@@ -96,7 +96,3 @@ private fun liveMembership(eventId: () -> String?): ConfigSource = object : Conf
         )
 }
 
-/** A grant fake read at every access, so a test's `var` drives it live. */
-private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
-    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
-}
