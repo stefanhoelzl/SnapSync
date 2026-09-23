@@ -49,11 +49,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -116,6 +119,9 @@ class StatusContainerHost(
     private var transientErrorClear: Job? = null
     private val renameFlow: StateFlow<RenameStatus> = renameStatusSource.renameStatus
 
+    /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
+    private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
+
     // What is drawn OVER the current layer (see [Overlays]). Presentation-owned like the transient error:
     // opening a confirmation touches no port and calls no command, so these are container-local intents
     // that reduce and nothing more. They are state rather than screen-local `remember`s because the
@@ -129,7 +135,14 @@ class StatusContainerHost(
 
     // Whether the joined layer is showing its settings surface. A flag rather than a `UiState` family, for
     // the reason `reconfigure-membership` D4 gives: opening is client-side navigation that touches no port.
-    private val reconfiguringState = MutableStateFlow(SettingsSurface.Closed)
+    // OWNED by the membership it was opened in (see [Owned]): a switch, a leave or a fresh join cannot carry
+    // it into the next membership, whichever exit path ran (B7).
+    private val reconfiguringState = MutableStateFlow(Owned<SettingsSurface>(null, SettingsSurface.Closed))
+
+    // Which membership the rename status latch belongs to: the event the last rename was fired for. A result for
+    // an event that is no longer the joined one reads as Idle.
+    private val renameOwner = MutableStateFlow<String?>(null)
+    private val ownedRename = combine(renameOwner, renameFlow) { owner, status -> Owned(owner, status) }
 
     // The shareable count for whichever surface is showing a range (capability `join-share-count`). Computed
     // HERE, over the query bundle, and reduced into the range — the screen renders it and asks nothing. It
@@ -224,7 +237,7 @@ class StatusContainerHost(
                 pending.state.value,
                 cutoffFormatter.nowCutoff(),
                 attested.value,
-                renameFlow.value,
+                Owned(renameOwner.value, renameFlow.value),
                 transientErrorState.value,
                 formState.value,
                 reconfiguringState.value,
@@ -265,7 +278,7 @@ class StatusContainerHost(
                     pending.state,
                     nowTick,
                     attested,
-                    renameFlow,
+                    ownedRename,
                     transientErrorState,
                     overlaysState,
                     formState,
@@ -284,15 +297,27 @@ class StatusContainerHost(
                         values[5] as PendingJoin?,
                         values[6] as CaptureDate,
                         values[7] as Boolean,
-                        values[8] as RenameStatus,
+                        values[8] as Owned<RenameStatus>,
                         values[9] as String?,
                         values[11] as RangeForm,
-                        values[12] as SettingsSurface,
+                        values[12] as Owned<SettingsSurface>,
                         updateLayerFor(values[13] as AppVersionGate.Refusal?, appStoreUrl),
                         ::resolveRange,
                     ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer)) }
                 }
                     .collect { ui -> reduce { ui } }
+            }
+            // Membership-scoped surface state resets when the membership changes — to another event or to none —
+            // HERE, in one place, rather than on each exit path (capability `sync-status-screen`). [Owned] already
+            // hides it from a different event the moment the config changes; this also retires it for a rejoin of
+            // the same event, which the ownership check alone would let it survive into.
+            intent {
+                config.map { it?.eventId }.distinctUntilChanged().drop(1).collect {
+                    reconfiguringState.value = Owned(null, SettingsSurface.Closed)
+                    if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) {
+                        commands.resetRename()
+                    }
+                }
             }
             // The shareable count follows the range the showing surface resolves, and the grant (a late
             // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
@@ -357,7 +382,7 @@ class StatusContainerHost(
      * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge.
      */
     fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime) =
-        intent {
+        guardedIntent(Guarded.Create) {
             commands.create(
                 name,
                 EventStart(cutoffFormatter.toCutoff(startsAt)),
@@ -394,7 +419,7 @@ class StatusContainerHost(
         // Every overlay belongs to the membership being left, so none of them survives it. Resetting the
         // CELL (rather than only hiding them) is what stops a later rejoin from reopening a dialog the
         // member dismissed by leaving.
-        closeOverlays()
+        overlaysState.value = Overlays() // every overlay belongs to the layer being left
         commands.leave()
     }
 
@@ -435,7 +460,14 @@ class StatusContainerHost(
 
         fun onConfirmLeaveDismiss() = intent { overlaysState.value = overlaysState.value.copy(confirmingLeave = false) }
 
-        fun onRenameOpen() = intent { overlaysState.value = overlaysState.value.copy(renaming = true) }
+        /**
+         * Open the rename sheet on a clean latch: a rename that finished after the sheet was dismissed left its
+         * terminal status behind, and the sheet would read it as this edit's outcome and close itself.
+         */
+        fun onRenameOpen() = intent {
+            if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
+            overlaysState.value = overlaysState.value.copy(renaming = true)
+        }
 
         fun onRenameDismiss() = intent { overlaysState.value = overlaysState.value.copy(renaming = false) }
 
@@ -451,19 +483,11 @@ class StatusContainerHost(
         fun onOpenReconfigure() = intent {
             val config = config.value ?: return@intent
             formState.value = reconfigureForm(config, cutoffFormatter::toLocal)
-            reconfiguringState.value = SettingsSurface.Open
+            reconfiguringState.value = Owned(config.eventId, SettingsSurface.Open)
         }
 
         /** Cancel the settings surface: the edits are discarded, and no port was ever touched. */
-        fun onCancelReconfigure() = intent { reconfiguringState.value = SettingsSurface.Closed }
-    }
-
-    /**
-     * Close every overlay. Fired when the layer changes out from under them — a leave landing while the
-     * rename sheet is open would otherwise leave a dialog over a screen whose event is gone.
-     */
-    private fun closeOverlays() {
-        overlaysState.value = Overlays()
+        fun onCancelReconfigure() = intent { reconfiguringState.value = Owned(null, SettingsSurface.Closed) }
     }
 
     /**
@@ -473,7 +497,10 @@ class StatusContainerHost(
      * event. Fire-and-forget; the outcome arrives via [renameStatus] and the new name via the config
      * read-model. Unlike [onReconfigure], this writes the SHARED event, but it crosses the same one door.
      */
-    fun onRenameEvent(eventId: String, name: String) = intent { commands.rename(eventId, name) }
+    fun onRenameEvent(eventId: String, name: String) = guardedIntent(Guarded.Rename) {
+        renameOwner.value = eventId
+        commands.rename(eventId, name)
+    }
 
     /** Clear the [renameStatus] latch once the screen has consumed a terminal value. */
     fun onRenameStatusConsumed() = intent { commands.resetRename() }
@@ -502,7 +529,7 @@ class StatusContainerHost(
         val config = config.value ?: return@intent
         val form = formState.value
         val range = resolveRange(form, config.startsAt, config.endsAt, config.maxPhotoDate)
-        reconfiguringState.value = SettingsSurface.Closed
+        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
         // The id rides with the values so a switch landing mid-edit makes the use-case a no-op rather
         // than overwriting a different membership.
         val outcome = commands.reconfigure(
@@ -510,7 +537,7 @@ class StatusContainerHost(
         )
         // A save that did not land reopens the surface with the member's edits still in hand (the form was never
         // reset) and says so — closing it would read as saved (capability `reconfigure-membership`).
-        if (outcome == ReconfigureOutcome.SaveFailed) reconfiguringState.value = SettingsSurface.SaveFailed
+        if (outcome == ReconfigureOutcome.SaveFailed) reconfiguringState.value = Owned(config.eventId, SettingsSurface.SaveFailed)
     }
 
 
@@ -637,13 +664,32 @@ class StatusContainerHost(
      * then leave `Joined(pendingSwitch = ExplainAccess)`, whose dialog branch renders nothing: the
      * confirmation would vanish with an invisible pending join behind it.
      */
-    fun onConfirmSwitch() = intent {
-        val p = pending.state.value ?: return@intent
-        val ph = p.phase?.takeIf { it.step == JoinPhase.Detailed.Step.Ready } as? JoinPhase.Detailed ?: return@intent
-        closeOverlays()
+    fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
+        val p = pending.state.value ?: return@guardedIntent
+        val ph = p.phase?.takeIf { it.step == JoinPhase.Detailed.Step.Ready } as? JoinPhase.Detailed ?: return@guardedIntent
+        overlaysState.value = Overlays() // every overlay belongs to the layer being left
         commands.leave()
-        if (config.value == null) {
+        // Only onto the pending join this switch started from: a member who cancelled while the leave ran keeps
+        // their cancel, rather than having the join surface reappear once the leave finishes (B13).
+        if (config.value == null && pending.state.value === p) {
             pending.set(p.copy(phase = deriveLoadedPhase(ph.event)))
+        }
+    }
+
+    /**
+     * Run [run] as an intent unless [command] is already in flight (capability `sync-status-screen`, "A
+     * non-idempotent command is in flight before it first suspends"; decision record `harden-seam-bug-classes`,
+     * D13). The claim is taken HERE, synchronously in the tapping thread, before any intent is launched — two taps
+     * before the screen recomposes launch one command, not two — and released when the intent's body returns.
+     */
+    private fun guardedIntent(command: Guarded, run: suspend () -> Unit) {
+        if (command in inFlight.getAndUpdate { it + command }) return
+        intent {
+            try {
+                run()
+            } finally {
+                inFlight.update { it - command }
+            }
         }
     }
 
@@ -1000,7 +1046,7 @@ private fun reduceFrom(
     pending: PendingJoin?,
     nowCutoff: CaptureDate,
     attested: Boolean,
-    rename: RenameStatus,
+    ownedRename: Owned<RenameStatus>,
     // The transient invalid-link error (capability `event-link`). It is an INPUT to the reduction, not a
     // value beside it: the create screen renders ONE banner, so the create state carries one error value
     // and this is one of its two causes.
@@ -1008,12 +1054,15 @@ private fun reduceFrom(
     // The member's uncommitted choices on whichever decision surface is open, and everything needed to
     // resolve them: the window comes off the loaded phase (join gate) or the membership (reconfigure).
     form: RangeForm,
-    reconfiguring: SettingsSurface,
+    ownedSettings: Owned<SettingsSurface>,
     // The backend's refusal of this build (capability `min-app-version`), already carrying its remedy,
     // or null while this build is served. Arrives composed — see `updateLayerFor`.
     updateRequired: Layer.UpdateRequired?,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
 ): Layer {
+    // Surface state belongs to the membership it was opened in; another membership reads it as closed / idle.
+    val rename = ownedRename.forMembership(config?.eventId, RenameStatus.Idle)
+    val reconfiguring = ownedSettings.forMembership(config?.eventId, SettingsSurface.Closed)
     // ABOVE config-absent, and above everything else. A refused build makes no successful metadata call
     // at all, so every layer below would render something untrue: a joined event that is not syncing, a
     // create that cannot succeed, a join that cannot commit. There is exactly one thing to say and one
@@ -1189,3 +1238,17 @@ internal fun Layer.countedRange(): ResolvedRange? = when (this) {
 
 /** Whether the joined layer shows its settings surface, and whether its last save failed. */
 internal enum class SettingsSurface { Closed, Open, SaveFailed }
+
+/** The non-idempotent commands whose taps claim an in-flight slot (see `StatusContainerHost.guardedIntent`). */
+private enum class Guarded { Create, Rename, SwitchLeave }
+
+/**
+ * Surface state that belongs to one membership (capability `sync-status-screen`, "Membership-scoped surface state
+ * belongs to the membership"; decision record `harden-seam-bug-classes`, D13): written with the event it was
+ * opened for, and read back only while that event is the joined one. A change of membership therefore closes it
+ * by construction — no exit path (leave, switch, self-leave, config clear) has to remember to (B7).
+ */
+internal data class Owned<T>(val eventId: String?, val value: T) {
+    /** [value] while [eventId] is the [joined] event — or names none (a latch set from outside, e.g. forged). */
+    fun forMembership(joined: String?, otherwise: T): T = if (eventId == null || eventId == joined) value else otherwise
+}

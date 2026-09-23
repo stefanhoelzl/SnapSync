@@ -153,6 +153,40 @@ class StatusContainerHostSurfacesTest {
         }
     }
 
+    // ---- membership-scoped surface state (capability `sync-status-screen`) ---------------------------------
+
+    private fun UiState.onSettings() = (layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure
+
+    @Test
+    fun `settings open when the membership changes do not follow into the next one`() {
+        // B7: the flag survived a switch, so the new membership opened on the settings surface — pre-filled from
+        // nothing the member had chosen for it.
+        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        return onHost(config = config) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("the settings surface") { it.onSettings() }
+
+            config.value = CONFIG.copy(eventId = "22222222-2222-4222-8222-222222222222", name = "Trip")
+            val next = host.stateWhere("the next membership") { (it.layer as? Layer.Joined)?.membership?.name == "Trip" }
+            assertTrue(!next.onSettings(), "the new membership opens on the status screen")
+        }
+    }
+
+    @Test
+    fun `settings do not survive a leave and a rejoin of the same event`() {
+        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        return onHost(config = config) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("the settings surface") { it.onSettings() }
+
+            config.value = null
+            host.stateWhere("no membership") { it.layer !is Layer.Joined }
+            config.value = CONFIG
+            val rejoined = host.stateWhere("the rejoined membership") { it.layer is Layer.Joined }
+            assertTrue(!rejoined.onSettings(), "a fresh membership of the same event opens on the status screen")
+        }
+    }
+
     // ---- the shareable count (capability `join-share-count`) ------------------------------------------
 
     private fun UiState.reconfigureCount(): ShareCount? =

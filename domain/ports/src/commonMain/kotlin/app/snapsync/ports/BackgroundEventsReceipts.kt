@@ -1,5 +1,6 @@
 package app.snapsync.ports
 
+import app.snapsync.model.ConfinedTo
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +77,7 @@ class BackgroundEventsReceipts(
 ) {
 
     /** Completed when the events outstanding at its creation have drained and [work] has finished. */
+    @ConfinedTo("composition")
     private var window = CompletableDeferred<Unit>()
 
     /**

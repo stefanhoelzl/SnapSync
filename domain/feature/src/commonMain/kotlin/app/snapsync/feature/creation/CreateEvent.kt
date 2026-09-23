@@ -39,6 +39,13 @@ class CreateEvent(
     // fixed by the composition"), which is what lets the tap's `Logger.invocation` span the real work
     // instead of timing the hand-off — `← tap.create (1ms)` against a multi-second mint.
     override suspend fun create(name: String, startsAt: String, endsAt: String) {
+        // One create at a time (capability `sync-status-screen`, "A non-idempotent command is in flight before it
+        // first suspends"): a second tap that reached the lane while the first mint is out would mint a second
+        // event. Checked and set before the first suspension, so on the serial lane nothing can come between.
+        if (status.creationStatus.value == CreationStatus.InFlight) {
+            log.i { "create ignored: one is already in flight" }
+            return
+        }
         status.set(CreationStatus.InFlight)
         when (val outcome = client.create(name.trim(), startsAt, endsAt)) {
             is CreateOutcome.Created -> {

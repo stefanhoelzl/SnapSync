@@ -72,7 +72,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource, InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
 | `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, InMemoryPhotoLibraryImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
-| `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
+| `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:app` SelectionSnapshotLane; `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `ProcessMetricSource` | `:domain:ports` | `:adapter:ios:app-only` MetricKitProcessMetricSource | no |
 | `ProtectedStorage` | `:domain:ports` | `:adapter:generic:fake` InMemoryProtectedStorage; `:adapter:ios:app-only` IosProtectedStorage | yes |
@@ -97,7 +97,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
-| `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource | yes |
+| `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource, IdleSync | yes |
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
 | `TokenOutcome` | `:domain:ports` | `:domain:ports` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:ports` | — | no |

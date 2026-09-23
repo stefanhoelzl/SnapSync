@@ -15,6 +15,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -34,6 +43,7 @@ class QueuedPhotoDownloadJobsTest {
     /** An ordinary healthy transfer: `200`, no declared length — what most of this suite assumes. */
     private companion object {
         val OK = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
+        const val REGISTRATIONS = 500
     }
 
     /**
@@ -62,6 +72,11 @@ class QueuedPhotoDownloadJobsTest {
                     host.onCompleted(description, "cancelled")
                 }
             }
+        }
+
+        /** Only the staging half of [finish]: what the delegate queue does for one finished transfer's bytes. */
+        fun stage(description: String) {
+            host.destinationFor(description)?.let { host.onStaged(description, it) }
         }
 
         /** The session delivered every event it had — `URLSessionDidFinishEventsForBackgroundURLSession`. */
@@ -113,6 +128,38 @@ class QueuedPhotoDownloadJobsTest {
             ref = AssetRef("DEVICE-A", assetId),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
         )
+
+    // ---- the imports a wake announces are all awaited, whichever thread registered them -----------------
+
+    /**
+     * Registrations race the drain on real threads (law "State reached from OS callbacks is confined"). The
+     * transport's delegate queue registers each import while a coroutine takes the list to await it; a plain list
+     * shared between them dropped registrations under contention, so a drain could return — and the OS handler be
+     * released — before an import it had announced.
+     */
+    @Test
+    fun registrations_racing_a_drain_are_all_awaited() = runTest {
+        val finished = MutableStateFlow(0)
+        withContext(Dispatchers.Default) {
+            val threads = CoroutineScope(Dispatchers.Default + SupervisorJob())
+            val h = Harness(threads)
+            h.deliver = { _, _, _ ->
+                yield()
+                finished.update { it + 1 }
+            }
+            h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+            val description = h.transport.started.single().description
+
+            val registrations = List(REGISTRATIONS) { launch(Dispatchers.Default) { h.transport.stage(description) } }
+            val drains = launch(Dispatchers.Default) { repeat(50) { h.jobs.awaitOutstandingImports() } }
+            registrations.joinAll()
+            drains.join()
+            h.jobs.awaitOutstandingImports()
+
+            assertEquals(REGISTRATIONS, finished.value, "every announced import is awaited before the drain returns")
+            threads.cancel()
+        }
+    }
 
     // ---- transfer integrity: a finished transfer is not a good transfer ----------------------------
 

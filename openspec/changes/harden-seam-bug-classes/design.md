@@ -272,6 +272,16 @@ information exists and is only dropped at the port today.
 - **The confinement gate** checks for `@ConfinedTo("lane")` on mutable fields of the classes it knows
   receive OS callbacks.
 
+As built: the ordering core is platform-free — `SelectionSnapshotLane` in `:adapter:generic:app`, over a small
+`SelectionPlatform` interface the iOS adapter implements with PhotoKit — so its ordering is tested on the JVM
+rather than only on a simulator. Begin, end, baseline and every change go through one unlimited `Channel`
+consumed on the lane; the permission collector advances a `@Volatile` generation. `outstandingImports` became
+a `MutableStateFlow<List<Job>>` updated atomically (the law's "thread-safe primitive" branch) rather than a
+lane hop: it is the smallest change that makes registration and the drain's take race-free, and a test that
+races 500 registrations against drains fails on the old list and passes on the cell. `@ConfinedTo` lives in
+`model/` (source retention); the gate covers every `NSObject()` subclass plus a named list of classes that take
+OS callbacks through a Kotlin interface.
+
 ### D13. Guarded commands in presentation
 
 `StatusContainerHost` gains `guardedIntent(start: (S) -> S?, run: suspend (S) -> R, apply: (current: S,
@@ -285,6 +295,16 @@ Create, rename and the switch's leave move to it.
 
 `reconfiguringState` and the rename status are keyed by the joined `eventId` inside a single `JoinedSurface`
 state, which resets whenever `config.eventId` changes.
+
+As built, simpler than the signature above: `guardedIntent(command, run)` claims the command in a
+`MutableStateFlow<Set<Guarded>>` synchronously in the tapping thread (an atomic `getAndUpdate`), launches the
+intent, and releases the claim when its body returns. Create and rename are detached on the core lane, so their
+use-cases also refuse a second call while their status is `InFlight`, checked before the first suspension. The
+switch applies its result only if the pending join is still the one it started from (identity), so a cancel
+during the leave stands. Opening the rename sheet clears a terminal latch left by a rename that finished after
+the sheet was dismissed. The settings surface and the rename status are `Owned(eventId, value)`, read back only
+while that event is the joined one, and one collector resets them when the joined event changes (which also
+covers a leave and rejoin of the same event).
 
 ### D14. Entry-point parity tests and a cold world
 
