@@ -31,12 +31,12 @@
 ## 5. Scheduler hosts
 
 - [x] 5.1 Measure `BGTaskScheduler.submit` on the simulator app; bind `IOS_SIM_APP` live if it is accepted, or declare the states unreachable naming the measured error
-- [ ] 5.2 Take the lease (`snapsync-device`, `rig-channel`), install a rig build on the SE2, `POST /contract/BackgroundScheduler`, and commit `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` unedited
-- [ ] 5.3 Add the `Replay` binding in `:adapter:ios:app-only` `iosTest` over that recording
+- [x] 5.2 Take the lease (`snapsync-device`, `rig-channel`), install a rig build on the SE2, `POST /contract/BackgroundScheduler`, and commit `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` unedited
+- [x] 5.3 Add the `Replay` binding in `:adapter:ios:app-only` `iosTest` over that recording
 
 ## 6. Gates and docs
 
-- [ ] 6.1 `./gradlew build` is green, including `ContractCoverageTest`, which names every new clause as covered by a real host
+- [x] 6.1 `./gradlew build` is green, including `ContractCoverageTest`, which names every new clause as covered by a real host
 - [x] 6.2 `./gradlew compileIosMainKotlinMetadata` is green; `./gradlew architectureDiagrams`, commit any diff
 - [x] 6.3 Update CLAUDE.md's module entries (`:test:contracts` contract list, `:adapter:generic:fake` fakes, `:test:world` wrappers) and the `rig-channel` / `ios-simulator` skills (fixture flag, heartbeat cleared by a device run)
 - [x] 6.4 Point `TransferSessions.kt`'s "does NOT evidence" section at the contracts for what IS evidenced
