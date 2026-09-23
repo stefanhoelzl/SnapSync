@@ -93,15 +93,17 @@ class PhotoContractBindingsTest {
     private val uploadDiscovery = object : Binding<UploadDiscoveryState, Seeded<UploadDiscovery>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(UploadDiscoveryState.GRANTED_SEEDED)
+        override val reaches = setOf(UploadDiscoveryState.NO_GRANT, UploadDiscoveryState.GRANTED_SEEDED)
 
         override fun create(state: UploadDiscoveryState, clauseId: String): Entered<Seeded<UploadDiscovery>> {
-            if (state == UploadDiscoveryState.NO_GRANT) {
-                return Entered.Unreachable("the in-memory library holds no grant to withhold")
-            }
-            val library = seededLibrary(UploadDiscoveryContract.name, clauseId)
+            val granted = state == UploadDiscoveryState.GRANTED_SEEDED
+            val library = if (granted) seededLibrary(UploadDiscoveryContract.name, clauseId) else MutableStateFlow(emptyList())
+            val grant = grant(granted)
             return Entered.Ready(
-                Seeded(inMemoryUploadDiscovery(inMemoryCandidateSource(library), library), library.value.map { it.assetId }),
+                Seeded(
+                    inMemoryUploadDiscovery(inMemoryCandidateSource(library), library) { grant.value },
+                    library.value.map { it.assetId },
+                ),
             )
         }
     }

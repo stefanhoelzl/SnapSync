@@ -151,9 +151,13 @@ fun inMemoryCandidateSource(initial: List<RawAsset> = emptyList()): CandidateSou
 /**
  * The upload cycle's library reads over [source] (the walk) and [library] (the unscoped contents a fetch by
  * identifier reads). Both are the caller's own: the world passes its gallery's candidate source and cell.
+ * [grant] is the process's photo grant; a walk is authoritative only under a full one.
  */
-fun inMemoryUploadDiscovery(source: CandidateSource, library: StateFlow<List<RawAsset>>): UploadDiscovery =
-    InMemoryUploadDiscovery(source, library)
+fun inMemoryUploadDiscovery(
+    source: CandidateSource,
+    library: StateFlow<List<RawAsset>>,
+    grant: () -> PermissionStatus = { PermissionStatus.GRANTED },
+): UploadDiscovery = InMemoryUploadDiscovery(source, library, grant)
 
 fun inMemoryGalleryStatusSource(state: MutableStateFlow<Set<String>?>): GalleryStatusSource =
     InMemoryGalleryStatusSource(state)
