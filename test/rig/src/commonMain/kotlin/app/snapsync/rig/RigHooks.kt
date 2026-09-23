@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.InAppContract
 import app.snapsync.ports.DeviceLogSource
 import kotlin.coroutines.CoroutineContext
 
@@ -110,11 +111,12 @@ class RigHooks(
      */
     val publishBoundPort: (Int) -> Unit,
     /**
-     * The port contracts this build can run in-app, by name — `POST /contract/<name>` (capability
-     * `port-contracts`). Each runs every clause against the device's real implementation, recording what it
-     * asked the operating system and what it was answered, and returns the recording to commit verbatim.
+     * The port contracts this build can run in-app — `POST /contract/<name>`, and `GET /contract` for the ones
+     * registered for the host this process is (capability `port-contracts`). A device entry records what the
+     * real implementation asked the operating system and returns the recording to commit verbatim; a
+     * simulator-app entry runs live and returns its outcome table, which the `ios-contracts` job judges.
      */
-    val contracts: Map<String, () -> String>,
+    val contracts: List<InAppContract>,
 ) {
 
     /**

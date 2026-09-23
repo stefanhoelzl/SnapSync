@@ -1,0 +1,80 @@
+#!/bin/sh
+# Run the simulator app's port contracts, end to end — the `ios-contracts` CI job, and its reproduction on a
+# Mac session (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig").
+#
+#   scripts/sim-contracts            # on macOS, from the repo root, with snapsync.rig=true in ~/.gradle
+#
+# It builds the rig app for the simulator, ad-hoc signs it (an unsigned build has no App Group), installs it on
+# a FRESH simulator, grants photo access with applesimutils BEFORE the first launch (`simctl privacy grant
+# photos` writes a TCC row PhotoKit never consults), launches it, and runs every contract `GET /contract` lists
+# for this host. The contracts seed photos and never delete them, which is why the simulator is fresh.
+#
+# It FAILS on: any `Failed(` outcome, any refusal (409: the process is not the simulator app, or it does not
+# hold GRANTED), an empty registry, and an app that never publishes its rig port. Everything it learns goes to
+# build/sim-contracts/, which CI keeps as an artifact: the outcome tables, and on a no-answer the screenshot
+# and log, because a pending system alert is visible only in a screenshot.
+#
+# Dev infrastructure: loads nothing on Linux. Runbook: the `ios-simulator` skill.
+set -u
+
+OUT=build/sim-contracts
+mkdir -p "$OUT"
+fail() { echo "sim-contracts: FAILED — $*" | tee -a "$OUT/result"; exit 1; }
+
+grep -q '^snapsync.rig=true' "$HOME/.gradle/gradle.properties" 2>/dev/null \
+    || fail "snapsync.rig=true is not in ~/.gradle/gradle.properties (never put it in the repo's)"
+
+# applesimutils, pinned to a tap commit: the formula, and the bottle it pours, come from that commit, and auto-update is off
+# so a newer formula cannot arrive mid-run.
+APPLESIMUTILS_TAP_COMMIT=8f636f84541e08e850f455d7cffdfbd7ba305d3f   # applesimutils 0.9.12 (2025-06-18)
+if ! command -v applesimutils >/dev/null; then
+    export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+    brew tap wix/brew >/dev/null || fail "could not tap wix/brew"
+    git -C "$(brew --repo wix/brew)" checkout -q "$APPLESIMUTILS_TAP_COMMIT" || fail "could not pin wix/brew"
+    brew install wix/brew/applesimutils >/dev/null || fail "could not install applesimutils"
+fi
+
+python3 scripts/resolve-deployment.py local >/dev/null || fail "could not render the local deployment"
+xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
+    -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build \
+    > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
+APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
+[ -n "$APP" ] || fail "no simulator .app was built"
+scripts/sim-sign "$APP" || fail "sim-sign"
+
+DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 16')" || fail "could not create a simulator"
+# The simulator is this run's alone, and so is its port: every simulator shares the Mac's loopback, so a second
+# instance on the default 18099 fails to bind while a curl reaches the FIRST one and answers plausibly.
+trap 'xcrun simctl shutdown "$DEVICE" >/dev/null 2>&1; xcrun simctl delete "$DEVICE" >/dev/null 2>&1' EXIT
+RIG_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+xcrun simctl boot "$DEVICE" && xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not boot"
+xcrun simctl install "$DEVICE" "$APP" || fail "install"
+applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
+    || fail "could not grant photo access"
+SIMCTL_CHILD_SNAPSYNC_RIG_PORT="$RIG_PORT" xcrun simctl launch "$DEVICE" app.snapsync >/dev/null || fail "launch"
+
+DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
+i=0
+while [ ! -f "$DATA/Documents/rig.port" ] && [ $i -lt 90 ]; do sleep 2; i=$((i + 1)); done
+if [ ! -f "$DATA/Documents/rig.port" ]; then
+    xcrun simctl io "$DEVICE" screenshot "$OUT/no-answer.png" >/dev/null 2>&1
+    cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
+    fail "the app never published its rig port (screenshot and log in $OUT)"
+fi
+PORT="$(cat "$DATA/Documents/rig.port")"
+[ "$PORT" = "$RIG_PORT" ] || fail "the app bound $PORT, not the $RIG_PORT it was given"
+
+curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fail "GET /contract"
+[ -s "$OUT/registry" ] || fail "the simulator app registers no contract"
+
+status=0
+for name in $(cat "$OUT/registry"); do
+    code="$(curl -sS -o "$OUT/$name.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name")"
+    echo "=== $name (HTTP $code)"
+    cat "$OUT/$name.txt"
+    if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
+    if grep -q ' Failed(' "$OUT/$name.txt"; then echo "  -> a clause failed"; status=1; fi
+done
+cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
+[ $status -eq 0 ] || fail "see the outcome tables above"
+echo "sim-contracts: every registered contract passed" | tee "$OUT/result"

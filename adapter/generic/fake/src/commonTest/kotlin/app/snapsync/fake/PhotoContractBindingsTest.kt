@@ -178,15 +178,17 @@ class PhotoContractBindingsTest {
 
                 override fun marker(ref: AssetRef): MarkerState = markers[ref] ?: MarkerState.NONE
             }
-            val staged = listOf(
-                StagedResource(
+            val staged = {
+                listOf(
+                    StagedResource(
                     resourceKey = "contract-$clauseId-primary.jpg",
                     role = ResourceRole.PRIMARY.wire,
                     contentType = "image/jpeg",
                     originalFilename = "IMG_0001.JPG",
-                    stagedPath = "staged:/contract-$clauseId-primary.jpg",
-                ),
-            )
+                        stagedPath = "staged:/contract-$clauseId-primary.jpg",
+                    ),
+                )
+            }
             return Entered.Ready(StagedImport(importer, staged, observed))
         }
     }

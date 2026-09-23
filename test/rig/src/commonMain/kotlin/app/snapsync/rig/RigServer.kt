@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.currentHost
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.presentation.StatusContainerHost
 import co.touchlab.kermit.Logger
@@ -143,6 +144,7 @@ class RigServer(
             get("/device/logs") { call.traced { call.respondLogs() } }
             get("/device/gallery") { call.traced { call.respondGallery() } }
             post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
+            get("/contract") { call.traced { call.respondContractList() } }
             post("/contract/{name}") { call.traced { call.respondContract() } }
         }
     }
@@ -245,13 +247,14 @@ class RigServer(
     }
 
     /**
-     * `POST /contract/{name}` — run a port contract in-app and answer with its recording, to be committed
-     * unedited as `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`. Off the main lane, like the device
+     * `POST /contract/{name}` — run a port contract in-app and answer with its body: a device recording, to be
+     * committed unedited as `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`, or a simulator-app outcome
+     * table. Off the main lane, like the device
      * commands: it blocks until every clause has run.
      */
     private suspend fun ApplicationCall.respondContract() {
         val name = routeName("/contract")
-        val contract = hooks.contracts[name]
+        val contract = hooks.contracts.firstOrNull { it.name == name }?.run
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "contract"),
                 status = HttpStatusCode.NotFound,
@@ -262,6 +265,15 @@ class RigServer(
         val body = withContext(Dispatchers.Default) { contract() }
         val status = if (body.startsWith(CONTRACT_REFUSED)) HttpStatusCode.Conflict else HttpStatusCode.OK
         respondText(body, status = status)
+    }
+
+    /**
+     * `GET /contract` — the names of the contracts registered for the host this process is, one per line. The
+     * `ios-contracts` job runs exactly this list, so a contract registered for the simulator app is run on every
+     * push, and one registered for nothing is run by nobody (capability `port-contracts`).
+     */
+    private suspend fun ApplicationCall.respondContractList() {
+        respondText(hooks.contracts.filter { it.host == currentHost }.joinToString("") { it.name + "\n" })
     }
 
     /**

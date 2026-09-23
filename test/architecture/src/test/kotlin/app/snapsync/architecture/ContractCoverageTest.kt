@@ -22,6 +22,10 @@ import kotlin.test.fail
  * Otherwise a device-only clause would count as covered the day its binding was written, before anyone ran it. That also closes the escape hatch: declaring a failing clause's state unreachable on its
  * only real host leaves the clause uncovered, and this fails.
  *
+ * A host CI runs **in-app** — the simulator app — is visible here only through source, so a `Live` binding there
+ * counts only when the in-app registry the `ios-contracts` job runs names it: a `simulatorAppContract(<Contract>,
+ * <BindingClass>(), …)` call. An unregistered one is run by nobody, and the gate fails naming it.
+ *
  * Scope is derived, never listed ("Gates fail closed on novelty"), with ONE stated exclusion: the mechanism's
  * own self-tests under `test/contracts/src/commonTest`, whose toy bindings misdeclare on purpose to prove the
  * runner catches a lying binding. They are not port contracts and bind no port.
@@ -34,6 +38,7 @@ class ContractCoverageTest {
 
     private class BindingDecl(
         val file: String,
+        val name: String?,
         val stateEnum: String,
         val kind: String?,
         val host: String?,
@@ -57,13 +62,22 @@ class ContractCoverageTest {
         starts.mapIndexed { i, m ->
             val body = src.text.substring(m.range.first, starts.getOrNull(i + 1)?.range?.first ?: src.text.length)
             val raw = REACHES.find(body)?.groupValues?.get(1)
-            val enum = m.groupValues[1]
+            val enum = m.groupValues[2]
             val tokens = raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
             val parsed = tokens?.takeIf { t -> t.isNotEmpty() && t.all { STATE_REF.matches(it) && it.startsWith("$enum.") } }
                 ?.map { it.substringAfter('.') }?.toSet()
-            BindingDecl(src.path, enum, KIND.find(body)?.groupValues?.get(1), HOST.find(body)?.groupValues?.get(1), parsed, raw)
+            BindingDecl(src.path, m.groupValues[1].takeIf { it.isNotEmpty() }, m.groupValues[2], KIND.find(body)?.groupValues?.get(1), HOST.find(body)?.groupValues?.get(1), parsed, raw)
         }
     }
+
+    /** The binding classes the simulator app's registry names — what the `ios-contracts` job actually runs. */
+    private val registered: Set<String> = sources.flatMap { src ->
+        REGISTERED.findAll(src.text).map { it.groupValues[1] }.toList()
+    }.toSet()
+
+    /** Whether [b] is a `Live` binding CI runs: not on a recorded host, and registered if its host runs in-app. */
+    private fun runsLiveOnCi(b: BindingDecl, recordedHosts: Set<String>) =
+        b.kind == "Live" && b.host !in recordedHosts && (b.host !in IN_APP_CI_HOSTS || b.name in registered)
 
     private val recordings: Map<String, Set<String>> = recordingsDir().listFiles { f -> f.extension == "rec" }
         .orEmpty()
@@ -75,7 +89,7 @@ class ContractCoverageTest {
             val mine = bindings.filter { it.stateEnum == contract.stateEnum }
             val recordedHosts = mine.filter { it.kind == "Replay" }.mapNotNull { it.host }.toSet()
             contract.clauses.filter { (id, state) ->
-                val live = mine.any { it.kind == "Live" && it.host !in recordedHosts && it.reaches.orEmpty().contains(state) }
+                val live = mine.any { runsLiveOnCi(it, recordedHosts) && it.reaches.orEmpty().contains(state) }
                 val replayed = mine.any { b ->
                     b.kind == "Replay" && b.reaches.orEmpty().contains(state) &&
                         recordings["${contract.name}@${b.host?.removePrefix("Host.")}"].orEmpty().contains(id)
@@ -102,6 +116,19 @@ class ContractCoverageTest {
                 "a binding must write `override val kind = BindingKind.X`, `override val host = Host.X` (or " +
                     "`currentHost`) and `override val reaches = setOf(State.A, State.B)` literally — a computed " +
                     "declaration would let coverage be claimed without being readable:\n  " + unreadable.joinToString("\n  "),
+            )
+        }
+    }
+
+    @Test
+    fun `every binding on an in-app CI host is registered for the job that runs it`() {
+        val unregistered = bindings.filter { it.host in IN_APP_CI_HOSTS && it.name !in registered }
+            .map { "${it.name ?: "<anonymous object>"} (${it.host}) — ${it.file}" }
+        if (unregistered.isNotEmpty()) {
+            fail(
+                "these bindings name a host the `ios-contracts` job runs in-app, but no `simulatorAppContract(<Contract>, " +
+                    "<BindingClass>(), …)` registers them, so nothing ever runs them. Register each as a named class:\n  " +
+                    unregistered.joinToString("\n  "),
             )
         }
     }
@@ -137,6 +164,14 @@ class ContractCoverageTest {
     }
 
     @Test
+    fun `the scan finds the simulator app's registry`() {
+        assertTrue(
+            registered.isNotEmpty() && bindings.any { it.host in IN_APP_CI_HOSTS && it.name in registered },
+            "no registered simulator-app binding found — the registry's form moved, or it emptied",
+        )
+    }
+
+    @Test
     fun `the scan finds recordings with blocks`() {
         assertTrue(
             recordings.values.any { it.isNotEmpty() },
@@ -152,7 +187,11 @@ class ContractCoverageTest {
         const val HOST_FILE = "test/contracts/src/commonMain/kotlin/app/snapsync/contracts/Host.kt"
         val CONTRACT = Regex("""object\s+\w+\s*:\s*Contract<(\w+),\s*[\w.<>, ]+>\("([^"]+)"\)""")
         val CLAUSE = Regex("""clause\("((?:[^"\\]|\\.)*)",\s*(\w+)\.(\w+)\)""")
-        val BINDING = Regex("""(?:object|class\s+\w+\s*(?:\([^)]*\))?)\s*:\s*Binding<(\w+),""")
+        val BINDING = Regex("""(?:object|class\s+(\w+)\s*(?:\([^)]*\))?)\s*:\s*Binding<(\w+),""")
+        val REGISTERED = Regex("""simulatorAppContract\(\s*\w+\s*,\s*(\w+)\(""")
+
+        /** Hosts CI runs inside the app, where only the in-app registry proves a binding is run at all. */
+        val IN_APP_CI_HOSTS = setOf("Host.IOS_SIM_APP")
         val REACHES = Regex("""override val reaches\s*=\s*setOf\(([^)]*)\)""")
         val KIND = Regex("""override val kind\s*=\s*BindingKind\.(\w+)""")
         val HOST = Regex("""override val host\s*=\s*(Host\.\w+|currentHost)""")

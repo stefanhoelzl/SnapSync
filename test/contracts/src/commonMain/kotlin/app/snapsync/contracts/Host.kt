@@ -24,6 +24,15 @@ enum class Host {
      */
     IOS_SIM_KEXE,
 
+    /**
+     * The rig build of the app bundle on a simulator, ad-hoc signed with the App Group only. Its bundle
+     * identifier is what lets `applesimutils` grant it photo access, which no test executable can hold, so it
+     * is where PhotoKit runs under a real full grant. It is run live on every push by the `ios-contracts`
+     * job (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). Its Keychain
+     * answers `-34018` to an explicit-group query, so it reaches none of `IOS_DEVICE_APP`'s Keychain states.
+     */
+    IOS_SIM_APP,
+
     /** The entitled app on a real device, reached through the rig. Recorded there, replayed in CI. */
     IOS_DEVICE_APP,
 }

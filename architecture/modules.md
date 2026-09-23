@@ -35,16 +35,19 @@ flowchart LR
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> test_contracts
+  adapter_generic_fake --> domain_compose
   adapter_generic_fake --> domain_feature
   adapter_generic_fake --> domain_flow
   adapter_generic_fake --> domain_model
   adapter_generic_fake --> domain_ports
   adapter_generic_fake --> test_contracts
   adapter_ios_app_only --> adapter_ios_ext_safe
+  adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model
   adapter_ios_app_only --> domain_ports
   adapter_ios_app_only --> test_contracts
   adapter_ios_ext_safe --> adapter_generic_app
+  adapter_ios_ext_safe --> domain_compose
   adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_model
   adapter_ios_ext_safe --> domain_ports

@@ -216,6 +216,15 @@ exist in a non-rig build. **There are no `SNAPSYNC_*` launch triggers any more**
 none and a guard fails the build if one returns. Everything they used to do — join, create, leave, reset,
 seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 
+## The PhotoKit port contracts run here
+
+The simulator app is the host (`IOS_SIM_APP`) where the photo-library contracts meet real PhotoKit under a
+full grant, and CI runs them on every push (`ios-contracts`). `scripts/sim-contracts` is that job, start to
+finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, launch, then every entry of
+`GET /contract`. It fails on any `Failed(…)`, a refusal, or an empty registry. Run it on a Mac session to
+reproduce a red job. The contracts **seed photos and never delete them**, because deleting raises a
+confirmation that needs a finger. See `rig-channel` for the verb.
+
 ## ⚠️ Photo permission: use `applesimutils`, NOT `simctl privacy`
 
 **`xcrun simctl privacy <dev> grant photos app.snapsync` does not work for PhotoKit.** It writes the TCC

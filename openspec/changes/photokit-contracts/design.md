@@ -230,7 +230,7 @@ exists to forbid.
 | fake bindings | `:adapter:generic:fake` `commonTest` | the fakes are `internal` |
 | kexe bindings for the ext-safe adapters | `:adapter:ios:ext-safe` `iosTest` | beside the implementation |
 | kexe bindings for the app-only adapters | `:adapter:ios:app-only` `iosTest` | beside the implementation |
-| simulator-app bindings, both modules | each module's rig-gated source set | they must be non-test and app-linked; in-app is the only place the grant exists |
+| simulator-app bindings, for the adapters of both modules | `:adapter:ios:app-only`'s rig-gated source set | they must be non-test and app-linked, and in-app is the only place the grant exists. **Deviation found at implementation:** without the property a rig directory compiles into its own module's `iosTest`, and one module's tests cannot see another's, so shared seeding can live in only one module. App-only sees both modules' public adapters, so all simulator-app bindings live there |
 | composed bindings (`PermissionAware*`) | beside the PhotoKit adapter they wrap, with a test/rig-only dependency on `:domain:compose` | the adapter is the implementation under test |
 | the simulator-app registry and `/contract` routing | `:test:rig`, fed by `:app:ios`'s rig hook | unchanged shape |
 
@@ -350,6 +350,9 @@ every shipped path.
   (`PHAuthorizationStatus` 2), not `NOT_DETERMINED`. The `NO_GRANT` state covers both, so no clause changed.
   `AlbumManagerContract` and `PhotoLibraryImporterContract` have no no-grant clause, so their no-grant
   creation behaviour was not measured and binds nothing on the kexe.
-- Whether a request shape reproducing `ChangeNotSupported` exists (D9).
+- ~~Whether a request shape reproducing `ChangeNotSupported` exists (D9).~~ **Decided at implementation:** the
+  clause is not written. No ordinary request shape reproduces it, and a contrived one would test the contrivance,
+  so the measurement stays in `ImportResult.Failed`'s KDoc with its evidence. The first live run in the simulator
+  app (iOS 26.5, 2026-09-23) passed every other clause of all six contracts.
 - The upload-job tier's host: whether the device extension process becomes `IOS_DEVICE_EXT`, and how its
   runs are triggered. This is for the carved-out phase.
