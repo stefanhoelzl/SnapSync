@@ -230,6 +230,14 @@ finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, t
 reproduce a red job. The contracts **seed photos and never delete them**, because deleting raises a
 confirmation that needs a finger. See `rig-channel` for the verb.
 
+The same script then runs the **all-real journeys** (capability `testing-architecture`): it serves `api/` with
+`deno task dev:local` on `127.0.0.1:8080` — the address the `local` deployment bakes into the build, so it is
+started before the xcodebuild and warmed with one request (a cold deno exceeds the app's 5 s timeout) — boots a
+**second** fresh simulator on its own rig port, reads each app's `GET /device` once (an unclassified vocabulary
+entry fails the job), and runs `./gradlew :test:integration:journeys -Psnapsync.journey.appA=… appB=… backend=…`:
+A creates and joins, A's photos reach the event union, B joins download-only through A's invite link and
+receives them. The backend's output and both apps' `debug.log` land in `build/sim-contracts/`.
+
 ## ⚠️ Photo permission: use `applesimutils`, NOT `simctl privacy`
 
 **`xcrun simctl privacy <dev> grant photos app.snapsync` does not work for PhotoKit.** It writes the TCC
