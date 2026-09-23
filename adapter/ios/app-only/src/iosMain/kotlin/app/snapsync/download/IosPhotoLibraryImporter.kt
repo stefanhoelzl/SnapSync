@@ -1,5 +1,6 @@
 package app.snapsync.download
 
+import app.snapsync.gallery.Iso8601
 import app.snapsync.model.importFilename
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.AssetRef
@@ -12,7 +13,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSDate
 import platform.Foundation.NSError
-import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSMutableArray
 import platform.Foundation.NSURL
 import platform.Photos.PHAsset
@@ -73,7 +73,8 @@ class IosPhotoLibraryImporter(
 ) : PhotoLibraryImporter {
 
     override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
-        val captureDate = NSISO8601DateFormatter().dateFromString(creationDate)
+        // The shared default formatter (second precision only, exactly as before) — see [Iso8601].
+        val captureDate = Iso8601.parse(creationDate)
         if (captureDate == null) log.w { "unparseable creationDate '$creationDate' for ${ref.sourceAssetId} — will default to import time" }
         val typed = resources.mapNotNull { r ->
             val type = resourceType(r.role, r.contentType)
