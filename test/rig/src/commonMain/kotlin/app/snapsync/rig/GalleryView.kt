@@ -95,6 +95,12 @@ data class AssetView(
      * anything else on the device can answer.
      */
     val resources: List<ResourceView>?,
+    /**
+     * The capture names the photo library holds for this asset's resources — what a person sees as the photo's
+     * file name — present when resources were asked for, for EVERY asset, admitted or not. An imported photo is
+     * refused (it is an echo) yet its name is exactly what an import is judged by.
+     */
+    val originalFilenames: List<String>? = null,
 )
 
 /**

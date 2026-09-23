@@ -269,6 +269,10 @@ curl -X POST "localhost:18099/user/cancelJoin"
 
 # LEAVE
 curl -X POST localhost:18099/user/leave
+
+# THE REST OF /user (both hosts): rename[?event=]&name=, renameStatusConsumed, confirmSwitch, retryLoad, retryJoin,
+# setRange?[from=eventStart|now][&until=eventEnd][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing),
+# sendDiagnostics?note=&screen=  (409 on every rig build of the app: no DSN, no reporter, nothing sent)
 ```
 
 ⚠️ **`create` is non-idempotent** — every call mints a **new** backend event. There is no launch variable
@@ -451,7 +455,21 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   finishes a transfer — a real PUT to the backend), `device/jobs/fail?key=&error=`, `device/jobs/limit?n=`,
   `device/backend/objects[?device=]`, `device/backend/offline?on=`, `device/permission?status=`,
   `device/import/fail-next`, `device/membership/unreadable?on=`, `device/downloads/stage|reconcile`,
-  `device/album/place?album=&asset=`, `device/foreign-device?device=&assets=a,b[&event=]`, `device/status/refresh`.
+  `device/album/place?album=&asset=`, `device/foreign-device?device=&assets=a,b[&event=][&filename=]`,
+  `device/status/refresh`, `device/downloads/stage?wait=false` (returns while an import is parked).
+- The **integration surface's** world levers and reads (also refused by the app):
+  - backend reads (`[event=]` defaults to the joined one, `[device=]` to this one): `backend/union`, `backend/manifest`,
+    `backend/device-config`, `backend/event`, `backend/departed`, `backend/publishes`, `backend/pushes`;
+    `diagnostics/sent` (the dumps the reporter received);
+  - backend levers: `backend/min-app-version[?minimum=]`, `backend/sweep`, `backend/hold-leave`,
+    `backend/release-leave`, `backend/fail-listing?on=`, `backend/deposit?asset=`, `backend/legacy-event?name=`,
+    `backend/refuse-credential`;
+  - OS and library: `clock/advance?to=<instant>`, `app-version?version=`, `relaunch`, `selection/change?assets=a,b`,
+    `gallery/add?id=&date=&kind=photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif`,
+    `gallery/fail-next-enumeration`, `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
+    `import/resume?succeeded=`, `logs/append?process=app|extension` (body = text),
+    `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
+- Device facts the JVM host reads and the app host does not wire yet: `device/staging`, `device/album/contents`.
 - `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
 - Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception).
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line

@@ -1,5 +1,7 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
@@ -103,6 +105,11 @@ class GalleryReader(
                 refusedBy = refusedBy?.let(::describe),
                 resources = if (resources && admitted) {
                     candidate.resources().map { ResourceView(it.contentType, it.filename) }
+                } else {
+                    null
+                },
+                originalFilenames = if (resources) {
+                    candidate.resources().mapNotNull { it.metadata[RESOURCE_META_ORIGINAL_FILENAME] }
                 } else {
                     null
                 },

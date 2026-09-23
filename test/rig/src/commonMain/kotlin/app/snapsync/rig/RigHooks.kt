@@ -305,6 +305,13 @@ sealed interface RigTrigger {
 class RigUserCommand(val run: (params: Map<String, String>) -> Unit)
 
 /**
+ * Thrown by a user command that THIS build cannot honour — a command the composed core leaves absent, such as the
+ * diagnostics send on a build with no reporter. Answered `409` with [reason], never a `202` for a tap that could
+ * not have happened (capability `testing-architecture`, "One control protocol, served by two hosts").
+ */
+class UserCommandRefused(val reason: String) : RuntimeException(reason)
+
+/**
  * A `/device` **write**.
  *
  * Two properties distinguish it from a trigger, and both are forced rather than chosen. It **blocks until

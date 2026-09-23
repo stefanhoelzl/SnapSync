@@ -57,13 +57,58 @@ object RigVocabulary {
         "device/album/place",
         "device/foreign-device",
         "device/status/refresh",
+        // The integration surface's observable reads of the world's simulated systems (capability
+        // `testing-architecture`, "The seam-to-UI-state integration surface") — what the backend, the crash
+        // reporter and the push service recorded.
+        "device/backend/union",
+        "device/backend/manifest",
+        "device/backend/device-config",
+        "device/backend/event",
+        "device/backend/departed",
+        "device/backend/publishes",
+        "device/backend/pushes",
+        "device/diagnostics/sent",
+        // ...and the levers that put those systems, the photo library and the operating system into the states a
+        // test starts from.
+        "device/backend/min-app-version",
+        "device/backend/sweep",
+        "device/backend/hold-leave",
+        "device/backend/release-leave",
+        "device/backend/fail-listing",
+        "device/backend/deposit",
+        "device/backend/legacy-event",
+        "device/backend/refuse-credential",
+        "device/clock/advance",
+        "device/app-version",
+        "device/relaunch",
+        "device/selection/change",
+        "device/gallery/add",
+        "device/gallery/fail-next-enumeration",
+        "device/import/suspend-next",
+        "device/import/resume",
+        "device/import/await-parked",
+        "device/logs/append",
+        "device/staging/seed-legacy-backlog",
     )
+
+    /**
+     * Device facts both kinds of host have — the staging directory's files, the photo library's albums — that the
+     * app host does not wire yet. The JVM host reads them off its world; the app host refuses each with
+     * [appHostUnwiredRefusals], which says exactly that.
+     */
+    val deviceFacts: List<String> = listOf("device/staging", "device/album/contents")
+
+    /** Why the app host refuses each [deviceFacts] entry. */
+    val appHostUnwiredRefusals: Map<String, String> = deviceFacts.associateWith {
+        "the app host has this fact but does not wire a read of it yet; the JVM host reads it off its world"
+    }
 
     /** The port-contract verb (`GET /contract`, `POST /contract/<name>`). */
     const val CONTRACT: String = "contract"
 
     val entries: Set<String> =
-        (appEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + CONTRACT).toSet()
+        (appEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts + CONTRACT)
+            .toSet()
 
     /** Why the app host refuses every world lever — one reason, because they share one cause. */
     val worldLeverRefusals: Map<String, String> = worldLevers.associateWith {
