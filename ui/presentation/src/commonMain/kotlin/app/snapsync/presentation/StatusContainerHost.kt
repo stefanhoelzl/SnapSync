@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.CaptureDate
@@ -231,7 +232,7 @@ class StatusContainerHost(
             ).let { layer -> UiState(layer, overlaysState.value.maskedFor(layer)) },
             // The container SURVIVES a throwing intent (spec `sync-status-screen`) — and this handler is the
             // whole of what makes it so. It is not a logging convenience: Orbit runs each intent as
-            // `runCatching { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
+            // `runCatchingCancellable { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
             // so with NO handler configured it RE-THROWS, which cancels `RealContainer.intentJob` — a plain
             // `Job(parent)`, not a `SupervisorJob` — after which every later `orbit()` call is a child of a
             // cancelled job and silently never runs. Measured on orbit-core 10.0.0: without a handler a
@@ -727,7 +728,7 @@ class StatusContainerHost(
             // on the same retryable surface.
             //
             // ⚠️ Defence in depth: UNREACHABLE through the production binding today, and knowingly kept.
-            // `HttpEventDirectory.fetch` is `runCatching { … }.getOrDefault(EventDetails.Failed)` and
+            // `HttpEventDirectory.fetch` is `runCatchingCancellable { … }.getOrDefault(EventDetails.Failed)` and
             // `toJoinLoad` is pure, so the bound lambda cannot throw — but `loadJoinDetails` is an injected
             // `suspend (String) -> JoinLoad` and nothing here can know that. It stays because the invariant
             // is one adapter change away from being false, and the cost of it being false is a screen no

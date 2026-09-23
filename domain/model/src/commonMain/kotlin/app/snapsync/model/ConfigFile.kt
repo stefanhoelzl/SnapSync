@@ -71,13 +71,13 @@ fun encodeConfigFile(config: EventConfig): String = configFileJson.encodeToStrin
 
 /** Decode config-file text per the version table on [CONFIG_FILE_VERSION]. Total: never throws. */
 fun decodeConfigFile(text: String): ConfigFileDecode {
-    val envelope = runCatching { configFileJson.decodeFromString(ConfigFileEnvelope.serializer(), text) }
+    val envelope = runCatchingCancellable { configFileJson.decodeFromString(ConfigFileEnvelope.serializer(), text) }
         .getOrElse { return ConfigFileDecode.Foreign("not a config envelope") }
     if (envelope.v != CONFIG_FILE_VERSION) {
         return ConfigFileDecode.Foreign("envelope version ${envelope.v}; this build reads $CONFIG_FILE_VERSION")
     }
     val payload = envelope.payload ?: return ConfigFileDecode.Unusable
-    return runCatching { configFileJson.decodeFromJsonElement(EventConfig.serializer(), payload) }
+    return runCatchingCancellable { configFileJson.decodeFromJsonElement(EventConfig.serializer(), payload) }
         .fold(onSuccess = ConfigFileDecode::Valid, onFailure = { ConfigFileDecode.Unusable })
 }
 

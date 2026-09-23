@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.LedgerStore
@@ -78,7 +79,7 @@ class ResetDeviceState(
     suspend fun reset() {
         // Read before pruning: this is the number the operator needs to see, and it is the count that
         // SURVIVES — the log line's job is to make "imported rows were kept" verifiable, not assumed.
-        val keptImported = runCatching { downloads.counts().imported }.getOrNull()
+        val keptImported = runCatchingCancellable { downloads.counts().imported }.getOrNull()
 
         step("clear ledger") { ledger.clear() }
         step("prune non-terminal downloads (and free the bytes it strands)") { resetDownloads() }
@@ -94,6 +95,9 @@ class ResetDeviceState(
     private suspend inline fun step(name: String, block: () -> Unit) {
         try {
             block()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // A cancelled step is not a failed one: it is not reported (law "Catch sites keep cancellation").
+            throw e
         } catch (e: Throwable) {
             log.e(e) { "reset step failed: $name" }
         }

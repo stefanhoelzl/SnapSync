@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.localToCutoff
 import kotlin.time.Instant
@@ -32,7 +33,7 @@ class CutoffFormatter(
 
     /** Parse a UTC `…Z` cutoff (the event's `startsAt`) back to a local value for the picker. */
     fun toLocal(cutoff: CaptureDate): LocalDateTime? =
-        runCatching { Instant.parse(cutoff.iso).toLocalDateTime(zone) }.getOrNull()
+        runCatchingCancellable { Instant.parse(cutoff.iso).toLocalDateTime(zone) }.getOrNull()
 
     /**
      * "Now" directly as a canonical `…Z` string — the form the event-start comparison needs

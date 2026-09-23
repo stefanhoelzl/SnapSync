@@ -1,5 +1,6 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.model.SelectionScope
@@ -176,7 +177,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
      */
     private val attestStore: AttestStore by lazy { KeychainAttestStore() }
 
-    private fun attestToken(): String? = runCatching { attestStore.token() }
+    private fun attestToken(): String? = runCatchingCancellable { attestStore.token() }
         .onFailure { log.w(it) { "attest token unreadable — proceeding unauthenticated (expect 401)" } }
         .getOrNull()
 
@@ -186,7 +187,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
             // The extension cannot attest, so it cannot recover on its own — but it CAN drop a token the
             // backend has rejected. That is what makes the app re-mint at its next wake: `isStale(null)` is
             // true, while a rejected-but-unexpired token would have looked perfectly fine forever.
-            onRejected = { runCatching { attestStore.clearToken() } },
+            onRejected = { runCatchingCancellable { attestStore.clearToken() } },
         )
     }
 

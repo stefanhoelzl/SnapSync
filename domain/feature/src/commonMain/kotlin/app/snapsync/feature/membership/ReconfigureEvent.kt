@@ -135,6 +135,9 @@ class ReconfigureEvent(
     private inline fun step(name: String, block: () -> Unit) {
         try {
             block()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // A cancelled step is not a failed one: it is not reported (law "Catch sites keep cancellation").
+            throw e
         } catch (e: Throwable) {
             // Best-effort: a failed effect never aborts the reconfigure (the config save already landed).
             log.e(e) { "reconfigure step failed: $name" }

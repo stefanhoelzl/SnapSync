@@ -1,5 +1,6 @@
 package app.snapsync.attest
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AttestClient
 
 import io.ktor.client.HttpClient
@@ -49,7 +50,7 @@ class HttpAttestClient(
     private val base = host.trimEnd('/')
     private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun challenge(): String? = runCatching {
+    override suspend fun challenge(): String? = runCatchingCancellable {
         val res = client.get("$base/attest/challenge")
         if (!res.status.isSuccess()) return null
         json.parseToJsonElement(res.bodyAsText()).jsonObject["challenge"]?.jsonPrimitive?.content
@@ -87,7 +88,7 @@ class HttpAttestClient(
         ),
     )
 
-    private suspend fun post(url: String, body: JsonObject): String? = runCatching {
+    private suspend fun post(url: String, body: JsonObject): String? = runCatchingCancellable {
         val res = client.post(url) {
             contentType(ContentType.Application.Json)
             setBody(body.toString())

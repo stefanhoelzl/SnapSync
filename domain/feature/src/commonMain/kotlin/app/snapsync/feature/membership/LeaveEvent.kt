@@ -79,6 +79,9 @@ class LeaveEvent(
     private inline fun step(name: String, block: () -> Unit) {
         try {
             block()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // A cancelled step is not a failed one: it is not reported (law "Catch sites keep cancellation").
+            throw e
         } catch (e: Throwable) {
             // Best-effort: a failed step never aborts the leave (the order self-heals; see the class doc).
             log.e(e) { "leave step failed: $name" }

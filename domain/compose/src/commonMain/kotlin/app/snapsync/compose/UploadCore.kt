@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.feature.upload.CycleGate
@@ -218,7 +219,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
     // is projected from (capability `upload-lifecycle`). Every change that could alter the projection
     // advances it, so a change this cycle's projection misses happened after this read and carries a higher
     // version. Unreadable (a locked device's protected ledger) is "I could not look", like the config.
-    val version = runCatching { ports.ledger.manifestVersion() }
+    val version = runCatchingCancellable { ports.ledger.manifestVersion() }
     val read = ports.config.read()
     // The identity probe — an unresolvable id is "I could not look", never "no id", so it belongs
     // on the unreadable side of the roll-up. Every outcome needs the id: the reconciler and the
@@ -230,7 +231,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
     // is exactly what must not happen: an invented id partitions this device's bytes away from its own
     // manifest. Anything else still propagates — a genuine fault must not be silently downgraded to a
     // skipped cycle.
-    val identityFailure = runCatching { ports.deviceIdentity.deviceId() }
+    val identityFailure = runCatchingCancellable { ports.deviceIdentity.deviceId() }
         .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
         .exceptionOrNull()
     val idReadable = identityFailure == null

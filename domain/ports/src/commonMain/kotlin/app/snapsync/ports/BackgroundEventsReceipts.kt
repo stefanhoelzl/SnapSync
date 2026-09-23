@@ -155,6 +155,8 @@ class BackgroundEventsReceipts(
             window = CompletableDeferred()
             try {
                 running.withLock { work() }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (t: Throwable) {
                 // The release does NOT depend on this catch — `finally` below completes the window on
                 // every path, thrown or not. What the catch buys is the entry point in the message: the

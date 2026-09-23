@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.pushEventId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.coroutineScope
@@ -63,7 +64,7 @@ class SilentPush(
     /** Fan one push out to every arm's receiver, isolated: one failure never robs the others. */
     suspend fun fanOut(eventId: String) {
         for (receiver in receivers) {
-            runCatching { receiver(eventId) }
+            runCatchingCancellable { receiver(eventId) }
                 .onFailure { log.w(it) { "a push receiver failed for $eventId; the others still run" } }
         }
     }

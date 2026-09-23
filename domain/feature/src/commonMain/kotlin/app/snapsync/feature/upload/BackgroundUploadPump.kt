@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.CycleResult
 
@@ -236,7 +237,7 @@ class BackgroundUploadPump(
             while (true) {
                 last = runCycle()
                 // Refresh status after every cycle (fire-and-forget; a failure must not break the drain).
-                runCatching { onCycleComplete() }
+                runCatchingCancellable { onCycleComplete() }
                     .onFailure { log.w(it) { "status refresh after cycle failed" } }
                 // Decide-and-exit atomically so a trigger arriving now is never lost: if one queued a
                 // re-run, consume it and loop; otherwise publish the result and stop — both under the

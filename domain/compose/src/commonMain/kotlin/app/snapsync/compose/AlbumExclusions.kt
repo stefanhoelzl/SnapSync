@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.ports.AlbumManager
@@ -28,7 +29,7 @@ internal suspend fun denylistedAlbumMembers(
 ): Set<String> = when (onFailure) {
     AlbumLookupFailure.FailCycle -> manager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso)
     AlbumLookupFailure.AdmitOnDoubt ->
-        runCatching { manager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) }
+        runCatchingCancellable { manager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) }
             .onFailure { log.w(it) { "denylisted-album lookup failed — admitting on doubt this cycle" } }
             .getOrDefault(emptySet())
 }

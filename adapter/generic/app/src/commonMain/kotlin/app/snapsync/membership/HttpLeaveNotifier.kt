@@ -1,5 +1,6 @@
 package app.snapsync.membership
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.LeaveNotifier
 import io.ktor.client.HttpClient
@@ -38,7 +39,7 @@ class HttpLeaveNotifier(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun notifyLeaving(eventId: String): Result<Unit> = runCatching {
+    override suspend fun notifyLeaving(eventId: String): Result<Unit> = runCatchingCancellable {
         val id = identity.deviceId()
         val response: HttpResponse = client.delete("$base/events/$eventId/devices/$id")
         check(response.status.isSuccess()) {

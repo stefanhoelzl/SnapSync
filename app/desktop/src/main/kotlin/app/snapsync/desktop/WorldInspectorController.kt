@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.runCatchingCancellable
 import java.awt.datatransfer.StringSelection
 import java.awt.Toolkit
 import app.snapsync.model.UserQueries
@@ -168,7 +169,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             commitJoin = ::commitJoin,
             // Harness share stub (test equipment): copy the invite URL to the clipboard and log it.
             share = { url ->
-                runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+                runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
                 appendConsole("share invite → $url")
             },
             requestAccess = requester::request,

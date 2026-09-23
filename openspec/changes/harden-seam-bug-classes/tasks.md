@@ -28,8 +28,8 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 
 ## 3. G3: failures (PR 3)
 
-- [ ] 3.1 Add `runCatchingCancellable` and `bestEffort` to `model/` and migrate every `runCatching`/`catch (Throwable|Exception)` site in production source: the step helpers, `UploadCycle`, `SilentPush`, `LedgerCountsSource`, `DeviceAttestation`, and the ten HTTP adapters (fixes B12).
-- [ ] 3.2 Wrap `PushRegistration.register`'s `deviceId()` read in its failure handling (fixes B11), and fix `DeviceAttestation`'s misattributed-throw comment and handling.
+- [x] 3.1 Add `runCatchingCancellable` and `bestEffort` to `model/` and migrate every `runCatching`/`catch (Throwable|Exception)` site in production source: the step helpers, `UploadCycle`, `SilentPush`, `LedgerCountsSource`, `DeviceAttestation`, and the ten HTTP adapters (fixes B12).
+- [x] 3.2 Wrap `PushRegistration.register`'s `deviceId()` read in its failure handling (fixes B11), and fix `DeviceAttestation`'s misattributed-throw comment and handling.
 - [ ] 3.3 Add the catch gate, with an allowlist of the helpers, the ObjC-boundary helpers and `runProcessCycle`.
 - [ ] 3.4 Add `fanOut` to `model/` and move `Foreground` and `Provision` onto it. Add a throwing-child test for each flow (fixes B4).
 - [ ] 3.5 Teach the architecture-diagram flow transcriber the `fanOut` form, regenerate `architecture/`, and add the flow fan-out gate.
@@ -57,6 +57,6 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 
 ## 6. Close-out
 
-- [ ] 6.1 Re-run the B1 device reproduction from workspace `repro-onstaged-drop` against the G1 build, and record the result.
+- [x] 6.1 Re-run the B1 device reproduction from workspace `repro-onstaged-drop` against the G1 build, and record the result. *Verified on the SE2 (iOS 26.6) at `b5443923`: a download-only background relaunch staged and imported all 6 resources in the same wake, with no re-download on the next foreground (before the fix: 6 staged, 0 imported, 222 MB re-downloaded). Follow-ups it raised: re-check after rebasing onto main (the shell's entry path moved to `AppEntries`); the interrupted-import sweep now runs in the same wake as the relaunch's own imports; and a normal receipt release logs nothing.*
 - [ ] 6.2 Correct the stale spec text the review found outside this change's deltas: `leave-event` and `event-invite-qr` still describe `leave`/`share` as lambdas injected into `StatusContainerHost`.
 - [ ] 6.3 Run the three archive gates in `openspec/config.yaml` before archiving.

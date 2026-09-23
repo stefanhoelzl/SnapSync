@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.runCatchingCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,7 +77,7 @@ class ReadingLedgerCountsSource(private val read: suspend () -> LedgerCounts) : 
     override suspend fun refresh() {
         // `read = true` is stamped HERE, at the one place a value can come from the ledger, rather than
         // trusted from the injected read — so no caller can mint a value that claims to have been read.
-        runCatching { read() }.getOrNull()?.let { _counts.value = it.copy(read = true) }
+        runCatchingCancellable { read() }.getOrNull()?.let { _counts.value = it.copy(read = true) }
     }
 }
 

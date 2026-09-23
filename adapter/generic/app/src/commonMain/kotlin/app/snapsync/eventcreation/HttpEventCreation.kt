@@ -1,5 +1,6 @@
 package app.snapsync.eventcreation
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.EventCreation
 
@@ -34,7 +35,7 @@ class HttpEventCreation(
     private val base = host.trimEnd('/')
 
     override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome =
-        runCatching {
+        runCatchingCancellable {
             val response = client.post("$base/events") {
                 contentType(ContentType.Application.Json)
                 setBody(
