@@ -24,7 +24,7 @@ enum class UploadDiscoveryState {
  * asset an authoritative walk did not return (capability `sync-ledger`). So a walk over a library the process
  * could not read must say it is not authoritative. An empty authoritative walk deletes every in-window row.
  */
-object UploadDiscoveryContract : Contract<UploadDiscoveryState, Seeded<UploadDiscovery>>("UploadDiscovery") {
+object UploadDiscoveryContract : Contract<UploadDiscoveryState, SeededLibrary<UploadDiscovery>>("UploadDiscovery") {
 
     private suspend fun policy(clauseId: String) = PhotoLibrary.policy(name, clauseId)
 

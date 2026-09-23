@@ -7,7 +7,7 @@ import app.snapsync.contracts.CandidateSourceContract
 import app.snapsync.contracts.CandidateSourceState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.Seeded
+import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.UploadDiscoveryContract
 import app.snapsync.contracts.UploadDiscoveryState
 import app.snapsync.contracts.verify
@@ -37,15 +37,15 @@ class PhotoKitNoGrantContractTest {
         it == PermissionStatus.NOT_DETERMINED || it == PermissionStatus.DENIED
     }
 
-    private val candidateSource = object : Binding<CandidateSourceState, Seeded<CandidateSource>> {
+    private val candidateSource = object : Binding<CandidateSourceState, SeededLibrary<CandidateSource>> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(CandidateSourceState.NO_GRANT)
 
-        override fun create(state: CandidateSourceState, clauseId: String): Entered<Seeded<CandidateSource>> {
+        override fun create(state: CandidateSourceState, clauseId: String): Entered<SeededLibrary<CandidateSource>> {
             if (state != CandidateSourceState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
             return Entered.Ready(
-                Seeded(
+                SeededLibrary(
                     PermissionAwareCandidateSource(
                         permission = MutableStateFlow(currentPhotoPermission()),
                         walk = PhotoKitCandidateSource(),
@@ -56,14 +56,14 @@ class PhotoKitNoGrantContractTest {
         }
     }
 
-    private val uploadDiscovery = object : Binding<UploadDiscoveryState, Seeded<UploadDiscovery>> {
+    private val uploadDiscovery = object : Binding<UploadDiscoveryState, SeededLibrary<UploadDiscovery>> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(UploadDiscoveryState.NO_GRANT)
 
-        override fun create(state: UploadDiscoveryState, clauseId: String): Entered<Seeded<UploadDiscovery>> {
+        override fun create(state: UploadDiscoveryState, clauseId: String): Entered<SeededLibrary<UploadDiscovery>> {
             if (state != UploadDiscoveryState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
-            return Entered.Ready(Seeded(IosDiscovery(Logger.withTag("contract"), PhotoKitCandidateSource())))
+            return Entered.Ready(SeededLibrary(IosDiscovery(Logger.withTag("contract"), PhotoKitCandidateSource())))
         }
     }
 

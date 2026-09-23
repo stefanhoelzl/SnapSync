@@ -11,7 +11,7 @@ import app.snapsync.model.normalizeAssetId
  * [rawIds] are the library's own identifiers (a PhotoKit `localIdentifier` still carries `/`); [ids] are the
  * normalized form every port answers in.
  */
-class Seeded<T>(val port: T, val rawIds: List<String> = emptyList()) {
+class SeededLibrary<T>(val port: T, val rawIds: List<String> = emptyList()) {
     val ids: Set<String> = rawIds.mapTo(linkedSetOf(), ::normalizeAssetId)
 }
 

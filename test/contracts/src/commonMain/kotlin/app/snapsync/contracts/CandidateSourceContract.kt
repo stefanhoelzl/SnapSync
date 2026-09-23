@@ -28,7 +28,7 @@ enum class CandidateSourceState {
  * because that composition is where the "no answer" half of this contract lives (capability `port-contracts`,
  * "A live binding binds the composition production calls").
  */
-object CandidateSourceContract : Contract<CandidateSourceState, Seeded<CandidateSource>>("CandidateSource") {
+object CandidateSourceContract : Contract<CandidateSourceState, SeededLibrary<CandidateSource>>("CandidateSource") {
 
     private suspend fun policy(clauseId: String, contributes: Boolean = true) =
         PhotoLibrary.policy(name, clauseId, contributes)
