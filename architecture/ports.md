@@ -15,8 +15,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
-| `BackgroundScheduler` | `:domain:ports` | `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler; `:test:world` CountingBackstopScheduler | yes |
-| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer | yes |
+| `BackgroundScheduler` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundScheduler; `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler; `:test:world` CountingBackstopScheduler | yes |
+| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer, NetworkedTransfer | yes |
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates, Switchable; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource | yes |
@@ -45,7 +45,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` DrainSpyStore, InMemoryDownloadStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
 | `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
-| `DownloadTransportHost` | `:domain:ports` | — | no |
+| `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
 | `EventCreation` | `:domain:ports` | `:adapter:generic:app` HttpEventCreation; `:domain:feature` FakeClient | yes |
 | `EventCreator` | `:domain:feature` | `:domain:feature` CreateEvent, NoOpEventCreator; `:ui:presentation` SpyCreator | no |

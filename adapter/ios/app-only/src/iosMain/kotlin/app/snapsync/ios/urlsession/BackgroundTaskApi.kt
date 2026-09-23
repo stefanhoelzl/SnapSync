@@ -3,6 +3,8 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.objcBoundary
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.BackgroundTasks.BGProcessingTaskRequest
@@ -33,6 +35,8 @@ internal interface BackgroundTaskApi {
 
 /** The real `BGTaskScheduler`. The only implementation a production build contains. */
 internal object SystemBackgroundTaskApi : BackgroundTaskApi {
+    private val log = Logger.withTag("BackgroundTaskApi")
+
     override fun submit(request: BGProcessingTaskRequest): Result<Unit> =
         checkedObjC("submitTaskRequest(${request.identifier})") { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }
 
@@ -40,7 +44,9 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
 
     override suspend fun pendingIdentifiers(): List<String> = suspendCancellableCoroutine { cont ->
         BGTaskScheduler.sharedScheduler.getPendingTaskRequestsWithCompletionHandler { requests ->
-            cont.resume(requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier })
+            objcBoundary(log, "pendingTaskRequests.completion") {
+                cont.resume(requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier })
+            }
         }
     }
 }
