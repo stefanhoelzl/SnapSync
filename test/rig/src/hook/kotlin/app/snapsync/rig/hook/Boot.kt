@@ -29,6 +29,7 @@ import app.snapsync.rig.rigPort
 import app.snapsync.rig.userCommands
 import app.snapsync.rig.excludedUserCommands
 import app.snapsync.rig.rigPortFilePath
+import app.snapsync.rig.iosRefusals
 import kotlin.native.EagerInitialization
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
@@ -155,6 +156,8 @@ private fun iosHooks() = RigHooks(
     // already pulls from the same place — neither needs an entitlement to get at it.
     publishBoundPort = { bound -> writeTextFile(rigPortFilePath(documentsDirectory()), bound.toString()) },
     contracts = deviceContracts() + appDeviceContracts() + simulatorAppContracts(),
+    // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
+    refusals = iosRefusals(),
 )
 
 /**

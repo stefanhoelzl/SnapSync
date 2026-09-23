@@ -118,6 +118,15 @@ private suspend fun invokeExtensionCycle(
 internal expect fun uploadJobDeviceCommands(): Map<String, RigCommand>
 
 /**
+ * The upload-job verbs this target REFUSES, with the reason — the complement of [uploadJobDeviceCommands] within
+ * [RigVocabulary.appHostCommands], so `GET /device` classifies them on every iOS target.
+ */
+internal expect fun uploadJobRefusals(): Map<String, String>
+
+/** The app host's refusals of the shared vocabulary (capability `testing-architecture`). */
+fun iosRefusals(): Map<String, String> = RigVocabulary.worldLeverRefusals + uploadJobRefusals()
+
+/**
  * Hand this invocation's job sets to the target's upload-job subsystem, or answer with the reason this
  * target will not take them.
  *

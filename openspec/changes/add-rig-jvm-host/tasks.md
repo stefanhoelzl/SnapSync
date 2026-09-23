@@ -18,20 +18,20 @@
 
 ## 3. The rig: `jvm()` target and JVM host
 
-- [ ] 3.1 Add `jvm()` to `:test:rig`; turn its `api(project(...))` dependencies into `implementation`; add `jvmMain` dependencies on `:test:world` and `:test:edge`; rewrite the build-file header (JVM host, tests now exist for `commonMain`, the seeder and wiper remain the one untested exception)
-- [ ] 3.2 Under the rig property only, have `:app:ios` declare `implementation(project(":test:contracts"))` itself; verify with `./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true` (property on the command line, never in a tracked file)
-- [ ] 3.3 Move `userCommands` / `excludedUserCommands` (and their private helpers) from `iosMain` to `commonMain`, verbatim
-- [ ] 3.4 `RigHooks`: make the osExtension not-applicable reason a hook-supplied value (the iOS hook passes today's text); restate `bindingCaveat` to fire only for `"default"`; add `RigServer.stop()`
-- [ ] 3.5 Declare the closed `/device` + `/os` vocabulary in `commonMain`, and add each host's honoured/refused classification; `GET /device` answers it; a refused verb answers `409` + reason, an unclassified one makes `GET /device` answer `500` naming it; route `/contract` and `GET /contract` refusals through the same mechanism on JVM, naming `JVM` with the refusal marker
-- [ ] 3.6 Classify every entry in the iOS hook (`Boot.kt` / `IosRigBuilders.kt`), keeping every existing iOS route's answer byte-identical; world levers refused with a reason
-- [ ] 3.7 `jvmMain`: `JvmRigHost` composes a `World` over a chosen backend, builds `StatusContainerHost` + `platformEntries` / `extensionEntries` the way the integration fixtures do, on the full-stack harness's lane structure, and supplies `RigHooks` (JVM build facts, the world's log as the `app` log, `/device` gallery/seed/wipe/reset over the world gallery with the iOS parameter and response shapes, the world levers from the design's list as `/device` verbs)
-- [ ] 3.8 Bind port `0` on loopback in tests; add `:test:rig:runJvmHost` (`JavaExec`, `-Psnapsync.rigBackend=mini|deno`, optional `-Psnapsync.rigPort`) printing one `RIG-JVM READY <port>` line
+- [x] 3.1 Add `jvm()` to `:test:rig`; turn its `api(project(...))` dependencies into `implementation`; add `jvmMain` dependencies on `:test:world` and `:test:edge`; rewrite the build-file header (JVM host, tests now exist for `commonMain`, the seeder and wiper remain the one untested exception)
+- [x] 3.2 Under the rig property only, have `:app:ios` declare `implementation(project(":test:contracts"))` itself; verify with `./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true` (property on the command line, never in a tracked file)
+- [x] 3.3 Move `userCommands` / `excludedUserCommands` (and their private helpers) from `iosMain` to `commonMain`, verbatim
+- [x] 3.4 `RigHooks`: make the osExtension not-applicable reason a hook-supplied value (the iOS hook passes today's text); restate `bindingCaveat` to fire only for `"default"`; add `RigServer.stop()`
+- [x] 3.5 Declare the closed `/device` + `/os` vocabulary in `commonMain`, and add each host's honoured/refused classification; `GET /device` answers it; a refused verb answers `409` + reason, an unclassified one makes `GET /device` answer `500` naming it; route `/contract` and `GET /contract` refusals through the same mechanism on JVM, naming `JVM` with the refusal marker
+- [x] 3.6 Classify every entry in the iOS hook (`Boot.kt` / `IosRigBuilders.kt`), keeping every existing iOS route's answer byte-identical; world levers refused with a reason
+- [x] 3.7 `jvmMain`: `JvmRigHost` composes a `World` over a chosen backend, builds `StatusContainerHost` + `platformEntries` / `extensionEntries` the way the integration fixtures do, on the full-stack harness's lane structure, and supplies `RigHooks` (JVM build facts, the world's log as the `app` log, `/device` reset + gallery read/seed over the world gallery with the iOS parameter and response shapes via shared `commonMain` builders — `gallery/wipe` refused with a reason — and the world levers as `/device` verbs)
+- [x] 3.8 Bind port `0` on loopback in tests; add `:test:rig:runJvmHost` (`JavaExec`, `-Psnapsync.rigBackend=mini|deno`, optional `-Psnapsync.rigPort`) printing one `RIG-JVM READY <port>` line
 
 ## 4. `:test:control` — the typed client, and the JVM host's tests
 
-- [ ] 4.1 Create JVM-only `:test:control` (support group), depending on `:test:rig` (JVM variant), `:ui:presentation`, and the Ktor client; typed calls `health`, `device`, `state`, `user`, `os`, `deviceVerb`, with a typed refusal for `409`
-- [ ] 4.2 Tests in `:test:control`'s `src/test`, over both backends: `GET /device` classification complete; a refused verb answers `409` with its reason; `/contract` and `GET /contract` refuse naming `JVM`; `/device/state` decodes to the real `UiState`; `/user/create` → `/os/app/onOpenUrl` → `/user/confirmJoin` reaches the joined layer; `/os/photokit-ext/*` runs one cycle; a completed job is visible through the neutral `objectsOf`; a Deno-unavailable lever answers "unavailable on this backend"
-- [ ] 4.3 Confirm the compile boundary: a scratch reference to a `ports/` type from `:test:control` fails to compile (not committed)
+- [x] 4.1 Create JVM-only `:test:control` (support group), depending on `:test:rig` (JVM variant), `:ui:presentation`, and the Ktor client; typed calls `health`, `device`, `state`, `user`, `os`, `deviceVerb`, with a typed refusal for `409`
+- [x] 4.2 Tests in `:test:control`'s `src/test`, over both backends: `GET /device` classification complete; a refused verb answers `409` with its reason; `/contract` and `GET /contract` refuse naming `JVM`; `/device/state` decodes to the real `UiState`; `/user/create` → `/os/app/onOpenUrl` → `/user/confirmJoin` reaches the joined layer; `/os/photokit-ext/*` runs one cycle; a completed job is visible through the neutral `objectsOf`; a Deno-unavailable lever answers "unavailable on this backend"
+- [x] 4.3 Confirm the compile boundary: a scratch reference to a `ports/` type from `:test:control` fails to compile (not committed)
 
 ## 5. Guards, specs of record, docs
 

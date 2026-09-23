@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
+import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveText
@@ -21,6 +22,7 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -89,6 +91,10 @@ class RigServer(
     private val lane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-rig")
     private val scope = CoroutineScope(SupervisorJob() + lane)
 
+    /** The port actually bound, once it is — what `/health` reports, never the one that was asked for. */
+    private var boundPort: Int? = null
+    private var server: EmbeddedServer<*, *>? = null
+
     /**
      * Bind and serve. Returns immediately; the server runs on [lane] for the life of the process.
      *
@@ -101,12 +107,14 @@ class RigServer(
         scope.launch {
             try {
                 val server = embeddedServer(CIO, port = port, host = LOOPBACK) { routes() }
+                this@RigServer.server = server
                 // `wait = false` and then `resolvedConnectors()`, rather than a blocking `wait = true`:
                 // the suspend point is what makes "did it actually bind" answerable. A blocking start
                 // never returns to say so, and publishing the port before the bind would defeat the file
                 // entirely — its ABSENCE is the signal a colliding instance leaves behind.
                 server.start(wait = false)
                 val bound = server.engine.resolvedConnectors().first().port
+                boundPort = bound
                 log.i { "listening on $LOOPBACK:$bound" }
                 hooks.publishBoundPort(bound)
                 // Suspends rather than blocks, so this lane stays free for the engine's own coroutines.
@@ -125,6 +133,16 @@ class RigServer(
         }
     }
 
+    /**
+     * Stop serving and release the lane. Only a host that outlives its server calls this — the JVM host, whose
+     * tests start one per test; the app host's server lives as long as the process.
+     */
+    fun stop() {
+        server?.stop(gracePeriodMillis = 0, timeoutMillis = 0)
+        scope.cancel()
+        lane.close()
+    }
+
     private fun Application.routes() {
         // Namespaced by WHO is on the other side of the call: `/os` is what the platform invokes, `/user`
         // is what a finger reaches, `/device` is the machine under test. That is not taxonomy for its own
@@ -133,7 +151,10 @@ class RigServer(
         // lists are meant to cover — by review since the deriving guard was retired, so a hand-picked list can
         // rot unnoticed. `/device` has no population at all.
         routing {
-            get("/health") { call.traced { call.respondText(hooks.health(port)) } }
+            get("/health") { call.traced { call.respondText(hooks.health(boundPort)) } }
+            // What this host honours and refuses of the shared vocabulary (capability `testing-architecture`,
+            // "One control protocol, served by two hosts").
+            get("/device") { call.traced { call.respondAdvertisement() } }
 
             // `/os/<root>/<member>` — the root segment names WHOSE entry point this is, because the
             // channel reaches more than one composition root. See `RigHooks.triggerGroups`.
@@ -169,6 +190,28 @@ class RigServer(
         } finally {
             log.i { "← ${request.uri} (${mark.elapsedNow().inWholeMilliseconds}ms)" }
         }
+    }
+
+    /**
+     * `GET /device` — this host's classification of [RigVocabulary]. A gap — an entry neither wired nor refused, or
+     * a wired verb the vocabulary does not name — answers `500` naming it, loudly, without stopping the host.
+     */
+    private suspend fun ApplicationCall.respondAdvertisement() {
+        val ad = hooks.advertise(currentHost.name)
+        val status = if (ad.unclassified.isEmpty() && ad.outsideVocabulary.isEmpty()) {
+            HttpStatusCode.OK
+        } else {
+            HttpStatusCode.InternalServerError
+        }
+        respondText(json.encodeToString(DeviceAdvertisement.serializer(), ad), status = status)
+    }
+
+    /** `409` with the host's reason when it refuses [verb], or `false` to let the route proceed. */
+    private suspend fun ApplicationCall.respondIfRefused(verb: String, marker: String = ""): Boolean {
+        val reason = hooks.refusals[verb] ?: return false
+        val body = if (marker.isEmpty()) "{\"refused\":${jsonString(reason)},\"verb\":\"$verb\"}\n" else "$marker$reason\n"
+        respondText(body, status = HttpStatusCode.Conflict)
+        return true
     }
 
     private suspend fun ApplicationCall.respondState() =
@@ -253,6 +296,7 @@ class RigServer(
      * commands: it blocks until every clause has run.
      */
     private suspend fun ApplicationCall.respondContract() {
+        if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
         val name = routeName("/contract")
         // One name can be registered for two hosts — `LinkOpener` is recorded on a device and run live on the
         // simulator app — so this process's own entry wins; another host's entry still answers, with its refusal.
@@ -277,6 +321,9 @@ class RigServer(
      * push, and one registered for nothing is run by nobody (capability `port-contracts`).
      */
     private suspend fun ApplicationCall.respondContractList() {
+        // Refused rather than empty on a host with no in-app registry, so "run every contract this host lists"
+        // can never pass vacuously against it (capability `port-contracts`).
+        if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
         respondText(hooks.contracts.filter { it.host == currentHost }.joinToString("") { it.name + "\n" })
     }
 
@@ -290,6 +337,7 @@ class RigServer(
      */
     private suspend fun ApplicationCall.respondDeviceCommand() {
         val name = routeName("/device")
+        if (respondIfRefused("device/$name")) return
         val command = hooks.deviceCommands[name]
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "device command"),
@@ -309,6 +357,7 @@ class RigServer(
      * on the device is surprising enough that it should at least be a `GET` the caller asked for by name.
      */
     private suspend fun ApplicationCall.respondGallery() {
+        if (respondIfRefused("device/gallery")) return
         val cutoff = request.queryParameters["cutoff"]
         val resources = request.queryParameters["resources"].toBoolean()
         // `direction=download` reads the library through a NON-contributing policy — the deny-everything
@@ -330,6 +379,7 @@ class RigServer(
         val root = route.substringBefore('/', missingDelimiterValue = "")
         val name = route.substringAfter('/', missingDelimiterValue = "")
         val arg = request.queryParameters["arg"]
+        if (respondIfRefused("os/$root/$name")) return
         val group = hooks.triggerGroups[root]
             ?: return respondText(
                 "unknown entry-point root '$root' — expected one of " +

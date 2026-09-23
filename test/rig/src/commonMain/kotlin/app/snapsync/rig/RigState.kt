@@ -104,7 +104,10 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
     // (capability `sync-status-screen`), so the rig reports exactly what the screen is rendering rather
     // than a parallel set of read-models that could disagree with it.
     val ui = host.container.stateFlow.value
-    val joined = ui as? Layer.Joined
+    // `ui.layer`, never `ui`: the state wraps its layer, and a cast of the WRAPPER to a layer type is always null —
+    // which the compiler only warns about. That is exactly how this read reported every joined device as
+    // unresolved, with no invite URL and no name, until the JVM host's tests read it back.
+    val joined = ui.layer as? Layer.Joined
     val config = joined?.membership
     return RigState(
         ui = ui,
@@ -124,7 +127,7 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
         permission = core.photoPermission.value.name,
         inviteUrl = joined?.inviteUrl,
         eventName = config?.name,
-        transientError = (ui as? Layer.CreateEvent)?.error,
+        transientError = (ui.layer as? Layer.CreateEvent)?.error,
         build = hooks.buildFacts(),
         // The grant is read from the same value reported above, so the two cannot disagree within one
         // snapshot — which matters precisely because a `false` is only interpretable alongside it.
