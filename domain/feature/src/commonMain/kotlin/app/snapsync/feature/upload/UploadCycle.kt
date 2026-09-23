@@ -395,7 +395,9 @@ class UploadCycle(
             // would leave the video unrecorded for good; in one transaction there is no such gap.
             ledger.recordDiscovered(newWork)
 
-            val enqueued = enqueue(ready)
+            // The resources this walk already read, by key: a row it just recorded is created from the handle in
+            // hand rather than resolved a second time (see [createOne]).
+            val enqueued = enqueue(ready, walked = plan.liveResources.associateBy { it.filename })
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
             // not create everything the ledger holds. Both mean the same thing to the pump — work remains.
             val truncated = ready.capHit || enqueued.truncated
@@ -443,7 +445,7 @@ class UploadCycle(
      * app-driven tier that same limit bounds staged temp-file disk, so asking for more than it will accept
      * costs nothing: the pass stops at the refusal, before the next resolve.
      */
-    private suspend fun enqueue(ready: Ready): Enqueued {
+    private suspend fun enqueue(ready: Ready, walked: Map<String, Resource>): Enqueued {
         val needJob = ledger.rowsNeedingJob()
         if (needJob.isEmpty()) return Enqueued(created = 0, truncated = false)
 
@@ -459,11 +461,11 @@ class UploadCycle(
         // the ledger"), one row at a time: resolve it, create its job, and stop at the first refusal before the
         // next resolve. Both transports refuse honestly, and the refusal is what reports truncation. Measured
         // resolve cost ~4.5 ms per request + ~3.45 ms per photo, and only under a full grant (a partial grant
-        // resolves from the snapshot in hand); batching saved a few hundred ms per hundred photos, which did not
-        // pay for the chunk. Decision record: `changes/selection-is-the-walk` (D5).
+        // resolves from the snapshot in hand) and only for a row this cycle's walk did not already read; batching
+        // saved a few hundred ms per hundred photos, which did not pay for the chunk. Decision record: `changes/selection-is-the-walk` (D5).
         var created = 0
         for (row in eligible) {
-            when (createOne(ready, row)) {
+            when (createOne(ready, row, walked)) {
                 CreateResult.CREATED -> created++
                 // Backpressure, not failure — and the only signal that work remains. The row stays as it was
                 // (it still needs a job), so the next cycle finds it in the same read.
@@ -478,9 +480,18 @@ class UploadCycle(
      * Resolve [row] and create its job, answering what the platform said — or null when no creation was
      * attempted. A row whose key resolves to nothing has left the library (or the selection) and is deleted by
      * key — see [enqueue].
+     *
+     * **A row this cycle's walk just read is not resolved again.** [walked] holds the resources [decide] already
+     * read through the same port, keyed by filename; a hit is the very handle a resolve would return (one
+     * platform read of the same asset, moments earlier), so the second synchronous round-trip bought nothing but
+     * its cost. Only a miss — a row the walk did not read: a retried failure, or a truncated cycle's remainder
+     * whose asset the ledger already fully knows — resolves through [UploadDiscovery.resourcesFor], and only a
+     * miss there is evidence the asset is gone. The shape is unchanged: one row at a time, stopping at the first
+     * refusal before the next row is looked up.
      */
-    private suspend fun createOne(ready: Ready, row: LedgerEntry): CreateResult? {
-        val resource = library.resourcesFor(setOf(row.key)).firstOrNull { it.filename == row.key }
+    private suspend fun createOne(ready: Ready, row: LedgerEntry, walked: Map<String, Resource>): CreateResult? {
+        val resource = walked[row.key]
+            ?: library.resourcesFor(setOf(row.key)).firstOrNull { it.filename == row.key }
         if (resource == null) {
             log.i { "cannot resolve ${row.key} — its asset is gone; deleting that row" }
             ledger.deleteKeys(listOf(row.key))
