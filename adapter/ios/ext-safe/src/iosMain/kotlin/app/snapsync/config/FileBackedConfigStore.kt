@@ -2,25 +2,23 @@
 
 package app.snapsync.config
 
-import app.snapsync.ports.ConfigRefresh
+import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.model.EventConfig
 import app.snapsync.model.encodeConfigFile
+import app.snapsync.objc.ObjCFailure
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.checkedObjCValue
 import app.snapsync.ports.ConfigFileRead
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
+import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.configAfterReload
 import app.snapsync.ports.configReadViaFile
-
-import app.snapsync.engine.LEDGER_APP_GROUP
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -156,56 +154,58 @@ class FileBackedConfigStore(
 
     private fun configFilePath(): String? = containerPath?.let { "$it/$CONFIG_FILE_NAME" }
 
-    private fun readFileRaw(): ConfigFileRead = memScoped {
+    private fun readFileRaw(): ConfigFileRead {
         // A missing container is a provisioning/entitlement failure, not evidence about membership:
         // unreadable (defer), never absent — the same posture as any other unknown failure.
         val path = configFilePath()
             ?: return ConfigFileRead.Failed(status = 0, detail = "App Group container '$LEDGER_APP_GROUP' unavailable")
-        val errorVar = alloc<ObjCObjectVar<NSError?>>()
-        val data = NSData.dataWithContentsOfFile(path, options = 0u, error = errorVar.ptr)
+        val read = checkedObjCValue("dataWithContentsOfFile") { NSData.dataWithContentsOfFile(path, options = 0u, error = it) }
+        val data = read.getOrNull()
         if (data != null) {
             val text = NSString.create(data, NSUTF8StringEncoding)?.toString()
                 ?: return ConfigFileRead.Failed(status = 0, detail = "config file is not UTF-8")
             return ConfigFileRead.Content(text)
         }
-        val failure = errorVar.value
-        when {
-            failure != null && isConfigFileAbsence(failure.domain, failure.code) -> ConfigFileRead.Missing
+        // `code` is null exactly when the read returned no data AND no error — never an absence.
+        val failure = read.exceptionOrNull() as ObjCFailure
+        val code = failure.code
+        return when {
+            code != null && isConfigFileAbsence(failure.domain, code) -> ConfigFileRead.Missing
             else -> ConfigFileRead.Failed(
-                status = (failure?.code ?: 0L).toInt(),
-                detail = failure?.localizedDescription ?: "read returned no data and no error",
+                status = (code ?: 0L).toInt(),
+                detail = failure.description ?: "read returned no data and no error",
             )
         }
     }
 
-    private fun writeFile(text: String): Unit = memScoped {
+    private fun writeFile(text: String) {
         val path = configFilePath()
             ?: error("App Group container '$LEDGER_APP_GROUP' unavailable — cannot persist config")
         val data = (text as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData
             ?: error("config file content did not encode as UTF-8")
-        val errorVar = alloc<ObjCObjectVar<NSError?>>()
-        val ok = data.writeToFile(
-            path,
-            options = NSDataWritingAtomic or NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication,
-            error = errorVar.ptr,
-        )
-        if (!ok) error("config file write failed: ${errorVar.value?.localizedDescription}")
+        checkedObjC("writeToFile") {
+            data.writeToFile(
+                path,
+                options = NSDataWritingAtomic or NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication,
+                error = it,
+            )
+        }.onFailure { error("config file write failed: ${(it as ObjCFailure).description}") }
     }
 
-    private fun deleteFile(): Unit = memScoped {
+    private fun deleteFile() {
         // An unreachable container is NOT "nothing to delete": returning here used to let `clear` report
         // success and null the flow while a file it never touched survived to resurrect the membership at
         // the next launch — the half-completed leave the throw below exists to prevent. Refuse, as
         // `writeFile` does (capability `event-link`).
         val path = configFilePath()
             ?: error("App Group container '$LEDGER_APP_GROUP' unavailable — cannot clear config")
-        val errorVar = alloc<ObjCObjectVar<NSError?>>()
-        val ok = NSFileManager.defaultManager.removeItemAtPath(path, error = errorVar.ptr)
-        if (!ok) {
-            val failure = errorVar.value
-            // Deleting an absent file is success (the leave path tolerates it) — same as the Keychain.
-            if (failure != null && isConfigFileAbsence(failure.domain, failure.code)) return
-            error("config file delete failed: ${failure?.localizedDescription}")
-        }
+        checkedObjC("removeItemAtPath") { NSFileManager.defaultManager.removeItemAtPath(path, error = it) }
+            .onFailure { failure ->
+                failure as ObjCFailure
+                val code = failure.code
+                // Deleting an absent file is success (the leave path tolerates it) — same as the Keychain.
+                if (code != null && isConfigFileAbsence(failure.domain, code)) return
+                error("config file delete failed: ${failure.description}")
+            }
     }
 }

@@ -1,6 +1,7 @@
 package app.snapsync.download
 
 import app.snapsync.model.importFilename
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.ImportResult
 import app.snapsync.ports.PhotoLibraryImporter
@@ -9,6 +10,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSMutableArray
@@ -23,7 +25,6 @@ import platform.Photos.PHPhotosErrorInvalidResource
 import platform.Photos.PHPhotosErrorMissingResource
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
-
 
 /**
  * The iOS [PhotoLibraryImporter] (capability `photo-download`): rebuilds one foreign asset from its
@@ -85,8 +86,7 @@ class IosPhotoLibraryImporter(
         }
         if (typed.isEmpty()) return ImportResult.Failed("no importable resources for ${ref.sourceAssetId}")
 
-        var createdLocalId: String? = null
-        var rawLocalId: String? = null
+        val created = CreatedAsset()
         // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission (capability
         // `photo-download`).
         //
@@ -108,133 +108,28 @@ class IosPhotoLibraryImporter(
         return suspendCancellableCoroutine { cont ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
-                    // Traced INSIDE the block, not before the call (capability `diagnostic-logging`).
-                    // The two say different things: the call returning proves only that we asked, while
-                    // this line proves `photolibraryd` actually began the transaction. That difference
-                    // decides whether an import we stop waiting for can still land — i.e. whether it
-                    // becomes a duplicate. Observed in SNAPSYNC-6: one import was still awaiting its
-                    // completion when the process ended, and the log could not say how far it had got.
-                    log.i { "import: change block running for ${ref.sourceAssetId} (${typed.size} resource(s))" }
-                    val request = PHAssetCreationRequest.creationRequestForAsset()
-                    for ((type, path, filename) in typed) {
-                        // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it
-                        // after the file we hand it — and that file is staged under its storage object
-                        // name, so the photo would land in the library called
-                        // "<assetId>-primary.heic". The name is decided in `:domain` model/
-                        // (`importFilename`), which is where its fallback is unit-tested.
-                        val options = PHAssetResourceCreationOptions().apply {
-                            originalFilename = filename
-                            // MOVE, not copy (capability `photo-download`). Two things follow, and both are
-                            // load-bearing rather than incidental:
-                            //
-                            //  - an importing asset stops holding its bytes TWICE. Under copy it does so
-                            //    from the commit until the client's own release (which follows the
-                            //    confirming write), and that window is the instant a device short of space
-                            //    fails: the library must find room for a full second copy right then
-                            //    (`PHPhotosErrorNotEnoughSpace`). A move within the same data volume is a
-                            //    rename and needs no second copy at all. NOTE this is per-asset and
-                            //    windowed — it does NOT shrink the staging backlog, which is identical
-                            //    either way.
-                            //  - the consumed file becomes the honest signal for "there is nothing left to
-                            //    retry with", which is what lets a doomed import SETTLE instead of being
-                            //    retried on every trigger forever.
-                            //
-                            // ⚠️ The library takes the file at INGEST — before it validates the content and
-                            // before the commit — so a failure can leave no bytes behind. That is why the
-                            // failure branch below reports `consumedResources`, and why nothing here may
-                            // assume a staged file survives an unsuccessful import.
-                            shouldMoveFile = true
-                        }
-                        request.addResourceWithType(type, NSURL.fileURLWithPath(path), options)
-                    }
-                    // Preserve the ORIGINAL capture date so the imported photo sorts by when it was
-                    // taken, not when it was downloaded (default would be import time).
-                    if (captureDate != null) request.setCreationDate(captureDate)
-                    // INSIDE the block: capture + record the suppression handle before the commit is
-                    // observable, so the upload extension never re-uploads this asset.
-                    val placeholder = request.placeholderForCreatedAsset
-                    val raw = placeholder?.localIdentifier
-                    if (raw != null) {
-                        rawLocalId = raw
-                        // `/`→`_` MUST match `:domain:gallery`'s `normalizeAssetId` (the discovery-side
-                        // transform) exactly, or the discovered assetId never meets this createdLocalId
-                        // and the echo re-uploads. Inlined (no gallery dep here); kept identical by the
-                        // gallery `normalizeAssetId` contract test.
-                        val id = raw.replace('/', '_')
-                        createdLocalId = id
-                        // `false` means the row was DELETED between this import being selected and this
-                        // block running — the failure the prune's `protecting` set exists to prevent
-                        // (capability `download-store`). The asset about to be created then has no
-                        // suppression handle at all, so this device uploads a downloaded photo back into
-                        // someone else's event days later. Logged at Error so it reaches Bugsink: this
-                        // line is the ONLY evidence the protection failed, and without it the failure is
-                        // visible solely through its damage.
-                        if (!recordCreatedLocalId(ref, id)) {
-                            log.e {
-                                "import: marker $id for ${ref.sourceAssetId} landed on NO ROW — its row was " +
-                                    "pruned mid-import, so the created asset has no suppression handle"
-                            }
-                        }
-                    }
-                    // Event album (capability `event-album`): add the just-created asset to the event
-                    // album in THIS commit (atomic — never briefly loose). Best-effort: if the album no
-                    // longer resolves, import to the camera roll only.
-                    val album = albumId()
-                    if (album != null && placeholder != null) {
-                        val collection = PHAssetCollection
-                            .fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
-                            .firstObject() as? PHAssetCollection
-                        if (collection != null) {
-                            val members = NSMutableArray().apply { addObject(placeholder) }
-                            PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)
-                                ?.addAssets(members)
-                        } else {
-                            log.w { "event album $album no longer resolves — camera roll only" }
-                        }
+                    // Contained (law "ObjC boundaries contain every throw"): a throw here — the marker's SQLite
+                    // write failing on a full disk — would otherwise unwind into PhotoKit and kill the process.
+                    // PhotoKit still commits whatever the block requested before it threw, and the completion
+                    // below judges that commit exactly as it judges any other: no placeholder means `Failed`, and
+                    // an asset that did land is reported as landed, because retrying it would duplicate it.
+                    objcBoundary(log, "import.changeBlock") {
+                        requestCreation(ref, typed, captureDate, created)
                     }
                 },
                 { success, error ->
-                    // The commit's own verdict, logged before it is interpreted (capability
-                    // `diagnostic-logging`): a failed commit and a missing placeholder both reduce to
-                    // one `Failed`, and only this line tells them apart after the fact.
-                    log.i { "import: commit for ${ref.sourceAssetId} success=$success error=${error?.localizedDescription}" }
-                    val id = createdLocalId
-                    // ORDER MATTERS, and it is store-write FIRST, forget SECOND, on both branches.
-                    //
-                    // Forgetting is what re-enables the adjudicator's absent branch for this ref, so it
-                    // must not happen while the row still looks unconfirmed: a concurrent adjudication
-                    // holding an ABSENT verdict would then see `holds` go false and strip the marker off a
-                    // row whose asset exists. The row's own state is the interlock — settle (or clear) it
-                    // first, and the adjudicator's under-lock re-check sees a row that has moved on and
-                    // discards the verdict. Forget first and that re-check is the only thing standing
-                    // between us and SNAPSYNC-9; this ordering means it is a second line, not the only one.
-                    if (success && id != null) {
-                        // The row is settled by the party that LEARNED the outcome, before anyone is
-                        // resumed (capability `download-store`). This block is an ObjC block untied to
-                        // the awaiting coroutine, so it still runs when the wait was abandoned minutes
-                        // ago — which is what makes an abandoned import settle itself instead of waiting
-                        // for a later pass to ask the library what this callback already knew.
-                        confirmCreatedLocalId(ref, id)
-                        logImportedDate(rawLocalId, creationDate)
-                        cont.resume(ImportResult.Imported(id))
-                    } else {
-                        // THE MIRROR of the in-block write (capability `download-store`). The library has
-                        // stated that this change failed, so the marker points at an asset that does not
-                        // exist — clear it, or the row is skipped as "already created" on every future
-                        // pass and the photo never arrives.
-                        //
-                        // Runs whether or not anything is still awaiting it: `performChanges`' completion
-                        // is an ObjC block, not tied to this coroutine, so it fires even after the
-                        // requester is gone (only `cont.resume` becomes a no-op). That is what makes an
-                        // import whose requester died self-correcting — a late success keeps its marker
-                        // for the guard to settle, a late failure clears it here.
-                        if (id != null) clearCreatedLocalId(ref, id)
-                        cont.resume(
-                            ImportResult.Failed(
-                                message = error?.localizedDescription ?: "performChanges failed / no placeholder",
-                                consumedResources = consumedResources(error),
-                            ),
-                        )
+                    objcBoundary(log, "import.completion") {
+                        // Contained twice: the settle has a fallback of its own, so a throw while settling the row
+                        // still resumes the importer's caller instead of leaving it waiting forever on a completion
+                        // that already ran.
+                        val result = objcBoundary(
+                            log,
+                            "import.settle",
+                            ImportResult.Failed("the import's completion threw (logged above)", consumedResources = success),
+                        ) {
+                            settle(ref, success, error, created, creationDate)
+                        }
+                        cont.resume(result)
                     }
                 },
             )
@@ -266,6 +161,155 @@ private fun consumedResources(error: NSError?): Boolean {
     if (error == null || error.domain != PHPhotosErrorDomain) return false
     return error.code == PHPhotosErrorInvalidResource || error.code == PHPhotosErrorMissingResource
 }
+
+    /** What the change block learned about the asset it asked for, read by the completion. */
+    private class CreatedAsset {
+        var localId: String? = null
+        var rawLocalId: String? = null
+    }
+
+    /** The change block's body: request the asset, write its marker, and file it in the event album. */
+    private fun requestCreation(
+        ref: AssetRef,
+        typed: List<Triple<Long, String, String>>,
+        captureDate: NSDate?,
+        created: CreatedAsset,
+    ) {
+        // Traced INSIDE the block, not before the call (capability `diagnostic-logging`).
+        // The two say different things: the call returning proves only that we asked, while
+        // this line proves `photolibraryd` actually began the transaction. That difference
+        // decides whether an import we stop waiting for can still land — i.e. whether it
+        // becomes a duplicate. Observed in SNAPSYNC-6: one import was still awaiting its
+        // completion when the process ended, and the log could not say how far it had got.
+        log.i { "import: change block running for ${ref.sourceAssetId} (${typed.size} resource(s))" }
+        val request = PHAssetCreationRequest.creationRequestForAsset()
+        for ((type, path, filename) in typed) {
+            // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it
+            // after the file we hand it — and that file is staged under its storage object
+            // name, so the photo would land in the library called
+            // "<assetId>-primary.heic". The name is decided in `:domain` model/
+            // (`importFilename`), which is where its fallback is unit-tested.
+            val options = PHAssetResourceCreationOptions().apply {
+                originalFilename = filename
+                // MOVE, not copy (capability `photo-download`). Two things follow, and both are
+                // load-bearing rather than incidental:
+                //
+                //  - an importing asset stops holding its bytes TWICE. Under copy it does so
+                //    from the commit until the client's own release (which follows the
+                //    confirming write), and that window is the instant a device short of space
+                //    fails: the library must find room for a full second copy right then
+                //    (`PHPhotosErrorNotEnoughSpace`). A move within the same data volume is a
+                //    rename and needs no second copy at all. NOTE this is per-asset and
+                //    windowed — it does NOT shrink the staging backlog, which is identical
+                //    either way.
+                //  - the consumed file becomes the honest signal for "there is nothing left to
+                //    retry with", which is what lets a doomed import SETTLE instead of being
+                //    retried on every trigger forever.
+                //
+                // ⚠️ The library takes the file at INGEST — before it validates the content and
+                // before the commit — so a failure can leave no bytes behind. That is why the
+                // failure branch below reports `consumedResources`, and why nothing here may
+                // assume a staged file survives an unsuccessful import.
+                shouldMoveFile = true
+            }
+            request.addResourceWithType(type, NSURL.fileURLWithPath(path), options)
+        }
+        // Preserve the ORIGINAL capture date so the imported photo sorts by when it was
+        // taken, not when it was downloaded (default would be import time).
+        if (captureDate != null) request.setCreationDate(captureDate)
+        // INSIDE the block: capture + record the suppression handle before the commit is
+        // observable, so the upload extension never re-uploads this asset.
+        val placeholder = request.placeholderForCreatedAsset
+        val raw = placeholder?.localIdentifier
+        if (raw != null) {
+            created.rawLocalId = raw
+            // `/`→`_` MUST match `:domain:gallery`'s `normalizeAssetId` (the discovery-side
+            // transform) exactly, or the discovered assetId never meets this createdLocalId
+            // and the echo re-uploads. Inlined (no gallery dep here); kept identical by the
+            // gallery `normalizeAssetId` contract test.
+            val id = raw.replace('/', '_')
+            created.localId = id
+            // `false` means the row was DELETED between this import being selected and this
+            // block running — the failure the prune's `protecting` set exists to prevent
+            // (capability `download-store`). The asset about to be created then has no
+            // suppression handle at all, so this device uploads a downloaded photo back into
+            // someone else's event days later. Logged at Error so it reaches Bugsink: this
+            // line is the ONLY evidence the protection failed, and without it the failure is
+            // visible solely through its damage.
+            if (!recordCreatedLocalId(ref, id)) {
+                log.e {
+                    "import: marker $id for ${ref.sourceAssetId} landed on NO ROW — its row was " +
+                        "pruned mid-import, so the created asset has no suppression handle"
+                }
+            }
+        }
+        // Event album (capability `event-album`): add the just-created asset to the event
+        // album in THIS commit (atomic — never briefly loose). Best-effort: if the album no
+        // longer resolves, import to the camera roll only.
+        val album = albumId()
+        if (album != null && placeholder != null) {
+            val collection = PHAssetCollection
+                .fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
+                .firstObject() as? PHAssetCollection
+            if (collection != null) {
+                val members = NSMutableArray().apply { addObject(placeholder) }
+                PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)
+                    ?.addAssets(members)
+            } else {
+                log.w { "event album $album no longer resolves — camera roll only" }
+            }
+        }
+    }
+
+    /** The completion's verdict: settle the row against what the library reported, then say what happened. */
+    private fun settle(
+        ref: AssetRef,
+        success: Boolean,
+        error: NSError?,
+        created: CreatedAsset,
+        creationDate: String,
+    ): ImportResult {
+        // The commit's own verdict, logged before it is interpreted (capability
+        // `diagnostic-logging`): a failed commit and a missing placeholder both reduce to
+        // one `Failed`, and only this line tells them apart after the fact.
+        log.i { "import: commit for ${ref.sourceAssetId} success=$success error=${error?.localizedDescription}" }
+        val id = created.localId
+        // ORDER MATTERS, and it is store-write FIRST, forget SECOND, on both branches.
+        //
+        // Forgetting is what re-enables the adjudicator's absent branch for this ref, so it
+        // must not happen while the row still looks unconfirmed: a concurrent adjudication
+        // holding an ABSENT verdict would then see `holds` go false and strip the marker off a
+        // row whose asset exists. The row's own state is the interlock — settle (or clear) it
+        // first, and the adjudicator's under-lock re-check sees a row that has moved on and
+        // discards the verdict. Forget first and that re-check is the only thing standing
+        // between us and SNAPSYNC-9; this ordering means it is a second line, not the only one.
+        return if (success && id != null) {
+            // The row is settled by the party that LEARNED the outcome, before anyone is
+            // resumed (capability `download-store`). This block is an ObjC block untied to
+            // the awaiting coroutine, so it still runs when the wait was abandoned minutes
+            // ago — which is what makes an abandoned import settle itself instead of waiting
+            // for a later pass to ask the library what this callback already knew.
+            confirmCreatedLocalId(ref, id)
+            logImportedDate(created.rawLocalId, creationDate)
+            ImportResult.Imported(id)
+        } else {
+            // THE MIRROR of the in-block write (capability `download-store`). The library has
+            // stated that this change failed, so the marker points at an asset that does not
+            // exist — clear it, or the row is skipped as "already created" on every future
+            // pass and the photo never arrives.
+            //
+            // Runs whether or not anything is still awaiting it: `performChanges`' completion
+            // is an ObjC block, not tied to this coroutine, so it fires even after the
+            // requester is gone (only `cont.resume` becomes a no-op). That is what makes an
+            // import whose requester died self-correcting — a late success keeps its marker
+            // for the guard to settle, a late failure clears it here.
+            if (id != null) clearCreatedLocalId(ref, id)
+            ImportResult.Failed(
+                message = error?.localizedDescription ?: "performChanges failed / no placeholder",
+                consumedResources = consumedResources(error),
+            )
+        }
+    }
 
     /** Readback proof: fetch the created asset and log its actual creationDate vs the intended one. */
     private fun logImportedDate(rawLocalId: String?, intended: String) {

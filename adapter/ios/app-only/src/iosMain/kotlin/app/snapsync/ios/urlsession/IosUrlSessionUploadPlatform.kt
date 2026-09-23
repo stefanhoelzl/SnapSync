@@ -1,18 +1,22 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.model.Resource
-import app.snapsync.model.UploadError
-import app.snapsync.model.UploadRequest
 import app.snapsync.ios.upload.uploadUrlRequest
-import app.snapsync.model.TerminalOutcome
-import app.snapsync.ports.CreateResult
-import app.snapsync.ports.TransferRecord
-import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.Resource
+import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadRequest
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.isNoSuchFile
+import app.snapsync.objc.objcBoundary
+import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.CreateResult
+import app.snapsync.ports.PlatformUploadJob
+import app.snapsync.ports.TransferRecord
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import kotlin.coroutines.resume
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
@@ -22,11 +26,9 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
 import platform.Foundation.NSURLSessionTask
 import platform.Foundation.NSURLSessionTaskDelegateProtocol
-import platform.Foundation.NSURLSessionUploadTask
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceManager
 import platform.darwin.NSObject
-import kotlin.coroutines.resume
 
 /**
  * The app-driven (every iOS version) implementation of `:domain`'s [BackgroundTransfer] port, backed on every
@@ -142,7 +144,9 @@ class IosUrlSessionUploadPlatform(
     private val stagingDir: NSURL? by lazy {
         val container = NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(appGroup)
         container?.URLByAppendingPathComponent("upload-staging", isDirectory = true)?.also { dir ->
-            NSFileManager.defaultManager.createDirectoryAtURL(dir, withIntermediateDirectories = true, attributes = null, error = null)
+            checkedObjC("createDirectoryAtURL") {
+                NSFileManager.defaultManager.createDirectoryAtURL(dir, withIntermediateDirectories = true, attributes = null, error = it)
+            }.onFailure { log.w(it) { "upload staging directory could not be created — staging will fail" } }
         }
     }
 
@@ -281,15 +285,17 @@ class IosUrlSessionUploadPlatform(
 
     private suspend fun liveTasks(): List<NSURLSessionTask> = suspendCancellableCoroutine { cont ->
         session.getAllTasksWithCompletionHandler { tasks ->
-            cont.resume(tasks?.mapNotNull { it as? NSURLSessionTask }.orEmpty())
+            objcBoundary(log, "liveTasks.completion") { cont.resume(tasks?.mapNotNull { it as? NSURLSessionTask }.orEmpty()) }
         }
     }
 
     private suspend fun liveTaskKeys(): Set<String> = suspendCancellableCoroutine { cont ->
         session.getAllTasksWithCompletionHandler { tasks ->
-            val keys = HashSet<String>()
-            tasks?.forEach { (it as? NSURLSessionTask)?.taskDescription?.let(keys::add) }
-            cont.resume(keys)
+            objcBoundary(log, "liveTaskKeys.completion") {
+                val keys = HashSet<String>()
+                tasks?.forEach { (it as? NSURLSessionTask)?.taskDescription?.let(keys::add) }
+                cont.resume(keys)
+            }
         }
     }
 
@@ -302,13 +308,14 @@ class IosUrlSessionUploadPlatform(
                 resource,
                 toFile = fileUrl,
                 options = null,
-            ) { err -> cont.resume(err) }
+            ) { err -> objcBoundary(log, "stageResource.completion") { cont.resume(err) } }
         }
         return if (error == null) fileUrl else { log.w { "stageResource $filename: ${error.localizedDescription}" }; null }
     }
 
     private fun deleteFile(url: NSURL) {
-        NSFileManager.defaultManager.removeItemAtURL(url, error = null)
+        checkedObjC("removeItemAtURL") { NSFileManager.defaultManager.removeItemAtURL(url, error = it) }
+            .onFailure { if (!it.isNoSuchFile) log.w(it) { "staged upload file ${url.lastPathComponent} stays on disk" } }
     }
 
 }
@@ -348,12 +355,14 @@ private class SessionDelegate(
     // do nothing, which is exactly the shape that may not be silent, so the enter line precedes it.
     @PlatformEntry
     override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) =
-        log.invocation(
-            "upload.didComplete",
-            params = "error=${didCompleteWithError?.localizedDescription ?: "«none»"}",
-            severity = Severity.Debug,
-        ) {
-            onTaskComplete(task, didCompleteWithError)
+        objcBoundary(log, "upload.didComplete") {
+            log.invocation(
+                "upload.didComplete",
+                params = "error=${didCompleteWithError?.localizedDescription ?: "«none»"}",
+                severity = Severity.Debug,
+            ) {
+                onTaskComplete(task, didCompleteWithError)
+            }
         }
 
     private fun onTaskComplete(task: NSURLSessionTask, didCompleteWithError: NSError?) {
@@ -369,5 +378,5 @@ private class SessionDelegate(
     // Session-level, once per OS re-attach: INFO.
     @PlatformEntry
     override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
-        log.invocation("upload.didFinishEvents") { onEventsFinished() }
+        objcBoundary(log, "upload.didFinishEvents") { log.invocation("upload.didFinishEvents") { onEventsFinished() } }
 }

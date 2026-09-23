@@ -1,13 +1,15 @@
 package app.snapsync.link
 
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.LinkOpener
+import co.touchlab.kermit.Logger
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * The iOS [LinkOpener]: hands the URL to `UIApplication.openURL(_:options:completionHandler:)`, which
@@ -28,10 +30,15 @@ class IosLinkOpener internal constructor(private val platform: UrlOpenerApi) : L
 
     constructor() : this(SystemUrlOpenerApi)
 
+    private val log = Logger.withTag("linkOpener")
+
     override suspend fun open(url: String): Handoff {
         val target = NSURL.URLWithString(url)
             ?: return Handoff.Refused("'$url' is not a URL iOS can parse — a build misconfiguration")
-        val opened = suspendCoroutine { done -> platform.open(target) { done.resume(it) } }
+        // The completion is what Objective-C calls (through SystemUrlOpenerApi): contained, like every such block.
+        val opened = suspendCoroutine { done ->
+            platform.open(target) { accepted -> objcBoundary(log, "openLink.completion") { done.resume(accepted) } }
+        }
         return if (opened) Handoff.Accepted else Handoff.Refused("iOS did not open $url")
     }
 }
@@ -57,7 +64,9 @@ internal fun interface UrlOpenerApi {
 internal object SystemUrlOpenerApi : UrlOpenerApi {
     override fun open(url: NSURL, completion: (Boolean) -> Unit) {
         dispatch_async(dispatch_get_main_queue()) {
-            UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = completion)
+            objcBoundary(Logger.withTag("linkOpener"), "openLink") {
+                UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = completion)
+            }
         }
     }
 }

@@ -34,8 +34,8 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 - [x] 3.4 Add `fanOut` to `model/` and move `Foreground` and `Provision` onto it. Add a throwing-child test for each flow (fixes B4).
 - [x] 3.5 Teach the architecture-diagram flow transcriber the `fanOut` form, regenerate `architecture/`, and add the flow fan-out gate.
 - [x] 3.6 Add the `required`/`bestEffort` step receiver. Make the config save in `ReconfigureEvent` required, have it return `ReconfigureOutcome`, and have presentation reduce `SaveFailed` into the settings surface. Add a save-failure test (fixes B5). Apply the same receiver to `LeaveEvent` and `ResetDeviceState`.
-- [ ] 3.7 Add `objcBoundary` and `checkedObjC` to `:adapter:ios:ext-safe`, and move the importer blocks, both URLSession delegates, `PhotoSelectionObserver`, MetricKit, every `performChangesAndWait(…, error = null)` call, and every `submitTaskRequest` call onto them (fixes B10, B8).
-- [ ] 3.8 Add the ObjC-boundary gate (heuristic, stated in its source) with a positive self-test.
+- [x] 3.7 Add `objcBoundary` and `checkedObjC` to `:adapter:ios:ext-safe`, and move the importer blocks, both URLSession delegates, `PhotoSelectionObserver`, MetricKit, every `performChangesAndWait(…, error = null)` call, and every `submitTaskRequest` call onto them (fixes B10, B8).
+- [x] 3.8 Add the ObjC-boundary gate (heuristic, stated in its source) with a positive self-test.
 
 ## 4. G4: collapsed states (PR 4)
 

@@ -3,6 +3,7 @@ package app.snapsync.ios
 import app.snapsync.model.SceneMode
 import app.snapsync.model.appVisibilityFrom
 import app.snapsync.model.resolveScene
+import app.snapsync.objc.objcBoundary
 import app.snapsync.model.SCENE_GENERATION_INITIAL
 import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
@@ -711,13 +712,13 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             name = UIApplicationDidBecomeActiveNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue,
-            usingBlock = { onForeground() },
+            usingBlock = { objcBoundary(log, "didBecomeActive") { onForeground() } },
         )
         center.addObserverForName(
             name = UIApplicationWillResignActiveNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue,
-            usingBlock = { onBackground() },
+            usingBlock = { objcBoundary(log, "willResignActive") { onBackground() } },
         )
     }
 

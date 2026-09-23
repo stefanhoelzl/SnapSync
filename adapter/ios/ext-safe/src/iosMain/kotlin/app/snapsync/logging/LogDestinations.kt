@@ -1,6 +1,7 @@
 package app.snapsync.logging
 
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.objc.checkedObjC
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
@@ -92,6 +93,7 @@ fun removeStaleExtensionDocumentsLog(destination: LogDestination) {
     if (destination.fellBackToDocuments) return
     val docs = documentsDirectory() ?: return
     val mgr = NSFileManager.defaultManager
-    mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME", error = null)
-    mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME.1", error = null)
+    // Results dropped deliberately: this runs while the logger is being set up, and either file may be absent.
+    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME", error = it) }
+    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME.1", error = it) }
 }

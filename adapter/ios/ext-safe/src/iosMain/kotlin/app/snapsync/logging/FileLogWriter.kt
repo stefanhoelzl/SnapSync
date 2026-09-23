@@ -1,7 +1,10 @@
 package app.snapsync.logging
 
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.checkedObjCValue
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
+import kotlin.time.Clock
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
@@ -16,7 +19,6 @@ import platform.posix.O_WRONLY
 import platform.posix.close
 import platform.posix.open
 import platform.posix.write
-import kotlin.time.Clock
 
 /**
  * A Kermit writer that appends every log line to the file at [path] — the reliable, verbatim
@@ -89,12 +91,15 @@ class FileLogWriter(
     /** Roll the log to its `.1` sibling (replacing any prior one) once it exceeds [maxBytes]. */
     private fun rollIfNeeded(path: String) {
         val mgr = NSFileManager.defaultManager
-        val attrs = mgr.attributesOfItemAtPath(path, error = null) ?: return
+        // Every failure below is dropped, deliberately and visibly: this IS the log, so there is nowhere to report
+        // one, and a roll that fails leaves the log growing past its cap rather than losing lines.
+        val attrs = checkedObjCValue("attributesOfItemAtPath") { mgr.attributesOfItemAtPath(path, error = it) }
+            .getOrNull() ?: return
         val size = (attrs[NSFileSize] as? NSNumber)?.longLongValue ?: return
         if (size < maxBytes) return
         val rolled = "$path.1"
-        mgr.removeItemAtPath(rolled, error = null) // ignore: absent on the first roll
-        mgr.moveItemAtPath(path, toPath = rolled, error = null)
+        checkedObjC("removeItemAtPath") { mgr.removeItemAtPath(rolled, error = it) } // absent on the first roll
+        checkedObjC("moveItemAtPath") { mgr.moveItemAtPath(path, toPath = rolled, error = it) }
     }
 
     /** One `O_APPEND` `write()` per line so appends stay atomic (never torn across threads). */

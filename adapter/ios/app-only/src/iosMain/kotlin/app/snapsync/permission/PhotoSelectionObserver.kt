@@ -2,9 +2,9 @@ package app.snapsync.permission
 
 import app.snapsync.logging.invocation
 import app.snapsync.model.PlatformEntry
+import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-
 import platform.Photos.PHChange
 import platform.Photos.PHPhotoLibrary
 import platform.Photos.PHPhotoLibraryChangeObserverProtocol
@@ -43,5 +43,7 @@ class PhotoSelectionObserver(
     // breadcrumb window and roll the size-capped device log before anyone read it.
     @PlatformEntry
     override fun photoLibraryDidChange(changeInstance: PHChange) =
-        log.invocation("photoLibraryDidChange", severity = Severity.Debug) { onChange(changeInstance) }
+        objcBoundary(log, "photoLibraryDidChange") {
+            log.invocation("photoLibraryDidChange", severity = Severity.Debug) { onChange(changeInstance) }
+        }
 }

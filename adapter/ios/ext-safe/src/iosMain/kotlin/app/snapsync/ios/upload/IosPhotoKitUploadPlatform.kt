@@ -7,15 +7,12 @@ import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.TransferRecord
 import app.snapsync.logging.invocation
+import app.snapsync.objc.ObjCFailure
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.value
-import platform.Foundation.NSError
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.Photos.PHAssetResource
@@ -226,10 +223,16 @@ class IosPhotoKitUploadPlatform(
     }
 
     private fun acknowledgeJob(job: PHAssetResourceUploadJob) {
-        library.performChangesAndWait(
-            changeBlock = { PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(job)?.acknowledge() },
-            error = null,
-        )
+        checkedObjC("acknowledgeJob") { error ->
+            library.performChangesAndWait(
+                changeBlock = {
+                    objcBoundary(log, "acknowledgeJob.changeBlock") {
+                        PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(job)?.acknowledge()
+                    }
+                },
+                error = error,
+            )
+        }.onFailure { log.w(it) { "acknowledge refused — the OS offers the job again next fetch" } }
     }
 
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
@@ -243,12 +246,17 @@ class IosPhotoKitUploadPlatform(
             }
             val url = NSURL.URLWithString(request.url) ?: return@invocation
             val urlRequest = uploadUrlRequest(url, request)
-            library.performChangesAndWait(
-                changeBlock = {
-                    PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.retryWithDestination(urlRequest)
-                },
-                error = null,
-            )
+            checkedObjC("retryJob") { error ->
+                library.performChangesAndWait(
+                    changeBlock = {
+                        objcBoundary(log, "retryJob.changeBlock") {
+                            PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)
+                                ?.retryWithDestination(urlRequest)
+                        }
+                    },
+                    error = error,
+                )
+            }.onFailure { log.w(it) { "retryJob: the retry was refused for ${job.key}" } }
         }
 
     /**
@@ -287,16 +295,19 @@ class IosPhotoKitUploadPlatform(
             return@invocation CreateResult.FAILED
         }
         val urlRequest = uploadUrlRequest(url, request)
-        memScoped {
-            val errorVar = alloc<ObjCObjectVar<NSError?>>()
-            library.performChangesAndWait(
-                changeBlock = {
-                    PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(urlRequest, phResource)
-                },
-                error = errorVar.ptr,
-            )
-            val error = errorVar.value
-            createResultFor(error?.code).also { result ->
+        run {
+            val error = checkedObjC("createJob") { errorPtr ->
+                library.performChangesAndWait(
+                    changeBlock = {
+                        objcBoundary(log, "createJob.changeBlock") {
+                            PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(urlRequest, phResource)
+                        }
+                    },
+                    error = errorPtr,
+                )
+            }.exceptionOrNull() as ObjCFailure?
+            // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
+            createResultFor(error?.let { it.code ?: UNCODED_REFUSAL }).also { result ->
                 when (result) {
                     CreateResult.CREATED -> Unit
                     CreateResult.LIMIT_EXCEEDED ->
@@ -306,10 +317,13 @@ class IosPhotoKitUploadPlatform(
                     // a job that never materialised.
                     CreateResult.FAILED -> log.w {
                         "createJob failed for ${request.resource.filename}: " +
-                            "code=${error?.code} ${error?.localizedDescription}"
+                            "code=${error?.code} ${error?.description}"
                     }
                 }
             }
         }
     }
 }
+
+/** The code a refusal without an `NSError` maps to — never `null`, which [createResultFor] reads as created. */
+private const val UNCODED_REFUSAL = -1L

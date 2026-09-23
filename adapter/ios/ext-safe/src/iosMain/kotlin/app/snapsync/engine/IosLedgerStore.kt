@@ -1,9 +1,11 @@
 package app.snapsync.engine
 
-import app.snapsync.ports.LedgerStore
-
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.db.LedgerDatabase
+import app.snapsync.objc.checkedObjC
+import app.snapsync.objc.isNoSuchFile
+import app.snapsync.ports.LedgerStore
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
@@ -90,7 +92,9 @@ private fun protectLedgerFiles(basePath: String) {
         NSFileProtectionKey to NSFileProtectionCompleteUntilFirstUserAuthentication,
     )
     for (suffix in listOf("", "-wal", "-shm")) {
-        NSFileManager.defaultManager.setAttributes(attributes, "$basePath/$LEDGER_DB_NAME$suffix", error = null)
+        val path = "$basePath/$LEDGER_DB_NAME$suffix"
+        checkedObjC("setAttributes") { NSFileManager.defaultManager.setAttributes(attributes, path, error = it) }
+            .onFailure { if (!it.isNoSuchFile) Logger.withTag("ledgerStore").w(it) { "file protection not set on $path" } }
     }
 }
 

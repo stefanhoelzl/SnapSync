@@ -1,13 +1,15 @@
 package app.snapsync.share
 
+import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.SharePresenter
+import co.touchlab.kermit.Logger
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * The iOS [SharePresenter]: presents the system share sheet (`UIActivityViewController`) carrying the
@@ -38,8 +40,10 @@ import kotlin.coroutines.suspendCoroutine
  */
 class IosShareSheet : SharePresenter {
 
+    private val log = Logger.withTag("shareSheet")
+
     override suspend fun share(text: String): Handoff = suspendCoroutine { done ->
-        dispatch_async(dispatch_get_main_queue()) {
+        dispatch_async(dispatch_get_main_queue()) { objcBoundary(log, "share") {
             val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
             var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
             while (presenter?.presentedViewController != null) {
@@ -48,8 +52,10 @@ class IosShareSheet : SharePresenter {
             if (presenter == null) {
                 done.resume(Handoff.Refused("no key window to present the share sheet from"))
             } else {
-                presenter.presentViewController(activity, animated = true) { done.resume(Handoff.Accepted) }
+                presenter.presentViewController(activity, animated = true) {
+                    objcBoundary(log, "share.completion") { done.resume(Handoff.Accepted) }
+                }
             }
-        }
+        } }
     }
 }

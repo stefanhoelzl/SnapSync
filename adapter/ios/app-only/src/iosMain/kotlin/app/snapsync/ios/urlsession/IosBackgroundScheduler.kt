@@ -1,18 +1,13 @@
 package app.snapsync.ios.urlsession
 
-import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.logging.invocation
+import app.snapsync.objc.checkedObjC
+import app.snapsync.ports.BackgroundScheduler
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.value
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSDate
-import platform.Foundation.NSError
 import platform.Foundation.dateWithTimeIntervalSinceNow
 
 /**
@@ -36,16 +31,13 @@ class IosBackgroundScheduler(
     private val earliestBeginSeconds: Double = 60.0,
 ) : BackgroundScheduler {
 
-    override fun scheduleNext() = log.invocation("scheduler.scheduleNext") {
+    override fun scheduleNext(): Unit = log.invocation("scheduler.scheduleNext") {
         val request = BGProcessingTaskRequest(taskIdentifier)
         request.requiresNetworkConnectivity = requiresNetwork
         request.requiresExternalPower = false
         request.earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(earliestBeginSeconds)
-        memScoped {
-            val err = alloc<ObjCObjectVar<NSError?>>()
-            val ok = BGTaskScheduler.sharedScheduler.submitTaskRequest(request, err.ptr)
-            if (!ok) log.w { "BGTask submit failed: ${err.value?.localizedDescription}" }
-        }
+        checkedObjC("submitTaskRequest($taskIdentifier)") { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }
+            .onFailure { log.w(it) { "BGTask submit refused" } }
     }
 
     override fun cancel() = log.invocation("scheduler.cancel") {
