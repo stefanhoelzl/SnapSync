@@ -20,8 +20,9 @@ import kotlin.test.Test
  * `test/contracts/recordings/BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec` was recorded inside the extension on a
  * device, and the current clauses judge.
  *
- * The clauses poll; the replay stops each poll where the device stopped, because every input the poll reads is
- * answered from the recording in order. An adapter that asks iOS something else reads `Diverged`: re-record inside
+ * Each clause's state was prepared across operating-system calls on the device — a job the extension creates is
+ * uploaded only after the call returns — and its preparation calls head its block; the replay makes them again, in
+ * order, before the clause. An adapter that asks iOS something else reads `Diverged`: re-record inside
  * the extension (the `rig-channel` runbook). A recorded answer that violates a clause reads `Failed`.
  */
 class IosPhotoKitUploadReplayContractTest {
@@ -32,19 +33,25 @@ class IosPhotoKitUploadReplayContractTest {
     private val binding = object : Binding<BackgroundTransferState, TransferUnderTest> {
         override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
         override val kind = BindingKind.Replay
-        override val reaches = setOf(BackgroundTransferState.IDLE, BackgroundTransferState.SINGLE_FREE_RETRY)
+        override val reaches = setOf(
+            BackgroundTransferState.PRESENTED_SUCCEEDED,
+            BackgroundTransferState.PRESENTED_REFUSED_ONCE,
+            BackgroundTransferState.PRESENTED_RETRY_SPENT,
+        )
 
         override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-            if (state !in reaches) return Entered.Unreachable(EXTENSION_UNREACHABLE_AT_CAP)
+            if (state !in reaches) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
             val tape = recording ?: return Entered.Unreachable("no recording $name.rec — record it inside the extension over the rig")
             val block = tape.blocks[clauseId] ?: return Entered.Unreachable("$name.rec holds no block for $clauseId — re-record")
             val replayer = Replayer(clauseId, block)
+            // The preparation the device made across operating-system calls, made again here in one go, in order.
+            for (call in 1 until callsFor(state)) prepareCall(state, clauseId, call, ReplayingUploadJobApi(replayer), ReplayPhoto)
             return photoKitTransferInState(
                 state = state,
                 clauseId = clauseId,
                 api = ReplayingUploadJobApi(replayer),
                 objects = replayingFixtureObjects(replayer),
-                photo = { ReplayPhoto },
+                photo = ReplayPhoto,
                 afterDispose = replayer::assertExhausted,
             )
         }

@@ -82,12 +82,22 @@ class Exchange(val call: String, val answer: String) {
  * operating-system call; the binding calls [open] when a clause begins, so seeding calls made while
  * entering the clause's state land in that clause's block too.
  */
-class Recorder {
-    private val blocks = linkedMapOf<String, MutableList<Exchange>>()
+class Recorder(from: Recording? = null) {
+    private val blocks = linkedMapOf<String, MutableList<Exchange>>().apply {
+        from?.blocks?.forEach { (id, exchanges) -> put(id, exchanges.toMutableList()) }
+    }
     private var current: MutableList<Exchange>? = null
 
     fun open(clauseId: String) {
         current = mutableListOf<Exchange>().also { blocks[clauseId] = it }
+    }
+
+    /**
+     * Continues [clauseId]'s block where it stopped — a state entered across operating-system calls, whose earlier
+     * calls a previous process recorded ([Recorder] constructed from what it kept).
+     */
+    fun resume(clauseId: String) {
+        current = blocks.getOrPut(clauseId) { mutableListOf() }
     }
 
     fun record(call: String, answer: String) {

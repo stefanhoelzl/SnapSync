@@ -5,12 +5,16 @@ import app.snapsync.contract.extension.RUN_RESULT_FILE
 import app.snapsync.contract.extension.clearLanded
 import app.snapsync.contract.extension.contractRunFile
 import app.snapsync.contract.extension.deleteContractRunFile
-import app.snapsync.contract.extension.extensionContracts
+import app.snapsync.contract.extension.RUN_CALL_FILE
+import app.snapsync.contract.extension.clearRunProgress
+import app.snapsync.contract.extension.extensionRunPlan
 import app.snapsync.contract.extension.readContractRunFile
 import app.snapsync.contract.extension.writeContractRunFile
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
+import app.snapsync.contracts.BackgroundTransferContract
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.Recording
 import app.snapsync.contracts.InAppContract
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.PermissionStatus
@@ -20,52 +24,63 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSProcessInfo
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-/**
- * How long the app waits for the extension's answer. A run is sized to finish well inside one `process()` call
- * (about 60 s); the rest covers the OS's delay in invoking the extension after re-registration (~1 s, measured).
- */
-private val EXTENSION_RUN_BOUND: Duration = 90.seconds
+/** How long one call takes to come: the OS calls again five minutes after `PROCESSING` (measured), plus margin. */
+private val PER_CALL: Duration = 6.minutes
 
 /**
- * The app-side entries of the contracts that record inside the upload extension — one per name in the extension's
- * own registry, on [Host.IOS_DEVICE_PHOTOKIT_EXT]. `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` selects one.
+ * The app-side entries of the contracts that record inside the upload extension, on [Host.IOS_DEVICE_PHOTOKIT_EXT].
+ * `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` selects one.
  *
- * [membershipRefusal] is the rig's no-membership precondition; [registry] is the app's registration port, or
- * `null` on an OS below the one that carries the extension.
+ * [membershipRefusal] is the rig's no-membership precondition; [registry] is the app's registration port, or `null` on
+ * an OS below the one that carries the extension.
  */
 fun extensionContractEntries(
     membershipRefusal: () -> String?,
     registry: () -> UploadExtensionRegistry?,
-): List<InAppContract> = extensionContracts().map { entry ->
-    InAppContract(entry.name, Host.IOS_DEVICE_PHOTOKIT_EXT) { runInExtension(entry.name, membershipRefusal, registry) }
-}
+): List<InAppContract> = listOf(
+    InAppContract(BackgroundTransferContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) {
+        runInExtension(BackgroundTransferContract.name, membershipRefusal, registry)
+    },
+)
 
 /**
- * Requests a run of [name] inside the upload extension and waits for its answer.
+ * Records [contract] inside the upload extension: one run per clause, alone in the OS queue — the real adapter
+ * acknowledges every job it is presented, so a second clause's jobs would not survive the first's drain. Each run
+ * re-registers the extension (which empties the queue and invokes it), then waits for the run's calls, five minutes
+ * apart. The recordings are merged into one file. A full run takes about twenty minutes: call it in the background.
  *
- * Preconditions first, in order (capability `port-contracts`): a full photo grant, which only a person can set;
- * no membership, because re-registering wipes every in-flight upload job; then — automatically — the
- * re-registration itself, disable then enable, which empties the job queue and makes the OS invoke the
- * extension. The membership check comes before it for that reason.
+ * Preconditions first, in order (capability `port-contracts`): a full photo grant, which only a person can set; no
+ * membership, because re-registering wipes every in-flight upload job.
  */
 private fun runInExtension(
-    name: String,
+    contract: String,
     membershipRefusal: () -> String?,
     registry: () -> UploadExtensionRegistry?,
 ): String {
-    val refused = refusalFor(membershipRefusal, registry) ?: requestRun(name, registry)
-    return if (refused != null) "$CONTRACT_REFUSED$refused\n" else awaitResult()
+    val refused = refusalFor(membershipRefusal, registry)
+    if (refused != null) return "$CONTRACT_REFUSED$refused\n"
+    val bodies = mutableListOf<String>()
+    for ((clauseId, calls) in extensionRunPlan()) {
+        val requestFailed = requestRun("$contract $clauseId", registry)
+        if (requestFailed != null) return "$CONTRACT_REFUSED$requestFailed\n"
+        val body = awaitResult(clauseId, PER_CALL * calls)
+        if (body.startsWith(CONTRACT_REFUSED) || body.startsWith(CONTRACT_TIMEOUT)) return body
+        bodies += body
+    }
+    return merge(bodies)
 }
 
 /** Writes the run request and re-registers the extension; answers why that failed, or `null`. */
-private fun requestRun(name: String, registry: () -> UploadExtensionRegistry?): String? {
+private fun requestRun(request: String, registry: () -> UploadExtensionRegistry?): String? {
     val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return "this process has no App Group container"
     contractRunFile(RUN_RESULT_FILE)?.let(::deleteContractRunFile)
+    clearRunProgress()
     clearLanded()
-    if (!writeContractRunFile(requestPath, name)) return "could not write the run request"
+    if (!writeContractRunFile(requestPath, request)) return "could not write the run request"
     val enabled = runBlocking {
         registry()?.setEnabled(false)
         registry()?.setEnabled(true)
@@ -75,27 +90,36 @@ private fun requestRun(name: String, registry: () -> UploadExtensionRegistry?): 
     return "re-registering the extension did not take (${enabled?.message}), so the OS will not invoke it"
 }
 
-/** Waits for the extension's result, or answers a timeout naming which half never happened. */
-private fun awaitResult(): String {
-    val requestPath = contractRunFile(RUN_REQUEST_FILE).orEmpty()
+/** Waits up to [bound] for the run's result, or answers a timeout naming where it stopped. */
+private fun awaitResult(clauseId: String, bound: Duration): String {
     val resultPath = contractRunFile(RUN_RESULT_FILE).orEmpty()
     val started = TimeSource.Monotonic.markNow()
-    while (started.elapsedNow() < EXTENSION_RUN_BOUND) {
+    while (started.elapsedNow() < bound) {
         val body = readContractRunFile(resultPath)
         if (body != null) {
             deleteContractRunFile(resultPath)
             return body
         }
-        runBlocking { delay(1.seconds) }
+        runBlocking { delay(2.seconds) }
     }
-    val neverInvoked = readContractRunFile(requestPath) != null
-    deleteContractRunFile(requestPath)
-    val why = if (neverInvoked) {
-        "the OS did not invoke the extension within $EXTENSION_RUN_BOUND — it may be backing off after a killed call (6–11 min)"
+    val call = contractRunFile(RUN_CALL_FILE)?.let(::readContractRunFile)?.trim() ?: "1"
+    val pending = contractRunFile(RUN_REQUEST_FILE)?.let(::readContractRunFile) != null
+    contractRunFile(RUN_REQUEST_FILE)?.let(::deleteContractRunFile)
+    clearRunProgress()
+    val why = if (pending) {
+        "$clauseId: the OS did not make call $call within $bound — it may be backing off after a killed call (6–11 min)"
     } else {
-        "the extension took the request but wrote no result within $EXTENSION_RUN_BOUND — the run was probably killed at the ~60 s budget"
+        "$clauseId: call $call was taken but wrote nothing — probably killed at the ~60 s budget"
     }
     return "$CONTRACT_TIMEOUT$why\n"
+}
+
+/** One recording from the runs': the first run's provenance, every run's live outcomes, every run's blocks. */
+private fun merge(bodies: List<String>): String {
+    val runs = bodies.map(Recording::parse)
+    val provenance = runs.first().header.filterNot { it.first.startsWith("live ") }
+    val live = runs.flatMap { run -> run.header.filter { it.first.startsWith("live ") } }
+    return Recording(provenance + live, runs.fold(emptyMap()) { all, run -> all + run.blocks }).render()
 }
 
 private fun refusalFor(membershipRefusal: () -> String?, registry: () -> UploadExtensionRegistry?): String? = when {
