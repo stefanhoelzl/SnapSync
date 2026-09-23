@@ -1,6 +1,8 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.PermissionStatus
 import kotlin.test.Test
+import kotlin.test.assertNull
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -83,5 +85,21 @@ class RecordingTest {
             "0 cdat=<masked> pdmn=ck mdat=<masked> v_Data=abc",
             maskKeys("0 cdat=2026-09-22 pdmn=ck mdat=x v_Data=abc", setOf("cdat", "mdat")),
         )
+    }
+
+    @Test
+    fun `a recording is named per grant only where the binding declares one`() {
+        assertEquals("SecureStore@IOS_DEVICE_APP", recordingName("SecureStore", Host.IOS_DEVICE_APP, null))
+        assertEquals(
+            "UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED",
+            recordingName("UploadExtensionRegistry", Host.IOS_DEVICE_APP, PermissionStatus.LIMITED),
+        )
+    }
+
+    @Test
+    fun `the header carries the grant where one was declared`() {
+        assertNull(Recording.parse(text).grant)
+        val granted = Recording.parse("# contract: X\n# host: IOS_DEVICE_APP\n# grant: GRANTED\n[A]\nc -> a\n")
+        assertEquals("GRANTED", granted.grant)
     }
 }
