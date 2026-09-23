@@ -264,7 +264,7 @@ class World(
     // over an operator-held cell. Emitting IS the operator lever (see [changeSelection]); replay 0 —
     // a snapshot is a change notification, not a state the composition may re-collect.
     private val selectionChangesCell = MutableSharedFlow<List<Resource>>()
-    val albumManager: FakeAlbumManager = FakeAlbumManager()
+    val albumManager: FakeAlbumManager = FakeAlbumManager(gallery.contents)
     val albumMapStore = app.snapsync.fake.inMemoryAlbumMapStore()
 
     /**

@@ -98,10 +98,14 @@ fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestS
 fun inMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()): AlbumMapStore =
     InMemoryAlbumMapStore(initial)
 
-/** [userAlbums] is the caller's own cell: the albums other apps made, title → normalized asset ids. */
+/**
+ * Albums over the caller's own [library] cell. [userAlbums] is also the caller's: the albums other apps made,
+ * title → normalized asset ids.
+ */
 fun inMemoryAlbumManager(
+    library: StateFlow<List<RawAsset>>,
     userAlbums: MutableStateFlow<Map<String, Set<String>>> = MutableStateFlow(emptyMap()),
-): AlbumManager = InMemoryAlbumManager(userAlbums)
+): AlbumManager = InMemoryAlbumManager(library, userAlbums)
 
 /**
  * The photo-access adapter over the caller's own [status] cell, as both of its ports at once — one adapter
