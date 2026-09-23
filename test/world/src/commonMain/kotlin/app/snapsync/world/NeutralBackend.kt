@@ -89,6 +89,10 @@ class NeutralBackend internal constructor(
     fun deviceConfigOf(deviceId: String): Answer<String?> =
         onMiniEdge("the device-config read", NOT_ON_THE_HTTP_SURFACE) { it.deviceConfigOf(deviceId) }
 
+    /** How many registrations (`PUT /devices/<id>`) the backend stored for [deviceId]. */
+    fun deviceConfigWritesOf(deviceId: String): Answer<Int> =
+        onMiniEdge("the device-config write counter", NOT_ON_THE_HTTP_SURFACE) { it.deviceConfigWritesOf(deviceId) }
+
     /** The name the backend serves for [eventId] — its details route, over HTTP; null when it has none. */
     suspend fun eventNameOf(eventId: String): Answer<String?> {
         val response = client.get("$host/events/$eventId")

@@ -40,8 +40,9 @@ private fun backendReads(world: World): Map<String, RigCommand> = mapOf(
     },
     "backend/device-config" to RigCommand { params, _ ->
         val device = params["device"] ?: world.ownDeviceId
+        val writes = (world.neutral.deviceConfigWritesOf(device) as? Answer.Available)?.value
         answered(world.neutral.deviceConfigOf(device)) { config ->
-            buildJsonObject { put("device", device); put("config", config) }.toString()
+            buildJsonObject { put("device", device); put("config", config); put("writes", writes) }.toString()
         }
     },
     "backend/event" to RigCommand { params, _ ->

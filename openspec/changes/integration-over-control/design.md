@@ -177,7 +177,7 @@ refuses naming exactly that.
 | Group | Entries |
 |---|---|
 | Device reads | `staging` (file listing), `diagnostics/sent`, `album/contents`; `GalleryView` gains each asset's original filename (app host: from `PHAssetResource`) |
-| Backend reads | `backend/union`, `backend/manifest`, `backend/device-config`, `backend/event` (exists + name), `backend/departed`, `backend/publishes`, `backend/pushes` |
+| Backend reads | `backend/union`, `backend/manifest`, `backend/device-config` (with its stored-write count), `backend/event` (exists + name), `backend/departed`, `backend/publishes`, `backend/pushes` |
 | Backend levers | `backend/sweep`, `backend/min-app-version`, `backend/hold-leave` (+ release), `backend/fail-route` (device-files listing), `backend/deposit` (bytes, no ack), `backend/legacy-event` (no `startsAt`), `backend/refuse-credential` (next one) |
 | World and OS levers | `clock/advance`, `selection/change`, `relaunch`, `app-version`, `gallery/fail-next-enumeration`, `import/suspend-next` (`afterCommit`), `import/resume`, `import/await-parked`, `logs/append` (app + extension) |
 | Parameters on existing verbs | `gallery/seed` takes `id`, `date` and `kind` = `screenshot`/`hd-video`/`live-photo` (the app host refuses `id` and those kinds with a reason); `foreign-device` takes `filename`; `downloads/stage` returns while an import is parked |
@@ -223,12 +223,14 @@ reads the record out; it delivers nothing on its own, because the operator plays
 | UnreadStatus `:99` | a partial refresh no entry point performs | **uncovered** as composed; pieces in `InMemoryDownloadStatusSourceTest`, `LedgerBackedSyncStatusSourceTest` |
 | Rename `:134` | a stale-id rename is no gesture | `RenameEventTest` `a result for a no-longer-current event persists nothing` |
 | PushRegistration `:35` | no world at all; it is a publisher test | `PushTokenPublisherContract` `A_TOKEN_IS_PUBLISHED`, `A_ROTATED_TOKEN_IS_PUBLISHED_OVER_THE_LAST` |
+| PushRegistration `:146` (a late rejection of a replaced token) | needs a request carrying a credential the device already replaced — a race inside the process no entry point stages | `DeviceAttestationTest` `a late rejection of a replaced token leaves the replacement alone and asks for nothing` |
 
 **Reshaped, not dropped:**
 - **ShareSet `:69`** becomes "re-scanning your own event creates no job".
 - **PushRegistration `:112`**: the backend refuses the first registration's credential, so no device config
-  lands. After a new credential, the config appears, with no second delivery.
-- **PushRegistration `:146`**: no second attest mint.
+  lands. After a new credential, the config appears, with no second delivery, and the backend's count of
+  stored registrations is exactly one. The join's re-registration (`:65`) is likewise proven by that count
+  going from 1 to 2.
 - **StagedByteReclaim ×4** assert the staging directory's files. Their backlog is the state an upgraded install
   holds, written by the one flagged lever (see Open Questions).
 
