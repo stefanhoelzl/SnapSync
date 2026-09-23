@@ -20,7 +20,9 @@ package app.snapsync.tools.diagrams
  *  - a `when` over a feature-returned sealed result, each branch a single call / launch / `Unit`;
  *  - a single **leading** guard clause (`val x = codec(...)` + `if (x == null) { log; return }`,
  *    or a sole `<call>?.let { … }` guarded region);
- *  - a best-effort wrap (`runCatching { call }.onFailure { log-only }`) — the absorb is
+ *  - an ISOLATED awaited fan-out `fanOut("Flow") { child("name") { … } … }` — rendered as the awaited form:
+ *    its branches run concurrently, the flow awaits them all, and a failing branch cancels none of the others;
+ *  - a best-effort wrap (`runCatchingCancellable { call }.onFailure { log-only }`) — the absorb is
  *    diagnostics, transparent to transcription;
  *  - a fan-out loop over an injected receiver list (`for (r in receivers) { best-effort r(…) }`);
  *  - `log.*` statements — diagnostics, omitted.
@@ -31,7 +33,11 @@ private const val FLOW_DIR = "domain/flow/src/commonMain/kotlin/app/snapsync/flo
 
 /** rel-path (under `architecture/flows/`) → rendered markdown, one file per flow. */
 fun flowsMarkdown(sources: List<KtSource>): Map<String, String> {
-    val flows = sources.filter { it.relPath.startsWith("$FLOW_DIR/") && it.relPath.endsWith(".kt") }
+    // A FLOW is a trigger with a `suspend fun run(` entry point. The zone also holds its own support (the isolating
+    // `fanOut` helper), which orders nothing and is not transcribed — every other file in the zone must be a flow.
+    val flows = sources.filter {
+        it.relPath.startsWith("$FLOW_DIR/") && it.relPath.endsWith(".kt") && it.stripped.contains("suspend fun run(")
+    }
     check(flows.isNotEmpty()) {
         "flow transcriber scanned nothing under $FLOW_DIR — the flow/ zone moved; a gate that " +
             "scans nothing must fail, not pass (capability architecture-guards)"
@@ -175,7 +181,11 @@ private fun statements(src: KtSource, body: Body): List<Stmt> {
 private val CALL = Regex("""^(?:return@\w+\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\((.*)\)$""", RegexOption.DOT_MATCHES_ALL)
 private val LAUNCH = Regex("""^launch \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val AWAITED = Regex("""^coroutineScope \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
-private val BEST_EFFORT = Regex("""^runCatching \{ (.*?) \}\s*\.onFailure \{ log\..*\}$""", RegexOption.DOT_MATCHES_ALL)
+
+/** `fanOut("Flow") { child("name") { … } … }` — the ISOLATED awaited fan-out; a child is a concurrent branch. */
+private val ISOLATED = Regex("""^fanOut\("\w+"\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
+private val CHILD = Regex("""^child\("\w+"\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
+private val BEST_EFFORT = Regex("""^runCatching(?:Cancellable)? \{ (.*?) \}\s*\.onFailure \{ log\..*\}$""", RegexOption.DOT_MATCHES_ALL)
 private val GUARDED = Regex("""^([A-Za-z_][\w.]*\([^)]*\))\?\.let \{ (?:([A-Za-z_]\w*) -> )?(.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val FAN_OUT = Regex("""^for \(([A-Za-z_]\w*) in ([A-Za-z_]\w*)\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val WHEN_SUBJECT = Regex("""^when \((?:val ([A-Za-z_]\w*) = )?(.*)\) \{(.*)\}$""", RegexOption.DOT_MATCHES_ALL)
@@ -221,7 +231,7 @@ private fun transcribe(src: KtSource, body: Body, guardSlot: Boolean): List<Step
                 steps += Guarded("only when ${m.groupValues[1]} resolves", transcribeFragment(src, stmt, m.groupValues[3]))
             }
 
-            AWAITED.matches(text) -> {
+            AWAITED.matches(text) || ISOLATED.matches(text) -> {
                 // A `coroutineScope { … }` region is a BODY, not a fragment: it holds several
                 // statements (one per concurrent branch), so it is re-split and transcribed like any
                 // other body rather than parsed as a single expression.
@@ -230,8 +240,8 @@ private fun transcribe(src: KtSource, body: Body, guardSlot: Boolean): List<Step
                 steps += Awaited(transcribe(src, Body(open + 1, close), guardSlot = false))
             }
 
-            LAUNCH.matches(text) -> {
-                val inner = LAUNCH.find(text)!!.groupValues[1].trim()
+            LAUNCH.matches(text) || CHILD.matches(text) -> {
+                val inner = (LAUNCH.find(text) ?: CHILD.find(text))!!.groupValues[1].trim()
                 steps += Launch(transcribeFragment(src, stmt, inner, guardSlot = true))
             }
 

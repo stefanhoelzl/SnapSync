@@ -3,8 +3,6 @@ package app.snapsync.flow
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.pushEventId
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * The **silent-push** OS-callback trigger flow (capability `push-registration`). A `content-available`

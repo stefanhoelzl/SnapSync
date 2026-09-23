@@ -3,8 +3,6 @@ package app.snapsync.flow
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.download.DownloadController
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * The **download import-tail backstop** OS-callback trigger flow (capability `photo-download`, 5.4):

@@ -5,8 +5,6 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.StatusCountsPoller
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * The **foreground** OS-callback trigger flow (spec `module-architecture`, "Rules in features, order
@@ -100,7 +98,7 @@ class Foreground(
         // queued (law "A trigger flow never outlives its own run"). Each still labels its own log
         // lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
         // former `scope.launch` bodies did.
-        coroutineScope {
+        fanOut("Foreground") {
             // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle. No-op on
             // ≥26.1.
             //
@@ -111,19 +109,20 @@ class Foreground(
             // 0.3(605), iOS 18.7.9). A visit shorter than that unwinding reached NONE of the work below,
             // so no count was ever read, and the status projection had only its seeds to answer from.
             //
-            // Moving it here changes nothing about when `run()` returns — `coroutineScope` still awaits
-            // it — so the shell's completion report to the OS stays truthful. It changes only what the
+            // Moving it here changes nothing about when `run()` returns — `fanOut` still awaits it — so
+            // the shell's completion report to the OS stays truthful. And a pump that THROWS cancels none of
+            // the children below, which a bare `coroutineScope` did. It changes only what the
             // pump is allowed to hold up: itself (capability `sync-status`).
-            launch { uploads.pump() }
+            child("pump") { uploads.pump() }
             // Beside the pump, NOT behind it (capability `upload-state-reconciliation`, "Foreground settles
             // in-flight rows the backend already stores"): bytes can land long before the OS acknowledges their
             // job, and the pump can await one cycle for many minutes — while this exists to correct the status
             // the member is looking at now. Its one write is the guarded terminal write the platform's callbacks
             // already make beside a running cycle, so it needs no ordering with it.
-            launch { uploads.settleStored() }
-            launch { refreshStatus() }
+            child("settleStored") { uploads.settleStored() }
+            child("refreshStatus") { refreshStatus() }
             // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
-            launch { activeEventId()?.let { downloadController.reconcile(it) } }
+            child("reconcile") { activeEventId()?.let { downloadController.reconcile(it) } }
             // The staged-byte backlog reclaim (capability `download-store`): free the files of assets
             // whose import is confirmed but whose resource rows predate per-asset release, so a received
             // photo is not stored twice — as a library asset and as a staged file — forever.
@@ -148,10 +147,12 @@ class Foreground(
             // row's bytes and drops its resource rows INLINE under the controller's mutex before
             // returning. So this pass can neither observe a row mid-import nor drop resource rows whose
             // paths it did not read.
-            launch { downloadController.releaseSettledBytes() }
+            child("releaseSettledBytes") { downloadController.releaseSettledBytes() }
             // Keep the membership current: fetch, then let the membership rule decide what the result MEANS
             // (name refresh, window/retention backfill, or — on a CONFIRMED absence — the teardown).
-            launch { activeEventId()?.let { id -> membershipRefresh.refresh(id, fetchEventDetails(id)) } }
+            child("membershipRefresh") {
+                activeEventId()?.let { id -> membershipRefresh.refresh(id, fetchEventDetails(id)) }
+            }
         }
     }
 }
