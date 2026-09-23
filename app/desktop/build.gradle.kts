@@ -36,6 +36,8 @@ dependencies {
     // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
     // `:adapter:generic:fake`) whose `World.core` IS the shared `snapSyncApp` composition.
     implementation(project(":test:world"))
+    // The mirror: the control channel's typed client, whose wire `UiState` it re-composes.
+    implementation(project(":test:control"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
     implementation(libs.kermit)
     implementation(compose.runtime)
@@ -64,6 +66,9 @@ compose.desktop {
         // Skiko loads native libs via a restricted method; future JDKs block it by default.
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
         jvmArgs += "-Dsun.java2d.uiScale=$uiScale"
+        // The mirror (capability `full-stack-harness`, "The harness can mirror a remote host"):
+        // `./gradlew :app:desktop:run -Psnapsync.attach=http://127.0.0.1:<port>` attaches to a control-channel host.
+        (project.findProperty("snapsync.attach") as String?)?.let { jvmArgs += "-Dsnapsync.attach=$it" }
     }
 }
 

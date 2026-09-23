@@ -51,16 +51,16 @@
 
 ## 7. Journeys in `ios-contracts` (D11)
 
-- [ ] 7.1 Add the `:test:integration:journeys` task (outside `build`): the three journeys over `RigClient` and the adapter-layer Ktor clients against deno. It fails naming any missing `snapsync.journey.appA`/`appB`/`backend` property.
-- [ ] 7.2 Extend `scripts/sim-contracts` (or add `scripts/sim-journeys`): create, boot and grant a second simulator in parallel with the first, and launch both apps on their own rig ports.
-- [ ] 7.3 Have the same script read each app's `GET /device` and fail on `unclassified` or `outsideVocabulary`.
-- [ ] 7.4 In `ios.yml`'s `ios-contracts` job: add `denoland/setup-deno`, background `deno task dev:local` on 8080 with its output captured, warm it up with one request, run the journeys after the contracts, and upload the backend log and both app logs as evidence.
+- [x] 7.1 Add the `:test:integration:journeys` task (outside `build`): the three journeys over `RigClient` and the adapter-layer Ktor clients against deno. It fails naming any missing `snapsync.journey.appA`/`appB`/`backend` property.
+- [x] 7.2 Extend `scripts/sim-contracts` (or add `scripts/sim-journeys`): create, boot and grant a second simulator in parallel with the first, and launch both apps on their own rig ports.
+- [x] 7.3 Have the same script read each app's `GET /device` and fail on `unclassified` or `outsideVocabulary`.
+- [x] 7.4 In `ios.yml`'s `ios-contracts` job: add `denoland/setup-deno`, background `deno task dev:local` on 8080 with its output captured, warm it up with one request, run the journeys after the contracts, and upload the backend log and both app logs as evidence.
 - [ ] 7.5 Measure the job's wall clock on the PR's runs and record the result in design D11. If it exceeds +6 min, move the second simulator's boot ahead of the xcodebuild.
 
 ## 8. The mirror (D12)
 
-- [ ] 8.1 Add attach mode to `:app:desktop:run` (`-Psnapsync.attach=<url>`): the left pane renders `StatusScreen` from polled `RigState.ui`, taps post the matching `/user` intent, and taps with no intent are inert and logged.
-- [ ] 8.2 Add the right-pane mirror inspector (advertisement + latest state, raw M3). Verify it headlessly through `ui-harness` against a JVM host started with `:test:rig:runJvmHost`.
+- [x] 8.1 Add attach mode to `:app:desktop:run` (`-Psnapsync.attach=<url>`): the left pane renders `StatusScreen` from polled `RigState.ui`, taps post the matching `/user` intent, and taps with no intent are inert and logged.
+- [x] 8.2 Add the right-pane mirror inspector (advertisement + latest state, raw M3). Verify it headlessly through `ui-harness` against a JVM host started with `:test:rig:runJvmHost` (driver gains `driveMirror`; verified: create and join tapped in the mirror reached the JVM host).
 
 ## 9. Docs and specs of record
 
