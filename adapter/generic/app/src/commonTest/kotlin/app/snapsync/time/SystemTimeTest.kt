@@ -17,16 +17,16 @@ import kotlin.time.Duration.Companion.minutes
 class SystemTimeTest {
 
     @Test
-    fun `the production clock answers the system clock and moves forward`() {
+    fun `the production clock answers the system clock`() {
         val before = kotlin.time.Clock.System.now()
-        val first = SystemClock.now()
-        val second = SystemClock.now()
+        val now = SystemClock.now()
         val after = kotlin.time.Clock.System.now()
 
         // Bracketed by the system clock rather than compared for equality: the point is that this
-        // reads the real clock, not a constant or an offset epoch.
-        assertTrue(first >= before && first <= after, "$first outside [$before, $after]")
-        assertTrue(second >= first, "$second went backwards from $first")
+        // reads the real clock, not a constant or an offset epoch. Nothing here asserts it moves
+        // forward — a wall clock is not monotonic (NTP or the user can step it back), so no caller
+        // of the `Clock` port may rely on that, and a test must not claim it.
+        assertTrue(now >= before && now <= after, "$now outside [$before, $after]")
         assertTrue(after - before < 1.minutes, "the bracket itself took ${after - before}")
     }
 
