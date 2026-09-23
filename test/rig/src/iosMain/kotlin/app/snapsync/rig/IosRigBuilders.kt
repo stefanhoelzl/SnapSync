@@ -12,6 +12,7 @@ import app.snapsync.ports.UploadExtensionRegistry
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReader
 import app.snapsync.rig.gallery.photoKitCensus
@@ -177,3 +178,17 @@ private fun jsonMap(m: Map<String, Long>): String =
     m.entries.joinToString(prefix = "{", postfix = "}") { """"${it.key}":${it.value}""" }
 
 private fun quoted(value: String?): String = value?.let { "\"${it.replace("\"", "'")}\"" } ?: "null"
+
+/**
+ * The precondition a contract run that rewrites the extension registration needs: **no membership**
+ * (capability `port-contracts`). Re-registering wipes every in-flight upload job, and an automatic leave would
+ * destroy a real membership on a shared phone, so the run is refused while the screen shows one, naming the
+ * reset the operator runs deliberately. `null` means proceed.
+ */
+fun noMembershipRefusal(host: () -> StatusContainerHost): () -> String? = {
+    (host().container.stateFlow.value as? Layer.Joined)?.let { joined ->
+        "this device is a member of event ${joined.membership.eventId}, and the run re-registers the extension, " +
+            "which wipes its in-flight upload jobs. Reset deliberately first (POST /device/reset), then re-run."
+    }
+}
+

@@ -7,21 +7,10 @@ import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.TransferRecord
 import app.snapsync.logging.invocation
-import app.snapsync.objc.ObjCFailure
-import app.snapsync.objc.checkedObjC
-import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSURL
-import platform.Foundation.NSURLRequest
-import platform.Photos.PHAssetResource
-import platform.Photos.PHAssetResourceUploadJob
-import platform.Photos.PHAssetResourceUploadJobAction
-import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
-import platform.Photos.PHAssetResourceUploadJobActionRetry
-import platform.Photos.PHAssetResourceUploadJobChangeRequest
-import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit (iOS ≥26.1) implementation of [BackgroundTransfer] — the OS-owned upload-job queue:
@@ -37,10 +26,12 @@ import platform.Photos.PHPhotoLibrary
  *
  * **What is tested and what is not.** Every mapping and per-job decision now lives in
  * `PhotoKitJobMapping.kt` beside this file and is exercised by `PhotoKitJobMappingTest` — including
- * the two nil cases that shipped as bugs. What remains here is OS **effect**: `performChangesAndWait`,
- * the acknowledge/retry change requests, job creation, and the fetch loop's iteration. Those are
- * verified on a real device; a `PHAssetResourceUploadJob` has no public initializer and only ever
- * arrives from a fetch, so no host can drive this loop with synthetic jobs.
+ * the two nil cases that shipped as bugs. The OS **effects** — the fetch, and the acknowledge, retry and
+ * creation change requests — go through the [UploadJobApi] seam, which presents each job as plain facts. A
+ * `PHAssetResourceUploadJob` has no public initializer and only ever arrives from a fetch, so no host can drive
+ * this class with synthetic jobs; instead the upload extension's contract run records every seam call and iOS's
+ * answer on a device, and every CI build replays that recording against this class (capability
+ * `port-contracts`). What a replay cannot cover is [SystemUploadJobApi]'s conversion of a real job into facts.
  *
  * A returned job is resolved to its ledger row by the **destination path** the ledger recorded when the
  * job was created (capability `sync-ledger`) — the destination being the only field reliably present for
@@ -56,20 +47,24 @@ import platform.Photos.PHPhotoLibrary
  * for the full account.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-class IosPhotoKitUploadPlatform(
+class IosPhotoKitUploadPlatform internal constructor(
     private val log: Logger,
     // This adapter RECORDS terminal outcomes, rather than handing them to the cycle to record. The OS
     // job queue here IS durable — a succeeded job stays in the `.acknowledge` set until acknowledged —
     // so this tier never had the app-driven tier's loss; recording in place keeps one state machine across
     // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the destination read.
     private val ledger: TransferRecord,
+    // Every operating-system effect goes through this seam, so the upload extension's contract run can record
+    // it and CI can replay it (capability `port-contracts`). Production never passes one.
+    private val api: UploadJobApi,
 ) : BackgroundTransfer {
 
-    private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
+    /** The production adapter, over the real PhotoKit calls. */
+    constructor(log: Logger, ledger: TransferRecord) : this(log, ledger, SystemUploadJobApi(log))
 
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
-            fetch(PHAssetResourceUploadJobActionRetry)
+            fetch(JobSet.RETRY)
         }
 
     /**
@@ -86,22 +81,11 @@ class IosPhotoKitUploadPlatform(
      */
     override suspend fun drainTerminals(): List<PlatformUploadJob> =
         log.invocation("platform.drainTerminals", result = { "${it.size} job(s)" }) {
-            val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(
-                PHAssetResourceUploadJobActionAcknowledge,
-                options = null,
-            )
             val out = ArrayList<PlatformUploadJob>()
             var unrecoverable = 0
             var pruned = 0
-            var index = 0uL
-            while (index < jobs.count) {
-                val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
-                index++
-                // Both captured as nullable locals FIRST — cinterop declares them non-null and they are
-                // nil at runtime, and a null check against a non-null-typed value may be elided.
-                val destination: NSURLRequest? = job.destination
-                val resource: PHAssetResource? = job.resource
-                when (val classified = classifyPhotoKitJob(destination, job.state, job.error)) {
+            for (job in api.fetch(JobSet.ACKNOWLEDGE)) {
+                when (val classified = classifyFetchedJob(job.destinationPath, job.state, job.error)) {
                     FetchedJob.AcknowledgeToDrain -> {
                         unrecoverable++
                     }
@@ -115,7 +99,7 @@ class IosPhotoKitUploadPlatform(
                         }
                         // The adjudication is `terminalDisposition` (beside the other per-job decisions in
                         // PhotoKitJobMapping.kt, where it is tested); this body supplies only the effect.
-                        val disposition = terminalDisposition(classified.state, resourceIsLive = resource != null)
+                        val disposition = terminalDisposition(classified.state, resourceIsLive = job.resource != null)
                         if (!ledger.markTerminal(key, disposition.outcome)) {
                             // Not silent: the row was not REQUESTED — already settled, or pruned.
                             log.i { "terminal $key -> ${disposition.outcome} applied to no row" }
@@ -124,9 +108,9 @@ class IosPhotoKitUploadPlatform(
                         if (disposition.reCreate) {
                             out += PlatformUploadJob(
                                 key = key,
-                                contentType = photoKitContentType(destination, resource),
+                                contentType = photoKitContentType(job.contentTypeHeader, job.resourceType),
                                 error = classified.error,
-                                data = resource,
+                                data = job.resource,
                             )
                         }
                     }
@@ -138,20 +122,13 @@ class IosPhotoKitUploadPlatform(
             out
         }
 
-    private suspend fun fetch(action: PHAssetResourceUploadJobAction): List<PlatformUploadJob> {
-        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
-        val out = ArrayList<PlatformUploadJob>(jobs.count.toInt())
+    private suspend fun fetch(set: JobSet): List<PlatformUploadJob> {
+        val jobs = api.fetch(set)
+        val out = ArrayList<PlatformUploadJob>(jobs.size)
         var unrecoverable = 0
         var pruned = 0
-        var index = 0uL
-        while (index < jobs.count) {
-            val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
-            index++
-            // Capture both ObjC-nonnull-but-nilable values as nullable locals FIRST, so the runtime
-            // null checks below are real rather than elided (see the class KDoc).
-            val destination: NSURLRequest? = job.destination
-            val resource: PHAssetResource? = job.resource
-            when (val classified = classifyPhotoKitJob(destination, job.state, job.error)) {
+        for (job in jobs) {
+            when (val classified = classifyFetchedJob(job.destinationPath, job.state, job.error)) {
                 FetchedJob.AcknowledgeToDrain -> {
                     // Unmappable — but EVERY presented job must be acknowledged or the system reports
                     // `appex failed to acknowledge jobs for processing state` (error 50008).
@@ -161,9 +138,9 @@ class IosPhotoKitUploadPlatform(
                 is FetchedJob.Emit -> when (val row = rowFor(classified)) {
                     is JobRow.Found -> out += PlatformUploadJob(
                         key = row.key,
-                        contentType = photoKitContentType(destination, resource),
+                        contentType = photoKitContentType(job.contentTypeHeader, job.resourceType),
                         error = classified.error,
-                        data = resource,
+                        data = job.resource,
                     )
                     // Never handed to the cycle, which would decline to retry it and leave it un-acknowledged:
                     // a job for a photo that left is answered HERE (capability `upload-lifecycle`).
@@ -222,17 +199,9 @@ class IosPhotoKitUploadPlatform(
         log.i { "$site: $count upload job(s) belong to rows the walk removed — acknowledged, nothing written" }
     }
 
-    private fun acknowledgeJob(job: PHAssetResourceUploadJob) {
-        checkedObjC("acknowledgeJob") { error ->
-            library.performChangesAndWait(
-                changeBlock = {
-                    objcBoundary(log, "acknowledgeJob.changeBlock") {
-                        PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(job)?.acknowledge()
-                    }
-                },
-                error = error,
-            )
-        }.onFailure { log.w(it) { "acknowledge refused — the OS offers the job again next fetch" } }
+    private fun acknowledgeJob(job: UploadJobFacts) {
+        val answer = api.acknowledge(job)
+        if (!answer.ok) log.w { "acknowledge refused (code=${answer.code} ${answer.description}) — the OS offers the job again next fetch" }
     }
 
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
@@ -245,18 +214,8 @@ class IosPhotoKitUploadPlatform(
                 return@invocation
             }
             val url = NSURL.URLWithString(request.url) ?: return@invocation
-            val urlRequest = uploadUrlRequest(url, request)
-            checkedObjC("retryJob") { error ->
-                library.performChangesAndWait(
-                    changeBlock = {
-                        objcBoundary(log, "retryJob.changeBlock") {
-                            PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)
-                                ?.retryWithDestination(urlRequest)
-                        }
-                    },
-                    error = error,
-                )
-            }.onFailure { log.w(it) { "retryJob: the retry was refused for ${job.key}" } }
+            val answer = api.retry(systemJob, uploadUrlRequest(url, request))
+            if (!answer.ok) log.w { "retryJob: the retry was refused for ${job.key} (code=${answer.code} ${answer.description})" }
         }
 
     /**
@@ -269,56 +228,33 @@ class IosPhotoKitUploadPlatform(
      * and the job came back only once its retry was gone. The selection is [retryJobMatching], beside the
      * other per-job decisions in `PhotoKitJobMapping.kt`, where it is tested.
      */
-    private suspend fun retryJobFor(key: String): PHAssetResourceUploadJob? {
-        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(PHAssetResourceUploadJobActionRetry, options = null)
-        val candidates = ArrayList<Pair<PHAssetResourceUploadJob, FetchedJob>>(jobs.count.toInt())
-        var index = 0uL
-        while (index < jobs.count) {
-            val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
-            index++
-            // Captured as a nullable local FIRST — cinterop declares it non-null and it is nil at runtime
-            // (see the class KDoc).
-            val destination: NSURLRequest? = job.destination
-            candidates += job to classifyPhotoKitJob(destination, job.state, job.error)
-        }
+    private suspend fun retryJobFor(key: String): UploadJobFacts? {
+        val candidates = api.fetch(JobSet.RETRY).map { it to classifyFetchedJob(it.destinationPath, it.state, it.error) }
         return retryJobMatching(candidates, key, ::resolveKey)
     }
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
         log.invocation("platform.createJob", params = "key=${request.resource.filename}", result = { "$it" }) {
-        val phResource = resource.data as? PHAssetResource ?: run {
-            log.w { "createJob: resource payload is not a PHAssetResource — not creating" }
+        val data = resource.data ?: run {
+            log.w { "createJob: the resource carries no payload — not creating" }
             return@invocation CreateResult.FAILED
         }
         val url = NSURL.URLWithString(request.url) ?: run {
             log.w { "createJob: malformed destination URL — not creating" }
             return@invocation CreateResult.FAILED
         }
-        val urlRequest = uploadUrlRequest(url, request)
-        run {
-            val error = checkedObjC("createJob") { errorPtr ->
-                library.performChangesAndWait(
-                    changeBlock = {
-                        objcBoundary(log, "createJob.changeBlock") {
-                            PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(urlRequest, phResource)
-                        }
-                    },
-                    error = errorPtr,
-                )
-            }.exceptionOrNull() as ObjCFailure?
-            // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
-            createResultFor(error?.let { it.code ?: UNCODED_REFUSAL }).also { result ->
-                when (result) {
-                    CreateResult.CREATED -> Unit
-                    CreateResult.LIMIT_EXCEEDED ->
-                        log.w { "job limit exceeded — deferring remaining work this cycle" }
-                    // A non-limit error means the job was NOT created; surface it so the cycle
-                    // re-creates it next discovery, rather than recording a phantom REQUESTED row for
-                    // a job that never materialised.
-                    CreateResult.FAILED -> log.w {
-                        "createJob failed for ${request.resource.filename}: " +
-                            "code=${error?.code} ${error?.description}"
-                    }
+        val answer = api.create(uploadUrlRequest(url, request), data)
+        // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
+        createResultFor(if (answer.ok) null else answer.code ?: UNCODED_REFUSAL).also { result ->
+            when (result) {
+                CreateResult.CREATED -> Unit
+                CreateResult.LIMIT_EXCEEDED ->
+                    log.w { "job limit exceeded — deferring remaining work this cycle" }
+                // A non-limit error means the job was NOT created; surface it so the cycle
+                // re-creates it next discovery, rather than recording a phantom REQUESTED row for
+                // a job that never materialised.
+                CreateResult.FAILED -> log.w {
+                    "createJob failed for ${request.resource.filename}: code=${answer.code} ${answer.description}"
                 }
             }
         }

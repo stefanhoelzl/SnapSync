@@ -31,7 +31,10 @@ import platform.Photos.PHPhotoLibrary
  * constructed only where the OS-driven mechanism is constructed at all — the same structural containment
  * that has always applied to the OS-driven mechanism, unchanged by the move.
  */
-internal class PhotoKitExtensionRegistry(private val log: Logger) : UploadExtensionRegistry {
+internal class PhotoKitExtensionRegistry(
+    private val log: Logger,
+    private val api: ExtensionRegistrationApi = SystemExtensionRegistrationApi,
+) : UploadExtensionRegistry {
 
     /**
      * Change the registration, and **report a failure instead of discarding it**.
@@ -51,15 +54,12 @@ internal class PhotoKitExtensionRegistry(private val log: Logger) : UploadExtens
      * grant-dependent.
      */
     override suspend fun setEnabled(enabled: Boolean): RegistrationOutcome {
-        val write = checkedObjC("setUploadJobExtensionEnabled") {
-            PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = it)
-        }
-        val error = write.exceptionOrNull() as ObjCFailure?
+        val answer = api.setEnabled(enabled)
         val outcome = registrationOutcome(
             enabling = enabled,
-            ok = write.isSuccess,
-            errorDomain = error?.domain,
-            errorCode = error?.code,
+            ok = answer.ok,
+            errorDomain = answer.errorDomain,
+            errorCode = answer.errorCode,
         )
         // No branch: the outcome carries Kermit's own severity, so this renders without deciding. An
         // `Error` here is what `crash-reporting` carries onward as field telemetry.
@@ -71,5 +71,32 @@ internal class PhotoKitExtensionRegistry(private val log: Logger) : UploadExtens
      * The OS's own view. Never `null` here: this class exists only where the selector does, so "the
      * question does not apply" is answered by not constructing it at all rather than by a runtime check.
      */
-    override fun isEnabled(): Boolean? = PHPhotoLibrary.sharedPhotoLibrary().isUploadJobExtensionEnabled()
+    override fun isEnabled(): Boolean? = api.isEnabled()
+}
+
+/** The three facts a registration write returns: whether it took, and if not, which error. */
+internal class RegistrationAnswer(val ok: Boolean, val errorDomain: String?, val errorCode: Long?)
+
+/**
+ * The two `PHPhotoLibrary` calls [PhotoKitExtensionRegistry] makes, as a seam in this module (capability
+ * `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
+ * build"): the device run records every call and iOS's answer through it, and every CI build replays that
+ * recording against the current adapter. Production binds [SystemExtensionRegistrationApi]; nothing else does.
+ */
+internal interface ExtensionRegistrationApi {
+    fun setEnabled(enabled: Boolean): RegistrationAnswer
+    fun isEnabled(): Boolean
+}
+
+/** The real calls. */
+internal object SystemExtensionRegistrationApi : ExtensionRegistrationApi {
+    override fun setEnabled(enabled: Boolean): RegistrationAnswer {
+        val write = checkedObjC("setUploadJobExtensionEnabled") {
+            PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = it)
+        }
+        val error = write.exceptionOrNull() as ObjCFailure?
+        return RegistrationAnswer(write.isSuccess, error?.domain, error?.code)
+    }
+
+    override fun isEnabled(): Boolean = PHPhotoLibrary.sharedPhotoLibrary().isUploadJobExtensionEnabled()
 }

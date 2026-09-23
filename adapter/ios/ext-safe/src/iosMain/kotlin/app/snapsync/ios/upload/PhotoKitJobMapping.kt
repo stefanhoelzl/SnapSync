@@ -100,13 +100,15 @@ fun classifyPhotoKitJob(
     destination: NSURLRequest?,
     state: PHAssetResourceUploadJobState,
     error: NSError?,
-): FetchedJob {
-    val path = destination?.URL?.path ?: return FetchedJob.AcknowledgeToDrain
-    return FetchedJob.Emit(
-        destinationPath = path,
-        state = photoKitJobState(state),
-        error = error?.let { photoKitUploadError(it) },
-    )
+): FetchedJob = classifyFetchedJob(destination?.URL?.path, photoKitJobState(state), error?.let { photoKitUploadError(it) })
+
+/**
+ * [classifyPhotoKitJob] over the facts a job yields — the form the adapter's seam presents (`UploadJobFacts`), so
+ * the same decision runs against a device's job and a recording's.
+ */
+fun classifyFetchedJob(destinationPath: String?, state: PhotoKitJobState, error: UploadError?): FetchedJob {
+    val path = destinationPath ?: return FetchedJob.AcknowledgeToDrain
+    return FetchedJob.Emit(destinationPath = path, state = state, error = error)
 }
 
 /**
@@ -237,9 +239,11 @@ fun photoKitJobState(state: PHAssetResourceUploadJobState): PhotoKitJobState = w
  */
 @OptIn(ExperimentalForeignApi::class)
 fun photoKitContentType(destination: NSURLRequest?, resource: PHAssetResource?): String =
-    destination.contentTypeHeader()
-        ?: resource?.uniformTypeIdentifier
-        ?: "application/octet-stream"
+    photoKitContentType(destination.contentTypeHeader(), resource?.uniformTypeIdentifier)
+
+/** [photoKitContentType] over the facts a job yields: the header first, the resource's type second, then generic. */
+fun photoKitContentType(contentTypeHeader: String?, resourceType: String?): String =
+    contentTypeHeader ?: resourceType ?: "application/octet-stream"
 
 /**
  * The `Content-Type` a stored destination carries, or null when it carries none.
@@ -249,7 +253,7 @@ fun photoKitContentType(destination: NSURLRequest?, resource: PHAssetResource?):
  * not an answer, and the caller has real fallbacks.
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun NSURLRequest?.contentTypeHeader(): String? {
+internal fun NSURLRequest?.contentTypeHeader(): String? {
     val headers = this?.allHTTPHeaderFields ?: return null
     val value = headers.entries
         .firstOrNull { (it.key as? String)?.equals("Content-Type", ignoreCase = true) == true }
