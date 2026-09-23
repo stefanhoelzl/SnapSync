@@ -1,6 +1,6 @@
 ## 1. Prerequisite
 
-- [ ] 1.1 Wait for phase 8b (`transfer-contracts`) to merge `BackgroundTransferContract`; rebase this branch on
+- [x] 1.1 Wait for phase 8b (`transfer-contracts`) to merge `BackgroundTransferContract`; rebase this branch on
       it and read its clause list, state vocabulary and `TransferUnderTest` before adding to it
 
 ## 2. Mechanism: grant-keyed recordings and the new host
