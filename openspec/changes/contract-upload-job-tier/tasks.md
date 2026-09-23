@@ -61,17 +61,19 @@
 
 ## 6. Record on the device and land the findings
 
-- [ ] 6.1 Rig build baked to the loopback base (`local` deployment at `127.0.0.1:18099`); install on the SE2
+- [x] 6.1 Rig build baked to the loopback base (`local` deployment at `127.0.0.1:18099`); install on the SE2
       under the device lock; unjoined, full grant
-- [ ] 6.2 Record `BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec`; commit it unedited
-- [ ] 6.3 Finding — destination guard: commit the failing clause outcome, then require an http(s) URL with a
-      host in `IosPhotoKitUploadPlatform` (create and retry)
-- [ ] 6.4 Finding — `resource` nil: read the retry-spent clause's recorded outcome; if nil is confirmed inside
-      the extension, commit the failing outcome, then re-resolve the resource from the ledger key for
-      re-creation; otherwise record that the app-process reading does not hold in the extension
-- [ ] 6.5 Record `UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec`, switch the grant to limited in Settings,
-      record `…LIMITED.rec`, switch back
-- [ ] 6.6 End the session with a normal build installed and the lock released
+- [x] 6.2 First extension run (one call, in-body waits): killed at the budget — jobs the extension creates upload
+      only after `process()` returns. Redesigned to presented states prepared across calls (design D4)
+- [ ] 6.3 Record `BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec` (staged, one run per presented-state clause;
+      the first staged recording, committed red, showed the retry-spent job carries no resource) — re-record after
+      the fix below and commit it green
+- [x] 6.4 Finding — `resource` nil on a retry-spent job, confirmed inside the extension: the adapter fetches the
+      photo's live resource by identifier through the seam (`liveResource`) and re-creates from it
+- [x] 6.5 Finding — the destination guard: the extension created a job for `""`; `createJob`/`retryJob` now refuse
+      a destination that is not an http(s) URL with a host (`isUploadDestination`, shared with the substitute)
+- [x] 6.6 Record `UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec` and `…LIMITED.rec` (all five clauses Passed)
+- [ ] 6.7 End the session with the lock released; revert `deployments/local.json`
 
 ## 7. `onTerminate`, docs and retirement
 
