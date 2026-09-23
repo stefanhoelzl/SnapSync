@@ -14,7 +14,8 @@ import kotlin.test.fail
  * gate derives, from source text and the committed recordings:
  *  - every contract (an `object` extending `Contract`, with the name it passes) and its `clause(...)` calls;
  *  - every binding (`: Binding<State, Port>`), its `kind`, `host` and literal `reaches = setOf(...)`;
- *  - every recording (`test/contracts/recordings/<Name>@<HOST>.rec`) and its `[CLAUSE_ID]` blocks;
+ *  - every recording (`test/contracts/recordings/<Name>@<HOST>[.<GRANT>].rec`) and its `[CLAUSE_ID]` blocks —
+ *    a binding that declares `override val grant = PermissionStatus.X` counts only through its grant's file;
  *
  * and fails any clause whose state no `Live` binding on a host CI runs declares reachable, and whose id no
  * `Replay` binding's recording holds. A host some `Replay` binding names is a RECORDED host — CI never runs it
@@ -44,6 +45,7 @@ class ContractCoverageTest {
         val host: String?,
         val reaches: Set<String>?,
         val reachesRaw: String?,
+        val grant: String?,
     )
 
     private val contracts: List<ContractDecl> = sources.flatMap { src ->
@@ -66,7 +68,10 @@ class ContractCoverageTest {
             val tokens = raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
             val parsed = tokens?.takeIf { t -> t.isNotEmpty() && t.all { STATE_REF.matches(it) && it.startsWith("$enum.") } }
                 ?.map { it.substringAfter('.') }?.toSet()
-            BindingDecl(src.path, m.groupValues[1].takeIf { it.isNotEmpty() }, m.groupValues[2], KIND.find(body)?.groupValues?.get(1), HOST.find(body)?.groupValues?.get(1), parsed, raw)
+            BindingDecl(
+                src.path, m.groupValues[1].takeIf { it.isNotEmpty() }, m.groupValues[2], KIND.find(body)?.groupValues?.get(1),
+                HOST.find(body)?.groupValues?.get(1), parsed, raw, GRANT.find(body)?.groupValues?.get(1),
+            )
         }
     }
 
@@ -92,7 +97,7 @@ class ContractCoverageTest {
                 val live = mine.any { runsLiveOnCi(it, recordedHosts) && it.reaches.orEmpty().contains(state) }
                 val replayed = mine.any { b ->
                     b.kind == "Replay" && b.reaches.orEmpty().contains(state) &&
-                        recordings["${contract.name}@${b.host?.removePrefix("Host.")}"].orEmpty().contains(id)
+                        recordings[recordingKey(contract.name, b)].orEmpty().contains(id)
                 }
                 !live && !replayed
             }.map { (id, state) -> "${contract.name} / $id (state $state) — ${contract.file}" }
@@ -147,7 +152,20 @@ class ContractCoverageTest {
     fun `every recording names a contract and a host that exist`() {
         val names = contracts.map { it.name }.toSet()
         val bad = recordings.keys.filter { key -> key.substringBefore('@') !in names || '@' !in key }
-        assertTrue(bad.isEmpty(), "recordings named for no contract (expected <Contract>@<HOST>.rec): $bad")
+        assertTrue(bad.isEmpty(), "recordings named for no contract (expected <Contract>@<HOST>[.<GRANT>].rec): $bad")
+    }
+
+    @Test
+    fun `every grant a recording is named for is declared by a binding of that contract and host`() {
+        val expected = contracts.flatMap { c ->
+            bindings.filter { it.stateEnum == c.stateEnum && it.kind == "Replay" }.map { recordingKey(c.name, it) }
+        }.toSet()
+        val undeclared = recordings.keys.filter { key -> '.' in key.substringAfter('@') && key !in expected }
+        assertTrue(
+            undeclared.isEmpty(),
+            "recordings carry a grant no Replay binding of that contract and host declares (`override val grant = " +
+                "PermissionStatus.X`), so nothing replays them: $undeclared",
+        )
     }
 
     // ---- non-vacuity: one twin per derived group -------------------------------------------------------
@@ -179,6 +197,10 @@ class ContractCoverageTest {
         )
     }
 
+    /** The recording a binding counts through: `<Contract>@<HOST>`, suffixed `.<GRANT>` where it declares one. */
+    private fun recordingKey(contract: String, b: BindingDecl): String =
+        "$contract@${b.host?.removePrefix("Host.")}" + (b.grant?.let { ".$it" } ?: "")
+
     private fun recordingsDir() = File(SourceScan.repoRoot, "test/contracts/recordings")
 
     private fun read(path: String) = File(SourceScan.repoRoot, path).readText()
@@ -195,6 +217,7 @@ class ContractCoverageTest {
         val REACHES = Regex("""override val reaches\s*=\s*setOf\(([^)]*)\)""")
         val KIND = Regex("""override val kind\s*=\s*BindingKind\.(\w+)""")
         val HOST = Regex("""override val host\s*=\s*(Host\.\w+|currentHost)""")
+        val GRANT = Regex("""override val grant\s*=\s*PermissionStatus\.(\w+)""")
         val STATE_REF = Regex("""\w+\.\w+""")
         val BLOCK = Regex("""\[(.+)]""")
         val HOST_ENUM = Regex("""enum class Host \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL)

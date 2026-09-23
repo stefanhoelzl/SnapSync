@@ -5,13 +5,13 @@
 
 ## 2. Mechanism: grant-keyed recordings and the new host
 
-- [ ] 2.1 `:test:contracts`: add `Host.IOS_DEVICE_PHOTOKIT_EXT` with its KDoc; let a binding declare the grant
-      it runs under, and name recordings `<Contract>@<HOST>[.<GRANT>].rec` (unsuffixed when no grant is declared);
+- [x] 2.1 `:test:contracts`: let a binding declare the grant it runs under (`Binding.grant`), and name recordings `<Contract>@<HOST>[.<GRANT>].rec` (unsuffixed when no grant is declared);
       provenance header carries the grant; `RecordingTest` covers both names
-- [ ] 2.2 `:test:architecture` `ContractCoverageTest`: read host and grant from the recording name; a
+- [x] 2.2 `:test:architecture` `ContractCoverageTest`: read host and grant from the recording name; a
       grant-declaring replay binding counts only through its grant's recording; fail on a suffix no binding of
-      that host declares; non-vacuity twins still hold
-- [ ] 2.3 Confirm `SecureStore@IOS_DEVICE_APP.rec` still resolves unchanged (no grant declared)
+      that host declares; non-vacuity twins still hold; the recordings are declared inputs of the guard
+      task (a recording-only change left it UP-TO-DATE before — found while testing this)
+- [x] 2.3 Confirm `SecureStore@IOS_DEVICE_APP.rec` still resolves unchanged (no grant declared)
 
 ## 3. The registry contract
 
@@ -32,7 +32,8 @@
       retry spent, row gone) and the PhotoKit-only clauses (every presented job acknowledged), ordered in two
       stages (creation; settlement)
 - [ ] 4.3 `Fake` binding for `SimulatorUploadJobQueue` declaring exactly what the substitute reaches
-- [ ] 4.4 The ext-safe rig source set: the `IOS_DEVICE_PHOTOKIT_EXT` `Live` binding whose `create(state)` enters
+- [ ] 4.4 `Host.IOS_DEVICE_PHOTOKIT_EXT` with its KDoc (it lands with the first binding naming it — the gate
+      fails an unnamed host); the ext-safe rig source set: the `IOS_DEVICE_PHOTOKIT_EXT` `Live` binding whose `create(state)` enters
       each job state at construction (job aimed at `/api/v2/contract/<CLAUSE_ID>/<status>`, then
       `awaitPresented`), and the recorder over `UploadJobApi` with handle tokens and timestamps masked
 - [ ] 4.5 `Replay` binding in ext-safe `iosTest` on `IOS_SIM_KEXE`, beside `IosKeychainReplayContractTest`

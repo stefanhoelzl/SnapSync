@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.PermissionStatus
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 
@@ -67,6 +68,17 @@ interface Binding<K : Enum<K>, T> {
     val reaches: Set<K>
 
     /**
+     * The photo grant this binding runs under, or `null` where the port does not depend on one (capability
+     * `port-contracts`, "An authorization the process cannot give itself is a precondition of the run").
+     *
+     * A grant is not host identity, but it does decide which recording a recorded host's run belongs to: one
+     * run holds one grant, so a host recorded under two grants keeps two files, named by [recordingName]. Where
+     * declared, it MUST be written as `override val grant = PermissionStatus.X` — the contract-coverage gate
+     * reads it from source to find the recording a replay binding counts through.
+     */
+    val grant: PermissionStatus? get() = null
+
+    /**
      * A FRESH [T] already in [state], or [Entered.Unreachable] naming why this host cannot produce it.
      * [clauseId] is the clause about to run: addresses and seeded values derive from it, and a recording
      * binding opens that clause's block with it.
@@ -91,3 +103,11 @@ sealed interface Entered<out T> {
 fun runEntry(block: suspend () -> Unit) {
     runTest { block() }
 }
+
+/**
+ * The committed recording's name, without `.rec`, for [contract] recorded on [host] under [grant]
+ * (capability `port-contracts`, "A recording is one committed plain-text file per contract and host"):
+ * `<Contract>@<HOST>` where no grant is declared, `<Contract>@<HOST>.<GRANT>` where one is.
+ */
+fun recordingName(contract: String, host: Host, grant: PermissionStatus?): String =
+    "$contract@${host.name}" + (grant?.let { ".${it.name}" } ?: "")

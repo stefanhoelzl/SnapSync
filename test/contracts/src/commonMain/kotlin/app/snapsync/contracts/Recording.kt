@@ -5,11 +5,13 @@ package app.snapsync.contracts
  * answered (capability `port-contracts`, "A recording is one committed plain-text file per contract and
  * host"). Input to a clause on replay — never an expectation.
  *
- * Text form, at `test/contracts/recordings/<Contract>@<HOST>.rec`:
+ * Text form, at `test/contracts/recordings/<Contract>@<HOST>.rec`, or `<Contract>@<HOST>.<GRANT>.rec` for a
+ * binding that declares the photo grant it ran under ([recordingName]):
  *
  * ```
  * # contract: SecureStore
  * # host: IOS_DEVICE_APP
+ * # grant: GRANTED        (only where the binding declares one)
  * # device: iPhone SE (2nd generation)
  * ...
  * [CLAUSE_ID]
@@ -23,6 +25,9 @@ package app.snapsync.contracts
 class Recording(val header: List<Pair<String, String>>, val blocks: Map<String, List<Exchange>>) {
 
     val host: String? get() = header.firstOrNull { it.first == "host" }?.second
+
+    /** The photo grant the run held, where its binding declared one. */
+    val grant: String? get() = header.firstOrNull { it.first == "grant" }?.second
 
     fun render(): String = buildString {
         header.forEach { (k, v) -> append("# ").append(k).append(": ").append(v).append('\n') }

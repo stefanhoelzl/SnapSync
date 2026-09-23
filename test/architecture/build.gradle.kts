@@ -77,6 +77,11 @@ tasks.test {
             // which is the one failure mode these tests may not have.
             include("adapter/**/src/**/*.kt")
             include("iosApp/**/*.entitlements")
+            // The contract-coverage gate's other subject: the committed recordings. Without them a
+            // recording-only change — a block deleted, a grant-suffixed file added — left this task
+            // UP-TO-DATE, so the gate reported coverage from a recording that no longer said so. Measured
+            // while adding grant-keyed recordings: a stray `.LIMITED.rec` passed until `--rerun`.
+            include("test/contracts/recordings/*.rec")
             // The event-link domain guard's subjects (capability `event-link`). Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
