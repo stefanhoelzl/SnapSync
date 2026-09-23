@@ -2,6 +2,7 @@ package app.snapsync.world
 
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.RawAsset
+import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
@@ -147,9 +148,10 @@ class FakeBackgroundTransfer(
 class FakeUploadDiscovery(
     source: CandidateSource,
     library: StateFlow<List<RawAsset>>,
+    grant: () -> PermissionStatus,
 ) : UploadDiscovery {
 
-    private val honest: UploadDiscovery = inMemoryUploadDiscovery(source, library)
+    private val honest: UploadDiscovery = inMemoryUploadDiscovery(source, library, grant)
 
     /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
     var resolvedKeyCount = 0

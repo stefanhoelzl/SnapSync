@@ -191,7 +191,7 @@ class World(
     val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(store, ownDeviceId, ledgerBackend)
     // The cycle's library reads — the change feed and the id-scoped key resolve — over the in-memory gallery,
     // bound once beside the job queue exactly as the device roots bind `IosDiscovery`.
-    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(enumerator, gallery.contents)
+    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(enumerator, gallery.contents) { permission.permission.value }
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.

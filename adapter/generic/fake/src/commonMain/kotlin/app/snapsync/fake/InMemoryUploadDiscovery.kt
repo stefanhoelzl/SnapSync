@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -29,6 +30,11 @@ import kotlinx.coroutines.flow.StateFlow
 internal class InMemoryUploadDiscovery(
     private val source: CandidateSource,
     private val library: StateFlow<List<RawAsset>>,
+    /**
+     * The process's photo grant. As on a device, a walk is authoritative for deletion only under a full grant:
+     * without one there is no library to have read, and under a partial one only a selection.
+     */
+    private val grant: () -> PermissionStatus = { PermissionStatus.GRANTED },
 ) : UploadDiscovery {
 
     /**
@@ -40,7 +46,8 @@ internal class InMemoryUploadDiscovery(
      */
     override suspend fun discover(policy: SelectionPolicy): Discovery =
         when (val read = source.candidates(policy)) {
-            is CandidateRead.Readable -> Discovery(candidates = read.candidates, fullEnumeration = true)
+            is CandidateRead.Readable ->
+                Discovery(candidates = read.candidates, fullEnumeration = grant() == PermissionStatus.GRANTED)
             CandidateRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
         }
 

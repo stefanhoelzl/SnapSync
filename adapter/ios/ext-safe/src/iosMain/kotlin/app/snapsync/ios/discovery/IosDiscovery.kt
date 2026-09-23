@@ -1,6 +1,8 @@
 package app.snapsync.ios.discovery
 
 import app.snapsync.gallery.PhotoKitCandidateSource
+import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.model.PermissionStatus
 import app.snapsync.logging.invocation
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.Resource
@@ -26,13 +28,23 @@ import platform.Photos.PHAsset
  * the transports used to emit when they forwarded here, under the logger the root passes, so a device log
  * reads exactly as it did.
  *
- * Decision-free platform code (faked in the harness); not unit-tested — the walk is exercised on
- * device/simulator, with a smoke test confirming enumeration is callable.
+ * Held to `UploadDiscoveryContract` on the simulator's test executable (no grant) and in the simulator app
+ * (a full grant); the in-memory fake the harness uses is held to the same clauses.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDiscovery(
     private val log: Logger,
     private val source: PhotoKitCandidateSource,
+    /**
+     * The process's photo grant, read at each walk. A walk is **authoritative for deletion only under a full
+     * grant** (capability `port-contracts`, `UploadDiscoveryContract`): without one PhotoKit returns an empty
+     * fetch, and under a partial one only the selection. Neither is evidence that anything left the library,
+     * and the cycle deletes the in-window rows of every asset an authoritative walk did not return.
+     *
+     * Found by the contract on its first run against this adapter: it reported the no-grant empty fetch as a
+     * full enumeration, and only the cycles' own grant gates kept that from the presence diff.
+     */
+    private val grant: () -> PermissionStatus = ::currentPhotoPermission,
 ) : UploadDiscovery {
     /**
      * Every in-scope candidate asset — a **full enumeration**, narrowed by [policy] at the fetch. There is no
@@ -73,8 +85,10 @@ class IosDiscovery(
     override suspend fun discover(policy: SelectionPolicy): Discovery =
         log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
             withContext(Dispatchers.Default) {
+                val authoritative = grant() == PermissionStatus.GRANTED
                 when (val read = source.candidates(policy)) {
-                    is CandidateRead.Readable -> Discovery(candidates = read.candidates, fullEnumeration = true)
+                    is CandidateRead.Readable ->
+                        Discovery(candidates = read.candidates, fullEnumeration = authoritative)
                     CandidateRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
                 }
             }
