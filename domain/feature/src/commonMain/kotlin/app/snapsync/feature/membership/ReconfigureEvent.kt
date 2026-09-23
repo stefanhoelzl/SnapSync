@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
@@ -46,7 +47,8 @@ import co.touchlab.kermit.Logger
  *
  * All side effects are injected as `model`-typed lambdas built in `compose/` (the arm/album/download seams
  * live in their own features; this use-case stays pure `commonMain` and constructs no platform type), and
- * each runs best-effort under [step]: a failing effect is logged and the rest still run.
+ * the config save is REQUIRED (a failed save stops the reconfigure and is returned as [ReconfigureOutcome.SaveFailed]);
+ * every effect after it runs best-effort: a failing effect is logged and the rest still run.
  */
 class ReconfigureEvent(
     private val configSource: ConfigSource,
@@ -64,7 +66,7 @@ class ReconfigureEvent(
      */
     private val bumpManifestVersion: suspend () -> Unit,
 ) {
-    private val log = Logger.withTag("ReconfigureEvent")
+    private val steps = Steps(Logger.withTag("ReconfigureEvent"), "reconfigure")
 
     /**
      * Apply a reconfigure to the currently-joined membership. [eventId] is the event the surface was
@@ -78,9 +80,9 @@ class ReconfigureEvent(
         chosenCutoff: CaptureCutoff,
         chosenUpper: CaptureCeiling,
         saveToAlbum: Boolean,
-    ) {
+    ): ReconfigureOutcome {
         val current = configSource.config.value
-        if (current == null || current.eventId != eventId) return
+        if (current == null || current.eventId != eventId) return ReconfigureOutcome.NotCurrent
         // The upper bound mirrors the cutoff: re-clamp the chosen ceiling to the event's immutable `endsAt`
         // (`min(chosen, endsAt)`). A membership always carries a concrete ceiling now (capability
         // `join-event`), so there is no unbounded case to express — only a legacy config whose `endsAt` has
@@ -99,10 +101,13 @@ class ReconfigureEvent(
         // counter live in two stores and cannot share a transaction. Bumped first, a cycle could read the new
         // version and then the OLD config, and publish the old policy under a version nothing later exceeds.
         // Bumped after, a cycle that read the older version is overtaken by the newer one.
-        step("save config") {
+        //
+        // REQUIRED: every step below acts on `newCfg`, so none may run on settings that never landed (B5).
+        val saved = steps.required("save config") {
             store.save(newCfg)
             bumpManifestVersion()
         }
+        if (!saved) return ReconfigureOutcome.SaveFailed
         // A LOWERED cutoff widens scope, and needs nothing from this use-case to take effect: every upload
         // walk is a full enumeration narrowed by the membership's CURRENT policy, so the next cycle's walk
         // already covers the newly-in-scope older photos and back-shares them — tier-agnostically
@@ -115,32 +120,22 @@ class ReconfigureEvent(
         // Their ledger rows are untouched, so lowering the cutoff again re-lists them and re-enqueues
         // them without re-uploading a byte.
         // Re-enumerate the own total + re-read completeness so the status reflects a changed cutoff/direction.
-        step("refresh status") { refreshStatus() }
+        steps.bestEffort("refresh status") { refreshStatus() }
         // Upload arm: a kick in either direction; the cycle's policy decides, and nothing is cancelled (class doc).
-        step("arm upload") { armUpload() }
+        steps.bestEffort("arm upload") { armUpload() }
         // Event album: an unconditional call carrying the new config; the granted/opt-in gate is the
         // coordinator's own leading guard (capability `event-album`).
-        step("ensure album") { ensureAlbum(newCfg) }
+        steps.bestEffort("ensure album") { ensureAlbum(newCfg) }
         // Then gather what the device already holds into it — after the ensure, which the gather never does
         // itself. Detached by the composition, so Save does not wait on it (capability `event-album`).
-        step("gather album") { gatherAlbum(newCfg) }
+        steps.bestEffort("gather album") { gatherAlbum(newCfg) }
         // Download arm: reconcile on enable; cancel in-flight downloads on disable.
         if (direction.includesDownload) {
-            step("start downloads") { startDownloads(newCfg.eventId) }
+            steps.bestEffort("start downloads") { startDownloads(newCfg.eventId) }
         } else {
-            step("cancel downloads") { cancelDownloads() }
+            steps.bestEffort("cancel downloads") { cancelDownloads() }
         }
+        return ReconfigureOutcome.Saved
     }
 
-    private inline fun step(name: String, block: () -> Unit) {
-        try {
-            block()
-        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            // A cancelled step is not a failed one: it is not reported (law "Catch sites keep cancellation").
-            throw e
-        } catch (e: Throwable) {
-            // Best-effort: a failed effect never aborts the reconfigure (the config save already landed).
-            log.e(e) { "reconfigure step failed: $name" }
-        }
-    }
 }

@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
@@ -74,7 +75,7 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
             openSettings = {},
             openLink = {},
             choosePhotos = {},
-            reconfigure = { _, _, _, _, _ -> },
+            reconfigure = { _, _, _, _, _ -> ReconfigureOutcome.NotCurrent },
             rename = { _, _ -> },
             resetRename = {},
             // No reporting channel in a forge binary, so no gesture (capability `diagnostic-logging`).

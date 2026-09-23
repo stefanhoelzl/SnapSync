@@ -7,6 +7,7 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserQueries
 import app.snapsync.model.UserCommands
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
@@ -159,7 +160,7 @@ class PanelController {
         openSettings = requester::openSettings,
         openLink = { url -> println("openLink → $url") },
         choosePhotos = requester::choosePhotos,
-        reconfigure = { _, _, _, _, _ -> },
+        reconfigure = { _, _, _, _, _ -> ReconfigureOutcome.NotCurrent },
         rename = { _, _ -> },
         resetRename = {},
         sendDiagnostics = { note, screen -> println("bug report [$screen] → $note") },

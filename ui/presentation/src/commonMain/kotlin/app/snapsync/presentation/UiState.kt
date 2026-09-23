@@ -248,7 +248,12 @@ sealed interface JoinedSurface {
      * membership and carrying the member's uncommitted edits until Save or Cancel.
      */
     @Serializable
-    data class Reconfigure(val form: RangeForm, val range: ResolvedRange) : JoinedSurface
+    data class Reconfigure(
+        val form: RangeForm,
+        val range: ResolvedRange,
+        /** The last Save did not land: the surface stays open with the edits, and says so. */
+        val saveFailed: Boolean = false,
+    ) : JoinedSurface
 }
 
 /**

@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.Direction
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.captureCeiling
@@ -103,6 +104,36 @@ class ReconfigureEventTest {
                 saveToAlbum = false,
             )
         assertEquals(0, bumps)
+    }
+
+    /**
+     * B5: the save used to be swallowed by a best-effort step, and every effect after it ran anyway on the
+     * settings that never landed — the album created and filled, downloads cancelled, uploads re-armed. The save
+     * is required now: a failure stops the reconfigure and is answered as SaveFailed.
+     */
+    @Test
+    fun `a failed save runs none of the later steps and answers SaveFailed`() = runTest {
+        val order = mutableListOf<String>()
+        val outcome = make(FakeConfigSource(current()), FakeConfigStore(fails = true), order)
+            .reconfigure(
+                eventId = "E1",
+                direction = Direction.UploadOnly, // would cancel downloads
+                chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
+                chosenUpper = FIXTURE_CEILING,
+                saveToAlbum = true, // would create and fill the album
+            )
+        assertEquals(ReconfigureOutcome.SaveFailed, outcome)
+        assertEquals(emptyList(), order, "a step ran on settings that were never saved")
+    }
+
+    @Test
+    fun `a landed save answers Saved and a stale surface answers NotCurrent`() = runTest {
+        val saved = make(FakeConfigSource(current()), FakeConfigStore())
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
+        assertEquals(ReconfigureOutcome.Saved, saved)
+        val stale = make(FakeConfigSource(current(eventId = "OTHER")), FakeConfigStore())
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
+        assertEquals(ReconfigureOutcome.NotCurrent, stale)
     }
 
     @Test

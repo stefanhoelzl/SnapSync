@@ -79,6 +79,9 @@ internal fun ReconfigureScreen(
         ) {
             // Read-only header: which event's settings these are.
             AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
+            // The last Save did not land (capability `reconfigure-membership`): the edits are still here, and
+            // nothing about the membership changed — said plainly, so the member knows a retry is safe.
+            if (surface.saveFailed) StatusHint("Your settings couldn't be saved, so nothing changed. Try again.")
 
             ParticipationSections(
                 state = ParticipationState(

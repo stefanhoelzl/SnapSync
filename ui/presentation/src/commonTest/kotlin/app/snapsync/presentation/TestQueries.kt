@@ -41,7 +41,7 @@ internal fun testCommands(
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-    ) -> Unit = { _, _, _, _, _ -> },
+    ) -> app.snapsync.model.ReconfigureOutcome = { _, _, _, _, _ -> app.snapsync.model.ReconfigureOutcome.Saved },
     rename: (eventId: String, name: String) -> Unit = { _, _ -> },
     resetRename: suspend () -> Unit = {},
     sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,

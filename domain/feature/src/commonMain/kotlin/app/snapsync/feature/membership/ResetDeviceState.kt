@@ -74,17 +74,18 @@ class ResetDeviceState(
      */
     private val resetDownloads: suspend () -> Unit,
 ) {
-    private val log = Logger.withTag("ResetDeviceState")
+    private val steps = Steps(Logger.withTag("ResetDeviceState"), "reset")
+    private val log = steps.log
 
     suspend fun reset() {
         // Read before pruning: this is the number the operator needs to see, and it is the count that
         // SURVIVES — the log line's job is to make "imported rows were kept" verifiable, not assumed.
         val keptImported = runCatchingCancellable { downloads.counts().imported }.getOrNull()
 
-        step("clear ledger") { ledger.clear() }
-        step("prune non-terminal downloads (and free the bytes it strands)") { resetDownloads() }
+        steps.bestEffort("clear ledger") { ledger.clear() }
+        steps.bestEffort("prune non-terminal downloads (and free the bytes it strands)") { resetDownloads() }
         // Local only — no backend is notified. See the class doc.
-        step("clear config") { config.clear() }
+        steps.bestEffort("clear config") { config.clear() }
 
         log.i {
             "reset: ledger + config cleared, non-terminal downloads pruned " +
@@ -92,14 +93,4 @@ class ResetDeviceState(
         }
     }
 
-    private suspend inline fun step(name: String, block: () -> Unit) {
-        try {
-            block()
-        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            // A cancelled step is not a failed one: it is not reported (law "Catch sites keep cancellation").
-            throw e
-        } catch (e: Throwable) {
-            log.e(e) { "reset step failed: $name" }
-        }
-    }
 }
