@@ -94,7 +94,7 @@ counts.
 | `RESTAGE_REPLACES` | a second transfer to an occupied destination replaces the file |
 | `NO_LENGTH_IS_NEGATIVE` | a body with no declared length reports a negative `expectedBytes` |
 | `CANCEL_COMPLETES_WITH_ERROR` | `cancel` on an open transfer yields `onCompleted` with a non-null error and stages nothing |
-| `UNPARSABLE_URL_IS_NULL` | `start` with an unparsable URL answers `null` and nothing reaches the host |
+| `UNUSABLE_URL_NEVER_STAGES` | `start("")` never throws and stages nothing. Either it answers `null`, or the task it starts completes with an error: the port collapses the two because they converge. Measured on the first live run: `NSURL.URLWithString("")` is not nil on iOS 26.5, so the real transport starts one |
 
 A short-read clause (a declared length the server does not deliver) is written only if its apply-time
 measurement is deterministic. Otherwise the observed behaviour is documented on the adapter.

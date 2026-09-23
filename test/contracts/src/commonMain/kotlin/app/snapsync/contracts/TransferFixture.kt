@@ -18,7 +18,13 @@ sealed interface FixtureAnswer {
      * Answer [status]. A `GET` gets a body of [length] bytes ([TransferFixture.body]), declaring that length in
      * `Content-Length` unless [declaresLength] is false; a `PUT`'s body is kept for [FixtureObjects.landed].
      */
-    data class Respond(val status: Int, val length: Int = 0, val declaresLength: Boolean = true) : FixtureAnswer
+    data class Respond(
+        val status: Int,
+        val length: Int = 0,
+        val declaresLength: Boolean = true,
+        /** Declare [length] in `Content-Length` but send only half of it, then close — a transfer cut short. */
+        val short: Boolean = false,
+    ) : FixtureAnswer
 
     /** Never answer: the transfer stays open until it is cancelled. */
     data object Hold : FixtureAnswer
@@ -32,6 +38,7 @@ sealed interface FixtureAnswer {
  * ```
  * /<Contract>/<CLAUSE_ID>/<name>/s200-n1024-len     200, 1024 bytes, Content-Length declared
  * /<Contract>/<CLAUSE_ID>/<name>/s404-n0-nolen      404, empty, no Content-Length
+ * /<Contract>/<CLAUSE_ID>/<name>/s200-n64-short     200, declares 64 bytes, sends 32, closes
  * /<Contract>/<CLAUSE_ID>/<name>/hold               never answers
  * ```
  *
@@ -47,7 +54,11 @@ object TransferFixture {
         "/$contract/$clauseId/$name/" + when (answer) {
             FixtureAnswer.Hold -> HOLD
             is FixtureAnswer.Respond ->
-                "s${answer.status}-n${answer.length}-${if (answer.declaresLength) "len" else "nolen"}"
+                "s${answer.status}-n${answer.length}-" + when {
+                    answer.short -> "short"
+                    answer.declaresLength -> "len"
+                    else -> "nolen"
+                }
         }
 
     /** What [path] answers, or `null` if its last segment is not in the grammar. */
@@ -58,7 +69,8 @@ object TransferFixture {
         return FixtureAnswer.Respond(
             status = m.groupValues[1].toInt(),
             length = m.groupValues[2].toInt(),
-            declaresLength = m.groupValues[3] == "len",
+            declaresLength = m.groupValues[3] != "nolen",
+            short = m.groupValues[3] == "short",
         )
     }
 
@@ -66,7 +78,7 @@ object TransferFixture {
     fun body(length: Int): ByteArray = ByteArray(length) { (it % 251).toByte() }
 
     private const val HOLD = "hold"
-    private val SEGMENT = Regex("""s(\d{3})-n(\d+)-(len|nolen)""")
+    private val SEGMENT = Regex("""s(\d{3})-n(\d+)-(len|nolen|short)""")
 }
 
 /** What a fixture received at one route: an object a `PUT` landed. Presence and type — the state reached. */

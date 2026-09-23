@@ -123,13 +123,14 @@ class TransferContractsTest {
                     val task = double.start(url, description) ?: return null
                     when (val answer = TransferFixture.answerOf(routeOf(url))) {
                         is FixtureAnswer.Respond -> {
-                            disk.inFlight[description] = TransferFixture.body(answer.length)
+                            val sent = if (answer.short) answer.length / 2 else answer.length
+                            disk.inFlight[description] = TransferFixture.body(answer.length).copyOf(sent)
                             double.finish(
                                 description,
                                 TransferOutcome(
                                     statusCode = answer.status,
                                     expectedBytes = if (answer.declaresLength) answer.length.toLong() else -1L,
-                                    receivedBytes = answer.length.toLong(),
+                                    receivedBytes = sent.toLong(),
                                 ),
                             )
                         }
