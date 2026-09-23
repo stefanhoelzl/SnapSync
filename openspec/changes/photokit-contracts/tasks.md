@@ -13,15 +13,15 @@
 
 ## 2. Contracts and fake bindings (D1, D9)
 
-- [ ] 2.1 In `:test:contracts`, write `CandidateSourceContract`, `UploadDiscoveryContract`,
+- [x] 2.1 In `:test:contracts`, write `CandidateSourceContract`, `UploadDiscoveryContract`,
       `ImportedAssetPresenceContract` and `PhotoAccessContract`, each with its state vocabulary (`NO_GRANT`
       and the `GRANTED_*` states). Clause addresses (the capture-date window and identifiers) derive from
       the clause id (D5).
-- [ ] 2.2 Write `AlbumManagerContract`, plus `PhotoLibraryImporterContract` with its library observation
+- [x] 2.2 Write `AlbumManagerContract`, plus `PhotoLibraryImporterContract` with its library observation
       handle (outcomes only: exists, capture date).
-- [ ] 2.3 Add a fake binding for each of the six contracts in `:adapter:generic:fake` `commonTest`, on
+- [x] 2.3 Add a fake binding for each of the six contracts in `:adapter:generic:fake` `commonTest`, on
       `currentHost`.
-- [ ] 2.4 Fix each fake divergence the fake bindings expose. Expected: `since` ignored, `add` not making
+- [x] 2.4 Fix each fake divergence the fake bindings expose. Expected: `since` ignored, `add` not making
       assets findable by title, `add` to a missing album recorded. Use one commit per divergence, correcting
       the world-backed tests that depended on it in the same commit.
 

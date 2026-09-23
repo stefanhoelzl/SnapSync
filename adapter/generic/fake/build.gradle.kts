@@ -39,6 +39,9 @@ kotlin {
             // The fakes' own contract bindings (capability `port-contracts`): only this module's test
             // source set can construct an `internal` fake in a chosen state.
             implementation(project(":test:contracts"))
+            // The photo-library contracts bind the grant-aware composition production calls, over the fake
+            // just as over the platform read (capability `port-contracts`).
+            implementation(project(":domain:compose"))
         }
     }
 }

@@ -4,6 +4,8 @@ import app.snapsync.fake.inMemoryAlbumManager
 import app.snapsync.ports.AlbumManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import app.snapsync.model.RawAsset
 
 /**
  * The world's rigging around the honest `:adapter:generic:fake` [inMemoryAlbumManager] (capability
@@ -14,7 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * here is only what a fake may not carry: the inspection lists, the [placeIn] and [delete] levers, and the
  * [holdAdds] gate.
  */
-class FakeAlbumManager : AlbumManager {
+class FakeAlbumManager(library: StateFlow<List<RawAsset>>) : AlbumManager {
 
     /**
      * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. The
@@ -22,7 +24,7 @@ class FakeAlbumManager : AlbumManager {
      * arrived via WhatsApp" without PhotoKit (capability `photo-selection-policy`).
      */
     private val userAlbums = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
-    private val honest: AlbumManager = inMemoryAlbumManager(userAlbums)
+    private val honest: AlbumManager = inMemoryAlbumManager(library, userAlbums)
 
     val created = mutableListOf<Pair<String, String>>()      // (albumId, name)
     val added = mutableListOf<Pair<String, List<String>>>()   // (albumId, rawLocalIds)
