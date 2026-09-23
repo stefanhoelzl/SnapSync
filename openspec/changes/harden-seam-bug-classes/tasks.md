@@ -48,12 +48,12 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 
 ## 5. G5: concurrency and re-entrancy (PR 5)
 
-- [ ] 5.1 Make `PhotoSelectionSnapshotSource` emit serially: channel-backed emission on one lane, a baseline generation check, and changes queued behind the baseline. Add ordering tests for rapid changes and for a grant upgrade during the baseline (fixes B9).
-- [ ] 5.2 Confine `QueuedPhotoDownloadJobs.outstandingImports` to a single-parallelism lane shared with `drained()`. Add a test that interleaves registration with a drain.
-- [ ] 5.3 Add the `@ConfinedTo` annotation and the confinement gate (heuristic, stated in its source) with a positive self-test.
-- [ ] 5.4 Add `guardedIntent` to `StatusContainerHost` and move create, rename and the switch's leave onto it. Add double-tap and cancel-mid-flight presentation tests (fixes B13 and the rename flag).
-- [ ] 5.5 Key `reconfiguringState` and the rename status by the joined `eventId` in one `JoinedSurface` state that resets when the membership changes. Add a test covering an open Settings surface, a switch, and a fresh join (fixes B7).
-- [ ] 5.6 Add the screens-take-no-suspend-seam gate to the presentation gate.
+- [x] 5.1 Make `PhotoSelectionSnapshotSource` emit serially: channel-backed emission on one lane, a baseline generation check, and changes queued behind the baseline. Add ordering tests for rapid changes and for a grant upgrade during the baseline (fixes B9).
+- [x] 5.2 Confine `QueuedPhotoDownloadJobs.outstandingImports` to a single-parallelism lane shared with `drained()`. Add a test that interleaves registration with a drain.
+- [x] 5.3 Add the `@ConfinedTo` annotation and the confinement gate (heuristic, stated in its source) with a positive self-test.
+- [x] 5.4 Add `guardedIntent` to `StatusContainerHost` and move create, rename and the switch's leave onto it. Add double-tap and cancel-mid-flight presentation tests (fixes B13 and the rename flag).
+- [x] 5.5 Key `reconfiguringState` and the rename status by the joined `eventId` in one `JoinedSurface` state that resets when the membership changes. Add a test covering an open Settings surface, a switch, and a fresh join (fixes B7).
+- [x] 5.6 Add the screens-take-no-suspend-seam gate to the presentation gate.
 
 ## 6. Close-out
 

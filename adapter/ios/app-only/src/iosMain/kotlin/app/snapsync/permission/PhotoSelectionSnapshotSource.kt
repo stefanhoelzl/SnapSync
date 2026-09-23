@@ -1,17 +1,16 @@
 package app.snapsync.permission
 
+import app.snapsync.model.ConfinedTo
+import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
-import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ports.PhotoSelectionChangeSource
+import app.snapsync.selection.SelectionPlatform
+import app.snapsync.selection.SelectionSnapshotLane
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import platform.Foundation.NSSortDescriptor
 import platform.Photos.PHAsset
 import platform.Photos.PHChange
@@ -38,80 +37,59 @@ import platform.Photos.PHFetchResult
  *
  * Snapshots conflate: the flow keeps only the newest unprocessed snapshot (each is the whole
  * selection, so an unconsumed older one is superseded by construction, and emission never blocks the
- * observer callback).
+ * observer callback). The ordering — one serial lane for the baseline, every change and every emission — is
+ * [SelectionSnapshotLane]'s, platform-free and tested on the JVM; this file is only the PhotoKit binding.
  */
 class PhotoSelectionSnapshotSource(
-    private val permission: StateFlow<PermissionStatus>,
-    private val scope: CoroutineScope,
-    private val source: PhotoKitCandidateSource,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : PhotoSelectionChangeSource {
+    permission: StateFlow<PermissionStatus>,
+    scope: CoroutineScope,
+    source: PhotoKitCandidateSource,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+) : PhotoSelectionChangeSource by SelectionSnapshotLane(
+    permission = permission,
+    scope = scope,
+    // ONE serial lane for every read, change and emission — the ordering the lane class exists for.
+    lane = ioDispatcher.limitedParallelism(1),
+    platform = PhotoKitSelection(source),
+)
 
-    private val _snapshots = MutableSharedFlow<List<Resource>>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+/**
+ * PhotoKit behind [SelectionSnapshotLane]. Every member runs on the lane, so [observer] needs no lock — PhotoKit
+ * holds observers weakly, which is why it is retained here at all.
+ */
+private class PhotoKitSelection(private val source: PhotoKitCandidateSource) : SelectionPlatform<PHFetchResult, PHChange> {
 
-    override val snapshots: Flow<List<Resource>> = _snapshots
-
-    // Retained: PHPhotoLibrary holds observers weakly. Touched only on [scope], which is serial —
-    // one dedicated thread since the composition lane replaced the main thread (spec
-    // `module-architecture`) — so the register/unregister dance still needs no lock. Seriality is
-    // the load-bearing half of that law precisely because assumptions like this one exist.
+    @ConfinedTo("selection")
     private var observer: PhotoSelectionObserver? = null
-    private var heldFetch: PHFetchResult? = null
 
-    init {
-        scope.launch {
-            permission.collect { status ->
-                if (status == PermissionStatus.LIMITED) beginObserving() else endObserving()
-            }
-        }
-    }
-
-    private fun beginObserving() {
-        if (observer != null) return
-        val obs = PhotoSelectionObserver { change -> scope.launch { onChange(change) } }
+    override fun startObserving(onChange: (PHChange) -> Unit) {
+        val obs = PhotoSelectionObserver { change -> onChange(change) }
         obs.register()
         observer = obs
-        scope.launch(ioDispatcher) {
-            // The baseline: ONE sorted scope query. Sorted so PhotoKit can hand incremental change
-            // details against it; correctness never depends on that (snapshots re-enumerate whole).
-            val options = PHFetchOptions().apply {
-                sortDescriptors = listOf(NSSortDescriptor.sortDescriptorWithKey("creationDate", ascending = true))
-            }
-            val baseline = PHAsset.fetchAssetsWithOptions(options)
-            heldFetch = baseline
-            emitSnapshot(baseline)
-        }
     }
 
-    private fun endObserving() {
+    override fun stopObserving() {
         observer?.unregister()
         observer = null
-        heldFetch = null
     }
 
-    private suspend fun onChange(change: PHChange) {
-        val held = heldFetch ?: return
-        // The pushed result — never a fresh scope query. Null details = a change unrelated to the
-        // held fetch (e.g. an album edit); the selection did not move, so there is nothing to emit.
-        val details = change.changeDetailsForFetchResult(held) ?: return
-        val after = details.fetchResultAfterChanges
-        heldFetch = after
-        scope.launch(ioDispatcher) { emitSnapshot(after) }
+    // The baseline: ONE sorted scope query. Sorted so PhotoKit can hand incremental change details against it;
+    // correctness never depends on that (snapshots re-enumerate whole).
+    override suspend fun baseline(): PHFetchResult {
+        val options = PHFetchOptions().apply {
+            sortDescriptors = listOf(NSSortDescriptor.sortDescriptorWithKey("creationDate", ascending = true))
+        }
+        return PHAsset.fetchAssetsWithOptions(options)
     }
 
-    private suspend fun emitSnapshot(result: PHFetchResult) {
-        // Read the resources straight off the HELD result. This used to collect local identifiers and
-        // re-fetch by them — a second library fetch for assets already in hand. Both were in-flow, so it
-        // was waste rather than a bug, but the fewer fetches this path makes the tighter the
-        // "every fetch is in-flow" property is (capability `limited-photo-access`).
-        //
-        // Eager on purpose: deferring the resource read would leave a later consumer holding only
-        // identifiers, and reaching the assets again off-flow would be an autonomous library fetch, which
-        // the read discipline forbids. The selection is hand-picked and small, so eagerness costs little
-        // and buys the discipline.
-        _snapshots.emit(source.candidatesFrom(result).flatMap { it.resources() })
-    }
+    // The pushed result — never a fresh scope query. Null details = a change unrelated to the held fetch (e.g. an
+    // album edit); the selection did not move, so there is nothing to emit.
+    override fun after(held: PHFetchResult, change: PHChange): PHFetchResult? =
+        change.changeDetailsForFetchResult(held)?.fetchResultAfterChanges
+
+    // Read the resources straight off the HELD result, eagerly: deferring the resource read would leave a later
+    // consumer holding only identifiers, and reaching the assets again off-flow would be an autonomous library
+    // fetch, which the read discipline forbids. The selection is hand-picked and small, so eagerness costs little.
+    override suspend fun snapshot(of: PHFetchResult): List<Resource> =
+        source.candidatesFrom(of).flatMap { it.resources() }
 }

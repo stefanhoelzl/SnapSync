@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.ConfinedTo
 import app.snapsync.ports.BackgroundEventsReceipts
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
@@ -15,6 +16,9 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -135,14 +139,22 @@ class QueuedPhotoDownloadJobs(
      * The imports started by [DownloadTransportHost.onStaged] since the last drain. Held so the OS's
      * background-events handler can be released *after* them (capability `photo-download`) — the
      * session reports its own events drained, which says nothing about the imports they caused.
+     *
+     * A thread-safe cell, not a plain list (law "State reached from OS callbacks is confined", capability
+     * `module-architecture`): [DownloadTransportHost.onStaged] registers from the transport's delegate queue while
+     * [awaitOutstandingImports] takes the list from a coroutine, and a plain list shared between them could drop a
+     * registration — releasing the OS handler before an import it announced — or throw mid-iteration.
      */
-    private val outstandingImports = mutableListOf<Job>()
+    private val outstandingImports = MutableStateFlow<List<Job>>(emptyList())
 
+    @ConfinedTo("composition")
     private val queued = ArrayDeque<PendingDownload>()
 
     /** The bounded window, keyed by transfer description — which also makes a re-enqueue idempotent. */
+    @ConfinedTo("composition")
     private val inFlight = LinkedHashMap<String, DownloadTask>()
 
+    @ConfinedTo("composition")
     private var transport: DownloadTransport? = null
 
     private val host = object : DownloadTransportHost {
@@ -183,8 +195,8 @@ class QueuedPhotoDownloadJobs(
             // Launched here, and REMEMBERED: this fires on the transport's delegate queue, which must
             // not be blocked by an import, but the job has to remain reachable so the wake's OS handler
             // can wait for it. Pruning completed jobs keeps the list from growing across a long session.
-            outstandingImports.removeAll { it.isCompleted }
-            outstandingImports += scope.launch { onStaged(tag.ref, tag.resourceKey, stagedPath) }
+            val import = scope.launch { onStaged(tag.ref, tag.resourceKey, stagedPath) }
+            outstandingImports.update { held -> held.filterNot { it.isCompleted } + import }
         }
 
         override fun onCompleted(description: String, error: String?) {
@@ -225,9 +237,7 @@ class QueuedPhotoDownloadJobs(
      * drives the world synchronously and would otherwise race every download assertion.
      */
     suspend fun awaitOutstandingImports() {
-        val pending = outstandingImports.toList()
-        outstandingImports.clear()
-        pending.forEach { it.join() }
+        outstandingImports.getAndUpdate { emptyList() }.forEach { it.join() }
     }
 
     private fun transport(): DownloadTransport = transport ?: newTransport(host).also { transport = it }

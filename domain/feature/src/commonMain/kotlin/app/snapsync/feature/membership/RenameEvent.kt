@@ -52,6 +52,11 @@ class RenameEvent(
     // fixed by the composition"), so the tap's `Logger.invocation` spans the real rename rather than
     // the hand-off. Still fire-and-forget to the screen — the launch is the caller's, not this class's.
     override suspend fun rename(eventId: String, name: String) {
+        // One rename at a time, checked before the first suspension — as `CreateEvent` does, for the same reason.
+        if (status.renameStatus.value == RenameStatus.InFlight) {
+            log.i { "rename ignored: one is already in flight" }
+            return
+        }
         status.set(RenameStatus.InFlight)
         when (val outcome = client.rename(eventId, name.trim())) {
             is RenameOutcome.Renamed -> {

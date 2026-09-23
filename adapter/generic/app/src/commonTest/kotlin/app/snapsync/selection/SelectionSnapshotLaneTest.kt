@@ -1,0 +1,156 @@
+package app.snapsync.selection
+
+import app.snapsync.model.PermissionStatus
+import app.snapsync.model.Resource
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * The partial-grant selection source's ORDERING (capability `limited-photo-access`; decision record
+ * `harden-seam-bug-classes`, D12): snapshots leave in the order their reads happened, a change during the baseline
+ * is applied to it rather than dropped, and a baseline whose observation ended while it was read emits nothing.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class SelectionSnapshotLaneTest {
+
+    /** A selection is a list of ids; a change appends one. The baseline can be held open by a test. */
+    private class FakePlatform(private val initial: List<String>) : SelectionPlatform<List<String>, String> {
+        var onChange: ((String) -> Unit)? = null
+        var stops = 0
+        var baselineGate: CompletableDeferred<Unit>? = null
+
+        override fun startObserving(onChange: (String) -> Unit) {
+            this.onChange = onChange
+        }
+
+        override fun stopObserving() {
+            stops++
+            onChange = null
+        }
+
+        override suspend fun baseline(): List<String> {
+            baselineGate?.await()
+            return initial
+        }
+
+        override fun after(held: List<String>, change: String): List<String> = held + change
+
+        override suspend fun snapshot(of: List<String>): List<Resource> =
+            of.map { Resource(filename = "$it.heic", assetId = it, contentType = "image/heic", metadata = emptyMap(), data = it) }
+
+        fun change(id: String) = checkNotNull(onChange) { "not observing" }(id)
+    }
+
+    private fun List<Resource>.ids() = map { it.data as String }
+
+    @Test
+    fun rapid_changes_from_many_threads_emit_in_the_order_they_were_applied() = runTest {
+        // B9: each snapshot used to be read and emitted on its own coroutine over a parallel dispatcher, so a later
+        // selection could be overtaken by an earlier one — and the consumer kept the stale one.
+        val seen = mutableListOf<List<String>>()
+        withContext(Dispatchers.Default) {
+            val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+            val platform = FakePlatform(listOf("base"))
+            val lane = SelectionSnapshotLane(
+                MutableStateFlow(PermissionStatus.LIMITED),
+                scope,
+                Dispatchers.Default.limitedParallelism(1),
+                platform,
+            )
+            val collecting = scope.launch(UnconfinedTestDispatcher()) { lane.snapshots.collect { seen += it.ids() } }
+            withTimeout(5_000) { while (platform.onChange == null || seen.isEmpty()) kotlinx.coroutines.yield() }
+
+            List(CHANGES) { i -> launch { platform.change("c$i") } }.joinAll()
+            withTimeout(5_000) { while (seen.lastOrNull()?.size != CHANGES + 1) kotlinx.coroutines.yield() }
+
+            collecting.cancel()
+            scope.cancel()
+        }
+        // Each change appends, so in-order emission means every snapshot is strictly larger than the one before.
+        seen.zipWithNext().forEach { (earlier, later) ->
+            assertTrue(later.size > earlier.size, "a snapshot overtook a newer one: ${earlier.size} then ${later.size}")
+        }
+        assertEquals(CHANGES + 1, seen.last().size)
+    }
+
+    @Test
+    fun a_change_during_the_baseline_is_applied_to_it_not_dropped() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val platform = FakePlatform(listOf("base")).apply { baselineGate = CompletableDeferred() }
+        val source = SelectionSnapshotLane(MutableStateFlow(PermissionStatus.LIMITED), scope, lane, platform)
+        val latest = MutableStateFlow<List<String>>(emptyList())
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { latest.value = it.ids() } }
+        advanceUntilIdle() // observing, and the baseline read is in progress
+
+        platform.change("taken-during-baseline")
+        platform.baselineGate!!.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf("base", "taken-during-baseline"), latest.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun a_grant_upgrade_during_the_baseline_emits_nothing_and_stops_observing() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(PermissionStatus.LIMITED)
+        val platform = FakePlatform(listOf("base")).apply { baselineGate = CompletableDeferred() }
+        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle()
+
+        permission.value = PermissionStatus.GRANTED // the full grant's walks own liveness now
+        advanceUntilIdle()
+        platform.baselineGate!!.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), emitted, "a baseline read for an observation that has ended must not be emitted")
+        assertEquals(1, platform.stops)
+        scope.cancel()
+    }
+
+    @Test
+    fun observation_restarts_with_a_fresh_baseline_when_the_grant_returns_to_partial() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(PermissionStatus.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        advanceUntilIdle()
+        permission.value = PermissionStatus.GRANTED
+        advanceUntilIdle()
+
+        permission.value = PermissionStatus.LIMITED
+        val snapshot = scope.launch { assertEquals(listOf("base"), source.snapshots.first().ids()) }
+        advanceUntilIdle()
+
+        assertTrue(snapshot.isCompleted)
+        assertEquals(1, platform.stops)
+        scope.cancel()
+    }
+
+    private companion object {
+        const val CHANGES = 200
+    }
+}

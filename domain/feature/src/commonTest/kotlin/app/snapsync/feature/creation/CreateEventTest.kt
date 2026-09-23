@@ -10,6 +10,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CreateEventTest {
@@ -48,6 +51,30 @@ class CreateEventTest {
         assertEquals(endsAt, client.lastEndsAt) // end date passed through VERBATIM too
         assertEquals(eventId, provisioned) // handed to the join-gate routing hook
         assertEquals(CreationStatus.Idle, status.creationStatus.value) // no success state
+    }
+
+    @Test
+    fun `a second create while one is in flight mints nothing`() = runTest {
+        // A double tap reaches the lane twice; the first mint is out when the second arrives. Two events used to be
+        // minted (B13). The second is refused before it suspends, so nothing can come between the check and the set.
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val client = object : EventCreation {
+            override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome {
+                calls++
+                gate.await()
+                return CreateOutcome.Created(eventId)
+            }
+        }
+        val useCase = CreateEvent(client, MutableCreationStatusSource(), onMinted = {})
+
+        val first = launch { useCase.create("Party", startsAt, endsAt) }
+        runCurrent()
+        useCase.create("Party", startsAt, endsAt)
+        gate.complete(Unit)
+        first.join()
+
+        assertEquals(1, calls)
     }
 
     @Test
