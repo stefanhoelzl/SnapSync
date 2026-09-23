@@ -1,0 +1,43 @@
+## 1. Contracts and fixture vocabulary (`:test:contracts`)
+
+- [ ] 1.1 Add `TransferFixture`: the route vocabulary derived from a clause id (scripted status/body/length, hold, stored `PUT` read-back), shared by the loopback server and the in-memory one
+- [ ] 1.2 Add `BackgroundTransferContract`: the state vocabulary (`IDLE`, `AT_CAP`), the `TransferObservations` handle (stored object + row state), and D1's eight clauses
+- [ ] 1.3 Add `DownloadTransportContract`: the clause-supplied host that records what it is told, and D2's eight clauses
+- [ ] 1.4 Add `BackgroundSchedulerContract`: the `pendingWakes()` handle and D4's four clauses
+
+## 2. Honest fakes and world wrappers
+
+- [ ] 2.1 Add `inMemoryBackgroundTransfer`, `inMemoryDownloadTransport` and `inMemoryBackgroundScheduler` to `:adapter:generic:fake`, as `internal` classes behind port-typed factories, over an in-memory `TransferFixture` server
+- [ ] 2.2 Bind all three contracts to the fakes in `:adapter:generic:fake` `commonTest`, and make them green
+- [ ] 2.3 Turn `:test:world`'s `FakeBackgroundTransfer` and `FakeDownloadTransport` into wrappers whose levers withhold or release what the honest fake does; keep the inspection surface; `./gradlew :test:integration:jvmTest` and the world harness still pass
+- [ ] 2.4 Replace the two private `FakeScheduler`s in `:domain:feature` tests with the honest fake where it serves them; keep a private one only where a test records calls on purpose
+
+## 3. Live `URLSession` bindings on `IOS_SIM_APP`
+
+- [ ] 3.1 Add `scripts/transfer-fixture.py` (stdlib only: health route, request log, per-clause routes, a server-side hold timeout, `Cache-Control: no-store`)
+- [ ] 3.2 Pass the fixture base URL through the rig's contract verb (`?fixture=`), and refuse a transport contract run without one
+- [ ] 3.3 Add the `DownloadTransport` live binding (over `IosDownloadTransport`) to `:adapter:ios:app-only`'s rig source set, and register it in `SimulatorAppContracts`
+- [ ] 3.4 Add the `BackgroundTransfer` live binding (over `IosUrlSessionUploadPlatform`, an in-memory ledger as its `TransferRecord`, and a photo seeded in the clause's own capture-date window), and register it
+- [ ] 3.5 Start the fixture in `scripts/sim-contracts` before launch, fail on no health answer, and keep its request log in `build/sim-contracts/`
+- [ ] 3.6 Run `scripts/sim-contracts` on a Mac session (`ssh-mac-build`); commit any failing clause red first (D7), then fix the adapter, never the clause, unless the clause is wrong
+- [ ] 3.7 Measure a short read (declared length > delivered) on the default session; add the clause only if it is deterministic, otherwise document the observed behaviour on `IosDownloadTransport`
+
+## 4. `BackgroundScheduler` seam
+
+- [ ] 4.1 Add the `internal` `BackgroundTaskApi` seam in `:adapter:ios:app-only` (`submit`, `cancel`, `pending`), rendering deterministic call/answer strings with `earliestBeginDate` masked; route `IosBackgroundScheduler` through it with no behaviour change
+- [ ] 4.2 Add the recording/replaying tape for the seam in the rig source set, following `KeychainTape`
+- [ ] 4.3 Add the `IOS_DEVICE_APP` live binding and register it for the device's contract verb
+
+## 5. Scheduler hosts
+
+- [ ] 5.1 Measure `BGTaskScheduler.submit` on the simulator app; bind `IOS_SIM_APP` live if it is accepted, or declare the states unreachable naming the measured error
+- [ ] 5.2 Take the lease (`snapsync-device`, `rig-channel`), install a rig build on the SE2, `POST /contract/BackgroundScheduler`, and commit `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` unedited
+- [ ] 5.3 Add the `Replay` binding in `:adapter:ios:app-only` `iosTest` over that recording
+
+## 6. Gates and docs
+
+- [ ] 6.1 `./gradlew build` is green, including `ContractCoverageTest`, which names every new clause as covered by a real host
+- [ ] 6.2 `./gradlew compileIosMainKotlinMetadata` is green; `./gradlew architectureDiagrams`, commit any diff
+- [ ] 6.3 Update CLAUDE.md's module entries (`:test:contracts` contract list, `:adapter:generic:fake` fakes, `:test:world` wrappers) and the `rig-channel` / `ios-simulator` skills (fixture flag, heartbeat cleared by a device run)
+- [ ] 6.4 Point `TransferSessions.kt`'s "does NOT evidence" section at the contracts for what IS evidenced
+- [ ] 6.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate contract-background-transfers --strict` pass
