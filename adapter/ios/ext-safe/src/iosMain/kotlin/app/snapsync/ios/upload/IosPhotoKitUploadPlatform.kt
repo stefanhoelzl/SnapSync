@@ -104,7 +104,11 @@ class IosPhotoKitUploadPlatform internal constructor(
                         }
                         // The adjudication is `terminalDisposition` (beside the other per-job decisions in
                         // PhotoKitJobMapping.kt, where it is tested); this body supplies only the effect.
-                        val disposition = terminalDisposition(classified.state, resourceIsLive = job.resource != null)
+                        // The OS answers no resource for a retry-spent job (measured, SE2, iOS 26.6.2), so a failure's live
+                        // resource is fetched by identifier — the photo, if it is still in the library.
+                        val live = job.resource?.let { LiveResource(it, job.resourceType) }
+                            ?: if (classified.state == PhotoKitJobState.SUCCEEDED) null else api.liveResource(key)
+                        val disposition = terminalDisposition(classified.state, resourceIsLive = live != null)
                         if (!ledger.markTerminal(key, disposition.outcome)) {
                             // Not silent: the row was not REQUESTED — already settled, or pruned.
                             log.i { "terminal $key -> ${disposition.outcome} applied to no row" }
@@ -113,9 +117,9 @@ class IosPhotoKitUploadPlatform internal constructor(
                         if (disposition.reCreate) {
                             out += PlatformUploadJob(
                                 key = key,
-                                contentType = jobContentType(job.contentTypeHeader, job.resourceType),
+                                contentType = jobContentType(job.contentTypeHeader, live?.type),
                                 error = classified.error,
-                                data = job.resource,
+                                data = live?.handle,
                             )
                         }
                     }
@@ -218,7 +222,10 @@ class IosPhotoKitUploadPlatform internal constructor(
                 log.w { "retryJob: no live .retry job for ${job.key} — it settled underneath us" }
                 return@invocation
             }
-            val url = NSURL.URLWithString(request.url) ?: return@invocation
+            val url = NSURL.URLWithString(request.url)?.takeIf { isUploadDestination(request.url) } ?: run {
+                log.w { "retryJob: malformed destination URL for ${job.key} — not retrying" }
+                return@invocation
+            }
             val answer = api.retry(systemJob, uploadUrlRequest(url, request))
             if (!answer.ok) log.w { "retryJob: the retry was refused for ${job.key} (code=${answer.code} ${answer.description})" }
         }
@@ -244,7 +251,7 @@ class IosPhotoKitUploadPlatform internal constructor(
             log.w { "createJob: the resource carries no payload — not creating" }
             return@invocation CreateResult.FAILED
         }
-        val url = NSURL.URLWithString(request.url) ?: run {
+        val url = NSURL.URLWithString(request.url)?.takeIf { isUploadDestination(request.url) } ?: run {
             log.w { "createJob: malformed destination URL — not creating" }
             return@invocation CreateResult.FAILED
         }
