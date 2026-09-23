@@ -191,7 +191,7 @@ class World(
     val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(store, ownDeviceId, ledgerBackend)
     // The cycle's library reads — the change feed and the id-scoped key resolve — over the in-memory gallery,
     // bound once beside the job queue exactly as the device roots bind `IosDiscovery`.
-    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(enumerator, gallery::current)
+    val discovery: FakeUploadDiscovery = FakeUploadDiscovery(enumerator, gallery.contents)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.
@@ -418,17 +418,13 @@ class World(
      */
     var onEventMinted: suspend (eventId: String) -> Unit = { provision(it) }
 
-    /** The world's photo-access requester: a grant, immediately (the harness overlays its own arming). */
-    val requester: PhotoAccessRequester = object : PhotoAccessRequester {
-        override fun request() {
-            permission.set(PermissionStatus.GRANTED)
-        }
-        override fun openSettings() {}
-
-        // No limited-library picker exists off device; the selection is changed by the operator lever
-        // [changeSelection] instead, which is the same thing the real picker's outcome amounts to.
-        override fun choosePhotos() {}
-    }
+    /**
+     * The world's photo-access requester: the honest fake's, over the same cell as [permission]. Asked while
+     * undetermined, the user grants; once the grant is determined a request changes nothing, as on a device.
+     * No limited-library picker exists off device; the selection is changed by the operator lever
+     * [changeSelection] instead, which is the same thing the real picker's outcome amounts to.
+     */
+    val requester: PhotoAccessRequester = permission.requester
 
     // Attestation (capability `device-attestation`), OFF unless [attests] says otherwise — see that
     // parameter for why the default is off and what turning it on is for.

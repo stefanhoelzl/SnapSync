@@ -3,17 +3,17 @@ package app.snapsync.world
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
-import app.snapsync.model.resourcesFrom
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CandidateSource
-import app.snapsync.model.CandidateRead
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.UploadDiscovery
+import app.snapsync.fake.inMemoryUploadDiscovery
+import kotlinx.coroutines.flow.StateFlow
 import app.snapsync.model.TerminalOutcome
 
 /**
@@ -136,28 +136,20 @@ class FakeBackgroundTransfer(
 }
 
 /**
- * The world's [UploadDiscovery] (capability `harness-world-model`): the cycle's walk and key resolve over the
- * in-memory gallery, **observable** so a test can tell a cycle that walked from one that enqueued from the
- * ledger.
+ * The world's rigging around the honest `:adapter:generic:fake` [inMemoryUploadDiscovery]: the cycle's two
+ * library reads over the in-memory gallery, plus the operator's lever and the inspection a test uses to tell
+ * a cycle that walked from one that enqueued from the ledger.
  *
- * Every readable walk ([discover]) is a **full enumeration** of the gallery through the real [source], as on a
- * device: there is no change feed and no token. An added asset appears in the next walk, and a removed one is
- * simply absent from it — the evidence the cycle's presence diff consumes. The operator's [makeWalkUnreadable]
- * answers the next walk the way a device answers an unreadable library.
+ * The reads themselves are the honest fake's, the one `UploadDiscoveryContract` holds to `IosDiscovery`;
+ * nothing here answers differently from it except the one lever, [makeWalkUnreadable], which answers the next
+ * walk the way a device answers a library it could not read.
  */
 class FakeUploadDiscovery(
-    private val source: CandidateSource,
-    /**
-     * The gallery's raw contents, unscoped — the world's stand-in for "fetch these assets by identifier".
-     *
-     * A thunk over [WorldGallery.current] rather than the [CandidateSource] beside it, because that seam
-     * takes a policy and there is no policy to supply here: this models "fetch these assets by
-     * identifier", which is what the real discovery does. The admission over ledger rows belongs to the
-     * CYCLE, which applies it before it asks (capability `photo-selection-policy`) — a fake that admitted
-     * here too would hide whether the cycle ever did.
-     */
-    private val rawAssets: () -> List<RawAsset>,
+    source: CandidateSource,
+    library: StateFlow<List<RawAsset>>,
 ) : UploadDiscovery {
+
+    private val honest: UploadDiscovery = inMemoryUploadDiscovery(source, library)
 
     /** Every key ever asked for, counted with repeats (see [resourcesFor]). */
     var resolvedKeyCount = 0
@@ -172,24 +164,15 @@ class FakeUploadDiscovery(
     val resolvedKeys = mutableSetOf<String>()
 
     /**
-     * Resolve ledger keys from the world's gallery — id-scoped, and **observable**: [resolvedKeys] is
-     * how a test asserts that a cycle enqueued from the ledger rather than from the discovery feed
-     * (capability `sync-ledger`).
-     *
-     * Deliberately unscoped by the policy, unlike [discover] — as the real discovery is: this resolves the
-     * keys it is handed. The cycle admits its rows against the membership's *current* policy before it gets
-     * here (capability `photo-selection-policy`), so a key that reaches this fake is one the policy already
-     * allowed; admitting again here would make the cycle's own admission untestable.
-     *
-     * An asset the operator removed from the gallery resolves to nothing — the port's partial contract,
-     * and the case a test needs in order to construct "the asset left between the row and the send".
+     * Resolve ledger keys through the honest fake, **observably**: [resolvedKeys] is how a test asserts that
+     * a cycle enqueued from the ledger rather than from the discovery feed (capability `sync-ledger`).
      */
     override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
         resolvedKeys += keys
         // How many keys were resolved in total, not how many distinct ones — the surplus this bound exists
         // to remove is repeated work on rows the platform was never going to take, and a set hides it.
         resolvedKeyCount += keys.size
-        return resourcesFrom(rawAssets()).filter { it.filename in keys }
+        return honest.resourcesFor(keys)
     }
 
     override suspend fun discover(policy: SelectionPolicy): Discovery {
@@ -200,15 +183,7 @@ class FakeUploadDiscovery(
             // cycle deletes nothing on the strength of an empty answer (capability `sync-ledger`).
             return Discovery(candidates = emptyList(), fullEnumeration = false)
         }
-        // Scoped by the POLICY exactly as far as a platform predicate scopes a device's fetch, and no further:
-        // the honest source narrows by the capture floor only, leaving every other rule to the cycle's
-        // admission. That matters twice over now — what comes back is also the walk's PRESENCE set, so a fake
-        // that applied the whole admission would make an asset the admission excludes (a denylisted album)
-        // look departed, and the cycle would delete rows a device keeps.
-        return when (val read = source.candidates(policy)) {
-            is CandidateRead.Readable -> Discovery(candidates = read.candidates, fullEnumeration = true)
-            CandidateRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
-        }
+        return honest.discover(policy)
     }
 
     // ---- operator actions -----------------------------------------------------------------------

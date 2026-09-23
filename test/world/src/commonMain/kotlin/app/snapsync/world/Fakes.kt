@@ -11,23 +11,29 @@ import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.upload.AppUploadEngine
 import kotlinx.coroutines.flow.MutableStateFlow
+import app.snapsync.fake.inMemoryPhotoAccess
+import app.snapsync.ports.PhotoAccessRequester
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * A settable in-memory [PhotoAccessStatusSource] — the world's stand-in for the iOS PhotoKit permission
- * adapter. A **rigged world wrapper**, not an `:adapter:generic:fake` resident: [set] is an operator lever, and
- * levers live here by law (spec `architecture-guards`, "The fake-honesty gate"). Drives the status
- * projection's `active` flag.
+ * The world's rigging around the honest `:adapter:generic:fake` [inMemoryPhotoAccess] status source: the
+ * status is the honest fake's, over a cell this wrapper owns, and [set] is the operator's lever — the user
+ * changing the grant in Settings, which no port member can do. Drives the status projection's `active` flag.
  */
 class MutablePhotoAccessStatusSource(
     initial: PermissionStatus = PermissionStatus.GRANTED,
 ) : PhotoAccessStatusSource {
-    private val _permission = MutableStateFlow(initial)
-    override val permission: StateFlow<PermissionStatus> = _permission.asStateFlow()
+    private val cell = MutableStateFlow(initial)
+    private val honest = inMemoryPhotoAccess(cell)
+
+    override val permission: StateFlow<PermissionStatus> = honest.first.permission
+
+    /** The requester over the same cell: what the user chooses when the app asks. */
+    val requester: PhotoAccessRequester = honest.second
 
     fun set(value: PermissionStatus) {
-        _permission.value = value
+        cell.value = value
     }
 }
 
@@ -71,6 +77,12 @@ class WorldGallery {
 
     /** The current contents, unscoped — a rigging-only read (production has no unbounded walk). */
     fun current(): List<RawAsset> = state.value
+
+    /** The writable cell itself, for the honest importer, which lands its assets here. */
+    internal val cell: MutableStateFlow<List<RawAsset>> get() = state
+
+    /** The same contents as a cell, for the honest doubles that read the library by identifier. */
+    val contents: StateFlow<List<RawAsset>> = state.asStateFlow()
 
     fun set(rawAssets: List<RawAsset>) {
         state.value = rawAssets

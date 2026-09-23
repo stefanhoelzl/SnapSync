@@ -3,6 +3,7 @@ package app.snapsync.fake
 import app.snapsync.model.AssetPresence
 import app.snapsync.ports.ImportedAssetPresence
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The honest in-memory [ImportedAssetPresence]: a library that holds [present] identifiers, and a
@@ -17,15 +18,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * library under a running subject. Levers and inspection belong in `:test:world` wrappers, not here.
  */
 internal class InMemoryAssetPresence(
-    private val present: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet()),
-    private val readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
+    private val present: () -> Set<String>,
+    private val readable: StateFlow<Boolean>,
 ) : ImportedAssetPresence {
+
+    constructor(
+        present: MutableStateFlow<Set<String>> = MutableStateFlow(emptySet()),
+        readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
+    ) : this({ present.value }, readable)
 
     override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> =
         if (!readable.value) {
             localIds.associateWith { AssetPresence.UNKNOWN }
         } else {
-            val library = present.value
+            val library = present()
             localIds.associateWith {
                 if (it in library) AssetPresence.PRESENT else AssetPresence.ABSENT
             }

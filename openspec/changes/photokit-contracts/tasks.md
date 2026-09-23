@@ -1,15 +1,15 @@
 ## 1. Honest fakes out of `:test:world` (D6)
 
-- [ ] 1.1 Extract `InMemoryUploadDiscovery` into `:adapter:generic:fake`, with its state through the
+- [x] 1.1 Extract `InMemoryUploadDiscovery` into `:adapter:generic:fake`, with its state through the
       constructor and a factory. Rewrite `FakeUploadDiscovery` as a `:test:world` wrapper that keeps the
       `makeWalkUnreadable` lever. World and integration tests stay green.
-- [ ] 1.2 Extract `InMemoryAlbumManager`, and rewrite `FakeAlbumManager` as a wrapper that keeps `holdAdds`,
+- [x] 1.2 Extract `InMemoryAlbumManager`, and rewrite `FakeAlbumManager` as a wrapper that keeps `holdAdds`,
       `releaseAdds`, `delete`, `placeIn` and the inspection lists.
-- [ ] 1.3 Extract `InMemoryPhotoLibraryImporter`, and rewrite `FakePhotoLibraryImporter` as a wrapper that
+- [x] 1.3 Extract `InMemoryPhotoLibraryImporter`, and rewrite `FakePhotoLibraryImporter` as a wrapper that
       keeps `failNextImport`, `failNextImportAfterCreating` and `suspendNextImport`.
-- [ ] 1.4 Extract `InMemoryPhotoAccess` (status source + requester), and rewrite
+- [x] 1.4 Extract `InMemoryPhotoAccess` (status source + requester), and rewrite
       `MutablePhotoAccessStatusSource` as a wrapper.
-- [ ] 1.5 Confirm `FakeHonestyTest` is green over the four new fakes, and that `./gradlew build` passes.
+- [x] 1.5 Confirm `FakeHonestyTest` is green over the four new fakes, and that `./gradlew build` passes.
 
 ## 2. Contracts and fake bindings (D1, D9)
 

@@ -8,7 +8,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` RecordingAlbumManager, RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
+| `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumManager, RecordingAlbumManager, RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
 | `AlbumMapSource` | `:domain:feature` | `:domain:feature` Current, Migrate, Retry | no |
 | `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:adapter:ios:ext-safe` IosAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore | yes |
 | `AppUploadEngine` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeEngine; `:test:architecture` Engine; `:test:world` OperatorUploadEngine | yes |
@@ -66,10 +66,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
 | `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope, IosThreadLogScope; `:domain:ports` NoOp, RecordingScope | no |
 | `ManifestPublisher` | `:domain:ports` | `:adapter:generic:app` HttpManifestPublisher; `:domain:feature` FakeUploader | yes |
-| `PhotoAccessRequester` | `:domain:ports` | `:adapter:ios:app-only` PhotoLibraryPermission | no |
-| `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
+| `PhotoAccessRequester` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
+| `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource, InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
-| `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
+| `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, InMemoryPhotoLibraryImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
 | `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `ProcessMetricSource` | `:domain:ports` | `:adapter:ios:app-only` MetricKitProcessMetricSource | no |
@@ -98,7 +98,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource | yes |
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
 | `TransferRecord` | `:domain:ports` | — | no |
-| `UploadDiscovery` | `:domain:ports` | `:adapter:ios:ext-safe` IosDiscovery; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedDiscovery; `:test:world` FakeUploadDiscovery | yes |
+| `UploadDiscovery` | `:domain:ports` | `:adapter:generic:fake` InMemoryUploadDiscovery; `:adapter:ios:ext-safe` IosDiscovery; `:domain:feature` FakePlatform, RecordingDelegate, SelectionScopedDiscovery; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
 | `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | no |
