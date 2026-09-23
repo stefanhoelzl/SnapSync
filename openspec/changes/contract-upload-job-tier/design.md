@@ -87,7 +87,7 @@ reachable states with.
 The rig cannot reach the extension, and the extension cannot host a server (it lives ~60 s and only while the
 OS allows). So the run is requested and answered through the shared App Group:
 
-1. `POST /contract/<name>?host=photokit-ext` on the app's rig checks the preconditions (D6), writes a
+1. `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` on the app's rig checks the preconditions (D6), writes a
    run-request file naming the contract into the App Group, and re-registers the extension (disable →
    enable), which empties the job queue and makes the OS invoke the extension (~1 s, measured).
 2. In a rig build, the extension's entry sees the request, runs the named contract **instead of** the upload
@@ -229,8 +229,9 @@ and the fix follows in the next commit.
 ## Risks / Trade-offs
 
 - **[A run that overruns 60 s is killed silently, and the OS then backs off 6–11 min]** → stages are sized
-  well under the budget (each wait is bounded at 10 s, and there are few clauses); the result file is written
-  after each stage, so a kill leaves the verb a partial table it reports as a timeout, never a recording.
+  well under the budget (each wait is bounded at 10 s, and there are few clauses). The result is written once,
+  at the end; a killed run leaves none, and the verb's timeout says whether the OS never invoked the extension
+  (the request is still there) or the run was killed (it was taken).
 - **[The OS may behave differently inside `process()` than in the app]** → that is exactly what the extension
   recording shows; the app probe is only the reason to expect it to fit.
 - **[`resource` nil may be app-process-only]** → the clause asserts the port's contract either way; the fix

@@ -74,6 +74,13 @@ fun Outcome.render(): String = when (this) {
 const val CONTRACT_REFUSED: String = "refused: "
 
 /**
+ * The prefix a contract's answer carries when a run another process performs — the upload extension's, requested
+ * through the App Group — produced no result within its bound. A channel answers it with a timeout status and no
+ * recording, never a partial one.
+ */
+const val CONTRACT_TIMEOUT: String = "timeout: "
+
+/**
  * The CI entry point: runs the whole contract and fails ONCE, with the full outcome table, if any clause is
  * [Outcome.Failed], [Outcome.Diverged] or [Outcome.NotWithin], whatever the binding's kind (capability
  * `port-contracts`, "Outcomes are explicit and none is silent"). An expired wait established nothing: on a

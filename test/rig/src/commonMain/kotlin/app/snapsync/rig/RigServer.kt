@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.currentHost
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.presentation.StatusContainerHost
@@ -12,12 +13,15 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
+import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -167,6 +171,11 @@ class RigServer(
             post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
             get("/contract") { call.traced { call.respondContractList() } }
             post("/contract/{name}") { call.traced { call.respondContract() } }
+            // The upload receiver a contract run inside the upload extension points its jobs at (capability
+            // `port-contracts`): the OS's upload daemon PUTs each job's bytes here, over the rig build's loopback
+            // upload base, and gets the status the clause's setup put in the path. The answer is a STIMULUS —
+            // it puts the OS's job queue into the clause's state — and no clause asserts it.
+            route("/api/v2/contract/{clause}/{status}") { handle { call.respondUpload() } }
         }
     }
 
@@ -212,6 +221,14 @@ class RigServer(
         val body = if (marker.isEmpty()) "{\"refused\":${jsonString(reason)},\"verb\":\"$verb\"}\n" else "$marker$reason\n"
         respondText(body, status = HttpStatusCode.Conflict)
         return true
+    }
+
+    private suspend fun ApplicationCall.respondUpload() {
+        val clause = parameters["clause"]
+        val status = parameters["status"]?.toIntOrNull()?.let(HttpStatusCode::fromValue) ?: HttpStatusCode.BadRequest
+        val bytes = runCatching { receive<ByteArray>().size }.getOrElse { -1 }
+        log.i { "[upload-receiver] ${request.httpMethod.value} clause=$clause bytes=$bytes -> ${status.value}" }
+        respondText("", status = status)
     }
 
     private suspend fun ApplicationCall.respondState() =
@@ -300,7 +317,12 @@ class RigServer(
         val name = routeName("/contract")
         // One name can be registered for two hosts — `LinkOpener` is recorded on a device and run live on the
         // simulator app — so this process's own entry wins; another host's entry still answers, with its refusal.
-        val named = hooks.contracts.filter { it.name == name }
+        //
+        // `?host=<HOST>` selects one entry by the host it records for — how a run inside the upload extension
+        // (`IOS_DEVICE_PHOTOKIT_EXT`), which the app requests on the extension's behalf, is chosen over an entry
+        // of the same name this process runs itself.
+        val wanted = request.queryParameters["host"]
+        val named = hooks.contracts.filter { it.name == name && (wanted == null || it.host.name == wanted) }
         val contract = (named.firstOrNull { it.host == currentHost } ?: named.firstOrNull())?.run
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "contract"),
@@ -311,7 +333,13 @@ class RigServer(
         // never ran on. The `when` lives here because the hook file may hold no decisions.
         val params = request.queryParameters.entries().associate { it.key to it.value.first() }
         val body = withContext(Dispatchers.Default) { contract(params) }
-        val status = if (body.startsWith(CONTRACT_REFUSED)) HttpStatusCode.Conflict else HttpStatusCode.OK
+        val status = when {
+            body.startsWith(CONTRACT_REFUSED) -> HttpStatusCode.Conflict
+            // A run inside the extension that never answered: no recording, and a status that cannot be mistaken
+            // for one.
+            body.startsWith(CONTRACT_TIMEOUT) -> HttpStatusCode.GatewayTimeout
+            else -> HttpStatusCode.OK
+        }
         respondText(body, status = status)
     }
 

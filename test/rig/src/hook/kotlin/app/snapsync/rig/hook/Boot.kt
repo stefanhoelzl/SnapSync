@@ -19,6 +19,7 @@ import app.snapsync.rig.TriggerGroup
 import app.snapsync.rig.RigUserCommand
 import app.snapsync.rig.UploaderSwitch
 import app.snapsync.rig.deviceCommands
+import app.snapsync.rig.extensionContractEntries
 import app.snapsync.rig.noMembershipRefusal
 import app.snapsync.keychain.contract.deviceContracts
 import app.snapsync.contract.appDeviceContracts
@@ -157,6 +158,10 @@ private fun iosHooks() = RigHooks(
     // already pulls from the same place — neither needs an entitlement to get at it.
     publishBoundPort = { bound -> writeTextFile(rigPortFilePath(documentsDirectory()), bound.toString()) },
     contracts = deviceContracts() + appDeviceContracts(refusal = noMembershipRefusal { SnapSyncRoot.host }) +
+        extensionContractEntries(
+            membershipRefusal = noMembershipRefusal { SnapSyncRoot.host },
+            registry = SnapSyncRoot.osExtensionRegistryThunk,
+        ) +
         simulatorAppContracts(),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
     refusals = iosRefusals(),
