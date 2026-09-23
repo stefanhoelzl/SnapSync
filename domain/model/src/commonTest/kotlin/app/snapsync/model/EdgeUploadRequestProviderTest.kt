@@ -21,8 +21,9 @@ class EdgeUploadRequestProviderTest {
     private fun provider(
         host: String = "https://edge.example",
         token: suspend () -> String? = { "tok-1" },
+        freshToken: suspend () -> String? = token,
         appVersion: String = "0.4",
-    ) = EdgeUploadRequestProvider(host, deviceId, token, appVersion)
+    ) = EdgeUploadRequestProvider(host, deviceId, token, freshToken, appVersion)
 
     @Test
     fun names_identity_in_the_path_and_the_capture_name_in_the_query() = runTest {
@@ -145,7 +146,7 @@ class EdgeUploadRequestProviderTest {
         // request from this provider on every retry. A provider that captured the token at construction
         // would keep re-sending the dead one forever.
         var current: String? = "stale"
-        val p = EdgeUploadRequestProvider("https://edge.example", deviceId, { current }, "0.4")
+        val p = EdgeUploadRequestProvider("https://edge.example", deviceId, { current }, { current }, "0.4")
 
         val before = p.provide(resource("x.jpg"))
         assertEquals("Bearer stale", before.headers["Authorization"])
@@ -155,6 +156,25 @@ class EdgeUploadRequestProviderTest {
         val after = p.provide(resource("x.jpg"))
         assertEquals("Bearer fresh", after.headers["Authorization"])
         assertEquals(before.url, after.url) // …and the destination is byte-identical, as before
+    }
+
+    @Test
+    fun a_retry_reads_the_store_of_record_even_when_the_first_request_was_served_a_copy() = runTest {
+        // The token source may serve an in-memory copy between re-reads (capability `device-attestation`), so a
+        // copy can predate the other process's renewal. A retry is when that matters — the failure may have been
+        // that stale token's 401 — so it mints from the uncached read, and the destination stays identical.
+        val copy: String? = "stale-copy"
+        var ofRecord: String? = "renewed-by-the-other-process"
+        val p = provider(token = { copy }, freshToken = { ofRecord })
+
+        val first = p.provide(resource("x.jpg"))
+        val retried = p.provideForRetry(resource("x.jpg"))
+
+        assertEquals("Bearer stale-copy", first.headers["Authorization"])
+        assertEquals("Bearer renewed-by-the-other-process", retried.headers["Authorization"])
+        assertEquals(first.url, retried.url)
+        ofRecord = null
+        assertEquals(null, p.provideForRetry(resource("x.jpg")).headers["Authorization"])
     }
 
     @Test

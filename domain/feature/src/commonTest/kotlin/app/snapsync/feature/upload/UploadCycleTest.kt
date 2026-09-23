@@ -93,6 +93,8 @@ class UploadCycleTest {
     private class StubUploadRequestProvider : UploadRequestProvider {
         override suspend fun provide(resource: Resource): UploadRequest =
             UploadRequest(url = "https://stub.invalid/${resource.filename}", headers = emptyMap(), resource = resource)
+
+        override suspend fun provideForRetry(resource: Resource): UploadRequest = provide(resource)
     }
 
     /** Records what the cycle asked the platform to do; serves canned discovered/returned jobs. */

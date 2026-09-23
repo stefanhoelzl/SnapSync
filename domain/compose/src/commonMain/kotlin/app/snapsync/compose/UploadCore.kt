@@ -118,6 +118,12 @@ class UploadPorts(
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
     val token: suspend () -> String?,
     /**
+     * The attestation bearer token read from its store of record, bypassing any in-process copy — what a retry's
+     * request carries (capability `edge-upload-provider`, "A retry picks up a refreshed token"). Required, like
+     * [token]: `{ null }` must be stated.
+     */
+    val freshToken: suspend () -> String?,
+    /**
      * The calling build's marketing version, declared on the byte upload (capability `min-app-version`).
      *
      * A plain value, and required: each process builds its own bundle in its own root and reads its own
@@ -163,6 +169,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
                     config.host,
                     ports.deviceIdentity.deviceId(),
                     ports.token,
+                    ports.freshToken,
                     ports.appVersion,
                 ),
                 ledger,

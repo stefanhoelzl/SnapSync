@@ -12,6 +12,9 @@ import app.snapsync.model.UploadRequestProvider
 class RecordingUploadRequestProvider : UploadRequestProvider {
 
     val invocations = mutableListOf<Resource>()
+
+    /** The resources minted through [provideForRetry] — a subset of [invocations], in order. */
+    val retryInvocations = mutableListOf<Resource>()
     val returned = mutableListOf<UploadRequest>()
     var nextFailure: Throwable? = null
 
@@ -27,5 +30,10 @@ class RecordingUploadRequestProvider : UploadRequestProvider {
                 resource.metadata.mapKeys { (key, _) -> "x-amz-meta-$key" },
             resource = resource,
         ).also { returned += it }
+    }
+
+    override suspend fun provideForRetry(resource: Resource): UploadRequest {
+        retryInvocations += resource
+        return provide(resource)
     }
 }
