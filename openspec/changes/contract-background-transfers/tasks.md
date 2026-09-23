@@ -1,16 +1,16 @@
 ## 1. Contracts and fixture vocabulary (`:test:contracts`)
 
-- [ ] 1.1 Add `TransferFixture`: the route vocabulary derived from a clause id (scripted status/body/length, hold, stored `PUT` read-back), shared by the loopback server and the in-memory one
-- [ ] 1.2 Add `BackgroundTransferContract`: the state vocabulary (`IDLE`, `AT_CAP`), the `TransferObservations` handle (stored object + row state), and D1's eight clauses
-- [ ] 1.3 Add `DownloadTransportContract`: the clause-supplied host that records what it is told, and D2's eight clauses
-- [ ] 1.4 Add `BackgroundSchedulerContract`: the `pendingWakes()` handle and D4's four clauses
+- [x] 1.1 Add `TransferFixture`: the route vocabulary derived from a clause id (scripted status/body/length, hold, stored `PUT` read-back), shared by the loopback server and the world bindings' network
+- [x] 1.2 Add `BackgroundTransferContract`: the state vocabulary (`IDLE`, `AT_CAP`), the `TransferObservations` handle (stored object + row state), and D1's eight clauses
+- [x] 1.3 Add `DownloadTransportContract`: the clause-supplied host that records what it is told, and D2's eight clauses
+- [x] 1.4 Add `BackgroundSchedulerContract`: the `pendingWakes()` handle and D4's four clauses
 
-## 2. Honest fakes and world wrappers
+## 2. Fakes and world bindings
 
-- [ ] 2.1 Add `inMemoryBackgroundTransfer`, `inMemoryDownloadTransport` and `inMemoryBackgroundScheduler` to `:adapter:generic:fake`, as `internal` classes behind port-typed factories, over an in-memory `TransferFixture` server
-- [ ] 2.2 Bind all three contracts to the fakes in `:adapter:generic:fake` `commonTest`, and make them green
-- [ ] 2.3 Turn `:test:world`'s `FakeBackgroundTransfer` and `FakeDownloadTransport` into wrappers whose levers withhold or release what the honest fake does; keep the inspection surface; `./gradlew :test:integration:jvmTest` and the world harness still pass
-- [ ] 2.4 Replace the two private `FakeScheduler`s in `:domain:feature` tests with the honest fake where it serves them; keep a private one only where a test records calls on purpose
+- [ ] 2.1 Add `inMemoryBackgroundScheduler` to `:adapter:generic:fake` (an `internal` class behind a port-typed factory), bind `BackgroundSchedulerContract` to it in `commonTest`, and make it green
+- [ ] 2.2 Bind `BackgroundTransferContract` and `DownloadTransportContract` to `FakeBackgroundTransfer` / `FakeDownloadTransport` in `:test:world` `commonTest`, with the binding playing the network through their operator actions
+- [ ] 2.3 Fix the world doubles wherever a clause fails (commit red first), keeping their levers and inspection; `./gradlew :test:world:jvmTest :test:integration:jvmTest` and the desktop module still pass
+- [ ] 2.4 Replace the two private `FakeScheduler`s in `:domain:feature` tests with the honest fake where they only stand in; keep a private one only where a test records calls on purpose
 
 ## 3. Live `URLSession` bindings on `IOS_SIM_APP`
 

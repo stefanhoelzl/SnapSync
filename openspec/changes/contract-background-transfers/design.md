@@ -37,7 +37,7 @@ Current state, verified against the tree on 2026-09-23:
   a real adapter on some host.
 - The two `URLSession` adapters run **live** on `IOS_SIM_APP` on every push.
 - `BackgroundScheduler` is recorded once on the device and replayed on every build.
-- Honest fakes that the contracts license, with the world's levers moved into wrappers.
+- The world's transfer doubles, which every world and integration test stands on, held to the same clauses.
 
 **Non-Goals:**
 
@@ -60,7 +60,7 @@ list states what **every** tier owes the cycle:
 | `CREATE_BAD_DESTINATION` | `IDLE` | an unparsable destination answers `FAILED`, and nothing lands |
 | `CREATE_LANDS_AND_RECORDS` | `IDLE` | a created job to an accepting destination lands the bytes, and its `REQUESTED` row reads `COMPLETED` within the bound |
 | `CREATE_KEEPS_CONTENT_TYPE` | `IDLE` | the object lands with the request's `Content-Type` |
-| `REJECTED_RETURNS_ROW` | `IDLE` | a destination answering `500` returns the row to `DISCOVERED` and records no `COMPLETED` |
+| `REJECTED_NEVER_COMPLETES` | `IDLE` | a destination answering `500` never records `COMPLETED`. When the row returns to `DISCOVERED` is tier-specific (the PhotoKit tier offers a free `.retry` first), so it is not asserted |
 | `AT_CAP_DEFERS` | `AT_CAP` | at the tier's in-flight cap, `createJob` answers `LIMIT_EXCEEDED` and starts nothing |
 | `TERMINAL_NEEDS_REQUESTED` | `IDLE` | a completion for a row that is not `REQUESTED` leaves the row as it was |
 | `DRAIN_HANDS_UP_NO_SUCCESS` | `IDLE` | after a success lands, `drainTerminals` does not return that job |
@@ -108,8 +108,8 @@ open (for `AT_CAP`), store a `PUT`'s bytes and headers for the handle to read, a
 (`POST /contract/<name>?fixture=<url>`). The simulator shares the Mac's loopback, and ATS does not apply to a
 connection by IP address, so `http://127.0.0.1:<port>` needs no plist change.
 
-The honest fakes run over an in-memory server with the same route semantics. The route vocabulary lives in
-`:test:contracts` (`TransferFixture`), so both serve the same answers.
+The route vocabulary lives in `:test:contracts` (`TransferFixture`) as a pure codec. The loopback server and
+the world bindings' network both answer from it, so both hosts answer the same route the same way.
 
 *Alternatives:*
 - A route on the rig's own Ktor server. Rejected: it puts the peer inside the process under test, and only
@@ -152,15 +152,28 @@ fixed by the clause. Everything a device recording could add beyond the simulato
 lifecycle, which the Non-Goals leave documented. Recording it would buy replay flakiness and no clause the
 simulator does not already run for real.
 
-### D6. Honest fakes, with the world's levers as wrappers
+### D6. The world's doubles are the `Fake` bindings; the binding plays the network
 
-`inMemoryBackgroundTransfer(server, ledger, cap)` completes each created job against its in-memory server as
-that server answers. `inMemoryDownloadTransport(host, server)` follows the real delegate's order: judge, then
-stage, then complete. `inMemoryBackgroundScheduler()` holds a set of pending wakes. All three are `internal`
-classes behind port-typed factories. `FakeBackgroundTransfer` and `FakeDownloadTransport` become `:test:world`
-wrappers whose levers **withhold or release** what the honest fake does. The operator "complete" releases a
-held job, and "stage" releases a held transfer with a chosen outcome. This matches phase 6's extraction of the
-photo doubles.
+`FakeBackgroundTransfer` and `FakeDownloadTransport` are bound **directly**, in `:test:world` `commonTest`.
+`MiniEdgeContractsTest` is the precedent. Their levers stay. The binding stands where the loopback server
+stands for the live binding: after `createJob`/`start`, it answers each transfer the way the clause's route
+says, through the double's own operator actions. An accepting `PUT` is `completeJob`, then `drainTerminals`.
+A rejecting one is `failJob` with the `.retry` spent. A `GET` is `finish(description, outcome)`, with the
+outcome built from the route. A held route is never answered. The subject the clause receives is the port, so
+none of this is visible to a clause.
+
+*Alternative, rejected:* extract honest fakes into `:adapter:generic:fake` and make the world doubles wrappers
+(the phase-6 pattern). For uploads, no honest fake can be licensed for the tier the world needs. The only real
+binding is the URLSession tier, while the world models the PhotoKit tier's single free `.retry` and
+drain-time recording, which about 90 call sites across the world tests, the integration tests and the desktop
+inspector rely on. An extracted fake would be licensed for one tier and used as the other, and the world tests
+would stand on a wrapper beside it rather than on the licensed thing. Binding the doubles directly licenses
+what the tests use. The world's PhotoKit-only behaviour stays uncontracted, as a tier fact with no real host
+(the same call 6b makes).
+
+`BackgroundScheduler` has no world double, so it gains `inMemoryBackgroundScheduler` in `:adapter:generic:fake`
+(an `internal` class behind a port-typed factory), which replaces the two private `FakeScheduler`s where they
+only stand in.
 
 ### D7. A failing clause is fixed in the adapter, after its red run
 
@@ -180,6 +193,12 @@ and the cap's count after a cancelled task. Neither is confirmed.
   through phase 6's `SeededLibrary`, under the `GRANTED` precondition the registry already enforces.
 - **[The device run clears the heartbeat]** → Rig builds only. It is stated in the binding and in the
   `rig-channel` skill, and the next trigger re-arms it.
+- **[The cycle records `REQUESTED` only after `createJob` returns]** (`UploadCycle`, write-after-act). A
+  completion delivered before that write reaches `markTerminal` while the row is not yet `REQUESTED`, so it
+  applies nothing. The row is then written `REQUESTED` with no task behind it, and nothing reconciles it. Over a
+  real network the window is the gap between `resume()` and the engine's write, which is tiny; over loopback it
+  is real. → Clauses seed `REQUESTED` **before** `createJob` so they stay deterministic. The race is reported for
+  a separate `upload-lifecycle` change and not fixed here: fixing it changes behaviour.
 - **[6b's scope may shift]** → The clause list is tier-neutral, so a later PhotoKit binding adds clauses without
   editing these.
 

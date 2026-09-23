@@ -265,7 +265,8 @@ class RigServer(
         // A contract that finds itself on the wrong host answers with the refusal marker rather than a
         // recording: a 200 would let a caller redirect it straight into a `.rec` file under a host name it
         // never ran on. The `when` lives here because the hook file may hold no decisions.
-        val body = withContext(Dispatchers.Default) { contract() }
+        val params = request.queryParameters.entries().associate { it.key to it.value.first() }
+        val body = withContext(Dispatchers.Default) { contract(params) }
         val status = if (body.startsWith(CONTRACT_REFUSED)) HttpStatusCode.Conflict else HttpStatusCode.OK
         respondText(body, status = status)
     }

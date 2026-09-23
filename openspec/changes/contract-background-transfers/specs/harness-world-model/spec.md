@@ -1,23 +1,25 @@
 ## ADDED Requirements
 
-### Requirement: The world's transfer doubles wrap honest fakes
+### Requirement: The world's transfer doubles are the transfer contracts' Fake bindings
 
-The world's `BackgroundTransfer` and `DownloadTransport` doubles SHALL be **wrappers** over the honest fakes
-`:adapter:generic:fake` provides for those ports, which the port contracts bind (capability `port-contracts`).
-The wrappers SHALL keep the operator levers and inspection this spec requires of them — the settable job-limit,
-the forced create-failure, the operator complete and fail actions, the operator stage action and its chosen
-`TransferOutcome`, the inspectable buckets and started transfers — and SHALL add no behaviour of their own
-between a lever and the honest fake. A lever SHALL act by withholding, releasing or choosing what the honest
-fake then does, so a world test and a contract clause observe the same answer to the same input.
+The world's `BackgroundTransfer` and `DownloadTransport` doubles SHALL each be bound, as the `Fake` binding of
+that port's contract (capability `port-contracts`), in `:test:world`'s `commonTest`, so every world and
+integration test stands on a double held to the same clauses its real adapter passes. The binding SHALL play
+the network through the double's existing operator actions — answering each transfer as the clause's fixture
+route says — and SHALL NOT add a lever for it. A clause the double fails SHALL be fixed in the double; the
+double's levers and inspection stay as this spec requires them. Behaviour the double models that no real host
+exhibits — the PhotoKit tier's single free retry — SHALL stay uncontracted rather than asserted by a clause only
+the double reaches.
 
-#### Scenario: A world upload completes through the honest fake
+#### Scenario: The world's upload double accepts an unusable payload
 
-- **WHEN** the operator completes a created job
-- **THEN** the object lands and the ledger records `COMPLETED` through the same honest fake the
-  `BackgroundTransfer` contract's `Fake` binding runs
+- **WHEN** the `BackgroundTransfer` contract hands the world's double a resource whose payload is not the
+  world's resource type
+- **THEN** the double answers `FAILED`, as a real tier does for a payload it cannot upload, and the world tests
+  that stage ordinary resources are unaffected
 
-#### Scenario: A lever the honest fake cannot express
+#### Scenario: The binding completes a transfer
 
-- **WHEN** a lever needs an answer the honest fake would never give for the same input
-- **THEN** the lever is removed or the honest fake is corrected against its contract, rather than the wrapper
-  answering on its own
+- **WHEN** a clause creates a job to a route that accepts
+- **THEN** the binding completes it through the double's own complete action, and the clause reads the outcome
+  through the port and its handle exactly as it does against the live adapter
