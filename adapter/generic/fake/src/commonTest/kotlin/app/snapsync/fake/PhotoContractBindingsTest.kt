@@ -20,7 +20,7 @@ import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.PhotoLibraryImporterContract
 import app.snapsync.contracts.PhotoLibraryImporterState
 import app.snapsync.contracts.SEED_COUNT
-import app.snapsync.contracts.Seeded
+import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.UploadDiscoveryContract
 import app.snapsync.contracts.UploadDiscoveryState
@@ -67,7 +67,7 @@ class PhotoContractBindingsTest {
 
     private val noSelection: StateFlow<List<Resource>?> = MutableStateFlow(null)
 
-    private val candidateSource = object : Binding<CandidateSourceState, Seeded<CandidateSource>> {
+    private val candidateSource = object : Binding<CandidateSourceState, SeededLibrary<CandidateSource>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(
@@ -76,7 +76,7 @@ class PhotoContractBindingsTest {
             CandidateSourceState.GRANTED_EMPTY_WINDOW,
         )
 
-        override fun create(state: CandidateSourceState, clauseId: String): Entered<Seeded<CandidateSource>> {
+        override fun create(state: CandidateSourceState, clauseId: String): Entered<SeededLibrary<CandidateSource>> {
             val library = when (state) {
                 CandidateSourceState.GRANTED_SEEDED -> seededLibrary(CandidateSourceContract.name, clauseId)
                 else -> MutableStateFlow(emptyList())
@@ -86,21 +86,21 @@ class PhotoContractBindingsTest {
                 walk = inMemoryCandidateSource(library),
                 selection = noSelection,
             )
-            return Entered.Ready(Seeded(source, library.value.map { it.assetId }))
+            return Entered.Ready(SeededLibrary(source, library.value.map { it.assetId }))
         }
     }
 
-    private val uploadDiscovery = object : Binding<UploadDiscoveryState, Seeded<UploadDiscovery>> {
+    private val uploadDiscovery = object : Binding<UploadDiscoveryState, SeededLibrary<UploadDiscovery>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(UploadDiscoveryState.NO_GRANT, UploadDiscoveryState.GRANTED_SEEDED)
 
-        override fun create(state: UploadDiscoveryState, clauseId: String): Entered<Seeded<UploadDiscovery>> {
+        override fun create(state: UploadDiscoveryState, clauseId: String): Entered<SeededLibrary<UploadDiscovery>> {
             val granted = state == UploadDiscoveryState.GRANTED_SEEDED
             val library = if (granted) seededLibrary(UploadDiscoveryContract.name, clauseId) else MutableStateFlow(emptyList())
             val grant = grant(granted)
             return Entered.Ready(
-                Seeded(
+                SeededLibrary(
                     inMemoryUploadDiscovery(inMemoryCandidateSource(library), library) { grant.value },
                     library.value.map { it.assetId },
                 ),
@@ -108,7 +108,7 @@ class PhotoContractBindingsTest {
         }
     }
 
-    private val presence = object : Binding<ImportedAssetPresenceState, Seeded<ImportedAssetPresence>> {
+    private val presence = object : Binding<ImportedAssetPresenceState, SeededLibrary<ImportedAssetPresence>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(ImportedAssetPresenceState.NO_GRANT, ImportedAssetPresenceState.GRANTED_SEEDED)
@@ -116,7 +116,7 @@ class PhotoContractBindingsTest {
         override fun create(
             state: ImportedAssetPresenceState,
             clauseId: String,
-        ): Entered<Seeded<ImportedAssetPresence>> {
+        ): Entered<SeededLibrary<ImportedAssetPresence>> {
             val library = when (state) {
                 ImportedAssetPresenceState.GRANTED_SEEDED -> seededLibrary(ImportedAssetPresenceContract.name, clauseId)
                 ImportedAssetPresenceState.NO_GRANT -> MutableStateFlow(emptyList())
@@ -126,7 +126,7 @@ class PhotoContractBindingsTest {
                 library = inMemoryLibraryPresence(library, MutableStateFlow(true)),
                 selection = noSelection,
             )
-            return Entered.Ready(Seeded(composed, library.value.map { it.assetId }))
+            return Entered.Ready(SeededLibrary(composed, library.value.map { it.assetId }))
         }
     }
 
@@ -144,14 +144,14 @@ class PhotoContractBindingsTest {
         }
     }
 
-    private val albumManager = object : Binding<AlbumManagerState, Seeded<AlbumManager>> {
+    private val albumManager = object : Binding<AlbumManagerState, SeededLibrary<AlbumManager>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val reaches = setOf(AlbumManagerState.GRANTED_SEEDED)
 
-        override fun create(state: AlbumManagerState, clauseId: String): Entered<Seeded<AlbumManager>> {
+        override fun create(state: AlbumManagerState, clauseId: String): Entered<SeededLibrary<AlbumManager>> {
             val library = seededLibrary(AlbumManagerContract.name, clauseId)
-            return Entered.Ready(Seeded(inMemoryAlbumManager(library), library.value.map { it.assetId }))
+            return Entered.Ready(SeededLibrary(inMemoryAlbumManager(library), library.value.map { it.assetId }))
         }
     }
 

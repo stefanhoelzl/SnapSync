@@ -10,7 +10,7 @@ import app.snapsync.contracts.ImportedAssetPresenceState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
-import app.snapsync.contracts.Seeded
+import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.verify
 import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.gallery.currentPhotoPermission
@@ -33,7 +33,7 @@ class PhotoKitNoGrantContractTest {
         it == PermissionStatus.NOT_DETERMINED || it == PermissionStatus.DENIED
     }
 
-    private val presence = object : Binding<ImportedAssetPresenceState, Seeded<ImportedAssetPresence>> {
+    private val presence = object : Binding<ImportedAssetPresenceState, SeededLibrary<ImportedAssetPresence>> {
         override val host = Host.IOS_SIM_KEXE
         override val kind = BindingKind.Live
         override val reaches = setOf(ImportedAssetPresenceState.NO_GRANT)
@@ -41,10 +41,10 @@ class PhotoKitNoGrantContractTest {
         override fun create(
             state: ImportedAssetPresenceState,
             clauseId: String,
-        ): Entered<Seeded<ImportedAssetPresence>> {
+        ): Entered<SeededLibrary<ImportedAssetPresence>> {
             if (state != ImportedAssetPresenceState.NO_GRANT || !holdsNoGrant()) return Entered.Unreachable(unreachable)
             return Entered.Ready(
-                Seeded(
+                SeededLibrary(
                     PermissionAwareAssetPresence(
                         permission = MutableStateFlow(currentPhotoPermission()),
                         library = PhotoKitAssetPresence(),

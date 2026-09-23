@@ -22,7 +22,7 @@ enum class ImportedAssetPresenceState {
  * binding binds the grant-aware composition production calls, which owns that half of the contract.
  */
 object ImportedAssetPresenceContract :
-    Contract<ImportedAssetPresenceState, Seeded<ImportedAssetPresence>>("ImportedAssetPresence") {
+    Contract<ImportedAssetPresenceState, SeededLibrary<ImportedAssetPresence>>("ImportedAssetPresence") {
 
     override val clauses = clauses {
 

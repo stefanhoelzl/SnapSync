@@ -25,7 +25,7 @@ import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.PhotoLibraryImporterContract
 import app.snapsync.contracts.PhotoLibraryImporterState
 import app.snapsync.contracts.SEED_COUNT
-import app.snapsync.contracts.Seeded
+import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.UploadDiscoveryContract
 import app.snapsync.contracts.UploadDiscoveryState
@@ -129,12 +129,12 @@ private fun seedPhotos(seedDate: String): List<String> = memScoped {
 
 private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
 
-class SimAppCandidateSourceBinding : Binding<CandidateSourceState, Seeded<CandidateSource>> {
+class SimAppCandidateSourceBinding : Binding<CandidateSourceState, SeededLibrary<CandidateSource>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(CandidateSourceState.GRANTED_SEEDED, CandidateSourceState.GRANTED_EMPTY_WINDOW)
 
-    override fun create(state: CandidateSourceState, clauseId: String): Entered<Seeded<CandidateSource>> {
+    override fun create(state: CandidateSourceState, clauseId: String): Entered<SeededLibrary<CandidateSource>> {
         val seeded = when (state) {
             CandidateSourceState.NO_GRANT -> return Entered.Unreachable(UNREACHABLE_NO_GRANT)
             CandidateSourceState.GRANTED_SEEDED ->
@@ -146,28 +146,28 @@ class SimAppCandidateSourceBinding : Binding<CandidateSourceState, Seeded<Candid
             walk = PhotoKitCandidateSource(),
             selection = noSelection,
         )
-        return Entered.Ready(Seeded(source, seeded))
+        return Entered.Ready(SeededLibrary(source, seeded))
     }
 }
 
-class SimAppUploadDiscoveryBinding : Binding<UploadDiscoveryState, Seeded<UploadDiscovery>> {
+class SimAppUploadDiscoveryBinding : Binding<UploadDiscoveryState, SeededLibrary<UploadDiscovery>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(UploadDiscoveryState.GRANTED_SEEDED)
 
-    override fun create(state: UploadDiscoveryState, clauseId: String): Entered<Seeded<UploadDiscovery>> {
+    override fun create(state: UploadDiscoveryState, clauseId: String): Entered<SeededLibrary<UploadDiscovery>> {
         if (state == UploadDiscoveryState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
         val seeded = seedPhotos(PhotoLibrary.window(UploadDiscoveryContract.name, clauseId).seedDate)
-        return Entered.Ready(Seeded(IosDiscovery(Logger.withTag("contract"), PhotoKitCandidateSource()), seeded))
+        return Entered.Ready(SeededLibrary(IosDiscovery(Logger.withTag("contract"), PhotoKitCandidateSource()), seeded))
     }
 }
 
-class SimAppAssetPresenceBinding : Binding<ImportedAssetPresenceState, Seeded<ImportedAssetPresence>> {
+class SimAppAssetPresenceBinding : Binding<ImportedAssetPresenceState, SeededLibrary<ImportedAssetPresence>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(ImportedAssetPresenceState.GRANTED_SEEDED)
 
-    override fun create(state: ImportedAssetPresenceState, clauseId: String): Entered<Seeded<ImportedAssetPresence>> {
+    override fun create(state: ImportedAssetPresenceState, clauseId: String): Entered<SeededLibrary<ImportedAssetPresence>> {
         if (state == ImportedAssetPresenceState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
         val seeded = seedPhotos(PhotoLibrary.window(ImportedAssetPresenceContract.name, clauseId).seedDate)
         val presence = PermissionAwareAssetPresence(
@@ -175,7 +175,7 @@ class SimAppAssetPresenceBinding : Binding<ImportedAssetPresenceState, Seeded<Im
             library = PhotoKitAssetPresence(),
             selection = noSelection,
         )
-        return Entered.Ready(Seeded(presence, seeded))
+        return Entered.Ready(SeededLibrary(presence, seeded))
     }
 }
 
@@ -191,14 +191,14 @@ class SimAppPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess> {
     }
 }
 
-class SimAppAlbumManagerBinding : Binding<AlbumManagerState, Seeded<AlbumManager>> {
+class SimAppAlbumManagerBinding : Binding<AlbumManagerState, SeededLibrary<AlbumManager>> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val reaches = setOf(AlbumManagerState.GRANTED_SEEDED)
 
-    override fun create(state: AlbumManagerState, clauseId: String): Entered<Seeded<AlbumManager>> {
+    override fun create(state: AlbumManagerState, clauseId: String): Entered<SeededLibrary<AlbumManager>> {
         val seeded = seedPhotos(PhotoLibrary.window(AlbumManagerContract.name, clauseId).seedDate)
-        return Entered.Ready(Seeded(IosAlbumManager(), seeded))
+        return Entered.Ready(SeededLibrary(IosAlbumManager(), seeded))
     }
 }
 

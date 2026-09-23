@@ -24,7 +24,7 @@ enum class AlbumManagerState {
  * contributes: an asset it misses is uploaded from a WhatsApp album, and one it wrongly includes is never
  * uploaded at all.
  */
-object AlbumManagerContract : Contract<AlbumManagerState, Seeded<AlbumManager>>("AlbumManager") {
+object AlbumManagerContract : Contract<AlbumManagerState, SeededLibrary<AlbumManager>>("AlbumManager") {
 
     /** The album title a clause creates. Unique per clause, so a shared library cannot confuse two. */
     fun title(clauseId: String) = "snapsync-contract-$clauseId"
