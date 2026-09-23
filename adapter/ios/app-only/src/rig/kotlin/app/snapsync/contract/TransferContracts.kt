@@ -16,6 +16,7 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.RunParameters
+import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.StagingDisk
 import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.download.IosDownloadTransport
@@ -35,7 +36,6 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
@@ -155,7 +155,7 @@ class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, Transfe
             Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), seedOne(contract, clauseId))
         }
         if (state == BackgroundTransferState.AT_CAP) {
-            runBlocking {
+            runEntry {
                 repeat(CAP) { n ->
                     val resource = usable(BackgroundTransferContract.key(clauseId, n = n + 1))
                     val url = base + BackgroundTransferContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
@@ -174,7 +174,7 @@ class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, Transfe
                 objects = fixtureObjects(base),
             ),
             // Held transfers end with their clause, not with the fixture's hold timeout.
-            dispose = { runBlocking { platform.cancelTransfers() } },
+            dispose = { runEntry { platform.cancelTransfers() } },
         )
     }
 

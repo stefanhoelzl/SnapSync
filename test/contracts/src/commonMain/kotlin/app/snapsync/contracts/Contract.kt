@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
 
 /**
  * One obligation of a port, conditioned on the state of the system behind it.
@@ -78,4 +79,15 @@ sealed interface Entered<out T> {
     class Ready<T>(val subject: T, val dispose: () -> Unit = {}) : Entered<T>
 
     class Unreachable(val reason: String) : Entered<Nothing>
+}
+
+/**
+ * Runs a binding's entry into — or exit from — a state whose setup SUSPENDS: filling a transfer tier's in-flight cap,
+ * cancelling what a clause left open. [Binding.create] and [Entered.Ready.dispose] are not coroutines, and the runner
+ * enters the state before the clause's own `runTest`, so the entry gets a `runTest` of its own, on the calling thread,
+ * exactly as a clause body runs (capability `port-contracts`). Not a general-purpose bridge: it exists so a binding
+ * never reaches for `runBlocking`, which production lanes may not use.
+ */
+fun runEntry(block: suspend () -> Unit) {
+    runTest { block() }
 }

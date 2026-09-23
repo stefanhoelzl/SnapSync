@@ -15,6 +15,7 @@ import app.snapsync.contracts.StagingDisk
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.contracts.currentHost
+import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.fake.inMemoryLedgerStore
 import app.snapsync.model.Resource
@@ -27,7 +28,6 @@ import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.TransferOutcome
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 
 /**
@@ -91,9 +91,8 @@ class TransferContractsTest {
             val networked = NetworkedTransfer(FakeBackgroundTransfer(store, OWN_DEVICE, ledger), store, ::routeOf)
             if (state == BackgroundTransferState.AT_CAP) {
                 networked.double.jobLimit = CAP
-                // Fill the cap with transfers to routes that never answer. `create` is not a coroutine, and the
-                // runner enters the state before the clause's own `runTest` — so the entry gets one of its own.
-                runTest {
+                // Fill the cap with transfers to routes that never answer.
+                runEntry {
                     repeat(CAP) { n ->
                         val key = BackgroundTransferContract.key(clauseId, n = n + 1)
                         val url = base + BackgroundTransferContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
