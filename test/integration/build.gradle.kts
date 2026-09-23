@@ -39,7 +39,8 @@ dependencies {
     testImplementation(libs.kotlinx.serialization.json)
 }
 
-// ---- The all-real journeys (capability `testing-architecture`, "All-real journeys are the contracts' safety net") ----
+// ---- The all-real journeys ----
+// (capability `testing-architecture`, "All-real journeys are the contracts' safety net")
 //
 // A few end-to-end runs with EVERY system real: the rig build of the iOS app on two simulators, the real backend
 // served locally, the real photo library. Written against the same typed client as the tests above, and run ONLY by
