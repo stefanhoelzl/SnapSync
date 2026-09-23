@@ -1,6 +1,6 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.push.ApnsPushToken
+import app.snapsync.model.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
 
 /**
@@ -12,7 +12,7 @@ import app.snapsync.feature.push.PushRegistration
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]).
  */
 internal fun pushRegistrationFor(ports: AppPorts): PushRegistration =
-    PushRegistration(ports.pushHttpClient, ports.backendHost, identity = ports.deviceIdentity)
+    PushRegistration(ports.pushTokenPublisher)
 
 /** Re-PUT the delivered APNs token on join; a no-op before the OS has delivered one. */
 internal suspend fun PushRegistration.reRegister(ports: AppPorts) {

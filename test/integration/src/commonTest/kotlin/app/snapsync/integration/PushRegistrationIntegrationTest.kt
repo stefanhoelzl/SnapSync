@@ -6,10 +6,10 @@ import app.snapsync.model.eventEnd
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.eventStart
 import app.snapsync.model.captureCeiling
-import app.snapsync.feature.push.ApnsPushToken
+import app.snapsync.model.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.model.Direction
-import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.world.BackendStore
 import app.snapsync.world.World
 import app.snapsync.world.miniEdgeClient
@@ -22,7 +22,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * The REAL device-side push registration (`PushRegistration` + `KtorPushHttpClient`) driven against the
+ * The REAL device-side push registration (`PushRegistration` + `HttpPushTokenPublisherlient`) driven against the
  * world's mini-edge, asserting the world outcome: the device config document lands in the backend store,
  * and — because config lives in its own namespace — it is NOT surfaced as a listed file. (The backend
  * notify fan-out is Deno-side logic, covered by `api/test/app.test.ts`, so it is not re-exercised
@@ -35,7 +35,7 @@ class PushRegistrationIntegrationTest {
     @Test
     fun registration_writes_the_device_config_over_the_world() = worldTest {
         val store = BackendStore()
-        val reg = PushRegistration(KtorPushHttpClient(miniEdgeClient(store)), "https://edge.example/api/v2", identity = { deviceId })
+        val reg = PushRegistration(HttpPushTokenPublisher(miniEdgeClient(store), "https://edge.example/api/v2", deviceId = { deviceId }))
 
         reg.register(ApnsPushToken("DEADBEEF", "sandbox"))
 

@@ -1,8 +1,9 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.AttestClient
+import app.snapsync.ports.TokenOutcome
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The backend states an [AttestClient] clause needs. */
@@ -42,19 +43,19 @@ object AttestClientContract : Contract<AttestClientState, EdgeSubject<AttestClie
         clause("A_FORGED_ATTESTATION_IS_REFUSED", AttestClientState.SERVING) { s ->
             val challenge = assertNotNull(s.port.challenge())
             val forged = "not an attestation".encodeToByteArray()
-            assertNull(s.port.mintToken(s.seeded.deviceId, KEY_ID, forged, challenge), "no token for a forgery")
+            assertFalse(s.port.mintToken(s.seeded.deviceId, KEY_ID, forged, challenge) is TokenOutcome.Minted, "no token for a forgery")
         }
 
         clause("A_CHALLENGE_THE_EDGE_NEVER_ISSUED_IS_REFUSED", AttestClientState.SERVING) { s ->
             val notIssued = "a-challenge-no-edge-issued"
             val overIt = "attestation:$KEY_ID:$notIssued".encodeToByteArray()
-            assertNull(s.port.mintToken(s.seeded.deviceId, KEY_ID, overIt, notIssued), "no replay against another nonce")
+            assertFalse(s.port.mintToken(s.seeded.deviceId, KEY_ID, overIt, notIssued) is TokenOutcome.Minted, "no replay against another nonce")
         }
 
         clause("AN_UNATTESTED_DEVICE_CANNOT_RENEW", AttestClientState.SERVING) { s ->
             val challenge = assertNotNull(s.port.challenge())
             val assertion = "assertion:$KEY_ID:$challenge".encodeToByteArray()
-            assertNull(s.port.renewToken(s.seeded.deviceId, assertion, challenge), "renewal needs an enrolment")
+            assertFalse(s.port.renewToken(s.seeded.deviceId, assertion, challenge) is TokenOutcome.Minted, "renewal needs an enrolment")
         }
     }
 

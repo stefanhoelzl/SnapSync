@@ -1,6 +1,7 @@
 package app.snapsync.push
 
 import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.PushTokenPublisher
 
 import io.ktor.client.HttpClient
@@ -41,7 +42,7 @@ class HttpPushTokenPublisher(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun publish(token: ApnsPushToken): Result<Unit> = runCatching {
+    override suspend fun publish(token: ApnsPushToken): Result<Unit> = runCatchingCancellable {
         val url = "$base/devices/${deviceId()}"
         val res = client.put(url) {
             contentType(ContentType.Application.Json)

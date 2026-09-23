@@ -150,7 +150,7 @@ class CompositionSeamTest {
             "in-process assembly, no platform read",
         "EntryHooks.deliverPushToken" to
             "hands the OS-delivered token to the in-memory PushTokenSource the registration collector observes; the " +
-            "network write is PushRegistration's, over the PushHttpClient port",
+            "network write is PushRegistration's, over the PushTokenPublisher port",
         "App.admission" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",

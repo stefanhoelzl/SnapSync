@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.PushHttpClient
+import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
@@ -236,9 +236,7 @@ class AppPorts(
     /** The push-registration write (capability `push-registration`): the PUT of this device's APNs token.
      *  A port, from which `compose/` builds `PushRegistration` — the registration used to be built by the
      *  shell and re-entered through a `registerPush` lambda the world bound to a counter instead. */
-    val pushHttpClient: PushHttpClient,
-    /** The backend base the push registration writes under (the same host every other seam uses). */
-    val backendHost: String,
+    val pushTokenPublisher: PushTokenPublisher,
     /** The OS-delivered APNs token and its environment (capability `push-registration`). */
     val pushTokens: PushTokenSource,
     /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
