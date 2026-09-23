@@ -49,11 +49,18 @@ class IosDeviceLogSource(
             DeviceLogSource.Process.APP -> appLogPath
             DeviceLogSource.Process.EXTENSION -> extensionLogPath
         } ?: return null
-        return readTail(path, maxBytes)?.let(::fromFirstWholeLine)
+        val tail = readTail(path, maxBytes) ?: return null
+        // Only a read that began mid-file can begin mid-line. A log that fit the budget was read from its
+        // first byte, so its first line is whole and is kept — dropping it anyway lost the opening line of
+        // every short log, which `DeviceLogSourceContract` caught against the fake's (correct) answer.
+        return if (tail.cut) fromFirstWholeLine(tail.text) else tail.text
     }
 
-    /** Read at most [maxBytes] from the end of [path]; `null` if it cannot be opened or read. */
-    private fun readTail(path: String, maxBytes: Int): String? {
+    /**
+     * Read at most [maxBytes] from the end of [path]; `null` if it cannot be opened or read. [Tail.cut] says
+     * whether the read began after the file's first byte.
+     */
+    private fun readTail(path: String, maxBytes: Int): Tail? {
         if (maxBytes <= 0) return null
         val fd = open(path, O_RDONLY)
         if (fd < 0) return null
@@ -74,12 +81,15 @@ class IosDeviceLogSource(
             if (filled == 0) return null
             // The log is written as UTF-8 text; a tail may start mid-codepoint, which decodes to a
             // replacement char and is discarded with the partial first line just below.
-            return buffer.decodeToString(0, filled, throwOnInvalidSequence = false)
+            return Tail(buffer.decodeToString(0, filled, throwOnInvalidSequence = false), cut = take < size)
         } finally {
             close(fd)
         }
     }
 }
+
+/** The bytes a tail read returned, and whether it started mid-file (so possibly mid-line). */
+private class Tail(val text: String, val cut: Boolean)
 
 /**
  * Drop everything before the first newline, so a tail never begins mid-line.
