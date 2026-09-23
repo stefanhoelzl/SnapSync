@@ -101,6 +101,17 @@ class RunnerTest {
     }
 
     @Test
+    fun `verify fails on an expired wait - it established nothing`() {
+        val contract = object : Contract<Toy, Switch>("Waits") {
+            override val clauses = listOf(clause("C", Toy.ON) { throw WaitExpired(10) })
+        }
+        val error = assertFailsWith<AssertionError> { verify(contract, honest(setOf(Toy.ON))) }
+        val message = error.message.orEmpty()
+        assertTrue("1 of 1 clauses failed" in message, message)
+        assertTrue("C NotWithin(10ms)" in message, message)
+    }
+
+    @Test
     fun `verify does not fail on NotRunHere alone`() {
         verify(ToyContract, honest(setOf(Toy.ON)))
     }

@@ -27,7 +27,8 @@ registered on two hosts, and the real-clock bound on a platform callback,
 `changes/archive/2026-09-23-contract-platform-handoffs`; an injected build configuration
 value, an outcome that leaves the process, and a receiving endpoint that observes rather than stands in,
 `changes/archive/2026-09-23-diagnostics-reporter-contracts`; an adapter bound per compilation
-target, and a transfer fixture as a clause input, `changes/archive/2026-09-23-contract-background-transfers`.
+target, and a transfer fixture as a clause input, `changes/archive/2026-09-23-contract-background-transfers`;
+which outcomes fail a run, `changes/archive/2026-09-23-notwithin-fails-run`.
 
 ## Requirements
 
@@ -40,8 +41,9 @@ the port's obligations — no `openspec/` spec restates a contract's clauses —
 nothing generates, records, or rewrites a clause or an expectation from observed behaviour.
 
 The same list SHALL feed every runner. On CI, one test per (contract, binding) SHALL run every clause,
-collect every outcome, and fail once with the full outcome table when any clause is `Failed` or
-`Diverged`. On a host with no test runner, an in-app runner SHALL execute the same list.
+collect every outcome, and fail once with the full outcome table when any clause ends in an outcome that
+fails a run ("Outcomes are explicit and none is silent"). On a host with no test runner, an in-app runner
+SHALL execute the same list.
 
 #### Scenario: A clause is changed
 - **WHEN** a clause body is edited in the contract
@@ -134,6 +136,14 @@ SHALL NOT end without an outcome. Whether a clause runs SHALL be decided by its 
 executes; a clause body SHALL have no operation that skips it, so an unexercised clause cannot report
 `Passed`.
 
+A run SHALL fail when any clause ends `Failed`, `Diverged`, or `NotWithin`, on every binding kind — `Live`,
+`Replay`, and `Fake` — and on every runner CI uses. A wait that expired established nothing about the clause:
+on a `Live` binding the clause ran nothing, on a `Replay` binding a recorded answer was never delivered, and on
+a `Fake` binding the double did not deliver what the clause requires; none of the three is coverage. A
+`NotRunHere` SHALL NOT fail a run by itself: whether it is admissible is the question "Every clause runs against
+a real implementation on some host" answers. This is the one statement of which outcomes fail a run; every
+runner obeys it rather than carrying its own list.
+
 A clause that waits on an operating-system callback SHALL bound the wait on the **real** clock. A clause body
 runs under a test scheduler whose virtual clock skips an idle wait at once, so a bound measured there would
 expire before a callback delivered on the platform's main queue could arrive, and would report `NotWithin`
@@ -153,6 +163,18 @@ for a platform that answered.
   queue
 - **THEN** the wait is bounded on the real clock, so a platform that answers within the bound reads `Passed`
   or `Failed` on its answer, and one that does not reads `NotWithin`
+
+#### Scenario: A bounded wait expires on CI
+
+- **WHEN** a clause's bounded wait expires on any binding — a platform callback that never arrives on a `Live`
+  binding, a recorded answer never delivered on a `Replay` binding, or a delivery a `Fake` binding never makes
+- **THEN** the clause reads `NotWithin(T)` and the run fails, with the full outcome table, exactly as it would
+  for a `Failed` clause
+
+#### Scenario: A clause cannot run here
+
+- **WHEN** every clause a binding does not reach reads `NotRunHere` and every other clause reads `Passed`
+- **THEN** the run passes, and whether those clauses are covered elsewhere is judged by the coverage gate
 
 ### Requirement: Every clause runs against a real implementation on some host
 
@@ -422,7 +444,8 @@ clause it fails SHALL be fixed in the adapter rather than excused by a caller's 
 A host whose bindings must run inside the app, but which CI can run — the simulator app — SHALL be run
 **live** on every push, not recorded: a CI job SHALL build the app under `-Psnapsync.rig=true` for that host,
 establish the declared preconditions, launch it, and run every contract in that host's **in-app registry**
-through the rig's contract verb, failing on any `Failed` outcome, any refusal, or an empty registry. The
+through the rig's contract verb, failing on any outcome that fails a run ("Outcomes are explicit and none is
+silent"), any refusal, or an empty registry. The
 registry SHALL be a source-level list the contract-coverage gate reads. Such a host SHALL NOT be recorded:
 record and replay exist for hosts CI cannot run.
 
@@ -440,7 +463,8 @@ simulator.
 #### Scenario: A contract is registered for the simulator app
 
 - **WHEN** a `Live` binding naming the simulator-app host is added and registered
-- **THEN** the next push's CI job runs its contract in the app and fails on any `Failed` outcome
+- **THEN** the next push's CI job runs its contract in the app and fails on any outcome that fails a run,
+  `NotWithin` included
 
 #### Scenario: Two clauses seed the same library
 
