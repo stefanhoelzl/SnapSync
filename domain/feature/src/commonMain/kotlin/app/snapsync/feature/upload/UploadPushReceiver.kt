@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.MembershipRead
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PushReceiver
 import co.touchlab.kermit.Logger
@@ -58,7 +59,16 @@ class UploadPushReceiver(
     private val log: Logger = Logger.withTag("UploadPushReceiver"),
 ) : PushReceiver {
     override suspend fun onSilentPush(eventId: String) {
-        val active = configSource.config.value?.eventId
+        val active = when (val membership = configSource.membership) {
+            is MembershipRead.Member -> membership.config.eventId
+            MembershipRead.NotMember -> null
+            // "No event configured" and "could not read which" are different facts, and only one of them is a
+            // reason to look at the device's lock state: deferred, and the next push or wake reads it again.
+            MembershipRead.Unreadable -> {
+                log.w { "silent push for $eventId deferred (upload) — the membership is unreadable right now" }
+                return
+            }
+        }
         if (eventId != active) {
             log.i { "silent push for $eventId ignored for upload (active event = $active)" }
             return

@@ -74,21 +74,15 @@ class CredentialRejectionWiringTest {
     }
 
     @Test
-    fun `the rejection hook reaches the trust feature and triggers a refresh`() {
-        val src = code()
+    fun `the rejection hook reaches the core's rejection route`() {
+        // The compare-and-clear and the refresh it triggers are the core's (`compose/CredentialComposition.kt`,
+        // decision record `harden-seam-bug-classes`), and `:test:integration` drives them over the world; what only
+        // this pin can see is that the shell still hands the refused token to that route.
         assertTrue(
-            Regex("""attestation\.onRejected\(\)""").containsMatchIn(src),
-            "the rejection hook no longer calls the trust feature's `onRejected`, so a rejected-but-" +
-                "unexpired token is never dropped — the expiry check cannot see a rejection, and the " +
-                "device would 401 forever behind a screen reading \"Syncing\"",
-        )
-        assertTrue(
-            // The shell's own refresh helper left for compose/ (`harden-seam-bug-classes`); the hook now asks the
-            // trust feature directly.
-            Regex("""attestation\.refresh\(\)""").containsMatchIn(src),
-            "the rejection hook drops the token but never asks for a new one. Recovery would then wait " +
-                "for the next process wake, and a refused push registration — written once per " +
-                "OS-delivered APNs token — would wait for the next launch",
+            Regex("""onRejected\s*=\s*\{\s*(\w+)\s*->\s*app\.onCredentialRejected\(\1\)""").containsMatchIn(code()),
+            "the rejection hook no longer hands the refused token to `app.onCredentialRejected`, so a rejected-but-" +
+                "unexpired token is never dropped — the expiry check cannot see a rejection, and the device would " +
+                "401 forever behind a screen reading \"Syncing\"",
         )
     }
 }

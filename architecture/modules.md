@@ -87,6 +87,7 @@ flowchart LR
   domain_flow --> domain_feature
   domain_flow --> domain_model
   domain_ports --> domain_model
+  test_architecture --> adapter_generic_app
   test_architecture --> domain_feature
   test_architecture --> domain_model
   test_architecture --> domain_ports

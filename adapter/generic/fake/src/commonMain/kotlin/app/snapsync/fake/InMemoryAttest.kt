@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.ports.AttestClient
+import app.snapsync.ports.TokenOutcome
 import app.snapsync.ports.AttestKey
 
 /**
@@ -81,17 +82,17 @@ internal class InMemoryAttestClient(
         keyId: String,
         attestation: ByteArray,
         challenge: String,
-    ): String? {
+    ): TokenOutcome {
         val genuine = challenge == challengeValue &&
             attestation.contentEquals("attestation:$keyId:$challenge".encodeToByteArray())
-        return if (mints && genuine) token(deviceId) else null
+        return if (mints && genuine) TokenOutcome.Minted(token(deviceId)) else TokenOutcome.Refused
     }
 
     override suspend fun renewToken(
         deviceId: String,
         assertion: ByteArray,
         challenge: String,
-    ): String? = if (renews) token(deviceId) else null
+    ): TokenOutcome = if (renews) TokenOutcome.Minted(token(deviceId)) else TokenOutcome.NotAttested
 
     private fun token(deviceId: String) = "$deviceId.$tokenExpiresAtEpochSeconds.in-memory-signature"
 }

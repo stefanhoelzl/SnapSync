@@ -6,6 +6,7 @@ import app.snapsync.ports.AttestClient
 import app.snapsync.ports.Clock
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.TokenOutcome
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
@@ -84,8 +85,9 @@ class DeviceAttestation(
     fun token(): String? = store.token()
 
     /**
-     * The backend REJECTED our token (a `401` from a gated route). Drop it, so the next [ensureFresh]
-     * obtains a new one.
+     * The backend REJECTED [sentToken] (a `401` from a gated route to a request that carried it). Drop it if the
+     * store still holds it, so the next [ensureFresh] obtains a new one, and answer whether it was dropped — the
+     * caller refreshes only then, so a burst of rejections of one token costs one refresh, not one per request.
      *
      * This exists because "rejected" and "expired" are NOT the same thing, and [isStale] only knows about
      * the second. A token is rejected while still far from expiry whenever the server-side signing key is
@@ -95,10 +97,24 @@ class DeviceAttestation(
      *
      * The `keyId` is deliberately kept: the Secure-Enclave key is still valid, so recovery is a cheap
      * assertion, not a throttled re-attestation.
+     *
+     * **Compare-and-clear, under [refreshing]** (B3). Rejections of T1 can arrive after a refresh stored T2 —
+     * the requests were in flight when it ran. Clearing unconditionally erased T2 and sent the device round the
+     * loop again, once per late rejection. Taking the refresh lock means an in-flight refresh finishes first, so
+     * the comparison sees what it stored; the extension's rejections go through the same compare on the shared
+     * item. Suspends only while a refresh holds the lock — never re-entrantly, because the refresh's own calls
+     * go to the ungated `/attest/…` routes, whose `401`s are not rejections.
      */
-    fun onRejected() {
-        log.w { "the backend rejected our token — dropping it so the next wake obtains a new one" }
-        store.clearToken()
+    suspend fun onRejected(sentToken: String): Boolean = refreshing.withLock {
+        val cleared = runCatchingCancellable { store.clearTokenIf(sentToken) }
+            .onFailure { log.w(it) { "the rejected token could not be compared and cleared — the next wake retries" } }
+            .getOrDefault(false)
+        if (cleared) {
+            log.w { "the backend rejected our token — dropped it, so a new one is obtained now" }
+        } else {
+            log.i { "a rejection of a token we no longer hold — already replaced or dropped, nothing to do" }
+        }
+        cleared
     }
 
     /**
@@ -229,66 +245,93 @@ class DeviceAttestation(
             return false
         }
 
-        val challenge = client.challenge()
-        if (challenge == null) {
-            log.w { "could not obtain a challenge — leaving the existing token in place" }
-            return false
-        }
-
         // Renew with an ASSERTION when this install has already attested: no Apple round-trip, so it is
         // cheap enough to have been attempted at every wake. Only a device that has never attested (a fresh
         // install, or one whose Secure-Enclave key died with a reinstall) pays for a full attestation.
         val existingKeyId = store.keyId()
         if (existingKeyId != null) {
-            val renewed = runCatchingCancellable {
-                client.renewToken(deviceId, key.assert(existingKeyId, challenge), challenge)
-            }.getOrElse {
-                // The assertion itself failed, LOCALLY — no renewal request was ever sent. `AttestClient`
-                // maps every transport and refusal outcome to null by contract, so the only thing that can
-                // throw in here is the Secure-Enclave `assert`, and the platform's own error value is the
-                // one diagnostic that says why (a dead key reads differently from a transient fault).
-                //
-                // It used to be discarded with `getOrNull()` and reported as "renewal refused", which named
-                // the backend for something the backend was never asked about. That is what made
-                // `SNAPSYNC-20` unanswerable: the dump showed a refusal and no request, and the `DCError`
-                // that would have settled it had been thrown away. Warn, not Error — the app recovers by
-                // attesting afresh below, and this rides as a breadcrumb rather than a crash-triage event.
-                log.w(it) { "could not produce a renewal assertion — attesting afresh" }
-                null
+            when (val renewed = renew(deviceId, existingKeyId)) {
+                is TokenOutcome.Minted -> return accept(renewed.token, "token renewed")
+                // No verdict on this device, so no reason to spend Apple's throttled path: keep the token we
+                // hold (it may well still authorize every request) and let the next wake retry. Neither case
+                // clears it — a stale challenge or a network failure says nothing about the credential.
+                TokenOutcome.Unreachable, TokenOutcome.ChallengeStale -> {
+                    log.w { "renewal got no answer ($renewed) — keeping the existing token for the next wake" }
+                    return false
+                }
+                // The backend holds no record of this device (the leave cascade GCs it), or declined the
+                // assertion: attest afresh rather than stalling forever.
+                TokenOutcome.NotAttested, TokenOutcome.Refused ->
+                    log.w { "renewal did not yield a token ($renewed) — attesting afresh" }
             }
-            if (renewed != null) {
-                store.setToken(renewed)
-                _tokenChanged.tryEmit(Unit)
-                log.i { "token renewed" }
-                return true
-            }
-            // Reached two ways, and the log above distinguishes them: the assertion could not be produced
-            // (a throwable, no request), or the backend declined the one we sent — typically because its
-            // record of this device is gone (the leave cascade GCs it). Either way, attest afresh rather
-            // than stalling forever.
-            log.w { "renewal did not yield a token — attesting afresh" }
         }
 
-        return runCatchingCancellable {
-            val keyId = key.generateKey()
-            val attestation = key.attest(keyId, challenge)
-            val minted = client.mintToken(deviceId, keyId, attestation, challenge)
-            if (minted == null) {
-                log.w { "the backend refused the attestation" }
+        return when (val minted = mint(deviceId)) {
+            is TokenOutcome.Minted -> accept(minted.token, "attested and minted a fresh token")
+            else -> {
+                log.w { "attestation did not yield a token ($minted)" }
                 false
-            } else {
-                // Persist the keyId only once the backend has ACCEPTED its attestation. A keyId stored for
-                // an attestation the backend never recorded would send every future renewal down the
-                // assertion path, against a key the server has never heard of.
-                store.setKeyId(keyId)
-                store.setToken(minted)
-                _tokenChanged.tryEmit(Unit)
-                log.i { "attested and minted a fresh token" }
-                true
             }
+        }
+    }
+
+    /** Store a token the backend just minted and announce it. */
+    private fun accept(token: String, what: String): Boolean {
+        store.setToken(token)
+        _tokenChanged.tryEmit(Unit)
+        log.i { what }
+        return true
+    }
+
+    /**
+     * One renewal: an assertion over a fresh challenge. A failure to produce the assertion is LOCAL — no request
+     * was sent — and reads as [TokenOutcome.Refused], so the device attests afresh as it always has.
+     *
+     * It used to be discarded with `getOrNull()` and reported as "renewal refused", which named the backend for
+     * something it was never asked about — what made `SNAPSYNC-20` unanswerable. So the platform's own error is
+     * logged here, at `Warn`: the app recovers by attesting afresh, and this rides as a breadcrumb.
+     */
+    private suspend fun renew(deviceId: String, keyId: String): TokenOutcome = withFreshChallenge { challenge ->
+        val assertion = runCatchingCancellable { key.assert(keyId, challenge) }.getOrElse {
+            log.w(it) { "could not produce a renewal assertion — attesting afresh" }
+            return@withFreshChallenge TokenOutcome.Refused
+        }
+        client.renewToken(deviceId, assertion, challenge)
+    }
+
+    /**
+     * One attestation: a new Secure-Enclave key, attested over a fresh challenge. The `keyId` is persisted only
+     * once the backend has ACCEPTED its attestation — a keyId stored for an attestation the backend never recorded
+     * would send every future renewal down the assertion path, against a key the server has never heard of.
+     */
+    private suspend fun mint(deviceId: String): TokenOutcome = withFreshChallenge { challenge ->
+        runCatchingCancellable {
+            val keyId = key.generateKey()
+            val outcome = client.mintToken(deviceId, keyId, key.attest(keyId, challenge), challenge)
+            if (outcome is TokenOutcome.Minted) store.setKeyId(keyId)
+            outcome
         }.getOrElse {
             log.w(it) { "attestation failed" }
-            false
+            TokenOutcome.Refused
         }
+    }
+
+    /**
+     * Run [step] over a fresh challenge, and once more over another if the first went stale before the backend
+     * verified it — the app can be suspended between fetching a challenge and using it. A stale challenge is never
+     * a reason to touch the stored token (B2); the second stale answer is returned as is.
+     */
+    private suspend fun withFreshChallenge(step: suspend (challenge: String) -> TokenOutcome): TokenOutcome {
+        val first = attempt(step)
+        if (first != TokenOutcome.ChallengeStale) return first
+        log.w { "the challenge went stale before it was verified — fetching a fresh one" }
+        return attempt(step)
+    }
+
+    private suspend fun attempt(step: suspend (challenge: String) -> TokenOutcome): TokenOutcome {
+        val challenge = client.challenge() ?: return TokenOutcome.Unreachable.also {
+            log.w { "could not obtain a challenge — leaving the existing token in place" }
+        }
+        return step(challenge)
     }
 }

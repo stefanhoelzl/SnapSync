@@ -161,6 +161,43 @@ fun configAfterReload(read: ConfigRead, current: EventConfig?): EventConfig? = w
  */
 interface ConfigSource {
     val config: StateFlow<EventConfig?>
+
+    /**
+     * The membership as three answers (capability `upload-lifecycle`; decision record `harden-seam-bug-classes`,
+     * D11): [config]'s `null` merges "not joined" with "could not read it yet", and a reader that ACTS on absence —
+     * the upload transitions, the silent-push receivers — must tell them apart and defer on the second.
+     *
+     * Read fresh at each use, never held. The default derives it from [config], and so never answers
+     * [MembershipRead.Unreadable]: right for a source that cannot fail to read. The file-backed store overrides it.
+     */
+    val membership: MembershipRead
+        get() = config.value?.let(MembershipRead::Member) ?: MembershipRead.NotMember
+}
+
+/** What a reader acting on the membership can know about it right now. */
+sealed interface MembershipRead {
+    /** Joined to [config]'s event. */
+    data class Member(val config: EventConfig) : MembershipRead
+
+    /** Definitively not joined — the config file is genuinely missing, or was cleared by a leave. */
+    data object NotMember : MembershipRead
+
+    /**
+     * Nothing conclusive has been read in this process yet: the store was unreadable (protected data unavailable
+     * on a locked device, a foreign file) since launch. Says NOTHING about membership — the reader defers.
+     */
+    data object Unreadable : MembershipRead
+}
+
+/**
+ * The next [MembershipRead] after a re-read — [configAfterReload]'s three-valued twin. A conclusive read replaces
+ * it; an unreadable one retains the last conclusive answer, and is [MembershipRead.Unreadable] only when there has
+ * never been one.
+ */
+fun membershipAfterReload(read: ConfigRead, current: MembershipRead): MembershipRead = when (read) {
+    is ConfigRead.Joined -> MembershipRead.Member(read.config)
+    ConfigRead.None -> MembershipRead.NotMember
+    is ConfigRead.Unavailable -> current
 }
 
 /**

@@ -50,6 +50,8 @@ dependencies {
     testImplementation(project(":domain:feature"))
     // The transitions read the membership and the grant through their ports, so the fakes implement those.
     testImplementation(project(":domain:ports"))
+    // GatedPathPinTest drives the client's REAL ungated-path predicate against the backend's closed list.
+    testImplementation(project(":adapter:generic:app"))
     testImplementation(libs.coroutines.test)
 }
 
@@ -86,6 +88,8 @@ tasks.test {
             // UP-TO-DATE and the pin silently stops pinning, which is the failure mode it exists for.
             include("gradle/libs.versions.toml")
             include("api/src/config.ts")
+            // GatedPathPinTest reads the backend gate's closed ungated list, so a route the backend opens re-runs it.
+            include("api/src/app.ts")
             // `ModuleSetTest` (capability `module-architecture`): the spec's module enumeration IS the
             // expected value the build's include set is compared against, and the guard holds no copy of
             // it. Without this declared, amending the spec alone leaves the task UP-TO-DATE — the precise

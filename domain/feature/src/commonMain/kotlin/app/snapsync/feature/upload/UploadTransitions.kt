@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.MembershipRead
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.LogScope
@@ -177,8 +178,19 @@ class UploadTransitions(
         armIfUsable()
     }
 
-    /** Whether an event is configured now — read fresh, never held. */
-    private fun joined(): Boolean = configSource.config.value != null
+    /**
+     * Whether an event is configured now — read fresh, never held. An unreadable membership defers: it is logged
+     * and nothing is armed or registered, because acting on "could not read it" as "not joined" is a false leave
+     * and acting on it as "joined" arms for an event we cannot name. The next transition reads it again.
+     */
+    private fun joined(): Boolean = when (configSource.membership) {
+        is MembershipRead.Member -> true
+        MembershipRead.NotMember -> false
+        MembershipRead.Unreadable -> {
+            log.w { "the membership is unreadable right now — deferring this transition to the next one" }
+            false
+        }
+    }
 
     private suspend fun armIfUsable() {
         if (photoAccess.permission.value.grantsPhotoAccess) appEngine().arm() else appEngine().disarm()

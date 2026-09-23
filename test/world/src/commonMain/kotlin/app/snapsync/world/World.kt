@@ -8,6 +8,7 @@ import app.snapsync.ports.PushHttpClient
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
+import app.snapsync.compose.onCredentialRejected
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
@@ -292,7 +293,9 @@ class World(
      */
     val client = miniEdgeClient(store).withCredentialInterceptor(
         token = { null },
-        onRejected = {},
+        // Never fires while the token is null (a rejection must name a sent token), and bound to the production
+        // route anyway so the world composes what the device composes.
+        onRejected = { sent -> core.onCredentialRejected(sent) },
         appVersion = { appVersion },
         onVersionRefused = { minimum -> core.versionGate.refused(minimum) },
         onServed = { core.versionGate.served() },

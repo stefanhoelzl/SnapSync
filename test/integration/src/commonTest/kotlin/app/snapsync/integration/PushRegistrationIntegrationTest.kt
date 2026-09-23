@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.compose.onCredentialRejected
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.CaptureCutoff
@@ -17,6 +18,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -112,6 +114,9 @@ class PushRegistrationIntegrationTest {
         // `attests = true` is what lets a credential change happen at all; off (the default) the refresh
         // returns early without attesting, as it does in the extension and on a simulator.
         val w = World(this, attests = true)
+        // A credential to be refused. Obtained before the registration is installed, so this first token is not the
+        // change the test watches for.
+        w.core.attestation.refresh()
 
         // The composed registration writes through the world's counting push port (see
         // `World.registerPushCount`), counted after each write lands.
@@ -125,13 +130,32 @@ class PushRegistrationIntegrationTest {
             w.store.deviceConfigOf(w.ownDeviceId),
         )
 
-        // The backend rejects the credential — the 401 the shell routes here. The token is dropped and the
-        // next refresh obtains a new one, which ANNOUNCES itself.
-        w.core.attestation.onRejected()
-        w.core.attestation.refresh()
+        // The backend rejects the credential — the 401 the shell routes here, naming the token it refused. The core
+        // drops it and fetches a new one, which ANNOUNCES itself.
+        w.core.onCredentialRejected(assertNotNull(w.core.attestation.token()))
 
         // Registration #2, with no second delivery: the credential arm, and nothing else, can have done it.
         withTimeout(5_000) { while (w.registerPushCount < 2) yield() }
         assertEquals(2, w.registerPushCount)
+    }
+
+    /**
+     * A refusal of a token the device no longer holds changes nothing: no clear, no refresh, no re-registration (B3).
+     * The requests that carried it were in flight when a renewal replaced it.
+     */
+    @Test
+    fun a_late_rejection_of_a_replaced_token_changes_nothing() = worldTest {
+        val w = World(this, attests = true)
+        w.core.attestation.refresh()
+        val held = assertNotNull(w.core.attestation.token())
+        w.core.installPushRegistration()
+        w.pushTokens.deliver("DEADBEEF")
+        withTimeout(5_000) { while (w.registerPushCount < 1) yield() }
+
+        w.core.onCredentialRejected("$held-superseded")
+        repeat(50) { yield() }
+
+        assertEquals(held, w.core.attestation.token(), "the token we hold was not the one refused")
+        assertEquals(1, w.registerPushCount, "nothing changed, so nothing is re-sent")
     }
 }

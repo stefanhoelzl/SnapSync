@@ -48,7 +48,7 @@ import app.snapsync.model.EventConfig
  * the event's details, so the fetch was redundant by construction. `Foreground` is the sole trigger
  * that refreshes the membership (capability `join-event`).
  *
- * Port touches ([activeEventId], [enterMembership], [saveConfig], [refreshStatus], [isGranted]) arrive as
+ * Port touches ([activeEventId], [enterMembership], [saveConfig], [refreshStatus], [hasUsableAccess]) arrive as
  * `model`-typed effect lambdas built in `compose/`; the album rule lives in its feature
  * ([AlbumCoordinator]).
  */
@@ -68,8 +68,11 @@ class Provision(
     private val saveConfig: suspend (EventConfig) -> Unit,
     /** Re-enumerate the own total + re-read completeness (read-model refreshes). */
     private val refreshStatus: suspend () -> Unit,
-    /** Whether photo access is fully granted (a port touch). */
-    private val isGranted: () -> Boolean,
+    /**
+     * Whether photo access is USABLE — full or limited, `grantsPhotoAccess` (a port touch). Not "fully granted":
+     * the album it gates can be created under a limited grant too (capability `limited-photo-access`).
+     */
+    private val hasUsableAccess: () -> Boolean,
     /** Re-register the device's APNs push token with the backend on join (capability
      *  `push-registration`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
      *  device whose config the nightly sweep collected (capability `scheduled-cleanup`) is pushable again
@@ -88,7 +91,7 @@ class Provision(
         // 3. Event album — an unconditional call carrying the access FACT: the granted/opt-in/name
         //    gate is the coordinator's own leading guard (capability `event-album`), so no caller can
         //    forget it. (The grant subscription covers the grant-after-join case.)
-        albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, granted = isGranted())
+        albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, hasUsableAccess = hasUsableAccess())
         // 4. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
         //    inside the controller) and re-register the push token — the latter closes the warm-rejoin
         //    window the sweep's device-record collection opens (capability `push-registration`). No

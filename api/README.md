@@ -147,6 +147,10 @@ POST /api/v1/attest/renew                                  (UNGATED — self-aut
        or write failure (absence and "could not ask" are DIFFERENT answers — 401 sends the device
        down a full, throttled re-attestation, so a database blink must read as retry-me)
 
+Stale challenge, per version: under /api/v1 (frozen) a stale challenge on either issuer is a 401, as above.
+Under /api/v2 it is `409 stale challenge` — a 401 means "your credential is rejected", and a stale challenge
+rejects none, so a client must not be told to drop its token for one. Everything else is identical.
+
 POST /api/v1/events
     body: {"name": "<name>", "startsAt": "<canonical instant>"}   (name trimmed, non-empty, ≤100 chars)
     body: … optional {"endsAt": "<canonical instant>"}  (strictly after startsAt, ≤30 days after it)

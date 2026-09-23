@@ -7,6 +7,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.MembershipRead
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
@@ -56,13 +57,18 @@ class UploadTransitionsTest {
         override fun onBackgroundTransfers(completion: () -> Unit) = completion()
     }
 
-    private class World(osSupported: Boolean = true, var grant: PermissionStatus, var joined: Boolean = true) {
+    private class World(
+        osSupported: Boolean = true,
+        var grant: PermissionStatus,
+        var joined: Boolean = true,
+        var unreadable: Boolean = false,
+    ) {
         val log = mutableListOf<String>()
         var pin: UploaderPin? = null
         val registration = FakeRegistration(log, { grant })
         private val engine = FakeEngine(log)
         val transitions = UploadTransitions(
-            configSource = liveMembership { "E".takeIf { joined } },
+            configSource = liveMembership(unreadable = { unreadable }) { "E".takeIf { joined } },
             photoAccess = liveGrant { grant },
             extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
             registration = registration.takeIf { osSupported },
@@ -182,6 +188,21 @@ class UploadTransitionsTest {
     }
 
     @Test
+    fun `an unreadable membership defers every compared transition`() = runTest {
+        // A locked device's cold background launch cannot read the config yet. That is not "not joined" (a false
+        // leave) and not "joined" (armed for an event nobody can name): nothing moves, and the next one reads again.
+        for (grant in PermissionStatus.entries) {
+            val w = World(grant = grant, unreadable = true)
+
+            w.transitions.onPermissionChanged()
+            w.transitions.onLaunch()
+            w.transitions.onReconfigure()
+
+            assertEquals(emptyList(), w.log, "$grant")
+        }
+    }
+
+    @Test
     fun `a launch compares and registers only`() = runTest {
         val w = World(grant = PermissionStatus.GRANTED)
         w.transitions.onLaunch()
@@ -251,14 +272,17 @@ class UploadTransitionsTest {
 }
 
 /** A membership fake whose answer is read at every access, so a test's `var` drives it live. */
-private fun liveMembership(eventId: () -> String?): ConfigSource = object : ConfigSource {
-    override val config: StateFlow<EventConfig?>
-        get() = MutableStateFlow(
-            eventId()?.let {
-                EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
-            },
-        )
-}
+private fun liveMembership(unreadable: () -> Boolean = { false }, eventId: () -> String?): ConfigSource =
+    object : ConfigSource {
+        override val config: StateFlow<EventConfig?>
+            get() = MutableStateFlow(
+                eventId()?.let {
+                    EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+                },
+            )
+        override val membership: MembershipRead
+            get() = if (unreadable()) MembershipRead.Unreadable else super.membership
+    }
 
 /** A grant fake read at every access, so a test's `var` drives it live. */
 private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {

@@ -561,7 +561,7 @@ class AppCore internal constructor(
                     cfg.eventId,
                     cfg.name,
                     cfg.saveToAlbum,
-                    granted = ports.photoAccess.permission.value.grantsPhotoAccess,
+                    hasUsableAccess = ports.photoAccess.permission.value.grantsPhotoAccess,
                 )
             },
             // Detached: `tap.reconfigure` is awaited by Save, and a gather's cost grows with what is held.
@@ -859,7 +859,7 @@ class AppCore internal constructor(
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `limited-photo-access`).
-            isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
+            hasUsableAccess = { ports.photoAccess.permission.value.grantsPhotoAccess },
             registerPush = { pushRegistration.reRegister(ports) },
         )
     }

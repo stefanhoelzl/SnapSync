@@ -1,5 +1,6 @@
 package app.snapsync.attest
 
+import app.snapsync.ports.TokenOutcome
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -99,7 +100,7 @@ class HttpAttestClientTest {
 
         val token = client(engine).mintToken(deviceId, "keyid-b64", bytes, challenge)
 
-        assertEquals("minted.token.value", token)
+        assertEquals(TokenOutcome.Minted("minted.token.value"), token)
         assertEquals("https://edge.example/attest/token", requested)
         assertEquals("POST", method)
         assertTrue(contentType!!.startsWith("application/json"), "content type was $contentType")
@@ -110,21 +111,29 @@ class HttpAttestClientTest {
         )
     }
 
+    /**
+     * Each refusal keeps its own name (decision record `harden-seam-bug-classes`, D10): they used to collapse into
+     * one `null`, and every `null` was answered by attesting afresh — Apple's throttled path, for a stale challenge.
+     */
     @Test
-    fun `mintToken maps a refusal a transport failure and a malformed body alike to null`() = runTest {
-        // A stale challenge is a 401 here; the device keeps its old token and the next wake retries.
-        val refused = MockEngine { respondError(HttpStatusCode.Unauthorized) }
-        assertNull(client(refused).mintToken(deviceId, "k", bytes, challenge))
+    fun `mintToken classifies each refusal by status and body`() = runTest {
+        suspend fun mint(status: HttpStatusCode, body: String) =
+            client(MockEngine { respond(body, status) }).mintToken(deviceId, "k", bytes, challenge)
+        assertEquals(TokenOutcome.ChallengeStale, mint(HttpStatusCode.Conflict, "stale challenge")) // v2
+        assertEquals(TokenOutcome.ChallengeStale, mint(HttpStatusCode.Unauthorized, "stale challenge")) // v1, frozen
+        assertEquals(TokenOutcome.Refused, mint(HttpStatusCode.Unauthorized, "attestation rejected"))
+        assertEquals(TokenOutcome.Refused, mint(HttpStatusCode.BadRequest, "invalid body"))
+        assertEquals(TokenOutcome.Unreachable, mint(HttpStatusCode.BadGateway, "upstream error"))
         val offline = MockEngine { throw RuntimeException("offline") }
-        assertNull(client(offline).mintToken(deviceId, "k", bytes, challenge))
+        assertEquals(TokenOutcome.Unreachable, client(offline).mintToken(deviceId, "k", bytes, challenge))
         val garbled = MockEngine { json("not json", HttpStatusCode.Created) }
-        assertNull(client(garbled).mintToken(deviceId, "k", bytes, challenge))
+        assertEquals(TokenOutcome.Unreachable, client(garbled).mintToken(deviceId, "k", bytes, challenge))
     }
 
     @Test
-    fun `a 201 without a token field yields null rather than an empty credential`() = runTest {
+    fun `a 201 without a token field is no token rather than an empty credential`() = runTest {
         val engine = MockEngine { json("""{"ok":true}""", HttpStatusCode.Created) }
-        assertNull(client(engine).mintToken(deviceId, "k", bytes, challenge))
+        assertEquals(TokenOutcome.Unreachable, client(engine).mintToken(deviceId, "k", bytes, challenge))
     }
 
     // ---- renewToken ------------------------------------------------------------------------
@@ -143,7 +152,7 @@ class HttpAttestClientTest {
 
         val token = client(engine).renewToken(deviceId, bytes, challenge)
 
-        assertEquals("renewed.token.value", token)
+        assertEquals(TokenOutcome.Minted("renewed.token.value"), token)
         assertEquals("https://edge.example/attest/renew", requested)
         assertEquals("POST", method)
         // Renewal is an ASSERTION against the key the backend already stored, so no keyId rides along.
@@ -154,13 +163,15 @@ class HttpAttestClientTest {
     }
 
     @Test
-    fun `renewToken maps a refusal a transport failure and a malformed body alike to null`() = runTest {
-        val refused = MockEngine { respondError(HttpStatusCode.Unauthorized) }
-        assertNull(client(refused).renewToken(deviceId, bytes, challenge))
+    fun `renewToken tells no record on file from a refused assertion`() = runTest {
+        suspend fun renew(status: HttpStatusCode, body: String) =
+            client(MockEngine { respond(body, status) }).renewToken(deviceId, bytes, challenge)
+        assertEquals(TokenOutcome.NotAttested, renew(HttpStatusCode.Unauthorized, "not attested"))
+        assertEquals(TokenOutcome.Refused, renew(HttpStatusCode.Unauthorized, "assertion rejected"))
+        assertEquals(TokenOutcome.ChallengeStale, renew(HttpStatusCode.Conflict, "stale challenge"))
+        assertEquals(TokenOutcome.Unreachable, renew(HttpStatusCode.BadGateway, "upstream error"))
         val offline = MockEngine { throw RuntimeException("offline") }
-        assertNull(client(offline).renewToken(deviceId, bytes, challenge))
-        val garbled = MockEngine { json("not json", HttpStatusCode.Created) }
-        assertNull(client(garbled).renewToken(deviceId, bytes, challenge))
+        assertEquals(TokenOutcome.Unreachable, client(offline).renewToken(deviceId, bytes, challenge))
     }
 
     // ---- host ------------------------------------------------------------------------------

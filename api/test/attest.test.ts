@@ -521,6 +521,57 @@ Deno.test("attest: a stale challenge mints no token and stores no key", async ()
   assertEquals(calls.length, 0);
 });
 
+/** `/api/v2` sits behind the version gate, so every v2 request names a version it serves (capability `min-app-version`). */
+const V2 = { "x-snapsync-app-version": "99.0" };
+
+Deno.test("attest: under v2 a stale challenge is 409, never the 401 that means 'drop your token'", async () => {
+  const { calls, app: a } = app();
+  const stale = await mintChallenge(CONFIG, NOW - 10 * 60 * 1000);
+  const res = await a.request("/api/v2/attest/token", {
+    method: "POST",
+    headers: V2,
+    body: JSON.stringify({
+      deviceId: D,
+      keyId: SAMPLE.keyIdBase64,
+      attestation: SAMPLE.attestationBase64,
+      challenge: stale,
+    }),
+  });
+  assertEquals(res.status, 409);
+  assertEquals(await res.text(), "stale challenge");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("renew: a stale challenge is 401 under v1 (frozen) and 409 under v2, minting nothing either way", async () => {
+  const stale = await mintChallenge(CONFIG, NOW - 10 * 60 * 1000);
+  for (const [version, status] of [["v1", 401], ["v2", 409]] as const) {
+    const { calls, app: a } = app();
+    const res = await a.request(`/api/${version}/attest/renew`, {
+      method: "POST",
+      headers: version === "v2" ? V2 : {},
+      body: JSON.stringify({ deviceId: D, assertion: "AA==", challenge: stale }),
+    });
+    assertEquals(res.status, status, `${version} renew`);
+    assertEquals(await res.text(), "stale challenge");
+    assertEquals(calls.length, 0, `${version} renew touched storage`);
+  }
+});
+
+Deno.test("attest: v2 answers a rejected attestation 401, exactly as v1 does", async () => {
+  const { app: a } = app();
+  const res = await a.request("/api/v2/attest/token", {
+    method: "POST",
+    headers: V2,
+    body: JSON.stringify({
+      deviceId: D,
+      keyId: SAMPLE.keyIdBase64,
+      attestation: SAMPLE.attestationBase64,
+      challenge: await mintChallenge(CONFIG, NOW),
+    }),
+  });
+  assertEquals(res.status, 401);
+});
+
 Deno.test("attest: a rejected attestation mints no token and stores no key", async () => {
   const { calls, app: a } = app();
   const challenge = await mintChallenge(CONFIG, NOW);

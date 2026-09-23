@@ -31,7 +31,7 @@ class CredentialInterceptorTest {
         body: String = "",
         token: () -> String? = { "token" },
         appVersion: () -> String = { "9.9" },
-        onRejected: () -> Unit = {},
+        onRejected: suspend (String) -> Unit = {},
         onVersionRefused: (String?) -> Unit = {},
         onServed: () -> Unit = {},
         record: ((Map<String, List<String>>) -> Unit)? = null,
@@ -55,10 +55,53 @@ class CredentialInterceptorTest {
      */
     @Test
     fun a_401_is_what_fires_onRejected() = runTest {
-        var rejected = 0
-        client(HttpStatusCode.Unauthorized, onRejected = { rejected++ })
+        val rejected = mutableListOf<String>()
+        client(HttpStatusCode.Unauthorized, onRejected = { rejected += it })
             .get("https://example.invalid/api/v2/events")
-        assertEquals(1, rejected, "a 401 must reach the trust feature, or no wake can heal the credential")
+        assertEquals(listOf("token"), rejected, "a 401 must reach the trust feature, naming the token it refused")
+    }
+
+    /**
+     * The rejection names the token the request CARRIED, not whatever the store holds when the answer lands: a
+     * renewal may have replaced it in between, and clearing the replacement would throw away a good credential (B3).
+     */
+    @Test
+    fun a_rejection_names_the_token_that_was_sent() = runTest {
+        var current = "T1"
+        val rejected = mutableListOf<String>()
+        val client = HttpClient(
+            MockEngine {
+                current = "T2" // a renewal lands while this request is in flight
+                respond("", HttpStatusCode.Unauthorized)
+            },
+        ).withCredentialInterceptor(token = { current }, onRejected = { rejected += it })
+        client.get("https://example.invalid/api/v2/events")
+        assertEquals(listOf("T1"), rejected)
+    }
+
+    /**
+     * **A 401 from an UNGATED route is that route's own answer, never a rejected token** (B2). The `/attest/…`
+     * issuers answer a stale challenge or a refused attestation with `401` (v1), and the event reads are opened to
+     * tokenless browsers; none of them ran the token check, so none of them can have rejected the token.
+     */
+    @Test
+    fun a_401_from_an_ungated_route_leaves_the_credential_alone() = runTest {
+        val rejected = mutableListOf<String>()
+        val client = client(HttpStatusCode.Unauthorized, onRejected = { rejected += it })
+        client.get("https://example.invalid/api/v1/attest/renew")
+        client.get("https://example.invalid/api/v2/attest/token")
+        client.get("https://example.invalid/api/v2/events/E1")
+        client.get("https://example.invalid/api/v2/events/E1/files")
+        assertEquals(emptyList(), rejected)
+    }
+
+    /** A request that carried no token was not refused a token: there is nothing to invalidate. */
+    @Test
+    fun a_401_without_a_token_rejects_nothing() = runTest {
+        val rejected = mutableListOf<String>()
+        client(HttpStatusCode.Unauthorized, token = { null }, onRejected = { rejected += it })
+            .get("https://example.invalid/api/v2/events")
+        assertEquals(emptyList(), rejected)
     }
 
     /**
@@ -68,10 +111,10 @@ class CredentialInterceptorTest {
      */
     @Test
     fun a_successful_response_leaves_the_credential_alone() = runTest {
-        var rejected = 0
-        client(HttpStatusCode.OK, onRejected = { rejected++ })
+        val rejected = mutableListOf<String>()
+        client(HttpStatusCode.OK, onRejected = { rejected += it })
             .get("https://example.invalid/api/v2/events")
-        assertEquals(0, rejected, "only a 401 means the backend rejected the token")
+        assertEquals(emptyList(), rejected, "only a 401 means the backend rejected the token")
     }
 
     // ── the declared version (capability `min-app-version`) ────────────────────────────────────────

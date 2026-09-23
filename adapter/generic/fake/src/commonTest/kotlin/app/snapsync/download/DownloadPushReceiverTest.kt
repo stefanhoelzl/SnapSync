@@ -8,6 +8,7 @@ import app.snapsync.model.PermissionStatus
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.MembershipRead
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.ports.EventUnionSource
@@ -51,17 +52,17 @@ class DownloadPushReceiverTest {
             ImportResult.Imported("LOCAL")
     }
 
-    private fun receiver(union: RecordingUnion, active: String?): DownloadPushReceiver {
-        val controller = DownloadController(
-            union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), InMemoryAssetPresence(),
-            myDeviceId = myDevice,
-            // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
-            // (capability `photo-download`) — so state a downloading membership explicitly. The gate no
-            // longer defaults: a permissive default is what let "no membership" mean "download freely".
-            downloadEnabled = { true },
-        )
-        return DownloadPushReceiver(configSource = liveMembership { active }, controller = controller)
-    }
+    private fun controller(union: RecordingUnion) = DownloadController(
+        union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), InMemoryAssetPresence(),
+        myDeviceId = myDevice,
+        // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
+        // (capability `photo-download`) — so state a downloading membership explicitly. The gate no
+        // longer defaults: a permissive default is what let "no membership" mean "download freely".
+        downloadEnabled = { true },
+    )
+
+    private fun receiver(union: RecordingUnion, active: String?): DownloadPushReceiver =
+        DownloadPushReceiver(configSource = liveMembership { active }, controller = controller(union))
 
     @Test
     fun push_for_the_active_event_reconciles_that_event() = runTest {
@@ -76,6 +77,22 @@ class DownloadPushReceiverTest {
         val union = RecordingUnion()
         receiver(union, active = eventA).onSilentPush(eventB) // e.g. a locally-left event still pushing
         assertTrue(union.requested.isEmpty(), "a push for a non-active event must not reconcile")
+    }
+
+    @Test
+    fun push_while_the_membership_is_unreadable_is_deferred() = runTest {
+        // A locked device: the push cannot be matched to an event we cannot read, so nothing is reconciled —
+        // and the reason is logged as "unreadable", not as "not joined".
+        val union = RecordingUnion()
+        val receiver = DownloadPushReceiver(
+            configSource = object : ConfigSource {
+                override val config: StateFlow<EventConfig?> = MutableStateFlow(null)
+                override val membership: MembershipRead = MembershipRead.Unreadable
+            },
+            controller = controller(union),
+        )
+        receiver.onSilentPush(eventA)
+        assertTrue(union.requested.isEmpty(), "an unreadable membership must not reconcile")
     }
 
     @Test

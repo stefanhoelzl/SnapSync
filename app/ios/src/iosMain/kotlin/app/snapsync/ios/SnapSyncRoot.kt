@@ -8,6 +8,7 @@ import app.snapsync.model.SCENE_GENERATION_INITIAL
 import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.onCredentialRejected
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.config.FileBackedConfigStore
@@ -94,7 +95,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSUserActivity
@@ -470,15 +470,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     private val http: HttpClient by lazy {
         darwinHttpClient(
             token = { app.attestation.token() },
-            // Rejected (not merely expired) → drop it and go get a new one right now. We are demonstrably
-            // online (the backend just answered), so this is the best possible moment to recover.
-            onRejected = {
-                app.attestation.onRejected()
-                // Deliberately detached, unlike every wake path: this fires from inside this client's
-                // own response interceptor, so awaiting a refresh here would re-enter the interceptor
-                // from within itself. It carries no OS receipt, so nothing is being falsely reported.
-                scope.launch { app.attestation.refresh() }
-            },
+            // Rejected (not merely expired) → the core compare-and-clears the token the refused request carried
+            // and, if that cleared it, goes and gets a new one right now (`compose/CredentialComposition.kt`).
+            onRejected = { sent -> app.onCredentialRejected(sent) },
             // The backend refuses this build as too old (capability `min-app-version`). Reported
             // straight into the read-model the screen observes; a served response clears it.
             onVersionRefused = { minimum -> app.versionGate.refused(minimum) },

@@ -50,6 +50,8 @@
 //       re-attestation is the throttled path — advances the recorded expiry, THEN mints. 401 when no
 //       record is on file (attest afresh); 502 when the store cannot be read or written, because absence
 //       and "could not ask" have different remedies and must not collapse.
+//   Under /api/v2 both issuers answer a stale challenge `409 stale challenge` instead of v1's `401`
+//   (see `attestIssuers`); every other answer is the same.
 //
 //   POST /api/v1/events
 //     → mints an event: INSERTs the `events` row, stamping `capacity` and the `lifetimeSeconds` DURATION
@@ -947,119 +949,138 @@ export function createApp(
     return c.json({ challenge: await mintChallenge(config, now()) });
   });
 
-  // Attest: verify the attestation object, persist the attested public key, mint a token.
-  deviceApi.post("/attest/token", async (c) => {
-    let body: { deviceId?: string; keyId?: string; attestation?: string; challenge?: string };
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.text("invalid body", 400);
-    }
-    const { deviceId, keyId, attestation, challenge } = body;
-    if (!deviceId || !validateUUID(deviceId) || !keyId || !attestation || !challenge) {
-      return c.text("invalid body", 400);
-    }
-    if (!await challengeIsValid(config, challenge, now())) return c.text("stale challenge", 401);
+  // The two token ISSUERS, built once per version (capability `device-attestation`). The only difference is how
+  // a stale challenge is refused: v1, which is frozen, keeps its `401`; v2 answers `409 stale challenge`,
+  // because `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what
+  // let a client read a renewal's expired challenge as a revoked token. One implementation, parameterised on
+  // that one status, so the two versions cannot drift anywhere else. Decision record: harden-seam-bug-classes.
+  const attestIssuers = (staleChallengeStatus: 401 | 409) => {
+    const issuers = new Hono();
+    // Attest: verify the attestation object, persist the attested public key, mint a token.
+    issuers.post("/attest/token", async (c) => {
+      let body: { deviceId?: string; keyId?: string; attestation?: string; challenge?: string };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.text("invalid body", 400);
+      }
+      const { deviceId, keyId, attestation, challenge } = body;
+      if (!deviceId || !validateUUID(deviceId) || !keyId || !attestation || !challenge) {
+        return c.text("invalid body", 400);
+      }
+      if (!await challengeIsValid(config, challenge, now())) {
+        return c.text("stale challenge", staleChallengeStatus);
+      }
 
-    let verified;
-    try {
-      verified = await verifyAttestation(config, {
-        attestation: b64ToBytes(attestation),
-        challenge,
-        keyId: b64ToBytes(keyId),
-        at: new Date(now()),
-      });
-    } catch (e) {
-      console.error(`attest: attestation rejected for ${deviceId}: ${e}`);
-      return c.text("attestation rejected", 401);
-    }
+      let verified;
+      try {
+        verified = await verifyAttestation(config, {
+          attestation: b64ToBytes(attestation),
+          challenge,
+          keyId: b64ToBytes(keyId),
+          at: new Date(now()),
+        });
+      } catch (e) {
+        console.error(`attest: attestation rejected for ${deviceId}: ${e}`);
+        return c.text("attestation rejected", 401);
+      }
 
-    // Persist the attested key so RENEWAL can verify a cheap local assertion against it instead of
-    // forcing a fresh attestation — which is the throttled path, and which would make renewal too
-    // expensive to attempt at every wake. This INSERT is also the device's enrolment: a `devices` row
-    // exists if and only if the device has attested, and this is the only route that creates one.
-    //
-    // PERSIST BEFORE MINTING. A token handed out against a record we failed to write is a credential
-    // nothing knows about; the client retries at its next wake, so refusing costs nothing.
-    try {
-      await putAttestation(
-        db,
-        deviceId,
-        { publicKey: bytesToB64(verified.publicKey), environment: verified.environment },
-        new Date(now()).toISOString(),
-        tokenExpiryIso(config, now()),
-      );
-    } catch (e) {
-      console.error(`attest: could not persist the attestation record for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
+      // Persist the attested key so RENEWAL can verify a cheap local assertion against it instead of
+      // forcing a fresh attestation — which is the throttled path, and which would make renewal too
+      // expensive to attempt at every wake. This INSERT is also the device's enrolment: a `devices` row
+      // exists if and only if the device has attested, and this is the only route that creates one.
+      //
+      // PERSIST BEFORE MINTING. A token handed out against a record we failed to write is a credential
+      // nothing knows about; the client retries at its next wake, so refusing costs nothing.
+      try {
+        await putAttestation(
+          db,
+          deviceId,
+          { publicKey: bytesToB64(verified.publicKey), environment: verified.environment },
+          new Date(now()).toISOString(),
+          tokenExpiryIso(config, now()),
+        );
+      } catch (e) {
+        console.error(`attest: could not persist the attestation record for ${deviceId}: ${e}`);
+        return c.text("upstream error", 502);
+      }
 
-    console.info(`attest: ${deviceId} attested (${verified.environment})`);
-    return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
-  });
+      console.info(`attest: ${deviceId} attested (${verified.environment})`);
+      return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
+    });
 
-  // Renew: verify an assertion against the stored key, mint a fresh token. No Apple round-trip, so this
-  // is cheap enough for the app to attempt at EVERY wake rather than in a narrow window near expiry.
-  deviceApi.post("/attest/renew", async (c) => {
-    let body: { deviceId?: string; assertion?: string; challenge?: string };
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.text("invalid body", 400);
-    }
-    const { deviceId, assertion, challenge } = body;
-    if (!deviceId || !validateUUID(deviceId) || !assertion || !challenge) {
-      return c.text("invalid body", 400);
-    }
-    if (!await challengeIsValid(config, challenge, now())) return c.text("stale challenge", 401);
+    // Renew: verify an assertion against the stored key, mint a fresh token. No Apple round-trip, so this
+    // is cheap enough for the app to attempt at EVERY wake rather than in a narrow window near expiry.
+    issuers.post("/attest/renew", async (c) => {
+      let body: { deviceId?: string; assertion?: string; challenge?: string };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.text("invalid body", 400);
+      }
+      const { deviceId, assertion, challenge } = body;
+      if (!deviceId || !validateUUID(deviceId) || !assertion || !challenge) {
+        return c.text("invalid body", 400);
+      }
+      if (!await challengeIsValid(config, challenge, now())) {
+        return c.text("stale challenge", staleChallengeStatus);
+      }
 
-    let record: Awaited<ReturnType<typeof readAttestation>>;
-    try {
-      record = await readAttestation(db, deviceId);
-    } catch (e) {
-      // Absence and "could not ask" are DIFFERENT answers here and must not collapse: absence sends the
-      // device down a full Apple attestation, which is the throttled path, so a database blink must read
-      // as retry-me and not as attest-again.
-      console.error(`renew: could not read the attestation record for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    if (record === null) {
-      // Two causes, one answer, and the log keeps them apart: a device the backend has never seen, or one
-      // whose row the nightly sweep collected. Both mean "attest afresh", which is what the client does.
-      console.info(`renew: no attestation on file for ${deviceId} — never attested, or collected`);
-      return c.text("not attested", 401);
-    }
-
-    try {
-      await verifyAssertion({
-        assertion: b64ToBytes(assertion),
-        challenge,
-        publicKey: b64ToBytes(record.publicKey),
-        appId: config.attestAppId,
-      });
-    } catch (e) {
-      console.error(`renew: assertion rejected for ${deviceId}: ${e}`);
-      return c.text("assertion rejected", 401);
-    }
-
-    // RECORD THE NEW EXPIRY BEFORE MINTING, exactly as `/attest/token` persists before minting. The sweep
-    // decides whether this device may still hold a working credential from this value; minting first and
-    // writing after would leave the store understating the token's life, and the sweep would then collect
-    // a device that is still using it — costing it a full re-attestation.
-    try {
-      const { rowsAffected } = await touchTokenExpiry(db, deviceId, tokenExpiryIso(config, now()));
-      if (rowsAffected === 0) {
-        // The row went away between the read and this write. Nothing to renew against.
-        console.info(`renew: the attestation record for ${deviceId} vanished mid-renewal`);
+      let record: Awaited<ReturnType<typeof readAttestation>>;
+      try {
+        record = await readAttestation(db, deviceId);
+      } catch (e) {
+        // Absence and "could not ask" are DIFFERENT answers here and must not collapse: absence sends the
+        // device down a full Apple attestation, which is the throttled path, so a database blink must read
+        // as retry-me and not as attest-again.
+        console.error(`renew: could not read the attestation record for ${deviceId}: ${e}`);
+        return c.text("upstream error", 502);
+      }
+      if (record === null) {
+        // Two causes, one answer, and the log keeps them apart: a device the backend has never seen, or one
+        // whose row the nightly sweep collected. Both mean "attest afresh", which is what the client does.
+        console.info(
+          `renew: no attestation on file for ${deviceId} — never attested, or collected`,
+        );
         return c.text("not attested", 401);
       }
-    } catch (e) {
-      console.error(`renew: could not record the token expiry for ${deviceId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
 
-    return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
-  });
+      try {
+        await verifyAssertion({
+          assertion: b64ToBytes(assertion),
+          challenge,
+          publicKey: b64ToBytes(record.publicKey),
+          appId: config.attestAppId,
+        });
+      } catch (e) {
+        console.error(`renew: assertion rejected for ${deviceId}: ${e}`);
+        return c.text("assertion rejected", 401);
+      }
+
+      // RECORD THE NEW EXPIRY BEFORE MINTING, exactly as `/attest/token` persists before minting. The sweep
+      // decides whether this device may still hold a working credential from this value; minting first and
+      // writing after would leave the store understating the token's life, and the sweep would then collect
+      // a device that is still using it — costing it a full re-attestation.
+      try {
+        const { rowsAffected } = await touchTokenExpiry(
+          db,
+          deviceId,
+          tokenExpiryIso(config, now()),
+        );
+        if (rowsAffected === 0) {
+          // The row went away between the read and this write. Nothing to renew against.
+          console.info(`renew: the attestation record for ${deviceId} vanished mid-renewal`);
+          return c.text("not attested", 401);
+        }
+      } catch (e) {
+        console.error(`renew: could not record the token expiry for ${deviceId}: ${e}`);
+        return c.text("upstream error", 502);
+      }
+
+      return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
+    });
+    return issuers;
+  };
 
   // Create an event (capabilities `api-endpoints`, `event-limits`). GATED by the device token above (an
   // ungated create let a stranger mint unbounded events). Beyond that gate it stays a
@@ -1757,9 +1778,11 @@ export function createApp(
   // shared splitter, so a further version needs no change to either.
   const v1 = new Hono();
   v1.route("/", deviceApi);
+  v1.route("/", attestIssuers(401));
   v1.route("/", v1Only);
   const v2 = new Hono();
   v2.route("/", deviceApi);
+  v2.route("/", attestIssuers(409));
   v2.route("/", v2Only);
   app.route("/api/v1", v1);
   app.route("/api/v2", v2);
