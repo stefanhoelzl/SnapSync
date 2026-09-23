@@ -737,14 +737,17 @@ class AppCore internal constructor(
      * The empty set is the **honest** answer rather than a fallback: the denylist is a subtraction and
      * the policy admits on doubt, so "no denylisted assets" is what an unreadable album structure means
      * anyway — which is why `limited-photo-access` records the denylist as inert under a partial grant.
+     *
+     * The grant gate itself lives in [denylistedAlbumMembers], shared with the upload cycle, and asks only
+     * under a FULL grant: under `LIMITED` the album structure is unreadable, so the lookup could only ever
+     * answer the empty set it now answers without the round-trip.
      */
     private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<String> =
-        if (ports.photoAccess.permission.value.grantsPhotoAccess) {
-            // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
-            denylistedAlbumMembers(ports.albumManager, cutoff, AlbumLookupFailure.AdmitOnDoubt, ports.log)
-        } else {
-            emptySet()
-        }
+        // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
+        denylistedAlbumMembers(
+            ports.albumManager, cutoff, ports.photoAccess.permission.value, AlbumLookupFailure.AdmitOnDoubt,
+            ports.log,
+        )
 
     /**
      * The status-refresh **rule** (capability `sync-status`): cheap local reads before the library

@@ -42,10 +42,16 @@ import kotlinx.coroutines.CoroutineScope
  * state), so it is a callback into that core. The extension's is a platform read of its own grant, so it is
  * a port, and the rule applied to it (`extensionAdmission`) lives here rather than in the extension's root —
  * which is what used to hold both, as an inline lambda reading PhotoKit.
+ *
+ * Both carry the process's [grant], because one read of the membership's policy needs it beyond the admission:
+ * the denylisted-album lookup is asked only under a full grant (see [denylistedAlbumMembers]).
  */
 sealed interface UploaderProcess {
-    class App(val admission: () -> UploadAdmission) : UploaderProcess
-    class Extension(val grant: PhotoGrantRead) : UploaderProcess
+    /** This process's current photo grant — a status read, never a request. */
+    val grant: PhotoGrantRead
+
+    class App(val admission: () -> UploadAdmission, override val grant: PhotoGrantRead) : UploaderProcess
+    class Extension(override val grant: PhotoGrantRead) : UploaderProcess
 }
 
 /**
@@ -248,7 +254,10 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
                         config = it,
                         suppressedAssetIds = { ports.suppression.suppressedLocalIds() },
                         albumExcludedAssetIds = { cutoff ->
-                            denylistedAlbumMembers(ports.albumManager, cutoff, ports.albumLookupFailure, ports.log)
+                            denylistedAlbumMembers(
+                                ports.albumManager, cutoff, ports.process.grant.current(), ports.albumLookupFailure,
+                                ports.log,
+                            )
                         },
                     )
                 },

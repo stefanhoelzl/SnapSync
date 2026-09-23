@@ -1076,7 +1076,7 @@ class World(
                 diagnosticsReporter = inMemoryDiagnosticsReporter(),
                 // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
                 // takes the app process's admission — the same resolution the device app engine gates on.
-                process = UploaderProcess.App { core.appUploadAdmission() },
+                process = UploaderProcess.App({ core.appUploadAdmission() }, { core.photoPermission.value }),
                 config = configReader,
                 deviceIdentity = { ownDeviceId },
                 host = host,
