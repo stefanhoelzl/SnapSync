@@ -73,6 +73,26 @@ group it joins and the argument for that group.
 - **THEN** the module-set gate fails, naming the module and the three groups it could join, and it
   cannot be satisfied by editing the gate
 
+#### Scenario: The core cannot reach a platform
+- **WHEN** any file in a core zone module references a platform API or a non-allowlisted library
+- **THEN** compilation fails (unresolvable symbol), because a zone module declares only its permitted
+  zone dependency and the per-zone allowlisted libraries
+
+#### Scenario: A zone edge is crossed
+- **WHEN** a file in one core zone module references a declaration from a zone its module does not depend
+  on
+- **THEN** the reference does not resolve and the build fails at compilation
+
+#### Scenario: A zone dependency is exposed transitively
+- **WHEN** a core zone module declares another zone with `api()` rather than `implementation()`
+- **THEN** the boundary leaks to every downstream consumer, and the declaration is a defect the split
+  exists to prevent
+
+#### Scenario: A rig-gated source set in the app-only adapter module
+- **WHEN** the app-only adapter module carries a source directory compiled only under `-Psnapsync.rig`, holding
+  in-app contract bindings
+- **THEN** the contracts module is linked there only under the same property, and a build without it
+  contains neither
 
 #### Scenario: A test client reaches for a port
 
