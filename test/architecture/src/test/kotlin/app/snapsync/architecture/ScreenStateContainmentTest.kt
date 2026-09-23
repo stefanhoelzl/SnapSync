@@ -23,13 +23,15 @@ import kotlin.test.fail
  * selected — it belongs in the reduction, where it can be tested without Compose and transported without
  * being re-derived. An entry here is for state that only affects how something is *drawn*.
  *
- * Two entries exist, and each names why it is not "what is shown":
+ * One entry exists, and it names why it is not "what is shown":
  *
- * - the **share-count row's in-flight state** — the count is an asynchronous query, and whether its
- *   answer has arrived yet is a property of this render pass, not of the membership;
  * - the **create form** — the event name and date range a host types before an event exists. It is the
  *   one decision surface this change did not lift, and it is called out in `design.md` rather than left
  *   as an unexplained exemption.
+ *
+ * The share-count row's in-flight state was a second entry until the count moved into the reduction
+ * (`harden-seam-bug-classes`): the container computes it over the lane-decorated query bundle and the row
+ * renders it, so the screen holds nothing for it.
  *
  * Text typed into a sheet is the stated IME exception (`sync-status-screen`) and lives in
  * `:ui:components`, which this gate does not scan: a design-system control may own how it draws itself.
@@ -47,7 +49,6 @@ class ScreenStateContainmentTest {
      * shown". Keyed by file name because the reason is a property of the surface, not of the line.
      */
     private val allowed = mapOf(
-        "JoinReadySurface.kt" to "the share-count row's in-flight state — an async query's arrival, not a membership fact",
         "CreateEventScreen.kt" to "the create form — the one decision surface this change did not lift",
     )
 
