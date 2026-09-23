@@ -18,12 +18,19 @@ the binding runs in. Where the port's client is the same in every binding and on
 differs, the service decides the binding's kind: a stand-in service is `Fake`, the real one run for real
 is `Live`.
 
-A service a binding stands up only to put the implementation into a clause's state — an endpoint that
-answers an upload with the status the clause's setup chose — SHALL NOT make the binding `Fake`, provided no
-clause asserts what that service answered: its answer is a **stimulus**, as a seeded asset is, and the
-obligations under contract remain the implementation's (what it records, acknowledges and re-presents). A
-service whose answers are themselves the port's obligations — a backend's refusal, an echoed window — is
-the stand-in the previous paragraph means, and makes the binding `Fake`.
+That rule SHALL apply only where the clauses assert the **service's answers**. An endpoint a binding stands
+up **only to receive** what the implementation transmits, and reads **only to observe** it, SHALL be part
+of the observation handle rather than a stand-in service: it SHALL NOT decide the binding's kind, and no
+clause SHALL assert anything the endpoint decides. Such an endpoint SHALL NOT be more lenient than the
+production service on a limit that service is measured to enforce, so a clause cannot pass against it with a
+payload production would refuse.
+
+An endpoint a binding stands up to **answer** what the implementation transmits, with an answer the
+clause's setup chose — an upload receiver answering 200, 403 or 500 by path — SHALL likewise NOT decide the
+binding's kind, provided no clause asserts that answer: the answer is a **stimulus** that puts the
+implementation into the clause's state, as a seeded asset is, and the obligations under contract remain the
+implementation's (what it records, acknowledges and re-presents). A service whose answers are themselves what
+the clauses assert remains the stand-in of the rule above.
 
 The known host matrix, which the next binding starts from:
 
@@ -66,6 +73,13 @@ unavailable therefore has no real host.
 - **THEN** its host is `IOS_SIM_APP`, never `IOS_SIM_KEXE` and never `IOS_DEVICE_APP`, because its bundle
   identifier is what makes a photo grant reachable and its missing Keychain entitlement is what makes the
   device's Keychain states unreachable
+
+#### Scenario: A receiving endpoint observes a real reporting channel
+
+- **WHEN** a binding drives the real reporting adapter and SDK against an ingest endpoint it stood up in the
+  test process, and every clause judges what the adapter emitted
+- **THEN** its kind is `Live`, because the endpoint answers nothing a clause asserts, and the endpoint
+  refuses an event over the size the production ingest is measured to refuse
 
 #### Scenario: The upload extension is its own host
 
