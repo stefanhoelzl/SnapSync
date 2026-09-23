@@ -40,10 +40,12 @@ fun extensionEntries(
             )
         }
 
-        // Nothing to interrupt or persist — `process()` holds its thread until the cycle ends — but a termination
-        // must still be RECORDED: without this line a killed cycle reads as a `→ process` with no `← process`,
-        // indistinguishable from a hang (capability `diagnostic-logging`).
+        // The OS's `notifyTermination` marks the END of an invocation, not a kill: measured on an SE2 (iOS 26.6,
+        // 2026-09-23), it arrives ~55 ms after every normal return of `process()`, and a call killed at its ~60 s
+        // budget receives nothing (capability `ios-photokit-upload`, "How the operating system invokes the extension
+        // is recorded as measured"). So this records an ordinary end at `Info`. A KILLED call is the one that reads
+        // as a `→ process` with no `← process` and no line from here — which is how to tell the two apart.
         override fun onTerminate() = log.invocation(logScope, "onTerminate") {
-            log.w { "the OS terminated this cycle — nothing in flight to persist (process() is synchronous)" }
+            log.i { "the OS ended this invocation (notifyTermination follows a normal return; a killed call gets none)" }
         }
     }
