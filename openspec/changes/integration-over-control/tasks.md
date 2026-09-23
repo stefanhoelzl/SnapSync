@@ -7,7 +7,7 @@
 - [x] 1.5 Make `SnapSyncRoot` delegate to `snapSyncHost` without changing behaviour. Update the `KotlinShellGuardTest`/`SwiftShellGuardTest` pins, and run `detektAppShell` and `compileIosMainKotlinMetadata`.
 - [x] 1.6 Make `World` compose through `snapSyncHost` and expose `host`. Point the desktop `StatusPane`/world harness at `world.host`, and delete their hand assembly.
 - [x] 1.7 Shrink `JvmRigHost.compose` to building a world with the rig's `onEventMinted` routing. Use `attests = true` on the mini-edge and off on deno.
-- [ ] 1.8 Add JVM host tests (`:test:control`): `UpdateRequired` is reachable after a minimum-version refusal, and a delivered push token lands as device config.
+- [x] 1.8 Add JVM host tests (`:test:control`): `UpdateRequired` is reachable after a minimum-version refusal, and a delivered push token lands as device config.
 - [ ] 1.9 Regenerate `architecture/` (`./gradlew architectureDiagrams`) and run `./gradlew build` green.
 
 ## 2. World levers and reads (D5, D6, D7)
@@ -21,12 +21,12 @@
 
 ## 3. The protocol (D5)
 
-- [ ] 3.1 Extend the `/user` table with `rename`, `renameStatusConsumed`, `confirmSwitch`, `retryLoad`, `sendDiagnostics` (`409` when the composed command is absent) and `setRange`. Correct or remove the stale exclusion reasons, and fix the KDoc's command count.
-- [ ] 3.2 Add the new `/device` entries to `RigVocabulary` (device reads, backend reads, backend levers, world/OS levers). Wire each on the JVM host over the world.
-- [ ] 3.3 Classify every new entry on the app host: world levers refused with the shared reason, and unwired device facts refused naming that. Add `originalFilename` to `GalleryView` on both hosts (app host: `PHAssetResource`).
-- [ ] 3.4 Add the new parameters: `gallery/seed` `id`/`date`/`kind` (the app host refuses `id` and the synthetic kinds with a reason), `foreign-device` `filename`, and `downloads/stage` returning while an import is parked.
-- [ ] 3.5 Add typed `RigClient` helpers for the new verbs, and `:test:control` tests: each new entry is honoured on the JVM host over mini-edge, answers per its classification over deno, and `GET /device` has no unclassified entry.
-- [ ] 3.6 Update the `rig-channel` skill's verb list.
+- [x] 3.1 Extend the `/user` table with `rename`, `renameStatusConsumed`, `confirmSwitch`, `retryLoad`, `sendDiagnostics` (`409` when the composed command is absent) and `setRange`. Correct or remove the stale exclusion reasons, and fix the KDoc's command count.
+- [x] 3.2 Add the new `/device` entries to `RigVocabulary` (device reads, backend reads, backend levers, world/OS levers). Wire each on the JVM host over the world.
+- [x] 3.3 Classify every new entry on the app host: world levers refused with the shared reason, and unwired device facts refused naming that. Add `originalFilename` to `GalleryView` on both hosts (app host: `PHAssetResource`).
+- [x] 3.4 Add the new parameters: `gallery/seed` `id`/`date`/`kind` (the app host refuses `id` and the synthetic kinds with a reason), `foreign-device` `filename`, and `downloads/stage` returning while an import is parked.
+- [x] 3.5 `:test:control` tests: every new entry is honoured on the JVM host and `GET /device` has no unclassified entry; the version refusal and push registration reach a JVM host. (The typed helpers live in the integration fixture, over `RigClient`'s generic `deviceVerb`, rather than as one `RigClient` method per verb.)
+- [x] 3.6 Update the `rig-channel` skill's verb list.
 
 ## 4. Inbound-port bindings move (D10)
 

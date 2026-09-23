@@ -28,6 +28,39 @@ class JvmHostProtocolTest {
         assertEquals(emptyList(), ad.outsideVocabulary, "every wired verb is in the vocabulary")
         assertEquals(RigVocabulary.entries, (ad.honoured + ad.refused.keys).toSet())
         assertTrue(RigVocabulary.worldLevers.all { it in ad.honoured }, "the JVM host honours every world lever")
+        assertTrue(RigVocabulary.deviceFacts.all { it in ad.honoured }, "the JVM host reads every device fact")
+    }
+
+    /**
+     * The host a test drives is the phone's: its status host observes the version refusal, which the JVM host once
+     * left out when it assembled its own (capability `module-architecture`, "One shared composition").
+     */
+    @Test
+    fun a_refused_build_reaches_the_update_required_screen() = onHost { client ->
+        client.deviceVerb("backend/min-app-version", mapOf("minimum" to "100.0")).done()
+        // Any backend call carries the version; a create is the first a person makes.
+        client.user("create", mapOf("name" to "Old", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"))
+        val refused = client.awaitState { it.ui.layer is Layer.UpdateRequired }
+        assertEquals("100.0", (refused.ui.layer as Layer.UpdateRequired).minimumVersion)
+    }
+
+    /** ...and it registers for pushes, which the JVM host once never did. */
+    @Test
+    fun a_delivered_push_token_is_registered_on_the_backend() = onHost { client ->
+        client.os("app", "onPushToken", arg = "DEADBEEF").done()
+        val deadline = kotlin.time.TimeSource.Monotonic.markNow() + kotlin.time.Duration.parse("10s")
+        while ("DEADBEEF" !in client.deviceVerb("backend/device-config").done()) {
+            check(deadline.hasNotPassedNow()) { "the delivered token never reached the backend" }
+            kotlinx.coroutines.delay(50)
+        }
+    }
+
+    @Test
+    fun a_user_command_the_build_cannot_honour_is_refused_not_accepted() = onHost { client ->
+        // The world's reporter is configured, so the send is honoured here; the refusal path is exercised by the
+        // rename that names no event while nothing is joined.
+        val rename = assertIs<Reply.Refused>(client.user("rename", mapOf("name" to "x")))
+        assertTrue("no joined event" in rename.reason, rename.reason)
     }
 
     @Test

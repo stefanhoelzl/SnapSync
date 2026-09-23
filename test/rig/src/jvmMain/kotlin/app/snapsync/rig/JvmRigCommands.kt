@@ -19,7 +19,11 @@ import kotlin.uuid.Uuid
 private val json = Json { encodeDefaults = true; prettyPrint = true }
 
 /** The JVM host's `/device` write commands. */
-internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = mapOf(
+internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = inspectorLevers(world) +
+    worldIntegrationCommands(world)
+
+/** The full-stack world inspector's levers (capability `full-stack-harness`). */
+private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
     "reset" to resetCommand { world.core },
     "gallery/seed" to seedCommand { n, kind -> seedWorld(world, n, kind) },
     "backend/offline" to RigCommand { params, _ -> answered(world.neutral.setOffline(flag(params, "on"))) },
@@ -76,9 +80,14 @@ internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = mapOf(
             CommandResult.ok("""{"permission":"${status.name}"}""")
         }
     },
-    "downloads/stage" to RigCommand { _, _ ->
-        world.stageAllDownloads()
-        CommandResult.ok("""{"staged":true}""")
+    // `wait=false` returns at once, so a caller can drive other triggers while an import it started is parked.
+    "downloads/stage" to RigCommand { params, _ ->
+        if (params["wait"]?.toBoolean() == false) {
+            stageWithoutWaiting(world)
+        } else {
+            world.stageAllDownloads()
+            CommandResult.ok("""{"staged":true}""")
+        }
     },
     "downloads/reconcile" to RigCommand { _, _ ->
         val eventId = world.configSource.config.value?.eventId
@@ -105,10 +114,13 @@ internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = mapOf(
         val device = params["device"]
         val assets = params["assets"]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
         val event = params["event"] ?: world.configSource.config.value?.eventId
+        // The capturing device's own file name for every asset — what an import names its photo after.
+        val filename = params["filename"]
         if (device == null || assets.isEmpty()) {
             CommandResult.badRequest("device and a non-empty comma-separated assets are required")
         } else {
-            val eventId = world.addForeignDeviceMinted(device, assets.map { World.foreignAsset(it) }, event)
+            val manifest = assets.map { if (filename != null) World.foreignAsset(it, filename) else World.foreignAsset(it) }
+            val eventId = world.addForeignDeviceMinted(device, manifest, event)
             CommandResult.ok("""{"device":${jsonString(device)},"eventId":${jsonString(eventId)}}""")
         }
     },

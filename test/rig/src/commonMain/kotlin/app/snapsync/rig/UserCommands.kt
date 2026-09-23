@@ -1,6 +1,9 @@
 package app.snapsync.rig
 
 import app.snapsync.model.Direction
+import app.snapsync.model.FromChoice
+import app.snapsync.model.UntilChoice
+import app.snapsync.presentation.Layer
 import app.snapsync.presentation.StatusContainerHost
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -14,11 +17,13 @@ import kotlin.time.Instant
 /**
  * The `/user` surface: real members of [StatusContainerHost], invoked exactly as a tap invokes them.
  *
- * Four are wired because four are what an operator needs to reach an event end-to-end without a finger:
- * create it, confirm the join it opens, abandon that join, and leave afterwards. The rest are excluded with
- * the reason that makes each omission safe. A guard once held this map against the host's own public surface,
- * so a new command failed the build until someone said which of the two it was; it was retired in `74302d2b`,
- * and a new command is now classified by review.
+ * Wired: every intent that does something outside the container — reach an event end to end (create, confirm
+ * or cancel the join it opens, leave), change the membership (reconfigure, rename and the latch its screen
+ * resets, confirm a switch), recover (retry a failed details load or commit), report (send diagnostics) — plus
+ * setting the range form without committing, which is what a member does before the commit a preview answers.
+ * The rest are excluded with the reason that makes each omission safe. A guard once held this map against the
+ * host's own public surface, so a new command failed the build until someone said which of the two it was; it
+ * was retired in `74302d2b`, and a new command is now classified by review.
  */
 fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> = mapOf(
     "leave" to RigUserCommand { host().onLeaveEvent() },
@@ -48,7 +53,45 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
         host().applyRangeChoices(params)
         host().onReconfigure()
     },
+    // The form, set without committing: what a member does before they confirm, and what the join gate's
+    // shareable-count preview answers (capability `join-share-count`). `until=eventEnd` and `from=eventStart|now`
+    // pick the presets; a `cutoff`/`until` instant picks a custom bound, as `confirmJoin` does.
+    "setRange" to RigUserCommand { params ->
+        params["from"]?.let { host().form.onFromPreset(fromPreset(it)) }
+        params["until"]?.takeIf { it.equals("eventEnd", ignoreCase = true) }?.let {
+            host().form.onUntilPreset(UntilChoice.EVENT_END)
+        }
+        host().applyRangeChoices(params.filterNot { (k, v) -> k == "until" && v.equals("eventEnd", ignoreCase = true) })
+    },
+    // Rename the joined event (capability `event-rename`). `event` defaults to the joined one — naming another is
+    // how a caller reproduces a rename the dialog opened for an event a switch has since replaced.
+    "rename" to RigUserCommand { params ->
+        val event = params["event"] ?: joinedEventId(host())
+            ?: throw UserCommandRefused("there is no joined event to rename, and no `event` was named")
+        host().onRenameEvent(event, requireNotNull(params["name"]) { "name is required" })
+    },
+    "renameStatusConsumed" to RigUserCommand { host().onRenameStatusConsumed() },
+    "confirmSwitch" to RigUserCommand { host().onConfirmSwitch() },
+    "retryLoad" to RigUserCommand { host().onRetryLoad() },
+    "retryJoin" to RigUserCommand { host().onRetryJoin() },
+    // The dump goes to the build's configured reporter; a build with none (every dev and rig build of the app,
+    // which carries no DSN) has no such command at all, and says so rather than accepting a tap nothing hears.
+    "sendDiagnostics" to RigUserCommand { params ->
+        val send = host().onSendDiagnostics
+            ?: throw UserCommandRefused("this build carries no configured crash reporter, so there is no dump to send")
+        send(params["note"].orEmpty(), params["screen"] ?: "rig")
+    },
 )
+
+/** The joined membership's event id, as the screen shows it. */
+private fun joinedEventId(host: StatusContainerHost): String? =
+    (host.container.stateFlow.value.layer as? Layer.Joined)?.membership?.eventId
+
+private fun fromPreset(raw: String): FromChoice = when {
+    raw.equals("eventStart", ignoreCase = true) -> FromChoice.EVENT_START
+    raw.equals("now", ignoreCase = true) -> FromChoice.NOW
+    else -> throw IllegalArgumentException("from must be eventStart|now, was '$raw' — a custom bound is `cutoff`")
+}
 
 /**
  * Drive the range form from the channel's committed-shaped parameters.
@@ -101,10 +144,9 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     // bound the caller can state outright, and `applyRangeChoices` states it — offering both would give
     // the channel two ways to say one thing, and they could disagree.
     "onFromPreset" to
-        "a shorthand for a bound the channel already sets outright via the `cutoff` parameter; offering " +
-        "both would let one caller say the same thing two ways, which could then disagree.",
+        "reached through `setRange?from=eventStart|now`, which names the preset rather than a second command for it.",
     "onUntilPreset" to
-        "the same, for the upper bound the `until` parameter sets outright.",
+        "reached through `setRange?until=eventEnd`, for the same reason.",
     // ---- what is drawn OVER the layer (capability `sync-status-screen`) ---------------------------
     //
     // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would
@@ -122,38 +164,24 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "discards the settings surface without writing; `/user/reconfigure` opens, sets and commits it in " +
         "one call, so there is no half-open surface for the channel to cancel.",
     "onReportBugOpen" to
-        "opens the diagnostic sheet, whose SEND is already excluded below for the same reason — the dump " +
-        "leaves the device, and a channel-triggered one would be indistinguishable from a real report.",
+        "opens the diagnostic sheet and touches no port; the send itself is wired as `/user/sendDiagnostics`.",
     "onReportBugDismiss" to
         "dismisses that sheet, which the channel never opens.",
     "onShareInvite" to
         "presents a UIActivityViewController and leaves the modal on screen for a finger to dismiss. " +
         "The presentation itself is SharePresenterContract, run live by POST /contract/SharePresenter; the " +
         "invite URL is already in /device/state.",
-    "onSendDiagnostics" to
-        "sends a diagnostic dump to the operator's Bugsink instance. Driving it from a rig would fill the " +
-        "issue with runs nobody triaged; /device/logs reaches the same content without the round trip.",
     "onEventCreated" to
         "an internal continuation of create, not a surface of its own — the create command already reaches " +
         "it, and calling it directly would open a join gate for an event nothing minted.",
     "onOpenUrl" to
         "the join-link entry, reachable with full fidelity as POST /os/onSceneContinueActivity, which " +
         "additionally exercises the real NSUserActivity decode and activity-type filter.",
-    "onRenameEvent" to
-        "changes a live membership's name; no scenario drives it yet, and an unexercised destructive " +
-        "command is worse than an absent one.",
-    "onRenameStatusConsumed" to
-        "a latch reset the screen fires after acting on a terminal value — driving it would desynchronise " +
-        "the container from the UI that owns the latch.",
-    "onRetryLoad" to "a retry of a failed details load; reachable by re-issuing the command that failed.",
-    "onRetryJoin" to "a retry of a failed commit; reachable by re-issuing confirmJoin.",
     "onAcknowledgeAccess" to
         "dismisses the access explainer, a purely presentational transition with no effect outside the " +
         "container.",
-    "onConfirmSwitch" to
-        "confirms leaving one event for another. Reachable as leave + confirmJoin, which is the same two " +
-        "steps with the state visible between them.",
-    "onCancelSwitch" to "the presentational half of the switch dialog; see onConfirmSwitch.",
+    "onCancelSwitch" to
+        "dismisses the switch dialog and touches no port; the switch itself is wired as `/user/confirmSwitch`.",
 )
 
 /**

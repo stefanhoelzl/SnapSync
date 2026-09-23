@@ -312,7 +312,17 @@ class RigServer(
                 status = HttpStatusCode.NotFound,
             )
         val params = request.queryParameters.entries().associate { it.key to it.value.first() }
-        withContext(hooks.mainLane) { command.run(params) }
+        val refusal = withContext(hooks.mainLane) {
+            try {
+                command.run(params)
+                null
+            } catch (refused: UserCommandRefused) {
+                refused.reason
+            }
+        }
+        if (refusal != null) {
+            return respondText("{\"refused\":${jsonString(refusal)}}\n", status = HttpStatusCode.Conflict)
+        }
         respondText(
             "{\"command\":\"$name\",\"accepted\":true,\"waited\":false," +
                 "\"note\":\"a user command is an intent, exactly as a tap is — poll /device/state\"}\n",
