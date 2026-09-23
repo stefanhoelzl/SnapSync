@@ -49,6 +49,11 @@ class EdgeUploadRequestProvider(
     private val deviceId: String,
     private val token: suspend () -> String?,
     /**
+     * The credential read from its store of record, bypassing any in-process copy — what [provideForRetry] uses.
+     * Required, like [token]: a composition with no credential states `{ null }` for both.
+     */
+    private val freshToken: suspend () -> String?,
+    /**
      * The calling build's marketing version, declared on every v2 request (capability
      * `min-app-version`).
      *
@@ -63,7 +68,11 @@ class EdgeUploadRequestProvider(
     // Trim a trailing slash so the baked host (with or without one) never yields `//files`.
     private val base = host.trimEnd('/')
 
-    override suspend fun provide(resource: Resource): UploadRequest {
+    override suspend fun provide(resource: Resource): UploadRequest = mint(resource, token())
+
+    override suspend fun provideForRetry(resource: Resource): UploadRequest = mint(resource, freshToken())
+
+    private fun mint(resource: Resource, bearer: String?): UploadRequest {
         // Identity in the PATH, capture name in a required QUERY. `assetId` and `role` are derived from
         // the ledger key through the shared parsers, so the one definition of that layout stays in
         // `model/` and the destination cannot disagree with the row it belongs to.
@@ -81,7 +90,7 @@ class EdgeUploadRequestProvider(
         val headers = buildMap {
             put("Content-Type", contentTypeOf(resource))
             if (appVersion.isNotBlank()) put(APP_VERSION_HEADER, appVersion)
-            token()?.let { put("Authorization", "Bearer $it") }
+            bearer?.let { put("Authorization", "Bearer $it") }
         }
         return UploadRequest(url = url, headers = headers, resource = resource)
     }

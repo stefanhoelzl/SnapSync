@@ -73,6 +73,7 @@ class UrlSessionUploadController(
     // picked up on the next retry. This tier uploads from the APP process, which is also the process that
     // can attest — so unlike the extension, it is never stuck with a token it cannot refresh.
     private val token: suspend () -> String?,
+    private val freshToken: suspend () -> String?,
     // Echo-suppression (capability `photo-download`): the `assetId`s of foreign assets this device
     // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
     // echo) — essential now that this tier writes the device manifest and so appears in the union.
@@ -223,6 +224,7 @@ class UrlSessionUploadController(
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 albumCoordinator = albumCoordinator,
                 token = token,
+                freshToken = freshToken,
                 log = log,
             ),
         )

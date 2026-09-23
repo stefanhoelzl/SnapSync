@@ -167,6 +167,8 @@ class SyncEngineTest {
         val retry = assertIs<SyncDecision.Retry>(decision)
         assertNotSame(failed, retry.request)
         assertSame(resource, retry.request.resource)
+        // The retry is minted through the uncached credential read; the first request was not.
+        assertEquals(listOf(resource), provider.retryInvocations)
         // UploadFailed returns the row to DISCOVERED only; the retry's REQUESTED comes via UploadStarted.
         assertEquals(
             resource.toLedgerRow(LedgerState.DISCOVERED),

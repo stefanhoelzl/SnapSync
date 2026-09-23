@@ -17,4 +17,13 @@ package app.snapsync.model
  */
 interface UploadRequestProvider {
     suspend fun provide(resource: Resource): UploadRequest
+
+    /**
+     * [provide] for a **retry**: the same destination, with the credential read from its store of record rather
+     * than from any in-process copy (capability `edge-upload-provider`, "A retry picks up a refreshed token").
+     *
+     * A retry is exactly when a copy is most likely stale — the failure may have been the `401` of a token another
+     * process has since renewed — so it pays the one uncached read that [provide] saves on every first request.
+     */
+    suspend fun provideForRetry(resource: Resource): UploadRequest
 }

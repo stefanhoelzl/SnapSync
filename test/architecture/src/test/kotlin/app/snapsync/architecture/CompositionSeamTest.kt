@@ -118,6 +118,11 @@ class CompositionSeamTest {
                 "the attestation bearer, read per request from the AttestStore port (extension) or the " +
                 "core's own DeviceAttestation (app) — a call because a renewal must be picked up without " +
                 "rebuilding the cycle",
+            "freshToken" to
+                "the same bearer as `token`, through the same AttestStore port / DeviceAttestation, but after " +
+                "dropping the core's in-memory copy (CachedAttestStore.reread) — what a retry's request " +
+                "carries, since the other process may have renewed the token that copy still holds " +
+                "(capability `edge-upload-provider`, \"A retry picks up a refreshed token\")",
         ),
         // DELIBERATELY EMPTY, and that is the entry rather than an omission. A cohesive sub-bundle of
         // AppPorts, holding PORT-typed fields and no lambda at all — so there is nothing here to judge, and

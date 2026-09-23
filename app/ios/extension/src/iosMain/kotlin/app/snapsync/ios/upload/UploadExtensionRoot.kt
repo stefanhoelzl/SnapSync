@@ -250,6 +250,11 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 albumLookupFailure = AlbumLookupFailure.FailCycle,
                 albumCoordinator = albumCoordinator,
                 token = { attestToken() },
+                // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
+                freshToken = {
+                    attestStore.reread()
+                    attestToken()
+                },
                 log = log,
             )
     }

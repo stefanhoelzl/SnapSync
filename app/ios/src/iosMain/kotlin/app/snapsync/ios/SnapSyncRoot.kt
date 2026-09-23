@@ -937,6 +937,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             httpClient = http,
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
             token = { app.attestation.token() },
+            // A retry's request re-reads the store of record (the extension may have cleared a rejected token).
+            freshToken = { app.attestation.freshToken() },
             // Echo-suppression: the concrete store IS the narrowed SuppressionSource port.
             suppression = downloadStore,
             // Denylisted-album membership (capability `photo-selection-policy`). Supplied on THIS tier too:

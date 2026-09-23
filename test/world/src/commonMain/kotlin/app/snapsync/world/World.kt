@@ -1099,6 +1099,7 @@ class World(
                 albumCoordinator = core.albumCoordinator,
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.
                 token = { null },
+                freshToken = { null },
             )
 
     /**

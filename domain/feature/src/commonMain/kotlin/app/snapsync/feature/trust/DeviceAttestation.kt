@@ -99,6 +99,16 @@ class DeviceAttestation(
     fun token(): String? = store.token()
 
     /**
+     * [token] read from the store of record, never the in-memory copy — for a request re-minted after a failure,
+     * which is exactly when the upload extension may have cleared, or this process's copy may predate, the token
+     * in the shared item (capability `edge-upload-provider`, "A retry picks up a refreshed token").
+     */
+    fun freshToken(): String? {
+        store.reread()
+        return store.token()
+    }
+
+    /**
      * The backend REJECTED [sentToken] (a `401` from a gated route to a request that carried it). Drop it if the
      * store still holds it, so the next [ensureFresh] obtains a new one, and answer whether it was dropped — the
      * caller refreshes only then, so a burst of rejections of one token costs one refresh, not one per request.

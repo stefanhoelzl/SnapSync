@@ -118,7 +118,9 @@ class SyncEngine(
 
     private suspend fun retry(failed: UploadRequest): SyncDecision {
         val resource = failed.resource
-        val request = provider.provide(resource)
+        // The retry's credential comes from the store of record: the failure may be the `401` of a token another
+        // process has renewed since this process last read it (capability `edge-upload-provider`).
+        val request = provider.provideForRetry(resource)
         // Return the row to DISCOVERED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).
         ledger.recordFailed(resource)
