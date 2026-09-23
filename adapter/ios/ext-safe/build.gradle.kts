@@ -141,7 +141,9 @@ kotlin {
             implementation(kotlin("test"))
             // A mock engine so `withCredentialInterceptor`'s 401 branch — the entry point of the
             // credential-recovery loop — can be exercised against a real response. The Darwin engine
-            // cannot produce one without a server, and this module's tests deliberately stand up none.
+            // cannot produce one without a server, and this module's tests deliberately stand up no backend
+            // (the one listener they do stand up is the reporting contract's loopback ingest, which answers
+            // the SDK and nothing else).
             implementation(libs.ktor.client.mock)
             // The Keychain and App-Group store bindings of `SecureStoreContract` (capability
             // `port-contracts`). Bound here because the seam and `AppGroupFileSecureStore` are `internal`.

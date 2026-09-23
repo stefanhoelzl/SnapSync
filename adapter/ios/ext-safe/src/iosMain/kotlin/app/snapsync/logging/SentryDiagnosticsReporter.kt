@@ -52,10 +52,33 @@ import platform.Foundation.NSBundle
  *   constructs this adapter at more than one site, and since [start] is idempotent process-wide a
  *   hand-supplied identity that disagreed between them would silently lose a coin toss.
  * - `dist` is **deliberately not set** — see the comment at that spot in [start].
+ *
+ * **What is asserted, and what is only believed.** `DiagnosticsReporterContract` (`:test:contracts`) runs this
+ * class, over the real SDK, on the simulator test executable, against a loopback ingest: the unconfigured no-op,
+ * idempotence, `describeProcess` starting the channel, automatic capture and its scrub, the `user.id` exception,
+ * the verbatim dump, and the latest process account riding later events. Two claims here have no host to run
+ * on and stay beliefs, with their evidence:
+ * - the global-scope tag and context ride a crash delivered on a LATER launch — a reading of sentry-cocoa's
+ *   source (`changes/archive/2026-07-29-add-release-and-process-to-crash-reports`), not a measurement, since no
+ *   clause can crash and relaunch;
+ * - the `process` tag itself — the test executable has no bundle identifier (measured 2026-09-23), so on that
+ *   host [start] sets none. The contract asserts the channel is running after an early [describeProcess]; that
+ *   [start] sets the tag before anything can report is this file's own ordering.
  */
-class SentryDiagnosticsReporter : DiagnosticsReporter {
+class SentryDiagnosticsReporter internal constructor(
+    /**
+     * Where this process reports to, or `null` for a build that reports nowhere. Production passes the
+     * bundle's baked value (the public constructor); only this module — its contract binding, which points
+     * the channel at a loopback ingest — can supply one of its own choosing (capability `port-contracts`,
+     * "Every clause runs against a real implementation on some host"). A value rather than a lookup: the
+     * bundle file cannot change under a running process, so reading it at construction is reading it always.
+     */
+    private val dsn: String?,
+) : DiagnosticsReporter {
 
-    override val isConfigured: Boolean get() = bakedSentryDsn() != null
+    constructor() : this(bakedSentryDsn())
+
+    override val isConfigured: Boolean get() = dsn != null
 
     /**
      * The operator-initiated dump (capability `diagnostic-logging`): ONE event titled by **what the
@@ -97,7 +120,7 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
 
     override fun start() {
         if (processStarted) return
-        val dsn = bakedSentryDsn() ?: return
+        val dsn = dsn ?: return
         processStarted = true
         Sentry.init { options ->
             options.dsn = dsn
@@ -159,7 +182,7 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
 }
 
 /** The context section name process metrics ride in, so a reader always finds them in one place. */
-private const val PROCESS_METRIC_CONTEXT: String = "process_metrics"
+internal const val PROCESS_METRIC_CONTEXT: String = "process_metrics"
 
 /**
  * The marker every operator-initiated report's message begins with, ahead of what the operator wrote.
@@ -173,6 +196,16 @@ private const val PROCESS_METRIC_CONTEXT: String = "process_metrics"
 internal const val DIAGNOSTIC_DUMP_MESSAGE_PREFIX: String = "Bug Report:"
 
 private var processStarted = false
+
+/**
+ * Forgets that this process started the channel — for the `DiagnosticsReporter` contract's live binding ONLY,
+ * which gives every clause a fresh instance of an adapter whose idempotence is process-wide by contract. It
+ * closes the SDK and wipes its envelope cache itself; this is the one piece of that state only this file can
+ * reach. No composition calls it, and none can: it is `internal` to this module.
+ */
+internal fun resetProcessStart() {
+    processStarted = false
+}
 
 /** Apple's OWN Info.plist keys only. Deployment values come from [bakedSentryDsn] and friends. */
 private fun bundleValue(key: String): String? =

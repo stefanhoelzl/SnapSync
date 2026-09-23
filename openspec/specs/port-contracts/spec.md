@@ -24,7 +24,9 @@ part of the implementation under contract, and the observation handle over outco
 the composition production calls, `changes/archive/2026-09-23-photokit-contracts`; masking minted identifiers and
 credential material in a recording, `changes/archive/2026-09-23-device-credential-contracts`; a contract
 registered on two hosts, and the real-clock bound on a platform callback,
-`changes/archive/2026-09-23-contract-platform-handoffs`.
+`changes/archive/2026-09-23-contract-platform-handoffs`; an injected build configuration
+value, an outcome that leaves the process, and a receiving endpoint that observes rather than stands in,
+`changes/archive/2026-09-23-diagnostics-reporter-contracts`.
 
 ## Requirements
 
@@ -63,11 +65,13 @@ provide `create(state)`, returning either a fresh implementation already in that
 
 A clause's subject SHALL be the port, or — where an outcome a clause asserts is **not readable through the
 port's own members** — the port together with an **observation handle** declared beside the contract and
-implemented by each binding over the system it built. Two cases are known: a port that declares **no reads**
+implemented by each binding over the system it built. Three cases are known: a port that declares **no reads**
 of its own, such as an **inbound** port the core implements (`module-architecture`, "OS entry points cross
-an inbound port"); and an outcome the implementation reports through a callback its binding wires rather
+an inbound port"); an outcome the implementation reports through a callback its binding wires rather
 than through the port's result, such as a backend's refusal of this build or of its credential, which reaches
-the app only through the HTTP client's interceptor. Clauses SHALL observe through that handle only **outcomes** of the system behind
+the app only through the HTTP client's interceptor; and an outcome that **leaves the process**, such as what a
+reporting channel transmitted, which the binding reads at a receiving endpoint it stood up for the purpose.
+Clauses SHALL observe through that handle only **outcomes** of the system behind
 the port (state reached, objects landed, a completion released), never a record of which collaborator the
 implementation called: a call transcript restates the wiring and is passed by any implementation that
 mirrors it. `:test:contracts` SHALL NOT depend on the system a binding builds; the binding adapts it to the
@@ -105,6 +109,19 @@ the project's own logic over the port, written as an ordinary fake-backed test.
 - **THEN** the subject carries an observation handle the binding implements over the interceptor callbacks
   it wired, and the clause reads the refusal the app now holds through it, never a record of which callback
   ran
+
+#### Scenario: An outcome leaves the process
+
+- **WHEN** a clause asserts that a UUID in an error log reaches the reporting channel's destination redacted,
+  and the port returns nothing about what it transmitted
+- **THEN** the binding points the implementation at a receiving endpoint it stood up, the handle reads the
+  events that endpoint received, and the clause judges the delivered event, never which reporting call ran
+
+#### Scenario: A negative outcome that leaves the process
+
+- **WHEN** a clause asserts that a stimulus transmits nothing, and delivery takes an unbounded time
+- **THEN** the clause follows the stimulus with a sentinel it waits for, and judges only what was delivered
+  before the sentinel, rather than waiting a fixed time and treating silence as absence
 
 ### Requirement: Outcomes are explicit and none is silent
 
@@ -153,6 +170,13 @@ the location being **unavailable** SHALL be entered by constructing the adapter 
 so the host's own answer to the lookup — not a value the binding passed — drives the adapter's
 unavailable branch.
 
+The same rule SHALL apply to a **build configuration value** the adapter otherwise reads from its bundle —
+a reporting destination in place of the one a release build bakes. An adapter constructed with that value
+injected SHALL count as a real implementation, and the bundle lookup it bypasses SHALL NOT be counted as
+covered. The injecting constructor SHALL be `internal` to the adapter's module, so no shipped composition can
+supply a value of its own choosing. A clause about the value being **absent** SHALL be entered with the
+production default, so the host's own bundle answers.
+
 #### Scenario: A clause only the fake reaches
 - **WHEN** a clause is added whose state every `Live` binding declares unreachable and no recording holds
 - **THEN** the build fails naming the clause
@@ -178,6 +202,20 @@ unavailable branch.
 - **THEN** it constructs the adapter with its default location, whose App-Group lookup the unentitled
   executable answers with `nil`, rather than passing an absent location itself
 
+#### Scenario: A reporting destination is injected
+
+- **WHEN** a live binding on `IOS_SIM_KEXE` constructs the reporting adapter with a destination on the
+  loopback interface for a configured state
+- **THEN** its clauses count as run against a real implementation, and none of them counts as coverage of
+  reading the destination from the bundle
+
+#### Scenario: An unconfigured build is the host's own answer
+
+- **WHEN** a live binding on `IOS_SIM_KEXE` enters the reporting adapter's unconfigured state
+- **THEN** it constructs the adapter with its production default, whose bundle lookup the test executable —
+  which carries no deployment configuration — answers with nothing, rather than passing an absent
+  destination itself
+
 ### Requirement: Hosts are a closed set of what changes reachable states
 
 A host SHALL be a value of a closed `Host` enum whose identity is platform × process kind × entitlements —
@@ -193,6 +231,13 @@ NOT be a host. It is part of the implementation under contract, and the binding'
 the binding runs in. Where the port's client is the same in every binding and only the service behind it
 differs, the service decides the binding's kind: a stand-in service is `Fake`, the real one run for real
 is `Live`.
+
+That rule SHALL apply only where the clauses assert the **service's answers**. An endpoint a binding stands
+up **only to receive** what the implementation transmits, and reads **only to observe** it, SHALL be part
+of the observation handle rather than a stand-in service: it SHALL NOT decide the binding's kind, and no
+clause SHALL assert anything the endpoint decides. Such an endpoint SHALL NOT be more lenient than the
+production service on a limit that service is measured to enforce, so a clause cannot pass against it with a
+payload production would refuse.
 
 The known host matrix, which the next binding starts from:
 
@@ -235,6 +280,13 @@ unavailable therefore has no real host.
 - **THEN** its host is `IOS_SIM_APP`, never `IOS_SIM_KEXE` and never `IOS_DEVICE_APP`, because its bundle
   identifier is what makes a photo grant reachable and its missing Keychain entitlement is what makes the
   device's Keychain states unreachable
+
+#### Scenario: A receiving endpoint observes a real reporting channel
+
+- **WHEN** a binding drives the real reporting adapter and SDK against an ingest endpoint it stood up in the
+  test process, and every clause judges what the adapter emitted
+- **THEN** its kind is `Live`, because the endpoint answers nothing a clause asserts, and the endpoint
+  refuses an event over the size the production ingest is measured to refuse
 
 ### Requirement: Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every build
 
