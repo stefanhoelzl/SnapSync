@@ -16,6 +16,10 @@ import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
+import app.snapsync.model.deletesAt
+import app.snapsync.model.encodeEventUrl
+import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.JoinLoad
 import app.snapsync.feature.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -96,6 +100,7 @@ class StatusContainerHostSurfacesTest {
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: (suspend (String, String) -> Unit)? = null,
         queries: UserQueries = noQueries,
+        onCommitJoin: suspend (eventId: String) -> Unit = {},
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(PermissionStatus.GRANTED), config),
         scope,
@@ -107,6 +112,10 @@ class StatusContainerHostSurfacesTest {
             rename = { id, name -> spy.renames += id to name },
             resetRename = { spy.renameResets++ },
             sendDiagnostics = sendDiagnostics,
+            commitJoin = { id, _, _, _, _, _, _, _, _ ->
+                onCommitJoin(id)
+                app.snapsync.model.JoinCommit.Committed
+            },
         ),
         cutoffFormatter = CutoffFormatter(
             now = { Instant.parse("2026-07-09T12:00:00Z") },
@@ -141,12 +150,13 @@ class StatusContainerHostSurfacesTest {
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: (suspend (String, String) -> Unit)? = null,
         queries: UserQueries = noQueries,
+        onCommitJoin: suspend (eventId: String) -> Unit = {},
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics, queries))
+                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin))
             } finally {
                 scope.cancel()
             }
@@ -174,14 +184,23 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `settings do not survive a leave and a rejoin of the same event`() {
+        // The rejoin goes through the join gate, as a member's does: that is where a membership begins, and where
+        // its surface state is reset. The config change alone could not be relied on to say so — the leave and
+        // the rejoin of one event can conflate in the StateFlow into A → A.
         val config = MutableStateFlow<EventConfig?>(CONFIG)
-        return onHost(config = config) { host ->
+        val details = joinDetails {
+            JoinLoad.Found(CONFIG.name, CONFIG.startsAt, CONFIG.endsAt!!, deletesAt("2026-08-05T14:32:11Z"))
+        }
+        return onHost(config = config, queries = details, onCommitJoin = { config.value = CONFIG }) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = null
-            host.stateWhere("no membership") { it.layer !is Layer.Joined }
-            config.value = CONFIG
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            host.stateWhere("the join surface, ready") {
+                ((it.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready
+            }
+            host.onConfirmJoin()
             val rejoined = host.stateWhere("the rejoined membership") { it.layer is Layer.Joined }
             assertTrue(!rejoined.onSettings(), "a fresh membership of the same event opens on the status screen")
         }

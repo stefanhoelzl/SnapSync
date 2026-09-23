@@ -56,7 +56,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -306,18 +305,6 @@ class StatusContainerHost(
                     ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer)) }
                 }
                     .collect { ui -> reduce { ui } }
-            }
-            // Membership-scoped surface state resets when the membership changes — to another event or to none —
-            // HERE, in one place, rather than on each exit path (capability `sync-status-screen`). [Owned] already
-            // hides it from a different event the moment the config changes; this also retires it for a rejoin of
-            // the same event, which the ownership check alone would let it survive into.
-            intent {
-                config.map { it?.eventId }.distinctUntilChanged().drop(1).collect {
-                    reconfiguringState.value = Owned(null, SettingsSurface.Closed)
-                    if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) {
-                        commands.resetRename()
-                    }
-                }
             }
             // The shareable count follows the range the showing surface resolves, and the grant (a late
             // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
@@ -864,6 +851,11 @@ class StatusContainerHost(
         if (detailed.step != JoinPhase.Detailed.Step.Ready && detailed.step != JoinPhase.Detailed.Step.CommitFailed) return
         val (name, startsAt, endsAt, deletesAt) = detailed.event
         pending.set(p.copy(phase = JoinPhase.Detailed(detailed.event, JoinPhase.Detailed.Step.Committing)))
+        // A membership BEGINS here, so its surface state starts here — in one place every new membership passes
+        // through, a rejoin of the same event included (capability `sync-status-screen`). A collector watching the
+        // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
+        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
+        if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
         val commit = try {
             commands.commitJoin(
                 p.eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum,
@@ -953,6 +945,11 @@ class StatusContainerHost(
         // match their seeds, but a headless launch should do the minimal, side-effect-free thing, and
         // the link's explicit `saveToAlbum` already exercises album placement without a tap.
         val saveToAlbum = explicitSaveToAlbum ?: false
+        // As in `commit`: a membership begins here, so its surface state starts here — in one place every new membership passes
+        // through, a rejoin of the same event included (capability `sync-status-screen`). A collector watching the
+        // config could miss that: it is a StateFlow, and a leave and a rejoin of one event can conflate into A → A.
+        reconfiguringState.value = Owned(null, SettingsSurface.Closed)
+        if (renameFlow.value is RenameStatus.Succeeded || renameFlow.value is RenameStatus.Failed) commands.resetRename()
         val commit = commands.commitJoin(
             eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction,
             saveToAlbum,

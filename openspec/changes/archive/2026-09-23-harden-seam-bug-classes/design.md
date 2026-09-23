@@ -303,8 +303,10 @@ use-cases also refuse a second call while their status is `InFlight`, checked be
 switch applies its result only if the pending join is still the one it started from (identity), so a cancel
 during the leave stands. Opening the rename sheet clears a terminal latch left by a rename that finished after
 the sheet was dismissed. The settings surface and the rename status are `Owned(eventId, value)`, read back only
-while that event is the joined one, and one collector resets them when the joined event changes (which also
-covers a leave and rejoin of the same event).
+while that event is the joined one, and both are reset where a membership begins — just before the join
+commit, on the interactive and the auto-confirm path. A collector on the config's event id was tried first and
+failed in CI: the config is a StateFlow, so a leave and a rejoin of the same event can conflate into A → A, and
+the collector never sees the change.
 
 ### D14. Entry-point parity tests and a cold world
 
