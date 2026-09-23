@@ -2,10 +2,8 @@ package app.snapsync.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EventConfig
-import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.JoinedSurface
 import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
@@ -18,8 +16,6 @@ import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SettingsButton
 import app.snapsync.ui.components.ShareButton
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
 import app.snapsync.ui.components.ScreenHeading
@@ -351,7 +347,6 @@ private fun ColumnScope.CurrentLayer(
             membership = chrome.membership,
             surface = reconfiguring,
             participation = actions.participation,
-            photoPermission = actions.participation.photoPermission,
             onSave = actions.joined.onReconfigure,
             onCancel = actions.surfaces.onCancelReconfigure,
         )
@@ -373,7 +368,6 @@ private fun ColumnScope.CurrentLayer(
                     onRetryLoad = actions.join.onRetryLoad,
                     participation = actions.participation,
                 ),
-                photoPermission = actions.participation.photoPermission,
             )
         is Layer.Joined ->
             JoinedLayer(layer, actions.access, cutoff)

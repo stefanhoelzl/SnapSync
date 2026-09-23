@@ -2,9 +2,6 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.PermissionStatus
 import app.snapsync.ui.components.AppMinorSection
 import app.snapsync.ui.components.AppRangePresetChoices
 import app.snapsync.ui.components.AppSectionNote
@@ -18,11 +15,6 @@ import app.snapsync.presentation.ResolvedRange
 import app.snapsync.ui.components.RangeWindow
 import app.snapsync.ui.components.RangeChoices
 import app.snapsync.model.UntilChoice
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import kotlinx.datetime.LocalDateTime
 
 // The participation decision surface (capabilities `join-event`, `reconfigure-membership`,
 // `photo-selection-policy`, `event-album`) — the three questions a member answers about an event, and the
@@ -98,12 +90,7 @@ AppToggleSection(
         // The live shareable count (capability `join-share-count`): how many of the member's own
         // gallery photos this RANGE would share, recomputed as either bound (or a late permission
         // resolve) changes. Omitted when no count is available.
-        ShareCountRow(
-            chosenCutoff = state.range.chosenFrom,
-            chosenUntil = state.range.chosenUntil,
-            shareableCount = actions.shareableCount,
-            permissionKey = state.photoPermission,
-        )
+        ShareCountRow(state.range.shareCount)
         // Level 2: the From/Until range presets, each its own captioned sub-list in its own recessed
         // well — the component owns those wells, so this section wraps it in none. Switch = does this
         // section happen; checkmarks = how.
@@ -186,8 +173,6 @@ class ParticipationState(
     val range: ResolvedRange,
     /** The resolved range as one readable label — the section's single statement of what will be shared. */
     val rangeLabel: String,
-    /** A recompute trigger for the shareable count, not a rendered value. */
-    val photoPermission: PermissionStatus,
 ) {
     val shareOn: Boolean get() = form.shareOn
     val receiveOn: Boolean get() = form.receiveOn
@@ -203,13 +188,6 @@ class ParticipationActions(
     val onShareOn: (Boolean) -> Unit = {},
     val onReceiveOn: (Boolean) -> Unit = {},
     val onSaveToAlbum: (Boolean) -> Unit = {},
-    /**
-     * The permission-aware count query over `[from, until]` (capability `join-share-count`), and the
-     * grant that keys its recompute. Both live HERE rather than beside the screen's other actions: they
-     * belong to the one row that asks the question, and the key is not a rendered value.
-     */
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
-    val photoPermission: PermissionStatus = PermissionStatus.GRANTED,
 )
 
 /**

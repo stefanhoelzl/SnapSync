@@ -1,10 +1,5 @@
 package app.snapsync.ui
 
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -13,14 +8,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Direction
-import app.snapsync.model.PermissionStatus
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.EventDetails
 import app.snapsync.presentation.Layer
 import app.snapsync.presentation.JoinPhase
@@ -37,27 +28,13 @@ import app.snapsync.ui.components.JoinAccessShare
 import app.snapsync.ui.components.JoinNoticeFailed
 import app.snapsync.ui.components.JoinNoticeInvalid
 import app.snapsync.ui.components.JoinNoticeOffline
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
-import app.snapsync.ui.components.AppRangePresetChoices
-import app.snapsync.model.FromChoice
-import app.snapsync.model.UntilChoice
 import app.snapsync.ui.components.AppEventHeaderCompact
-import app.snapsync.ui.components.AppSectionNote
-import app.snapsync.ui.components.AppMinorSection
-import app.snapsync.ui.components.AppSectionValue
-import app.snapsync.ui.components.AppSummaryToggle
-import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.ui.components.appDateLabel
 import app.snapsync.ui.components.appDateTimeLabel
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
-import app.snapsync.ui.components.StatusHint
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.ui.components.RangeChoices
 
 // The join gate (capability `join-event`): the full-screen surface a scanned link opens, and the
 // status-plus-actions phases it dispatches over. The Ready decision surface lives in
@@ -83,7 +60,6 @@ import app.snapsync.ui.components.RangeChoices
 internal fun JoiningEventScreen(
     layer: Layer.JoiningEvent,
     actions: JoinActions,
-    photoPermission: PermissionStatus,
 ) {
     val phase = layer.phase
     // Two levels, and the nesting IS the type: the three phases that carry no event, then the loaded
@@ -97,7 +73,7 @@ internal fun JoiningEventScreen(
             // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
             // owns its whole layout instead of the scaffold every other step opts into.
             JoinPhase.Detailed.Step.Ready -> ReadyLayout(
-                state = readyState(phase.event, layer, photoPermission),
+                state = readyState(phase.event, layer),
                 actions = ReadyActions(
                     participation = actions.participation,
                     onJoin = actions.onConfirm,
@@ -333,7 +309,6 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
 private fun readyState(
     event: EventDetails,
     layer: Layer.JoiningEvent,
-    photoPermission: PermissionStatus,
 ): ReadyState {
     // Non-null by construction on a loaded phase: the reduction resolves the range wherever there is a
     // window, and this surface renders only where there is one.
@@ -347,7 +322,6 @@ private fun readyState(
         form = layer.form,
         range = range,
         rangeLabel = appRangeLabel(range.from, range.until),
-        photoPermission = photoPermission,
     ),
     labels = ReadyLabels(
         floor = appDateTimeLabel(range.windowStart),

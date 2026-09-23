@@ -170,11 +170,11 @@ class RangeResolutionTest {
     @Test
     fun `resolve carries the count through untouched including absent`() {
         val form = RangeForm()
-        val counted = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareableCount = 0)
-        val absent = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareableCount = null)
+        val counted = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareCount = ShareCount.Ready(0))
+        val absent = form.resolve(windowStart, windowEnd, nowInside, true, ::stubCutoff, shareCount = ShareCount.Unavailable)
         // Absent and zero are different answers and stay distinguishable (capability `join-share-count`).
-        assertEquals(0, counted.shareableCount)
-        assertEquals(null, absent.shareableCount)
+        assertEquals(ShareCount.Ready(0), counted.shareCount)
+        assertEquals(ShareCount.Unavailable, absent.shareCount)
     }
 
     /** A fixed-shape cutoff conversion — the resolution is under test, not the formatter. */

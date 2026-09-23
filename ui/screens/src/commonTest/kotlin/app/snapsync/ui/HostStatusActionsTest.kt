@@ -37,6 +37,7 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.UserCommands
+import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.JoinedSurface
@@ -149,7 +150,7 @@ class HostStatusActionsTest {
                 resetRename = { record("resetRename") },
                 sendDiagnostics = if (diagnostics) ({ note, _ -> record("sendDiagnostics:$note") }) else null,
             ),
-            loadJoinDetails = { details(it) },
+            queries = UserQueries(loadJoinDetails = { details(it) }, shareableCount = { _, _ -> null }),
         )
 
         val state: UiState get() = host.container.stateFlow.value
@@ -160,11 +161,10 @@ class HostStatusActionsTest {
         setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) {
                 val state by rig.host.container.stateFlow.collectAsState()
-                val permission by rig.permission.collectAsState()
                 StatusScreen(
                     state = state,
                     cutoff = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC),
-                    actions = statusActions(rig.host, shareableCount = { _, _ -> null }, photoPermission = permission),
+                    actions = statusActions(rig.host),
                 )
             }
         }

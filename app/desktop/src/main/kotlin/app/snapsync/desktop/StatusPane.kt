@@ -19,6 +19,7 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserCommands
+import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
@@ -149,13 +150,13 @@ fun StatusPane(
                 resetRename = resetRename,
                 sendDiagnostics = sendDiagnostics,
             ),
-            loadJoinDetails = loadJoinDetails,
+            // The query bundle, assembled from this pane's injected harness edges exactly like the
+            // commands above.
+            queries = UserQueries(loadJoinDetails = loadJoinDetails, shareableCount = shareableCount),
             cutoffFormatter = cutoffFormatter,
         ).also(onHostReady)
     }
     val state by host.container.stateFlow.collectAsState()
-    // The photo grant — the shareable-count row's recompute trigger (capability `join-share-count`).
-    val photoPermission by permissionSource.permission.collectAsState()
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
     // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
     // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
@@ -173,7 +174,7 @@ fun StatusPane(
             state = state,
             cutoff = cutoffFormatter,
             // The one tap → intent table (spec `sync-status-screen`), exactly as the shipped app binds it.
-            actions = statusActions(host, shareableCount, photoPermission),
+            actions = statusActions(host),
         )
         }
     }

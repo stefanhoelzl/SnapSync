@@ -64,11 +64,12 @@ data class ResolvedRange(
     /** "Now" is offered only while the present is inside the event window. */
     val nowAvailable: Boolean,
     /**
-     * How many of the member's own photos the chosen range would share (capability `join-share-count`),
-     * or `null` when no count is available — a grant that permits none, or a count not yet computed.
-     * Absent and zero mean different things: `0` says the chosen range admits none of their photos.
+     * How many of the member's own photos the chosen range would share (capability `join-share-count`).
+     * Computed by the container over the user-query bundle — never by the screen — and carried here so the
+     * row renders reduced state. Unavailable and zero mean different things: `Ready(0)` says the chosen
+     * range admits none of their photos.
      */
-    val shareableCount: Int? = null,
+    val shareCount: ShareCount = ShareCount.Counting,
     /**
      * The event's retention deadline in wall-clock terms (capability `event-limits`), or `null` when the
      * surface has no event to state one for. Converted here for the same reason the bounds are: the
@@ -89,7 +90,7 @@ internal fun RangeForm.resolve(
     nowLocal: LocalDateTime,
     nowAvailable: Boolean,
     toCutoff: (LocalDateTime) -> CaptureDate,
-    shareableCount: Int? = null,
+    shareCount: ShareCount = ShareCount.Counting,
     deletesLocal: LocalDateTime? = null,
 ): ResolvedRange {
     val until = resolveUntil(untilPreset, untilCustom, windowStart, windowEnd)
@@ -104,7 +105,7 @@ internal fun RangeForm.resolve(
         direction = directionOf(shareOn, receiveOn),
         commitEnabled = shareOn || receiveOn,
         nowAvailable = nowAvailable,
-        shareableCount = shareableCount,
+        shareCount = shareCount,
         deletesLocal = deletesLocal,
     )
 }
@@ -188,3 +189,19 @@ internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> 
  * commit; it exists so the resolution is TOTAL rather than optional.
  */
 internal const val NO_CEILING_YEARS = 100
+
+/** The live shareable count (capability `join-share-count`), as the row renders it. */
+@Serializable
+sealed interface ShareCount {
+    /** Being (re)computed — the row shows `counting…`. */
+    @Serializable
+    data object Counting : ShareCount
+
+    /** No count is available (no usable grant, or the read failed) — the row is omitted entirely. */
+    @Serializable
+    data object Unavailable : ShareCount
+
+    /** The chosen range would share [count] of the member's photos. */
+    @Serializable
+    data class Ready(val count: Int) : ShareCount
+}

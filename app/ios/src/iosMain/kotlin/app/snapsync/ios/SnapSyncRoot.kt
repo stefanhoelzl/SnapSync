@@ -631,9 +631,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // presentation fires commands solely through it (spec `module-architecture`, "Commands
             // cross one door").
             commands = app.userCommands,
-            // The join gate's details READ (capability `join-event`): a scanned QR opens the
-            // confirmation; details are fetched (GET) and mapped by feature/membership's [toJoinLoad].
-            loadJoinDetails = { eventId -> app.joinEvent.loadDetails(eventId).toJoinLoad() },
+            // The user-query bundle (the join gate's details read, the shareable count), built and
+            // lane-decorated only in `compose/` (`AppCore.userQueries`), beside the commands.
+            queries = app.userQueries,
             diagnostics = StatusDiagnostics(
                 log = { message -> log.i { message } },
                 // The container's error seam (capability `sync-status-screen`): a throwable escaping a
@@ -653,12 +653,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * at all.
      */
     val renderHost: StatusContainerHost by lazy { host }
-
-    /** The join surface's shareable-count query (capability `join-share-count`) — the live query. */
-    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = app::loadShareableCount
-
-    /** The photo grant, the count's recompute trigger. */
-    val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
     /**
      * Wrap a platform entry point that lives outside this object — today only

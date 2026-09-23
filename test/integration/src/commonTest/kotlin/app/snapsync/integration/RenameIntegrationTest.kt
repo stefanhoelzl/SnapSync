@@ -185,6 +185,7 @@ class RenameIntegrationTest {
         scope = scope,
         commands = w.userCommands,
         cutoffFormatter = fixedRenameCutoffFormatter(),
+        queries = w.core.userQueries,
     )
 
     // The heading's name and the rename lifecycle are fields of the joined state now (capability

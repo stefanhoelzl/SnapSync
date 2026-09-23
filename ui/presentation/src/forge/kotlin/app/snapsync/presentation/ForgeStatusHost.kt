@@ -8,6 +8,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
+import app.snapsync.model.UserQueries
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SyncProgress
@@ -53,9 +54,13 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
         ),
         scope = scope,
         // The join gate's details fetch (capability `join-event`), forged to a `Found` so the gate can
-        // reach its confirmation surface with no backend. `commitJoin` stays inert by default — a
+        // reach its confirmation surface with no backend; and no shareable count — this binary has no
+        // library to count, so the row is omitted, as it always was here. `commitJoin` stays inert — a
         // screenshot never confirms a join.
-        loadJoinDetails = { JoinLoad.Found(EVENT_NAME, eventStart(EVENT_START), eventEnd(EVENT_END), deletesAt(EVENT_DELETES)) },
+        queries = UserQueries(
+            loadJoinDetails = { JoinLoad.Found(EVENT_NAME, eventStart(EVENT_START), eventEnd(EVENT_END), deletesAt(EVENT_DELETES)) },
+            shareableCount = { _, _ -> null },
+        ),
         cutoffFormatter = cutoffFormatter,
     )
     // Drive the real join gate by feeding it the very input a scanned QR delivers: the event's own

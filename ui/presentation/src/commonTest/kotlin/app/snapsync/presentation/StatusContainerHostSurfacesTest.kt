@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.UserQueries
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
@@ -92,6 +93,7 @@ class StatusContainerHostSurfacesTest {
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: (suspend (String, String) -> Unit)? = null,
+        queries: UserQueries = noQueries,
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(PermissionStatus.GRANTED), config),
         scope,
@@ -107,6 +109,7 @@ class StatusContainerHostSurfacesTest {
             now = { Instant.parse("2026-07-09T12:00:00Z") },
             zone = TimeZone.UTC,
         ),
+        queries = queries,
     )
 
     /** Await the first state satisfying [predicate] — failing loudly rather than hanging if none comes. */
@@ -133,15 +136,68 @@ class StatusContainerHostSurfacesTest {
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: (suspend (String, String) -> Unit)? = null,
+        queries: UserQueries = noQueries,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics))
+                body(host(scope, spy, config, sendDiagnostics, queries))
             } finally {
                 scope.cancel()
             }
+        }
+    }
+
+    // ---- the shareable count (capability `join-share-count`) ------------------------------------------
+
+    private fun UiState.reconfigureCount(): ShareCount? =
+        ((layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.range?.shareCount
+
+    @Test
+    fun `the container counts the range the surface resolves and recounts when it changes`() {
+        // The count is reduced state now: the container asks the query bundle, keyed by the resolved range,
+        // and the screen renders what comes back. Event start reaches back to 5 photos; Now shares 1.
+        val eventStart = CONFIG.startsAt.at
+        val asked = mutableListOf<CaptureCutoff>()
+        return onHost(queries = counting { from, _ -> asked += from; if (from.at == eventStart) 5 else 1 }) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("the event-start count") { it.reconfigureCount() == ShareCount.Ready(5) }
+
+            host.form.onFromPreset(FromChoice.NOW)
+            host.stateWhere("the recount for Now") { it.reconfigureCount() == ShareCount.Ready(1) }
+            assertEquals(2, asked.distinct().size, "each distinct range is counted, and nothing else")
+        }
+    }
+
+    @Test
+    fun `a count whose read fails is unavailable and the container keeps working`() {
+        return onHost(queries = counting { _, _ -> error("download store unreadable") }) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("an unavailable count") { it.reconfigureCount() == ShareCount.Unavailable }
+            // Still alive: a later intent lands.
+            host.form.onSaveToAlbum(true)
+            host.stateWhere("the album edit") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
+            }
+        }
+    }
+
+    @Test
+    fun `no count is asked for while sharing is off`() {
+        var asked = 0
+        return onHost(queries = counting { _, _ -> asked++; 3 }) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("the count") { it.reconfigureCount() == ShareCount.Ready(3) }
+            host.form.onShareOn(false)
+            host.stateWhere("sharing off") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.shareOn == false
+            }
+            host.form.onFromPreset(FromChoice.NOW)
+            host.stateWhere("the new range") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.fromPreset == FromChoice.NOW
+            }
+            assertEquals(1, asked, "a hidden row must not cost a photo-library read")
         }
     }
 
