@@ -2,6 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.ports.AlbumManager
@@ -201,7 +202,7 @@ class UrlSessionUploadController(
             UploadPorts(
                 appVersion = appMarketingVersion(),
                 diagnosticsReporter = SentryDiagnosticsReporter(),
-                process = UploaderProcess.App(graph.admission),
+                process = UploaderProcess.App(graph.admission, PhotoGrantRead { graph.photoAccess.permission.value }),
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
                 // cycle cleanly, not throw out of whatever first touches it (see [deviceIdentity]).

@@ -8,7 +8,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumManager, RecordingAlbumManager, RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
+| `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumManager, RecordingAlbumManager, RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:compose` RecordingAlbums; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
 | `AlbumMapSource` | `:domain:feature` | `:domain:feature` Current, Migrate, Retry | no |
 | `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:adapter:ios:ext-safe` IosAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore | yes |
 | `AppUploadEngine` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeEngine; `:test:architecture` Engine; `:test:world` OperatorUploadEngine | yes |
