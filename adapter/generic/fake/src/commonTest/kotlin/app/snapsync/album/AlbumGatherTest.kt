@@ -1,5 +1,7 @@
 package app.snapsync.album
 
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.fake.inMemoryAlbumMapStore
 import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
@@ -89,7 +91,7 @@ class AlbumGatherTest {
             union = union,
             downloads = downloads,
             identity = { SELF },
-            isGranted = { this.granted },
+            photoAccess = liveGrant { if (this.granted) PermissionStatus.GRANTED else PermissionStatus.DENIED },
             coordinator = AlbumCoordinator(manager, inMemoryAlbumMapStore(mapOf("E2" to "ALBUM-2"))),
             scope = scope,
             logScope = LogScope.NoOp,
@@ -259,4 +261,19 @@ class AlbumGatherTest {
     private companion object {
         const val SELF = "SELF-DEVICE"
     }
+}
+
+/** A membership fake whose answer is read at every access, so a test's `var` drives it live. */
+private fun liveMembership(eventId: () -> String?): ConfigSource = object : ConfigSource {
+    override val config: StateFlow<EventConfig?>
+        get() = MutableStateFlow(
+            eventId()?.let {
+                EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+            },
+        )
+}
+
+/** A grant fake read at every access, so a test's `var` drives it live. */
+private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
+    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
 }

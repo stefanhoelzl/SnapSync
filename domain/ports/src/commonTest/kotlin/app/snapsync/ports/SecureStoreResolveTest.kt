@@ -13,8 +13,12 @@ private class FakeSecureStore(var answer: SecureStoreRead) : SecureStore {
     val writes = mutableListOf<String>()
     var migrations = 0
     var deletes = 0
+    var reads = 0
 
-    override fun read(): SecureStoreRead = answer
+    override fun read(): SecureStoreRead {
+        reads++
+        return answer
+    }
     override fun write(value: String) {
         writes += value
         answer = SecureStoreRead.Found(value, StoredProtection.BACKGROUND_READABLE)
@@ -141,7 +145,7 @@ class SecureStoreResolveTest {
         val resolved = resolveOrMint(
             shared,
             onResolution = { outcome = it },
-            readLegacy = { found("legacy-id") },
+            legacy = FakeSecureStore(found("legacy-id")),
         ) { generated = true; "minted-id" }
 
         assertEquals("legacy-id", resolved, "the legacy value must be adopted byte for byte")
@@ -155,7 +159,7 @@ class SecureStoreResolveTest {
         val legacy = FakeSecureStore(found("legacy-id"))
         val shared = FakeSecureStore(SecureStoreRead.Absent)
 
-        resolveOrMint(shared, readLegacy = { legacy.read() }) { "minted-id" }
+        resolveOrMint(shared, legacy = legacy) { "minted-id" }
 
         assertEquals(0, legacy.deletes, "the out-of-group item survives, so a rollback still finds it")
         assertTrue(legacy.writes.isEmpty())
@@ -164,15 +168,12 @@ class SecureStoreResolveTest {
     @Test
     fun `a present value never consults the legacy read`() {
         val shared = FakeSecureStore(found("stored-id"))
-        var legacyConsulted = false
+        val legacy = FakeSecureStore(SecureStoreRead.Absent)
 
-        val resolved = resolveOrMint(
-            shared,
-            readLegacy = { legacyConsulted = true; SecureStoreRead.Absent },
-        ) { "minted-id" }
+        val resolved = resolveOrMint(shared, legacy = legacy) { "minted-id" }
 
         assertEquals("stored-id", resolved)
-        assertTrue(!legacyConsulted, "the addressed item answers; nothing else is searched")
+        assertTrue(legacy.reads == 0, "the addressed item answers; nothing else is searched")
     }
 
     @Test
@@ -183,7 +184,7 @@ class SecureStoreResolveTest {
         val resolved = resolveOrMint(
             shared,
             onResolution = { outcome = it },
-            readLegacy = { SecureStoreRead.Absent },
+            legacy = FakeSecureStore(SecureStoreRead.Absent),
         ) { "minted-id" }
 
         assertEquals("minted-id", resolved)
@@ -196,17 +197,14 @@ class SecureStoreResolveTest {
     @Test
     fun `an unavailable addressed read never reaches the legacy read`() {
         val shared = FakeSecureStore(SecureStoreRead.Unavailable(LOCKED))
-        var legacyConsulted = false
+        val legacy = FakeSecureStore(SecureStoreRead.Absent)
         var generated = false
 
         assertFailsWith<SecureStoreUnavailable> {
-            resolveOrMint(
-                shared,
-                readLegacy = { legacyConsulted = true; SecureStoreRead.Absent },
-            ) { generated = true; "minted-id" }
+            resolveOrMint(shared, legacy = legacy) { generated = true; "minted-id" }
         }
 
-        assertTrue(!legacyConsulted, "'I could not look' must short-circuit before any fallback")
+        assertTrue(legacy.reads == 0, "'I could not look' must short-circuit before any fallback")
         assertTrue(!generated)
         assertTrue(shared.writes.isEmpty())
     }
@@ -221,7 +219,7 @@ class SecureStoreResolveTest {
         val failure = assertFailsWith<SecureStoreUnavailable> {
             resolveOrMint(
                 shared,
-                readLegacy = { SecureStoreRead.Unavailable(LOCKED) },
+                legacy = FakeSecureStore(SecureStoreRead.Unavailable(LOCKED)),
             ) { generated = true; "minted-id" }
         }
 

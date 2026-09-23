@@ -454,7 +454,7 @@ class AppCore internal constructor(
     // the fan-out re-homes (step 8).
     val downloadPushReceiver: DownloadPushReceiver by lazy {
         DownloadPushReceiver(
-            activeEventId = { ports.configSource.config.value?.eventId },
+            configSource = ports.configSource,
             controller = downloadController,
         )
     }
@@ -502,8 +502,8 @@ class AppCore internal constructor(
     // membership exists, at the moment of the transition; the root defaults nothing.
     val uploadTransitions: UploadTransitions by lazy {
         UploadTransitions(
-            joined = { ports.configSource.config.value != null },
-            permission = { ports.photoAccess.permission.value },
+            configSource = ports.configSource,
+            photoAccess = ports.photoAccess,
             extensionRegistrable = extensionRegistrableNow,
             registration = ports.extensionRegistration(),
             appEngine = ports.appDrivenUpload,
@@ -610,7 +610,7 @@ class AppCore internal constructor(
         MembershipRefresh(
             configSource = ports.configSource,
             store = ports.configStore,
-            now = { instantToCutoff(ports.clock.now()) },
+            clock = ports.clock,
             leaveEvent = leaveEvent,
         )
     }
@@ -769,7 +769,7 @@ class AppCore internal constructor(
             gallery = gallery,
             // The sibling feature, reached through a lambda so `feature/status` stays blind to it.
             refreshDownloadLine = { downloadStatusSource.refresh() },
-            activeConfig = { ports.configSource.config.value },
+            configSource = ports.configSource,
             policyFor = ::selectionPolicyForMembership,
             log = ports.log,
         )

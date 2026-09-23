@@ -1,6 +1,7 @@
 package app.snapsync.ios
 
 import app.snapsync.ports.DeviceIdentity
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.ports.AlbumManager
@@ -137,9 +138,9 @@ class UrlSessionUploadController(
      */
     val pushReceiver: PushReceiver by lazy {
         UploadPushReceiver(
-            activeEventId = { configSource.config.value?.eventId },
+            configSource = configSource,
             pump = pump,
-            permission = graph.permission,
+            photoAccess = graph.photoAccess,
         )
     }
 
@@ -324,7 +325,7 @@ class UrlSessionUploadController(
  */
 class AppGraphReads(
     // Current photo access — the read discipline it feeds is decided in the tested `UploadPushReceiver`.
-    val permission: () -> PermissionStatus,
+    val photoAccess: PhotoAccessStatusSource,
     // What upload discovery may read (capability `limited-photo-access`): the walk-vs-snapshot decision. A
     // composition that forgot it would walk the library under a partial grant, where the selection IS the scope.
     val selectionScope: () -> SelectionScope,

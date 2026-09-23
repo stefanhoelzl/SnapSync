@@ -1,5 +1,7 @@
 package app.snapsync.feature.album
 
+import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
@@ -67,8 +69,8 @@ class AlbumGather(
     private val union: EventUnionSource,
     private val downloads: DownloadStore,
     private val identity: DeviceIdentity,
-    /** Whether photo access is usable (`grantsPhotoAccess`): a gather without it could only fail its adds. */
-    private val isGranted: () -> Boolean,
+    /** The photo grant: a gather without usable access (`grantsPhotoAccess`) could only fail its adds. */
+    private val photoAccess: PhotoAccessStatusSource,
     private val coordinator: AlbumCoordinator,
     /** The app-lifetime scope a gather is launched on — the composition lane, never the UI lane: the
      *  platform add blocks its thread for a whole library change. */
@@ -118,7 +120,7 @@ class AlbumGather(
         when {
             cfg == null || cfg.eventId != eventId -> log.i { "gather: event=$eventId is no longer joined — skipping" }
             !cfg.saveToAlbum -> log.i { "gather: event=$eventId opted out of the album — skipping" }
-            !isGranted() -> log.i { "gather: photo access not usable — skipping event=$eventId" }
+            !photoAccess.permission.value.grantsPhotoAccess -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
                 val ids = ownSet(cfg) + foreignSet(eventId)
                 log.i { "gather: placing ${ids.size} asset(s) for event=$eventId" }

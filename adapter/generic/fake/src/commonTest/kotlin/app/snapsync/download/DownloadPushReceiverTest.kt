@@ -1,5 +1,13 @@
 package app.snapsync.download
 
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.PermissionStatus
+import app.snapsync.model.EventConfig
+import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.ConfigSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.ports.EventUnionSource
@@ -52,7 +60,7 @@ class DownloadPushReceiverTest {
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
             downloadEnabled = { true },
         )
-        return DownloadPushReceiver(activeEventId = { active }, controller = controller)
+        return DownloadPushReceiver(configSource = liveMembership { active }, controller = controller)
     }
 
     @Test
@@ -76,4 +84,19 @@ class DownloadPushReceiverTest {
         receiver(union, active = null).onSilentPush(eventA)
         assertTrue(union.requested.isEmpty(), "a push with no event configured must not reconcile")
     }
+}
+
+/** A membership fake whose answer is read at every access, so a test's `var` drives it live. */
+private fun liveMembership(eventId: () -> String?): ConfigSource = object : ConfigSource {
+    override val config: StateFlow<EventConfig?>
+        get() = MutableStateFlow(
+            eventId()?.let {
+                EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+            },
+        )
+}
+
+/** A grant fake read at every access, so a test's `var` drives it live. */
+private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
+    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
 }

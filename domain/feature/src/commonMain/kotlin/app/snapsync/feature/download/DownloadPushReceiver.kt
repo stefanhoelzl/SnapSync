@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.PushReceiver
 import co.touchlab.kermit.Logger
 
@@ -17,12 +18,13 @@ import co.touchlab.kermit.Logger
  * state — so a bad network never propagates out of the receive path.
  */
 class DownloadPushReceiver(
-    private val activeEventId: () -> String?,
+    /** The membership: the active event id is read fresh at every push. */
+    private val configSource: ConfigSource,
     private val controller: DownloadController,
     private val log: Logger = Logger.withTag("DownloadPushReceiver"),
 ) : PushReceiver {
     override suspend fun onSilentPush(eventId: String) {
-        val active = activeEventId()
+        val active = configSource.config.value?.eventId
         if (eventId != active) {
             log.i { "silent push for $eventId ignored (active event = $active)" }
             return

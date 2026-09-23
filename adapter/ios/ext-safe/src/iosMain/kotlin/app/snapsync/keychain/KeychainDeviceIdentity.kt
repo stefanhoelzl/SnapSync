@@ -130,7 +130,7 @@ class KeychainDeviceIdentity(
             DeviceIdentityRole.MINTING -> resolveOrMint(
                 shared,
                 onResolution = { resolution = it },
-                readLegacy = { legacy.read() },
+                legacy = legacy,
                 generate = mint,
             )
         }

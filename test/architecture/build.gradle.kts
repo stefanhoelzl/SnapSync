@@ -48,6 +48,8 @@ dependencies {
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
     testImplementation(project(":domain:feature"))
+    // The transitions read the membership and the grant through their ports, so the fakes implement those.
+    testImplementation(project(":domain:ports"))
     testImplementation(libs.coroutines.test)
 }
 
