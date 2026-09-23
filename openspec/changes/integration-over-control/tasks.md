@@ -35,7 +35,7 @@
 
 ## 5. Contract clause (D9)
 
-- [ ] 5.1 Add the publish-version-ordering clause to `ManifestPublisherContract`: an older publish is refused and changes nothing, and an equal one is accepted. Verify it passes on the mini-edge `Fake` and the live deno binding; fix the mini-edge if it diverges.
+- [x] 5.1 Add the publish-version-ordering clause to `ManifestPublisherContract`: an older publish is refused and changes nothing, and an equal one is accepted. Verify it passes on the mini-edge `Fake` and the live deno binding; fix the mini-edge if it diverges.
 
 ## 6. Integration suite onto the protocol (D3, D4, D8)
 
