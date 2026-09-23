@@ -137,6 +137,13 @@ SELECT EXISTS(
       AND state IN ('IMPORTED', 'UNIMPORTABLE')
 );
 
+-- Every settled ref, for a reconcile's one-read re-plan guard (`settledAmong`): the same predicate as
+-- `isSettled`, over the whole table. The caller filters by the refs of the union it is planning — binding a
+-- list of key PAIRS is awkward in this dialect, and the table holds only the unions this device has joined.
+selectSettledRefs:
+SELECT sourceDeviceId, sourceAssetId FROM downloadAsset
+WHERE state IN ('IMPORTED', 'UNIMPORTABLE');
+
 -- The suppression set the upload extension reads (read-only): every created local id of an imported
 -- foreign asset. Never upload these — they would echo back into storage under this device.
 suppressedLocalIds:

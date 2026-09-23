@@ -10,6 +10,7 @@ import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.model.AssetPresence
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
+import app.snapsync.ports.PlannedAsset
 import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.StagedBytes
@@ -150,23 +151,35 @@ class DownloadController(
             return@invocation
         }
         mutex.withLock {
-            var planned = 0
-            for (asset in assets) {
-                if (asset.deviceId == myDeviceId) continue // own contribution — already in this library
+            // Own contribution is already in this library; only foreign assets are download work.
+            val foreign = assets.filter { it.deviceId != myDeviceId }
+            // ONE read of which of them are settled (imported or unimportable — delete-proof / cross-event
+            // dedup), and ONE transaction planning the rest. Per asset this was a query plus a transaction,
+            // each transaction a durable commit, and a background wake planning a 101-asset backlog spent
+            // ~11.5 s on it (iPhone XS) — on every trigger while the backlog lasted.
+            //
+            // The snapshot is read under this lock, and every writer that can make a row terminal takes it
+            // too, except the importer's completion (`confirmCreatedLocalId`), which runs on the platform's
+            // queue. That one settles only a row that is mid-import: its resources are all staged, so
+            // re-planning it inserts nothing and refreshes no url — exactly what the per-asset
+            // read-then-plan pair (never atomic against that writer either) already allowed.
+            val settled = store.settledAmong(foreign.map { AssetRef(it.deviceId, it.assetId) })
+            val plans = foreign.mapNotNull { asset ->
                 val ref = AssetRef(asset.deviceId, asset.assetId)
-                if (store.isSettled(ref)) continue // imported or unimportable — delete-proof / cross-event dedup
-                store.plan(ref, asset.creationDate, asset.resources.map {
+                if (ref in settled) return@mapNotNull null
+                PlannedAsset(ref, asset.creationDate, asset.resources.map {
                     PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
                 })
-                planned++
             }
-            log.i { "reconcile: ${assets.size} union asset(s), $planned foreign planned" }
+            if (plans.isNotEmpty()) store.planAll(plans)
+            log.i { "reconcile: ${assets.size} union asset(s), ${plans.size} foreign planned" }
             // Enqueue the not-yet-staged resources to the OS, then mark them in-flight so the status
             // line's download arrow can pulse (superseded once each stages). Idempotent: re-marking an
-            // already-enqueued or already-staged resource is harmless (staged rows are excluded).
+            // already-enqueued or already-staged resource is harmless (staged rows are excluded). One
+            // transaction for the whole batch, not an autocommit per resource.
             val pending = store.pendingDownloads()
             jobs.enqueue(pending)
-            pending.forEach { store.markEnqueued(it.ref, it.resource.resourceKey) }
+            if (pending.isNotEmpty()) store.markAllEnqueued(pending)
         }
         // OUTSIDE the lock: the drain takes it per decision and releases it across each platform call.
         drainImportable()
