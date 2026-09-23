@@ -78,6 +78,11 @@ class IosPhotoKitUploadPlatform internal constructor(
      * nothing (the row was pruned, or already settled) is still a job the system expects back, and
      * leaving one un-acknowledged is what makes it report `appex failed to acknowledge jobs for
      * processing state` (error 50008).
+     *
+     * The OS reports 50008 only in the system log, which no process can read, so no contract clause can observe
+     * the OS's side of that obligation. What a clause does assert is this adapter's side: after a drain, no job it
+     * was presented is presented again (capability `port-contracts`; the upload-job contract, recorded inside the
+     * extension).
      */
     override suspend fun drainTerminals(): List<PlatformUploadJob> =
         log.invocation("platform.drainTerminals", result = { "${it.size} job(s)" }) {

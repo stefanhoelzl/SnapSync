@@ -65,7 +65,12 @@ interface ExtensionEntries {
     @PlatformEntry
     suspend fun process(): CycleResult
 
-    /** The operating system is terminating the cycle. */
+    /**
+     * The operating system's `notifyTermination`: the end of an invocation, NOT a kill. Measured on an SE2 (iOS
+     * 26.6, 2026-09-23): it arrives about 55 ms after every normal return of [process], and never before the kill
+     * that ends a call running past its ~60 s budget — that kill sends nothing at all (capability
+     * `ios-photokit-upload`, "How the operating system invokes the extension is recorded as measured").
+     */
     @PlatformEntry
     fun onTerminate()
 }

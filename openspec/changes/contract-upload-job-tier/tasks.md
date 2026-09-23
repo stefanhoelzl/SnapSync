@@ -71,10 +71,10 @@
 
 ## 7. `onTerminate`, docs and retirement
 
-- [ ] 7.1 `:domain:compose` `ExtensionCore.onTerminate`: log the end of a cycle at `Info` with the measured
+- [x] 7.1 `:domain:compose` `ExtensionCore.onTerminate`: log the end of a cycle at `Info` with the measured
       meaning; correct `ExtensionEntries.onTerminate`'s KDoc
 - [ ] 7.2 Delete `PhotoKitSmokeTest`
-- [ ] 7.3 `PhotoKitJobMapping.kt` / `IosPhotoKitUploadPlatform` KDoc: the fact conversion replay cannot cover,
+- [x] 7.3 `PhotoKitJobMapping.kt` / `IosPhotoKitUploadPlatform` KDoc: the fact conversion replay cannot cover,
       and the 50008 acknowledgement obligation, with their evidence
 - [ ] 7.4 Runbooks: `rig-channel` (the extension-host verb, the receiver, backoff after an overrun) and
       `snapsync-device` (recording the registry under two grants)
