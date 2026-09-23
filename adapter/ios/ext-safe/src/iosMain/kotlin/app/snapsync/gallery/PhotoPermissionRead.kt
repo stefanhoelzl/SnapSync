@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PhotoGrantRead
 import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
@@ -27,3 +28,8 @@ fun currentPhotoPermission(): PermissionStatus =
         // .denied, .restricted — refused or unchangeable.
         else -> PermissionStatus.DENIED
     }
+
+/** The [PhotoGrantRead] port over [currentPhotoPermission]: what the extension's composition hands its core. */
+object PhotoKitGrantRead : PhotoGrantRead {
+    override fun current(): PermissionStatus = currentPhotoPermission()
+}

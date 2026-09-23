@@ -1,8 +1,9 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.ports.DeviceIdentity
-import app.snapsync.feature.upload.extensionAdmission
-import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.compose.UploaderProcess
+import app.snapsync.compose.AlbumLookupFailure
+import app.snapsync.gallery.PhotoKitGrantRead
 import app.snapsync.ports.AttestStore
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.compose.UploadPorts
@@ -11,7 +12,6 @@ import app.snapsync.compose.extensionEntries
 import app.snapsync.ports.ExtensionEntries
 import app.snapsync.logging.IosLogScope
 import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.PlatformEntry
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
@@ -210,19 +210,19 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     /** Everything the cycle is built over — held so the inbound port's implementation reads the same ledger and log. */
     internal val ports: UploadPorts by lazy {
             UploadPorts(
-                appVersion = ::appMarketingVersion,
+                appVersion = appMarketingVersion(),
                 diagnosticsReporter = SentryDiagnosticsReporter(),
                 // This process's own grant read (capability `ios-photokit-upload`, "The extension withholds its
                 // cycle without a full grant"): a registration made under a full grant survives a downgrade,
                 // and a cycle here has no selection snapshot to scope to.
-                admission = { extensionAdmission(currentPhotoPermission()) },
+                process = UploaderProcess.Extension(PhotoKitGrantRead),
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.
                 deviceIdentity = deviceIdentity,
                 // Read per gate call, as this root always has: the compile-time
                 // `uploadBase` baked into the extension bundle.
-                host = { bakedUploadBase() },
+                host = bakedUploadBase(),
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
@@ -235,7 +235,9 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 // Denylisted-album membership (capability `photo-selection-policy`): this tier's
                 // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on
                 // the OS's next invocation).
-                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
+                albumManager = albumManager,
+                // The extension lets a failed lookup fail its cycle; the next invocation retries.
+                albumLookupFailure = AlbumLookupFailure.FailCycle,
                 albumCoordinator = albumCoordinator,
                 token = { attestToken() },
                 log = log,

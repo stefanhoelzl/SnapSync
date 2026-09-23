@@ -120,9 +120,9 @@ import kotlinx.coroutines.withContext
  * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
  * [onEventMinted]) bridge into the shell's entry surfaces; [appDrivenUpload] and [extensionRegistration]
  * are the uploaders this OS can carry — both run, each deciding at its own entry gate (`upload-lifecycle`,
- * "Both uploaders may run; an overlap is a duplicate, never a loss"); [albumExcludedAssetIds]
- * carries the app process's admit-on-doubt wrapper, shared verbatim with the own-device status
- * total so the two consumers of the policy can never diverge.
+ * "Both uploaders may run; an overlap is a duplicate, never a loss"). The denylisted-album read is
+ * built here from [albumManager] with the app tier's admit-on-doubt answer, for both the own-device
+ * status total and the app's cycle, so the two consumers of the policy can never diverge.
  */
 class AppPorts(
     val configSource: ConfigSource,
@@ -226,7 +226,6 @@ class AppPorts(
     val uploaderPin: () -> UploaderPin? = { null },
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
-    val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
     /** Tells the shared event this device is leaving (capability `leave-event`). This was
      *  `notifyLeave: suspend (eventId) -> Unit`, a lambda the shell built by closing over the adapter
      *  AND this device's id — a backend call reaching out of the process behind a type indistinguishable
@@ -748,7 +747,8 @@ class AppCore internal constructor(
      */
     private suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<String> =
         if (ports.photoAccess.permission.value.grantsPhotoAccess) {
-            ports.albumExcludedAssetIds(cutoff)
+            // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
+            denylistedAlbumMembers(ports.albumManager, cutoff, AlbumLookupFailure.AdmitOnDoubt, ports.log)
         } else {
             emptySet()
         }

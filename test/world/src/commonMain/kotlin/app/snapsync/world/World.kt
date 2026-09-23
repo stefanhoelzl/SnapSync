@@ -1,5 +1,7 @@
 package app.snapsync.world
 
+import app.snapsync.compose.UploaderProcess
+import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.UploadRecordPorts
@@ -45,7 +47,6 @@ import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DiagnosticDump
@@ -530,7 +531,6 @@ class World(
             albumMapStore = albumMapStore,
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
             // constant over the world's forgeable album membership, exactly as the shell wires it.
-            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
             leaveNotifier = leaveNotifier,
             // The world IS the shell, and its provision is the operator's: load the share set as a join
             // does, then persist — so a join through the REAL `UserCommands` ends with the same ledger a
@@ -819,10 +819,14 @@ class World(
                 diagnosticsReporter = inMemoryDiagnosticsReporter(),
                 // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
                 // takes the app process's admission — the same resolution the device app engine gates on.
-                admission = { core.appUploadAdmission() },
+                process = UploaderProcess.App { core.appUploadAdmission() },
                 config = configReader,
                 deviceIdentity = { ownDeviceId },
-                host = { host },
+                host = host,
+                // A constant of the running build, as on device: read once, when the cycle is composed. The
+                // metadata client above reads the [appVersion] lever per request instead, which is what lets a
+                // test play an old build against the version gate.
+                appVersion = appVersion,
                 ledger = ledgerBackend,
                 transfer = platform,
                 discovery = discovery,
@@ -830,8 +834,10 @@ class World(
                 manifestStore = manifestStore,
                 manifestPublisher = manifestPublisher,
                 suppression = downloadStore,
-                // The SAME policy wrapper the app graph gets (capability `photo-selection-policy`).
-                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
+                // The app tier's cycle: the same port and the same declared answer as the app graph's status
+                // total (capability `photo-selection-policy`) — admit on doubt.
+                albumManager = albumManager,
+                albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 // Shared with the app graph, as the world's single-process stand-in for the App-Group map.
                 albumCoordinator = core.albumCoordinator,
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.
