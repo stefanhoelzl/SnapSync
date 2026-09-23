@@ -30,17 +30,20 @@ class AlbumCoordinator(
      * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3). The guard does **not** test
      * [name]: a membership's name is required and non-null (capability `event-link`), so a nameless one
      * is not a representable state and a clause guarding against it would be an unreachable branch
-     * suggesting otherwise. [granted] joined that guard at
-     * the migration finale: an album can only be ensured with photo access fully granted, so the
-     * Provision flow passes the access fact instead of branching on it (the flow coordinates, the
-     * feature decides); it defaults to `true` for the paths that run *because* access was granted
-     * (the compose-installed grant subscription).
+     * suggesting otherwise. [hasUsableAccess] joined that guard at
+     * the migration finale: an album can only be ensured with USABLE photo access — full or limited
+     * (`grantsPhotoAccess`), because asset and album creation is unrestricted under a limited grant
+     * (capability `limited-photo-access`) — so the Provision flow passes the access fact instead of
+     * branching on it (the flow coordinates, the feature decides); it defaults to `true` for the paths
+     * that run *because* access became usable (the compose-installed grant subscription). It was called
+     * `granted`, which read as "fully granted" to every caller and reviewer (decision record
+     * `harden-seam-bug-classes`).
      * Reuses the stored album if it still resolves (so a re-join keeps the prior membership's photos);
      * recreates and overwrites the map if the stored id is dangling (the user deleted the album).
      * **App-only** — the sole-creator invariant that removes the cross-process create race (design D3).
      */
-    suspend fun ensureAlbum(eventId: String, name: String, saveToAlbum: Boolean, granted: Boolean = true): String? {
-        if (!granted || !saveToAlbum) return null
+    suspend fun ensureAlbum(eventId: String, name: String, saveToAlbum: Boolean, hasUsableAccess: Boolean = true): String? {
+        if (!hasUsableAccess || !saveToAlbum) return null
         store.get(eventId)?.let { existing ->
             if (manager.exists(existing)) {
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId" }

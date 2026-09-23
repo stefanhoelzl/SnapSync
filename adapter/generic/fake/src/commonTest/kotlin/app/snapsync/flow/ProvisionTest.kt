@@ -44,7 +44,7 @@ import kotlin.test.assertTrue
  *   the persisted membership — including the extension, in its own process.
  * - **The album call is unconditional and carries the access fact.** `ensureAlbum` owns the
  *   granted/opt-in gate as its own leading guard (capability `event-album`), so no caller can forget
- *   it; this flow's job is only to pass `isGranted()` through honestly.
+ *   it; this flow's job is only to pass `hasUsableAccess()` through honestly.
  *
  * A provision into a new membership now DOES reach destructive verbs — a switch stops the previous
  * membership's uploads, and the load resets the ledger (capability `upload-lifecycle`, reversed by
@@ -125,12 +125,12 @@ class ProvisionTest {
         // Same membership, same opt-in — only the grant differs, and the coordinator's own leading
         // guard is what turns that into "no album". The flow's job is to pass it through honestly.
         val albums = InMemoryAlbumMapStore()
-        provision(order = mutableListOf(), isGranted = { false }, albumStore = albums, saveToAlbum = true)
+        provision(order = mutableListOf(), hasUsableAccess = { false }, albumStore = albums, saveToAlbum = true)
             .run(config(eventB, saveToAlbum = true))
         assertNull(albums.get(eventB), "an album was created for a membership with no photo access")
 
         val granted = InMemoryAlbumMapStore()
-        provision(order = mutableListOf(), isGranted = { true }, albumStore = granted, saveToAlbum = true)
+        provision(order = mutableListOf(), hasUsableAccess = { true }, albumStore = granted, saveToAlbum = true)
             .run(config(eventB, saveToAlbum = true))
         assertEquals("album-for-Anna's Birthday", granted.get(eventB))
     }
@@ -172,7 +172,7 @@ class ProvisionTest {
         order: MutableList<String>,
         activeEventId: () -> String? = { null },
         saveConfig: suspend (EventConfig) -> Unit = { order += "save:${it.eventId}" },
-        isGranted: () -> Boolean = { true },
+        hasUsableAccess: () -> Boolean = { true },
         albumStore: InMemoryAlbumMapStore = InMemoryAlbumMapStore(),
         saveToAlbum: Boolean = false,
         registerPush: suspend () -> Unit = { order += "push" },
@@ -199,7 +199,7 @@ class ProvisionTest {
             },
             saveConfig = saveConfig,
             refreshStatus = { order += "refresh" },
-            isGranted = isGranted,
+            hasUsableAccess = hasUsableAccess,
             registerPush = registerPush,
         )
     }

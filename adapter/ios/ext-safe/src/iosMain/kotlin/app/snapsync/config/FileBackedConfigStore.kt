@@ -14,9 +14,12 @@ import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
+import app.snapsync.ports.MembershipRead
 import app.snapsync.ports.configAfterReload
 import app.snapsync.ports.configReadViaFile
+import app.snapsync.ports.membershipAfterReload
 import co.touchlab.kermit.Logger
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.value
@@ -95,8 +98,14 @@ class FileBackedConfigStore(
     private val log: Logger = Logger.withTag("fileConfig"),
 ) : ConfigSource, ConfigStore, ConfigReader, ConfigRefresh {
 
-    private val state = MutableStateFlow(read().joinedOrNull())
+    private val initial = read()
+    private val state = MutableStateFlow(initial.joinedOrNull())
     override val config: StateFlow<EventConfig?> = state
+
+    /** Written wherever [state] is, so the two never disagree; `Unreadable` only until a conclusive read. */
+    @Volatile
+    private var membershipState: MembershipRead = membershipAfterReload(initial, MembershipRead.Unreadable)
+    override val membership: MembershipRead get() = membershipState
 
     override suspend fun save(config: EventConfig) {
         // Deliberately NO equal-config early return: [state] can lag a cross-process writer, so an
@@ -105,6 +114,7 @@ class FileBackedConfigStore(
         // no-redundant-emission contract holds.
         writeFile(encodeConfigFile(config))
         state.value = config
+        membershipState = MembershipRead.Member(config)
     }
 
     override suspend fun clear() {
@@ -116,6 +126,7 @@ class FileBackedConfigStore(
         // the leave retries visibly rather than half-completing.
         deleteFile()
         state.value = null
+        membershipState = MembershipRead.NotMember
     }
 
     /**
@@ -142,7 +153,9 @@ class FileBackedConfigStore(
      * clear a good membership mid-session and flip the screen to the setup gate.
      */
     fun reload() {
-        state.value = configAfterReload(read(), state.value)
+        val read = read()
+        state.value = configAfterReload(read, state.value)
+        membershipState = membershipAfterReload(read, membershipState)
     }
 
     override suspend fun refresh() = reload()

@@ -6,6 +6,7 @@ import app.snapsync.feature.trust.tokenExpirySeconds
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
+import app.snapsync.ports.TokenOutcome
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -56,12 +57,18 @@ private class FakeClient(
 ) : AttestClient {
     var mintCalls = 0
     var renewCalls = 0
+    var challengeCalls = 0
+
+    /** Answers served before [mint]/[renew] apply, one per call — for the cases a bare token or refusal cannot say. */
+    val mintAnswers = ArrayDeque<TokenOutcome>()
+    val renewAnswers = ArrayDeque<TokenOutcome>()
 
     /** When set, `challenge()` suspends on it, so a test can observe a refresh while it is in flight. */
     var challengeGate: CompletableDeferred<Unit>? = null
 
     override suspend fun challenge(): String? {
         challengeGate?.await()
+        challengeCalls++
         return challenge
     }
     override suspend fun mintToken(
@@ -69,14 +76,14 @@ private class FakeClient(
         keyId: String,
         attestation: ByteArray,
         challenge: String,
-    ): String? {
+    ): TokenOutcome {
         mintCalls++
-        return mint
+        return mintAnswers.removeFirstOrNull() ?: mint?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused
     }
 
-    override suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): String? {
+    override suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): TokenOutcome {
         renewCalls++
-        return renew
+        return renewAnswers.removeFirstOrNull() ?: renew?.let(TokenOutcome::Minted) ?: TokenOutcome.Refused
     }
 }
 
@@ -291,6 +298,53 @@ class DeviceAttestationTest {
     }
 
     @Test
+    fun `a renewal whose challenge went stale retries once with a fresh one and keeps the key`() = runTest {
+        // B2's root: the app is suspended between fetching a challenge and using it. The answer is one fresh
+        // challenge — not a new key on Apple's throttled path, and never a dropped token.
+        val key = FakeKey()
+        val client = FakeClient().apply { renewAnswers += TokenOutcome.ChallengeStale }
+        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val (attest, _, _) = attestation(key, client, store)
+
+        assertTrue(attest.ensureFresh())
+
+        assertEquals(2, client.challengeCalls)
+        assertEquals(2, client.renewCalls)
+        assertEquals(0, key.attested, "a stale challenge is not a reason to attest afresh")
+        assertEquals(token(30), store.token())
+    }
+
+    @Test
+    fun `a renewal that stays stale or gets no answer keeps the token and attests nothing`() = runTest {
+        for (answers in listOf(
+            listOf(TokenOutcome.ChallengeStale, TokenOutcome.ChallengeStale),
+            listOf(TokenOutcome.Unreachable),
+        )) {
+            val key = FakeKey()
+            val client = FakeClient().apply { renewAnswers += answers }
+            val store = InMemoryAttestStore(token = token(1), keyId = "k")
+            val (attest, _, _) = attestation(key, client, store)
+
+            assertFalse(attest.ensureFresh(), "$answers")
+
+            assertEquals(token(1), store.token(), "$answers must not touch the token the device holds")
+            assertEquals(0, key.attested, "$answers says nothing about this device — no throttled attestation")
+            assertEquals(0, client.mintCalls)
+        }
+    }
+
+    @Test
+    fun `an attestation whose challenge went stale retries once`() = runTest {
+        val client = FakeClient().apply { mintAnswers += TokenOutcome.ChallengeStale }
+        val (attest, _, store) = attestation(client = client)
+
+        assertTrue(attest.ensureFresh())
+
+        assertEquals(2, client.mintCalls)
+        assertEquals(token(30), store.token())
+    }
+
+    @Test
     fun `a backend that refuses the attestation leaves no keyId behind`() = runTest {
         // A keyId stored for an attestation the backend never recorded would send every future renewal down
         // the assertion path, against a key the server has never heard of — a permanent 401 loop.
@@ -356,7 +410,7 @@ class DeviceAttestationTest {
         val (attest, _, _) = attestation(store = store)
 
         assertFalse(attest.isStale(store.token())) // looks perfectly healthy…
-        attest.onRejected() // …but the backend said 401
+        assertTrue(attest.onRejected(token(30))) // …but the backend said 401 to it
 
         assertNull(store.token())
         assertTrue(attest.isStale(store.token())) // so the next wake WILL renew
@@ -371,7 +425,7 @@ class DeviceAttestationTest {
         val store = InMemoryAttestStore(token = token(30), keyId = "still-good-key")
         val (attest, client, _) = attestation(key, store = store)
 
-        attest.onRejected()
+        attest.onRejected(token(30))
         assertTrue(attest.ensureFresh())
 
         assertEquals("still-good-key", store.keyId())
@@ -379,6 +433,28 @@ class DeviceAttestationTest {
         assertEquals(0, key.attested) // …NOT re-attested
         assertEquals(1, client.renewCalls)
         assertEquals(token(30), store.token())
+    }
+
+    @Test
+    fun `a late rejection of a replaced token leaves the replacement alone and asks for nothing`() = runTest {
+        // B3: requests carrying T1 were in flight when a renewal stored T2; their refusals arrive afterwards.
+        // Clearing unconditionally erased T2 and sent the device round the loop once per late refusal.
+        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val (attest, _, _) = attestation(store = store)
+        val t1 = "T1-that-was-replaced"
+
+        assertFalse(attest.onRejected(t1), "a token we no longer hold is not ours to clear")
+        assertEquals(token(30), store.token())
+    }
+
+    @Test
+    fun `a burst of rejections of one token clears it once`() = runTest {
+        // Every in-flight request carrying the dead token is refused. The first clears it; the rest find nothing
+        // of theirs to clear, so the caller triggers one refresh, not one per request.
+        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val (attest, _, _) = attestation(store = store)
+
+        assertEquals(listOf(true, false, false), List(3) { attest.onRejected(token(30)) })
     }
 
     @Test

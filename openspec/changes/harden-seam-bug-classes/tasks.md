@@ -39,12 +39,12 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 
 ## 4. G4: collapsed states (PR 4)
 
-- [ ] 4.1 Backend: move `/attest/token` and `/attest/renew` into per-version routers. v1 keeps its current handlers byte for byte; v2 answers a stale challenge with `409 stale challenge`. Add `api/` tests covering both versions. Pass `deno lint` and `deno task test`.
-- [ ] 4.2 Have the credential interceptor attach and remember the token it sent, and report `onRejected(sentToken)` only for a token-bearing `401` on a gated path. Add a test pinning the ungated-path predicate to the backend's closed list (fixes B2).
-- [ ] 4.3 Make `HttpAttestClient` return a sealed outcome (`Minted | ChallengeStale | NotAttested | Refused | Unreachable`). `DeviceAttestation` handles `ChallengeStale` with a single fresh challenge and never clears the token.
-- [ ] 4.4 Add `AttestStore.clearTokenIf(expected)` and have `DeviceAttestation.onRejected(t)` compare-and-clear and trigger one refresh per rejected token. Wire it in both shells, keeping the token-rejection route guard green (fixes B3).
-- [ ] 4.5 Add `MembershipRead` (`Member | NotMember | Unreadable`) on `ConfigSource`, backed by `FileBackedConfigStore`'s absence classifier. `UploadTransitions` and the push receivers log and defer on `Unreadable`.
-- [ ] 4.6 Rename `isGranted` to `hasUsableAccess` in `Provision`, `AlbumGather` and `AlbumCoordinator`, and fix their KDoc.
+- [x] 4.1 Backend: move `/attest/token` and `/attest/renew` into per-version routers. v1 keeps its current handlers byte for byte; v2 answers a stale challenge with `409 stale challenge`. Add `api/` tests covering both versions. Pass `deno lint` and `deno task test`.
+- [x] 4.2 Have the credential interceptor attach and remember the token it sent, and report `onRejected(sentToken)` only for a token-bearing `401` on a gated path. Add a test pinning the ungated-path predicate to the backend's closed list (fixes B2).
+- [x] 4.3 Make `HttpAttestClient` return a sealed outcome (`Minted | ChallengeStale | NotAttested | Refused | Unreachable`). `DeviceAttestation` handles `ChallengeStale` with a single fresh challenge and never clears the token.
+- [x] 4.4 Add `AttestStore.clearTokenIf(expected)` and have `DeviceAttestation.onRejected(t)` compare-and-clear and trigger one refresh per rejected token. Wire it in both shells, keeping the token-rejection route guard green (fixes B3).
+- [x] 4.5 Add `MembershipRead` (`Member | NotMember | Unreadable`) on `ConfigSource`, backed by `FileBackedConfigStore`'s absence classifier. `UploadTransitions` and the push receivers log and defer on `Unreadable`.
+- [x] 4.6 Rename `isGranted` to `hasUsableAccess` in `Provision`, `AlbumGather` and `AlbumCoordinator`, and fix their KDoc.
 
 ## 5. G5: concurrency and re-entrancy (PR 5)
 

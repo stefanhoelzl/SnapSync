@@ -51,7 +51,7 @@ private const val REQUEST_TIMEOUT_MILLIS = 5_000L
  */
 fun darwinHttpClient(
     token: () -> String? = { null },
-    onRejected: () -> Unit = {},
+    onRejected: suspend (sentToken: String) -> Unit = {},
     appVersion: () -> String = ::appMarketingVersion,
     onVersionRefused: (minimumVersion: String?) -> Unit = {},
     onServed: () -> Unit = {},

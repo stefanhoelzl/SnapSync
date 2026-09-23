@@ -79,6 +79,7 @@ edge :domain:feature :domain:ports
 edge :domain:flow :domain:feature
 edge :domain:flow :domain:model
 edge :domain:ports :domain:model
+edge :test:architecture :adapter:generic:app
 edge :test:architecture :domain:feature
 edge :test:architecture :domain:model
 edge :test:architecture :domain:ports

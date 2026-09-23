@@ -45,26 +45,42 @@ interface AttestClient {
      */
     suspend fun challenge(): String?
 
-    /**
-     * `POST /attest/token` → a fresh device token, or null if the backend refused.
-     *
-     * Absence: as [challenge] — refusal and transport failure are one answer here, because both
-     * leave the device unattested and both are retried at the next wake.
-     */
+    /** `POST /attest/token` → a fresh device token for a new attestation, or why there is none ([TokenOutcome]). */
     suspend fun mintToken(
         deviceId: String,
         keyId: String,
         attestation: ByteArray,
         challenge: String,
-    ): String?
+    ): TokenOutcome
 
-    /**
-     * `POST /attest/renew` → a fresh device token from an assertion, or null if the backend refused.
-     *
-     * Absence: as [challenge] — one answer for refusal and transport failure alike, retried at the
-     * next wake.
-     */
-    suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): String?
+    /** `POST /attest/renew` → a fresh device token from an assertion, or why there is none ([TokenOutcome]). */
+    suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): TokenOutcome
+}
+
+/**
+ * What an `/attest/token` or `/attest/renew` call came to, classified by the adapter that owns the route (capability
+ * `device-attestation`, "Only a rejected credential is invalidated, and only that one"; decision record
+ * `harden-seam-bug-classes`, D10).
+ *
+ * It used to be `String?`, and every `null` got one answer — attest afresh — whatever the cause. Each case below
+ * needs a different one: a stale challenge wants one fresh challenge, not a new key; an unreachable backend wants
+ * the next wake, not Apple's throttled path; and none of them is a reason to drop the token the device holds.
+ */
+sealed interface TokenOutcome {
+    /** The backend minted [token]. */
+    data class Minted(val token: String) : TokenOutcome
+
+    /** The challenge expired before the backend verified it (v2's `409 stale challenge`). One fresh challenge may succeed. */
+    data object ChallengeStale : TokenOutcome
+
+    /** The backend holds no attestation for this device (`401 not attested`): renewing cannot work, attesting can. */
+    data object NotAttested : TokenOutcome
+
+    /** The backend verified and declined — the attestation or assertion itself was rejected, or the body was invalid. */
+    data object Refused : TokenOutcome
+
+    /** No answer: transport failure, a `5xx`, or a body that names no token. The next wake retries. */
+    data object Unreachable : TokenOutcome
 }
 
 /**
@@ -110,4 +126,24 @@ interface AttestStore {
      * never renew, and the device would 401 forever behind a screen that said "Syncing".
      */
     fun clearToken()
+
+    /**
+     * Drop the stored token only if it is still [expected] — compare-and-clear (capability `device-attestation`,
+     * "Only a rejected credential is invalidated, and only that one"). Returns whether it cleared.
+     *
+     * A rejection names the token the refused request CARRIED. Several requests carrying T1 can be refused after a
+     * renewal has already stored T2, in this process or in the other one (both read the one shared item); a plain
+     * [clearToken] from any of them would erase T2 and send the device round the recovery loop again (B3). Here the
+     * late rejections find T2, clear nothing, and answer `false`.
+     *
+     * Not atomic ACROSS processes: an extension rejection landing between the app's read and delete can still
+     * interleave. That window is microseconds wide, and its outcome is one extra refresh, never a lost photo
+     * (decision record `harden-seam-bug-classes`, D10). Within a process, the caller serialises it against writes.
+     */
+    fun clearTokenIf(expected: String): Boolean = if (token() == expected) {
+        clearToken()
+        true
+    } else {
+        false
+    }
 }

@@ -96,7 +96,7 @@ class AlbumCoordinatorTest {
         val store = InMemoryAlbumMapStore()
         assertNull(
             AlbumCoordinator(manager, store)
-                .ensureAlbum("E", "Birthday", saveToAlbum = true, granted = false),
+                .ensureAlbum("E", "Birthday", saveToAlbum = true, hasUsableAccess = false),
         )
         assertEquals(0, manager.createCount)
         assertNull(store.get("E"))

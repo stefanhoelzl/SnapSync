@@ -226,9 +226,15 @@ outcome is one extra refresh, never a lost photo. That is accepted (see Risks).
 `DeviceAttestation.onRejected(t)` also coalesces: a refresh is triggered once per rejected token.
 
 The v2 status is **`409 Conflict`**, with the body `stale challenge`. To do this, `/attest/token` and
-`/attest/renew` move from the shared `deviceApi` router into a `v2Only` router, and `v1Only` keeps the
-existing handlers unchanged. The shared challenge-verification helper returns a reason, and each version
-maps that reason to its own status.
+`/attest/renew` leave the shared `deviceApi` router. As built, one factory (`attestIssuers(staleChallengeStatus)`)
+builds them once per version — `401` for v1, `409` for v2 — so the two versions share every line except that one
+status and cannot drift anywhere else; v1's answers are unchanged.
+
+As built, the rejection route is `compose/`'s `AppCore.onCredentialRejected(sentToken)`: the trust feature
+compare-and-clears under its refresh lock (`onRejected(sentToken): Boolean`), and only a clear that happened
+launches a refresh. Both shells and the world bind it. `clearTokenIf` is a default method on the `AttestStore`
+port (read, compare, clear). The client also classifies v1's `401 stale challenge` body as `ChallengeStale`,
+since the remedy is the same.
 
 *Alternatives to 409:*
 - `400`: already means "invalid body" on these routes, so a client could not tell the two apart.
@@ -241,9 +247,12 @@ client that forgets the ungated set still cannot misread a stale challenge.
 
 ### D11. Sealed reads for unknown-capable sources
 
-`ConfigSource` gains `membership: StateFlow<MembershipRead>`, where `MembershipRead` is `Member(cfg) |
-NotMember | Unreadable`. It sits beside the existing `config` flow, which becomes a projection of it until
-every reader has moved over.
+`ConfigSource` gains `membership: MembershipRead`, where `MembershipRead` is `Member(cfg) | NotMember |
+Unreadable`. It sits beside the existing `config` flow. As built it is a plain read, not a second `StateFlow`:
+every reader reads it fresh at each use and none collects it. The port's default derives it from `config` (so a
+source that cannot fail to read never answers `Unreadable`); `FileBackedConfigStore` overrides it, updated
+wherever its `config` is, through the pure `membershipAfterReload` (the three-valued twin of
+`configAfterReload`: an unreadable reload keeps the last conclusive answer).
 
 `UploadTransitions` and the push receivers read `MembershipRead`. On `Unreadable` they log and defer.
 `FileBackedConfigStore` already classifies absent versus unreadable (`isConfigFileAbsence`), so the

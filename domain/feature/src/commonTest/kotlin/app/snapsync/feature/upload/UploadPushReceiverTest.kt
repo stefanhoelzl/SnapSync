@@ -7,6 +7,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.MembershipRead
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.CycleResult
 import app.snapsync.model.PermissionStatus
@@ -49,6 +50,23 @@ class UploadPushReceiverTest {
 
         assertEquals(1, f.cycles)
         assertEquals(1, f.scheduler.scheduled, "and re-arms — a push is the reliable wake")
+    }
+
+    @Test
+    fun a_push_while_the_membership_is_unreadable_is_deferred() = runTest {
+        val f = Fixture()
+        val receiver = UploadPushReceiver(
+            configSource = object : ConfigSource {
+                override val config: StateFlow<EventConfig?> = MutableStateFlow(null)
+                override val membership: MembershipRead = MembershipRead.Unreadable
+            },
+            pump = f.pump,
+            photoAccess = liveGrant { PermissionStatus.GRANTED },
+        )
+
+        receiver.onSilentPush("E")
+
+        assertEquals(0, f.cycles, "an event we cannot read is not one we may upload to")
     }
 
     @Test

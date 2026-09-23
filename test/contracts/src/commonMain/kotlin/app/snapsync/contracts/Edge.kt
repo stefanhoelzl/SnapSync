@@ -78,7 +78,8 @@ class GateRecorder : GateObservation {
     override var refusedMinimum: String? = null
         private set
 
-    fun onRejected() {
+    @Suppress("UNUSED_PARAMETER") // the contracts observe THAT a credential was rejected, not which
+    fun onRejected(sentToken: String) {
         credentialRejected = true
     }
 

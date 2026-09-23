@@ -186,8 +186,9 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
             token = { attestToken() },
             // The extension cannot attest, so it cannot recover on its own — but it CAN drop a token the
             // backend has rejected. That is what makes the app re-mint at its next wake: `isStale(null)` is
-            // true, while a rejected-but-unexpired token would have looked perfectly fine forever.
-            onRejected = { runCatchingCancellable { attestStore.clearToken() } },
+            // true, while a rejected-but-unexpired token would have looked perfectly fine forever. Only if the
+            // shared item still holds the token that was refused: the app may have renewed it meanwhile.
+            onRejected = { sent -> runCatchingCancellable { attestStore.clearTokenIf(sent) } },
         )
     }
 

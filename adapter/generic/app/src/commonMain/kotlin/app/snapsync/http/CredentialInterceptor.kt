@@ -10,6 +10,7 @@ import io.ktor.client.plugins.plugin
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
+import io.ktor.http.encodedPath
 import io.ktor.http.isSuccess
 import kotlin.time.TimeSource
 
@@ -20,7 +21,7 @@ private val httpLog = Logger.withTag("Http")
  *
  * **Platform-free, and separate from any engine, because it is where four cross-cutting rules live and
  * none of them is about iOS**: every request carries the device token, every request declares this
- * build's version, a `401` starts the credential-recovery loop, and a `426` records that the backend
+ * build's version, a `401` from a gated route starts the credential-recovery loop, and a `426` records that the backend
  * refuses this build. Attaching them here rather than at each call site is the point — create, event
  * fetch, join, manifest, union, device config, leave, and the extension's reconcile listing all flow
  * through one factory, so none can be forgotten and a seam added later inherits all four.
@@ -33,13 +34,19 @@ private val httpLog = Logger.withTag("Http")
  */
 fun HttpClient.withCredentialInterceptor(
     token: () -> String?,
-    onRejected: () -> Unit,
+    /**
+     * The backend rejected [the token this request carried][sentToken]. Reported only for a request that carried a
+     * token to a gated route ([isGatedRequest]); naming the token lets the store clear it only if it still holds it.
+     */
+    onRejected: suspend (sentToken: String) -> Unit,
     appVersion: () -> String = { "" },
     onVersionRefused: (minimumVersion: String?) -> Unit = {},
     onServed: () -> Unit = {},
 ): HttpClient = also { client ->
     client.plugin(HttpSend).intercept { request ->
-        token()?.let { request.headers.append("Authorization", "Bearer $it") }
+        // Remembered, not re-read: by the time the answer arrives a renewal may have replaced it, and a rejection
+        // must name the credential that was actually refused.
+        val sent = token()?.also { request.headers.append("Authorization", "Bearer $it") }
         // Declared on EVERY request through this client, including the ungated `/attest/*` bootstrap:
         // an obsolete build that can still mint a token would otherwise discover it is obsolete only on
         // its next call, which is a worse first contact (capability `min-app-version`). Attaching it
@@ -48,12 +55,19 @@ fun HttpClient.withCredentialInterceptor(
         val start = TimeSource.Monotonic.markNow()
         try {
             val call = execute(request)
-            // A 401 means the backend REJECTED this token — which is NOT the same as it having expired, and
-            // is the one case the expiry-based staleness check cannot see. It happens whenever the signing
-            // key is rotated, or the leave cascade collects this device's attestation record. Without acting
-            // on it, the app would keep re-sending a perfectly fresh-LOOKING but dead credential forever, and
-            // no wake would ever heal it.
-            if (call.response.status == HttpStatusCode.Unauthorized) onRejected()
+            // A 401 from a GATED route means the backend REJECTED this token — which is NOT the same as it
+            // having expired, and is the one case the expiry-based staleness check cannot see. It happens
+            // whenever the signing key is rotated, or the leave cascade collects this device's attestation
+            // record. Without acting on it, the app would keep re-sending a perfectly fresh-LOOKING but dead
+            // credential forever, and no wake would ever heal it.
+            //
+            // Only from a gated route, and only when a token was sent: an ungated `/attest/*` 401 is that
+            // route's own answer (a stale challenge, a refused attestation), never a verdict on the token (B2).
+            if (sent != null && call.response.status == HttpStatusCode.Unauthorized &&
+                isGatedRequest(request.method.value, request.url.encodedPath)
+            ) {
+                onRejected(sent)
+            }
             // A 426 means the BACKEND refuses this build as too old (capability `min-app-version`), and
             // it is noticed here for the same reason the 401 above is: every metadata seam passes
             // through this one interceptor, so no seam can forget to report it, and a seam added later

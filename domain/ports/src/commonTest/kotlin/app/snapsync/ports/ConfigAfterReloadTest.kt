@@ -52,4 +52,20 @@ class ConfigAfterReloadTest {
     fun `an unreadable read on an empty flow stays empty`() {
         assertNull(configAfterReload(ConfigRead.Unavailable(status = 257), current = null))
     }
+
+    // ---- the three-valued membership (decision record `harden-seam-bug-classes`, D11) ----
+
+    @Test
+    fun `a conclusive read replaces the membership`() {
+        assertEquals(MembershipRead.Member(config), membershipAfterReload(ConfigRead.Joined(config), MembershipRead.Unreadable))
+        assertEquals(MembershipRead.NotMember, membershipAfterReload(ConfigRead.None, MembershipRead.Member(config)))
+    }
+
+    @Test
+    fun `an unreadable read keeps the last conclusive membership and is unreadable only without one`() {
+        val unreadable = ConfigRead.Unavailable(status = -1)
+        assertEquals(MembershipRead.Member(config), membershipAfterReload(unreadable, MembershipRead.Member(config)))
+        assertEquals(MembershipRead.NotMember, membershipAfterReload(unreadable, MembershipRead.NotMember))
+        assertEquals(MembershipRead.Unreadable, membershipAfterReload(unreadable, MembershipRead.Unreadable))
+    }
 }
