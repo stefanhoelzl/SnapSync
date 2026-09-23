@@ -489,6 +489,11 @@ class World(
             // The world's membership lives in-process in the config cell, so there is nothing to re-read.
             configRefresh = {},
             backstopScheduler = backstopScheduler,
+            // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
+            extensionRegistration = { null },
+            uploaderPin = { null },
+            // TODO(G2 task 2.1): built in compose/ rather than supplied here; until then stated explicitly.
+            refreshAttestation = {},
             configStore = configStore,
             photoAccess = permission,
             photoAccessRequester = requester,

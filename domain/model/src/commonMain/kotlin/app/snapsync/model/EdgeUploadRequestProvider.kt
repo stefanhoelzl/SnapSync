@@ -47,7 +47,7 @@ package app.snapsync.model
 class EdgeUploadRequestProvider(
     host: String,
     private val deviceId: String,
-    private val token: suspend () -> String? = { null },
+    private val token: suspend () -> String?,
     /**
      * The calling build's marketing version, declared on every v2 request (capability
      * `min-app-version`).

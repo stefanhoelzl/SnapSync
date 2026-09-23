@@ -75,9 +75,8 @@ class Provision(
     /** Re-register the device's APNs push token with the backend on join (capability
      *  `push-registration`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
      *  device whose config the nightly sweep collected (capability `scheduled-cleanup`) is pushable again
-     *  the instant it rejoins WARM — before its next cold launch. Idempotent, best-effort; the inert
-     *  default keeps world/tests from needing a push stack. */
-    private val registerPush: suspend () -> Unit = {},
+     *  the instant it rejoins WARM — before its next cold launch. Idempotent, best-effort. */
+    private val registerPush: suspend () -> Unit,
 ) {
     suspend fun run(cfg: EventConfig) {
         // 1. Enter the new membership (a switch or a first join: leave, load, save, start uploads — the entry's

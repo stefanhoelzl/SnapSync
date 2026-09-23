@@ -88,7 +88,7 @@ class UrlSessionUploadController(
     private val graph: AppGraphReads,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
     // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).
-    private val onCycleComplete: suspend () -> Unit = {},
+    private val onCycleComplete: suspend () -> Unit,
     // Event-album placement (capability `event-album`): the shared coordinator, so this app-tier
     // (iOS 18–26.0) adds this cycle's completed own photos to the event album. The membership's
     // opt-in is applied by the cycle, which reads it from the gate; the `assetId` denormalization

@@ -34,7 +34,7 @@ class ShareableCountSource(
     /** The permission-aware read seam — the SAME one the status total holds, so the two cannot disagree. */
     private val source: CandidateSource,
     /** Downloaded/imported foreign photos, suppressed from this device's contribution (capability `photo-download`). */
-    private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
+    private val suppressedLocalIds: suspend () -> Set<String>,
     /**
      * Denylisted-album members for the candidate cutoff — the SAME lookup the cycle gets.
      *
@@ -46,7 +46,7 @@ class ShareableCountSource(
      * before it is optimized: whether a `PHAssetCollection` fetch under `NOT_DETERMINED` can surface a
      * system prompt is an open device question (decision record: this change's `design.md`).
      */
-    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String> = { emptySet() },
+    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
 ) {
 
     /**

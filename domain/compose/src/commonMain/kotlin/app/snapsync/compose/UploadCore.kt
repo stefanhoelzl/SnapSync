@@ -96,7 +96,7 @@ class UploadPorts(
      * registration there (measured SE2/26.6, 2026-09-21), but its admission withholds before any read — and
      * the world opts in per test. Derived by the app composition from current permission + the latest snapshot.
      */
-    val selectionScope: () -> SelectionScope = { SelectionScope.Unrestricted },
+    val selectionScope: () -> SelectionScope,
     val manifestStore: DeviceManifestStore,
     /** The device-manifest publisher — production passes `:adapter:generic:app`'s `HttpManifestPublisher`. */
     val manifestPublisher: ManifestPublisher,

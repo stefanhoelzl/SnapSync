@@ -97,21 +97,30 @@ enum class DeviceIdentityRole {
 class KeychainDeviceIdentity(
     private val role: DeviceIdentityRole,
     /**
-     * Where the id is kept. Defaults to the **compilation target's** store ([deviceIdPrimaryStore]):
+     * Where the id is kept. In production the **compilation target's** store ([deviceIdPrimaryStore]):
      * the addressed shared-Keychain item on `iosArm64` — every shipped binary — and an App-Group file
      * on `iosSimulatorArm64`, where that group cannot exist at all. The resolution below is identical
      * either way; only the store moves. See [deviceIdPrimaryStore] for the measurement.
      */
-    private val shared: SecureStore = deviceIdPrimaryStore(),
+    private val shared: SecureStore,
     /**
      * The adoption source, consulted **only** by [DeviceIdentityRole.MINTING] and only when [shared]
      * reports absence. On the device target it is the unscoped view of the same item — spanning every
      * group this process is entitled to, so it can still see an id an older build placed in the
      * process's own `application-identifier` group. A target with no such history answers `Absent`.
      */
-    private val legacy: SecureStore = deviceIdLegacyStore(),
-    private val mint: () -> String = { NSUUID().UUIDString() },
+    private val legacy: SecureStore,
+    /** Generates a fresh id; a test pins it. */
+    private val mint: () -> String,
 ) : DeviceIdentity {
+
+    /**
+     * The production identity: the compilation target's stores and a random UUID. A secondary constructor
+     * rather than defaults on the primary one, so no constructor parameter carries a function-typed default
+     * (law "Function-typed parameters have no defaults in production", capability `module-architecture`).
+     */
+    constructor(role: DeviceIdentityRole) :
+        this(role, deviceIdPrimaryStore(), deviceIdLegacyStore(), { NSUUID().UUIDString() })
 
     private val cached: String by lazy {
         var resolution: SecureStoreResolution? = null
