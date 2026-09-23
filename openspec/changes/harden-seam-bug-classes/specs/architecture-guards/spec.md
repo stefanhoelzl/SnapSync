@@ -100,7 +100,7 @@ by the platform, not accessing it, and is out of scope.
 ### Requirement: The callback-slot and lambda-default gates
 
 A gate SHALL fail the build when production Kotlin source declares a function-typed `var` property, and
-when production Kotlin source declares a default value on a function-typed parameter or property, except
+when production Kotlin source declares a default value on a function-typed constructor parameter, except
 where that type is `@Composable`. Each failure SHALL name the file and declaration. Both gates SHALL fail
 closed when their scan resolves no production source.
 

@@ -76,22 +76,20 @@ class StatusContainerHost(
     // leave / create / commitJoin / share / requestAccess / openSettings — `model/` vocabulary whose
     // live instance is built only in `compose/` (`AppCore.userCommands`) — this container fires
     // commands solely through it and never references a feature command (or `ports/`, or `flow/`)
-    // directly; the armed presentation gate enforces the import law. The default is fully inert (the
-    // identity bundle the `UserCommands` type itself defines — a model-typed null object, not command
-    // wiring, so constructing it here is outside the built-only-in-compose rule and the gate's
-    // letter), so non-iOS hosts and tests that don't exercise a command construct unchanged.
+    // directly; the armed presentation gate enforces the import law. Required: a host states every
+    // command it wires, so a forgotten one is a compile error rather than an inert tap.
     //
     // NB the CLAMP (`minPhotoDate = max(chosen, startsAt)`) is applied on the far side of the
     // `commitJoin` command, inside `JoinEvent` — this container passes the chosen value through raw,
     // so no entry path can reach a provision without the floor by forgetting to clamp here.
-    private val commands: UserCommands = UserCommands(),
+    private val commands: UserCommands,
     // The user-query bundle (spec `module-architecture`, "Queries cross a lane-gated door"): the join gate's
     // details read and the shareable count. Reads this container INVOKES and reduces on, built and
     // lane-decorated in `compose/` beside the commands — so neither runs a port read on the thread that
     // asked, which for the count used to be a composable effect on the main thread.
     private val queries: UserQueries,
     // The two out-channels (see [StatusDiagnostics]): the dev-path log and the intent-error seam.
-    diagnostics: StatusDiagnostics = StatusDiagnostics(),
+    diagnostics: StatusDiagnostics,
 ) : ContainerHost<UiState, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,

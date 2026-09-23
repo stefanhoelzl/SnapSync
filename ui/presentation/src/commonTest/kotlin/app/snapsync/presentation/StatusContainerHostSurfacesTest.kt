@@ -97,7 +97,7 @@ class StatusContainerHostSurfacesTest {
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(PermissionStatus.GRANTED), config),
         scope,
-        commands = UserCommands(
+        commands = testCommands(
             reconfigure = { id, direction, from, until, album ->
                 spy.reconfigures += Reconfigure(id, direction, from, until, album)
             },
@@ -110,6 +110,7 @@ class StatusContainerHostSurfacesTest {
             zone = TimeZone.UTC,
         ),
         queries = queries,
+        diagnostics = testDiagnostics(),
     )
 
     /** Await the first state satisfying [predicate] — failing loudly rather than hanging if none comes. */

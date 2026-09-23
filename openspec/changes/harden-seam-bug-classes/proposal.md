@@ -34,7 +34,8 @@ change):
 
 - **G1**
   - No function-typed `var` in production source; callbacks are constructor parameters (fixes B1).
-  - No default value on a function-typed parameter in production source; Compose content slots are exempt.
+  - No default value on a function-typed constructor parameter in production source; Compose content slots
+    are exempt.
   - The presentation-facing queries (`shareableCount`, `loadJoinDetails`) move into a `UserQueries` bundle
     built and lane-decorated in `compose/`, and the lane gate covers it (fixes B6's lane half).
   - A function type is allowed only for a callback into the core that cannot throw and does not reach out

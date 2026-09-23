@@ -56,9 +56,9 @@ fun StatusScreen(
     // system-reading default (migration step 9): the host binds the `Clock`/`TimeZoneSource` ports
     // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
     cutoff: CutoffFormatter,
-    // The eighteen things this screen can ask for, bundled (see [StatusActions]). Defaulted, so a host
-    // that wires none of them — the forge reviewing a forged state — constructs nothing.
-    actions: StatusActions = StatusActions(),
+    // Everything this screen can ask for, bundled (see [StatusActions]). Required: every host builds it
+    // through the one factory, `statusActions(host)`, so a forgotten action is a compile error.
+    actions: StatusActions,
 ) {
     AppTheme {
         // Derived once from the state. There is no screen-held visibility left to reset when the layer

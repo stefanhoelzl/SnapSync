@@ -184,10 +184,10 @@ class ParticipationState(
 
 /** Everything the participation surface can ask for. */
 class ParticipationActions(
-    val choices: RangeChoiceActions = RangeChoiceActions(),
-    val onShareOn: (Boolean) -> Unit = {},
-    val onReceiveOn: (Boolean) -> Unit = {},
-    val onSaveToAlbum: (Boolean) -> Unit = {},
+    val choices: RangeChoiceActions,
+    val onShareOn: (Boolean) -> Unit,
+    val onReceiveOn: (Boolean) -> Unit,
+    val onSaveToAlbum: (Boolean) -> Unit,
 )
 
 /**

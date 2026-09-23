@@ -529,11 +529,9 @@ class JoinGateIntegrationTest {
             ),
             scope = scope,
             queries = w.core.userQueries,
-            commands = UserCommands(
-                leave = leave,
-                commitJoin = w.userCommands.commitJoin,
-            ),
+            commands = w.userCommands.replacing(leave = leave),
             cutoffFormatter = fixedCutoffFormatter(),
+            diagnostics = quietDiagnostics(),
         )
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =

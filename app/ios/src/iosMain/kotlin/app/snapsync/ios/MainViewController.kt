@@ -1,12 +1,12 @@
 package app.snapsync.ios
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.SceneMode
-import app.snapsync.model.PermissionStatus
+import app.snapsync.ui.statusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.statusActions
 import app.snapsync.ui.components.LocalReduceMotion

@@ -188,10 +188,13 @@ paths that build that something — and on every other path it is silently `null
 
 ### Requirement: Function-typed parameters have no defaults in production
 
-A function-typed parameter or field in production source SHALL NOT declare a default value. A missing
-wire SHALL be a compile error at the construction site, never an inert `{}`, `{ null }`, `{ true }` or
-`{ emptySet() }` that ships. Compose content-slot parameters (`@Composable` function types) are exempt, and
-so are test sources.
+A function-typed **constructor parameter** in production source SHALL NOT declare a default value — that
+includes a nullable one defaulting to `null`. A missing wire SHALL be a compile error at the construction
+site, never an inert `{}`, `{ null }`, `{ true }` or `{ emptySet() }` that ships. A constructor is where a
+seam is wired; a class that needs a production binding its tests replace states it in a secondary
+constructor rather than as a default. Compose content-slot types (`@Composable` function types) are exempt,
+and so are test sources. Parameters of ordinary functions (a log formatter, an optional callback on a
+helper) are not seams and are not covered.
 
 #### Scenario: A host forgets a command
 

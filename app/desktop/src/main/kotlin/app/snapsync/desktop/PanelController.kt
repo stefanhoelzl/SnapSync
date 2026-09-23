@@ -1,5 +1,11 @@
 package app.snapsync.desktop
 
+import java.awt.datatransfer.StringSelection
+import java.awt.Toolkit
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.JoinCommit
+import app.snapsync.model.UserQueries
+import app.snapsync.model.UserCommands
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
@@ -129,6 +135,37 @@ class PanelController {
             println("choosePhotos() — no limited-library picker off device; forge the outcome via the presets")
         }
     }
+
+    /**
+     * The forge's command bundle: every command stated. The forge renders forged state, so the domain
+     * commands are inert and the platform ones print what a device would have done — except the
+     * permission taps, which play the grant through [requester]. The bug-report command echoes to the
+     * console so the hidden double-tap and its sheet are reviewable offscreen (capability
+     * `diagnostic-logging`); the shared forge host factory stays without one, so the on-device forge
+     * composition (no DSN) still offers no affordance at all.
+     */
+    val commands: UserCommands = UserCommands(
+        leave = {},
+        create = { name, startsAt, endsAt -> println("create \"$name\" [${startsAt.at.iso} … ${endsAt.at.iso}] — forged, not minted") },
+        commitJoin = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
+        // Harness share stub (test equipment): the joined-layer presets force CANNED_CONFIG, so the host
+        // derives a real invite URL — copy it to the clipboard and log it rather than open a share sheet.
+        share = { url ->
+            runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+            println("share invite → $url")
+        },
+        requestAccess = requester::request,
+        openSettings = requester::openSettings,
+        openLink = { url -> println("openLink → $url") },
+        choosePhotos = requester::choosePhotos,
+        reconfigure = { _, _, _, _, _ -> },
+        rename = { _, _ -> },
+        resetRename = {},
+        sendDiagnostics = { note, screen -> println("bug report [$screen] → $note") },
+    )
+
+    /** The forge's queries: no backend and no library, so every details load fails and no count exists. */
+    val queries: UserQueries = UserQueries(loadJoinDetails = { JoinLoad.Failed }, shareableCount = { _, _ -> null })
 
     /** What the next gate-driven request() resolves to. */
     val armedRequestGrants = armedGrants.asStateFlow()

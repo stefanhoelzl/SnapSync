@@ -176,6 +176,7 @@ private fun Heading(text: String, onEdit: (() -> Unit)?, editDescription: String
  */
 class ScreenHeading(
     val text: String,
-    val onEdit: (() -> Unit)? = null,
+    /** `null` for a heading with no edit control — stated at the construction site, never defaulted. */
+    val onEdit: (() -> Unit)?,
     val editDescription: String = "",
 )
