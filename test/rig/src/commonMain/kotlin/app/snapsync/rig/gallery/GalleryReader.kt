@@ -12,19 +12,7 @@ import app.snapsync.rig.CensusView
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.PolicyView
 import app.snapsync.rig.ResourceView
-import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSPredicate
-import platform.Photos.PHAsset
-import platform.Photos.PHFetchOptions
 import kotlin.time.TimeSource
-
-/**
- * The bitmask values `PHAssetMediaSubtype` uses for the two origins the policy subtracts. Written as
- * literals because the census below uses the **SELECT** predicate form (`(mediaSubtypes & N) != 0`), not
- * the exclusion form the production fetch uses, and the point is to look for these directly.
- */
-private const val SUBTYPE_SCREENSHOT = 4
-private const val SUBTYPE_SCREEN_RECORDING = 524_288
 
 /**
  * What the library holds, and what the selection policy would make of it.
@@ -36,7 +24,7 @@ private const val SUBTYPE_SCREEN_RECORDING = 524_288
  *
  * ## Why the census does not go through the policy seam
  *
- * [census] fetches with **no predicate at all**, deliberately. The production fetch drops screenshots and
+ * The app host's census (`photoKitCensus`) fetches with **no predicate at all**, deliberately. The production fetch drops screenshots and
  * screen recordings *before* enumeration, so they never reach the count a policy-scoped read would see —
  * and those two counts are the only evidence that the subtype bits match real, OS-generated assets. A
  * synthesized library cannot demonstrate that: `PHAssetCreationRequest` cannot set a subtype. So the raw
@@ -59,6 +47,12 @@ private const val SUBTYPE_SCREEN_RECORDING = 524_288
 class GalleryReader(
     private val candidates: CandidateSource,
     private val grant: () -> String,
+    /**
+     * The raw subtype census, from the host's own library. Injected because it is the one part of this read
+     * that is platform by nature: the app host counts PhotoKit's subtype bitmask, the JVM host its world
+     * gallery. Everything else here is the app's own candidate seam and selection policy, on both hosts.
+     */
+    private val census: () -> CensusView,
 ) {
 
     suspend fun read(cutoff: String?, resources: Boolean, includesUpload: Boolean = true): GalleryView {
@@ -144,20 +138,4 @@ class GalleryReader(
         is SelectionRule.NotInDenylistedAlbum -> "NotInDenylistedAlbum"
     }
 
-    @OptIn(ExperimentalForeignApi::class)
-    private fun census(): CensusView {
-        val total = PHAsset.fetchAssetsWithOptions(null).count.toLong()
-        return CensusView(
-            total = total,
-            screenshots = countMatching(SUBTYPE_SCREENSHOT),
-            screenRecordings = countMatching(SUBTYPE_SCREEN_RECORDING),
-        )
-    }
-
-    @OptIn(ExperimentalForeignApi::class)
-    private fun countMatching(subtype: Int): Long {
-        val options = PHFetchOptions()
-        options.predicate = NSPredicate.predicateWithFormat("(mediaSubtypes & $subtype) != 0", argumentArray = null)
-        return PHAsset.fetchAssetsWithOptions(options).count.toLong()
-    }
 }

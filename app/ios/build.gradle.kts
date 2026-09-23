@@ -52,6 +52,10 @@ kotlin {
         }
         iosMain.dependencies {
             if (rigEnabled) implementation(project(":test:rig"))
+            // The hook hands the rig the in-app contract registry (`List<InAppContract>`). The rig declares its
+            // own module dependencies `implementation` (so the protocol's client cannot reach them), so the shell
+            // names this one itself — under the same property, so the two still arrive together.
+            if (rigEnabled) implementation(project(":test:contracts"))
             // The upload extension's composition root, so the control channel can invoke the OS-driven
             // tier's REAL cycle rather than a copy of its wiring. Rig-gated exactly like `:test:rig`
             // itself: a production build links no part of this and contains no route to that root.

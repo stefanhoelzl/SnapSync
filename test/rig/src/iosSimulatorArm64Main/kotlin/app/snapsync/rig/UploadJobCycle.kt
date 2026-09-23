@@ -176,3 +176,5 @@ internal fun uploadExtensionRecordCommand(): RigCommand = RigCommand { params, _
         }
     }
 }
+
+internal actual fun uploadJobRefusals(): Map<String, String> = emptyMap()

@@ -35,3 +35,11 @@ internal actual suspend fun endUploadJobCycle(raw: Int): String =
  * same job — and its outcome would say nothing about what the OS did.
  */
 internal actual fun uploadJobDeviceCommands(): Map<String, RigCommand> = emptyMap()
+
+internal actual fun uploadJobRefusals(): Map<String, String> = listOf(
+    "device/upload-jobs/perform",
+    "device/upload-extension/record",
+).associateWith {
+    "the operating system owns the upload-job queue on a device, so the channel cannot perform or record a job " +
+        "for it; the simulator app, which has no such queue, plays it and serves this verb"
+}

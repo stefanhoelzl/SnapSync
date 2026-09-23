@@ -72,6 +72,16 @@ The platform-free iOS command tables — `userCommands(host)` and `excludedUserC
 
 `RigServer` gains `stop()` (cancel its scope, close its lane), used only by the JVM host.
 
+`JvmRigHost.start(backend: String, port)` takes the backend **by name** (`mini` | `deno`), and its `world` is
+`internal`. So the host's public surface names no world type. The client's tests then need nothing from
+`:test:world`, which exports `ports/` and `compose/` and would breach D4's boundary.
+
+**Found and fixed while building this:** `readState` cast the `UiState` *wrapper* to a layer type
+(`ui as? Layer.Joined`). The compiler only warns about that, and it is always `null`. So `/device/state` on
+**every** host reported a joined device as `configResolved=false`, with no invite URL, no event name and no
+transient error, whatever the screen showed. It now reads `ui.layer`. This is the one change to the iOS host's
+existing answers besides `GET /device`. The JVM host's round-trip test is what caught it.
+
 *Alternative rejected:* a JVM fork of `RigServer`. It would make "same protocol" a property of review
 instead of compilation.
 
@@ -106,13 +116,16 @@ The vocabulary, in outline (the full table is fixed in the code and listed by `G
 | `GET /health`, `GET /device/state`, `POST /user/*`, `POST /os/app/*` | honoured | honoured |
 | `POST /os/photokit-ext/*` (invoke extension) | honoured | honoured (the world's `uploadCore` cycle via `extensionEntries`) |
 | `GET /device/logs` | honoured | `process=app` honoured (the world's captured log); `process=extension` → "no log" as today |
-| `GET /device/gallery`, `POST /device/gallery/seed`, `POST /device/gallery/wipe`, `POST /device/reset` | honoured | honoured over the world gallery, same parameters and response shape |
+| `GET /device/gallery`, `POST /device/gallery/seed`, `POST /device/reset` | honoured | honoured over the world gallery, with the same parameters and response shape. The parsing and rendering are shared `commonMain` builders (`GalleryReader` with an injected census, `seedCommand`, `resetCommand`). Seed kind `noise` answers `409`: it exists to put bytes on the wire, and the world carries none |
+| `POST /device/gallery/wipe` | honoured | refused: a fresh world has nothing to wipe, and the wipe answers PhotoKit's source, album and folder census, which has no world counterpart |
 | `POST /device/uploaders`, `/device/process-metrics`, the upload-job verbs | honoured (per build) | refused: they name the OS upload-job registry and MetricKit |
 | world levers (below) | refused: "a device cannot fake another backend, OS or member" | honoured |
 | `GET /contract`, `POST /contract/*` | honoured | refused naming `JVM`: JVM contracts run under Gradle |
 
 The world levers are the full-stack inspector's (`full-stack-harness`) set, one verb each:
 - backend offline;
+- the backend's object listing for a device (`device/backend/objects`, the neutral `objectsOf`), added so a test
+  can assert that bytes landed without naming its host;
 - job limit;
 - complete or fail a job (`world.platform`);
 - fail the next import;

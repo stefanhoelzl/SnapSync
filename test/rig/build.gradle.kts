@@ -21,30 +21,22 @@ plugins {
 // not a stub, not an inert branch. That is why no `ios-app-shell` requirement changes: nothing shipped
 // can observe this module or the env var its hook reads.
 //
-// NO TESTS — and that is now an EXCEPTION rather than a consequence, which is worth stating plainly
-// because the file used to justify it and the justification has lapsed.
+// TWO HOSTS, ONE PROTOCOL (capability `testing-architecture`, "One control protocol, served by two hosts").
+// `commonMain` is the server, the routes, the state projection, the closed verb vocabulary and every command
+// table both hosts share. `iosMain` + `src/hook/` are the app host (above). `jvmMain` is the JVM host: a
+// `World` from `:test:world` — whose `core` is the real `AppCore` from the same `snapSyncApp` — handed to the
+// unchanged server through its own hook. The JVM target links into no shipped-format binary; only test
+// equipment consumes it (`module-architecture`, "The module set withholds; packages organize").
 //
-// The old wording was: "this module holds no projection it could get wrong; if that ever stops being true
-// it needs a `jvm()` target and tests with it". That condition is FALSE as of the launch-trigger
-// retirement. `src/iosMain/` now holds real behaviour it could get wrong — the seeder's above/below-floor
-// alternation, its platform-forced chunk sizes, the wiper's scope grammar and its fetch selection — and
-// none of it is tested anywhere.
-//
-// The exception was taken deliberately (decision record: `…-retire-launch-env-triggers` D9). The
-// alternative on the table was pushing those decisions into `:domain model/` to keep this module a lens,
-// and that was rejected because it puts more dev vocabulary into the module that SHIPS, which is the
-// opposite of what that change is for. So the cost lands here instead, and it is real: the six pinned
-// `detektAppShell` suppressions this code used to carry are gone because the gate stopped scanning it,
-// not because the decisions moved.
-//
-// What keeps that honest is the blast radius rather than a test: this code runs only on a device an
-// operator is deliberately driving, and its two dangerous verbs answer with what they did rather than
-// logging it. If that stops being true — if anything here is ever composed into a path an operator did not
-// ask for — it needs a `jvm()` target and tests with it (`:test:world`'s `World.core` is the same
-// `AppCore`, so that path is open).
+// TESTS. `commonMain` is tested now, through the JVM host, by `:test:control` (the protocol's typed client),
+// which ends the no-tests exception `…-retire-launch-env-triggers` D9 took for this module. The exception that
+// remains is narrower and still deliberate: the iOS seeder and wiper (`src/iosMain/.../gallery/`) are
+// PhotoKit by nature and run only on a device or simulator an operator is driving, so nothing tests them.
+// If that code is ever composed into a path an operator did not ask for, it needs tests.
 kotlin {
-    // iOS only — this module is linked into the device app, and nothing else consumes it. No `jvm()`:
-    // see the module note above.
+    jvmToolchain(libs.versions.jdk.get().toInt())
+    // The JVM host (see the module note above). Never linked into a shipped binary.
+    jvm()
     iosArm64()
     iosSimulatorArm64()
 
@@ -57,11 +49,17 @@ kotlin {
             // The port contracts it can run in-app on a device (capability `port-contracts`), and the
             // refusal marker the `/contract` route answers 409 on. Both modules are contained the same
             // way: linked only under `-Psnapsync.rig=true`.
-            api(project(":test:contracts"))
-            api(project(":domain:model"))
-            api(project(":domain:ports"))
-            api(project(":domain:compose"))
+            //
+            // All `implementation`, never `api`: the protocol's JVM client (`:test:control`) compiles against
+            // this module, and what it may reach is exactly what is on ITS compile path — the wire types here,
+            // plus the read-models it declares itself. An `api` edge would hand it the ports and the composition
+            // (`module-architecture`, "The module set withholds; packages organize").
+            implementation(project(":test:contracts"))
+            implementation(project(":domain:model"))
+            implementation(project(":domain:ports"))
+            implementation(project(":domain:compose"))
             implementation(project(":ui:presentation"))
+            implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
             implementation(libs.kotlinx.serialization.json)
@@ -80,7 +78,29 @@ kotlin {
         iosMain.dependencies {
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":adapter:ios:ext-safe"))
-            implementation(libs.kotlinx.datetime)
+        }
+
+        // The JVM host: the world it composes (and, through the world's own JVM half, the real backend).
+        jvmMain.dependencies {
+            implementation(project(":test:world"))
+            implementation(project(":domain:feature"))
         }
     }
+}
+
+// `./gradlew :test:rig:runJvmHost [-Psnapsync.rigBackend=mini|deno] [-Psnapsync.rigPort=N]` — the JVM host for
+// an agent to drive by hand. Prints one `RIG-JVM READY <port>` line once bound, then serves until killed.
+// Tests do not use this: they start a host in-process (`JvmRigHost.start`).
+val apiDir = rootProject.layout.projectDirectory.dir("api")
+tasks.register<JavaExec>("runJvmHost") {
+    group = "application"
+    description = "Serves the rig control protocol over a World on loopback (the JVM host)."
+    val jvmCompilation = kotlin.jvm().compilations.getByName("main")
+    classpath = files(jvmCompilation.output.allOutputs, jvmCompilation.runtimeDependencyFiles)
+    mainClass.set("app.snapsync.rig.JvmRigHostMainKt")
+    dependsOn(":test:edge:resolveLocalDeployment")
+    systemProperty("snapsync.rigBackend", providers.gradleProperty("snapsync.rigBackend").getOrElse("mini"))
+    systemProperty("snapsync.rigPort", providers.gradleProperty("snapsync.rigPort").getOrElse("0"))
+    systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
+    systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)
 }

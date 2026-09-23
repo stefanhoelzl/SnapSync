@@ -117,6 +117,20 @@ class RigHooks(
      * simulator-app entry runs live and returns its outcome table, which the `ios-contracts` job judges.
      */
     val contracts: List<InAppContract>,
+    /**
+     * The shared vocabulary entries ([RigVocabulary]) this host REFUSES, each with its reason. Everything this
+     * host wires is honoured; everything it refuses is listed here; `GET /device` answers both, and names any
+     * entry that is neither (capability `testing-architecture`, "One control protocol, served by two hosts").
+     */
+    val refusals: Map<String, String> = emptyMap(),
+    /**
+     * Why the OS's extension-registration answer is `null` on this host — reported as `notApplicableReason`.
+     * Host-supplied because the reason is the host's: on iOS a selector the OS lacks, on the JVM an OS the
+     * world does not model.
+     */
+    private val osExtensionNotApplicable: String =
+        "isUploadJobExtensionEnabled is a 26.1 selector; this OS has none, so the extension " +
+            "could never be registered here and `false` would misreport that as `not registered`",
 ) {
 
     /**
@@ -128,8 +142,8 @@ class RigHooks(
      * happened to be installed already — but that ordering is not guaranteed, and a boot observable only in
      * a log that might not have been receiving yet is not observable.
      */
-    internal fun health(boundPort: Int): String = buildString {
-        append("rig=up port=").append(boundPort).append('\n')
+    internal fun health(boundPort: Int?): String = buildString {
+        append("rig=up port=").append(boundPort ?: "binding").append('\n')
         append("bootedAt=").append(bootedAt ?: "never").append('\n')
     }
 
@@ -144,8 +158,7 @@ class RigHooks(
         return OsExtensionView(
             enabled = enabled,
             notApplicableReason = if (enabled == null) {
-                "isUploadJobExtensionEnabled is a 26.1 selector; this OS has none, so the extension " +
-                    "could never be registered here and `false` would misreport that as `not registered`"
+                osExtensionNotApplicable
             } else {
                 null
             },
@@ -176,7 +189,8 @@ class RigHooks(
      * What a receipted trigger's numbers mean **on this build's binding**, appended to the `note` that
      * already says what they do not answer.
      *
-     * Only `onBackgroundTransfers` earns a caveat, and only under `"default"`. That entry is the one
+     * Only `onBackgroundTransfers` earns a caveat, and only under `"default"` — the one binding whose session
+     * reports nothing; a host with no `URLSession` at all (the JVM host's `"world"`) earns none. That entry is the one
      * whose receipt is released by the session reporting its events drained — a callback a default session
      * never sends (`ios-url-session-upload`, "The transport binding is fixed by the compilation target") —
      * so on that binding the hold is *always* the deadline and the expiry says nothing about the app. The
@@ -188,7 +202,7 @@ class RigHooks(
      * did and did not exercise. A caller cannot read the numbers without reading this.
      */
     internal fun bindingCaveat(trigger: String): String =
-        if (trigger != "onBackgroundTransfers" || transferBinding == "background") {
+        if (trigger != "onBackgroundTransfers" || transferBinding != "default") {
             ""
         } else {
             ". NOTE transferBinding=default (iosSimulatorArm64): this exercised adopt + session-identifier " +
@@ -313,6 +327,12 @@ class CommandResult(val status: Int, val body: String) {
 
         /** A refusal the caller can act on: what was wrong, and what would have been accepted. */
         fun badRequest(why: String) = CommandResult(status = 400, body = """{"error":"$why"}""")
+
+        /**
+         * A verb, or a form of one, that THIS host cannot honour (capability `testing-architecture`, "One
+         * control protocol, served by two hosts") — `409`, with the reason, never a success that did nothing.
+         */
+        fun refused(why: String) = CommandResult(status = 409, body = """{"refused":${jsonString(why)}}""")
     }
 }
 
@@ -347,3 +367,7 @@ fun rigPortFilePath(documentsDirectory: String?): String? =
  * its own port undiscoverable on the next run — loudly, since the reader finds nothing.
  */
 const val RIG_PORT_FILE_NAME: String = "rig.port"
+
+/** [text] as a JSON string literal. */
+internal fun jsonString(text: String): String =
+    "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

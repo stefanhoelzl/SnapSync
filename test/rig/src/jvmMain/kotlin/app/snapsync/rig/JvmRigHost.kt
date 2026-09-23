@@ -1,0 +1,233 @@
+package app.snapsync.rig
+
+import app.snapsync.compose.EntryHooks
+import app.snapsync.compose.extensionEntries
+import app.snapsync.compose.platformEntries
+import app.snapsync.ports.DeviceLogSource
+import app.snapsync.ports.ReceiptDeadlines
+import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.StatusDiagnostics
+import app.snapsync.presentation.StatusSources
+import app.snapsync.world.DenoBackend
+import app.snapsync.world.MiniEdgeBackend
+import app.snapsync.world.World
+import app.snapsync.world.WorldBackend
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * The control channel's **JVM host** (capability `testing-architecture`, "One control protocol, served by two
+ * hosts"): the unchanged [RigServer], over a [World] whose `core` is the real `AppCore` from the same
+ * `snapSyncApp` the iOS shell calls.
+ *
+ * A hook, not a second server — exactly the extension `RigHooks` was shaped for ("a second platform brings its own
+ * hook; the server, the routes and the state projection are unchanged"). What this file adds is only what the iOS
+ * shell adds on its side: the composition lane, the status host over the core's read-models, the inbound ports'
+ * implementations the `/os` verbs invoke, and this host's classification of the shared vocabulary.
+ *
+ * The world is composed on a **serial, non-UI** lane, the structure the device shell uses and the full-stack
+ * harness mirrors (capability `full-stack-harness`, "The harness composes the live core on the shipped lane
+ * structure"); the app root's entry points are invoked on that lane, as Swift invokes them on main.
+ */
+class JvmRigHost private constructor(
+    /**
+     * The world behind the channel. `internal`, so this host's public surface names no world type: a protocol
+     * client reaches the world only through the protocol (capability `module-architecture`).
+     */
+    internal val world: World,
+    internal val host: StatusContainerHost,
+    /** The loopback port the server actually bound. */
+    val port: Int,
+    private val server: RigServer,
+    private val scope: CoroutineScope,
+    private val lane: kotlinx.coroutines.CloseableCoroutineDispatcher,
+) : AutoCloseable {
+
+    /** Stop serving and tear the world down. The backend process, when there is one, is the JVM's, not this host's. */
+    override fun close() {
+        server.stop()
+        scope.cancel()
+        lane.close()
+    }
+
+    companion object {
+        /** A generous bound on binding: a failure to bind is a stated error, never a hang. */
+        private val BIND_TIMEOUT = 30.seconds
+
+        /**
+         * Compose a world over the backend named [backend] — `mini` (the mini-edge) or `deno` (the real `api/`,
+         * through `:test:edge`) — and serve it on loopback [port]. `0` asks the OS for a free port, which is what
+         * a test wants, since hosts share the machine's loopback. Returns once the server has bound.
+         */
+        suspend fun start(backend: String = "mini", port: Int = 0): JvmRigHost = start(backendNamed(backend), port)
+
+        internal fun backendNamed(name: String): WorldBackend = when (name) {
+            "mini" -> MiniEdgeBackend()
+            "deno" -> DenoBackend()
+            else -> error("the JVM rig host's backend must be mini|deno, was '$name'")
+        }
+
+        @OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
+        internal suspend fun start(backend: WorldBackend, port: Int): JvmRigHost {
+            val lane = newSingleThreadContext("rig-jvm-composition")
+            val scope = CoroutineScope(SupervisorJob() + lane)
+            val (world, host) = withContext(lane) { compose(scope, backend) }
+            val bound = CompletableDeferred<Int>()
+            val server = RigServer(
+                core = { world.core },
+                host = { host },
+                hooks = jvmHooks(world, host, lane, publishBoundPort = { bound.complete(it) }),
+                port = port,
+            )
+            server.start()
+            val actual = try {
+                withTimeout(BIND_TIMEOUT) { bound.await() }
+            } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+                server.stop()
+                scope.cancel()
+                lane.close()
+                throw IllegalStateException(
+                    "the JVM rig host did not bind loopback:$port within $BIND_TIMEOUT — see the `[rig]` log line",
+                    timeout,
+                )
+            }
+            return JvmRigHost(world, host, actual, server, scope, lane)
+        }
+
+        private fun compose(scope: CoroutineScope, backend: WorldBackend): Pair<World, StatusContainerHost> {
+            val world = World(scope, backend = backend)
+            val host = StatusContainerHost(
+                StatusSources(
+                    sync = world.syncStatusSource,
+                    permission = world.permission.permission,
+                    config = world.configSource.config,
+                    creation = world.creationStatus,
+                    rename = world.renameStatus,
+                    download = world.downloadStatusSource,
+                ),
+                scope = scope,
+                commands = world.userCommands,
+                queries = world.core.userQueries,
+                // The world's clock is pinned at the epoch for the core; the formatter renders what a person
+                // would see, so it reads the wall clock, as both desktop harnesses do.
+                cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC),
+                diagnostics = StatusDiagnostics(
+                    log = { Logger.withTag("rig-jvm").i { it } },
+                    onIntentError = { Logger.withTag("rig-jvm").e { "user command failed: $it" } },
+                ),
+            )
+            // A minted event opens THIS host's join gate, as the iOS shell routes it — so `/user/create` is followed
+            // by `/user/confirmJoin`, the same two steps a person and the app host take.
+            world.onEventMinted = { eventId -> host.onEventCreated(eventId) }
+            // Host assembly, as the iOS shell performs it when it assembles its host.
+            world.core.installPermissionSubscriptions()
+            return world to host
+        }
+
+        private fun jvmHooks(
+            world: World,
+            host: StatusContainerHost,
+            lane: kotlinx.coroutines.CoroutineDispatcher,
+            publishBoundPort: (Int) -> Unit,
+        ): RigHooks {
+            val entries = platformEntries(
+                core = { world.core },
+                hooks = EntryHooks(
+                    markActive = {},
+                    openUrl = host::onOpenUrl,
+                    assembleHost = {},
+                    deliverPushToken = { hex -> world.pushTokens.deliver(hex) },
+                    // The iOS identifiers, so a test passes the same argument to either host.
+                    downloadBackstopTaskId = DOWNLOAD_BACKSTOP_TASK,
+                    uploadHeartbeatTaskId = UPLOAD_HEARTBEAT_TASK,
+                    uploadTransferChannel = UPLOAD_TRANSFER_CHANNEL,
+                ),
+            )
+            val extension = extensionEntries(ports = { world.uploadPorts }, cycle = { world.cycle })
+            return RigHooks(
+                bootedAt = Clock.System.now().toString(),
+                uploadTier = "world",
+                uploadBase = world.host,
+                transferBinding = "world",
+                mainLane = lane,
+                deviceLog = worldLog(world),
+                triggerGroups = mapOf(
+                    "app" to TriggerGroup(lane = lane, wired = appTriggers(entries), excluded = emptyMap()),
+                    "photokit-ext" to TriggerGroup(
+                        // The extension process has no main lane: its root runs on the OS-invoked thread.
+                        lane = Dispatchers.Default,
+                        wired = mapOf(
+                            "processRawValue" to RigTrigger.Answering { _, body ->
+                                if (body != null) {
+                                    """{"refused":"the world's upload-job queue is the world's own; job sets cannot be handed in","queue":"world"}""" + "\n"
+                                } else {
+                                    val result = extension.process()
+                                    """{"result":"${result.name.lowercase()}","queue":"world",""" +
+                                        """"created":${world.platform.created.size}}""" + "\n"
+                                }
+                            },
+                            "onTerminate" to RigTrigger.Fire { extension.onTerminate() },
+                        ),
+                        excluded = emptyMap(),
+                    ),
+                ),
+                userCommands = userCommands { host },
+                excludedUserCommands = excludedUserCommands(),
+                deviceCommands = worldDeviceCommands(world),
+                readGallery = worldGalleryReader(world),
+                osExtensionEnabled = { null },
+                publishBoundPort = publishBoundPort,
+                contracts = emptyList(),
+                refusals = jvmRefusals(),
+                osExtensionNotApplicable =
+                    "the world composes an operating system without the OS-driven upload mechanism, so there is " +
+                        "no extension registration to report",
+            )
+        }
+
+        private fun appTriggers(entries: app.snapsync.ports.PlatformEntries): Map<String, RigTrigger> = mapOf(
+            "onForeground" to RigTrigger.Fire { entries.onForeground() },
+            "onBackground" to RigTrigger.Fire { entries.onBackground() },
+            "onPushToken" to RigTrigger.Fire { arg -> entries.onPushToken(arg.orEmpty()) },
+            // The app host's warm universal link; its destination is the inbound port's open-URL entry, which is
+            // what the iOS shell reaches after decoding the activity. Same argument: the link.
+            "onSceneContinueActivity" to RigTrigger.Fire { arg -> entries.onOpenUrl(arg.orEmpty()) },
+            "onSilentPush" to RigTrigger.Receipted(ReceiptDeadlines.SILENT_PUSH.inWholeMilliseconds) { arg, done ->
+                entries.onSilentPush(mapOf("eventId" to arg), done)
+            },
+            "onBackgroundTask" to
+                RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { arg, done ->
+                    entries.onBackgroundTask(arg.orEmpty(), done)
+                },
+            "onBackgroundTransfers" to
+                RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_EVENTS.inWholeMilliseconds) { arg, done ->
+                    entries.onBackgroundTransfers(arg.orEmpty(), done)
+                },
+        )
+
+        /** The world's captured log as the `app` process's; the world runs no extension process of its own. */
+        private fun worldLog(world: World) = object : DeviceLogSource {
+            override suspend fun tail(process: DeviceLogSource.Process, maxBytes: Int): String? = when (process) {
+                DeviceLogSource.Process.APP -> world.logs.lines.joinToString("\n").takeLast(maxBytes)
+                DeviceLogSource.Process.EXTENSION -> null
+            }
+        }
+
+        const val DOWNLOAD_BACKSTOP_TASK = "app.snapsync.download.backstop"
+        const val UPLOAD_HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"
+        const val UPLOAD_TRANSFER_CHANNEL = "app.snapsync.upload.session"
+    }
+}
