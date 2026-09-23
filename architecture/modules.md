@@ -112,6 +112,7 @@ flowchart LR
   test_world --> domain_feature
   test_world --> domain_model
   test_world --> domain_ports
+  test_world --> test_contracts
   ui_components --> domain_model
   ui_presentation --> domain_feature
   ui_presentation --> domain_model

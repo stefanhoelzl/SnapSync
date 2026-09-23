@@ -18,7 +18,9 @@ rule that every clause must run against a real implementation somewhere, and how
 recorded at the operating-system boundary and replayed against the current adapter on every build.
 
 Decision records: `changes/archive/2026-09-22-establish-port-contracts`; the injected-location rule and the
-App-Group container column, `changes/archive/2026-09-23-contract-app-group-stores`.
+App-Group container column, `changes/archive/2026-09-23-contract-app-group-stores`; an external service as
+part of the implementation under contract, and the observation handle over outcomes a port cannot return,
+`changes/archive/2026-09-23-contract-backend-clients`.
 
 ## Requirements
 
@@ -55,10 +57,13 @@ kind (`Fake`, `Live` or `Replay`), and declare **as a literal** the set of state
 provide `create(state)`, returning either a fresh implementation already in that state, or
 `Unreachable(reason)`. Every clause SHALL receive a fresh instance.
 
-A clause's subject SHALL be the port, or — for a port that declares **no reads** of its own, such as an
-**inbound** port the core implements (`module-architecture`, "OS entry points cross an inbound port") — the
-port together with an **observation handle** declared beside the contract and implemented by each binding
-over the system it built. Clauses SHALL observe through that handle only **outcomes** of the system behind
+A clause's subject SHALL be the port, or — where an outcome a clause asserts is **not readable through the
+port's own members** — the port together with an **observation handle** declared beside the contract and
+implemented by each binding over the system it built. Two cases are known: a port that declares **no reads**
+of its own, such as an **inbound** port the core implements (`module-architecture`, "OS entry points cross
+an inbound port"); and an outcome the implementation reports through a callback its binding wires rather
+than through the port's result, such as a backend's refusal of this build or of its credential, which reaches
+the app only through the HTTP client's interceptor. Clauses SHALL observe through that handle only **outcomes** of the system behind
 the port (state reached, objects landed, a completion released), never a record of which collaborator the
 implementation called: a call transcript restates the wiring and is passed by any implementation that
 mirrors it. `:test:contracts` SHALL NOT depend on the system a binding builds; the binding adapts it to the
@@ -88,6 +93,14 @@ the project's own logic over the port, written as an ordinary fake-backed test.
 - **WHEN** a contract covers a port whose members return nothing, such as the app's OS entry surface
 - **THEN** each binding supplies the port and an observation handle over the core it composed in the named
   state, and every clause asserts an outcome read through the handle
+
+#### Scenario: An outcome reaches the app only through a callback
+
+- **WHEN** a clause asserts that the backend refuses this build and names the minimum version, and the
+  port's own result can only say the call failed
+- **THEN** the subject carries an observation handle the binding implements over the interceptor callbacks
+  it wired, and the clause reads the refusal the app now holds through it, never a record of which callback
+  ran
 
 ### Requirement: Outcomes are explicit and none is silent
 
@@ -157,6 +170,12 @@ system version, device model, toolchain and date SHALL NOT be host identity; the
 with a run. The enum SHALL hold only hosts that some binding names; this change introduces `JVM`,
 `IOS_SIM_KEXE` and `IOS_DEVICE_APP`.
 
+An external service a binding launches or reaches — the real backend served locally for a test — SHALL
+NOT be a host. It is part of the implementation under contract, and the binding's host is the process
+the binding runs in. Where the port's client is the same in every binding and only the service behind it
+differs, the service decides the binding's kind: a stand-in service is `Fake`, the real one run for real
+is `Live`.
+
 The known host matrix, which the next binding starts from:
 
 | host | process | Keychain, as measured | App-Group container, as measured |
@@ -185,6 +204,12 @@ unavailable therefore has no real host.
 #### Scenario: Two processes on one simulator
 - **WHEN** a binding runs in the simulator's Kotlin/Native test executable
 - **THEN** its host is `IOS_SIM_KEXE`, never a generic "simulator" value shared with a Swift test bundle
+
+#### Scenario: A binding runs the real backend
+
+- **WHEN** a JVM test binding drives a backend client against the real backend it launched locally
+- **THEN** its host is `JVM` and its kind is `Live`, and the same client over an in-memory stand-in of the
+  backend is a `Fake` binding, although the client code is identical in both
 
 ### Requirement: Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every build
 

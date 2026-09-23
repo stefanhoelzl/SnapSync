@@ -54,6 +54,9 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
+            // The mini-edge is bound as the backend port contracts' `Fake` (capability `port-contracts`):
+            // the contracts and their shared setup live in `:test:contracts`' commonMain.
+            implementation(project(":test:contracts"))
         }
     }
 }
