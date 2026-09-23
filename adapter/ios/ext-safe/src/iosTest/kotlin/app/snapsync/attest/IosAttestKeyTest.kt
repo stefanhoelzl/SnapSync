@@ -3,7 +3,6 @@ package app.snapsync.attest
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -12,6 +11,10 @@ import kotlin.test.assertTrue
  * The successful ceremony is out of reach here and always will be: `DCAppAttestService.isSupported`
  * is false on a simulator, and the real attestation is anchored to a Secure Enclave key a simulator
  * does not have. That half of the capability is evidenced on device.
+ *
+ * That a refusal is an exception at all — not a hang, not an invented answer — is `AttestKeyContract`'s, run
+ * live on this host by `AttestContractTest`. What stays here is this adapter's own diagnostic: WHICH step
+ * refused, with the platform's domain and code, which no other implementation of the port need spell alike.
  *
  * What is reachable is the half that decides how a device behaves when the ceremony **cannot** run —
  * which is not an exotic state. `isSupported` is also false inside the upload extension on real
@@ -25,15 +28,6 @@ import kotlin.test.assertTrue
 class IosAttestKeyTest {
 
     private val key = IosAttestKey()
-
-    @Test
-    fun `app attest reports itself unsupported rather than pretending`() {
-        assertFalse(
-            key.isSupported(),
-            "if a simulator ever DOES support App Attest this must be re-read, not silently believed: " +
-                "the rest of this file asserts the refusal path",
-        )
-    }
 
     /**
      * The refusal must arrive as a diagnosable exception. `DeviceAttestation` catches it and reduces

@@ -1,0 +1,59 @@
+package app.snapsync.attest
+
+import app.snapsync.contracts.AttestKeyContract
+import app.snapsync.contracts.AttestKeyState
+import app.snapsync.contracts.AttestStoreContract
+import app.snapsync.contracts.AttestStoreState
+import app.snapsync.contracts.Binding
+import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.Entered
+import app.snapsync.contracts.Host
+import app.snapsync.contracts.verify
+import app.snapsync.ports.AttestKey
+import app.snapsync.ports.AttestStore
+import kotlin.test.Test
+
+/**
+ * App Attest and the attestation store, LIVE in the simulator's Kotlin/Native test executable (capability
+ * `port-contracts`), each built with its production defaults.
+ *
+ * This host presents exactly one state of each: `DCAppAttestService.isSupported` is false on a simulator, and
+ * `securityd` refuses the unentitled executable every `SecItem*` call with `-25291`. Both are the states a
+ * device lands in too — the upload extension has no App Attest, and a background wake before first unlock
+ * cannot read the Keychain — so the refusal paths run against the real APIs on every build. The supported
+ * ceremony and the readable store are recorded on a device and replayed (`AttestReplayContractTest`).
+ */
+class AttestContractTest {
+
+    private val key = object : Binding<AttestKeyState, AttestKey> {
+        override val host = Host.IOS_SIM_KEXE
+        override val kind = BindingKind.Live
+        override val reaches = setOf(AttestKeyState.UNSUPPORTED)
+
+        override fun create(state: AttestKeyState, clauseId: String): Entered<AttestKey> =
+            if (state == AttestKeyState.UNSUPPORTED) {
+                Entered.Ready(IosAttestKey())
+            } else {
+                Entered.Unreachable("a simulator has no App Attest: DCAppAttestService.isSupported is false")
+            }
+    }
+
+    @Test
+    fun `App Attest satisfies the AttestKey contract on this host`() = verify(AttestKeyContract, key)
+
+    private val store = object : Binding<AttestStoreState, AttestStore> {
+        override val host = Host.IOS_SIM_KEXE
+        override val kind = BindingKind.Live
+        override val reaches = setOf(AttestStoreState.INACCESSIBLE)
+
+        override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> =
+            if (state == AttestStoreState.INACCESSIBLE) {
+                Entered.Ready(KeychainAttestStore())
+            } else {
+                Entered.Unreachable("unentitled test executable: securityd refuses every Keychain call (-25291)")
+            }
+    }
+
+    @Test
+    fun `the Keychain satisfies the AttestStore contract on this host`() = verify(AttestStoreContract, store)
+}

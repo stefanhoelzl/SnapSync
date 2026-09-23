@@ -4,13 +4,13 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.eventStart
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.captureCeiling
-import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
+import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.ports.PushHttpClient
+import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
-import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.world.BackendStore
 import app.snapsync.world.World
 import app.snapsync.world.miniEdgeClient
@@ -22,7 +22,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The REAL device-side push registration (`PushRegistration` + `KtorPushHttpClient`) driven against the
+ * The REAL device-side push registration (`PushRegistration` + `HttpPushTokenPublisher`) driven against the
  * world's mini-edge, asserting the world outcome: the device config document lands in the backend store,
  * and — because config lives in its own namespace — it is NOT surfaced as a listed file. (The backend
  * notify fan-out is Deno-side logic, covered by `api/test/app.test.ts`, so it is not re-exercised
@@ -35,7 +35,7 @@ class PushRegistrationIntegrationTest {
     @Test
     fun registration_writes_the_device_config_over_the_world() = worldTest {
         val store = BackendStore()
-        val reg = PushRegistration(KtorPushHttpClient(miniEdgeClient(store)), "https://edge.example/api/v2", deviceId = { deviceId })
+        val reg = PushRegistration(HttpPushTokenPublisher(miniEdgeClient(store), "https://edge.example/api/v2", deviceId = { deviceId }))
 
         reg.register(ApnsPushToken("DEADBEEF", "sandbox"))
 
@@ -115,18 +115,16 @@ class PushRegistrationIntegrationTest {
         val w = World(this, attests = true)
 
         var writes = 0
-        val counting = object : PushHttpClient {
-            private val inner = KtorPushHttpClient(w.client)
+        val counting = object : PushTokenPublisher {
+            private val inner = HttpPushTokenPublisher(w.client, w.host, deviceId = { w.ownDeviceId })
             // Counted AFTER the write completes, so the count means "registrations that landed" — a
             // count taken on entry would let the wait below proceed while the PUT was still in flight.
-            override suspend fun put(url: String, jsonBody: String): Result<Unit> =
-                inner.put(url, jsonBody).also { writes++ }
-
-            override suspend fun post(url: String): Result<Unit> = inner.post(url)
+            override suspend fun publish(token: ApnsPushToken): Result<Unit> =
+                inner.publish(token).also { writes++ }
         }
         val tokens = PushTokenSource("sandbox")
         w.core.installPushRegistration(
-            PushRegistration(counting, w.host, deviceId = { w.ownDeviceId }),
+            PushRegistration(counting),
             tokens,
         )
 

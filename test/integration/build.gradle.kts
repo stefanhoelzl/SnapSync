@@ -38,7 +38,7 @@ kotlin {
             implementation(project(":test:contracts"))
             implementation(project(":domain:compose"))
             implementation(project(":ui:presentation"))
-            // The real Ktor clients some tests drive (HttpEventDirectory, KtorPushHttpClient) moved
+            // The real Ktor clients some tests drive (HttpEventDirectory, HttpPushTokenPublisher) moved
             // to the adapter layer at migration step 4.
             implementation(project(":adapter:generic:app"))
             implementation(kotlin("test"))

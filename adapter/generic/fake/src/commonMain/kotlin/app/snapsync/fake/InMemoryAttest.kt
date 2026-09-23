@@ -21,16 +21,28 @@ internal class InMemoryAttestKey(
 
     /** Distinct per call, like the real Secure Enclave — a fresh key each time one is generated. */
     private var generated = 0
+    private val keys = mutableSetOf<String>()
 
     override fun isSupported(): Boolean = supported
 
-    override suspend fun generateKey(): String = "in-memory-key-${++generated}"
+    // Refusals are exceptions, as the real service's are (`AttestKeyContract`): an unsupported process has no
+    // App Attest to generate WITH, and no key but one this service generated can attest or assert.
+    override suspend fun generateKey(): String {
+        check(supported) { "App Attest generateKey failed: unsupported in this process" }
+        return "in-memory-key-${++generated}".also { keys += it }
+    }
 
     override suspend fun attest(keyId: String, challenge: String): ByteArray =
-        "attestation:$keyId:$challenge".encodeToByteArray()
+        "attestation:${known(keyId, "attestKey")}:$challenge".encodeToByteArray()
 
     override suspend fun assert(keyId: String, challenge: String): ByteArray =
-        "assertion:$keyId:$challenge".encodeToByteArray()
+        "assertion:${known(keyId, "generateAssertion")}:$challenge".encodeToByteArray()
+
+    private fun known(keyId: String, step: String): String {
+        check(supported) { "App Attest $step failed: unsupported in this process" }
+        check(keyId in keys) { "App Attest $step failed: no such key $keyId" }
+        return keyId
+    }
 }
 
 /**
@@ -45,7 +57,14 @@ internal class InMemoryAttestKey(
  * [renews] defaults to **false**, and that is the faithful default rather than a pessimistic one: the case
  * worth standing in for is a backend that holds no attestation record for this device — after a restore,
  * or after the nightly sweep collected it — which refuses the renewal and sends the device down a full
- * attestation. A double that renewed happily would exercise the cheap path and never the recovery.
+ * attestation. A double that renewed happily would exercise the cheap path and never the recovery. `renews =
+ * true` stands in for a device the backend holds an enrolment for — a state no contract host reaches, because
+ * enrolling takes a genuine attestation.
+ *
+ * It mints only for what the real edge would accept in its place: an attestation of the shape
+ * [InMemoryAttestKey] produces for that key, over the challenge THIS double issued (`AttestClientContract`'s
+ * refusal clauses). [mints] = false stands in for an edge refusing even that — a genuine attestation it
+ * declines.
  */
 internal class InMemoryAttestClient(
     private val challengeValue: String? = "in-memory-challenge",
@@ -62,7 +81,11 @@ internal class InMemoryAttestClient(
         keyId: String,
         attestation: ByteArray,
         challenge: String,
-    ): String? = if (mints) token(deviceId) else null
+    ): String? {
+        val genuine = challenge == challengeValue &&
+            attestation.contentEquals("attestation:$keyId:$challenge".encodeToByteArray())
+        return if (mints && genuine) token(deviceId) else null
+    }
 
     override suspend fun renewToken(
         deviceId: String,

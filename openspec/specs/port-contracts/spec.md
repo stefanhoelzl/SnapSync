@@ -21,7 +21,8 @@ Decision records: `changes/archive/2026-09-22-establish-port-contracts`; the inj
 App-Group container column, `changes/archive/2026-09-23-contract-app-group-stores`; an external service as
 part of the implementation under contract, and the observation handle over outcomes a port cannot return,
 `changes/archive/2026-09-23-contract-backend-clients`; the simulator-app host, grant preconditions, and binding
-the composition production calls, `changes/archive/2026-09-23-photokit-contracts`.
+the composition production calls, `changes/archive/2026-09-23-photokit-contracts`; masking minted identifiers and
+credential material in a recording, `changes/archive/2026-09-23-device-credential-contracts`.
 
 ## Requirements
 
@@ -250,10 +251,14 @@ A recording is input to a clause, never an expectation.
 ### Requirement: Replay matches exactly, in order, over deterministic clauses
 
 Recorded requests SHALL be matched exactly and in order within a clause. Answers SHALL be recorded in
-full, with only a named list of volatile keys masked to fixed placeholders. Clause inputs SHALL be
-deterministic — fixed values, a fixed identifier generator, and addresses derived from the clause id. A
-missing recording, or a recording lacking a block for a clause its host's binding declares reachable,
-SHALL be `Failed`.
+full, with only a named list of volatile keys masked to fixed placeholders. A value the operating system
+mints and the adapter sends back in a later call (an identifier such as an App Attest `keyId`) SHALL be
+masked to the same placeholder in the requests that carry it, so a replay feeds the placeholder back and
+the later request still matches. Credential material the operating system mints (an attestation, an
+assertion, a token) SHALL always be masked: recordings are committed to a public repository, and a
+device's credential is never part of one. Clause inputs SHALL be deterministic — fixed values, a fixed
+identifier generator, and addresses derived from the clause id. A missing recording, or a recording lacking
+a block for a clause its host's binding declares reachable, SHALL be `Failed`.
 
 #### Scenario: The adapter reorders two calls
 - **WHEN** the adapter issues the same calls as recorded in a different order
@@ -266,6 +271,17 @@ SHALL be `Failed`.
 #### Scenario: A recording is deleted
 - **WHEN** a replay binding's recording file is absent
 - **THEN** its clauses are `Failed`, not `NotRunHere`
+
+#### Scenario: A minted identifier is sent back
+- **WHEN** the operating system answers a call with a fresh identifier and the adapter passes it to a later
+  call
+- **THEN** both the answer and the later request carry the same placeholder in the recording, and replay
+  matches the later request
+
+#### Scenario: A recorded answer is a credential
+- **WHEN** the operating system answers with attestation or assertion bytes
+- **THEN** the committed recording carries a placeholder in their place, and the clause's assertions hold
+  against it on replay
 
 ### Requirement: A recording is one committed plain-text file per contract and host
 

@@ -12,7 +12,6 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import platform.CoreCrypto.CC_SHA256
 import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
-import platform.DeviceCheck.DCAppAttestService
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.create
@@ -34,14 +33,17 @@ import platform.posix.memcpy
  * token" rather than letting them escape into a background wake.
  */
 @OptIn(ExperimentalForeignApi::class)
-class IosAttestKey(
-    private val service: DCAppAttestService = DCAppAttestService.sharedService,
+class IosAttestKey internal constructor(
+    /** Where the App Attest calls go: the real service, or — in a contract run — a recording. */
+    private val service: AppAttestApi,
 ) : AttestKey {
+
+    constructor() : this(SystemAppAttestApi)
 
     override fun isSupported(): Boolean = service.isSupported()
 
     override suspend fun generateKey(): String = suspendCoroutine { cont ->
-        service.generateKeyWithCompletionHandler { keyId, error ->
+        service.generateKey { keyId, error ->
             if (keyId != null) cont.resume(keyId) else cont.resumeWithException(attestError("generateKey", error))
         }
     }

@@ -34,6 +34,7 @@ Roots found:
 | `HttpEventUnionSource` | x | |
 | `HttpLeaveNotifier` | x | |
 | `HttpManifestPublisher` | | x |
+| `HttpPushTokenPublisher` | x | |
 | `IosAlbumManager` | x | x |
 | `IosAlbumMapStore` | x | x |
 | `IosAttestKey` | x | |
@@ -48,7 +49,6 @@ Roots found:
 | `IosStagedBytes` | x | |
 | `KeychainAttestStore` | x | x |
 | `KeychainDeviceIdentity` | x | x |
-| `KtorPushHttpClient` | x | |
 | `MetricKitProcessMetricSource` | x | |
 | `OsDrivenRegistration` | x | |
 | `PhotoKitAssetPresence` | x | |

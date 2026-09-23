@@ -1,6 +1,7 @@
 package app.snapsync.feature.push
 
-import app.snapsync.ports.PushHttpClient
+import app.snapsync.model.ApnsPushToken
+import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
 
 import co.touchlab.kermit.Logger
@@ -9,57 +10,22 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-
-/**
- * An APNs device token and the APNs environment it belongs to — the `pushToken` persisted in
- * `devices/<deviceId>.json`. `env` is `"sandbox"` (dev/sideloaded builds) or `"production"`
- * (TestFlight/App Store).
- */
-data class ApnsPushToken(val token: String, val env: String)
-
-@Serializable
-private data class PushTokenDto(val kind: String, val token: String, val env: String)
-
-@Serializable
-private data class DeviceConfigDto(val pushToken: PushTokenDto)
-
-private val json = Json { encodeDefaults = true }
-
-/** The `devices/<id>.json` config body for [token] — always `kind: "apns"` in this app. */
-internal fun deviceConfigJson(token: ApnsPushToken): String =
-    json.encodeToString(DeviceConfigDto.serializer(), DeviceConfigDto(PushTokenDto("apns", token.token, token.env)))
 
 /**
  * Registers the device's APNs token with the backend (capability `push-registration`). On each token —
- * launch delivery and every rotation — it `PUT`s `<host>/devices/<deviceId>` with
- * `{ pushToken: { kind: "apns", token, env } }` via the injected [client]. String/JSON-building only —
- * no crypto, and **no event id** (the token is device-scoped, event-independent). A failed write is
- * absorbed (logged) and retried on the next token, so registration never blocks join/upload/download.
- * Idempotent: re-registering the same token overwrites an identical config (last-write-wins at the
- * endpoint), so repeated launches with an unchanged token are harmless.
+ * launch delivery and every rotation — it publishes the token through the [publisher] port, whose adapter
+ * owns the address and the body. **No event id** (the token is device-scoped, event-independent). A failed
+ * publish is absorbed (logged) and retried on the next token, so registration never blocks
+ * join/upload/download. Idempotent: re-publishing the same token overwrites an identical config
+ * (last-write-wins at the endpoint), so repeated launches with an unchanged token are harmless.
  */
 class PushRegistration(
-    private val client: PushHttpClient,
-    host: String,
-    /**
-     * The device identity, as a **supplier** rather than a resolved value.
-     *
-     * This was the one consumer that took the value: every other call site already threads `{ deviceId }`.
-     * Taking it eagerly meant that constructing this feature resolved the identity, which matters on a host
-     * where the secure store cannot serve one — the resolution throws, and a value captured at construction
-     * has no way to be retried once the condition clears (capability `device-identity`). A supplier reaches
-     * the resolution per use, so a later attempt succeeds where an earlier one could not.
-     */
-    private val deviceId: () -> String,
+    private val publisher: PushTokenPublisher,
     private val log: Logger = Logger.withTag("PushRegistration"),
 ) {
-    private val host = host.trimEnd('/')
-
-    /** `PUT` the config for [token] now. Absorbs any failure (never throws to the caller). */
+    /** Publish [token] now. Absorbs any failure (never throws to the caller). */
     suspend fun register(token: ApnsPushToken) {
-        client.put("$host/devices/${deviceId()}", deviceConfigJson(token))
+        publisher.publish(token)
             .onSuccess { log.i { "push token registered" } }
             .onFailure { log.w(it) { "push registration failed (will retry on next token)" } }
     }

@@ -74,8 +74,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `ProcessMetricSource` | `:domain:ports` | `:adapter:ios:app-only` MetricKitProcessMetricSource | no |
 | `ProtectedStorage` | `:domain:ports` | `:adapter:generic:fake` InMemoryProtectedStorage; `:adapter:ios:app-only` IosProtectedStorage | yes |
-| `PushHttpClient` | `:domain:ports` | `:adapter:generic:app` KtorPushHttpClient; `:domain:feature` FakePushHttpClient | yes |
 | `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver, UploadPushReceiver | no |
+| `PushTokenPublisher` | `:domain:ports` | `:adapter:generic:app` HttpPushTokenPublisher; `:domain:feature` FakePushTokenPublisher | yes |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable | no |
 | `RenameOutcome` | `:domain:ports` | `:domain:ports` InvalidName, Renamed, Transient | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |

@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SceneMode
 import app.snapsync.model.appVisibilityFrom
@@ -37,8 +38,7 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.feature.membership.toJoinLoad
-import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.feature.push.ApnsPushToken
+import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
@@ -592,11 +592,11 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // adapter, not inline: what an absent key becomes is a decision, and this shell holds none.
     internal val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
 
-    // Registers the device APNs token with the backend (PUT devices/<id>/config) over the shared Darwin
+    // Registers the device APNs token with the backend (PUT devices/<id>) over the shared Darwin
     // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
     // on the next token, never blocking join/upload/download. The collector is launched from [host].
     private val pushRegistration: PushRegistration by lazy {
-        PushRegistration(KtorPushHttpClient(http), backendHost, deviceId = { deviceId })
+        PushRegistration(HttpPushTokenPublisher(http, backendHost, deviceId = { deviceId }))
     }
 
     // The silent-push cross-arm fan-out (a push means "the event changed": foreign photos to pull, and —
