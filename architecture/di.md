@@ -18,7 +18,6 @@ Roots found:
 | Constructed type | SnapSyncRoot | UploadExtensionRoot |
 |---|---|---|
 | `AlbumCoordinator` | | x |
-| `ApnsPushToken` | x | |
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
 | `CutoffFormatter` | x | |
@@ -59,7 +58,6 @@ Roots found:
 | `PlatformHandoff` | x | |
 | `ProcessMetricHandler` | x | |
 | `PublicNSLogWriter` | x | x |
-| `PushRegistration` | x | |
 | `PushTokenSource` | x | |
 | `SentryDiagnosticsReporter` | x | x |
 | `StatusContainerHost` | x | |

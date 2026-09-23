@@ -21,9 +21,9 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 
 - [x] 2.1 Build `provision`, `refreshAttestation` and `registerPush` in `compose/` from the core, and remove them from `AppPorts`, `SnapSyncRoot` and `World`. `registerPush` gets `PushRegistration` and `PushTokenSource` from the core.
 - [x] 2.2 Make the world's operator `provision()` lever a separate operator edge (behaviour unchanged, per the harness-world-model spec), and point `onEventMinted`'s default at the composed Provision flow.
-- [ ] 2.3 Delete the world's `init`-time touches of core lazies (for example `core.downloadController`). Add a test-only `initializedMembers()` accessor on `AppCore`, and a test asserting that a freshly built world has initialized only what the iOS root forces at process start.
-- [ ] 2.4 Add a `@ParityFor("<entry>")` integration test in `:test:integration` for each OS entry point in `SnapSyncRoot`: foreground, background, open-url, push token, silent push, upload heartbeat, download backstop, and background-URLSession relaunch. Each starts from a cold core.
-- [ ] 2.5 Add the entry-point parity gate: derive the entry points from `OsHandlerContainmentTest`'s scan and match them exactly against the tagged tests.
+- [x] 2.3 Delete the world's `init`-time touches of core lazies (for example `core.downloadController`), and add the boots-cold gate: `World.kt` may reach `core.` only when deferred (`by lazy`, `get()`, a lambda or function body). A text gate rather than a test-only lazy-introspection accessor, which common Kotlin cannot provide without reflection.
+- [x] 2.4 Add a `@ParityFor("<entry>")` integration test in `:test:integration` for each OS entry point in `SnapSyncRoot`: foreground, background, open-url, push token, silent push, upload heartbeat, download backstop, and background-URLSession relaunch. Each starts from a cold core.
+- [x] 2.5 Add the entry-point parity gate: derive the entry points from the root's `Shell` delegate and match them exactly against the tagged tests.
 - [x] 2.6 Remove the push-on-join test's manual `provisionFlow.run(...)` workaround, now that a join runs the real flow.
 
 ## 3. G3: failures (PR 3)

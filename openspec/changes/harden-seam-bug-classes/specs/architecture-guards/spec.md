@@ -175,8 +175,9 @@ lane-decorated.
 
 ### Requirement: Every OS entry point has a parity test
 
-A gate SHALL fail the build when an OS entry point in the iOS root (the set the OS-handler containment
-gate already enumerates) has no integration test tagged with that entry point's name. The inventory is
+A gate SHALL fail the build when an OS entry point in the iOS root (the `fun` members of its `Shell`
+delegate, excluding the Compose door) has no integration test tagged with that entry point's name, and when a
+tag names an entry point that does not exist. The inventory is
 derived from the shell source, never hand-listed, and the gate SHALL fail closed when it resolves no entry
 point.
 

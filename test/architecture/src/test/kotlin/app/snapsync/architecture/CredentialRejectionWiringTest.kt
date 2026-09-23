@@ -83,7 +83,9 @@ class CredentialRejectionWiringTest {
                 "device would 401 forever behind a screen reading \"Syncing\"",
         )
         assertTrue(
-            Regex("""refreshAttestation\(\)""").containsMatchIn(src),
+            // The shell's own refresh helper left for compose/ (`harden-seam-bug-classes`); the hook now asks the
+            // trust feature directly.
+            Regex("""attestation\.refresh\(\)""").containsMatchIn(src),
             "the rejection hook drops the token but never asks for a new one. Recovery would then wait " +
                 "for the next process wake, and a refused push registration — written once per " +
                 "OS-delivered APNs token — would wait for the next launch",

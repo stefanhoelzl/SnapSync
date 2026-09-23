@@ -1,6 +1,5 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.ports.PushHttpClient
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -48,16 +47,13 @@ import app.snapsync.flow.DownloadBackstop
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
-import app.snapsync.model.instantToCutoff
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.PermissionStatus
-import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
@@ -84,7 +80,6 @@ import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.EventCreation
 import app.snapsync.ports.EventRename
-import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.DeviceManifestStore
@@ -103,7 +98,6 @@ import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import app.snapsync.ports.ProtectedStorage
-import kotlin.time.Instant
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
@@ -592,8 +586,10 @@ class AppCore internal constructor(
             // join gate — passes here, so the album gather is started once the provision returns. It starts
             // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
             // outlives its own run"), and the gather must not hold up the join (capability `event-album`).
+            // Built HERE, not supplied by the shell: the world used to bind provision to a body of its own, so a
+            // join in the world never ran `flow/Provision`. Labelled `provisionEvent` so the flow's steps carry it.
             provision = { cfg ->
-                provisionEvent(cfg)
+                ports.log.invocation(ports.logScope, "provisionEvent") { provisionFlow.run(cfg) }
                 albumGather.start("provision", cfg.eventId)
             },
         )
@@ -807,7 +803,7 @@ class AppCore internal constructor(
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
-            refreshAttestation = { refreshAttestation() },
+            refreshAttestation = { attestation.refresh() },
         )
     }
 
@@ -818,7 +814,7 @@ class AppCore internal constructor(
     val silentPushFlow: SilentPush by lazy {
         SilentPush(
             reloadConfig = { ports.configRefresh.refresh() },
-            refreshAttestation = { refreshAttestation() },
+            refreshAttestation = { attestation.refresh() },
             // Download arm first, then the upload arm on the app-driven tier (order preserved from the
             // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
             // lazily; on iOS ≥26.1 it is null and only the download arm is woken.
@@ -838,7 +834,7 @@ class AppCore internal constructor(
         DownloadBackstop(
             downloadController = downloadController,
             reloadConfig = { ports.configRefresh.refresh() },
-            refreshAttestation = { refreshAttestation() },
+            refreshAttestation = { attestation.refresh() },
         )
     }
 
@@ -862,7 +858,7 @@ class AppCore internal constructor(
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `limited-photo-access`).
             isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
-            registerPush = { registerPush() },
+            registerPush = { pushRegistration.reRegister(ports) },
         )
     }
 
@@ -921,7 +917,7 @@ class AppCore internal constructor(
      * A command the caller waits on, run on the composition lane. Used where the screen needs the
      * outcome in hand — the join gate's `commitJoin` returns whether it joined.
      */
-    private suspend fun <T> awaitingOnCoreLane(
+    internal suspend fun <T> awaitingOnCoreLane(
         name: String,
         params: String = "",
         result: (T) -> String = { "" },
@@ -952,22 +948,8 @@ class AppCore internal constructor(
         scope.launch(ports.uiLane) { tapLog.invocation(ports.logScope, name, result = result) { block() } }
     }
 
-    /**
-     * The user-query bundle (spec `module-architecture`, "Queries cross a lane-gated door"): the reads the
-     * status container invokes, built here beside the commands and awaited on the composition lane, so a
-     * store, photo-library or network read never runs on the thread that asked — for the shareable count
-     * that used to be a composable effect on the main thread.
-     */
-    val userQueries: UserQueries by lazy {
-        UserQueries(
-            loadJoinDetails = { id ->
-                awaitingOnCoreLane("query.loadJoinDetails", "eventId=$id") { joinEvent.loadDetails(id).toJoinLoad() }
-            },
-            shareableCount = { cutoff, until ->
-                awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }
-            },
-        )
-    }
+    /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
+    val userQueries: UserQueries by lazy { userQueriesFor() }
 
     val userCommands: UserCommands by lazy {
         UserCommands(
@@ -1177,9 +1159,8 @@ class AppCore internal constructor(
      * `:app:*` it is untested by law and invisible to the world harness, so nothing would observe it being
      * removed. Composed here, the same call the device makes is the one the harness makes.
      *
-     * The registration and the token source are passed in rather than built: both are platform-shaped
-     * (a Ktor client over the shell's shared HTTP stack, and the compile-time APNs environment), and
-     * `:domain` builds no platform object.
+     * The registration is composed here over the push ports (see [pushRegistrationFor]); the token source is
+     * the shell's, delivered by the OS.
      */
     fun installPushRegistration() {
         scope.launch {
@@ -1188,33 +1169,9 @@ class AppCore internal constructor(
         }
     }
 
-    /**
-     * The device's push registration (capability `push-registration`), built HERE over the push port rather
-     * than by a shell: the launch/rotation collector above and the join's re-registration below are the same
-     * instance on every composition, so the world exercises the real one.
-     */
-    val pushRegistration: PushRegistration by lazy {
-        PushRegistration(ports.pushHttpClient, ports.backendHost, identity = ports.deviceIdentity)
-    }
+    /** The device's push registration (capability `push-registration`) — see [pushRegistrationFor]. */
+    val pushRegistration: PushRegistration by lazy { pushRegistrationFor(ports) }
 
-    /** Re-register the delivered APNs token on join — a no-op before the OS has delivered one. */
-    private suspend fun registerPush() {
-        ports.pushTokens.token.value?.let { pushRegistration.register(ApnsPushToken(it, ports.pushTokens.env)) }
-    }
-
-    /** Renew the attestation token if it is stale — a wake point every trigger flow awaits (`device-attestation`). */
-    private suspend fun refreshAttestation() = attestation.refresh()
-
-    /**
-     * Persist the WHOLE config a join or create built and run the join side effects: `flow/Provision`, under the
-     * `provisionEvent` entry-point label so its synchronous steps carry it. Built here, not supplied by the shell:
-     * the world used to bind this seam to a body of its own, so a join in the world never ran the Provision flow.
-     */
-    private suspend fun provisionEvent(cfg: EventConfig) = ports.log.invocation(
-        ports.logScope,
-        "provisionEvent",
-        params = "eventId=${cfg.eventId} name=${cfg.name} cutoff=${cfg.minPhotoDate}",
-    ) { provisionFlow.run(cfg) }
 }
 
 /**

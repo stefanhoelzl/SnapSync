@@ -273,11 +273,13 @@ state, which resets whenever `config.eventId` changes.
 
 ### D14. Entry-point parity tests and a cold world
 
-- **Cold world:** `World` drops its `init`-time touches of core lazies. A test checks this by building the
-  world and asserting that no `AppCore` lazy is initialized. `AppCore` exposes a test-only
-  `initializedMembers()` over its `Lazy` delegates, compiled into the world's test source set via a
-  friend-path accessor rather than into production API.
-- **Parity tests:** the entry-point inventory comes from `OsHandlerContainmentTest`'s existing scan. Each
+- **Cold world:** `World` drops its `init`-time touches of core lazies, and a text gate (`WorldBootsColdTest`)
+  keeps it that way: `World.kt` may reach `core.` only when deferred. *As built:* this replaced the planned
+  test-only `initializedMembers()` accessor, because common Kotlin cannot enumerate `Lazy` delegates without
+  reflection, and a production hook for a test would be the wrong trade.
+- **Parity tests:** the entry-point inventory comes from the root's `Shell` delegate (the surface
+  `ios-app-shell` names), not from `OsHandlerContainmentTest`, which enumerates handler *storage* rather than
+  entry points. Each
   entry point gets a `@ParityFor("<entry>")`-tagged test in `:test:integration`, and the parity gate matches
   the two sets exactly.
 

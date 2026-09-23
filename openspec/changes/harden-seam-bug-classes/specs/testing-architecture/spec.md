@@ -3,7 +3,8 @@
 ### Requirement: Every OS entry point is exercised from a cold core
 
 Each OS entry point SHALL have an integration test that starts from a cold core.
-For every OS entry point the iOS root exposes (the set the OS-handler containment gate enumerates), an
+For every OS entry point the iOS root exposes (the `fun` members of its `Shell` delegate, which the spec
+`ios-app-shell` names as the surface every OS entry point delegates to), an
 integration test in `:test:integration` SHALL build a fresh `AppCore` over the world's ports, touch **only**
 the core members that entry point's shell delegate touches, and assert the entry point's outcome. The test
 SHALL be tagged with the entry point's name so the parity gate in `architecture-guards` can find it.
