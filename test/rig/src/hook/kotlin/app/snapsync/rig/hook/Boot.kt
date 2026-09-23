@@ -19,7 +19,7 @@ import app.snapsync.rig.TriggerGroup
 import app.snapsync.rig.RigUserCommand
 import app.snapsync.rig.UploaderSwitch
 import app.snapsync.rig.deviceCommands
-import app.snapsync.rig.extensionContractEntries
+import app.snapsync.contract.extension.extensionContractEntries
 import app.snapsync.rig.noMembershipRefusal
 import app.snapsync.keychain.contract.deviceContracts
 import app.snapsync.contract.appDeviceContracts

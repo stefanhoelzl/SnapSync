@@ -52,7 +52,7 @@ private fun retryCall(job: UploadJobFacts, to: NSURLRequest) = "retry(path=${job
 private fun createCall(to: NSURLRequest, resource: Any) = "create(${to.render()} resource=${resourceKind(resource)})"
 private fun landedCall(route: String) = "landed($route)"
 /** The key names a photo of THIS device, so it is masked: a replay, which has no such photo, makes the same call. */
-private fun liveResourceCall(@Suppress("UNUSED_PARAMETER") key: String) = "liveResource(key=<masked>)"
+private const val LIVE_RESOURCE_CALL = "liveResource(key=<masked>)"
 
 private fun LiveResource?.render() = if (this == null) "none" else "photo type=${type.orNone()}"
 
@@ -104,7 +104,7 @@ internal class RecordingUploadJobApi(private val real: UploadJobApi, private val
         real.retry(job, destination).also { recorder.record(retryCall(job, destination), it.render()) }
     override fun create(destination: NSURLRequest, resource: Any) =
         real.create(destination, resource).also { recorder.record(createCall(destination, resource), it.render()) }
-    override fun liveResource(key: String) = real.liveResource(key).also { recorder.record(liveResourceCall(key), it.render()) }
+    override fun liveResource(key: String) = real.liveResource(key).also { recorder.record(LIVE_RESOURCE_CALL, it.render()) }
 }
 
 /** Answers every call from one clause's recorded block, exactly and in order. */
@@ -113,7 +113,7 @@ internal class ReplayingUploadJobApi(private val replayer: Replayer) : UploadJob
     override fun acknowledge(job: UploadJobFacts) = parseChange(replayer.answer(ackCall(job)))
     override fun retry(job: UploadJobFacts, destination: NSURLRequest) = parseChange(replayer.answer(retryCall(job, destination)))
     override fun create(destination: NSURLRequest, resource: Any) = parseChange(replayer.answer(createCall(destination, resource)))
-    override fun liveResource(key: String) = parseLive(replayer.answer(liveResourceCall(key)))
+    override fun liveResource(key: String) = parseLive(replayer.answer(LIVE_RESOURCE_CALL))
 }
 
 private fun Landed?.render() = if (this == null) "none" else "ct=${contentType.orNone()}"

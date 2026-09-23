@@ -1,15 +1,5 @@
-package app.snapsync.rig
+package app.snapsync.contract.extension
 
-import app.snapsync.contract.extension.RUN_REQUEST_FILE
-import app.snapsync.contract.extension.RUN_RESULT_FILE
-import app.snapsync.contract.extension.clearLanded
-import app.snapsync.contract.extension.contractRunFile
-import app.snapsync.contract.extension.deleteContractRunFile
-import app.snapsync.contract.extension.RUN_CALL_FILE
-import app.snapsync.contract.extension.clearRunProgress
-import app.snapsync.contract.extension.extensionRunPlan
-import app.snapsync.contract.extension.readContractRunFile
-import app.snapsync.contract.extension.writeContractRunFile
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.BackgroundTransferContract
@@ -20,13 +10,15 @@ import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RegistrationOutcome
 import app.snapsync.ports.UploadExtensionRegistry
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import app.snapsync.contracts.runEntry
+import platform.Foundation.NSThread
 import platform.Foundation.NSProcessInfo
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+
+/** How often the app looks for the extension's answer. */
+private const val POLL_SECONDS: Double = 2.0
 
 /** How long one call takes to come: the OS calls again five minutes after `PROCESSING` (measured), plus margin. */
 private val PER_CALL: Duration = 6.minutes
@@ -81,9 +73,10 @@ private fun requestRun(request: String, registry: () -> UploadExtensionRegistry?
     clearRunProgress()
     clearLanded()
     if (!writeContractRunFile(requestPath, request)) return "could not write the run request"
-    val enabled = runBlocking {
+    var enabled: RegistrationOutcome? = null
+    runEntry {
         registry()?.setEnabled(false)
-        registry()?.setEnabled(true)
+        enabled = registry()?.setEnabled(true)
     }
     if (enabled == RegistrationOutcome.Applied(enabling = true)) return null
     deleteContractRunFile(requestPath)
@@ -100,7 +93,7 @@ private fun awaitResult(clauseId: String, bound: Duration): String {
             deleteContractRunFile(resultPath)
             return body
         }
-        runBlocking { delay(2.seconds) }
+        NSThread.sleepForTimeInterval(POLL_SECONDS)
     }
     val call = contractRunFile(RUN_CALL_FILE)?.let(::readContractRunFile)?.trim() ?: "1"
     val pending = contractRunFile(RUN_REQUEST_FILE)?.let(::readContractRunFile) != null

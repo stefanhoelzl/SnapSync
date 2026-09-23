@@ -247,15 +247,11 @@ class IosPhotoKitUploadPlatform internal constructor(
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
         log.invocation("platform.createJob", params = "key=${request.resource.filename}", result = { "$it" }) {
-        val data = resource.data ?: run {
-            log.w { "createJob: the resource carries no payload — not creating" }
-            return@invocation CreateResult.FAILED
-        }
         val url = NSURL.URLWithString(request.url)?.takeIf { isUploadDestination(request.url) } ?: run {
             log.w { "createJob: malformed destination URL — not creating" }
             return@invocation CreateResult.FAILED
         }
-        val answer = api.create(uploadUrlRequest(url, request), data)
+        val answer = api.create(uploadUrlRequest(url, request), resource.data)
         // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
         createResultFor(if (answer.ok) null else answer.code ?: UNCODED_REFUSAL).also { result ->
             when (result) {

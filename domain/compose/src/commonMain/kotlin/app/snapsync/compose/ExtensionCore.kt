@@ -46,6 +46,8 @@ fun extensionEntries(
         // is recorded as measured"). So this records an ordinary end at `Info`. A KILLED call is the one that reads
         // as a `→ process` with no `← process` and no line from here — which is how to tell the two apart.
         override fun onTerminate() = log.invocation(logScope, "onTerminate") {
-            log.i { "the OS ended this invocation (notifyTermination follows a normal return; a killed call gets none)" }
+            log.i {
+                "the OS ended this invocation — notifyTermination follows a normal return; a killed call gets none"
+            }
         }
     }
