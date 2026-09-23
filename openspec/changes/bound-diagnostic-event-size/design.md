@@ -68,16 +68,30 @@ Per-part caps are deterministic, testable in `commonTest`, and sum on paper.
 |---|---|---|
 | dump log tails | 700,000 B (unchanged) + JSON escaping, measured ~1% on log text | ≈ 707,000 |
 | dump note, state, ledger, message | as today (see Context) | ≤ 4,000 |
-| breadcrumbs | **count pinned at 100** (`options.maxBreadcrumbs`); **each crumb's message plus string data values ≤ 1,024 B combined**, message first; plus ~300 B of per-crumb JSON (timestamp, level, category, type, keys) | ≤ 133,000 |
+| breadcrumbs | **count pinned at 100** (`options.maxBreadcrumbs`); **each crumb's message plus string data values ≤ 512 B combined**, message first. That text can double once JSON-escaped (a crumb of quotes), plus ~300 B of per-crumb JSON (timestamp, level, category, type, keys) | ≤ 133,000 |
 | `process_metrics` + tags + user + release | fixed fields | ≤ 8,000 |
 | SDK contributions (device/os/app contexts, current-thread stack, its debug images, sdk info) | allowance, not a cap | ≤ 100,000 |
 | **total** | | **≈ 952,000**, leaving ≈ 96 KB below 1,048,576 |
+
+**Measured** (2026-09-23; macOS runner, iOS simulator, `IOS_SIM_KEXE`, sentry-cocoa 8.58.2; `LoopbackIngest`
+printing each large envelope's decoded size; D5's clause with escape-heavy inputs):
+
+| # | Observation |
+|---|---|
+| E1 | With a **1,024 B** crumb cap, the worst-case dump was **989,122 B**, only 59 KB below the ceiling. The same 100 crumbs alone (the sentinel event) were 193,208 B: escaping, which this table first left out, nearly doubled the crumb row. |
+| E2 | So the cap was halved to **512 B**. The worst-case dump then measured **903,912 B**, leaving **144,664 B** of slack, and the crumb-only event 108,851 B. |
+| E3 | A data map changed in `beforeBreadcrumb` **does** reach the native crumb. A 3,000 B `url` arrived as 489 B plus `…[+2511 B]`. |
+| E4 | Negative check, not committed: with the cap raised to 8,192 B the dump measured **1,825,548 B**. The ingest refused it, the SDK re-sent it (the queue blocking, seen live), and the clause went `NotWithin(45000ms)`, failing the build. |
+
+The escape-heavy inputs are deliberately worse than real text: their log tails escape about 10%, against the
+~1% measured on real logs. The real slack is larger than E2's.
 
 An automatic event carries no log tails. Its message and each exception value are capped at **8,192 B**. A
 cause chain is a handful of links, so it sits far below the ceiling even with a full crash stack. The cap
 exists to stop one runaway string (an exception quoting a response body, say) rather than to fit a budget.
 
-The combined per-crumb cap is what makes the row bounded. A per-field cap (message ≤ 1 KB, each data value
+512 B rather than the 1,024 first proposed: see E1–E2. A crumb is context; a longer line survives in full in the
+device log, and the dump carries that log. The combined per-crumb cap is what makes the row bounded. A per-field cap (message ≤ 1 KB, each data value
 ≤ 1 KB) would leave the row open-ended, because an SDK auto-breadcrumb can carry several data keys.
 
 The crumb cap is applied in `scrubbedBreadcrumb`, which is already `beforeBreadcrumb` and so covers our crumbs
@@ -117,25 +131,22 @@ If a stuck queue is ever observed in the field, this is the decision to revisit.
 holding (an SDK upgrade adding contexts, a cap removed) turns into `NotWithin`, and since
 `fc7712a1` a `NotWithin` fails the run.
 
-The fake answers `NotRunHere`, like the other wire clauses. The clause names no SDK: it speaks through the
+The fake answers `Unreachable` for the wire state, like the other wire clauses. The clause names no SDK: it speaks through the
 port and the Kermit seam only.
 
 ## Risks / Trade-offs
 
-- **[Risk] The SDK allowance is an estimate.** → D5 measures the real total on every `ios-test` run.
-  Measure the actual decoded size once during apply and record it here, so the slack is a number rather than
-  a claim.
+- **[Risk] The SDK allowance is an estimate.** → D5 measures the real total on every `ios-test` run, and E2
+  records it: 903,912 B, with 144,664 B of slack.
 - **[Risk] Adversarial log text escapes worse than 1%** (each `"` or `\` doubles, control characters become
-  six bytes). → The logs are our own text, and D5 uses an escape-heavy tail to measure that the ~96 KB slack
-  absorbs a realistic mix. A dump of pure quotes is not a realistic input.
-- **[Trade-off] A crumb over 1 KB loses its tail on the channel.** → The device log keeps it in full, and the
+  six bytes). → The logs are our own text, and D5 uses tails that escape at ten times the real rate. E2 shows the slack
+  absorbs that. A dump of pure quotes is not a realistic input.
+- **[Trade-off] A crumb over 512 B loses its tail on the channel.** → The device log keeps it in full, and the
   dump carries that log. The marker says the crumb was cut.
 - **[Trade-off] A refused envelope still blocks the queue if something unforeseen exceeds the ceiling.** →
   Accepted (D4). The clause is the tripwire.
 
 ## Open Questions
 
-- Does sentry-kmp's `beforeBreadcrumb` write a changed **data** map back to the native breadcrumb? The
-  existing scrub relies on it for data strings, but only the message round-trip is measured (M3). Apply
-  measures it in D5's clause. If data does not round-trip, the cap falls back to the message alone and the
-  per-crumb allowance in D2 is re-derived from the SDK's own auto-breadcrumb data.
+None open. Whether a changed breadcrumb data map round-trips to the native crumb was open when this was
+proposed, and E3 settles it: it does.

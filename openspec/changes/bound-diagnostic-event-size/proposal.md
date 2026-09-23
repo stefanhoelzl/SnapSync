@@ -52,5 +52,5 @@ a device that stops reporting looks like a device that never crashes.
   `DIAGNOSTIC_LOG_BUDGET_BYTES`, whose value does not change. The truncation helper is pure and lives here
   too, so it is covered in `commonTest`.
 - `:test:contracts`: `DiagnosticsReporterContract` gains a clause.
-- `:adapter:generic:fake`: the fake answers the new clause (or `NotRunHere` if it is a wire clause).
+- `:adapter:generic:fake`: no change; its binding already answers `Unreachable` for the wire state the new clause runs in.
 - No new port, no new dependency, no shell change. The device logs are untouched.

@@ -2,9 +2,14 @@ package app.snapsync.logging
 
 import app.snapsync.config.bakedSentryDsn
 import app.snapsync.config.bakedSentryEnvironment
+import app.snapsync.model.BREADCRUMB_TEXT_BYTES
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.EVENT_TEXT_BYTES
+import app.snapsync.model.MAX_BREADCRUMBS
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.NON_REDACTED_TAG
+import app.snapsync.model.capAllUtf8
+import app.snapsync.model.capUtf8
 import app.snapsync.model.redactUuids
 import app.snapsync.model.redactsMessages
 import app.snapsync.ports.DiagnosticsReporter
@@ -141,6 +146,9 @@ class SentryDiagnosticsReporter internal constructor(
             // crash-time accurate (the SDK falls back to the report's own recorded build number).
             options.sendDefaultPii = false
             options.enableCaptureFailedRequests = false
+            // Pinned, not defaulted: it is a row of the whole-event sum that keeps every event under the
+            // ingest's ceiling (see MAX_EVENT_BYTES), and the sum must not rest on a default a later SDK may change.
+            options.maxBreadcrumbs = MAX_BREADCRUMBS
             options.beforeBreadcrumb = { crumb -> scrubbedBreadcrumb(crumb) }
             options.beforeSend = { event -> scrubbedEvent(event) }
         }
@@ -211,12 +219,20 @@ internal fun resetProcessStart() {
 private fun bundleValue(key: String): String? =
     (NSBundle.mainBundle.objectForInfoDictionaryKey(key) as? String)?.takeIf { it.isNotBlank() }
 
-/** Covers the SDK's automatic breadcrumbs too — ours arrive pre-scrubbed from [SentryLogWriter]. */
+/**
+ * Covers the SDK's automatic breadcrumbs too — ours arrive pre-scrubbed from [SentryLogWriter].
+ *
+ * Then bounds it: the message and string data values share [BREADCRUMB_TEXT_BYTES], message first. This is the
+ * breadcrumb row of the whole-event sum (see [MAX_EVENT_BYTES]). The cap comes after the redaction, so it measures
+ * what is actually sent. The device log keeps the line in full.
+ */
 internal fun scrubbedBreadcrumb(crumb: Breadcrumb): Breadcrumb {
-    crumb.message = crumb.message?.let(::redactUuids)
-    crumb.getData()?.forEach { (key, value) ->
-        if (value is String) crumb.setData(key, redactUuids(value))
-    }
+    val message = crumb.message?.let(::redactUuids)
+    val data = crumb.getData().orEmpty().mapNotNull { (key, value) -> (value as? String)?.let { key to redactUuids(it) } }
+    val capped = capAllUtf8(listOfNotNull(message) + data.map { it.second }, BREADCRUMB_TEXT_BYTES)
+    val cappedData = if (message != null) capped.drop(1) else capped
+    if (message != null) crumb.message = capped.first()
+    data.zip(cappedData).forEach { (entry, value) -> crumb.setData(entry.first, value) }
     return crumb
 }
 
@@ -231,15 +247,18 @@ internal fun scrubbedBreadcrumb(crumb: Breadcrumb): Breadcrumb {
  */
 internal fun scrubbedEvent(event: SentryEvent): SentryEvent {
     if (!redactsMessages(event.tags.orEmpty())) return event
+    // Redacted, then capped at EVENT_TEXT_BYTES: not a tight budget (automatic events carry no log tails), but
+    // one runaway string must not make an event the ingest refuses, which would block the queue behind it.
+    val bounded = { text: String -> capUtf8(redactUuids(text), EVENT_TEXT_BYTES) }
     event.message = event.message?.let { m ->
         m.copy(
-            message = m.message?.let(::redactUuids),
-            formatted = m.formatted?.let(::redactUuids),
+            message = m.message?.let(bounded),
+            formatted = m.formatted?.let(bounded),
             params = m.params?.map(::redactUuids),
         )
     }
     event.exceptions = event.exceptions
-        .map { it.copy(value = it.value?.let(::redactUuids)) }
+        .map { it.copy(value = it.value?.let(bounded)) }
         .toMutableList()
     event.breadcrumbs.forEach { scrubbedBreadcrumb(it) }
     return event

@@ -3,22 +3,33 @@ package app.snapsync.model
 /**
  * The **total** bytes of device log one diagnostic dump may carry (capability `diagnostic-logging`).
  *
- * It is a hard bound, not a target. The reporting channel's server rejects an event over
- * `MAX_EVENT_SIZE` = 1 MiB (`1_048_576`) with a `413`, and the reporting SDK surfaces no transport
- * error — so an over-budget dump completes and tells the user nothing. Worse, it is not dropped: the
- * SDK deletes a cached envelope only on a `200` and sends the oldest first, so the rejected dump stays
- * queued and blocks every later report from this process, across launches, until 30 newer envelopes
- * evict it (sentry-cocoa 8.58.2 `SentryHttpTransport`). The only defence is to stay clear of the
- * ceiling.
+ * It is a hard bound, not a target. The reporting channel's server rejects an event over [MAX_EVENT_BYTES] with a
+ * `413`, and the SDK surfaces no transport error, so the dump completes and tells the user nothing. The refused
+ * dump is also not dropped: it stays queued and blocks every later report from the app, across launches, until 30
+ * newer envelopes evict it (see [MAX_EVENT_BYTES]). The only defence is to stay clear of the ceiling.
  *
- * Measured against the real instance (2026-07-29): two 340 KB log sections plus the small state and
- * ledger sections serialised to 686,923 B — JSON overhead on log text is ~1% — and came back
- * byte-identical, while 2 × 560 KB was rejected at 1,130,997 B. At this budget an assembled dump
- * lands near 760 KB once the SDK adds its own contexts, release, and up to 100 breadcrumbs, leaving
- * ~280 KB of headroom.
+ * The dump rides in an event with other parts, so this budget is one row of a **whole-event sum**. Every other row
+ * is capped too (capability `crash-reporting`):
  *
- * Raising this means raising `MAX_EVENT_SIZE` on the reporting server first — which the hosted plan
- * does not allow. The two move together or not at all.
+ * | part | worst case |
+ * |---|---|
+ * | these log tails, plus JSON escaping (measured ~1% on log text) | ≈ 707,000 |
+ * | note, state, ledger, message (fixed keys; the longest value is a 100-char event name) | ≤ 4,000 |
+ * | [MAX_BREADCRUMBS] breadcrumbs × ([BREADCRUMB_TEXT_BYTES], up to 2× once JSON-escaped, + ~300 B each) | ≤ 133,000 |
+ * | `process_metrics`, tags, user, release | ≤ 8,000 |
+ * | the SDK's own contexts, current-thread stack and debug images (an allowance, not a cap) | ≤ 100,000 |
+ * | **total**, against 1,048,576 | **≈ 952,000** |
+ *
+ * The `DiagnosticsReporter` contract's worst-case clause sends this event to an ingest that refuses anything over
+ * the ceiling, so an SDK upgrade that grows its share fails a clause rather than a device. Measured 2026-09-23
+ * (sentry-cocoa 8.58.2, simulator): **903,912 B** decoded, with log tails deliberately escape-heavy (~10% rather
+ * than the ~1% real log text shows) and every breadcrumb all-escapes.
+ *
+ * Measured against the real instance (2026-07-29): two 340 KB log sections plus the small state and ledger
+ * sections serialised to 686,923 B, and came back byte-identical, while 2 × 560 KB was rejected at 1,130,997 B.
+ *
+ * Raising this means raising `MAX_EVENT_SIZE` on the reporting server first, which the hosted plan does not
+ * allow. The two move together or not at all.
  */
 const val DIAGNOSTIC_LOG_BUDGET_BYTES: Int = 700_000
 
@@ -55,9 +66,9 @@ class DiagnosticDump(
     /**
      * Bytes of **log** carried — what [DIAGNOSTIC_LOG_BUDGET_BYTES] bounds.
      *
-     * The [note] is deliberately excluded. It is bounded to a couple of hundred bytes against ~280 KB
-     * of measured headroom, so subtracting it would buy nothing and would couple a UI field's cap to
-     * a measured transport constant.
+     * The [note] is deliberately excluded. It is bounded to a couple of hundred bytes and counted in the
+     * whole-event sum's 4 KB row, so subtracting it here would buy nothing and would couple a UI field's
+     * cap to a measured transport constant.
      */
     val logBytes: Int
         get() = appLog.encodeToByteArray().size + extensionLog.encodeToByteArray().size
