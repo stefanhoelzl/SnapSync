@@ -164,6 +164,35 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   plist lists), so ⚠️ **the run leaves the rig build's upload heartbeat CANCELLED** — the app's next trigger
   (a foreground, a completed cycle) re-arms it. Its volatile key (`begin`, the absolute earliest-begin
   date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.
+- **`UploadExtensionRegistry`** records once per photo grant, into a file named for it. With **full** access:
+  `…/contract/UploadExtensionRegistry > …/UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec`; then switch the
+  app to **Limited** access in Settings, relaunch, and record `…LIMITED.rec`; then switch back. The body's
+  `# file:` header names the file each run belongs in. The full-grant run disables and re-enables the extension
+  (wiping in-flight upload jobs), so it answers `409` while the device is a member of an event — reset first
+  (`POST /device/reset`), deliberately.
+
+### Recording INSIDE the upload extension — `?host=IOS_DEVICE_PHOTOKIT_EXT`
+
+The upload-job contract (`BackgroundTransfer`) records in the upload extension, the process production calls
+PhotoKit's job API from. The rig cannot reach that process, so the app requests the run through the App Group and
+re-registers the extension, which makes the OS invoke it; the extension runs the contract instead of its upload
+cycle and writes the recording back, and the verb answers it:
+
+```bash
+curl -s --max-time 120 -X POST "localhost:18099/contract/BackgroundTransfer?host=IOS_DEVICE_PHOTOKIT_EXT" \
+  > test/contracts/recordings/BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec
+```
+
+- **The build must be baked to the loopback upload base** — `snapsync.deployment=local` with
+  `deployments/local.json`'s domain at `127.0.0.1:18099` (the rig's port): the jobs upload to the rig's own
+  receiver, which answers each fixture route (`TransferFixture`) with the status in its path. Any other base is
+  refused (`409`). Revert `deployments/local.json` before committing.
+- Preconditions: full photo grant, no membership (`409` names the fix), and at least one photo in the library (a
+  usable resource is the newest photo; the run seeds none).
+- `504` means no result within 90 s. Its body says which half failed: the OS never invoked the extension — it
+  **backs off 6–11 min after a call it killed**, and ignores triggers meanwhile — or the run was taken and killed
+  at the ~60 s budget. Wait out a backoff; do not hammer it.
+- The run leaves the extension registered under the loopback base; a normal build's join re-registers it.
 
 ## `/contract` on the simulator app — the PhotoKit contracts, live
 
