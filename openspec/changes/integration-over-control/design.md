@@ -145,7 +145,7 @@ tests are unaffected.
 
 **Observable** (asserted): what `UiState` shows, and what a system outside the app records:
 - **the backend**: objects, union, manifests, device config, event existence and name, departed members,
-  and request counts (publishes, attest mints);
+  and request counts (publishes);
 - **the photo library**: the gallery census, album contents, original filenames;
 - **the operating system's upload jobs**: `/device/jobs`;
 - **the staging directory's files**;
@@ -177,7 +177,7 @@ refuses naming exactly that.
 | Group | Entries |
 |---|---|
 | Device reads | `staging` (file listing), `diagnostics/sent`, `album/contents`; `GalleryView` gains each asset's original filename (app host: from `PHAssetResource`) |
-| Backend reads | `backend/union`, `backend/manifest`, `backend/device-config`, `backend/event` (exists + name), `backend/departed`, `backend/publishes`, `backend/attest-mints`, `backend/pushes` |
+| Backend reads | `backend/union`, `backend/manifest`, `backend/device-config`, `backend/event` (exists + name), `backend/departed`, `backend/publishes`, `backend/pushes` |
 | Backend levers | `backend/sweep`, `backend/min-app-version`, `backend/hold-leave` (+ release), `backend/fail-route` (device-files listing), `backend/deposit` (bytes, no ack), `backend/legacy-event` (no `startsAt`), `backend/refuse-credential` (next one) |
 | World and OS levers | `clock/advance`, `selection/change`, `relaunch`, `app-version`, `gallery/fail-next-enumeration`, `import/suspend-next` (`afterCommit`), `import/resume`, `import/await-parked`, `logs/append` (app + extension) |
 | Parameters on existing verbs | `gallery/seed` takes `id`, `date` and `kind` = `screenshot`/`hd-video`/`live-photo` (the app host refuses `id` and those kinds with a reason); `foreign-device` takes `filename`; `downloads/stage` returns while an import is parked |
@@ -229,8 +229,8 @@ reads the record out; it delivers nothing on its own, because the operator plays
 - **PushRegistration `:112`**: the backend refuses the first registration's credential, so no device config
   lands. After a new credential, the config appears, with no second delivery.
 - **PushRegistration `:146`**: no second attest mint.
-- **StagedByteReclaim ×4** assert the staging directory's files. The backlog they start from is reached through the
-  import levers plus `relaunch` if those can produce it (see Open Questions).
+- **StagedByteReclaim ×4** assert the staging directory's files. Their backlog is the state an upgraded install
+  holds, written by the one flagged lever (see Open Questions).
 
 **Weakened:** CycleEntryGate `:31`'s "the ledger is untouched" becomes "nothing uploaded, no job created".
 
@@ -356,9 +356,11 @@ Rollback is a revert; nothing it touches is persisted anywhere users hold.
 
 ## Open Questions
 
-- Whether the StagedByteReclaim backlog (imported rows whose staged bytes remain) is reachable through the import
-  levers and `relaunch`. If not, those four tests need a `staging/seed-backlog` world lever, which is the one
-  entry here that writes app-private state, and it is flagged for review.
+- ~~Whether the StagedByteReclaim backlog is reachable through the import levers and `relaunch`.~~ **Resolved:** it
+  is not. It is state only an install from before per-asset byte release holds, since every current import
+  releases its bytes inline. The four tests therefore stand on one flagged lever, `staging/seed-legacy-backlog`
+  (`World.seedLegacyStagedBacklog`). It is the only lever that writes app-private state, and it models an
+  upgrade from an older build. The tests' assertions stay on the staging directory's files.
 
 - Whether the relaunch must also model the OS's delivery of a background-session completion to a
   relaunched app (`ColdDownloadRelaunch`), or only the adoption of an already-staged transfer. The existing

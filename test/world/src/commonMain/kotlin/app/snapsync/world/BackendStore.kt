@@ -6,6 +6,9 @@ import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.roleFromUploadKey
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * One entry of the per-device file listing (`GET /files/devices/<id>`) — `{filename, url}`.
@@ -122,6 +125,18 @@ class BackendStore {
     /** Failure lever: when true, the per-device listing and event-union routes fail (mini-edge `502`). */
     var offline: Boolean = false
 
+    /** Failure lever: when true, ONLY the per-device file listing fails (`502`); every other route serves. */
+    var failDeviceListing: Boolean = false
+
+    /** Failure lever: the next token-bearing request to a gated route is answered `401`, once. */
+    var refuseNextCredential: Boolean = false
+
+    /**
+     * Hold lever: while set, a leave (`DELETE /events/<id>/devices/<id>`) waits for it to complete before the
+     * backend answers — the backend that has not answered yet, held for as long as a test needs.
+     */
+    var leaveHold: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+
     /**
      * Operator lever: the minimum app version the **v2** routes demand, or `null` for a gate that is OFF.
      *
@@ -138,8 +153,57 @@ class BackendStore {
 
     /** Deposit one stored object into a device's byte partition (store-direct byte transfer). */
     fun deposit(deviceId: String, filename: String) {
+        val before = servableByEvent(deviceId)
         byteStore.getOrPut(deviceId) { linkedSetOf() }.add(filename)
+        // AFTER the write, as the real byte route does: an event this byte completed an asset in wakes its other
+        // members (capability `upload-completion-notify`). A byte that completed nothing wakes nobody.
+        servableByEvent(deviceId).forEach { (eventId, assets) ->
+            if (!before[eventId].orEmpty().containsAll(assets)) notifyMembers(eventId, deviceId)
+        }
     }
+
+    /** Per event this device is a member of, the asset ids of its that are servable (every declared role stored). */
+    private fun servableByEvent(deviceId: String): Map<String, Set<String>> =
+        memberships.filterKeys { it.second == deviceId }.map { (key, membership) ->
+            val present = byteStore[deviceId].orEmpty()
+            key.first to membership.manifest.assets
+                .filter { asset -> asset.resources.isNotEmpty() && asset.resources.all { it.key in present } }
+                .mapTo(mutableSetOf()) { it.assetId }
+        }.toMap()
+
+    /**
+     * A push the backend would have sent (the APNs mock, capability `harness-world-model`, "The mini-edge records
+     * the pushes it would send"): the event it announces, and the member and token it was addressed to.
+     */
+    data class SentPush(val eventId: String, val deviceId: String, val token: String)
+
+    private val sentPushes = mutableListOf<SentPush>()
+
+    /** Every push the backend would have sent, in order — inspectable outcome. */
+    fun pushesSent(): List<SentPush> = sentPushes.toList()
+
+    /**
+     * The fan-out the real backend performs after a write that made something newly servable: every OTHER
+     * **active** member of [eventId] holding a registered push token is sent one silent push. Recorded, never
+     * delivered — the operator plays the operating system and fires the silent-push entry point itself.
+     */
+    private fun notifyMembers(eventId: String, publisherId: String) {
+        memberships
+            .filter { (key, membership) ->
+                key.first == eventId && key.second != publisherId && membership.state == MemberState.ACTIVE
+            }
+            .forEach { (key, _) ->
+                pushTokenOf(key.second)?.let { sentPushes += SentPush(eventId, key.second, it) }
+            }
+    }
+
+    /** The APNs token a device registered (`PUT /devices/<id>`'s `pushToken.token`), or null. */
+    private fun pushTokenOf(deviceId: String): String? =
+        deviceConfigs[deviceId]?.let { json ->
+            runCatching {
+                Json.parseToJsonElement(json).jsonObject["pushToken"]?.jsonObject?.get("token")?.jsonPrimitive?.content
+            }.getOrNull()
+        }
 
     /**
      * Register an event marker (the `POST /events` effect / a direct injection), with an optional name and
@@ -271,8 +335,11 @@ class BackendStore {
             refused[eventId to deviceId] = (refused[eventId to deviceId] ?: 0) + 1
             return true
         }
+        val before = servableByEvent(deviceId)[eventId].orEmpty()
         memberships[eventId to deviceId] = existing.copy(manifest = incoming, manifestVersion = version)
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
+        // Only a publish that WON and made something newly servable wakes anyone, as on the real route.
+        if (!before.containsAll(servableByEvent(deviceId)[eventId].orEmpty())) notifyMembers(eventId, deviceId)
         return true
     }
 

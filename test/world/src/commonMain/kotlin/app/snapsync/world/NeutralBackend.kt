@@ -81,7 +81,67 @@ class NeutralBackend internal constructor(
     fun manifestVersionOf(eventId: String, deviceId: String): Answer<Long?> =
         onMiniEdge("the stored manifest version", NOT_ON_THE_HTTP_SURFACE) { it.manifestVersionOf(eventId, deviceId) }
 
+    /** Whether [deviceId] has LEFT [eventId] — its membership marked departed. */
+    fun isDeparted(eventId: String, deviceId: String): Answer<Boolean> =
+        onMiniEdge("the departed read", NOT_ON_THE_HTTP_SURFACE) { it.isDeparted(eventId, deviceId) }
+
+    /** The config document [deviceId] registered (its push token), or null — `PUT /devices/<id>`'s effect. */
+    fun deviceConfigOf(deviceId: String): Answer<String?> =
+        onMiniEdge("the device-config read", NOT_ON_THE_HTTP_SURFACE) { it.deviceConfigOf(deviceId) }
+
+    /** The name the backend serves for [eventId] — its details route, over HTTP; null when it has none. */
+    suspend fun eventNameOf(eventId: String): Answer<String?> {
+        val response = client.get("$host/events/$eventId")
+        if (response.status == HttpStatusCode.NotFound) return Answer.Available(null)
+        check(response.status.isSuccess()) { "the event details route answered ${response.status.value} for $eventId" }
+        val name = Json.parseToJsonElement(response.bodyAsText()).jsonObject["name"]
+        return Answer.Available(name?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content)
+    }
+
+    /** Every push the backend would have sent, in order — the APNs mock's record. */
+    fun pushesSent(): Answer<List<BackendStore.SentPush>> =
+        onMiniEdge("the pushes read", "the local real edge sends no push and keeps no record of one") {
+            it.pushesSent()
+        }
+
     // ---- levers ---------------------------------------------------------------------------------
+
+    /** Only the per-device file listing fails (`502`); every other route serves. */
+    fun setDeviceListingFails(fails: Boolean): Answer<Unit> =
+        onMiniEdge("the listing-failure lever", "nothing makes the real edge fail one route") {
+            it.failDeviceListing = fails
+        }
+
+    /** The next token-bearing request to a gated route is answered `401`, once. */
+    fun refuseNextCredential(): Answer<Unit> =
+        onMiniEdge("the credential-refusal lever", "the local real edge authenticates with a fallback credential") {
+            it.refuseNextCredential = true
+        }
+
+    /** Hold every leave until [releaseLeave]: the backend that has not answered yet. */
+    fun holdLeave(): Answer<Unit> =
+        onMiniEdge("the leave hold", "nothing holds a real request open") {
+            it.leaveHold = kotlinx.coroutines.CompletableDeferred()
+        }
+
+    /** Let a held leave (and every later one) be answered. */
+    fun releaseLeave(): Answer<Unit> =
+        onMiniEdge("the leave release", "nothing holds a real request open") {
+            it.leaveHold?.complete(Unit)
+            it.leaveHold = null
+        }
+
+    /**
+     * An event registered before start dates existed — no `startsAt`, so the backend synthesizes one from its
+     * creation time, with the millisecond precision a legacy marker carries. Returns the id, minted as the backend
+     * mints one.
+     */
+    fun registerLegacyEvent(name: String): Answer<String> =
+        onMiniEdge("the legacy-event lever", "the real edge's create requires a start date") {
+            val eventId = legacyEventId()
+            it.registerEvent(eventId, name)
+            eventId
+        }
 
     /** Backend-offline — the per-device listing and event-union routes answer `502` (capability `harness-world-model`). */
     fun setOffline(offline: Boolean): Answer<Unit> =
@@ -163,12 +223,20 @@ class NeutralBackend internal constructor(
         return response
     }
 
+    /** A UUID for a legacy marker, fresh per call, in a range the mini-edge's own minting never reaches. */
+    private fun legacyEventId(): String {
+        legacyCounter += 1
+        return "00000000-0000-4000-9000-" + legacyCounter.toString().padStart(LEGACY_ID_DIGITS, '0')
+    }
+    private var legacyCounter = 0L
+
     private inline fun <T> onMiniEdge(operation: String, why: String, read: (BackendStore) -> T): Answer<T> =
         (backend as? MiniEdgeBackend)?.let { Answer.Available(read(it.store)) }
             ?: Answer.unavailable(backend, operation, why)
 
     private companion object {
         const val NOT_ON_THE_HTTP_SURFACE = "the real edge keeps it in its database and serves no route that reads it"
+        const val LEGACY_ID_DIGITS = 12
         const val NOT_RUNTIME_DRIVABLE = "the real edge runs it on its own schedule, and no route drives it at runtime"
 
         /** A minimal JPEG, as the backend contracts' setup seeds one — the bytes are never read back. */

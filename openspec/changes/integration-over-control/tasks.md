@@ -12,12 +12,12 @@
 
 ## 2. World levers and reads (D5, D6, D7)
 
-- [ ] 2.1 Classify every `World` cell as durable or process memory in one place, and implement `World.relaunch()` over that list, with the cold-start sequence. Add a `:test:world` test that pins each durable cell surviving and each memory cell starting fresh.
-- [ ] 2.2 Add the APNs record to the mini-edge (a push per registered token when the event changes) and the neutral read, which answers unavailable on deno. Add a `:test:world` test for it.
-- [ ] 2.3 Add the neutral backend reads the mini-edge lacks: departed, device config, event name, publish count, attest-mint count. Each answers unavailable on deno where the public surface cannot serve it.
-- [ ] 2.4 Add backend levers on the neutral surface: hold-leave (+ release), fail the device-files listing route, deposit bytes without an ack, register a legacy event with no `startsAt`, refuse the next credential. Each answers unavailable on deno.
-- [ ] 2.5 Add world levers: `failNextEnumeration`, seeding with chosen id/date/kind (screenshot, HD video, Live Photo), a filename on the foreign-device helper, appending to the app and extension log cells the dump reads, and an await-parked-import signal.
-- [ ] 2.6 Determine whether the StagedByteReclaim backlog is reachable through the import levers plus `relaunch` (design, Open Questions). If it is not, add the `staging/seed-backlog` lever and flag it in the PR.
+- [x] 2.1 Classify every `World` cell as durable or process memory in one place, and implement `World.relaunch()` over that list, with the cold-start sequence. Add a `:test:world` test that pins each durable cell surviving and each memory cell starting fresh.
+- [x] 2.2 Add the APNs record to the mini-edge (a push per registered token when the event changes) and the neutral read, which answers unavailable on deno. Add a `:test:world` test for it.
+- [x] 2.3 Add the neutral backend reads the mini-edge lacks: departed, device config, event name (publish count already existed). Each answers unavailable on deno where the public surface cannot serve it. The attest-mint count was not added: the world's attestation client is its own mock, not the backend, so PushRegistration `:146` is reshaped instead.
+- [x] 2.4 Add backend levers on the neutral surface: hold-leave (+ release), fail the device-files listing route, deposit bytes without an ack, register a legacy event with no `startsAt`, refuse the next credential. Each answers unavailable on deno.
+- [x] 2.5 Add world levers: `failNextEnumeration`, seeding with chosen id/date/kind (screenshot, HD video, Live Photo), a filename on the foreign-device helper, appending to the app and extension log cells the dump reads, and an await-parked-import signal.
+- [x] 2.6 Determine whether the StagedByteReclaim backlog is reachable through the import levers plus `relaunch` (design, Open Questions). If it is not, add the `staging/seed-backlog` lever and flag it in the PR.
 
 ## 3. The protocol (D5)
 

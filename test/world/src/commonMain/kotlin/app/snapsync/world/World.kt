@@ -14,6 +14,7 @@ import app.snapsync.compose.UploadPorts
 import app.snapsync.composition.ComposedApp
 import app.snapsync.composition.snapSyncHost
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.ports.PlannedResource
 import app.snapsync.time.SystemClock
 import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
@@ -229,6 +230,13 @@ class World(
     var downloadTransport: FakeDownloadTransport? = null
         private set
 
+    /**
+     * The operating system's background download session — the transfers it holds for this app. Durable across
+     * a [relaunch], as a background `URLSession` is: a relaunched app's transport finds the transfers the dead
+     * process started, and their completions arrive there.
+     */
+    private val downloadSession: MutableList<FakeDownloadTransport.Started> = mutableListOf()
+
     // Wired to the store exactly as the iOS shell wires the real importer: the marker is written from
     // inside the "change block", before the created asset is observable. Without this the world cannot
     // reach an unconfirmed row — a marker written, the confirmation never arriving — which is the state
@@ -315,9 +323,10 @@ class World(
      * is null, because the mini-edge is unauthenticated and the world says so explicitly.
      */
     val client = backend.newClient().withCredentialInterceptor(
-        token = { null },
-        // The core's verdicts object, as the device hands it — the rejection arm never fires while the token is
-        // null (a rejection must name a sent token), and is bound anyway so the world composes what the device does.
+        // An attesting world sends the credential it holds, as a device does, so a backend that rejects it reaches
+        // the core's rejection route; otherwise none, because the mini-edge is unauthenticated.
+        token = { if (attests) core.attestation.token() else null },
+        // The core's verdicts object, as the device hands it — its rejection arm fires only for a sent token.
         verdicts = { core.backendVerdicts },
         appVersion = { appVersion },
     )
@@ -490,6 +499,8 @@ class World(
     // needs a token change to happen at all.
     private val attestKey: AttestKey = inMemoryAttestKey(supported = attests)
     private val attestClient: AttestClient = inMemoryAttestClient(mints = attests)
+    // The Keychain's attestation record: durable across a relaunch, as on a device.
+    private val attestStore = inMemoryAttestStore()
 
     /**
      * The world's wall clock, in epoch millis — an operator **lever**, pinned at the epoch so nothing
@@ -515,95 +526,139 @@ class World(
     val backstopScheduler: CountingBackstopScheduler = CountingBackstopScheduler()
 
     /**
+     * The job the composed app runs under — a child of the caller's [scope], so the caller still owns its
+     * lifetime, and the one thing [relaunch] ends: a process death takes every collector and in-flight feature
+     * launch with it, and nothing else.
+     */
+    private var appJob: Job = Job(scope.coroutineContext[Job])
+    private var appScope: CoroutineScope = CoroutineScope(scope.coroutineContext + appJob)
+
+    /**
      * The core AND the status host over it, from the shared host composition the iOS shell calls (spec
      * `module-architecture`, "One shared composition"). The host is assembled on first touch of [statusHost], which
      * installs the permission and push-registration subscriptions, exactly as on the phone; a world whose
      * [statusHost] is never touched installs neither (the desktop harness, whose operator plays the OS).
+     * Replaced by [relaunch], which is the only thing that replaces it.
      */
-    val composed: ComposedApp = snapSyncHost(
-        scope = scope,
-        ports = AppPorts(
-            // The world's platform-UI ports are in-memory doubles, so there is no real main thread to
-            // reach. It takes the SAME lane as the composition scope rather than an unconfined default:
-            // a lane that means "wherever the caller happened to be" is precisely what this law ends.
-            uiLane = scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext,
-            diagnosticsReporter = inMemoryDiagnosticsReporter(
-                started = diagnosticsStarted,
-                sent = diagnosticsSent,
-                isConfigured = true,
-            ),
-            // A device unlocked since boot: the background entry points record this, and nothing decides on it.
-            protectedStorage = inMemoryProtectedStorage(),
-            // The device logs a dump reads back (capability `diagnostic-logging`) — empty until an
-            // operator seeds them, which is honest: a world has no device writing log files.
-            deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
-            configSource = configSource,
-            // The world's membership lives in-process in the config cell, so there is nothing to re-read.
-            configRefresh = {},
-            backstopScheduler = backstopScheduler,
-            // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
-            extensionRegistration = { null },
-            uploaderPin = { null },
-            configStore = configStore,
-            photoAccess = permission,
-            photoAccessRequester = requester,
-            selectionChanges = inMemoryPhotoSelectionChangeSource(selectionChangesCell),
-            // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N; the
-            // operator then invokes the cycle by hand, exactly like every other world trigger. That used
-            // to be an inert `pumpSelectionChanged = {}` port here; it is now the world mechanism's own
-            // stated answer to the trigger (`OperatorUploadEngine`), which is where a mechanism's
-            // response to a kick belongs.
-            candidateSource = enumerator,
-            // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
-            // load seeds it from (capability `upload-state-reconciliation`).
-            uploadRecord = UploadRecordPorts(
-                ledger = ledgerBackend,
-                files = deviceFiles,
-            ),
-            downloadStore = downloadStore,
-            assetPresence = assetPresence,
-            // Staging root AND release, one port: the world's staged paths are built from the same
-            // root the fake reports, exactly as the App-Group container is on device.
-            stagedBytes = stagedBytes,
-            importer = importer,
-            newDownloadTransport = { transportHost ->
-                FakeDownloadTransport(transportHost, stagedFiles).also { downloadTransport = it }
-            },
-            union = unionSource,
-            directory = HttpEventDirectory(client, host),
-            eventJoin = eventJoin,
-            manifestStore = manifestStore,
-            eventCreation = HttpEventCreation(client, host),
-            eventRename = HttpEventRename(client, host),
-            attestKey = attestKey,
-            attestClient = attestClient,
-            attestStore = inMemoryAttestStore(),
-            deviceIdentity = { ownDeviceId },
-            clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
-            // The world's one stated clock deviation: the core's clock is the operator's pinned [nowMillis], the
-            // screen's is the wall clock — so a status screen over the world renders dates a person would see.
-            displayClock = SystemClock,
-            // UTC, so a rendered capture date is the same on every machine the world runs on.
-            timeZone = { TimeZone.UTC },
-            appStoreUrl = WORLD_APP_STORE_URL,
-            // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
-            appDrivenUpload = { operatorEngine },
-            albumManager = albumManager,
-            albumMapStore = albumMapStore,
-            // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
-            // constant over the world's forgeable album membership, exactly as the shell wires it.
-            leaveNotifier = leaveNotifier,
-            // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
-            // world runs the REAL Provision flow now — including this re-registration — rather than a
-            // world-local provision body (capability `harness-world-model`).
-            pushTokenPublisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
-                PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
-            },
-            pushTokens = pushTokens,
-            onEventMinted = { eventId -> onEventMinted(eventId) },
-            log = logs.logger("World"),
+    var composed: ComposedApp = snapSyncHost(appScope, appPorts())
+        private set
+
+    /**
+     * The ports one launch of the app composes over. A function, not a value, because [relaunch] composes a new
+     * app over them: every port here is built over a cell the world holds as **durable** (see [relaunch]), so a
+     * relaunched app finds what a relaunched process would find, and nothing else.
+     */
+    private fun appPorts(): AppPorts = AppPorts(
+        // The world's platform-UI ports are in-memory doubles, so there is no real main thread to
+        // reach. It takes the SAME lane as the composition scope rather than an unconfined default:
+        // a lane that means "wherever the caller happened to be" is precisely what this law ends.
+        uiLane = scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext,
+        diagnosticsReporter = inMemoryDiagnosticsReporter(
+            started = diagnosticsStarted,
+            sent = diagnosticsSent,
+            isConfigured = true,
         ),
+        // A device unlocked since boot: the background entry points record this, and nothing decides on it.
+        protectedStorage = inMemoryProtectedStorage(),
+        // The device logs a dump reads back (capability `diagnostic-logging`) — empty until an
+        // operator seeds them, which is honest: a world has no device writing log files.
+        deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
+        configSource = configSource,
+        // The world's membership lives in-process in the config cell, so there is nothing to re-read.
+        configRefresh = {},
+        backstopScheduler = backstopScheduler,
+        // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
+        extensionRegistration = { null },
+        uploaderPin = { null },
+        configStore = configStore,
+        photoAccess = permission,
+        photoAccessRequester = requester,
+        selectionChanges = inMemoryPhotoSelectionChangeSource(selectionChangesCell),
+        // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N; the
+        // operator then invokes the cycle by hand, exactly like every other world trigger. That used
+        // to be an inert `pumpSelectionChanged = {}` port here; it is now the world mechanism's own
+        // stated answer to the trigger (`OperatorUploadEngine`), which is where a mechanism's
+        // response to a kick belongs.
+        candidateSource = enumerator,
+        // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
+        // load seeds it from (capability `upload-state-reconciliation`).
+        uploadRecord = UploadRecordPorts(
+            ledger = ledgerBackend,
+            files = deviceFiles,
+        ),
+        downloadStore = downloadStore,
+        assetPresence = assetPresence,
+        // Staging root AND release, one port: the world's staged paths are built from the same
+        // root the fake reports, exactly as the App-Group container is on device.
+        stagedBytes = stagedBytes,
+        importer = importer,
+        newDownloadTransport = { transportHost ->
+            FakeDownloadTransport(transportHost, stagedFiles).also { downloadTransport = it }
+        },
+        union = unionSource,
+        directory = HttpEventDirectory(client, host),
+        eventJoin = eventJoin,
+        manifestStore = manifestStore,
+        eventCreation = HttpEventCreation(client, host),
+        eventRename = HttpEventRename(client, host),
+        attestKey = attestKey,
+        attestClient = attestClient,
+        attestStore = inMemoryAttestStore(),
+        deviceIdentity = { ownDeviceId },
+        clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
+        // The world's one stated clock deviation: the core's clock is the operator's pinned [nowMillis], the
+        // screen's is the wall clock — so a status screen over the world renders dates a person would see.
+        displayClock = SystemClock,
+        // UTC, so a rendered capture date is the same on every machine the world runs on.
+        timeZone = { TimeZone.UTC },
+        appStoreUrl = WORLD_APP_STORE_URL,
+        // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
+        appDrivenUpload = { operatorEngine },
+        albumManager = albumManager,
+        albumMapStore = albumMapStore,
+        // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
+        // constant over the world's forgeable album membership, exactly as the shell wires it.
+        leaveNotifier = leaveNotifier,
+        // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
+        // world runs the REAL Provision flow now — including this re-registration — rather than a
+        // world-local provision body (capability `harness-world-model`).
+        pushTokenPublisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
+            PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
+        },
+        pushTokens = pushTokens,
+        onEventMinted = { eventId -> onEventMinted(eventId) },
+        log = logs.logger("World"),
     )
+
+
+
+    /**
+     * **Process death and a cold launch** (capability `harness-world-model`, "The world relaunches its app over
+     * its durable state"): end the running app — every collector and feature launch it owns — and compose a new
+     * one, through the same shared host composition, over the same ports.
+     *
+     * What survives is exactly what survives on a device, and this is the one place that says so:
+     * - **durable**: the ledger and the download store (App-Group databases); the membership and the manifest
+     *   record (App-Group files); the attestation record (Keychain); the staged files (App-Group directory); the
+     *   photo library, its albums and the album map; the backend; the operating system's upload jobs and its
+     *   download session; the permission grant; the push token the OS re-delivers at every launch; the reporter's
+     *   received dumps and the log;
+     * - **process memory**, gone: the composed core and everything it holds (the version gate, the status
+     *   sources' last reads, the create and rename latches, the cycle), the status host, and the download
+     *   transport this process had realized.
+     *
+     * The new app installs nothing until its host is touched, as a background relaunch installs nothing until
+     * a scene connects.
+     */
+    fun relaunch() {
+        appJob.cancel()
+        appJob = Job(scope.coroutineContext[Job])
+        appScope = CoroutineScope(scope.coroutineContext + appJob)
+        downloadTransport = null
+        cycleOfThisLaunch = null
+        uploadPortsOfThisLaunch = null
+        composed = snapSyncHost(appScope, appPorts())
+    }
 
     /** The REAL app graph — the composition's core (never a world-local rebuild). */
     val core: AppCore get() = composed.core
@@ -731,6 +786,74 @@ class World(
             pixelWidth = 480,
             pixelHeight = 270,
         )
+
+    /** A Live Photo: a primary still and its paired motion, two resources that upload separately. */
+    suspend fun addLivePhoto(assetId: String, creationDate: String = DEFAULT_DATE) =
+        addOwnAsset(
+            assetId, creationDate,
+            resources = listOf(
+                primaryResource(),
+                RawResource(
+                    role = ResourceRole.LIVE,
+                    mimeContentType = "video/quicktime",
+                    originalFilename = "IMG.MOV",
+                    handle = Unit,
+                ),
+            ),
+        )
+
+    /** Arm the photo library's next enumeration to fail (a read that could not be made). */
+    fun failNextEnumeration() {
+        gallery.failNextEnumeration = true
+    }
+
+    /**
+     * Bytes of an own asset's resources land on the backend with NO acknowledgement reaching the app — the upload
+     * the OS completed while the process was gone. Through the backend's public byte route, so on either backend.
+     */
+    suspend fun landBytesWithoutAck(assetId: String) {
+        val asset = gallery.current().single { normalizeAssetId(it.assetId) == normalizeAssetId(assetId) }
+        asset.rawResources.forEach { raw ->
+            // Only a resource with an upload role is ever sent; one without is not part of the asset's upload.
+            val role = raw.role ?: return@forEach
+            val key = uploadKey(asset.assetId, role, raw.originalFilename)
+            neutral.upload(ownDeviceId, asset.assetId, ManifestResource(role, raw.mimeContentType, key, raw.originalFilename))
+        }
+    }
+
+    /**
+     * **An install upgraded from a build that predates per-asset byte release** (capability `download-store`): a
+     * confirmed import of [ref] whose resource rows, with their staged paths, survive, and whose files are still on
+     * the staging "disk". Returns the staged paths.
+     *
+     * The one lever that writes app-private state, and deliberately so: no path in the current app can produce
+     * this state — every import releases its bytes inline, which is the fix that shipped without the backlog pass
+     * behind it — so the only honest way to reach it is to write what the older build left. What a test then
+     * asserts is the staging directory's files, which are observable.
+     */
+    suspend fun seedLegacyStagedBacklog(ref: AssetRef): Set<String> {
+        val primaryKey = "${ref.sourceAssetId}-primary.heic"
+        val liveKey = "${ref.sourceAssetId}-live.mov"
+        val paths = listOf("${stagedBytes.stagingRoot()}$primaryKey", "${stagedBytes.stagingRoot()}$liveKey")
+        downloadStore.plan(
+            ref,
+            DEFAULT_DATE,
+            listOf(
+                PlannedResource(primaryKey, "https://world.edge/p", "primary", "image/heic", "IMG.HEIC"),
+                PlannedResource(liveKey, "https://world.edge/l", "live", "video/quicktime", "IMG.MOV"),
+            ),
+        )
+        downloadStore.markStaged(ref, primaryKey, paths[0])
+        downloadStore.markStaged(ref, liveKey, paths[1])
+        downloadStore.markImported(ref, "LOCAL-${ref.sourceAssetId}")
+        stagedFiles += paths
+        return paths.toSet()
+    }
+
+    /** Append [text] to a process's device log — the log a diagnostic dump reads back. */
+    fun appendDeviceLog(process: DeviceLogSource.Process, text: String) {
+        deviceLogs.value = deviceLogs.value + (process to (deviceLogs.value[process].orEmpty() + text))
+    }
 
     /** Put an existing own asset into an album some app made — e.g. `placeInAlbum("WhatsApp", "A1")`. */
     fun placeInAlbum(albumTitle: String, assetId: String) {
@@ -939,10 +1062,16 @@ class World(
      * leave, or switch takes effect on the next cycle. The world carries no gate, reconciler, or
      * manifest-producer wiring of its own — a wiring difference from production is impossible.
      */
-    val cycle: UploadCycle by lazy { uploadCore(scope, uploadPorts) }
+    val cycle: UploadCycle
+        get() = cycleOfThisLaunch ?: uploadCore(appScope, uploadPorts).also { cycleOfThisLaunch = it }
+    private var cycleOfThisLaunch: UploadCycle? = null
 
     /** What [cycle] is built over — the extension tier's inbound port reads its ledger and log from the same bundle. */
-    val uploadPorts: UploadPorts by lazy {
+    val uploadPorts: UploadPorts
+        get() = uploadPortsOfThisLaunch ?: buildUploadPorts().also { uploadPortsOfThisLaunch = it }
+    private var uploadPortsOfThisLaunch: UploadPorts? = null
+
+    private fun buildUploadPorts(): UploadPorts =
             UploadPorts(
                 diagnosticsReporter = inMemoryDiagnosticsReporter(),
                 // The world composes the app graph on an OS without the OS-driven mechanism, so its one cycle
@@ -971,7 +1100,6 @@ class World(
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.
                 token = { null },
             )
-    }
 
     /**
      * Run one cycle. The membership read, the gate, and the assembly are all

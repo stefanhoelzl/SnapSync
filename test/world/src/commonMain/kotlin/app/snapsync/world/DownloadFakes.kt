@@ -38,14 +38,17 @@ class FakeDownloadTransport(
      * were released and an unsettled row's were not.
      */
     private val disk: MutableSet<String> = mutableSetOf(),
+    /**
+     * The operating system's session: the transfers it holds for this app. Shared across a relaunch — a
+     * relaunched process's transport finds the transfers the dead one started, as a background `URLSession` does.
+     */
+    val started: MutableList<Started> = mutableListOf(),
 ) : DownloadTransport {
 
     /** Inspection: a transfer the real jobs started through this transport. */
     class Started(val url: String, val description: String) {
         var cancelled: Boolean = false
     }
-
-    val started = mutableListOf<Started>()
 
     /** `null` for a URL that is not one, as the real transport answers — never a throw (`DownloadTransportContract`). */
     override fun start(url: String, description: String): DownloadTask? {
