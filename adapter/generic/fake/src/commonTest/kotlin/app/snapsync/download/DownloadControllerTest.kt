@@ -16,6 +16,8 @@ import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PendingDownload
+import app.snapsync.ports.PlannedAsset
+import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.StagedResource
 import app.snapsync.fake.inMemoryStagedBytes
 import kotlin.test.Test
@@ -170,6 +172,76 @@ class DownloadControllerTest {
         // Only FOREIGN's two resources are enqueued; MINE (own) is skipped.
         assertEquals(setOf("FOREIGN-primary.heic", "FOREIGN-live.mov"), jobs.enqueued.map { it.resource.resourceKey }.toSet())
         assertTrue(jobs.enqueued.all { it.ref.sourceDeviceId == "DEVICE-A" })
+    }
+
+    /**
+     * Counts the store round-trips a reconcile's planning makes. Rigging, so it lives in the test and not in
+     * `:adapter:generic:fake` (`FakeHonestyTest`); a wrapper because the fake is final by the honesty gate.
+     */
+    private class PlanCountingStore(val inner: InMemoryDownloadStore = InMemoryDownloadStore()) : DownloadStore by inner {
+        var singleReads = 0
+        var batchReads = 0
+        var singlePlans = 0
+        val batches = mutableListOf<List<PlannedAsset>>()
+        var singleMarks = 0
+        val markBatches = mutableListOf<Int>()
+
+        override suspend fun isSettled(ref: AssetRef): Boolean { singleReads++; return inner.isSettled(ref) }
+        override suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> { batchReads++; return inner.settledAmong(refs) }
+        override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) {
+            singlePlans++
+            inner.plan(ref, creationDate, resources)
+        }
+        override suspend fun planAll(assets: List<PlannedAsset>) { batches += assets; inner.planAll(assets) }
+        override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) { singleMarks++; inner.markEnqueued(ref, resourceKey) }
+        override suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
+            markBatches += downloads.size
+            inner.markAllEnqueued(downloads)
+        }
+    }
+
+    @Test
+    fun planning_n_assets_is_one_settled_read_one_plan_batch_and_one_mark_batch() = runTest {
+        // A background wake measured ~11.5 s planning 101 foreign assets one transaction each, plus ~4 s of
+        // per-resource autocommits marking them enqueued. The whole reconcile is now three store calls.
+        val store = PlanCountingStore()
+        val jobs = RecordingJobs()
+        val union = FakeUnion(List(N) { asset("DEVICE-A", "A$it") } + asset(myDevice, "MINE"))
+
+        controller(union, store = store, jobs = jobs).reconcile("event")
+
+        assertEquals(1, store.batchReads, "one read of the settled refs for the whole union")
+        assertEquals(0, store.singleReads, "and no per-asset settled query")
+        assertEquals(1, store.batches.size, "one plan batch")
+        assertEquals(0, store.singlePlans, "and no per-asset plan")
+        assertEquals(N, store.batches.single().size, "carrying every foreign asset, and not our own")
+        assertEquals(listOf(2 * N), store.markBatches, "every enqueued resource marked in one batch")
+        assertEquals(0, store.singleMarks)
+        assertEquals(2 * N, jobs.enqueued.size)
+        assertEquals(N, store.inner.counts().inFlight, "and the marks landed")
+    }
+
+    @Test
+    fun a_settled_asset_is_left_out_of_the_plan_batch() = runTest {
+        val store = PlanCountingStore()
+        val settled = AssetRef("DEVICE-A", "DONE")
+        store.inner.plan(settled, "2026-06-30T10:00:00Z", listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")))
+        store.inner.markImported(settled, "LOCAL-DONE")
+        val jobs = RecordingJobs()
+
+        controller(FakeUnion(listOf(asset("DEVICE-A", "DONE"), asset("DEVICE-A", "NEW"))), store = store, jobs = jobs).reconcile("event")
+
+        assertEquals(listOf(AssetRef("DEVICE-A", "NEW")), store.batches.single().map { it.ref })
+        assertTrue(jobs.enqueued.none { it.ref == settled }, "a settled asset is never re-downloaded")
+    }
+
+    @Test
+    fun nothing_to_plan_or_enqueue_writes_nothing() = runTest {
+        val store = PlanCountingStore()
+        controller(FakeUnion(listOf(asset(myDevice, "MINE"))), store = store).reconcile("event")
+
+        assertTrue(store.batches.isEmpty(), "no empty plan transaction")
+        assertTrue(store.markBatches.isEmpty(), "and no empty mark transaction")
     }
 
     @Test
@@ -1117,5 +1189,10 @@ class DownloadControllerTest {
             store.stagedPathsOfImportedAssets(),
             "the backlog must still be findable for the next pass",
         )
+    }
+
+    private companion object {
+        /** The measured backlog: 101 foreign assets in one background wake. */
+        const val N = 101
     }
 }

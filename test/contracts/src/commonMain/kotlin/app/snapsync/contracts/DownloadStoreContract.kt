@@ -2,6 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
+import app.snapsync.ports.PlannedAsset
 import app.snapsync.ports.PlannedResource
 
 import kotlin.test.assertEquals
@@ -444,6 +445,86 @@ object DownloadStoreContract : Contract<DownloadStoreState, DownloadStore>("Down
             s.markImported(ref, "LOCAL-A")
             s.markImported(other, "LOCAL-B")
             assertEquals(mapOf(ref to "LOCAL-A"), s.importedLocalIds(listOf(ref)))
+        }
+
+        // --- the batch members a reconcile plans through (one read, one transaction each) ---
+
+        clause("settled among answers the asked refs that are imported or unimportable", DownloadStoreState.EMPTY) { s ->
+            val imported = AssetRef("DEVICE-A", "IMPORTED")
+            val unimportable = AssetRef("DEVICE-A", "UNIMPORTABLE")
+            val pending = AssetRef("DEVICE-A", "PENDING")
+            val unconfirmed = AssetRef("DEVICE-A", "UNCONFIRMED")
+            val notAsked = AssetRef("DEVICE-B", "IMPORTED-NOT-ASKED")
+            val unknown = AssetRef("DEVICE-Z", "NEVER-PLANNED")
+            listOf(imported, unimportable, pending, unconfirmed, notAsked).forEach { s.plan(it, "2026-06-30T10:00:00Z", resources()) }
+            s.markImported(imported, "LOCAL-1")
+            s.markImported(notAsked, "LOCAL-2")
+            s.settleUnimportable(unimportable)
+            s.recordCreatedLocalId(unconfirmed, "LOCAL-3")
+
+            assertEquals(
+                setOf(imported, unimportable),
+                s.settledAmong(listOf(imported, unimportable, pending, unconfirmed, unknown)),
+                "both terminal states answer yes; a pending, an unconfirmed and an unknown ref do not, and an unasked one is not reported",
+            )
+            assertTrue(s.settledAmong(emptyList()).isEmpty())
+        }
+
+        clause("plan all records every asset with its resources", DownloadStoreState.EMPTY) { s ->
+            val other = AssetRef("DEVICE-B", "ASSET-R")
+            s.planAll(
+                listOf(
+                    PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
+                    PlannedAsset(
+                        other,
+                        "2026-06-30T11:00:00Z",
+                        listOf(PlannedResource("ASSET-R-primary.heic", "https://e/r", "primary", "image/heic", "R.HEIC")),
+                    ),
+                ),
+            )
+            assertEquals(
+                setOf(ref to "ASSET-Q-primary.heic", ref to "ASSET-Q-live.mov", other to "ASSET-R-primary.heic"),
+                s.pendingDownloads().map { it.ref to it.resource.resourceKey }.toSet(),
+            )
+            assertEquals(2, s.counts().stillArriving)
+            s.markStaged(other, "ASSET-R-primary.heic", "/stage/r.heic")
+            assertEquals(listOf(other), s.importableAssets().map { it.ref }, "an asset's resources landed with it")
+            assertEquals("2026-06-30T11:00:00Z", s.importableAssets().single().creationDate)
+        }
+
+        clause("plan all re-plans exactly as plan does", DownloadStoreState.EMPTY) { s ->
+            val done = AssetRef("DEVICE-B", "DONE")
+            s.plan(ref, "2026-06-30T10:00:00Z", resources())
+            s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+            s.plan(done, "2026-06-30T10:00:00Z", resources())
+            s.markImported(done, "LOCAL-DONE")
+
+            val rotated = listOf(
+                PlannedResource("ASSET-Q-primary.heic", "https://e/primary?sig=NEW", "primary", "image/heic", "IMG.HEIC"),
+                PlannedResource("ASSET-Q-live.mov", "https://e/live?sig=NEW", "live", "video/quicktime", "IMG.MOV"),
+            )
+            s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", rotated), PlannedAsset(done, "2026-06-30T10:00:00Z", rotated)))
+
+            val pending = s.pendingDownloads()
+            assertEquals(listOf(ref to "https://e/live?sig=NEW"), pending.map { it.ref to it.resource.url }, "only the unstaged resource is refreshed")
+            assertEquals("/stage/primary.heic", s.stagedResources(ref).single().stagedPath, "a staged resource keeps its staging")
+            assertTrue(s.isSettled(done), "and a terminal row is never downgraded")
+            assertEquals(setOf("LOCAL-DONE"), s.suppressedLocalIds())
+        }
+
+        clause("mark all enqueued puts every marked asset in flight", DownloadStoreState.EMPTY) { s ->
+            val other = AssetRef("DEVICE-B", "ASSET-R")
+            s.planAll(listOf(PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()), PlannedAsset(other, "2026-06-30T11:00:00Z", resources())))
+            assertEquals(0, s.counts().inFlight)
+            s.markAllEnqueued(emptyList())
+            assertEquals(0, s.counts().inFlight, "an empty batch marks nothing")
+
+            s.markAllEnqueued(s.pendingDownloads())
+            assertEquals(2, s.counts().inFlight, "asset-counted, every asset of the batch")
+
+            s.markStaged(ref, "ASSET-Q-primary.heic", "/p")
+            s.markStaged(ref, "ASSET-Q-live.mov", "/l")
+            assertEquals(1, s.counts().inFlight, "staging still supersedes a batch mark")
         }
     }
 

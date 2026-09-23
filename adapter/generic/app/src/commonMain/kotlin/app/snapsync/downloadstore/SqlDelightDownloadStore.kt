@@ -6,6 +6,7 @@ import app.snapsync.ports.DownloadState
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.ImportableAsset
 import app.snapsync.ports.PendingDownload
+import app.snapsync.ports.PlannedAsset
 import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.StagedResource
 import app.snapsync.ports.UnconfirmedImport
@@ -38,14 +39,34 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     override suspend fun isSettled(ref: AssetRef): Boolean =
         q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
 
-    override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) {
+    // One read of every settled ref, filtered here — the same trade as [importedLocalIds], for the same reason.
+    override suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> {
+        if (refs.isEmpty()) return emptySet()
+        val wanted = refs.toSet()
+        return q.selectSettledRefs { device, asset -> AssetRef(device, asset) }
+            .executeAsList()
+            .filterTo(mutableSetOf()) { it in wanted }
+    }
+
+    override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) =
+        planAll(listOf(PlannedAsset(ref, creationDate, resources)))
+
+    /**
+     * Every asset and its resources inside ONE transaction — one durable commit for the batch, where a
+     * transaction per asset paid one each. Per-asset atomicity is a consequence, not a trade: an asset's row
+     * and its resources still land together, because the whole batch does.
+     */
+    override suspend fun planAll(assets: List<PlannedAsset>) {
+        if (assets.isEmpty()) return
         q.transaction {
-            q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
-            resources.forEach { r ->
-                q.upsertResource(
-                    ref.sourceDeviceId, ref.sourceAssetId, r.resourceKey,
-                    r.url, r.role, r.contentType, r.originalFilename,
-                )
+            assets.forEach { (ref, creationDate, resources) ->
+                q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
+                resources.forEach { r ->
+                    q.upsertResource(
+                        ref.sourceDeviceId, ref.sourceAssetId, r.resourceKey,
+                        r.url, r.role, r.contentType, r.originalFilename,
+                    )
+                }
             }
         }
     }
@@ -57,6 +78,14 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
 
     override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
         q.markResourceEnqueued(ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
+    }
+
+    /** Every mark in ONE transaction: one durable commit for the batch rather than an autocommit per resource. */
+    override suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
+        if (downloads.isEmpty()) return
+        q.transaction {
+            downloads.forEach { q.markResourceEnqueued(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
+        }
     }
 
     override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String) {

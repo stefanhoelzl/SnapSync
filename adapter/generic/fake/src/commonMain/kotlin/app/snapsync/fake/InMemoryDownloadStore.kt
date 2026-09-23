@@ -6,6 +6,7 @@ import app.snapsync.ports.DownloadState
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.ImportableAsset
 import app.snapsync.ports.PendingDownload
+import app.snapsync.ports.PlannedAsset
 import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.StagedResource
 import app.snapsync.ports.UnconfirmedImport
@@ -46,8 +47,21 @@ internal class InMemoryDownloadStore : DownloadStore {
         assets[ref]?.state?.isTerminal == true
     }
 
+    override suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> = lock.withLock {
+        refs.filterTo(mutableSetOf()) { assets[it]?.state?.isTerminal == true }
+    }
+
     override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) = lock.withLock {
-        if (assets[ref]?.state?.isTerminal == true) return@withLock
+        planLocked(ref, creationDate, resources)
+    }
+
+    // Under ONE acquisition, the fake's spelling of the real store's one transaction.
+    override suspend fun planAll(assets: List<PlannedAsset>) = lock.withLock {
+        assets.forEach { planLocked(it.ref, it.creationDate, it.resources) }
+    }
+
+    private fun planLocked(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) {
+        if (assets[ref]?.state?.isTerminal == true) return
         assets.getOrPut(ref) { AssetRow(DownloadState.PENDING, creationDate, null) }
         val byKey = this.resources.getOrPut(ref) { linkedMapOf() }
         // Refresh the planned resource (its `url`) for new AND not-yet-staged rows so a freshly
@@ -72,6 +86,10 @@ internal class InMemoryDownloadStore : DownloadStore {
     override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) = lock.withLock {
         enqueued.getOrPut(ref) { linkedSetOf() }.add(resourceKey)
         Unit
+    }
+
+    override suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) = lock.withLock {
+        downloads.forEach { enqueued.getOrPut(it.ref) { linkedSetOf() }.add(it.resource.resourceKey) }
     }
 
     override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String) = lock.withLock {

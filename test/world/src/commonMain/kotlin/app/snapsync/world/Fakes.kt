@@ -8,6 +8,7 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
+import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.feature.upload.AppUploadEngine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,7 +93,7 @@ class WorldGallery {
 /**
  * The world's download store: the recording wrapper around the honest `:adapter:generic:fake`
  * [app.snapsync.fake.inMemoryDownloadStore]. [enqueueRequests] records what the real
- * `DownloadController` sent to the OS (it marks each enqueued resource through this port), replacing
+ * `DownloadController` sent to the OS (it marks each enqueued batch through this port), replacing
  * the pre-step-10 `recordingJobs` interception — the real jobs still do all the work, and the
  * transfer-description codec stays `internal` to `:domain`. Cleared on [pruneNonTerminal] (the
  * leave/switch path), mirroring the old recorder's clear-on-cancelAll timing.
@@ -105,6 +106,12 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
     override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
         enqueueRequests += ref to resourceKey
         inner.markEnqueued(ref, resourceKey)
+    }
+
+    // The controller marks a reconcile's whole batch in one call; recorded per resource, in order, as before.
+    override suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
+        downloads.forEach { enqueueRequests += it.ref to it.resource.resourceKey }
+        inner.markAllEnqueued(downloads)
     }
 
     override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> {

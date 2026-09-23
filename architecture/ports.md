@@ -43,7 +43,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
-| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` DrainSpyStore, InMemoryDownloadStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
+| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` DrainSpyStore, InMemoryDownloadStore, PlanCountingStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
 | `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
 | `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |

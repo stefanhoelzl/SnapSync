@@ -58,6 +58,12 @@ data class PlannedResource(
     val originalFilename: String,
 )
 
+/**
+ * One asset a reconcile plans: its ref, its capture timestamp, and its expected resources — the unit
+ * [DownloadStore.planAll] records atomically.
+ */
+data class PlannedAsset(val ref: AssetRef, val creationDate: String, val resources: List<PlannedResource>)
+
 /** A resource ready to import: its staged file plus the typing the importer needs. */
 data class StagedResource(
     val resourceKey: String,
@@ -105,6 +111,16 @@ interface DownloadStore : SuppressionSource {
     suspend fun isSettled(ref: AssetRef): Boolean
 
     /**
+     * The members of [refs] that are **settled** — [isSettled] answered for a whole union in **one read**
+     * (capability `download-store`). A ref with no row, or a non-terminal row, is absent from the answer.
+     *
+     * Exists because a reconcile asks this for every foreign asset of the union, and asking it one ref at
+     * a time is one store round-trip per asset, repeated on every trigger while a backlog exists.
+     * Event-blind like [importedLocalIds]: the caller passes the refs it is about to plan.
+     */
+    suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef>
+
+    /**
      * The created local identifier of each of [refs] whose row is [DownloadState.IMPORTED] (capability
      * `download-store`). A ref with no row, a non-terminal row — including an **unconfirmed** one that
      * carries a marker, whose asset has not been adjudicated yet — or an [DownloadState.UNIMPORTABLE] row is
@@ -121,11 +137,28 @@ interface DownloadStore : SuppressionSource {
     /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
     suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>)
 
+    /**
+     * [plan] every one of [assets], in **one transaction** (capability `download-store`): each asset and its
+     * resources are recorded exactly as [plan] records them — idempotent, never downgrading a terminal row,
+     * refreshing only unstaged urls — and no reader can observe an asset without its resources.
+     *
+     * One transaction rather than one per asset because every store transaction is a durable commit: a
+     * reconcile planning a backlog of a hundred assets paid a hundred of them, on every trigger, while the
+     * backlog lasted (measured on an iPhone XS in a background wake: ~11.5 s for 101 assets).
+     */
+    suspend fun planAll(assets: List<PlannedAsset>)
+
     /** The not-yet-staged resources across all non-imported assets — the download work queue. */
     suspend fun pendingDownloads(): List<PendingDownload>
 
     /** Mark a resource's download as sent to the OS (a background transfer now exists) — the in-flight marker. */
     suspend fun markEnqueued(ref: AssetRef, resourceKey: String)
+
+    /**
+     * [markEnqueued] every one of [downloads], in **one transaction** — the batch a reconcile sends to the OS
+     * is marked with one durable commit rather than one per resource.
+     */
+    suspend fun markAllEnqueued(downloads: Collection<PendingDownload>)
 
     /** Mark a resource's bytes downloaded and durably staged at [stagedPath]. */
     suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String)
