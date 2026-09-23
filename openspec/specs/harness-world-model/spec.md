@@ -34,10 +34,13 @@ The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` 
 **real** platform-agnostic stack against controllable in-memory infrastructure: the honest
 in-memory port implementations SHALL live in `:adapter:generic:fake` (package `app.snapsync.fake`; spec
 `module-architecture`), and `:test:world` SHALL hold the **operator rigging** around them — the
-backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`, `FakeUploadDiscovery`,
-`FakeDownloadTransport`, `FakePhotoLibraryImporter`, `FakeAlbumManager`,
-`MutablePhotoAccessStatusSource`) and the wrappers that own the honest fakes' state cells
-(`WorldGallery`, `RecordingDownloadStore`) — per the fake-honesty gate (`architecture-guards`).
+backend store, the mini-edge, the levered fakes of ports no contract binds yet (`FakeBackgroundTransfer`,
+`FakeDownloadTransport`) and the wrappers that own the honest fakes' state cells and carry the operator's
+levers over them (`WorldGallery`, `RecordingDownloadStore`, and the wrappers over the honest upload-discovery,
+album-manager, photo-importer and photo-access fakes) — per the fake-honesty gate (`architecture-guards`).
+A port that a contract binds (capability `port-contracts`) SHALL be doubled in the world by its honest,
+contract-bound fake, wrapped; the world SHALL NOT keep a second, levered implementation of that port, whose
+behaviour no contract would hold to the real adapter's.
 The module SHALL declare targets `jvm()` and `iosSimulatorArm64` **only** (no `iosArm64` — it
 never links into a shipped framework), so its logic and self-tests execute on **both** JVM and the
 iOS simulator per capability `testing-architecture` ("Every test runs on every target its module
@@ -63,6 +66,13 @@ module's **main** source sets SHALL depend on `:test:world`.
   honest `:adapter:generic:fake` double
 - **THEN** it is expressed in a `:test:world` wrapper owning the fake's constructor-injected state,
   never as a public member of the fake (the fake-honesty gate fails otherwise)
+
+#### Scenario: A contracted port's double in the world
+
+- **WHEN** the world needs a failure lever on a port whose honest fake a contract binds, such as the album
+  manager
+- **THEN** the lever lives on a world wrapper around that fake, and the fake answering beneath it is the one
+  the contract holds to the real adapter
 
 ### Requirement: Backend object store with faithful read-models
 

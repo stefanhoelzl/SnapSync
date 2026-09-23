@@ -356,3 +356,22 @@ every shipped path.
   app (iOS 26.5, 2026-09-23) passed every other clause of all six contracts.
 - The upload-job tier's host: whether the device extension process becomes `IOS_DEVICE_EXT`, and how its
   runs are triggered. This is for the carved-out phase.
+
+## Archive: delta accounting
+
+Every module the change touched, and the capability that accounts for it:
+
+| module / path | accounted by |
+|---|---|
+| `:test:contracts` | `port-contracts` (host matrix + `IOS_SIM_APP`; grant precondition; composition bindings; in-app hosts run live) |
+| `:adapter:generic:fake`, `:test:world` | `harness-world-model` (the world wraps honest photo fakes); `port-contracts` (fake bindings) |
+| `:adapter:ios:app-only` | `module-architecture` (`:test:contracts` linked into its rig source set); `port-contracts` (bindings) |
+| `:adapter:ios:ext-safe` | `testing-architecture` (the smoke test's library half retired). `IosDiscovery`'s grant read needs **no delta**: its port's KDoc already required a non-authoritative walk for an unreadable library, and no shipped path reaches the changed branch, because both cycles withhold without a usable grant |
+| `:test:architecture` | `architecture-guards` (the contract-coverage gate) |
+| `.github/workflows/ios.yml`, `scripts/sim-contracts` | `ios-ci` (the `ios-contracts` job; three merge gates) |
+| `:test:rig` | none: dev infrastructure with no spec by design (`GET /contract` is documented in the `rig-channel` skill) |
+| `architecture/` | none: regenerated diagrams, no requirement changed |
+| `CLAUDE.md`, `.claude/skills/*` | none: documentation |
+
+Task 5.3 (the first `ios-contracts` run on GitHub Actions) was left open at archive by the operator's choice; it is
+discharged by the shipping PR's own run.
