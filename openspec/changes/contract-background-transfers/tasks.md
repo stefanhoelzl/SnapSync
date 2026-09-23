@@ -37,7 +37,7 @@
 ## 6. Gates and docs
 
 - [ ] 6.1 `./gradlew build` is green, including `ContractCoverageTest`, which names every new clause as covered by a real host
-- [ ] 6.2 `./gradlew compileIosMainKotlinMetadata` is green; `./gradlew architectureDiagrams`, commit any diff
-- [ ] 6.3 Update CLAUDE.md's module entries (`:test:contracts` contract list, `:adapter:generic:fake` fakes, `:test:world` wrappers) and the `rig-channel` / `ios-simulator` skills (fixture flag, heartbeat cleared by a device run)
-- [ ] 6.4 Point `TransferSessions.kt`'s "does NOT evidence" section at the contracts for what IS evidenced
-- [ ] 6.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate contract-background-transfers --strict` pass
+- [x] 6.2 `./gradlew compileIosMainKotlinMetadata` is green; `./gradlew architectureDiagrams`, commit any diff
+- [x] 6.3 Update CLAUDE.md's module entries (`:test:contracts` contract list, `:adapter:generic:fake` fakes, `:test:world` wrappers) and the `rig-channel` / `ios-simulator` skills (fixture flag, heartbeat cleared by a device run)
+- [x] 6.4 Point `TransferSessions.kt`'s "does NOT evidence" section at the contracts for what IS evidenced
+- [x] 6.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate contract-background-transfers --strict` pass
