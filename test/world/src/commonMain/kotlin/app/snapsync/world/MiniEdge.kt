@@ -1,5 +1,7 @@
 package app.snapsync.world
 
+import app.snapsync.http.isGatedRequest
+
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import io.ktor.client.HttpClient
@@ -73,6 +75,10 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
             // reaching one, which is the ordering the real gate takes for the same reason.
             refusedForVersion(store, version, request.headers[APP_VERSION_HEADER])
                 ?.let { return@MockEngine respond(it, HttpStatusCode.UpgradeRequired, jsonHeaders()) }
+
+            // The operator's per-request levers (capability `harness-world-model`), before any route answers.
+            leverAnswer(store, method, segments, request.headers[HttpHeaders.Authorization], request.url.encodedPath)
+                ?.let { return@MockEngine it }
 
             if (version == 2) {
                 v2Upload(store, method, segments, request.url.parameters["filename"])?.let { return@MockEngine it }
@@ -179,6 +185,33 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
             }
         },
     )
+}
+
+/**
+ * The answer an operator lever forces for this request, or null to let the routes answer.
+ *
+ * - a refused credential: the next token-bearing request to a gated route answers `401`, once — the rejection a
+ *   rotated signing key or a collected attestation record produces;
+ * - a failing device-files listing: `GET /files/devices/<id>` answers `502` while the rest of the backend serves;
+ * - a held leave: `DELETE /events/<id>/devices/<id>` waits until the operator releases it, so a test can observe
+ *   what the app does while the backend has not answered.
+ */
+private suspend fun MockRequestHandleScope.leverAnswer(
+    store: BackendStore,
+    method: HttpMethod,
+    segments: List<String>,
+    authorization: String?,
+    path: String,
+): HttpResponseData? {
+    if (authorization != null && store.refuseNextCredential && isGatedRequest(method.value, path)) {
+        store.refuseNextCredential = false
+        return respond("credential rejected", HttpStatusCode.Unauthorized)
+    }
+    val isListing = method == HttpMethod.Get && segments.size == 3 && segments[0] == "files" && segments[1] == "devices"
+    if (isListing && store.failDeviceListing) return respond("listing unavailable", HttpStatusCode.BadGateway)
+    val isLeave = method == HttpMethod.Delete && segments.size == 4 && segments[0] == "events" && segments[2] == "devices"
+    if (isLeave) store.leaveHold?.await()
+    return null
 }
 
 /**
