@@ -1,5 +1,7 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.EventConfig
+import app.snapsync.ports.ConfigSource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.CandidateRead
 import app.snapsync.ports.CandidateSource
@@ -125,7 +127,7 @@ class StatusCountsPollerTest {
             refreshDownloadLine = { downloadReads++ },
             // No membership: the walk is unreachable, so the tick is exactly the cheap local group — which
             // is also what the poll is specified to read (never the enumeration).
-            activeConfig = { null },
+            configSource = membership(null),
             policyFor = { throw AssertionError("no membership — no policy derivation") },
         )
         val poller = StatusCountsPoller(
@@ -163,4 +165,9 @@ class StatusCountsPollerTest {
         assertEquals(3, source.refreshes, "the loop survives the throwing first tick and keeps polling")
         poller.stop()
     }
+}
+
+/** A membership fake holding a fixed answer. */
+private fun membership(config: EventConfig?): ConfigSource = object : ConfigSource {
+    override val config: StateFlow<EventConfig?> = MutableStateFlow(config)
 }

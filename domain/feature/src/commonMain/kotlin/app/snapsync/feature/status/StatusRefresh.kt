@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.ports.ConfigSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import co.touchlab.kermit.Logger
@@ -43,8 +44,8 @@ class StatusRefresh(
     private val gallery: OwnDeviceGalleryStatusSource,
     /** The foreign-download line (capability `photo-download`) — a SIBLING feature, so a lambda. */
     private val refreshDownloadLine: suspend () -> Unit,
-    /** The joined membership, or `null` when unjoined — the config read, injected (a port touch). */
-    private val activeConfig: () -> EventConfig?,
+    /** The joined membership, or `null` when unjoined. */
+    private val configSource: ConfigSource,
     /**
      * What this membership contributes (capability `photo-selection-policy`) — the ONE derivation, run
      * where the config and both port readers are in scope. Injected because deriving it costs two port
@@ -80,7 +81,7 @@ class StatusRefresh(
         // CHEAP LOCAL READS FIRST — the rule this class is named for. Both counts gate the screen out of
         // its neutral first frame; the walk below is the slow one, and it must not arrive alone.
         refreshCheapLocalReads()
-        val config = activeConfig() ?: return
+        val config = configSource.config.value ?: return
         // NO GRANT CHECK. The read seam answers both halves — where candidates come from AND whether an
         // admitted set can be stated at all — and a gate here would restate the second half. It used to,
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case

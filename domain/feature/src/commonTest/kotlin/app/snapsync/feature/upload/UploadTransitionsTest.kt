@@ -1,5 +1,12 @@
 package app.snapsync.feature.upload
 
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.EventConfig
+import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.ConfigSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
@@ -55,8 +62,8 @@ class UploadTransitionsTest {
         val registration = FakeRegistration(log, { grant })
         private val engine = FakeEngine(log)
         val transitions = UploadTransitions(
-            joined = { joined },
-            permission = { grant },
+            configSource = liveMembership { "E".takeIf { joined } },
+            photoAccess = liveGrant { grant },
             extensionRegistrable = { extensionRegistrable(osSupported, grant, pin) },
             registration = registration.takeIf { osSupported },
             appEngine = { engine },
@@ -241,4 +248,19 @@ class UploadTransitionsTest {
             assertTrue("deregister" !in w.log, "$grant: ${w.log}")
         }
     }
+}
+
+/** A membership fake whose answer is read at every access, so a test's `var` drives it live. */
+private fun liveMembership(eventId: () -> String?): ConfigSource = object : ConfigSource {
+    override val config: StateFlow<EventConfig?>
+        get() = MutableStateFlow(
+            eventId()?.let {
+                EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
+            },
+        )
+}
+
+/** A grant fake read at every access, so a test's `var` drives it live. */
+private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
+    override val permission: StateFlow<PermissionStatus> get() = MutableStateFlow(grant())
 }

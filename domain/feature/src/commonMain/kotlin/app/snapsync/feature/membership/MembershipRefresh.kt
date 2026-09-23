@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.instantToCutoff
+import app.snapsync.ports.Clock
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
@@ -29,9 +31,8 @@ import app.snapsync.ports.ConfigStore
 class MembershipRefresh(
     private val configSource: ConfigSource,
     private val store: ConfigStore,
-    /** Canonical `…Z` "now" — the OFFLINE witness of the absence verdict. Injected as a `model`-typed
-     *  lambda over the composition's one clock. */
-    private val now: () -> CaptureDate,
+    /** The composition's one clock — "now" is the OFFLINE witness of the absence verdict. */
+    private val clock: Clock,
     /**
      * The ordinary local teardown (capability `leave-event`), performed on a confirmed absence.
      *
@@ -80,7 +81,7 @@ class MembershipRefresh(
             JoinLoad.NotFound ->
                 // Witness two: this membership's OWN deadline. Absent it — or before it — the backend is
                 // disbelieved. Both readings mean "I could not tell", never "destroy it".
-                if (confirmedGone(current.deletesAt, now())) {
+                if (confirmedGone(current.deletesAt, instantToCutoff(clock.now()))) {
                     leaveEvent.leave()
                     RefreshOutcome.ABSENT
                 } else {

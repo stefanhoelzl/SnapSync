@@ -116,9 +116,9 @@ class SecureStoreUnavailable(val detail: String) :
  *
  * - [SecureStoreRead.Found] → return the stored value verbatim, upgrading its protection first if it
  *   is not what the store requires ([needsMigration]). The value is never rewritten.
- * - [SecureStoreRead.Absent] → consult [readLegacy] **before** minting. A value found there is adopted
+ * - [SecureStoreRead.Absent] → consult [legacy] **before** minting. A value found there is adopted
  *   verbatim ([SecureStoreResolution.Adopted]); only a second absence mints. Callers that pass no
- *   [readLegacy] mint straight away, which is correct for items with no legacy placement.
+ *   [legacy] store mint straight away, which is correct for items with no legacy placement.
  * - [SecureStoreRead.Unavailable] → throw [SecureStoreUnavailable]. Never mints, never writes.
  *
  * Unavailability outranks both absence and adoption, on **either** read. "I could not look" is not
@@ -128,7 +128,9 @@ class SecureStoreUnavailable(val detail: String) :
 fun resolveOrMint(
     store: SecureStore,
     onResolution: (SecureStoreResolution) -> Unit = {},
-    readLegacy: () -> SecureStoreRead = { SecureStoreRead.Absent },
+    /** Where an older build may have placed the value; `null` for an item with no legacy placement. It is a
+     *  store rather than a read-lambda so the one thing it is — another secure store — is stated by its type. */
+    legacy: SecureStore? = null,
     generate: () -> String,
 ): String = when (val read = store.read()) {
     is SecureStoreRead.Found -> {
@@ -140,8 +142,8 @@ fun resolveOrMint(
 
     // Absence in the addressed item is NOT yet permission to mint: an older build may have written
     // the value somewhere this query does not reach (see [SecureStoreResolution] for how that
-    // happens). Consult [readLegacy] first and adopt whatever it finds, verbatim.
-    SecureStoreRead.Absent -> when (val legacy = readLegacy()) {
+    // happens). Consult [legacy] first and adopt whatever it finds, verbatim.
+    SecureStoreRead.Absent -> when (val legacy = legacy?.read() ?: SecureStoreRead.Absent) {
         is SecureStoreRead.Found -> legacy.value.also {
             store.write(it)
             onResolution(SecureStoreResolution.Adopted)

@@ -1081,7 +1081,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // The app graph's per-cycle answers, forwarded only: current permission, the walk-vs-snapshot
             // decision (capability `limited-photo-access`), and whether this engine may run (`upload-lifecycle`).
             graph = AppGraphReads(
-                permission = { permission.permission.value },
+                photoAccess = permission,
                 selectionScope = { app.selectionScope() },
                 admission = { app.appUploadAdmission() },
                 appMayCreate = { app.appMayCreate() },

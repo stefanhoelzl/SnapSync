@@ -1,5 +1,8 @@
 package app.snapsync.feature.status
 
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import app.snapsync.ports.ConfigSource
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CaptureDate
@@ -64,7 +67,7 @@ class StatusRefreshTest {
     /** Records the ORDER of every step, which is the whole subject of this file. */
     private fun harness(
         source: CandidateSource = OneAsset(),
-        activeConfig: () -> EventConfig? = { config },
+        activeConfig: EventConfig? = config,
         policyFor: suspend (EventConfig) -> SelectionPolicy = { policy() },
     ): Pair<MutableList<String>, StatusRefresh> {
         val steps = mutableListOf<String>()
@@ -83,7 +86,7 @@ class StatusRefreshTest {
             },
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
-            activeConfig = activeConfig,
+            configSource = membership(activeConfig),
             policyFor = { cfg -> steps += "policy"; policyFor(cfg) },
         )
         return steps to refresh
@@ -109,7 +112,7 @@ class StatusRefreshTest {
             ledgerCounts = counts,
             gallery = gallery,
             refreshDownloadLine = {},
-            activeConfig = { config },
+            configSource = membership(config),
             policyFor = { policy() },
         ).run()
         assertEquals(setOf("A"), gallery.admitted.value, "N is the admitted own-asset count")
@@ -120,7 +123,7 @@ class StatusRefreshTest {
     fun `no membership counts nothing and never walks`() = runTest {
         // `N` stays null — NOT COUNTED. A zero here would settle the screen at "In sync" on a device
         // that has counted nothing (capability `gallery-status`).
-        val (steps, refresh) = harness(activeConfig = { null })
+        val (steps, refresh) = harness(activeConfig = null)
         refresh.run()
         assertEquals(listOf("ledger", "downloads"), steps, "the cheap reads still run; nothing else does")
     }
@@ -162,7 +165,7 @@ class StatusRefreshTest {
             },
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
-            activeConfig = { config },
+            configSource = membership(config),
             policyFor = { steps += "policy"; policy() },
         ).run() // must NOT throw
 
@@ -178,4 +181,9 @@ class StatusRefreshTest {
         val (_, refresh) = harness(policyFor = { throw CancellationException("scope torn down") })
         assertFailsWith<CancellationException> { refresh.run() }
     }
+}
+
+/** A membership fake holding a fixed answer. */
+private fun membership(config: EventConfig?): ConfigSource = object : ConfigSource {
+    override val config: StateFlow<EventConfig?> = MutableStateFlow(config)
 }

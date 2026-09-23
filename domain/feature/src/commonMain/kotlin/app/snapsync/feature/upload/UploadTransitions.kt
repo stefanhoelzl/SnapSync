@@ -1,5 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.ConfigSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.LogScope
@@ -95,10 +97,10 @@ interface AppUploadEngine : UploadTriggers {
  * `NOT_DETERMINED`. A compared register runs only where the OS reads **no** record, so it wipes no job.
  */
 class UploadTransitions(
-    /** Whether an event is configured now. Read fresh at every transition, never held. */
-    private val joined: () -> Boolean,
-    /** The current grant. */
-    private val permission: () -> PermissionStatus,
+    /** The membership — whether an event is configured is read fresh at every transition, never held. */
+    private val configSource: ConfigSource,
+    /** The current grant, read fresh at every transition. */
+    private val photoAccess: PhotoAccessStatusSource,
     /** The registration fact — `model/extensionRegistrable` over the OS fact, the grant and the rig's switch. */
     private val extensionRegistrable: () -> Boolean,
     /** The OS-driven registration where this OS carries its selector; `null` below iOS 26.1. */
@@ -166,7 +168,7 @@ class UploadTransitions(
         if (registration != null) {
             val registrable = extensionRegistrable()
             // The OS's read is trusted only under a full grant; anything else changes nothing.
-            val observed = if (permission() == PermissionStatus.GRANTED) registration.isRegistered() else null
+            val observed = if (photoAccess.permission.value == PermissionStatus.GRANTED) registration.isRegistered() else null
             when {
                 registrable && observed == false -> registration.register()
                 deregisterIfOff && !registrable && observed == true -> registration.deregister()
@@ -175,7 +177,10 @@ class UploadTransitions(
         armIfUsable()
     }
 
+    /** Whether an event is configured now — read fresh, never held. */
+    private fun joined(): Boolean = configSource.config.value != null
+
     private suspend fun armIfUsable() {
-        if (permission().grantsPhotoAccess) appEngine().arm() else appEngine().disarm()
+        if (photoAccess.permission.value.grantsPhotoAccess) appEngine().arm() else appEngine().disarm()
     }
 }

@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import kotlin.time.Instant
 import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.feature.download.DownloadController
@@ -118,7 +119,7 @@ class ForegroundOrderingTest {
             membershipRefresh = MembershipRefresh(
                 configSource = configSource,
                 store = configStore,
-                now = { CaptureDate("2026-07-09T12:00:00Z") },
+                clock = { Instant.parse("2026-07-09T12:00:00Z") },
                 leaveEvent = LeaveEvent(
                     config = configStore,
                     configSource = configSource,

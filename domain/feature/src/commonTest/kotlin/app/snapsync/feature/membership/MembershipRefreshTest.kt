@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import kotlin.time.Instant
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventEnd
@@ -71,7 +72,7 @@ class MembershipRefreshTest {
         MembershipRefresh(
             configSource = config,
             store = config,
-            now = { now },
+            clock = { Instant.parse(now.iso) },
             leaveEvent = LeaveEvent(
                 config = config,
                 configSource = config,

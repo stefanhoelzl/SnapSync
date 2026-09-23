@@ -1,5 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.ports.ConfigSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PushReceiver
 import co.touchlab.kermit.Logger
@@ -48,19 +50,20 @@ import co.touchlab.kermit.Logger
  * receiver is the silent-push trigger's coordination, not a receiver's own job.
  */
 class UploadPushReceiver(
-    private val activeEventId: () -> String?,
+    /** The membership: the active event id is read fresh at every push. */
+    private val configSource: ConfigSource,
     private val pump: BackgroundUploadPump,
     /** Current photo access. Read fresh: a grant can change between pushes. */
-    private val permission: () -> PermissionStatus,
+    private val photoAccess: PhotoAccessStatusSource,
     private val log: Logger = Logger.withTag("UploadPushReceiver"),
 ) : PushReceiver {
     override suspend fun onSilentPush(eventId: String) {
-        val active = activeEventId()
+        val active = configSource.config.value?.eventId
         if (eventId != active) {
             log.i { "silent push for $eventId ignored for upload (active event = $active)" }
             return
         }
-        val access = permission()
+        val access = photoAccess.permission.value
         if (access != PermissionStatus.GRANTED) {
             // Logged rather than dropped: "the push arrived and this arm declined it" and "no push
             // arrived" are different facts, and only one of them is a reason to look at the grant.
