@@ -14,19 +14,19 @@
 
 ## 3. Live `URLSession` bindings on `IOS_SIM_APP`
 
-- [ ] 3.1 Add `scripts/transfer-fixture.py` (stdlib only: health route, request log, per-clause routes, a server-side hold timeout, `Cache-Control: no-store`)
-- [ ] 3.2 Pass the fixture base URL through the rig's contract verb (`?fixture=`), and refuse a transport contract run without one
-- [ ] 3.3 Add the `DownloadTransport` live binding (over `IosDownloadTransport`) to `:adapter:ios:app-only`'s rig source set, and register it in `SimulatorAppContracts`
-- [ ] 3.4 Add the `BackgroundTransfer` live binding (over `IosUrlSessionUploadPlatform`, an in-memory ledger as its `TransferRecord`, and a photo seeded in the clause's own capture-date window), and register it
-- [ ] 3.5 Start the fixture in `scripts/sim-contracts` before launch, fail on no health answer, and keep its request log in `build/sim-contracts/`
+- [x] 3.1 Add `scripts/transfer-fixture.py` (stdlib only: health route, request log, per-clause routes, a server-side hold timeout, `Cache-Control: no-store`)
+- [x] 3.2 Pass the fixture base URL through the rig's contract verb (`?fixture=`), and refuse a transport contract run without one
+- [x] 3.3 Add the `DownloadTransport` live binding (over `IosDownloadTransport`) to `:adapter:ios:app-only`'s rig source set, and register it in `SimulatorAppContracts`
+- [x] 3.4 Add the `BackgroundTransfer` live binding (over `IosUrlSessionUploadPlatform`, an in-memory ledger as its `TransferRecord`, and a photo seeded in the clause's own capture-date window), and register it
+- [x] 3.5 Start the fixture in `scripts/sim-contracts` before launch, fail on no health answer, and keep its request log in `build/sim-contracts/`
 - [ ] 3.6 Run `scripts/sim-contracts` on a Mac session (`ssh-mac-build`); commit any failing clause red first (D7), then fix the adapter, never the clause, unless the clause is wrong
 - [ ] 3.7 Measure a short read (declared length > delivered) on the default session; add the clause only if it is deterministic, otherwise document the observed behaviour on `IosDownloadTransport`
 
 ## 4. `BackgroundScheduler` seam
 
-- [ ] 4.1 Add the `internal` `BackgroundTaskApi` seam in `:adapter:ios:app-only` (`submit`, `cancel`, `pending`), rendering deterministic call/answer strings with `earliestBeginDate` masked; route `IosBackgroundScheduler` through it with no behaviour change
-- [ ] 4.2 Add the recording/replaying tape for the seam in the rig source set, following `KeychainTape`
-- [ ] 4.3 Add the `IOS_DEVICE_APP` live binding and register it for the device's contract verb
+- [x] 4.1 Add the `internal` `BackgroundTaskApi` seam in `:adapter:ios:app-only` (`submit`, `cancel`, `pending`), rendering deterministic call/answer strings with `earliestBeginDate` masked; route `IosBackgroundScheduler` through it with no behaviour change
+- [x] 4.2 Add the recording/replaying tape for the seam in the rig source set, following `KeychainTape`
+- [x] 4.3 Add the `IOS_DEVICE_APP` live binding and register it for the device's contract verb
 
 ## 5. Scheduler hosts
 

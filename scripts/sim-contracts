@@ -9,7 +9,7 @@
 # photos` writes a TCC row PhotoKit never consults), launches it, and runs every contract `GET /contract` lists
 # for this host. The contracts seed photos and never delete them, which is why the simulator is fresh.
 #
-# It FAILS on: any `Failed(` outcome, any refusal (409: the process is not the simulator app, or it does not
+# It FAILS on: any `Failed(` or `NotWithin(` outcome, any refusal (409: the process is not the simulator app, or it does not
 # hold GRANTED), an empty registry, and an app that never publishes its rig port. Everything it learns goes to
 # build/sim-contracts/, which CI keeps as an artifact: the outcome tables, and on a no-answer the screenshot
 # and log, because a pending system alert is visible only in a screenshot.
@@ -51,6 +51,18 @@ xcrun simctl boot "$DEVICE" && xcrun simctl bootstatus "$DEVICE" -b >/dev/null |
 xcrun simctl install "$DEVICE" "$APP" || fail "install"
 applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
     || fail "could not grant photo access"
+# The loopback peer the transfer contracts exchange bytes with (scripts/transfer-fixture.py). Started BEFORE the app, and
+# asked to answer, so a fixture that is not up fails here by name rather than as every transport clause's transfer error.
+FIXTURE_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+python3 scripts/transfer-fixture.py --port "$FIXTURE_PORT" --log "$OUT/transfer-fixture.log" &
+FIXTURE_PID=$!
+trap 'kill "$FIXTURE_PID" 2>/dev/null; xcrun simctl shutdown "$DEVICE" >/dev/null 2>&1; xcrun simctl delete "$DEVICE" >/dev/null 2>&1' EXIT
+i=0
+until curl -sf --max-time 2 "http://127.0.0.1:$FIXTURE_PORT/_health" >/dev/null; do
+    i=$((i + 1)); [ $i -lt 30 ] || fail "the transfer fixture never answered on $FIXTURE_PORT"; sleep 1
+done
+FIXTURE="http://127.0.0.1:$FIXTURE_PORT"
+
 SIMCTL_CHILD_SNAPSYNC_RIG_PORT="$RIG_PORT" xcrun simctl launch "$DEVICE" app.snapsync >/dev/null || fail "launch"
 
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
@@ -69,11 +81,13 @@ curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fa
 
 status=0
 for name in $(cat "$OUT/registry"); do
-    code="$(curl -sS -o "$OUT/$name.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name")"
+    code="$(curl -sS -o "$OUT/$name.txt" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/contract/$name?fixture=$FIXTURE")"
     echo "=== $name (HTTP $code)"
     cat "$OUT/$name.txt"
     if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
     if grep -q ' Failed(' "$OUT/$name.txt"; then echo "  -> a clause failed"; status=1; fi
+    # A bounded wait on an OS callback that expired ran nothing: on a host CI runs live, that is not coverage.
+    if grep -q ' NotWithin(' "$OUT/$name.txt"; then echo "  -> a clause's callback never came"; status=1; fi
 done
 cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
 [ $status -eq 0 ] || fail "see the outcome tables above"

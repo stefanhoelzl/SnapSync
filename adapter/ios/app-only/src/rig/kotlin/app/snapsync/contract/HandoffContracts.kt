@@ -1,5 +1,6 @@
 package app.snapsync.contract
 
+import app.snapsync.contracts.BackgroundSchedulerContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
@@ -77,6 +78,7 @@ internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding
  */
 fun appDeviceContracts(): List<InAppContract> = listOf(
     InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) { recordLinkOpener() },
+    InAppContract(BackgroundSchedulerContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
 )
 
 /**
