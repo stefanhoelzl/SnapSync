@@ -53,6 +53,9 @@ enum class BackgroundTransferState {
  *   It is the transfer's collaborator, not the port under contract (`LedgerStoreContract` licenses it), and a
  *   clause reads a row's state from it — the state reached, never which call reached it.
  * - [objects] is what landed on the fixture.
+ * - [presentedKey] is the key a PRESENTED state's prepared transfer was created under. A tier that re-creates a
+ *   retry-spent transfer from the photo its key names needs a key that names a real photo, which only the binding can
+ *   supply; it defaults to the contract's own derivation.
  */
 class TransferUnderTest(
     val transfer: BackgroundTransfer,
@@ -61,6 +64,7 @@ class TransferUnderTest(
     val unusable: (key: String) -> Resource,
     val ledger: LedgerStore,
     val objects: FixtureObjects,
+    val presentedKey: (clauseId: String) -> String = { BackgroundTransferContract.key(it) },
 )
 
 /**
@@ -244,7 +248,7 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
     
         clause("PRESENTED_SUCCESS_IS_RECORDED_IN_PLACE", BackgroundTransferState.PRESENTED_SUCCEEDED) { subject ->
             val id = "PRESENTED_SUCCESS_IS_RECORDED_IN_PLACE"
-            val key = key(id)
+            val key = subject.presentedKey(id)
             val handedUp = subject.transfer.drainTerminals().map { it.key }
             assertEquals(LedgerState.COMPLETED, subject.rowState(key), "a presented success is recorded COMPLETED by the drain")
             assertTrue(key !in handedUp, "a terminal fact never crosses the seam: a success is recorded in place, not handed up")
@@ -257,15 +261,16 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
 
         clause("PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY", BackgroundTransferState.PRESENTED_REFUSED_ONCE) { subject ->
             val id = "PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY"
-            val offered = subject.transfer.fetchRetryJobs().firstOrNull { it.key == key(id) }
+            val key = subject.presentedKey(id)
+            val offered = subject.transfer.fetchRetryJobs().firstOrNull { it.key == key }
             assertTrue(offered != null, "a transfer the destination refused once is offered for its free retry")
             assertEquals("image/jpeg", offered.contentType, "a retried transfer keeps the type it was created with")
-            assertNotEquals(LedgerState.COMPLETED, subject.rowState(key(id)), "a refused transfer is not completed")
+            assertNotEquals(LedgerState.COMPLETED, subject.rowState(key), "a refused transfer is not completed")
         }
 
         clause("PRESENTED_RETRY_SPENT_IS_HANDED_UP_ONCE", BackgroundTransferState.PRESENTED_RETRY_SPENT) { subject ->
             val id = "PRESENTED_RETRY_SPENT_IS_HANDED_UP_ONCE"
-            val key = key(id)
+            val key = subject.presentedKey(id)
             val first = subject.transfer.drainTerminals().map { it.key }
             val second = subject.transfer.drainTerminals().map { it.key }
             assertEquals(
