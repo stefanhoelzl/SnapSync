@@ -31,7 +31,7 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
-import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
@@ -446,10 +446,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // on an unreadable read (the pure `configAfterReload` rule).
                 configRefresh = config,
                 backstopScheduler = backstopScheduler,
-                // The push registration's port, host and token source (capability `push-registration`):
-                // `compose/` builds the registration, its launch/rotation collector and the on-join re-PUT.
-                pushHttpClient = KtorPushHttpClient(http),
-                backendHost = backendHost,
+                // The push registration's port and token source (capability `push-registration`): `compose/`
+                // builds the registration, its launch/rotation collector and the on-join re-PUT.
+                pushTokenPublisher = HttpPushTokenPublisher(http, backendHost, deviceId = { deviceIdentity.deviceId() }),
                 pushTokens = pushTokenSource,
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.

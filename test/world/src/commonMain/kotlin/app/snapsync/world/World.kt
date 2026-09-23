@@ -2,9 +2,9 @@ package app.snapsync.world
 
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
-import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.ports.PushTokenSource
-import app.snapsync.ports.PushHttpClient
+import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
@@ -563,14 +563,9 @@ class World(
             // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
             // world runs the REAL Provision flow now — including this re-registration — rather than a
             // world-local provision body (capability `harness-world-model`).
-            pushHttpClient = object : PushHttpClient {
-                private val inner = KtorPushHttpClient(client)
-                override suspend fun put(url: String, jsonBody: String): Result<Unit> =
-                    inner.put(url, jsonBody).also { registerPushCount++ }
-
-                override suspend fun post(url: String): Result<Unit> = inner.post(url)
+            pushTokenPublisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
+                PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
             },
-            backendHost = host,
             pushTokens = pushTokens,
             onEventMinted = { eventId -> onEventMinted(eventId) },
             log = logs.logger("World"),

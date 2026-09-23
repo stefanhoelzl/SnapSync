@@ -15,7 +15,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
-| `BackgroundScheduler` | `:domain:ports` | `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler | yes |
+| `BackgroundScheduler` | `:domain:ports` | `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler; `:test:world` CountingBackstopScheduler | yes |
 | `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer | yes |
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
@@ -26,6 +26,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ConfigFileRead` | `:domain:ports` | `:domain:ports` Content, Failed, Missing | no |
 | `ConfigRead` | `:domain:ports` | `:domain:ports` Joined, None, Unavailable | no |
 | `ConfigReader` | `:domain:ports` | `:adapter:generic:fake` InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore | yes |
+| `ConfigRefresh` | `:domain:ports` | `:adapter:ios:ext-safe` FileBackedConfigStore | no |
 | `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigSource | yes |
 | `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigStore | yes |
 | `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, Transient | no |
@@ -36,6 +37,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
+| `DeviceIdentity` | `:domain:ports` | `:adapter:ios:ext-safe` KeychainDeviceIdentity | no |
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:adapter:ios:ext-safe` IosDeviceLogSource | yes |
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
@@ -71,6 +73,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PhotoAccessRequester` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource, InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
+| `PhotoGrantRead` | `:domain:ports` | `:adapter:ios:ext-safe` PhotoKitGrantRead | no |
 | `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, InMemoryPhotoLibraryImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
 | `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:app` SelectionSnapshotLane; `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
@@ -106,4 +109,5 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
 | `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | no |
 | `UploadTriggers` | `:domain:feature` | — | no |
+| `UploaderProcess` | `:domain:compose` | `:domain:compose` App, Extension | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |
