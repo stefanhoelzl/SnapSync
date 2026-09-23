@@ -97,3 +97,23 @@ fun HttpClient.withCredentialInterceptor(
         }
     }
 }
+
+/**
+ * The same interceptor, reporting the backend's verdicts to the one object the core exposes for them
+ * ([BackendVerdicts]) — the form every composition root uses, so none can wire two of the three and forget the
+ * third (spec `module-architecture`, "One shared composition").
+ *
+ * [verdicts] is read per response, never captured: a root builds this client while it is still composing the core
+ * whose verdicts it reports, exactly as [token] is read per request.
+ */
+fun HttpClient.withCredentialInterceptor(
+    token: () -> String?,
+    verdicts: () -> app.snapsync.ports.BackendVerdicts,
+    appVersion: () -> String,
+): HttpClient = withCredentialInterceptor(
+    token = token,
+    onRejected = { sent -> verdicts().credentialRejected(sent) },
+    appVersion = appVersion,
+    onVersionRefused = { minimum -> verdicts().versionRefused(minimum) },
+    onServed = { verdicts().served() },
+)

@@ -8,9 +8,9 @@ import app.snapsync.model.SCENE_GENERATION_INITIAL
 import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.onCredentialRejected
 import app.snapsync.compose.UploadRecordPorts
-import app.snapsync.compose.snapSyncApp
+import app.snapsync.composition.ComposedApp
+import app.snapsync.composition.snapSyncHost
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.config.bakedApnsEnv
 import app.snapsync.config.bakedAppStoreUrl
@@ -29,8 +29,6 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
 import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
@@ -285,15 +283,10 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     private val config: FileBackedConfigStore by lazy { FileBackedConfigStore() }
 
     /**
-     * The one cutoff formatter every surface shares (capability `photo-selection-policy`; migration
-     * step 9): presentation's `CutoffFormatter` is pure given its inputs, so this root binds the
-     * `Clock`/`TimeZoneSource` ports' system adapters here — wiring, not a decision. Deliberately NOT
-     * seated on [AppCore]: the forge composition renders the create screen's wall clock too, and it
-     * must reach a formatter without any route to the live graph.
+     * The one cutoff formatter every surface shares (capability `photo-selection-policy`) — the status host's
+     * own, built by the shared host composition over the `Clock`/`TimeZoneSource` ports' system adapters.
      */
-    val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = SystemClock::now, zone = SystemTimeZone.current())
-    }
+    val cutoffFormatter: CutoffFormatter get() = composed.cutoffFormatter
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
     // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
@@ -342,8 +335,15 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // `-Psnapsync.rig=true` — can pass it as a thunk without anything being widened to `public`.
     // `internal` is module-wide and is NOT exported to the `SnapSyncKit` ObjC header, so no framework
     // surface changes and no production build can reach it from outside this module.
-    internal val app: AppCore by lazy {
-        snapSyncApp(
+    internal val app: AppCore get() = composed.core
+
+    /**
+     * The core AND the status host over it, from the shared host composition (spec `module-architecture`, "One
+     * shared composition"): this root supplies ports and nothing else. `by lazy`, and cheap to force — every
+     * [AppCore] property is itself `by lazy`, and host assembly happens only when [host] is first touched.
+     */
+    private val composed: ComposedApp by lazy {
+        snapSyncHost(
             scope = scope,
             ports = AppPorts(
                 // The main lane (law "Dispatcher lanes are fixed by the composition"). This shell is
@@ -427,6 +427,11 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 attestStore = KeychainAttestStore(),
                 deviceIdentity = deviceIdentity,
                 clock = SystemClock,
+                // The screen reads the same clock the core does; only the world separates the two.
+                displayClock = SystemClock,
+                timeZone = SystemTimeZone,
+                // The update-required screen's one remedy (capability `min-app-version`).
+                appStoreUrl = bakedAppStoreUrl(),
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
                 // every transition (capability `upload-lifecycle`) — this root supplies only facts.
                 appDrivenUpload = { urlSessionUpload },
@@ -471,11 +476,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             token = { app.attestation.token() },
             // Rejected (not merely expired) → the core compare-and-clears the token the refused request carried
             // and, if that cleared it, goes and gets a new one right now (`compose/CredentialComposition.kt`).
-            onRejected = { sent -> app.onCredentialRejected(sent) },
-            // The backend refuses this build as too old (capability `min-app-version`). Reported
-            // straight into the read-model the screen observes; a served response clears it.
-            onVersionRefused = { minimum -> app.versionGate.refused(minimum) },
-            onServed = { app.versionGate.served() },
+            // The backend refuses this build as too old (capability `min-app-version`) → the read-model the screen
+            // observes; a served response clears it. One object for all three verdicts, so none can be left out.
+            verdicts = { app.backendVerdicts },
         )
     }
 
@@ -531,60 +534,12 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // This root supplies its arms: the download arm's receiver is composed in the app graph, and the upload
     // arm's rides the `uploadSilentPush` thunk in [AppPorts] (app-driven tier only; null on iOS ≥26.1).
 
-    val host: StatusContainerHost by lazy {
-        // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
-        // the live own-device gallery total, minted into snapshots — composed in the app graph.
-        // Ledger-sourced, no storage LIST for upload status (spec: sync-status).
-        val syncSource = app.syncStatusSource
-        // Install the permission-grant subscriptions (upload-arm start + album ensure) — the collectors
-        // live in `compose/` (`AppCore.installPermissionSubscriptions`), but they install ONLY from this
-        // host-assembly path, exactly where the pre-step-8 `startUploadsOnGrant` / `ensureAlbumOnGrant`
-        // calls sat: a cold backstop/URLSession wake that merely touches [app] must not fire a
-        // producer-start off the permission StateFlow's replay.
-        app.installPermissionSubscriptions()
-        // Start registering the APNs token. The attest-first ordering and the `tokenChanged` retry arm
-        // live in `compose/` (`AppCore.installPushRegistration`) — they are a join between two blind
-        // features, which is behaviour rather than wiring — and install ONLY from this host-assembly
-        // path, beside the permission subscriptions and for the same reason.
-        app.installPushRegistration()
-        // The host observes the adapters' read-model StateFlows directly (migration step 9's split:
-        // presentation names no ports — the Keychain/PhotoKit adapters stay behind their flows).
-        // No EventStatus source: status is read from the listing; the extension owns reconciliation.
-        StatusContainerHost(
-            // Every read-model the reduction observes, in one bundle (`StatusSources`).
-            StatusSources(
-                sync = syncSource,
-                permission = permission.permission,
-                config = config.config,
-                creation = app.creationStatus,
-                rename = app.renameStatus,
-                download = app.downloadStatusSource,
-                attested = app.attestation.attested,
-                versionRefusal = app.versionGate.refusal,
-                appStoreUrl = bakedAppStoreUrl(),
-            ),
-            scope = scope,
-            cutoffFormatter = cutoffFormatter,
-            // The user-tap command bundle (leave / create / commitJoin / share / requestAccess /
-            // openSettings), built and decorated only in `compose/` (`AppCore.userCommands`) —
-            // presentation fires commands solely through it (spec `module-architecture`, "Commands
-            // cross one door").
-            commands = app.userCommands,
-            // The user-query bundle (the join gate's details read, the shareable count), built and
-            // lane-decorated only in `compose/` (`AppCore.userQueries`), beside the commands.
-            queries = app.userQueries,
-            diagnostics = StatusDiagnostics(
-                log = { message -> log.i { message } },
-                // The container's error seam (capability `sync-status-screen`): a throwable escaping a
-                // user command lands here instead of propagating. `Error` severity deliberately — that
-                // is the threshold at which a Kermit line becomes a crash-reporting EVENT rather than a
-                // breadcrumb (capability `crash-reporting`), and a command that failed outright is
-                // exactly what should reach the operator. It also keeps the line in `debug.log`, the
-                // un-redacted channel.
-                onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
-            ),
-        )
-    }
+    /**
+     * The status host, assembled by the shared host composition on first touch: that assembly installs the
+     * permission-grant subscriptions and the push registration (both live in `compose/`) and observes every
+     * read-model the core exposes. A cold background wake that merely touches [app] installs neither.
+     */
+    val host: StatusContainerHost by lazy { composed.host }
 
     /**
      * The host [MainViewController] renders. Built **once per process** (`by lazy`). There is only the

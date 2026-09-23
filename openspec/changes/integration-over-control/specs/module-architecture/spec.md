@@ -124,9 +124,9 @@ wiring:
 - `uploadCore` for the extension's strict subset bundle.
 
 **Inputs.** The composition functions SHALL receive a `CoroutineScope`.
-- `snapSyncHost` SHALL receive the app's ports and nothing else. The ports are built by a function of the
-  core's credential sinks, so that the credential-carrying HTTP client is wired to the core inside the
-  composition.
+- `snapSyncHost` SHALL receive the app's ports and nothing else.
+- The credential-carrying HTTP client SHALL report the backend's verdicts through the one object the core
+  exposes for them, never through callbacks a root assembles one by one.
 - A root SHALL NOT construct the status host, install a subscription, or pass a read-model to the host itself.
 
 **Testing.** The wiring graph SHALL NOT be unit-tested. It is smoke-tested end to end by the world harness and

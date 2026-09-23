@@ -88,12 +88,10 @@ fun WorldHarnessRoot() {
                 // (fresh world) re-binds the StatusContainerHost to the new sources.
                 key(controller.generation) {
                     StatusPane(
-                        syncSource = controller.syncSource,
-                        permissionSource = controller.permissionSource,
-                        configSource = controller.configSource,
-                        creationStatusSource = controller.creationStatusSource,
-                        renameStatusSource = controller.renameStatusSource,
-                        downloadSource = controller.downloadSource,
+                        // Exactly the read-models the phone's host observes, from the world's composition —
+                        // this pane builds its own host only because it decorates the commands below and
+                        // installs no subscription (the operator plays the OS).
+                        sources = controller.world.composed.statusSources(),
                         // The world's REAL command and query bundles (join gate, leave, reconfigure,
                         // rename, bug report, shareable count), decorated for the inspector.
                         commands = controller.commands,

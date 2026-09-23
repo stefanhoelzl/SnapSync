@@ -5,15 +5,11 @@ import app.snapsync.compose.extensionEntries
 import app.snapsync.compose.platformEntries
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.ReceiptDeadlines
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
 import app.snapsync.world.DenoBackend
 import app.snapsync.world.MiniEdgeBackend
 import app.snapsync.world.World
 import app.snapsync.world.WorldBackend
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -24,7 +20,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.datetime.TimeZone
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
@@ -108,33 +103,14 @@ class JvmRigHost private constructor(
         }
 
         private fun compose(scope: CoroutineScope, backend: WorldBackend): Pair<World, StatusContainerHost> {
-            val world = World(scope, backend = backend)
-            val host = StatusContainerHost(
-                StatusSources(
-                    sync = world.syncStatusSource,
-                    permission = world.permission.permission,
-                    config = world.configSource.config,
-                    creation = world.creationStatus,
-                    rename = world.renameStatus,
-                    download = world.downloadStatusSource,
-                ),
-                scope = scope,
-                commands = world.userCommands,
-                queries = world.core.userQueries,
-                // The world's clock is pinned at the epoch for the core; the formatter renders what a person
-                // would see, so it reads the wall clock, as both desktop harnesses do.
-                cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC),
-                diagnostics = StatusDiagnostics(
-                    log = { Logger.withTag("rig-jvm").i { it } },
-                    onIntentError = { Logger.withTag("rig-jvm").e { "user command failed: $it" } },
-                ),
-            )
+            // Attesting over the mini-edge, as a device attests; not over the real backend, whose local serve
+            // attaches a dev fallback credential and models no attestation exchange.
+            val world = World(scope, backend = backend, attests = backend is MiniEdgeBackend)
             // A minted event opens THIS host's join gate, as the iOS shell routes it — so `/user/create` is followed
             // by `/user/confirmJoin`, the same two steps a person and the app host take.
-            world.onEventMinted = { eventId -> host.onEventCreated(eventId) }
-            // Host assembly, as the iOS shell performs it when it assembles its host.
-            world.core.installPermissionSubscriptions()
-            return world to host
+            world.onEventMinted = { eventId -> world.statusHost.onEventCreated(eventId) }
+            // Host assembly, by the shared host composition, exactly as the iOS shell performs it.
+            return world to world.statusHost
         }
 
         private fun jvmHooks(

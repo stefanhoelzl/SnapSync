@@ -25,12 +25,13 @@ import kotlin.test.fail
  * it cannot reach this either.
  *
  * (The other half of the loop, `tokenChanged` → re-register, is NOT pinned here: it moved into
- * `compose/` as `AppCore.installPushRegistration`, and `:test:integration`'s
+ * `compose/` as `AppCore.installPushRegistration`, and the integration surface's
  * `a_new_credential_re_registers_the_push_token_with_no_new_delivery` drives it over the world for real.)
  *
  * WHAT THIS PROVES, exactly: that the route is still CONNECTED — not that it works. That is the failure
- * mode worth catching, because the call site is two lambdas whose purpose is not legible where they sit,
- * and deleting them leaves every test in the repository green.
+ * mode worth catching, because the call site is one argument whose purpose is not legible where it sits
+ * (the core's `backendVerdicts`, which carries the rejection route and the version gate's writes), and
+ * deleting it leaves every test in the repository green.
  */
 class CredentialRejectionWiringTest {
 
@@ -67,8 +68,8 @@ class CredentialRejectionWiringTest {
                 "hangs off this one construction",
         )
         assertTrue(
-            Regex("""onRejected\s*=""").containsMatchIn(code()),
-            "the shared HTTP client is built without an `onRejected` hook, so a 401 reaches nothing: " +
+            Regex("""verdicts\s*=""").containsMatchIn(code()),
+            "the shared HTTP client is built without the core's `verdicts`, so a 401 reaches nothing: " +
                 "a rejected credential would be re-sent forever and no wake could heal it",
         )
     }
@@ -76,13 +77,14 @@ class CredentialRejectionWiringTest {
     @Test
     fun `the rejection hook reaches the core's rejection route`() {
         // The compare-and-clear and the refresh it triggers are the core's (`compose/CredentialComposition.kt`,
-        // decision record `harden-seam-bug-classes`), and `:test:integration` drives them over the world; what only
-        // this pin can see is that the shell still hands the refused token to that route.
+        // decision record `harden-seam-bug-classes`), reached through the verdicts object the core exposes
+        // (`AppCore.backendVerdicts`), and the integration surface drives them over the world; what only this pin
+        // can see is that the shell still hands the client THAT object.
         assertTrue(
-            Regex("""onRejected\s*=\s*\{\s*(\w+)\s*->\s*app\.onCredentialRejected\(\1\)""").containsMatchIn(code()),
-            "the rejection hook no longer hands the refused token to `app.onCredentialRejected`, so a rejected-but-" +
-                "unexpired token is never dropped — the expiry check cannot see a rejection, and the device would " +
-                "401 forever behind a screen reading \"Syncing\"",
+            Regex("""verdicts\s*=\s*\{\s*app\.backendVerdicts\s*\}""").containsMatchIn(code()),
+            "the shared HTTP client no longer reports to `app.backendVerdicts`, so a rejected-but-unexpired token is " +
+                "never dropped — the expiry check cannot see a rejection, and the device would 401 forever behind a " +
+                "screen reading \"Syncing\"",
         )
     }
 }

@@ -1,12 +1,12 @@
 ## 1. One shared host composition (D1, D2)
 
-- [ ] 1.1 Add `:app:composition` (jvm + iosArm64 + iosSimulatorArm64; depends on `:domain:compose` and `:ui:presentation`; no test source set). Enrol it in `ModuleSetTest`'s expected set and the detekt tier coverage.
-- [ ] 1.2 Add `CredentialSinks` in `compose/`, and make the credential interceptor (`withCredentialInterceptor`) take the three sinks as parameters without defaults.
-- [ ] 1.3 Add `appStoreUrl` and the diagnostics log sink to `AppPorts`.
-- [ ] 1.4 Implement `snapSyncHost(scope, ports: (CredentialSinks) -> AppPorts)`: build ports → `snapSyncApp` → `installPermissionSubscriptions` + `installPushRegistration` → `StatusSources` from every core read-model → `StatusContainerHost`.
-- [ ] 1.5 Make `SnapSyncRoot` delegate to `snapSyncHost` without changing behaviour. Update the `KotlinShellGuardTest`/`SwiftShellGuardTest` pins, and run `detektAppShell` and `compileIosMainKotlinMetadata`.
-- [ ] 1.6 Make `World` compose through `snapSyncHost` and expose `host`. Point the desktop `StatusPane`/world harness at `world.host`, and delete their hand assembly.
-- [ ] 1.7 Shrink `JvmRigHost.compose` to building a world with the rig's `onEventMinted` routing. Use `attests = true` on the mini-edge and off on deno.
+- [x] 1.1 Add `:app:composition` (jvm + iosArm64 + iosSimulatorArm64; depends on `:domain:compose` and `:ui:presentation`; no test source set). Enrol it in `ModuleSetTest`'s expected set and the detekt tier coverage.
+- [x] 1.2 Add the inbound port `BackendVerdicts` (credential rejected / version refused / served), have `AppCore` expose `backendVerdicts`, and add a `withCredentialInterceptor(token, verdicts, appVersion)` overload. Wire `SnapSyncRoot` and `World` through it.
+- [x] 1.3 Add `appStoreUrl`, `timeZone` and `displayClock` to `AppPorts`.
+- [x] 1.4 Implement `snapSyncHost(scope, ports)`: `snapSyncApp`, then on first `host` touch `installPermissionSubscriptions` + `installPushRegistration` → `StatusSources` from every core read-model → `StatusContainerHost`.
+- [x] 1.5 Make `SnapSyncRoot` delegate to `snapSyncHost` without changing behaviour. Update the `KotlinShellGuardTest`/`SwiftShellGuardTest` pins, and run `detektAppShell` and `compileIosMainKotlinMetadata`.
+- [x] 1.6 Make `World` compose through `snapSyncHost` and expose `host`. Point the desktop `StatusPane`/world harness at `world.host`, and delete their hand assembly.
+- [x] 1.7 Shrink `JvmRigHost.compose` to building a world with the rig's `onEventMinted` routing. Use `attests = true` on the mini-edge and off on deno.
 - [ ] 1.8 Add JVM host tests (`:test:control`): `UpdateRequired` is reachable after a minimum-version refusal, and a delivered push token lands as device config.
 - [ ] 1.9 Regenerate `architecture/` (`./gradlew architectureDiagrams`) and run `./gradlew build` green.
 

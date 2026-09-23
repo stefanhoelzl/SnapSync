@@ -67,24 +67,31 @@ machinery.
 
 ### D1. The host composition moves into one function in a new module `:app:composition`
 
-`snapSyncHost(scope, ports: (CredentialSinks) -> AppPorts): ComposedApp` returns the `AppCore` and the
-`StatusContainerHost`. In order, it:
-1. builds the ports, handing them the core's credential sinks;
-2. calls `snapSyncApp`;
-3. installs the permission and push-registration subscriptions;
-4. builds `StatusSources` from the core's read-models, all of them;
-5. constructs the host.
+`snapSyncHost(scope, ports: AppPorts): ComposedApp` returns the `AppCore` and the `StatusContainerHost`:
+1. It calls `snapSyncApp`.
+2. On first touch of `host` — and only then, preserving the iOS root's timing, where a cold background wake
+   that touches the core must install nothing — it:
+   1. installs the permission and push-registration subscriptions;
+   2. builds `StatusSources` from the core's read-models, all of them;
+   3. constructs the host.
 
 Every root supplies ports and nothing else:
 - `SnapSyncRoot`;
 - `World` (and through it the JVM host, the desktop harness and the entry fixtures).
 
 **Details:**
-- **The ports' extras.** `AppPorts` gains `appStoreUrl` and the diagnostics logger's sink.
-- **The HTTP client's callbacks** (`onRejected`, `onVersionRefused`, `onServed`) need the core, and the core
-  needs ports built over that client. So the ports are built by a function of `CredentialSinks`, a
-  `compose/` type whose methods forward to the core once composed. The credential interceptor takes the
-  sinks as parameters without defaults, so a root cannot build a client that ignores them.
+- **The ports' extras.** `AppPorts` gains:
+  - `appStoreUrl`;
+  - `timeZone`;
+  - `displayClock`. On a device it is the same `SystemClock` as `clock`. The world keeps `clock` pinned for
+    the core's determinism and puts the screen on the wall clock, which is the world's existing deviation,
+    now named in one field instead of re-made by each root.
+- **The HTTP client's callbacks** (`onRejected`, `onVersionRefused`, `onServed`) become one object: an
+  inbound port `BackendVerdicts`, which the core implements and exposes as `core.backendVerdicts`. The
+  interceptor gains an overload taking it. Both roots pass `core.backendVerdicts`, so no root can wire two
+  of the three callbacks.
+  - Building ports from a function of the sinks was considered and rejected: it forces the iOS root's lazy
+    web to be restructured for no extra guarantee.
 - **Why a module.** The host lives in `:ui:presentation`, which may not name `compose/`, and `compose/` may
   not name presentation. `:app:ios` is the only module that sees both, and it is iOS-only and untested.
   `:app:composition` is the one join of the two, and it withholds each from the other's consumers. It joins
