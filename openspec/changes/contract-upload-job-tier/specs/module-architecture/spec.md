@@ -17,7 +17,8 @@ existence; a module justified by no law is a package with a derived text gate in
 - **Contained modules** — each exists so that something is absent from a production build, governed
   by "A build-time-only module is contained by compilation, not by a runtime check": `:app:ios:forge`
   (its own binary target, linked under `-Psnapsync.forge`), `:test:rig` (contributes its own call
-  site into the iOS app shell, linked under `-Psnapsync.rig`), `:test:contracts` (the port contracts,
+  site into the iOS app shell, linked under `-Psnapsync.rig`; its JVM target, the control channel's JVM
+  host, links into no shipped-format binary and is consumed only by test equipment), `:test:contracts` (the port contracts,
   linked under `-Psnapsync.rig` into the app, into the upload extension, and into the rig-gated source sets of
   the two iOS adapter modules, the extension-safe one and the app-only one; it withholds the test-assertion library from every other main source set — it is the
   only module whose main code may assert). A contained module is grouped by the law that governs it,
@@ -25,7 +26,13 @@ existence; a module justified by no law is a package with a derived text gate in
   exactly their shapes.
 - **Support modules** — never linked into any shipped-format binary, and exempt from the
   production-module laws: `:test:world`, `:test:integration`, `:test:architecture`,
-  `:test:harness-driver`, `:tools:diagrams`.
+  `:test:harness-driver`, `:tools:diagrams`, `:test:edge` (the real backend served as a local process for
+  JVM tests, JVM-only), `:test:control` (the typed client of the control channel's protocol, JVM-only).
+  The client depends on the control channel's JVM variant for the wire types, which stay in the contained
+  channel module because the device build needs them without a client; the channel declares its own
+  module dependencies with `implementation()`, so the client compiles against `model/` and `feature/`
+  read-model types (through the presentation module) and never against `ports/`, `flow/` or `compose/` —
+  that compile boundary is the whole of the client's read-model rule.
 
 The core's zone split is the one place the withholding law is satisfied by an **internal** boundary, and it
 is admitted for a stated reason: the zone edges were previously held by text gates that had to enumerate
@@ -86,6 +93,13 @@ group it joins and the argument for that group.
   in-app contract bindings
 - **THEN** the contracts module is linked there only under the same property, and a build without it
   contains neither
+
+#### Scenario: A test client reaches for a port
+
+- **WHEN** code in the control channel's client module, or its tests, names a type from `ports/`, `flow/` or
+  `compose/`
+- **THEN** compilation fails (unresolvable symbol), because no dependency on its compile path exports those
+  zones
 
 #### Scenario: The contracts module in the upload extension
 
