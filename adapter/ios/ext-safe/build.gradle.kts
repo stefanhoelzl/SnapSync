@@ -146,6 +146,10 @@ kotlin {
             // The Keychain and App-Group store bindings of `SecureStoreContract` (capability
             // `port-contracts`). Bound here because the seam and `AppGroupFileSecureStore` are `internal`.
             implementation(project(":test:contracts"))
+            // The photo-library contracts bind the grant-aware composition production calls over the
+            // PhotoKit adapters (capability `port-contracts`, "A live binding binds the composition
+            // production calls").
+            implementation(project(":domain:compose"))
         }
     }
 }

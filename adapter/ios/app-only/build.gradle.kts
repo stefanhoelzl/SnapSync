@@ -39,9 +39,11 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-            // The live `StagedBytesContract` binding (capability `port-contracts`): bound beside
-            // `IosStagedBytes`, which lives in this module by linkage.
+            // The contract bindings of this module's adapters (capability `port-contracts`): the live
+            // `StagedBytesContract` binding beside `IosStagedBytes`, and the photo-library contracts over
+            // the grant-aware composition production calls.
             implementation(project(":test:contracts"))
+            implementation(project(":domain:compose"))
         }
     }
 }
