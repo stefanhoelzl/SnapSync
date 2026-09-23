@@ -35,7 +35,6 @@ internal fun testCommands(
     requestAccess: () -> Unit = {},
     openSettings: () -> Unit = {},
     openLink: (url: String) -> Unit = {},
-    choosePhotos: () -> Unit = {},
     reconfigure: suspend (
         eventId: String,
         direction: app.snapsync.model.Direction,
@@ -47,8 +46,9 @@ internal fun testCommands(
     resetRename: suspend () -> Unit = {},
     sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
 ) = app.snapsync.model.UserCommands(
-    leave, create, commitJoin, share, requestAccess, openSettings, openLink, choosePhotos, reconfigure, rename,
-    resetRename, sendDiagnostics,
+    leave, create, commitJoin, share, requestAccess, openSettings, openLink,
+    choosePhotos = {}, // no presentation test is about the picker; its binding is the shells' and compose/'s
+    reconfigure = reconfigure, rename = rename, resetRename = resetRename, sendDiagnostics = sendDiagnostics,
 )
 
 /** Diagnostics that go nowhere unless a test is about them. */

@@ -263,15 +263,6 @@ class AlbumGatherTest {
     }
 }
 
-/** A membership fake whose answer is read at every access, so a test's `var` drives it live. */
-private fun liveMembership(eventId: () -> String?): ConfigSource = object : ConfigSource {
-    override val config: StateFlow<EventConfig?>
-        get() = MutableStateFlow(
-            eventId()?.let {
-                EventConfig(it, "E", captureCutoff("2026-01-01T00:00:00Z"), maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"))
-            },
-        )
-}
 
 /** A grant fake read at every access, so a test's `var` drives it live. */
 private fun liveGrant(grant: () -> PermissionStatus): PhotoAccessStatusSource = object : PhotoAccessStatusSource {
