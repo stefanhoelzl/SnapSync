@@ -1,7 +1,9 @@
 package app.snapsync.ios
 
 import app.snapsync.ports.DeviceIdentity
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.compose.UploaderProcess
+import app.snapsync.compose.AlbumLookupFailure
+import app.snapsync.ports.AlbumManager
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.config.FileBackedConfigStore
@@ -78,10 +80,9 @@ class UrlSessionUploadController(
     // 18–26.0 tier would happily upload the WhatsApp album the ≥26.1 tier refuses. Takes the cutoff, which
     // scopes the album member fetch.
     //
-    // **No default.** It used to carry `{ emptySet() }` while this comment argued it must never be omitted —
-    // the signature permitting exactly what the prose forbade. `SnapSyncRoot` did pass it, so the property
-    // held by diligence rather than by the compiler, which is what the same comment says failed last time.
-    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+    // Read through the album port; this tier admits on doubt, exactly as the app graph's status total does
+    // (the shared composition builds both reads from the same port and the same declared answer).
+    private val albumManager: AlbumManager,
     // The app graph's per-cycle answers this engine only FORWARDS — see [AppGraphReads].
     private val graph: AppGraphReads,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
@@ -197,14 +198,14 @@ class UrlSessionUploadController(
         uploadCore(
             scope,
             UploadPorts(
-                appVersion = ::appMarketingVersion,
+                appVersion = appMarketingVersion(),
                 diagnosticsReporter = SentryDiagnosticsReporter(),
-                admission = graph.admission,
+                process = UploaderProcess.App(graph.admission),
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
                 // cycle cleanly, not throw out of whatever first touches it (see [deviceIdentity]).
                 deviceIdentity = deviceIdentity,
-                host = { host },
+                host = host,
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
@@ -216,7 +217,8 @@ class UrlSessionUploadController(
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-selection-policy`), scoped by the
                 // cutoff — the SAME wrapper the own-device status total gets (admit-on-doubt).
-                albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
+                albumManager = albumManager,
+                albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 albumCoordinator = albumCoordinator,
                 token = token,
                 log = log,

@@ -50,7 +50,6 @@ import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
@@ -319,16 +318,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     private val albumMapStore: IosAlbumMapStore by lazy { IosAlbumMapStore() }
     private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
 
-    /**
-     * The normalized `assetId`s sitting in an album a messaging/social app made (capability
-     * `photo-selection-policy`). Supplied to BOTH the upload cycle (via the app-driven tier's controller)
-     * and the own-device status total — they enumerate independently, so a rule applied to one and not the
-     * other would peg the joined screen below 100% forever.
-     */
-    private suspend fun albumExcludedAssetIds(cutoff: CaptureCutoff): Set<String> =
-        runCatching { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) }
-            .onFailure { log.w(it) { "denylisted-album lookup failed — admitting on doubt this cycle" } }
-            .getOrDefault(emptySet()) // admit-on-doubt: a failed lookup must never DROP a real photo
 
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
     // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
@@ -464,7 +453,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 uploaderPin = { uploaderPinSource.pinned() },
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
-                albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
                 leaveNotifier = leaveNotifier,
                 // Coordination is the `flow/` zone's (step 8); this root supplies the provision flow's
                 // entry (a thin log-wrapped delegator) and the shell/platform effect lambdas the flows
@@ -1083,7 +1071,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // Denylisted-album membership (capability `photo-selection-policy`). Supplied on THIS tier too:
             // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
             // exactly the class of bug that once shipped the app-driven tier without a direction gate.
-            albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
+            albumManager = albumManager,
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { app.ledgerCounts.refresh() },
             // Event album (capability `event-album`): the composed coordinator; the cycle applies the

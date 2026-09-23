@@ -16,7 +16,10 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
+import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.DeviceIdentity
+import app.snapsync.ports.PhotoGrantRead
+import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.ports.ConfigRead
@@ -30,6 +33,19 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.SuppressionSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
+
+/**
+ * The uploader process a cycle runs in, and so where its admission comes from.
+ *
+ * The app's admission is the composed core's own answer (grant, selection scope and rig pin — all in-process
+ * state), so it is a callback into that core. The extension's is a platform read of its own grant, so it is
+ * a port, and the rule applied to it (`extensionAdmission`) lives here rather than in the extension's root —
+ * which is what used to hold both, as an inline lambda reading PhotoKit.
+ */
+sealed interface UploaderProcess {
+    class App(val admission: () -> UploadAdmission) : UploaderProcess
+    class Extension(val grant: PhotoGrantRead) : UploaderProcess
+}
 
 /**
  * The ports one upload-cycle assembly consumes (spec `module-architecture`, "One shared
@@ -48,8 +64,12 @@ class UploadPorts(
      * so this is one Keychain read per process in practice.
      */
     val deviceIdentity: DeviceIdentity,
-    /** The build-time upload host, read per gate call (the extension reads its bundle each time). */
-    val host: () -> String?,
+    /**
+     * The build-time upload host — a constant of the running build, so a plain value (law "Ports are the I/O
+     * boundary named for the need": a build constant is passed as a value, not a thunk). Blank when the build
+     * carries none, which the gate treats as "cannot upload".
+     */
+    val host: String,
     val ledger: LedgerStore,
     val transfer: BackgroundTransfer,
     /**
@@ -60,14 +80,14 @@ class UploadPorts(
     /** Crash/error reporting (capability `crash-reporting`). Required on both tiers — see AppPorts. */
     val diagnosticsReporter: DiagnosticsReporter,
     /**
-     * Whether this process may run a cycle now (capability `upload-lifecycle`, "The upload cycle owns its entry
-     * decision"), read once per gate. Required, with **no default**: the app answers from its grant (admit under
-     * any usable grant), the extension from its own photo grant (admit only under `GRANTED`), and a default
-     * would state either answer silently — for the extension, a wrong admit reads the whole library under a
-     * partial grant. It is decided before the membership's policy is built, so an undetermined grant never reaches the
-     * album read that prompts.
+     * Which uploader process this cycle runs in, which decides whether it may run a cycle now (capability
+     * `upload-lifecycle`, "The upload cycle owns its entry decision"), read once per gate. Required, with **no
+     * default**: the app answers from its composed core (admit under any usable grant), the extension from its
+     * own photo grant (admit only under `GRANTED`), and a default would state either answer silently — for the
+     * extension, a wrong admit reads the whole library under a partial grant. It is decided before the
+     * membership's policy is built, so an undetermined grant never reaches the album read that prompts.
      */
-    val admission: () -> UploadAdmission,
+    val process: UploaderProcess,
     /**
      * What upload discovery may read (capability `limited-photo-access`): [SelectionScope.Unrestricted]
      * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
@@ -82,13 +102,10 @@ class UploadPorts(
     val manifestPublisher: ManifestPublisher,
     /** Echo-suppression (capability `photo-download`): required, no default (`upload-lifecycle`). */
     val suppression: SuppressionSource,
-    /**
-     * Denylisted-album membership (capability `photo-selection-policy`). Supplied as a lambda —
-     * not unified here — because the tiers deliberately answer failure differently today (the app
-     * tier admits on doubt via its shared wrapper; the extension lets a throw fail the cycle), and
-     * this step changes no behavior beyond the entry gate (design D1).
-     */
-    val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
+    /** The album port the policy's denylisted-album read goes through (capability `photo-selection-policy`). */
+    val albumManager: AlbumManager,
+    /** How this tier answers a failed denylisted-album lookup — see [AlbumLookupFailure]. */
+    val albumLookupFailure: AlbumLookupFailure,
     /** Event-album placement (capability `event-album`); the `denormalizeAssetId` mapping is shared here. */
     val albumCoordinator: AlbumCoordinator,
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
@@ -96,10 +113,11 @@ class UploadPorts(
     /**
      * The calling build's marketing version, declared on the byte upload (capability `min-app-version`).
      *
-     * A thunk for the same reason [host] is one: the extension reads its own bundle, and reading it at
-     * composition time would bind the app process's answer into the extension's graph.
+     * A plain value, and required: each process builds its own bundle in its own root and reads its own
+     * bundle there, so there is no other process's answer to bind. It used to be a thunk defaulting to `""`,
+     * which let a composition declare no version to the min-app-version gate without saying so.
      */
-    val appVersion: () -> String = { "" },
+    val appVersion: String,
     val log: Logger = Logger.withTag("UploadCycle"),
 )
 
@@ -138,7 +156,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
                     config.host,
                     ports.deviceIdentity.deviceId(),
                     ports.token,
-                    ports.appVersion(),
+                    ports.appVersion,
                 ),
                 ledger,
             )
@@ -228,17 +246,22 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
                     selectionPolicyFor(
                         config = it,
                         suppressedAssetIds = { ports.suppression.suppressedLocalIds() },
-                        albumExcludedAssetIds = ports.albumExcludedAssetIds,
+                        albumExcludedAssetIds = { cutoff ->
+                            denylistedAlbumMembers(ports.albumManager, cutoff, ports.albumLookupFailure, ports.log)
+                        },
                     )
                 },
                 saveToAlbum = it.saveToAlbum,
                 manifestVersion = version.getOrDefault(0L),
             )
         },
-        host = ports.host(),
+        host = ports.host,
         // Whether THIS process may run (capability `upload-lifecycle`): each root states its own answer —
         // the app from resolution, the extension from its own grant read.
-        admission = ports.admission(),
+        admission = when (val process = ports.process) {
+            is UploaderProcess.App -> process.admission()
+            is UploaderProcess.Extension -> extensionAdmission(process.grant.current())
+        },
         // The forensics for a skip: the decision is made in shared code that cannot see WHY the
         // read failed, and an unreadable config is invisible on a device except through this string.
         skipDetail = skipDetail(read, identityFailure, version.exceptionOrNull()),
