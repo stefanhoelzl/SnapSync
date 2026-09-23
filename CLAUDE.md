@@ -88,7 +88,7 @@ openspec/       specs/ (contract of record) + changes/archive/ (decision records
 architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit; stale blocks the PR
 metadata/       App Store listing copy + App Review notes
 screenshots/    the 6 committed raw captures both the listing and the site derive from
-scripts/        build and dev tooling (the phone's lease, guard and re-sign are the global `ios-device` skill's)
+scripts/        build and dev tooling (the phone's lock, guard and re-sign are the global `ios-device` skill's)
 .ship/          this repo's half of the global `/ship` skill - gates, PR-title policy,
                 post-merge hook, merge budgets (contract: `~/.claude/skills/ship/hooks.md`)
 tools/ config/ gradle/            more build tooling
@@ -100,7 +100,7 @@ tools/ config/ gradle/            more build tooling
 ## Runbooks (load the skill before you start)
 
 - **Touching the connected iPhone** - install, launch, screenshot, device logs -> load **`snapsync-device`**.
-  It first has you load the machine-global `ios-device` skill, which owns the **device lease** (shared by
+  It first has you load the machine-global `ios-device` skill, which owns the **device lock** (shared by
   every project on this machine; its guard hook refuses device commands without it), the Linux re-sign
   and the install. It stops at the running app: to *drive* one, see `rig-channel` below.
   (`pymobiledevice3`, `dvt`, the libimobiledevice tools, `.ios-device.yml`)
@@ -114,10 +114,10 @@ tools/ config/ gradle/            more build tooling
 - **Driving the app on device** — joining, creating, leaving, resetting, seeding, wiping, reading the
   selection policy, forcing an OS callback, reading live state — over the build-time-only control channel
   (`-Psnapsync.rig=true`, `/os`, `/user`, `/device`) -> load **`rig-channel`**. It needs the same device
-  lease as `ios-device`. **There are no `SNAPSYNC_*` launch triggers any more**: production Kotlin declares
+  lock as `ios-device`. **There are no `SNAPSYNC_*` launch triggers any more**: production Kotlin declares
   none, and a guard fails the build if one returns. (`:test:rig`, `usbmux forward`)
 - **Running the app on a SIMULATOR** — two members of one event at once, a headlessly seeded/wiped
-  photo library, headless permission state -> load **`ios-simulator`**. It needs **no device lease**,
+  photo library, headless permission state -> load **`ios-simulator`**. It needs **no device lock**,
   and the ad-hoc signature is not optional (an unsigned build has no App-Group container).
   (`xcrun simctl`, `scripts/sim-sign`)
 - **Apple portal chores** - certificates, device UDIDs, provisioning profiles, bundle-id
