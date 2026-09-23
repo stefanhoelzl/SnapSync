@@ -184,7 +184,7 @@ refuses naming exactly that.
 
 - **Backend reads go through `World.neutral`**, so each answers "unavailable on this backend" wherever deno
   cannot honour it. On the mini-edge, the reads `NeutralBackend` lacks (departed, device config, pushes,
-  attest mints) are added there.
+  event name) are added there.
 - **Why so many entries.** Phase 9 expected new verbs to be rare. The measured reason there are about 40:
   under D4 almost every former internal assertion has an observable twin that needs a read.
 
