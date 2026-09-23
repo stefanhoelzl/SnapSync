@@ -4,9 +4,12 @@ package app.snapsync.model
  * The **total** bytes of device log one diagnostic dump may carry (capability `diagnostic-logging`).
  *
  * It is a hard bound, not a target. The reporting channel's server rejects an event over
- * `MAX_EVENT_SIZE` = 1 MiB (`1_048_576`) with a `413`, and the reporting SDK swallows transport
- * errors — so an over-budget dump completes, tells the user nothing, and never arrives. The only
- * defence is to stay clear of the ceiling.
+ * `MAX_EVENT_SIZE` = 1 MiB (`1_048_576`) with a `413`, and the reporting SDK surfaces no transport
+ * error — so an over-budget dump completes and tells the user nothing. Worse, it is not dropped: the
+ * SDK deletes a cached envelope only on a `200` and sends the oldest first, so the rejected dump stays
+ * queued and blocks every later report from this process, across launches, until 30 newer envelopes
+ * evict it (sentry-cocoa 8.58.2 `SentryHttpTransport`). The only defence is to stay clear of the
+ * ceiling.
  *
  * Measured against the real instance (2026-07-29): two 340 KB log sections plus the small state and
  * ledger sections serialised to 686,923 B — JSON overhead on log text is ~1% — and came back
