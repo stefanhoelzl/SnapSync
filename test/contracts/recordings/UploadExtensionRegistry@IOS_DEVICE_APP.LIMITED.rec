@@ -1,0 +1,19 @@
+# contract: UploadExtensionRegistry
+# host: IOS_DEVICE_APP
+# grant: LIMITED
+# file: UploadExtensionRegistry@IOS_DEVICE_APP.LIMITED.rec
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.0
+# recorded: 2026-09-23T16:03:39Z
+# live ENABLE_CREATES_A_RECORD: NotRunHere(the registration can be written only under a full photo grant; this binding runs under a partial one)
+# live DISABLE_REMOVES_A_RECORD: NotRunHere(the registration can be written only under a full photo grant; this binding runs under a partial one)
+# live DISABLE_WITH_NO_RECORD_IS_EXPECTED: NotRunHere(the registration can be written only under a full photo grant; this binding runs under a partial one)
+# live ENABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT: Passed
+# live DISABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT: Passed
+[DISABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT]
+setUploadJobExtensionEnabled(enabled=false) -> ok=false domain=PHPhotosErrorDomain code=3311
+[ENABLE_IS_REFUSED_UNDER_A_PARTIAL_GRANT]
+setUploadJobExtensionEnabled(enabled=true) -> ok=false domain=PHPhotosErrorDomain code=3311
+
