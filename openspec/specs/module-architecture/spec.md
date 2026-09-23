@@ -46,8 +46,8 @@ existence; a module justified by no law is a package with a derived text gate in
   by "A build-time-only module is contained by compilation, not by a runtime check": `:app:ios:forge`
   (its own binary target, linked under `-Psnapsync.forge`), `:test:rig` (contributes its own call
   site into the iOS app shell, linked under `-Psnapsync.rig`), `:test:contracts` (the port contracts,
-  linked under `-Psnapsync.rig` into the app and into the rig-gated source set of the extension-safe
-  adapter module; it withholds the test-assertion library from every other main source set — it is the
+  linked under `-Psnapsync.rig` into the app and into the rig-gated source sets of the two iOS adapter
+  modules, the extension-safe one and the app-only one; it withholds the test-assertion library from every other main source set — it is the
   only module whose main code may assert). A contained module is grouped by the law that governs it,
   **not** by its name prefix: these three are the same species and the containment law describes
   exactly their shapes.
@@ -108,6 +108,12 @@ group it joins and the argument for that group.
 - **WHEN** a core zone module declares another zone with `api()` rather than `implementation()`
 - **THEN** the boundary leaks to every downstream consumer, and the declaration is a defect the split
   exists to prevent
+
+#### Scenario: A rig-gated source set in the app-only adapter module
+- **WHEN** the app-only adapter module carries a source directory compiled only under `-Psnapsync.rig`, holding
+  in-app contract bindings
+- **THEN** the contracts module is linked there only under the same property, and a build without it
+  contains neither
 
 ### Requirement: Zones inside the core
 `:domain` SHALL contain exactly five package zones with these import laws, enforced by
