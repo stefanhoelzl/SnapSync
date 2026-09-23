@@ -1,16 +1,14 @@
 package app.snapsync.integration
 
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.eventStart
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.captureCeiling
+import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
-import app.snapsync.model.ApnsPushToken
 import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
-import app.snapsync.ports.PushTokenPublisher
-import app.snapsync.ports.PushTokenSource
-import app.snapsync.push.HttpPushTokenPublisher
+import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.world.BackendStore
 import app.snapsync.world.World
 import app.snapsync.world.miniEdgeClient
@@ -22,7 +20,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The REAL device-side push registration (`PushRegistration` + `HttpPushTokenPublisher`) driven against the
+ * The REAL device-side push registration (`PushRegistration` + `KtorPushHttpClient`) driven against the
  * world's mini-edge, asserting the world outcome: the device config document lands in the backend store,
  * and — because config lives in its own namespace — it is NOT surfaced as a listed file. (The backend
  * notify fan-out is Deno-side logic, covered by `api/test/app.test.ts`, so it is not re-exercised
@@ -35,7 +33,7 @@ class PushRegistrationIntegrationTest {
     @Test
     fun registration_writes_the_device_config_over_the_world() = worldTest {
         val store = BackendStore()
-        val reg = PushRegistration(HttpPushTokenPublisher(miniEdgeClient(store), "https://edge.example/api/v2", deviceId = { deviceId }))
+        val reg = PushRegistration(KtorPushHttpClient(miniEdgeClient(store)), "https://edge.example/api/v2", identity = { deviceId })
 
         reg.register(ApnsPushToken("DEADBEEF", "sandbox"))
 
@@ -53,10 +51,14 @@ class PushRegistrationIntegrationTest {
     }
 
     /**
-     * The REAL `Provision` join flow re-registers the push token (capability `push-registration`): joining
-     * fires `registerPush` in addition to the launch/rotation collector, closing the warm-rejoin window
-     * the nightly sweep's device-record collection opens (capability `scheduled-cleanup`). Driven over the
-     * real composed graph via `core.provisionFlow`, asserting the world's spy counter.
+     * A JOIN re-registers the push token (capability `push-registration`): committing a join through the
+     * composed command bundle runs the real `flow/Provision`, whose `registerPush` re-PUTs the delivered token —
+     * closing the warm-rejoin window the nightly sweep's device-record collection opens (capability
+     * `scheduled-cleanup`).
+     *
+     * This used to call `core.provisionFlow.run` directly, because a join in the world did NOT run the flow:
+     * the world bound `AppPorts.provision` to a body of its own. That seam is gone — the composition builds
+     * provision from the core it holds — so the ordinary join path is the one under test.
      */
     @Test
     fun the_join_flow_re_registers_the_push_token() = worldTest {
@@ -64,24 +66,21 @@ class PushRegistrationIntegrationTest {
         val startsAt = eventStart("2026-01-01T00:00:00Z")
         val w = World(this)
         w.store.registerEvent(event, "Trip", startsAt.at.iso)
+        w.pushTokens.deliver("DEADBEEF")
         assertEquals(0, w.registerPushCount)
 
-        // Drive the REAL Provision flow — the join path — NOT the world's config-cell shortcut.
-        w.core.provisionFlow.run(
-            EventConfig(
-                eventId = event,
-                name = "Trip",
-                minPhotoDate = CaptureCutoff(startsAt.at),
-                maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
-                startsAt = startsAt,
-                direction = Direction.Both,
-                saveToAlbum = false,
-            ),
+        w.userCommands.commitJoin(
+            event, "Trip", startsAt, eventEnd("2026-01-08T00:00:00Z"), deletesAt("2026-02-08T00:00:00Z"),
+            CaptureCutoff(startsAt.at), captureCeiling("2026-01-08T00:00:00Z"), Direction.Both, false,
         )
         // `registerPush` runs on its own escaping launch (a network PUT must never block the join); the
         // world runs on real time, so poll for it to settle.
         withTimeout(2000) { while (w.registerPushCount == 0) yield() }
         assertEquals(1, w.registerPushCount) // fired exactly once, on join
+        assertEquals(
+            """{"pushToken":{"kind":"apns","token":"DEADBEEF","env":"sandbox"}}""",
+            w.store.deviceConfigOf(w.ownDeviceId),
+        )
     }
 
     /**
@@ -114,23 +113,13 @@ class PushRegistrationIntegrationTest {
         // returns early without attesting, as it does in the extension and on a simulator.
         val w = World(this, attests = true)
 
-        var writes = 0
-        val counting = object : PushTokenPublisher {
-            private val inner = HttpPushTokenPublisher(w.client, w.host, deviceId = { w.ownDeviceId })
-            // Counted AFTER the write completes, so the count means "registrations that landed" — a
-            // count taken on entry would let the wait below proceed while the PUT was still in flight.
-            override suspend fun publish(token: ApnsPushToken): Result<Unit> =
-                inner.publish(token).also { writes++ }
-        }
-        val tokens = PushTokenSource("sandbox")
-        w.core.installPushRegistration(
-            PushRegistration(counting),
-            tokens,
-        )
+        // The composed registration writes through the world's counting push port (see
+        // `World.registerPushCount`), counted after each write lands.
+        w.core.installPushRegistration()
 
         // The OS delivers a token: registration #1, through the DELIVERY arm.
-        tokens.deliver("DEADBEEF")
-        withTimeout(5_000) { while (writes < 1) yield() }
+        w.pushTokens.deliver("DEADBEEF")
+        withTimeout(5_000) { while (w.registerPushCount < 1) yield() }
         assertEquals(
             """{"pushToken":{"kind":"apns","token":"DEADBEEF","env":"sandbox"}}""",
             w.store.deviceConfigOf(w.ownDeviceId),
@@ -142,7 +131,7 @@ class PushRegistrationIntegrationTest {
         w.core.attestation.refresh()
 
         // Registration #2, with no second delivery: the credential arm, and nothing else, can have done it.
-        withTimeout(5_000) { while (writes < 2) yield() }
-        assertEquals(2, writes)
+        withTimeout(5_000) { while (w.registerPushCount < 2) yield() }
+        assertEquals(2, w.registerPushCount)
     }
 }
