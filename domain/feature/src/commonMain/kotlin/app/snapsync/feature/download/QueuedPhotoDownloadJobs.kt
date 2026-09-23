@@ -77,7 +77,7 @@ internal fun isFetchableUrl(url: String): Boolean {
 /**
  * The iOS [PhotoDownloadJobs] (capability `photo-download`), platform-free: a pending queue drained
  * through a bounded in-flight window into a [DownloadTransport] (on iOS a background `URLSession`, in
- * tests a fake). Each finished transfer is staged durably and reported via [onStaged]; the window refills
+ * tests a fake). Each finished transfer is staged durably and reported via `onStaged`; the window refills
  * as transfers complete.
  *
  * **Cancellation cancels tasks, never the transport.** [cancelAll] drops the queue and cancels each
@@ -89,6 +89,19 @@ class QueuedPhotoDownloadJobs(
     private val scope: CoroutineScope,
     private val stagingRoot: String,
     private val newTransport: (DownloadTransportHost) -> DownloadTransport,
+    /**
+     * Deliver a staged resource. Required, and bound at construction (law "Callbacks are bound at
+     * construction", capability `module-architecture`): this used to be a nullable `var` the composition
+     * assigned while building the download controller, so a process the OS relaunched only to deliver
+     * download-session events — which builds the jobs and nothing else — dropped every staged resource
+     * without a line in the log. The composition's binding resolves the controller when it is invoked.
+     *
+     * `suspend`, and launched HERE rather than by the composition, so this class can track the import
+     * it starts. The composition's former `scope.launch { … }` handed the work to the app scope and kept
+     * no handle, which is why [onBackgroundEventsFinished] had nothing to wait for and released the OS
+     * handler while the imports it announced were merely queued.
+     */
+    private val onStaged: suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit,
     // Where this session's OS completion handler is released (capability `ios-app-shell`). UIKit owns
     // that handler and requires the main thread; the drain that triggers the release arrives on a
     // session-owned queue, so the lane is the only thing putting it where it belongs. The default is
@@ -99,16 +112,6 @@ class QueuedPhotoDownloadJobs(
     // The ambient entry-point prefix, so every line a background-events wake causes traces back to it.
     private val logScope: LogScope = LogScope.NoOp,
 ) : PhotoDownloadJobs {
-
-    /**
-     * Set by the composition root after the controller exists: deliver a staged resource.
-     *
-     * `suspend`, and launched HERE rather than by the composition, so this class can track the import
-     * it starts. The composition's former `scope.launch { … }` handed the work to the app scope and kept
-     * no handle, which is why [onBackgroundEventsFinished] had nothing to wait for and released the OS
-     * handler while the imports it announced were merely queued.
-     */
-    var onStaged: (suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit)? = null
 
     /**
      * The OS completion handlers of this session's background-events wakes (capability `ios-app-shell`).
@@ -173,13 +176,15 @@ class QueuedPhotoDownloadJobs(
         }
 
         override fun onStaged(description: String, stagedPath: String) {
-            val tag = decodeTag(description) ?: return
-            val deliver = onStaged ?: return
+            val tag = decodeTag(description) ?: run {
+                log.w { "staged bytes carry an undecodable transfer description — not imported: $description" }
+                return
+            }
             // Launched here, and REMEMBERED: this fires on the transport's delegate queue, which must
             // not be blocked by an import, but the job has to remain reachable so the wake's OS handler
             // can wait for it. Pruning completed jobs keeps the list from growing across a long session.
             outstandingImports.removeAll { it.isCompleted }
-            outstandingImports += scope.launch { deliver(tag.ref, tag.resourceKey, stagedPath) }
+            outstandingImports += scope.launch { onStaged(tag.ref, tag.resourceKey, stagedPath) }
         }
 
         override fun onCompleted(description: String, error: String?) {

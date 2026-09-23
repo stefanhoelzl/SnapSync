@@ -415,6 +415,14 @@ class AppCore internal constructor(
             scope = scope,
             stagingRoot = ports.stagedBytes.stagingRoot(),
             newTransport = ports.newDownloadTransport,
+            // Deliver each staged resource back to the controller — an adapter outbound callback satisfied
+            // by a compose-built lambda whose body is one call (law "Commands cross one door"). It reads the
+            // `downloadController` lazy when INVOKED, not here: the jobs are built on paths that build
+            // nothing else — a background-`URLSession` relaunch touches only `downloadJobs` — and the
+            // callback must reach the controller on those paths too (capability `photo-download`, "A staged
+            // resource reaches the controller on every entry point"). No launch here: the jobs own it, so
+            // they can join the imports before the session's OS handler is released.
+            onStaged = { ref, key, path -> downloadController.onResourceStaged(ref, key, path) },
             // UIKit owns this session's completion handler and requires the main thread for it
             // (capability `ios-app-shell`); the harness binds its own lane.
             uiLane = ports.uiLane,
@@ -424,7 +432,7 @@ class AppCore internal constructor(
 
     // The download orchestrator: union → foreign selection → download → import → suppression.
     val downloadController: DownloadController by lazy {
-        val controller = DownloadController(
+        DownloadController(
             union = ports.union,
             store = ports.downloadStore,
             jobs = downloadJobs,
@@ -436,14 +444,6 @@ class AppCore internal constructor(
             downloadEnabled = { ports.configSource.config.value?.direction?.includesDownload },
             logScope = ports.logScope,
         )
-        // Deliver each staged resource back to the controller off the transport delegate thread —
-        // an adapter outbound callback satisfied by a compose-built lambda (law: "Commands cross one
-        // door" — a compose-built single-command lambda is the sanctioned adapter-callback form).
-        // No launch here: `QueuedPhotoDownloadJobs` owns it, so it can join the imports before the
-        // background session's OS handler is released (capability `photo-download`). A fire-and-forget
-        // launch in a compose adapter callback is exactly the shape that left work unreachable.
-        downloadJobs.onStaged = { ref, key, path -> controller.onResourceStaged(ref, key, path) }
-        controller
     }
 
     // The silent-push receiver for the download arm (capability `photo-download`); its active-event

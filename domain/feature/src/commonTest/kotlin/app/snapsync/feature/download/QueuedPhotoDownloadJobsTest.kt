@@ -94,13 +94,15 @@ class QueuedPhotoDownloadJobsTest {
         val transports = mutableListOf<FakeDownloadTransport>()
         val staged = mutableListOf<Triple<AssetRef, String, String>>()
 
+        /** What a staged resource is delivered to; a test swaps it to model a slow or stalled import. */
+        var deliver: suspend (AssetRef, String, String) -> Unit = { ref, key, path -> staged += Triple(ref, key, path) }
+
         val jobs = QueuedPhotoDownloadJobs(
             scope = scope,
             stagingRoot = "/root",
             newTransport = { events -> FakeDownloadTransport(events).also { transports += it } },
-        ).apply {
-            onStaged = { ref, key, path -> staged += Triple(ref, key, path) }
-        }
+            onStaged = { ref, key, path -> deliver(ref, key, path) },
+        )
 
         /** The transport currently in use (the last one built). */
         val transport: FakeDownloadTransport get() = transports.last()
@@ -334,7 +336,7 @@ class QueuedPhotoDownloadJobsTest {
         var released = false
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val importsStarted = mutableListOf<String>()
-        h.jobs.onStaged = { _, key, _ ->
+        h.deliver = { _, key, _ ->
             importsStarted += key
             gate.await() // a slow import, exactly like a real PhotoKit commit
         }
@@ -371,7 +373,7 @@ class QueuedPhotoDownloadJobsTest {
         var released = false
         val neverImports = kotlinx.coroutines.CompletableDeferred<Unit>()
         var importFinished = false
-        h.jobs.onStaged = { _, _, _ -> neverImports.await(); importFinished = true }
+        h.deliver = { _, _, _ -> neverImports.await(); importFinished = true }
         h.jobs.adoptBackgroundEvents { released = true }
 
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))

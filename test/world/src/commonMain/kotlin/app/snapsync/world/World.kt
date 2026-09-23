@@ -581,15 +581,6 @@ class World(
         )
     }
 
-    init {
-        // Touch the controller so its lazy construction installs the production `onStaged` hook. The world
-        // used to RE-INSTALL that hook with the Job handles kept, because `onStaged` was not a suspend
-        // seam and [stageAllDownloads] had no other way to await the launched imports. It is one now, and
-        // the feature tracks its own launches (`awaitOutstandingImports`), so the world runs the
-        // production wiring unshadowed — one fewer place the harness could diverge from the app.
-        core.downloadController
-    }
-
     // ---- device model + operator gallery actions ------------------------------------------------
 
     /**
