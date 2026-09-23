@@ -548,31 +548,7 @@ class AppCore internal constructor(
     // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
     // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
     // cancels in-flight on disable — the deliberate arm asymmetry lives in the tested use-case.
-    val reconfigureEvent: ReconfigureEvent by lazy {
-        ReconfigureEvent(
-            configSource = ports.configSource,
-            store = ports.configStore,
-            refreshStatus = { refreshStatusSources() },
-            armUpload = { uploadTransitions.onReconfigure() },
-            ensureAlbum = { cfg ->
-                albumCoordinator.ensureAlbum(
-                    cfg.eventId,
-                    cfg.name,
-                    cfg.saveToAlbum,
-                    hasUsableAccess = ports.photoAccess.permission.value.grantsPhotoAccess,
-                )
-            },
-            // Detached: `tap.reconfigure` is awaited by Save, and a gather's cost grows with what is held.
-            gatherAlbum = { cfg -> albumGather.start("reconfigure", cfg.eventId) },
-            // On its own escaping launch (like Provision's reconcile), so a slow union read never blocks
-            // the command's return.
-            startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
-            cancelDownloads = { downloadController.onLeaveOrSwitch() },
-            // The policy bounds are a manifest projection input that lives outside the ledger (capability
-            // `reconfigure-membership`); the use-case calls this after its config save has landed.
-            bumpManifestVersion = { ports.uploadRecord.ledger.bumpManifestVersion() },
-        )
-    }
+    val reconfigureEvent: ReconfigureEvent by lazy { reconfigureEventFor() }
 
     // The join use-case (capability `join-event`): fetch details, enroll by writing the register-only
     // EMPTY device manifest, then provision through the same path as create/scan.
