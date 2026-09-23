@@ -150,3 +150,11 @@ port and the Kermit seam only.
 
 None open. Whether a changed breadcrumb data map round-trips to the native crumb was open when this was
 proposed, and E3 settles it: it does.
+
+## Archive: delta completeness
+
+| module | capability | delta |
+|---|---|---|
+| `:domain:model` (`EventBounds.kt`, `DiagnosticDump.kt` KDoc) | `crash-reporting`, `diagnostic-logging` | both deltas |
+| `:adapter:ios:ext-safe` (`SentryDiagnosticsReporter`, iosTest) | `crash-reporting` | its delta |
+| `:test:contracts` (`DiagnosticsReporterContract`, one clause) | `port-contracts` | none: that spec owns the mechanism, and a contract's clauses are specified by its code |
