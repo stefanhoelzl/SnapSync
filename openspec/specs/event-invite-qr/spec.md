@@ -6,8 +6,8 @@ Inviting others to the joined event from within the app. A joined device already
 join capability — the `eventId` in the persisted config — so it re-encodes the same event link
 (`encodeEventUrl`, capability `event-link`) and displays it as a scannable QR — captioned for the
 member, not for whoever scans it — with a share action, in the joined layer only. Covers the deterministic invite-URL derivation, the
-joined-layer visibility rule, the QR display, the fire-and-forget share over a bare
-`share: (String) -> Unit` lambda (no-op default), and the explicit acknowledgement that the
+joined-layer visibility rule, the QR display, the fire-and-forget share as the
+`share` member of the required `UserCommands` bundle (no default), and the explicit acknowledgement that the
 displayed QR is the full join capability (any scanner becomes an uploader; an existing member
 re-scanning reconciles and uploads nothing new).
 Decision record: `changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the invite URL is reduced, not a parameter).
@@ -123,39 +123,22 @@ is the audience and the claim.
 ### Requirement: Sharing the invite is fire-and-forget
 
 The presentation layer SHALL expose an `onShareInvite()` intent that hands the invite deeplink string
-to the platform share. The share action SHALL be injected into `StatusContainerHost` as a bare
-`share: (String) -> Unit` lambda (not a named seam type), and `onShareInvite()` SHALL invoke it with
-the current invite URL when one exists. The share SHALL be fire-and-forget: the screen SHALL NOT
-observe or react to the share's completion, cancellation, or dismissal, and `UiState` SHALL be
-unaffected by sharing (the status projection stays correct while and after any platform share UI is
-presented).
+to the platform share. The share action SHALL reach `StatusContainerHost` as the `share: (String) -> Unit`
+member of the required `UserCommands` bundle (not a named seam type, and not a constructor parameter of its
+own), and `onShareInvite()` SHALL invoke it with the current invite URL when one exists. The share SHALL be
+fire-and-forget: the screen SHALL NOT observe or react to the share's completion, cancellation, or
+dismissal, and `UiState` SHALL be unaffected by sharing (the status projection stays correct while and after
+any platform share UI is presented).
 
 #### Scenario: Sharing hands the deeplink to the platform
 - **WHEN** `onShareInvite()` is invoked with an event configured
-- **THEN** the injected `share` lambda is called with the invite deeplink string
+- **THEN** the bundle's `share` command is called with the invite deeplink string
 
 #### Scenario: Sharing does not change the status projection
 - **WHEN** the platform share UI is presented over the status screen and then dismissed (shared or
   cancelled)
 - **THEN** the status screen reflects the same live `UiState` it would have shown regardless, with no
   share-driven state to restore
-
-### Requirement: The container share action defaults to a no-op
-
-`StatusContainerHost` SHALL accept the share action as an injected `share: (String) -> Unit` lambda
-with a no-op default, mirroring the leave action. The composition root binds it to the platform share;
-hosts and tests that do not exercise sharing (the desktop harness's real-share path, presentation
-tests) SHALL construct unchanged, and a share in those contexts SHALL be inert. The presentation layer
-SHALL gain no module dependency: the invite-link codec lives in `:domain`'s `model/` zone, reached through the `:domain` dependency presentation already has.
-
-#### Scenario: A host without a real share action constructs and is inert
-- **WHEN** `StatusContainerHost` is constructed without injecting a real share action
-- **THEN** construction succeeds and invoking `onShareInvite()` performs no platform share
-
-#### Scenario: Presentation gains no new module dependency
-- **WHEN** the presentation module's dependencies are inspected after this change
-- **THEN** it depends on no new module — the invite URL is derived via the already-present
-  `model/` `EventLink` encoder and the share enters as a plain lambda
 
 ### Requirement: The displayed QR carries the full join capability
 
@@ -174,4 +157,3 @@ uploads nothing already present. There SHALL be no access control on who may sca
 - **WHEN** a member already joined to the event re-scans the displayed QR
 - **THEN** the join reconciles against storage, seeding already-stored photos as `COMPLETED`, and
   nothing already present is re-uploaded
-

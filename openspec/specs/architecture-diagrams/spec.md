@@ -32,14 +32,16 @@ Mermaid-in-Markdown. Hand-edited content in `architecture/` SHALL NOT survive th
 The flow transcriber SHALL derive its trigger inventory from the `flow/` zone's directory
 listing (one file per trigger — never a hand-enumerated list) and SHALL transcribe every function
 in each flow file against the **closed grammar**: straight-line calls (features and the
-`compose/`-built effect lambdas); an **awaited fan-out** `coroutineScope { launch { … } … }`, whose
-branch bodies are themselves grammar-bound; a `when` over a feature-returned sealed result whose
-branches are a single call, launch, or `Unit`; a single **leading** guard clause (the null-check pair
-`val x = codec(...)` + `if (x == null) { log; return }`, or a sole `<call>?.let { … }` guarded
-region); a best-effort wrap (`runCatching { call }.onFailure { log-only }` — the absorb is
-diagnostics, transparent to transcription); a fan-out loop over an injected receiver list; and
-`log.*` statements (diagnostics, omitted). The transcriber scanning an empty `flow/` scope SHALL
-fail, never render nothing.
+`compose/`-built effect lambdas); an **awaited fan-out**, either `coroutineScope { launch { … } … }` or
+the isolating `fanOut("Flow") { child("name") { … } … }` the flows use (law "A trigger flow never outlives its own
+run", capability `module-architecture`), whose branch bodies are themselves grammar-bound; a `when` over a
+feature-returned sealed result whose branches are a single call, launch, or `Unit`; a single **leading** guard
+clause (the null-check pair `val x = codec(...)` + `if (x == null) { log; return }`, or a sole
+`<call>?.let { … }` guarded region); a best-effort wrap (`runCatchingCancellable { call }.onFailure { log-only }`,
+or the bare `runCatching` form — the absorb is diagnostics, transparent to transcription); a fan-out loop over an
+injected receiver list; and `log.*` statements (diagnostics, omitted). A flow is a file in the `flow/` zone that
+declares a `suspend fun run(` entry point; the zone's own support (the `fanOut` helper) orders nothing and is not
+transcribed. The transcriber scanning an empty `flow/` scope SHALL fail, never render nothing.
 
 An escaping `scope.launch` SHALL NOT be part of the grammar. It was the sanctioned concurrent form
 until flows lost their `CoroutineScope` (law *A trigger flow never outlives its own run*); keeping it

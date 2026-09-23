@@ -121,8 +121,8 @@ The panel MUST NOT display a "current permission" readout — the phone frame al
 The phone frame SHALL render the status screen's leave action and its confirmation dialog so they are
 reviewable offscreen: when a sync preset forces a joined-layer state (InProgress, NothingToSync, or
 Complete), the leave action SHALL appear bottom-right, and activating it SHALL raise the "Leave
-event?" confirmation. The harness SHALL NOT wire a real leave implementation — the screen's
-`onLeaveEvent` callback resolves to the container's no-op default — so confirming exercises the UI
+event?" confirmation. The harness SHALL NOT wire a real leave implementation — the command bundle it builds binds `leave`
+to an explicit no-op (the container has no defaulted commands) — so confirming exercises the UI
 flow only and mutates no harness state (no config, ledger, or sync cell changes). The control panel
 SHALL gain no leave control; the leave affordance lives in the phone frame, like the gate's
 permission actions.
@@ -134,7 +134,7 @@ permission actions.
 
 #### Scenario: Confirming leave in the harness is inert
 - **WHEN** the user confirms the leave dialog in the phone frame
-- **THEN** the dialog dismisses and no harness state changes (the no-op default runs; config, ledger,
+- **THEN** the dialog dismisses and no harness state changes (the harness's no-op `leave` runs; config, ledger,
   and sync cells are untouched)
 
 #### Scenario: Cancelling leave in the harness dismisses the dialog

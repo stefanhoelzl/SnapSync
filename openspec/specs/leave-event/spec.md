@@ -168,23 +168,6 @@ visibility is local screen state and SHALL NOT enter `UiState`.
 - **WHEN** the user activates the leave affordance and chooses **Stay**
 - **THEN** the prompt is dismissed and no config, ledger, or producer state changes
 
-### Requirement: The container leave action defaults to a no-op
-
-`StatusContainerHost` SHALL accept the leave action as an injected **`suspend () -> Unit` lambda**
-with a no-op default — not the `LeaveEvent` type itself, since the presentation layer is Compose-free
-and SHALL NOT gain an engine/gallery dependency (the composition root binds the lambda to
-`LeaveEvent.leave`). Hosts and tests that do not exercise leave (non-iOS harness, presentation tests)
-SHALL construct unchanged, and a confirmed leave in those contexts SHALL be inert.
-
-#### Scenario: A host without a real leave action constructs and is inert
-- **WHEN** `StatusContainerHost` is constructed without injecting a real leave action
-- **THEN** construction succeeds and invoking `onLeaveEvent()` performs no teardown
-
-#### Scenario: Presentation gains no engine dependency
-- **WHEN** the presentation module's dependencies are inspected after this change
-- **THEN** it depends on no engine, gallery, or rejoin module — the leave action enters as a plain
-  suspend lambda
-
 ### Requirement: Leave notifies the backend
 
 The `LeaveEvent` use-case SHALL notify the backend that this device is leaving through the
@@ -326,3 +309,19 @@ interim.
 - **WHEN** the self-leave's best-effort backend notify fails because the event no longer exists
 - **THEN** the local teardown has already completed and the failure is logged and ignored
 
+### Requirement: The container receives the leave action through the command bundle
+
+`StatusContainerHost` SHALL receive the leave action as the `leave: suspend () -> Unit` member of the required
+`UserCommands` bundle (`model/`), which only `compose/` builds for production — never as a defaulted constructor
+parameter, and never as the `LeaveEvent` type itself: the presentation layer is Compose-free and SHALL NOT gain an
+engine or gallery dependency. A host that does not exercise leave SHALL say so by passing a bundle whose `leave`
+does nothing.
+
+#### Scenario: A host that does not exercise leave says so
+- **WHEN** a presentation test constructs `StatusContainerHost` with a bundle whose `leave` does nothing
+- **THEN** construction succeeds and invoking `onLeaveEvent()` performs no teardown
+
+#### Scenario: Presentation gains no engine dependency
+- **WHEN** the presentation module's dependencies are inspected
+- **THEN** it depends on no engine, gallery, or rejoin module — the leave action enters through the `model/`
+  command bundle

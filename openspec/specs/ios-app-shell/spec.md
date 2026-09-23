@@ -318,15 +318,23 @@ The `:app:ios` module SHALL provide a composition-root singleton (`SnapSyncRoot`
 owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher) and assembles the
 live stack **through the shared composition** `snapSyncApp` (`:domain` `compose/`, spec
 `module-architecture` "One shared composition"): the root constructs the platform adapters and
-supplies them as `AppPorts` — platform effect lambdas included (the trigger-time membership
-re-read `reloadConfig` (bound to the config adapter's `reload()`), the backstop scheduling, and the
-upload mechanisms this OS can carry). Every platform touch the root once supplied as an inline lambda
-SHALL be a
-port instead: the share sheet (`SharePresenter`), the limited-library picker
-(`PhotoAccessRequester.choosePhotos`), the download-staging root (`StagedBytes.stagingRoot`), the
-wall clock (`Clock`), and the backend leave (`LeaveNotifier`) — a lambda in any of those places is an
-adapter written in the composition root (spec `module-architecture`, "Ports are the I/O boundary
-named for the need"). Given those ports, `snapSyncApp` composes the feature graph: the **ledger-backed**
+supplies them as `AppPorts`. The root SHALL supply **no** function-typed field that reads a platform value,
+performs a platform effect, or calls back into the composed core; the function-typed fields that remain
+are factories for collaborators this OS may or may not carry (the upload mechanisms), each pinned by the
+composition seam gate with that reason. Every platform touch the root once
+supplied as an inline lambda SHALL be a port instead: the share sheet (`SharePresenter`), the
+limited-library picker (`PhotoAccessRequester.choosePhotos`), the download-staging root
+(`StagedBytes.stagingRoot`), the wall clock (`Clock`), the backend leave (`LeaveNotifier`), the
+trigger-time membership re-read (a refresh on the config port, bound to the file-backed adapter), the
+download-backstop scheduling (a `BackgroundScheduler` for the backstop task), the device identity
+(`DeviceIdentity`, bound to the Keychain identity), and the album-exclusion read (the `AlbumManager` port the
+bundle already carries) — a lambda in any of those places is an adapter written in the composition root
+(spec `module-architecture`, "Ports are the I/O boundary named for the need"). The build's marketing
+version and baked upload host SHALL be supplied as plain values. Seams whose body is core machinery —
+the attestation refresh, the push registration, the provision — SHALL NOT be supplied by the root at all:
+`snapSyncApp` builds them from the core it composes. Adapter outbound callbacks the root must still wire
+because of a construction cycle (the HTTP client's rejection, version-refusal and served hooks) SHALL each
+be a single call into a core entry point that `compose/` exposes for that purpose. Given those ports, `snapSyncApp` composes the feature graph: the **ledger-backed**
 `SyncStatusSource` (built from a `LedgerCountsSource`, the permission source, and the gallery
 source — see `sync-status`), the **foreground-gated status-counts poll** (`StatusCountsPoller`,
 started/stopped by the Foreground/Background flows — see `sync-status`), the attestation,
@@ -369,16 +377,10 @@ build only — the source of the per-uploader development switch (the app's crea
 registration on/off). Whether the extension may be registered (`extensionRegistrable`: the OS carries it
 **and** the grant is `GRANTED`), and whether each uploader may create, are `upload-lifecycle`'s, re-read at
 every transition, and this spec SHALL NOT restate those rules. The root SHALL construct the OS-driven
-registration **only** where its selector exists, so a lower system cannot reach a trapping call. The root
-SHALL implement the app's inbound port `PlatformEntries` (`onForeground` / `onBackground` / `onOpenUrl` /
-`onPushToken` / `onSilentPush` / `onBackgroundTask` / `onBackgroundTransfers`) **by Kotlin delegation** to
-the implementation the shared composition builds (`module-architecture`, "OS entry points cross an inbound
-port"), supplying it only the in-process hooks it cannot name — the host's `onOpenUrl`, the host's lazy
-assembly, the push-token delivery, and the record that the app became active — and the adapter
-identifiers it routes by, as data. The root SHALL
-hold no hand-written forwarding for a port member, re-check no tier, and decide nothing; the only entry
-points it writes by hand are the ones outside the port (`onLaunch`, `onUserActivity`, and the log-only scene
-and registration-failure callbacks).
+registration **only** where its selector exists, so a lower system cannot reach a trapping call. Every OS
+entry point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilentPush` /
+`runUploadHeartbeat` / `runDownloadBackstop` / `handleBackgroundUrlSession`) SHALL be a thin
+delegator to a single live shell delegate, re-checking no tier and deciding nothing.
 
 The permission-grant subscriptions (the upload permission-change transition; sole-creator album ensure —
 see `event-album`) SHALL be installed by an explicit `AppCore.installPermissionSubscriptions()`
@@ -400,15 +402,15 @@ foreground-gated poll); the background entry drives the Background flow (which *
 and arms the backstop). A background launch installs the observers and simply never receives
 `didBecomeActive`. The scope SHALL outlive Compose
 recomposition so the source collector and container are not torn down with the view.
-`MainViewController` SHALL render `host.container.stateFlow` and pass `StatusScreen` the callback bundle
-built by the shared factory over the host (`sync-status-screen`, "The screen's callback bundle is built in
-one place") — writing no tap → intent binding of its own — together with the root's shared
+`MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
+`host.onRequestPermission` / `host.onOpenSettings`, the leave action to `host.onLeaveEvent`, and
+the share action to `host.onShareInvite`; it SHALL collect the container's invite URL
+(`host.inviteUrl`) and pass it to `StatusScreen`, together with the root's shared
 `CutoffFormatter` (the screen carries no system-reading default). `SnapSyncRoot` SHALL expose
 `onUserActivity(NSUserActivity)` — the scene delegate forwards every delivered activity **whole**,
 and the tested `model/` filter-and-dispatch (`forwardEventLink`) keeps only a browsing-web
 activity with a URL and routes its complete `absoluteString` to `onOpenUrl(String)`, which
-reaches the container's `onOpenUrl` intent (through the inbound port's implementation and the root's host
-hook).
+reaches the container's `onOpenUrl` intent (through the live delegate).
 
 #### Scenario: The root assembles the real stack
 
@@ -456,8 +458,8 @@ hook).
 #### Scenario: Permission action flows through the container
 
 - **WHEN** the user activates the gate's "Allow access" or "Open Settings"
-- **THEN** the shared callback bundle `MainViewController` renders with invokes the container intent,
-  which fires the bundle's `requestAccess`/`openSettings` command, whose compose-built body calls the
+- **THEN** `MainViewController` invokes the container intent, which fires the bundle's
+  `requestAccess`/`openSettings` command, whose compose-built body calls the
   `PhotoAccessRequester` port — the UI never calls PhotoKit directly and names no port
 
 #### Scenario: An event link flows through the container
@@ -465,14 +467,14 @@ hook).
 - **WHEN** `SnapSyncRoot.onUserActivity` receives a browsing-web activity carrying a
   `https://<link domain>/join#…` event link
 - **THEN** the tested filter routes the complete URL to `onOpenUrl`, which forwards (through the
-  inbound port's implementation and the root's host hook) to the container's `onOpenUrl` intent, which decodes and (on success) saves via
+  live delegate) to the container's `onOpenUrl` intent, which decodes and (on success) saves via
   the `ConfigStore` (the file-backed config store, whose App-Group file is its only storage),
   updating the `ConfigSource`
 
 #### Scenario: The leave action flows through the command bundle into the use-case
 
 - **WHEN** the user confirms the leave action in the joined layer
-- **THEN** the shared callback bundle invokes `host.onLeaveEvent`, which fires the bundle's `leave`
+- **THEN** `MainViewController` invokes `host.onLeaveEvent`, which fires the bundle's `leave`
   command — cancelling in-flight downloads, then running the composed `LeaveEvent` (stopping the
   uploads via the arm's leave transition — deregistering the extension, cancelling the app's transfers,
   stopping its heartbeat — then clearing the upload ledger through the `LedgerStore`'s reset
@@ -482,7 +484,7 @@ hook).
 #### Scenario: The share action flows through the command bundle into the platform share
 
 - **WHEN** the user activates the share action in the joined layer
-- **THEN** the shared callback bundle invokes `host.onShareInvite`, which fires the bundle's `share`
+- **THEN** `MainViewController` invokes `host.onShareInvite`, which fires the bundle's `share`
   command with the invite link, and the `SharePresenter` port the root supplied —
   `:adapter:ios:app-only`'s `IosShareSheet`, whose presenter walk is adapter technology mechanics —
   presents a `UIActivityViewController` carrying that link; the UI never constructs UIKit directly
@@ -496,18 +498,18 @@ hook).
   main lane, and the resulting selection arrives only through the selection-change seam — the root
   supplies no separate picker lambda
 
+#### Scenario: The root supplies no platform or core-glue lambda
+
+- **WHEN** the root builds `AppPorts`
+- **THEN** every platform touch is a port or a plain value, and no field is bound to a call into the
+  composed core — the attestation refresh, push registration and provision are built by `snapSyncApp`
+
 #### Scenario: A cold background wake installs no grant subscription
 
 - **WHEN** the process is launched in the background by the download backstop or a
   background-`URLSession` relaunch, without the host-assembly path running
 - **THEN** touching the composed graph installs no permission-grant collector and runs no launch
   reconcile, so no registration is written and no engine is armed
-
-#### Scenario: The root writes no forwarding for a port member
-
-- **WHEN** the OS invokes a `PlatformEntries` member on `SnapSyncRoot`
-- **THEN** the call reaches the shared composition's implementation through compiler-generated delegation,
-  and no hand-written body in the root stands between them
 
 ### Requirement: On-disk native ledger on iOS
 
