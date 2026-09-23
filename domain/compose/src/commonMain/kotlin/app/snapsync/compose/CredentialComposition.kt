@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.ports.BackendVerdicts
 import kotlinx.coroutines.launch
 
 /**
@@ -18,4 +19,14 @@ import kotlinx.coroutines.launch
  */
 suspend fun AppCore.onCredentialRejected(sentToken: String) {
     if (attestation.onRejected(sentToken)) scope.launch { attestation.refresh() }
+}
+
+/**
+ * The core's answer to every backend verdict, as one object ([BackendVerdicts]) the credential-carrying client is
+ * handed whole: the rejection route above and the version gate's two writes.
+ */
+internal fun AppCore.backendVerdictsOf(): BackendVerdicts = object : BackendVerdicts {
+    override suspend fun credentialRejected(sentToken: String) = onCredentialRejected(sentToken)
+    override fun versionRefused(minimumVersion: String?) = versionGate.refused(minimumVersion)
+    override fun served() = versionGate.served()
 }

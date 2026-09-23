@@ -38,6 +38,10 @@ kotlin {
             api(project(":domain:ports"))
             api(project(":domain:feature"))
             api(project(":domain:compose"))
+            // The shared host composition (spec `module-architecture`, "One shared composition"): the world's core
+            // and status host come from the same `snapSyncHost` the iOS shell calls, so the host its consumers
+            // drive is the phone's.
+            api(project(":app:composition"))
             // `api` (not `implementation`): the world's whole purpose is to hand the REAL stack's types
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, honest fakes, wrappers), so they must leak transitively.

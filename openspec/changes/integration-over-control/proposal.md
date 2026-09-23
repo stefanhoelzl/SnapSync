@@ -12,8 +12,8 @@ silently.
 
 - **One shared host composition.** A new module `:app:composition` exposes `snapSyncHost(scope, AppPorts)`:
   it calls `snapSyncApp`, builds the status host from the core's read-models, and installs the permission and
-  push-registration subscriptions. `AppPorts` gains the App Store URL and a factory for the credential-carrying
-  HTTP client, so the client's rejected/version sinks are wired inside the shared composition. `SnapSyncRoot`,
+  push-registration subscriptions. `AppPorts` gains the App Store URL, the time zone and the display clock; the HTTP
+  client's rejected/version/served callbacks become one `BackendVerdicts` object the core exposes. `SnapSyncRoot`,
   the JVM rig host, the desktop world harness and the inbound-port contract fixtures all call it and supply
   only ports. The iOS change is behaviour-preserving.
 - **Integration tests speak the protocol only.** Every test in `:test:integration` drives a fresh, in-process

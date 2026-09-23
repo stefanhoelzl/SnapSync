@@ -1,5 +1,7 @@
 package app.snapsync.desktop
 
+import app.snapsync.presentation.StatusSources
+
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -50,20 +52,22 @@ fun ForgeHarnessRoot() {
                 // driven by the forge cells the PanelController exposes.
                 StatusPane(
                     onHostReady = { controller.host = it },
-                    syncSource = controller.syncSource,
-                    permissionSource = controller.permissionSource,
-                    configSource = controller.configSource,
-                    creationStatusSource = controller.creationStatusSource,
-                    downloadSource = controller.downloadStatusSource,
+                    // The forge's join/switch and attestation cells, so the panel can forge the
+                    // join gate (JoiningEvent / pendingSwitch) and SyncHealth.Unattested.
+                    sources = StatusSources(
+                        sync = controller.syncSource,
+                        permission = controller.permissionSource.permission,
+                        config = controller.configSource.config,
+                        creation = controller.creationStatusSource,
+                        download = controller.downloadStatusSource,
+                        attested = controller.attestedState,
+                        pending = controller.pendingJoinSource,
+                    ),
                     // The forge's stand-in bundles, every command stated (see PanelController).
                     commands = controller.commands,
                     queries = controller.queries,
                     scope = scope,
                     darkThemeOverride = dark,
-                    // The forge's join/switch and attestation cells, so the panel can forge the
-                    // join gate (JoiningEvent / pendingSwitch) and SyncHealth.Unattested.
-                    attested = controller.attestedState,
-                    pending = controller.pendingJoinSource,
                 )
                 ControlPanel(controller, dark = dark, onDarkChange = { dark = it })
             }

@@ -67,6 +67,7 @@ import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.Clock
+import app.snapsync.ports.TimeZoneSource
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
@@ -208,6 +209,21 @@ class AppPorts(
      *  therefore live in one composition: this one for the domain, `SystemClock` for the UI
      *  formatter, and a test could pin one and leave the other running. */
     val clock: Clock,
+    /**
+     * The clock the status screen reads — its "now" preset, the create screen's default and the
+     * not-started health. On a device it is the same system clock as [clock]. It is separate only because
+     * the world pins [clock] for the core's determinism while its screen shows the wall clock; a root
+     * states that deviation here, once, rather than re-making it where it builds a screen.
+     */
+    val displayClock: Clock,
+    /** The time zone the status screen renders capture dates in (the `TimeZoneSource` port). */
+    val timeZone: TimeZoneSource,
+    /**
+     * This build's App Store page, or `null` when it carries none — the one remedy the update-required
+     * screen offers (capability `min-app-version`). **Required**: a root that omitted it would show the
+     * refusal with no way out, and a default would make that omission silent.
+     */
+    val appStoreUrl: String?,
     /** The **app-driven** upload engine — always composed, on every OS version; a thunk so it resolves lazily.
      *  Every app-side trigger reaches it, and its cycle's entry gate withholds when this process may not
      *  create (`upload-lifecycle`). */
@@ -300,6 +316,13 @@ class AppCore internal constructor(
      * would be created by its first reader — possibly after the refusal it exists to record.
      */
     val versionGate: AppVersionGate = AppVersionGate()
+
+    /**
+     * What the backend's answers tell this core (the inbound port [app.snapsync.ports.BackendVerdicts]): the
+     * object every root hands its credential-carrying HTTP client, so the three callbacks are wired as one.
+     * Not lazy, for the reason [versionGate] is not.
+     */
+    val backendVerdicts: app.snapsync.ports.BackendVerdicts = backendVerdictsOf()
 
     /**
      * Device attestation (capability `device-attestation`) — the bearer token EVERY backend call

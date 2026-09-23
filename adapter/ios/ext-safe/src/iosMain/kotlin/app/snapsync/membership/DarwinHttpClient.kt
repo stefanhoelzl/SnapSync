@@ -58,3 +58,16 @@ fun darwinHttpClient(
 ): HttpClient = HttpClient(Darwin) {
     install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }
 }.withCredentialInterceptor(token, onRejected, appVersion, onVersionRefused, onServed)
+
+/**
+ * The same client, reporting the backend's verdicts to the one object the core exposes for them — the form the app
+ * root uses (spec `module-architecture`, "One shared composition"). [verdicts] is read per response, so the root
+ * may build this client while it is still composing that core.
+ */
+fun darwinHttpClient(
+    token: () -> String?,
+    verdicts: () -> app.snapsync.ports.BackendVerdicts,
+    appVersion: () -> String = ::appMarketingVersion,
+): HttpClient = HttpClient(Darwin) {
+    install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }
+}.withCredentialInterceptor(token, verdicts, appVersion)

@@ -120,6 +120,9 @@ val appShellSources = files(
     // here rather than quietly fixed: a hand-maintained list of roots stops being true the moment a
     // module is added, and nothing tells you.
     "app/ios/forge/src",
+    // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision. A shell by the
+    // same definition, and listed for the same reason as the forge above — added with the module.
+    "app/composition/src",
     // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes
     // even though it lives in `:test:rig`'s tree (capability `architecture-guards`, "Source contributed
     // into a shell's source set is shell source for the gates"). Listed rather than exempted: the gates
@@ -218,6 +221,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":app:ios" to "shell",
     ":app:ios:extension" to "shell",
     ":app:ios:forge" to "shell",
+    ":app:composition" to "shell",
 
     // The tested core and its adapters. `:ui:presentation` belongs here and not in `ui`: it is
     // Compose-free by the presentation-imports gate, so none of Compose's structural inflation

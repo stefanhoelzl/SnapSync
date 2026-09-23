@@ -8,11 +8,14 @@ import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
-import app.snapsync.compose.onCredentialRejected
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
-import app.snapsync.compose.snapSyncApp
+import app.snapsync.composition.ComposedApp
+import app.snapsync.composition.snapSyncHost
+import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.time.SystemClock
+import kotlinx.datetime.TimeZone
 import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
@@ -313,12 +316,10 @@ class World(
      */
     val client = backend.newClient().withCredentialInterceptor(
         token = { null },
-        // Never fires while the token is null (a rejection must name a sent token), and bound to the production
-        // route anyway so the world composes what the device composes.
-        onRejected = { sent -> core.onCredentialRejected(sent) },
+        // The core's verdicts object, as the device hands it — the rejection arm never fires while the token is
+        // null (a rejection must name a sent token), and is bound anyway so the world composes what the device does.
+        verdicts = { core.backendVerdicts },
         appVersion = { appVersion },
-        onVersionRefused = { minimum -> core.versionGate.refused(minimum) },
-        onServed = { core.versionGate.served() },
     )
 
     /**
@@ -513,7 +514,13 @@ class World(
     /** The download backstop's scheduler — counted, never run (the operator plays the OS). */
     val backstopScheduler: CountingBackstopScheduler = CountingBackstopScheduler()
 
-    val core: AppCore = snapSyncApp(
+    /**
+     * The core AND the status host over it, from the shared host composition the iOS shell calls (spec
+     * `module-architecture`, "One shared composition"). The host is assembled on first touch of [statusHost], which
+     * installs the permission and push-registration subscriptions, exactly as on the phone; a world whose
+     * [statusHost] is never touched installs neither (the desktop harness, whose operator plays the OS).
+     */
+    val composed: ComposedApp = snapSyncHost(
         scope = scope,
         ports = AppPorts(
             // The world's platform-UI ports are in-memory doubles, so there is no real main thread to
@@ -573,6 +580,12 @@ class World(
             attestStore = inMemoryAttestStore(),
             deviceIdentity = { ownDeviceId },
             clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
+            // The world's one stated clock deviation: the core's clock is the operator's pinned [nowMillis], the
+            // screen's is the wall clock — so a status screen over the world renders dates a person would see.
+            displayClock = SystemClock,
+            // UTC, so a rendered capture date is the same on every machine the world runs on.
+            timeZone = { TimeZone.UTC },
+            appStoreUrl = WORLD_APP_STORE_URL,
             // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
             appDrivenUpload = { operatorEngine },
             albumManager = albumManager,
@@ -591,6 +604,12 @@ class World(
             log = logs.logger("World"),
         ),
     )
+
+    /** The REAL app graph — the composition's core (never a world-local rebuild). */
+    val core: AppCore get() = composed.core
+
+    /** The status host the composition assembles over [core] — the one a phone would run over these ports. */
+    val statusHost: StatusContainerHost get() = composed.host
 
     // Re-seated read handles: these ARE the composed graph's instances (never world-local rebuilds).
     val downloadController: DownloadController get() = core.downloadController
@@ -991,6 +1010,9 @@ class World(
 
     companion object {
         const val DEFAULT_DATE: String = "2026-06-01T10:00:00Z"
+
+        /** The App Store page a world's build names — the update-required screen's one remedy. */
+        const val WORLD_APP_STORE_URL: String = "https://apps.apple.com/app/id0000000000"
 
         /**
          * The world's default capture-date cutoff (capability `photo-selection-policy`). Strictly precedes

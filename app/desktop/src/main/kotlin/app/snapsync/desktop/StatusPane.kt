@@ -5,35 +5,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
-import app.snapsync.ports.ConfigSource
-import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.MutablePendingJoinSource
-import app.snapsync.feature.membership.MutableRenameStatusSource
-import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.feature.download.DownloadStatusSource
-import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.ui.statusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.statusActions
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.datetime.TimeZone
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
- * injected seams, then render the real [StatusScreen] inside the [PhoneFrame]. The forge harness
- * ([app.snapsync.desktop.main]) supplies stand-in cells; the full-stack world harness supplies the real
- * platform-agnostic stack — only the seam *sources* (and the right pane) differ.
+ * injected sources, then render the real [StatusScreen] inside the [PhoneFrame]. The forge harness
+ * ([app.snapsync.desktop.main]) supplies stand-in cells; the full-stack world harness supplies its composition's
+ * own sources (`ComposedApp.statusSources`), the exact set the phone's host observes — only the sources (and the
+ * right pane) differ.
  *
  * It takes the whole [commands] and [queries] bundles, never a list of loose edges: it used to rebuild
  * `UserCommands` field by field from a dozen defaulted lambdas, and the rebuild silently dropped
@@ -42,23 +32,11 @@ import kotlinx.coroutines.flow.StateFlow
  */
 @Composable
 fun StatusPane(
-    syncSource: SyncStatusSource,
-    permissionSource: PhotoAccessStatusSource,
-    configSource: ConfigSource,
-    creationStatusSource: CreationStatusSource,
-    downloadSource: DownloadStatusSource,
+    /** Every read-model the host observes: the world harness passes its composition's, the forge its cells. */
+    sources: StatusSources,
     scope: CoroutineScope,
     commands: UserCommands,
     queries: UserQueries,
-    renameStatusSource: RenameStatusSource = MutableRenameStatusSource(),
-    // Attestation health (capability `device-attestation`): defaulted to always-attested so the
-    // full-stack harness constructs unchanged; the forge harness injects its own cell so
-    // `SyncHealth.Unattested` is forgeable.
-    attested: StateFlow<Boolean> = MutableStateFlow(true),
-    // The join/switch overlay cell (capability `join-event`): defaulted to a fresh internal instance so
-    // the full-stack harness's real gate drives it as before; the forge harness injects its own so any
-    // `JoinPhase` is forgeable by writing this cell.
-    pending: MutablePendingJoinSource = MutablePendingJoinSource(),
     // Exposes the constructed container so a harness's right pane can drive the gate (e.g. onOpenUrl).
     onHostReady: (StatusContainerHost) -> Unit = {},
     // Test-only theme override for the phone pane: `null` follows the (unreliable) desktop OS setting,
@@ -75,17 +53,7 @@ fun StatusPane(
 ) {
     val host = remember {
         StatusContainerHost(
-            // Every read-model the reduction observes, in one bundle (`StatusSources`).
-            StatusSources(
-                sync = syncSource,
-                permission = permissionSource.permission,
-                config = configSource.config,
-                creation = creationStatusSource,
-                rename = renameStatusSource,
-                download = downloadSource,
-                attested = attested,
-                pending = pending,
-            ),
+            sources,
             scope = scope,
             commands = commands,
             queries = queries,
