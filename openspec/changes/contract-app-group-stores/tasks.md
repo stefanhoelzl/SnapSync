@@ -75,7 +75,7 @@
   - add `InMemoryConfigStore` to the fake's list;
   - name the new contracts in `:test:contracts`' line.
 - [x] 6.2 `./gradlew architectureDiagrams`, and commit anything it changes.
-- [ ] 6.3 `./gradlew build` is green on Linux. The `iosSimulatorArm64Test` suites of `:adapter:ios:ext-safe`,
+- [x] 6.3 `./gradlew build` is green on Linux. The `iosSimulatorArm64Test` suites of `:adapter:ios:ext-safe`,
   `:adapter:ios:app-only` and `:adapter:generic:fake` are green on the macOS runner, and each contract's outcome
   table has no `Failed`.
 - [x] 6.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `… validate
