@@ -30,8 +30,8 @@
 
 ## 4. Inbound-port bindings move (D10)
 
-- [ ] 4.1 Move `EntryContractFixtures.kt` (+ `quietDiagnostics`) to `:test:world` `commonTest`, `EntryContractsJvmTest` to `jvmTest` and `EntryContractsSimulatorTest` to `iosSimulatorArm64Test`, reading `world.host`.
-- [ ] 4.2 Confirm that `ContractCoverageTest` still counts `JVM` and `IOS_SIM_KEXE` for both inbound contracts, and that `:test:world:iosSimulatorArm64Test` runs the simulator binding.
+- [x] 4.1 Move `EntryContractFixtures.kt` (+ `quietDiagnostics`) to `:test:world` `commonTest`, `EntryContractsJvmTest` to `jvmTest` and `EntryContractsSimulatorTest` to `iosSimulatorArm64Test`, reading `world.host`.
+- [x] 4.2 Confirm that `ContractCoverageTest` still counts `JVM` and `IOS_SIM_KEXE` for both inbound contracts, and that `:test:world:iosSimulatorArm64Test` runs the simulator binding.
 
 ## 5. Contract clause (D9)
 
