@@ -2,6 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.compose.UploaderProcess
+import app.snapsync.model.SelectionScope
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.gallery.PhotoKitGrantRead
 import app.snapsync.ports.AttestStore
@@ -216,6 +217,9 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 // cycle without a full grant"): a registration made under a full grant survives a downgrade,
                 // and a cycle here has no selection snapshot to scope to.
                 process = UploaderProcess.Extension(PhotoKitGrantRead),
+                // Unrestricted, stated: the extension never reads the library under a partial grant — the OS
+                // does invoke a surviving registration there, but its admission withholds before any read.
+                selectionScope = { SelectionScope.Unrestricted },
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.

@@ -82,14 +82,14 @@ class BackgroundUploadPump(
     // Fired after every cycle so foreground status refreshes live (the app-driven analogue of the
     // PhotoKit extension's cross-process liveness ding — here an in-process ledger-counts re-read).
     // Best-effort: a failure never disturbs the cycle drain or the re-arm.
-    private val onCycleComplete: suspend () -> Unit = {},
+    private val onCycleComplete: suspend () -> Unit,
     // Whether the app's uploader may create right now — its admission, read fresh at each completion. A late
     // completion (a `-999` after a revoke, a transfer finishing after a leave) is always RECORDED by the
     // transport's guarded write; it drives a cycle only when this answers `true`, so late completions after a
     // hand-off no longer keep the app cycling (the 2026-09-16 field observation; decision record
-    // `changes/both-uploaders-active`, D7). Defaulted for the tests that are not about admission; the one
-    // production caller passes the composition's own answer.
-    private val mayCreate: () -> Boolean = { true },
+    // `changes/both-uploaders-active`, D7). Required: a permissive default is how a caller ships without the
+    // gate.
+    private val mayCreate: () -> Boolean,
 ) {
     private val mutex = Mutex()
 

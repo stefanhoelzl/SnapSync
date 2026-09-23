@@ -103,7 +103,7 @@ class CeilingReachesEveryConsumerTest {
             override suspend fun candidates(policy: SelectionPolicy) =
                 CandidateRead.Readable(candidatesFromFacts(facts))
         }
-        val count = ShareableCountSource(source).count(
+        val count = ShareableCountSource(source, suppressedLocalIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }).count(
             includesUpload = true,
             cutoff = cutoff,
             ceiling = ceiling,

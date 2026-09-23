@@ -1,5 +1,7 @@
 package app.snapsync.feature.upload
 
+import co.touchlab.kermit.Logger
+import app.snapsync.ports.LogScope
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.CycleResult
 
@@ -35,7 +37,7 @@ class BackgroundUploadPumpTest {
     fun onStart_drains_and_arms_the_first_background_task() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = { runs++; CycleResult.COMPLETED },
             scheduler = scheduler,
         )
@@ -50,7 +52,7 @@ class BackgroundUploadPumpTest {
     @Test
     fun onStart_arms_even_when_the_cycle_drains_completely() = runTest {
         val scheduler = FakeScheduler()
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = { CycleResult.COMPLETED }, // no work pending
             scheduler = scheduler,
         )
@@ -76,7 +78,7 @@ class BackgroundUploadPumpTest {
     @Test
     fun onForeground_arms_the_heartbeat_so_a_force_quit_is_recoverable() = runTest {
         val scheduler = FakeScheduler()
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = { CycleResult.COMPLETED },
             scheduler = scheduler,
         )
@@ -101,7 +103,7 @@ class BackgroundUploadPumpTest {
         val scheduler = FakeScheduler()
         var runs = 0
         val firstCycle = CompletableDeferred<Unit>()
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = {
                 runs++
                 if (runs == 1) firstCycle.await() // hold the first cycle open
@@ -141,7 +143,7 @@ class BackgroundUploadPumpTest {
         val scheduler = FakeScheduler()
         val firstCycle = CompletableDeferred<Unit>()
         var runs = 0
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = {
                 runs++
                 if (runs == 1) firstCycle.await()
@@ -172,7 +174,7 @@ class BackgroundUploadPumpTest {
         val scheduler = FakeScheduler()
         val firstCycle = CompletableDeferred<Unit>()
         var runs = 0
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = {
                 runs++
                 if (runs == 1) firstCycle.await()
@@ -203,7 +205,7 @@ class BackgroundUploadPumpTest {
             val scheduler = FakeScheduler()
             val firstCycle = CompletableDeferred<Unit>()
             var runs = 0
-            val pump = BackgroundUploadPump(
+            val pump = testPump(
                 runCycle = {
                     runs++
                     if (runs == 1) firstCycle.await()
@@ -234,7 +236,7 @@ class BackgroundUploadPumpTest {
         var runs = 0
         var refreshes = 0
         val firstCycle = CompletableDeferred<Unit>()
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = {
                 runs++
                 if (runs == 1) firstCycle.await()
@@ -261,7 +263,7 @@ class BackgroundUploadPumpTest {
     fun refreshFailureDoesNotBreakTheDrain() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = { runs++; CycleResult.COMPLETED },
             scheduler = scheduler,
             onCycleComplete = { error("refresh blew up") },
@@ -281,7 +283,7 @@ class BackgroundUploadPumpTest {
     fun processingInForegroundWaitsForCompletion() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(runCycle = { runs++; CycleResult.PROCESSING }, scheduler = scheduler)
+        val pump = testPump(runCycle = { runs++; CycleResult.PROCESSING }, scheduler = scheduler)
 
         pump.onForeground()
         assertEquals(1, runs)               // did not loop on PROCESSING — the property that matters here
@@ -294,7 +296,7 @@ class BackgroundUploadPumpTest {
     @Test
     fun processingOnSessionEventsSchedulesNext() = runTest {
         val scheduler = FakeScheduler()
-        val pump = BackgroundUploadPump(runCycle = { CycleResult.PROCESSING }, scheduler = scheduler)
+        val pump = testPump(runCycle = { CycleResult.PROCESSING }, scheduler = scheduler)
 
         pump.onSessionEvents()
         assertEquals(1, scheduler.scheduled)
@@ -304,7 +306,7 @@ class BackgroundUploadPumpTest {
     @Test
     fun completedOnSessionEventsDoesNotSchedule() = runTest {
         val scheduler = FakeScheduler()
-        val pump = BackgroundUploadPump(runCycle = { CycleResult.COMPLETED }, scheduler = scheduler)
+        val pump = testPump(runCycle = { CycleResult.COMPLETED }, scheduler = scheduler)
 
         pump.onSessionEvents()
         assertEquals(0, scheduler.scheduled)
@@ -314,7 +316,7 @@ class BackgroundUploadPumpTest {
     @Test
     fun backgroundTaskAlwaysResubmits() = runTest {
         val scheduler = FakeScheduler()
-        val pump = BackgroundUploadPump(runCycle = { CycleResult.COMPLETED }, scheduler = scheduler)
+        val pump = testPump(runCycle = { CycleResult.COMPLETED }, scheduler = scheduler)
 
         pump.onBackgroundTask()
         assertEquals(1, scheduler.scheduled)
@@ -325,7 +327,7 @@ class BackgroundUploadPumpTest {
     fun completedForegroundRunsOneCycle() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
+        val pump = testPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
 
         pump.onForeground()
         assertEquals(1, runs)
@@ -345,7 +347,7 @@ class BackgroundUploadPumpTest {
     fun skipped_never_arms_a_task_from_any_trigger() = runTest {
         suspend fun scheduledAfter(trigger: suspend BackgroundUploadPump.() -> Unit): Int {
             val scheduler = FakeScheduler()
-            val pump = BackgroundUploadPump(runCycle = { CycleResult.SKIPPED }, scheduler = scheduler)
+            val pump = testPump(runCycle = { CycleResult.SKIPPED }, scheduler = scheduler)
             pump.trigger()
             return scheduler.scheduled
         }
@@ -364,7 +366,7 @@ class BackgroundUploadPumpTest {
     fun skipped_still_invokes_the_cycle_once() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(runCycle = { runs++; CycleResult.SKIPPED }, scheduler = scheduler)
+        val pump = testPump(runCycle = { runs++; CycleResult.SKIPPED }, scheduler = scheduler)
 
         pump.onBackgroundTask()
 
@@ -388,7 +390,7 @@ class BackgroundUploadPumpTest {
     fun onSilentPush_drains_and_arms() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
+        val pump = testPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
 
         pump.onSilentPush()
 
@@ -402,7 +404,7 @@ class BackgroundUploadPumpTest {
         val scheduler = FakeScheduler()
         var runs = 0
         val firstCycle = CompletableDeferred<Unit>()
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = {
                 runs++
                 if (runs == 1) firstCycle.await()
@@ -443,7 +445,7 @@ class BackgroundUploadPumpTest {
     fun onSelectionChanged_drains_and_arms() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        val pump = BackgroundUploadPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
+        val pump = testPump(runCycle = { runs++; CycleResult.COMPLETED }, scheduler = scheduler)
 
         pump.onSelectionChanged()
 
@@ -463,7 +465,7 @@ class BackgroundUploadPumpTest {
         val scheduler = FakeScheduler()
         var runs = 0
         var mayCreate = false
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = { runs++; CycleResult.COMPLETED },
             scheduler = scheduler,
             mayCreate = { mayCreate },
@@ -477,3 +479,13 @@ class BackgroundUploadPumpTest {
         assertEquals(1, runs, "admitted: the freed slot is topped up")
     }
 }
+
+/** The pump with the test defaults the production class no longer carries: no completion hook, may create. */
+internal fun testPump(
+    runCycle: suspend () -> CycleResult,
+    scheduler: BackgroundScheduler,
+    log: Logger = Logger.withTag("BackgroundUploadPump"),
+    logScope: LogScope = LogScope.NoOp,
+    onCycleComplete: suspend () -> Unit = {},
+    mayCreate: () -> Boolean = { true },
+) = BackgroundUploadPump(runCycle, scheduler, log, logScope, onCycleComplete, mayCreate)

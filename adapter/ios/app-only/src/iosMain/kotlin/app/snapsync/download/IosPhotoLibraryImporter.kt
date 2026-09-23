@@ -67,7 +67,7 @@ class IosPhotoLibraryImporter(
      * completion that arrives after its requester is gone still records the import.
      */
     private val confirmCreatedLocalId: (AssetRef, String) -> Unit,
-    private val albumId: () -> String? = { null },
+    private val albumId: () -> String?,
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
 

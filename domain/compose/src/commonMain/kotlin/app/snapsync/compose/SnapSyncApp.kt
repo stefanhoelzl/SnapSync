@@ -216,7 +216,7 @@ class AppPorts(
     val appDrivenUpload: () -> AppUploadEngine,
     /** The **OS-driven** registration where this OS carries its selector (iOS ≥26.1) — `null` elsewhere,
      *  keeping it entirely unconstructed where the selector does not exist. */
-    val extensionRegistration: () -> ExtensionRegistration? = { null },
+    val extensionRegistration: () -> ExtensionRegistration?,
     /** Whether this OS carries the OS-driven mechanism at all — an input to the registration fact, kept a plain
      *  fact rather than derived from [extensionRegistration] so asking never has the side effect of
      *  constructing a registration it is only asking about. */
@@ -224,7 +224,7 @@ class AppPorts(
     /** The rig's per-uploader switch, read fresh at every use. **Always `null` in a production build**: its
      *  source exists only in a build made with the rig, so what a shipped process uploads with is still a
      *  function of the device and its grant (decision record `changes/both-uploaders-active`, D8). */
-    val uploaderPin: () -> UploaderPin? = { null },
+    val uploaderPin: () -> UploaderPin?,
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     /** Tells the shared event this device is leaving (capability `leave-event`). This was
@@ -261,7 +261,7 @@ class AppPorts(
     // which of them the shell backed with a detached launch, and a non-suspend `() -> Unit` can only
     // ever be fire-and-forget. Typing them `suspend` is what makes the flow's await mean something.
     /** Renew the attestation token if stale — a wake point (`device-attestation`). */
-    val refreshAttestation: suspend () -> Unit = {},
+    val refreshAttestation: suspend () -> Unit,
     /** Re-read the persisted membership into the config StateFlow (migration step 12: every trigger
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
      *  this process's StateFlow). A port: on iOS it is an App-Group file read. */
@@ -278,7 +278,7 @@ class AppPorts(
     /** Re-register the device's APNs push token on join (capability `push-registration`): the shell
      *  builds it from its `PushRegistration` + `PushTokenSource`. Inert by default (world/tests hold no
      *  push stack). Closes the warm-rejoin window the nightly sweep's config collection opens. */
-    val registerPush: suspend () -> Unit = {},
+    val registerPush: suspend () -> Unit,
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
      *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell

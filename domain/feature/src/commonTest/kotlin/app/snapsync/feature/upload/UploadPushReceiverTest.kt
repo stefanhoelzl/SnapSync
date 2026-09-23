@@ -33,7 +33,7 @@ class UploadPushReceiverTest {
     private class Fixture(result: CycleResult = CycleResult.COMPLETED) {
         var cycles = 0
         val scheduler = FakeScheduler()
-        val pump = BackgroundUploadPump(
+        val pump = testPump(
             runCycle = { cycles++; result },
             scheduler = scheduler,
         )

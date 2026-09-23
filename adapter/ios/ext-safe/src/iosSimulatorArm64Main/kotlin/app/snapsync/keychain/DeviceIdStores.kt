@@ -96,13 +96,16 @@ private object NoSuchStore : SecureStore {
 internal class AppGroupFileSecureStore(
     private val fileName: String,
     /**
-     * The directory the file lives in. Defaults to the App-Group container; injectable so tests can
+     * The directory the file lives in: the App-Group container in production; injectable so tests can
      * point it at a temp directory — the same shape `iosDownloadStore(basePath = …)` already uses,
      * and necessary because an `xctest` host carries no App-Group entitlement and would otherwise
      * only ever exercise the unavailable branch.
      */
-    private val directory: () -> String? = ::appGroupContainerPath,
+    private val directory: () -> String?,
 ) : SecureStore {
+
+    /** Production: the App-Group container. */
+    constructor(fileName: String) : this(fileName, ::appGroupContainerPath)
 
     override fun read(): SecureStoreRead = memScoped {
         val path = filePath()
