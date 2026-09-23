@@ -40,6 +40,7 @@ A throwaway rig build (never committed) measured what this design rests on:
 | `notifyTermination` | arrives ~55 ms after every **normal** return |
 | after `PROCESSING` | the next call came exactly 5 min 0 s later |
 | after a killed call | backoff: next call ~6 min, then ~11 min; neither a new photo nor a re-registration triggers a call meanwhile |
+| a job created INSIDE `process()` | uploaded only after the call returns (the receiver saw every PUT after the call ended) |
 | triggers outside backoff | re-registration → call in ~1 s; a new photo → call in ~3 s; a job finishing → no call |
 
 ## Goals / Non-Goals
@@ -122,30 +123,35 @@ replace a call path rather than add a call site. `module-architecture`'s contain
 redirect `process()`. A mutable hook in the shell that the rig assigns — a permanently compiled seam, which
 the containment law forbids.
 
-### D4. One call; 8b's clauses as written, plus one PhotoKit-only state
+### D4. Inside the extension, a job uploads only after the call returns — so its states are prepared across calls
 
-8b's `BackgroundTransferContract` (merged first) shapes the clauses: each creates its own job **in the clause
-body** against a fixture route that answers what the clause chose, then polls `drainTerminals()` until the
-outcome is recorded — the bounded-wait pattern, `NotWithin` on expiry. Every job state settles in 0.1–5 s, so
-the whole contract fits one `process()` call; nothing crosses calls.
+Measured on the SE2 (iOS 26.6.2, 2026-09-23), the first contract run inside the extension: jobs it created at
+15:57:57–15:58:39 reached the receiver only at **15:59:01**, after the OS killed the call at its budget; every
+in-call wait polled an empty queue. In the app process the same uploads had arrived within 0.1 s. So inside the
+extension no clause can create a transfer and await it within one call — 8b's in-body clauses included.
 
-The tier-neutral clauses cannot state the PhotoKit tier's single free retry: the URLSession tier answers it
-trivially, and no clause may be reached only by a fake. So this change adds **one state**, `SINGLE_FREE_RETRY`
-— "the tier offers a failed transfer once for retry before settling it" — which the URLSession bindings declare
-unreachable, and the PhotoKit-only clauses on it:
+The PhotoKit tier's clauses therefore act on transfers the OS **already settled**, in three states only this tier
+reaches — `PRESENTED_SUCCEEDED`, `PRESENTED_REFUSED_ONCE`, `PRESENTED_RETRY_SPENT` — each entered by its binding:
 
-- a transfer the destination refused is offered by `fetchRetryJobs()`;
-- `retryJob` re-points it, and the retried transfer lands and is recorded `COMPLETED`;
-- a transfer refused again is not offered again, and `drainTerminals()` hands it up for re-creation when its
-  resource is live (finding D9);
-- every presented job is acknowledged: after a drain, none is presented again.
+- on a device, **across calls**: call 1 creates the clause's transfer (a route that accepts or refuses, derived
+  from the clause id) and returns `PROCESSING`; the OS uploads; for a retry-spent state call 2 re-points the free
+  retry to the identical destination, as production does; the clause runs in the call after the last preparation.
+  The partial recording is kept in the App Group between calls, whose processes may differ;
+- on replay, the preparation calls are made again, in order, before the clause;
+- the simulator substitute presents them in memory.
 
-`AT_CAP` is declared unreachable in the extension: the PhotoKit cap is not known, and filling it with jobs that
-never answer would outlast the budget. `AT_CAP_DEFERS` keeps its real host in 8b's simulator-app binding.
+Each staged clause runs **alone**: the real adapter acknowledges every job it is presented (in `drainTerminals`,
+and in `fetchRetryJobs` for a job whose row it cannot find), so one clause's drain would consume another's prepared
+transfer. The rig runs them one after another, each after a re-registration that empties the queue, and merges the
+recordings. `PROCESSING` brings the next call five minutes later (measured), so a full recording takes about twenty
+minutes. 8b's clauses stay `NotRunHere` in the extension; their simulator-app host covers them.
 
-*Alternatives:* a binding that enters each job state before the clause — the shape this design first had, before
-8b's contract existed; the clauses are 8b's, and they create in the body. Splitting the run across two calls —
-rejected by the operator: one call, sized under the budget.
+`port-contracts`' "Clauses are conditioned on states that bindings enter at construction" gains the cross-call case:
+still entered by the binding, still before the body, never by another clause.
+
+*Alternatives:* one call with in-body waits — refuted by the measurement. Chaining clauses through each other's bodies
+— rejected earlier. A new photo as the trigger for the next call — faster, but each stage would leave a photo only a
+tap can delete.
 
 ### D5. The seam: PhotoKit calls as data, and every input a poll reads is recorded
 
