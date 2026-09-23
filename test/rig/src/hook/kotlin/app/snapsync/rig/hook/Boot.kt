@@ -4,6 +4,7 @@ package app.snapsync.rig.hook
 
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.ios.SnapSyncRoot
+import app.snapsync.ios.UploaderPinSource
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.logging.IosDeviceLogSource
 import app.snapsync.logging.documentsDirectory
@@ -72,13 +73,13 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * A bare assignment, deliberately — this file is inside the shell gate's scanned roots and may hold no
  * decisions. Everything the switch does (parsing, reporting what it produces) is in `:test:rig`, on the far
  * side of the seam. `SnapSyncRoot.uploaderPinSource` defaults to
- * `{ null }` and this line is its only assigner anywhere, so a build compiled without
+ * a source answering `null` and this line is its only assigner anywhere, so a build compiled without
  * `-Psnapsync.rig=true` — which contains none of this file — cannot carry a pin at all.
  */
 @EagerInitialization
 @Suppress("unused")
 private val uploaderSwitch: Unit = run {
-    SnapSyncRoot.uploaderPinSource = UploaderSwitch::pinned
+    SnapSyncRoot.uploaderPinSource = UploaderPinSource(UploaderSwitch::pinned)
 }
 
 @EagerInitialization

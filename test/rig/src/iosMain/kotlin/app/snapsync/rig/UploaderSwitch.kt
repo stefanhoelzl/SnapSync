@@ -9,7 +9,7 @@ import app.snapsync.model.extensionRegistrable
  * (capability `upload-lifecycle`, "A mechanism override is a runtime input a shipped build cannot carry").
  *
  * **This is the whole of the switch's state, and it lives entirely on this side of the seam.** The production
- * composition root holds only a thunk (`uploaderPinSource`, defaulting to `{ null }`) which the boot hook points
+ * composition root holds only a source (`uploaderPinSource`, answering `null` by default) which the boot hook points
  * here once. Nothing in a shipped binary can reach this object, because none of `:test:rig` is compiled into a
  * build made without `-Psnapsync.rig=true` — so a production build is *unable* to carry a switch rather than
  * merely unlikely to.

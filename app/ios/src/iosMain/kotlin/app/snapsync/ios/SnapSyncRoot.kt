@@ -257,7 +257,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * `-Psnapsync.rig=true` — so in a production binary nothing can assign this and it stays the inert
      * default forever. What a shipped process uploads with is a function of the device and its grant.
      *
-     * It is a **thunk, replaced once at boot**, not a value: the admission and the registration fact read
+     * It is a **source, replaced once at boot**, not a value: the admission and the registration fact read
      * through it at every use, so the channel can change the pin live without touching this field
      * again, and without the graph being rebuilt. It is deliberately assignable *before* `app` is forced —
      * the hook must not force the graph on a cold background wake (`ios-app-shell`).
@@ -267,7 +267,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * on device — and needed a process-scoping rule to refuse one. Here the hazard cannot arise: the code
      * that writes this does not exist in the binary that must not honour it.
      */
-    internal var uploaderPinSource: () -> UploaderPin? = { null }
+    internal var uploaderPinSource: UploaderPinSource = UploaderPinSource { null }
 
     /**
      * The OS-driven registration, composed **only where its API exists**.
@@ -461,7 +461,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 appDrivenUpload = { urlSessionUpload },
                 extensionRegistration = osDrivenRegistrationThunk,
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
-                uploaderPin = uploaderPinSource,
+                // Read through the field at every use, not captured here: the field is the rig's seam, and a
+                // capture would freeze whatever it held when the graph was first forced.
+                uploaderPin = { uploaderPinSource.pinned() },
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
@@ -1166,3 +1168,13 @@ private fun rootEntries(): PlatformEntries = platformEntries(
         uploadTransferChannel = UrlSessionUploadController.SESSION_IDENTIFIER,
     ),
 )
+
+/**
+ * Where the rig's per-uploader switch is read from (capability `upload-lifecycle`) — a named type rather than
+ * a bare function type, so the one late-assigned seam in the root states what it is (law "Callbacks are bound
+ * at construction", capability `module-architecture`: a function-typed slot assigned later is forbidden; this
+ * is the shell's documented rig seam, read at every use).
+ */
+fun interface UploaderPinSource {
+    fun pinned(): UploaderPin?
+}

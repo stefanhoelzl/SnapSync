@@ -65,11 +65,15 @@ class MetricKitProcessMetricSource(
     private val log: Logger = Logger.withTag("processMetrics"),
 ) : ProcessMetricSource {
 
-    /** The ObjC subscriber this retains. A `val`, constructed here, read on every [observe]. */
-    private val subscriber = MetricKitSubscriber(log)
+    /**
+     * The ObjC subscriber this retains, built by [observe] around the handler it delivers to — the handler
+     * is a constructor argument, not a slot assigned later (law "Callbacks are bound at construction",
+     * capability `module-architecture`), so a subscriber that exists always has somewhere to deliver.
+     */
+    private var subscriber: MetricKitSubscriber? = null
 
     override fun observe(onReport: (ProcessMetricReport) -> Unit) {
-        subscriber.onReport = onReport
+        val subscriber = MetricKitSubscriber(log, onReport).also { this.subscriber = it }
         val manager = MXMetricManager.sharedManager
         // The `shared` touch is itself load-bearing: MetricKit accumulates NOTHING for an app until
         // this is first called, and never retroactively. A launch that does not reach here is
@@ -103,10 +107,9 @@ class MetricKitProcessMetricSource(
  */
 internal class MetricKitSubscriber(
     private val log: Logger,
+    /** Where each report goes; supplied by [MetricKitProcessMetricSource.observe]. */
+    private val onReport: (ProcessMetricReport) -> Unit,
 ) : NSObject(), MXMetricManagerSubscriberProtocol {
-
-    /** Set by [MetricKitProcessMetricSource.observe]; read on every delivery below. */
-    var onReport: ((ProcessMetricReport) -> Unit)? = null
 
     @PlatformEntry
     override fun didReceiveMetricPayloads(payloads: List<*>) =
@@ -134,6 +137,6 @@ internal class MetricKitSubscriber(
      */
     private fun deliver(raw: Map<Any?, *>) {
         val nested = raw.entries.associate { (key, value) -> key.toString() to value }
-        onReport?.invoke(ProcessMetricReport(flattenToDottedKeys(nested)))
+        onReport(ProcessMetricReport(flattenToDottedKeys(nested)))
     }
 }
