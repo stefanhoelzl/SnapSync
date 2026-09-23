@@ -58,7 +58,7 @@ class AppRangePresetChoicesTest {
             CompositionLocalProvider(LocalReduceMotion provides true) {
                 AppRangePresetChoices(
                     choices = RangeChoices(fromSelected, fromCustomValue, untilSelected, untilCustomValue),
-                    actions = RangeChoiceActions(
+                    actions = testRangeChoiceActions(
                         onFromPreset = onFromSelect,
                         onFromCustom = onFromCustomPicked,
                         onUntilPreset = onUntilSelect,
@@ -193,3 +193,11 @@ private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsRadio() =
 
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsHeading() =
     assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+
+/** The range-choice actions with inert defaults, for tests (the production class carries none). */
+private fun testRangeChoiceActions(
+    onFromPreset: (app.snapsync.model.FromChoice) -> Unit = {},
+    onFromCustom: (kotlinx.datetime.LocalDateTime) -> Unit = {},
+    onUntilPreset: (app.snapsync.model.UntilChoice) -> Unit = {},
+    onUntilCustom: (kotlinx.datetime.LocalDateTime) -> Unit = {},
+) = RangeChoiceActions(onFromPreset, onFromCustom, onUntilPreset, onUntilCustom)

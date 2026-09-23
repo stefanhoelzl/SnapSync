@@ -151,7 +151,8 @@ private fun gateHost(
         appStoreUrl = appStoreUrl,
     ),
     scope,
-    commands = UserCommands(openLink = openLink),
+    commands = testCommands(openLink = openLink),
     cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
     queries = noQueries,
+    diagnostics = testDiagnostics(),
 )

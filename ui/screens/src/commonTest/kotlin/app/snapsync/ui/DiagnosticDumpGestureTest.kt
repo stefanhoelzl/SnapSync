@@ -66,10 +66,10 @@ class DiagnosticDumpGestureTest {
     fun `double-tapping the app name asks for the bug-report sheet`() = runComposeUiTest {
         var opened = 0
         setContent {
-            StatusScreen(
+            TestStatusScreen(
                 UiState(Layer.CreateEvent()),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(onSendDiagnostics = { _, _ -> }, surfaces = SurfaceActions(onReportBugOpen = { opened++ })),
+                actions = testActions(onSendDiagnostics = { _, _ -> }, surfaces = testSurfaceActions(onReportBugOpen = { opened++ })),
             )
         }
 
@@ -81,7 +81,7 @@ class DiagnosticDumpGestureTest {
     @Test
     fun `the sheet renders when the state says it is open`() = runComposeUiTest {
         setContent {
-            StatusScreen(reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = diagnosticsActions())
+            TestStatusScreen(reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = diagnosticsActions())
         }
         onNodeWithText(sheetTitle).assertExists()
     }
@@ -92,8 +92,8 @@ class DiagnosticDumpGestureTest {
         // message: an invalid submit is unreachable, so nothing needs to explain it.
         var sent = 0
         setContent {
-            StatusScreen(
-                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
+            TestStatusScreen(
+                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
         onNodeWithText("Send").assertIsNotEnabled()
@@ -107,8 +107,8 @@ class DiagnosticDumpGestureTest {
     fun `whitespace alone is not a description`() = runComposeUiTest {
         var sent = 0
         setContent {
-            StatusScreen(
-                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> sent++ }))
+            TestStatusScreen(
+                reporting(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> sent++ }))
         }
 
         onNodeWithText(placeholder).performTextInput("   ")
@@ -122,12 +122,12 @@ class DiagnosticDumpGestureTest {
         val sent = mutableListOf<Pair<String, String>>()
         var dismissed = 0
         setContent {
-            StatusScreen(
+            TestStatusScreen(
                 reporting(Layer.CreateEvent()),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
+                actions = testActions(
                     onSendDiagnostics = { note, screen -> sent += note to screen },
-                    surfaces = SurfaceActions(onReportBugDismiss = { dismissed++ }),
+                    surfaces = testSurfaceActions(onReportBugDismiss = { dismissed++ }),
                 )
             )
         }
@@ -148,12 +148,12 @@ class DiagnosticDumpGestureTest {
         var sent = 0
         var dismissed = 0
         setContent {
-            StatusScreen(
+            TestStatusScreen(
                 reporting(Layer.CreateEvent()),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
+                actions = testActions(
                     onSendDiagnostics = { _, _ -> sent++ },
-                    surfaces = SurfaceActions(onReportBugDismiss = { dismissed++ }),
+                    surfaces = testSurfaceActions(onReportBugDismiss = { dismissed++ }),
                 ),
             )
         }
@@ -171,8 +171,8 @@ class DiagnosticDumpGestureTest {
         // not inert: an affordance that exists and silently does nothing is the one outcome forbidden,
         // because it is indistinguishable from a report that failed to send.
         setContent {
-            StatusScreen(
-                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = null))
+            TestStatusScreen(
+                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = null))
         }
 
 
@@ -185,10 +185,10 @@ class DiagnosticDumpGestureTest {
         // distinction reaches a log line — the join phase is screen state.
         val sent = mutableListOf<String>()
         setContent {
-            StatusScreen(
+            TestStatusScreen(
                 reporting(Layer.JoiningEvent("11111111-2222-4333-8444-555555555555", JoinPhase.LoadFailed)),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
+                actions = testActions(
                     onSendDiagnostics = { _, screen -> sent += screen },
                 )
             )
@@ -206,8 +206,8 @@ class DiagnosticDumpGestureTest {
         // OnClick semantics action and a ripple — which is exactly what makes a control read as a
         // control, and would put the hidden affordance into the accessibility tree.
         setContent {
-            StatusScreen(
-                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = StatusActions(onSendDiagnostics = { _, _ -> }))
+            TestStatusScreen(
+                UiState(Layer.CreateEvent()), cutoff = fixedCutoff(), actions = testActions(onSendDiagnostics = { _, _ -> }))
         }
 
         onNodeWithText(navLabel).assert(
@@ -220,10 +220,10 @@ class DiagnosticDumpGestureTest {
         // A stuck sync is exactly when a report is wanted, and the label is the one element every state
         // renders — that is why the gesture lives on it.
         setContent {
-            StatusScreen(
+            TestStatusScreen(
                 reportingOver(joinedWith(SyncHealth.InSync)),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
+                actions = testActions(
                     onSendDiagnostics = { _, _ -> },
                 )
             )
@@ -262,4 +262,4 @@ private fun reporting(layer: Layer) = UiState(layer, Overlays(reportingBug = tru
 private fun reportingOver(state: UiState) = state.copy(overlays = Overlays(reportingBug = true))
 
 /** Diagnostics wired to a no-op, for the tests that only care that the sheet renders. */
-private fun diagnosticsActions() = StatusActions(onSendDiagnostics = { _, _ -> })
+private fun diagnosticsActions() = testActions(onSendDiagnostics = { _, _ -> })

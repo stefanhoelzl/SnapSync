@@ -1,5 +1,7 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.JoinCommit
+import app.snapsync.model.UserCommands
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
@@ -62,6 +64,23 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
             shareableCount = { _, _ -> null },
         ),
         cutoffFormatter = cutoffFormatter,
+        // A screenshot fires no command, and has no log to write to: every command stated inert.
+        commands = UserCommands(
+            leave = {},
+            create = { _, _, _ -> },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
+            share = {},
+            requestAccess = {},
+            openSettings = {},
+            openLink = {},
+            choosePhotos = {},
+            reconfigure = { _, _, _, _, _ -> },
+            rename = { _, _ -> },
+            resetRename = {},
+            // No reporting channel in a forge binary, so no gesture (capability `diagnostic-logging`).
+            sendDiagnostics = null,
+        ),
+        diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
     )
     // Drive the real join gate by feeding it the very input a scanned QR delivers: the event's own
     // INTERACTIVE invite link (no `autoJoin`, so it opens the confirmation instead of provisioning

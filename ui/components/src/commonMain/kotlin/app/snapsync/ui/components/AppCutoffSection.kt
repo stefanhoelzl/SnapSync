@@ -50,10 +50,10 @@ class RangeChoices(
 
 /** The four edits a member can make to a [RangeChoices]. */
 class RangeChoiceActions(
-    val onFromPreset: (FromChoice) -> Unit = {},
-    val onFromCustom: (LocalDateTime) -> Unit = {},
-    val onUntilPreset: (UntilChoice) -> Unit = {},
-    val onUntilCustom: (LocalDateTime) -> Unit = {},
+    val onFromPreset: (FromChoice) -> Unit,
+    val onFromCustom: (LocalDateTime) -> Unit,
+    val onUntilPreset: (UntilChoice) -> Unit,
+    val onUntilCustom: (LocalDateTime) -> Unit,
 )
 
 /**

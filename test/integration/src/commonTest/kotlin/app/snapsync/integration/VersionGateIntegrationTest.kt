@@ -114,6 +114,8 @@ class VersionGateIntegrationTest {
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
         queries = w.core.userQueries,
+        commands = w.userCommands,
+        diagnostics = quietDiagnostics(),
     )
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =

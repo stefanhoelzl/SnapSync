@@ -25,8 +25,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.newSingleThreadContext
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 
 /**
  * The **full-stack world harness** (`:app:desktop:run`, capability `full-stack-harness`): the real
@@ -92,42 +90,18 @@ fun WorldHarnessRoot() {
                     StatusPane(
                         syncSource = controller.syncSource,
                         permissionSource = controller.permissionSource,
-                        requester = controller.requester,
                         configSource = controller.configSource,
-            creationStatusSource = controller.creationStatusSource,
-            renameStatusSource = controller.renameStatusSource,
-                        creator = controller.creator,
+                        creationStatusSource = controller.creationStatusSource,
+                        renameStatusSource = controller.renameStatusSource,
                         downloadSource = controller.downloadSource,
-                        // The REAL join gate over the world: create + scan reach the JoiningEvent
-                        // surface (direction + cutoff rows), and confirm enrolls + provisions.
-                        loadJoinDetails = controller::loadJoinDetails,
-                        commitJoin = controller::commitJoin,
+                        // The world's REAL command and query bundles (join gate, leave, reconfigure,
+                        // rename, bug report, shareable count), decorated for the inspector.
+                        commands = controller.commands,
+                        queries = controller.queries,
                         // Capture the constructed host so a minted event routes into ITS pending-join
                         // gate (onEventCreated); re-fires on each preset rebind (keyed on generation).
                         onHostReady = { controller.host = it },
-                        // Harness share stub (test equipment): copy the invite URL to the clipboard
-                        // and log it rather than open a native share sheet.
-                        share = { url ->
-                            runCatching {
-                                Toolkit.getDefaultToolkit().systemClipboard
-                                    .setContents(StringSelection(url), null)
-                            }
-                            controller.appendConsole("share invite → $url")
-                        },
                         scope = scope,
-                        // The real Leave affordance runs the faithful edge (imports retained).
-                        leave = controller.leave,
-                        // The real in-place reconfigure edge (capability `reconfigure-membership`).
-                        reconfigure = controller.reconfigure,
-                        rename = controller.rename,
-                        resetRename = controller.resetRename,
-                        // The real shareable-count query over the world gallery (capability `join-share-count`).
-                        shareableCount = controller::loadShareableCount,
-                        // The REAL bug-report command (capability `diagnostic-logging`): the world
-                        // composes a configured reporter, so sending assembles a genuine dump over the
-                        // world's ledger, download store, config and logs — and the world records it,
-                        // inspectable without a device.
-                        sendDiagnostics = controller.sendDiagnostics,
                         darkThemeOverride = dark,
                     )
                 }

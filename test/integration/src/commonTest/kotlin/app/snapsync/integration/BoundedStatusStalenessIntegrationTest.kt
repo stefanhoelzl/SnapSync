@@ -127,6 +127,8 @@ class BoundedStatusStalenessIntegrationTest {
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
         queries = w.core.userQueries,
+        commands = w.userCommands,
+        diagnostics = quietDiagnostics(),
     )
 
     private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health

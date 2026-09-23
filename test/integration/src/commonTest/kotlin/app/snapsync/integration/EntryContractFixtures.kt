@@ -118,6 +118,7 @@ internal object EntryContractFixtures {
         ),
         scope = scope,
         queries = w.core.userQueries,
+        diagnostics = quietDiagnostics(),
         commands = w.userCommands,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
     )

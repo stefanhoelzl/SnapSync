@@ -1,10 +1,5 @@
 package app.snapsync.ui
 
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.model.PermissionStatus
-import app.snapsync.model.Direction
 import kotlinx.datetime.LocalDateTime
 
 /**
@@ -23,21 +18,21 @@ import kotlinx.datetime.LocalDateTime
  * join gate, the joined layer, the access prompts, the switch confirmation. Seven fields for eighteen
  * callbacks, and a reader now finds a callback by asking which surface owns it.
  *
- * EVERY FIELD IS DEFAULTED, at both levels, for this module's own previews and component tests, which wire
- * only the callbacks they exercise. A HOST never relies on the defaults: every host takes its bundle from
- * [statusActions], the one table bound to a container (spec `sync-status-screen`, "The screen's callback
- * bundle is built in one place"). Hosts used to write the table out themselves and lean on these defaults
- * for what they skipped, which is how the store button ended up bound in one host and inert in the others.
+ * NO FIELD IS DEFAULTED, at either level (law "Function-typed parameters have no defaults in production",
+ * capability `module-architecture`). Every field used to default to an inert lambda so each host could wire
+ * only what it needed — and three hosts copied the wiring table by hand, and one of them silently dropped
+ * "Choose more photos". Every host now builds this through the ONE factory, [statusActions] (`HostStatusActions.kt`), over
+ * its container, so a new action is wired once and a forgotten one does not compile.
  *
  * [onSendDiagnostics] stays NULLABLE rather than defaulting to an inert lambda, and that is a contract
  * rather than a convenience: a build with no reporting channel must wire no gesture at all, because an
  * affordance that silently does nothing is the one outcome `diagnostic-logging` forbids.
  */
 class StatusActions(
-    val join: JoinGateActions = JoinGateActions(),
-    val joined: JoinedActions = JoinedActions(),
-    val access: AccessActions = AccessActions(),
-    val switch: SwitchActions = SwitchActions(),
+    val join: JoinGateActions,
+    val joined: JoinedActions,
+    val access: AccessActions,
+    val switch: SwitchActions,
     /**
      * Opening and dismissing what is drawn over — or instead of — the joined layer.
      *
@@ -45,30 +40,30 @@ class StatusActions(
      * (capability `sync-status-screen`), so opening a dialog crosses the container like any other tap.
      * Grouped for the same reason the container groups them — they are one question.
      */
-    val surfaces: SurfaceActions = SurfaceActions(),
+    val surfaces: SurfaceActions,
 
     // Create an event (capability `event-creation-ui`): the trimmed name and the chosen `[startsAt, endsAt]`
     // event window as LOCAL wall-clock values (the container converts each to a canonical `…Z` string).
     // Top-level rather than in a group of one: the create layer asks for exactly this and nothing else.
-    val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
+    val onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     /**
      * Open a URL outside the app. Its ONE caller is the update-required screen's store button
      * (capability `min-app-version`). Top-level rather than in a group, like [onCreateEvent]: it
      * belongs to no escalation and shares its question with nothing.
      */
-    val onOpenLink: (String) -> Unit = {},
+    val onOpenLink: (String) -> Unit,
     /**
      * The member's edits to the capture-range form, bound to the container's intents. Both decision
      * surfaces ask for the same seven, so they are one bundle rather than two identical sets.
      */
-    val participation: ParticipationActions = ParticipationActions(),
+    val participation: ParticipationActions,
     // The hidden diagnostic dump (capability `diagnostic-logging`): fired by a double-tap on the app-name
     // label, carrying what the operator wrote about the problem and the surface they wrote it from.
     //
     // NULLABLE rather than defaulting to an inert lambda, and that is a contract rather than a
     // convenience: a build with no reporting channel must wire no gesture at all, because an affordance
     // that silently does nothing is the one outcome `diagnostic-logging` forbids.
-    val onSendDiagnostics: ((note: String, screen: String) -> Unit)? = null,
+    val onSendDiagnostics: ((note: String, screen: String) -> Unit)?,
 )
 
 /**
@@ -80,32 +75,32 @@ class StatusActions(
  * WITHOUT passing back through the loaded phase.
  */
 class JoinGateActions(
-    val onConfirmJoin: () -> Unit = {},
-    val onRetryJoin: () -> Unit = {},
+    val onConfirmJoin: () -> Unit,
+    val onRetryJoin: () -> Unit,
     // The photo-access explainer's confirm: requests permission, then advances to the confirm surface.
     // The only route from the join gate to the system dialog.
-    val onAcknowledgeAccess: () -> Unit = {},
-    val onCancelJoin: () -> Unit = {},
-    val onRetryLoad: () -> Unit = {},
+    val onAcknowledgeAccess: () -> Unit,
+    val onCancelJoin: () -> Unit,
+    val onRetryLoad: () -> Unit,
 )
 
 /** What the JOINED layer asks for: the action cluster, and the two halves of a rename. */
 class JoinedActions(
-    val onLeaveEvent: () -> Unit = {},
-    val onShareInvite: () -> Unit = {},
+    val onLeaveEvent: () -> Unit,
+    val onShareInvite: () -> Unit,
     // Commit an in-place reconfigure (capability `reconfigure-membership`): the event the surface was
     // opened for, the new direction, the chosen capture-date range (`minPhotoDate` floor-clamped and
     // `maxPhotoDate` ceiling-clamped on the far side in `ReconfigureEvent`), and the album opt-in.
     // Commit the settings surface (capability `reconfigure-membership`). Save commits what the reduction
     // resolved, so it carries no value — the screen is asking for an act, not reporting one. Opening and
     // cancelling are navigation and live in [surfaces].
-    val onReconfigure: () -> Unit = {},
+    val onReconfigure: () -> Unit,
     // Rename the joined event (capability `event-rename`): the event the dialog was opened for and the
     // new name. Fired by the pen beside the heading; the outcome arrives back via `renameStatus`.
-    val onRenameEvent: (String, String) -> Unit = { _, _ -> },
+    val onRenameEvent: (String, String) -> Unit,
     // Clear the rename latch once the screen has acted on a terminal status, so a second rename starts
     // from a clean sequence rather than re-reading the previous outcome.
-    val onRenameStatusConsumed: () -> Unit = {},
+    val onRenameStatusConsumed: () -> Unit,
 )
 
 /**
@@ -114,11 +109,11 @@ class JoinedActions(
  * for, and widen a partial one (capability `limited-photo-access`).
  */
 class AccessActions(
-    val onRequestPermission: () -> Unit = {},
-    val onOpenSettings: () -> Unit = {},
+    val onRequestPermission: () -> Unit,
+    val onOpenSettings: () -> Unit,
     // The joined layer's "Choose more photos" tap under a partial grant: presents the system
     // limited-library picker.
-    val onChoosePhotos: () -> Unit = {},
+    val onChoosePhotos: () -> Unit,
 )
 
 /**
@@ -126,8 +121,8 @@ class AccessActions(
  * nothing else, so it carries no choices — the join surface the leave reveals owns every one of them.
  */
 class SwitchActions(
-    val onConfirmSwitch: () -> Unit = {},
-    val onCancelSwitch: () -> Unit = {},
+    val onConfirmSwitch: () -> Unit,
+    val onCancelSwitch: () -> Unit,
 )
 
 /**
@@ -138,17 +133,18 @@ class SwitchActions(
  * the answer is state rather than a screen-held flag.
  */
 class SurfaceActions(
-    val onConfirmLeaveOpen: () -> Unit = {},
-    val onConfirmLeaveDismiss: () -> Unit = {},
-    val onRenameOpen: () -> Unit = {},
-    val onRenameDismiss: () -> Unit = {},
-    val onOpenReconfigure: () -> Unit = {},
-    val onCancelReconfigure: () -> Unit = {},
+    val onConfirmLeaveOpen: () -> Unit,
+    val onConfirmLeaveDismiss: () -> Unit,
+    val onRenameOpen: () -> Unit,
+    val onRenameDismiss: () -> Unit,
+    val onOpenReconfigure: () -> Unit,
+    val onCancelReconfigure: () -> Unit,
     /**
      * The diagnostic sheet (capability `diagnostic-logging`). Here with the other overlays rather than
      * on the joined layer's group, because its gesture is on the app-name label, which EVERY layer
      * renders — the same reason its flag is not layer-scoped in the state.
      */
-    val onReportBugOpen: () -> Unit = {},
-    val onReportBugDismiss: () -> Unit = {},
+    val onReportBugOpen: () -> Unit,
+    val onReportBugDismiss: () -> Unit,
 )
+

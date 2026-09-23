@@ -1,23 +1,13 @@
 package app.snapsync.desktop
 
-import app.snapsync.model.EventStart
-import app.snapsync.model.EventEnd
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.snapsync.ports.ConfigSource
-import app.snapsync.model.Direction
-import app.snapsync.model.JoinCommit
 import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.feature.creation.EventCreator
-import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
@@ -25,16 +15,16 @@ import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
+import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.ui.statusActions
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.statusActions
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,56 +32,25 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
  * injected seams, then render the real [StatusScreen] inside the [PhoneFrame]. The forge harness
- * ([app.snapsync.desktop.main]) supplies stand-in cells; the future full-stack world harness supplies
- * the real platform-agnostic stack — only the seam *sources* (and the right pane) differ.
+ * ([app.snapsync.desktop.main]) supplies stand-in cells; the full-stack world harness supplies the real
+ * platform-agnostic stack — only the seam *sources* (and the right pane) differ.
  *
- * The share edge is UI-only test equipment ([share] is passed in by the host; the forge copies the
- * invite URL to the clipboard and logs it). [leave] defaults to the container's no-op, so the forge's
- * confirm dialog is reviewable but inert; the full-stack world harness passes the real `World.leave()`
- * edge so a confirmed leave actually runs the stack (imports retained, join cleared).
+ * It takes the whole [commands] and [queries] bundles, never a list of loose edges: it used to rebuild
+ * `UserCommands` field by field from a dozen defaulted lambdas, and the rebuild silently dropped
+ * `choosePhotos` and `openLink`, so both were dead in both harnesses. The world harness passes the world's
+ * own bundles (decorated for its console); the forge passes its stand-ins, each stated.
  */
 @Composable
 fun StatusPane(
     syncSource: SyncStatusSource,
     permissionSource: PhotoAccessStatusSource,
-    requester: PhotoAccessRequester,
     configSource: ConfigSource,
     creationStatusSource: CreationStatusSource,
-    creator: EventCreator,
     downloadSource: DownloadStatusSource,
-    share: (String) -> Unit,
     scope: CoroutineScope,
-    leave: suspend () -> Unit = {},
-    // The join-gate hooks (capability `join-event`): the forge leaves them inert (the join UI is
-    // reviewable when a JoiningEvent state is forged), the full-stack world harness binds them to a
-    // real `JoinEvent` over the world so `:app:desktop:run` drives the actual gate.
-    loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (
-        String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
-    ) -> JoinCommit = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
-    // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
-    // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
-    // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
-    reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit =
-        { _, _, _, _, _ -> },
-    // The heading rename (capability `event-rename`): the forge leaves it inert (the dialog is
-    // reviewable, the command a no-op), the full-stack world harness binds the real
-    // `world.core.userCommands.rename`/`resetRename` so `:app:desktop:run` drives the actual rewrite
-    // against the world's mini-edge. The status source likewise defaults to an always-Idle instance.
-    rename: (String, String) -> Unit = { _, _ -> },
-    resetRename: suspend () -> Unit = {},
+    commands: UserCommands,
+    queries: UserQueries,
     renameStatusSource: RenameStatusSource = MutableRenameStatusSource(),
-    // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
-    // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
-    // `:app:desktop:run` shows the real count over the world gallery. Range-aware (`[cutoff, until]`).
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
-    // The hidden bug-report affordance (capability `diagnostic-logging`): a double-tap on the app-name
-    // label opens the sheet, and sending hands over what was written. The forge passes a UI-only stub
-    // that echoes to the engine console (it composes no reporter); the full-stack world harness passes
-    // the REAL `world.core.userCommands.sendDiagnostics`, so the sheet assembles a real dump over real
-    // world state and the world's reporter records it. `null` — the default — wires no gesture at all,
-    // which is the same structural rule a build with no reporting channel relies on.
-    sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
     // full-stack harness constructs unchanged; the forge harness injects its own cell so
     // `SyncHealth.Unattested` is forgeable.
@@ -128,32 +87,14 @@ fun StatusPane(
                 pending = pending,
             ),
             scope = scope,
-            // The user-tap command bundle (spec `module-architecture`, "Commands cross one door"),
-            // assembled from this pane's injected harness edges — the harness's stand-in for the
-            // `compose/`-built production bundle (the world adopts `snapSyncApp` at step 10). The
-            // permission taps bind the injected requester, mirroring `AppCore.userCommands`.
-            commands = UserCommands(
-                leave = leave,
-                // Launched, because the use-case is suspending now: the production bundle's
-                // `create` is fire-and-forget with its outcome on `creationStatus`, and this pane
-                // stands in for that bundle.
-                create = { name, startsAt, endsAt ->
-                    scope.launch { creator.create(name, startsAt.at.iso, endsAt.at.iso) }
-                    Unit
-                },
-                commitJoin = commitJoin,
-                share = share,
-                requestAccess = requester::request,
-                openSettings = requester::openSettings,
-                reconfigure = reconfigure,
-                rename = rename,
-                resetRename = resetRename,
-                sendDiagnostics = sendDiagnostics,
-            ),
-            // The query bundle, assembled from this pane's injected harness edges exactly like the
-            // commands above.
-            queries = UserQueries(loadJoinDetails = loadJoinDetails, shareableCount = shareableCount),
+            commands = commands,
+            queries = queries,
             cutoffFormatter = cutoffFormatter,
+            // Test equipment: a failed intent goes to stdout rather than to a crash reporter.
+            diagnostics = StatusDiagnostics(
+                log = { println(it) },
+                onIntentError = { println("user command failed: $it") },
+            ),
         ).also(onHostReady)
     }
     val state by host.container.stateFlow.collectAsState()

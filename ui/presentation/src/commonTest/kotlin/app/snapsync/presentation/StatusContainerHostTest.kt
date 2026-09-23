@@ -270,12 +270,12 @@ private fun host(
     StatusSources(source, permission.permission, configFake.config, attested = attested),
     scope,
     queries = joinDetails(loadJoinDetails),
-    commands = UserCommands(
+    commands = testCommands(
         leave = leave, commitJoin = commitJoin,
         requestAccess = requester::request, openSettings = requester::openSettings,
     ),
     cutoffFormatter = fixedCutoffFormatter(),
-    diagnostics = StatusDiagnostics(onIntentError = onIntentError),
+    diagnostics = testDiagnostics(onIntentError = onIntentError),
 )
 
 /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
@@ -383,6 +383,8 @@ class StatusContainerHostTest {
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
             queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
         )
         host.test(this) {
             runOnCreate()
@@ -441,6 +443,8 @@ class StatusContainerHostTest {
             ), scope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
         )
     }
 
@@ -525,9 +529,10 @@ class StatusContainerHostTest {
                 FakeSyncStatusSource(), permission.permission, config.config,
                 creation = MutableCreationStatusSource(creation),
             ), scope,
-            commands = UserCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
+            commands = testCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            diagnostics = testDiagnostics(),
         )
     }
 
@@ -601,7 +606,7 @@ class StatusContainerHostTest {
             StatusSources(
                 FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED).permission, config.config,
             ), backgroundScope,
-            commands = UserCommands(
+            commands = testCommands(
                 commitJoin = { id, name, startsAt, _, _, cutoff, _, direction, _ ->
                     config.save(EventConfig(id, name, minPhotoDate = cutoff, maxPhotoDate = CEILING, startsAt = startsAt, direction = direction))
                     JoinCommit.Committed
@@ -609,6 +614,7 @@ class StatusContainerHostTest {
             ),
             queries = joinDetails { JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT) },
             cutoffFormatter = fixedCutoffFormatter(),
+            diagnostics = testDiagnostics(),
         )
         host.test(this) {
             runOnCreate()
@@ -636,6 +642,8 @@ class StatusContainerHostTest {
             ), backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
         )
         host.test(this) {
             runOnCreate()
@@ -1306,7 +1314,8 @@ class StatusContainerHostTest {
             ), backgroundScope,
             queries = joinDetails { JoinLoad.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
-            diagnostics = StatusDiagnostics(log = { logged.trySend(it) }),
+            diagnostics = testDiagnostics(log = { logged.trySend(it) }),
+            commands = testCommands(),
         )
         containerHost.test(this) {
             runOnCreate()
@@ -1332,7 +1341,8 @@ class StatusContainerHostTest {
             ), backgroundScope,
             queries = joinDetails { JoinLoad.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
-            diagnostics = StatusDiagnostics(log = { logged.trySend(it) }),
+            diagnostics = testDiagnostics(log = { logged.trySend(it) }),
+            commands = testCommands(),
         )
         containerHost.test(this) {
             runOnCreate()
@@ -1471,9 +1481,10 @@ class StatusContainerHostTest {
         val configFake = FakeConfig()
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = UserCommands(leave = { leaves++ }),
+            backgroundScope, commands = testCommands(leave = { leaves++ }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            diagnostics = testDiagnostics(),
         )
         containerHost.test(this) {
             containerHost.onLeaveEvent()
@@ -1498,6 +1509,8 @@ class StatusContainerHostTest {
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
         )
         val invite = (host.container.stateFlow.value.layer as Layer.Joined).inviteUrl
         assertEquals(encodeEventUrl(EventLinkPayload(EVENT_ID)), invite)
@@ -1513,6 +1526,8 @@ class StatusContainerHostTest {
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
         )
         // The invite URL has no home outside the joined state now, so "no event" IS "no invite URL":
         // there is no state that could carry one, rather than a state carrying a null (capability
@@ -1553,6 +1568,8 @@ class StatusContainerHostTest {
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            commands = testCommands(),
+            diagnostics = testDiagnostics(),
         )
         // One name, one source: the heading, the rename prefill and the reconfigure header all read
         // this membership, so there is no second event-name value to drift from it.
@@ -1565,9 +1582,10 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = UserCommands(share = { shared += it }),
+            backgroundScope, commands = testCommands(share = { shared += it }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            diagnostics = testDiagnostics(),
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -1583,9 +1601,10 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val containerHost = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
-            backgroundScope, commands = UserCommands(share = { shared += it }),
+            backgroundScope, commands = testCommands(share = { shared += it }),
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
+            diagnostics = testDiagnostics(),
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -1965,12 +1984,12 @@ class StatusContainerHostJoinGateTest {
                     StatusSources(
                         FakeSyncStatusSource(), FakePermissionSource().permission, FakeConfig().config,
                     ), scope,
-                    commands = UserCommands(
+                    commands = testCommands(
                         leave = { throw boom },
                         requestAccess = { laterCommandRan.complete(Unit) },
                     ),
                     cutoffFormatter = fixedCutoffFormatter(),
-                    diagnostics = StatusDiagnostics(onIntentError = { reported.complete(it) }),
+                    diagnostics = testDiagnostics(onIntentError = { reported.complete(it) }),
                     queries = noQueries,
                 )
 

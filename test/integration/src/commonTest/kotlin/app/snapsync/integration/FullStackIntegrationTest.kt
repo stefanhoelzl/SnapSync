@@ -154,6 +154,7 @@ class FullStackIntegrationTest {
                 // `AppCore.eventCreator`; the world's default `onEventMinted` provisions directly.
                 commands = w.userCommands,
                 queries = w.core.userQueries,
+                diagnostics = quietDiagnostics(),
             )
             assertEquals(UiState(Layer.CreateEvent()), host.container.stateFlow.value)
 
@@ -431,6 +432,7 @@ class FullStackIntegrationTest {
                 cutoffFormatter = fixedCutoffFormatter(),
                 commands = w.userCommands,
                 queries = w.core.userQueries,
+                diagnostics = quietDiagnostics(),
             )
             host.await { it.layer is Layer.Joined }
 
@@ -581,8 +583,9 @@ class FullStackIntegrationTest {
                 ),
                 scope = scope,
                 cutoffFormatter = fixedCutoffFormatter(),
-                commands = UserCommands(leave = { leaveEvent.leave() }),
+                commands = w.userCommands.replacing(leave = { leaveEvent.leave() }),
                 queries = w.core.userQueries,
+                diagnostics = quietDiagnostics(),
             )
             host.await { it.layer is Layer.Joined }
 
@@ -610,6 +613,8 @@ class FullStackIntegrationTest {
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
         queries = w.core.userQueries,
+        commands = w.userCommands,
+        diagnostics = quietDiagnostics(),
     )
 
     private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health

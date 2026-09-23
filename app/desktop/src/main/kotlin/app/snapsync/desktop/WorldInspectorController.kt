@@ -1,5 +1,9 @@
 package app.snapsync.desktop
 
+import java.awt.datatransfer.StringSelection
+import java.awt.Toolkit
+import app.snapsync.model.UserQueries
+import app.snapsync.model.UserCommands
 import app.snapsync.model.EventStart
 import app.snapsync.model.EventEnd
 import app.snapsync.model.DeletesAt
@@ -146,6 +150,40 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         } else {
             null
         }
+
+    /**
+     * The command bundle the status pane fires (spec `module-architecture`, "Commands cross one door"): the
+     * world's REAL commands where the harness drives the real stack, decorated so the inspector refreshes,
+     * and harness stand-ins only where a platform surface does not exist off device. Every field stated —
+     * the pane used to rebuild this from loose defaulted edges and dropped "Choose more photos".
+     * A getter, so a preset's fresh world is the one the next pane binds.
+     */
+    val commands: UserCommands
+        get() = UserCommands(
+            leave = leave,
+            create = { name, startsAt, endsAt ->
+                scope.launch { creator.create(name, startsAt.at.iso, endsAt.at.iso) }
+                Unit
+            },
+            commitJoin = ::commitJoin,
+            // Harness share stub (test equipment): copy the invite URL to the clipboard and log it.
+            share = { url ->
+                runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+                appendConsole("share invite → $url")
+            },
+            requestAccess = requester::request,
+            openSettings = requester::openSettings,
+            openLink = { url -> appendConsole("openLink → $url (the harness opens no browser)") },
+            choosePhotos = requester::choosePhotos,
+            reconfigure = reconfigure,
+            rename = rename,
+            resetRename = resetRename,
+            sendDiagnostics = sendDiagnostics,
+        )
+
+    /** The query bundle: the world's real details read and shareable count. */
+    val queries: UserQueries
+        get() = UserQueries(loadJoinDetails = ::loadJoinDetails, shareableCount = ::loadShareableCount)
 
     /** What the next gate-driven `request()` resolves to. */
     var armedGrants: Boolean by mutableStateOf(true)

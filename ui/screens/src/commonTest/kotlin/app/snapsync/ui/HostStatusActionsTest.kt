@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.presentation.StatusDiagnostics
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -151,6 +152,7 @@ class HostStatusActionsTest {
                 sendDiagnostics = if (diagnostics) ({ note, _ -> record("sendDiagnostics:$note") }) else null,
             ),
             queries = UserQueries(loadJoinDetails = { details(it) }, shareableCount = { _, _ -> null }),
+            diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         )
 
         val state: UiState get() = host.container.stateFlow.value

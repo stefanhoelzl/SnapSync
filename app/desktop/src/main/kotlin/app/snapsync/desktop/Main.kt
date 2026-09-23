@@ -16,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 
 fun main() = application {
     Window(
@@ -54,28 +52,12 @@ fun ForgeHarnessRoot() {
                     onHostReady = { controller.host = it },
                     syncSource = controller.syncSource,
                     permissionSource = controller.permissionSource,
-                    requester = controller.requester,
                     configSource = controller.configSource,
                     creationStatusSource = controller.creationStatusSource,
-                    creator = controller.creator,
                     downloadSource = controller.downloadStatusSource,
-                    // Harness share stub (test equipment): the joined-layer presets force
-                    // CANNED_CONFIG, so the host derives a real invite URL — copy it to the
-                    // clipboard and log it rather than open a native share sheet. Exercises the UI
-                    // flow only; mutates no harness state.
-                    share = { url ->
-                        runCatching {
-                            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null)
-                        }
-                        println("share invite → $url")
-                    },
-                    // Harness bug-report stub (test equipment): the forge composes no reporter, so a
-                    // sent report echoes to the console and goes nowhere. It exists so the hidden
-                    // double-tap, the sheet, and its disabled-until-written send are reviewable
-                    // offscreen (capability `diagnostic-logging`). This is the HARNESS's own wiring —
-                    // the shared forge host factory stays without a command, so the on-device forge
-                    // composition (no DSN) still offers no affordance at all.
-                    sendDiagnostics = { note, screen -> println("bug report [$screen] → $note") },
+                    // The forge's stand-in bundles, every command stated (see PanelController).
+                    commands = controller.commands,
+                    queries = controller.queries,
                     scope = scope,
                     darkThemeOverride = dark,
                     // The forge's join/switch and attestation cells, so the panel can forge the

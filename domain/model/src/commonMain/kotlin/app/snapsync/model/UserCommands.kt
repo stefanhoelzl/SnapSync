@@ -16,8 +16,10 @@ package app.snapsync.model
  * (`StatusContainerHost`'s `loadJoinDetails`) stays an injected read — it returns a value the gate
  * reduces on, so it is a query, not a command.
  *
- * Every field defaults to inert (the same no-op defaults the individual constructor lambdas carried),
- * so non-iOS hosts and tests that don't exercise a command construct unchanged.
+ * No field has a default (law "Function-typed parameters have no defaults in production", capability
+ * `module-architecture`): a host that builds this bundle states every command, so one it forgets does not
+ * compile. They all used to default to inert, and a host that rebuilt the bundle by hand shipped a
+ * "Choose more photos" button that did nothing.
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
  *   config, notify the backend (capability `leave-event`).
@@ -87,8 +89,8 @@ enum class JoinCommit {
 }
 
 class UserCommands(
-    val leave: suspend () -> Unit = {},
-    val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit = { _, _, _ -> },
+    val leave: suspend () -> Unit,
+    val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit,
     val commitJoin: suspend (
         eventId: String,
         name: String,
@@ -99,26 +101,26 @@ class UserCommands(
         maxPhotoDate: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
-    ) -> JoinCommit = { _, _, _, _, _, _, _, _, _ -> JoinCommit.Failed },
-    val share: (String) -> Unit = {},
-    val requestAccess: () -> Unit = {},
-    val openSettings: () -> Unit = {},
-    val openLink: (url: String) -> Unit = {},
-    val choosePhotos: () -> Unit = {},
+    ) -> JoinCommit,
+    val share: (String) -> Unit,
+    val requestAccess: () -> Unit,
+    val openSettings: () -> Unit,
+    val openLink: (url: String) -> Unit,
+    val choosePhotos: () -> Unit,
     val reconfigure: suspend (
         eventId: String,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-    ) -> Unit = { _, _, _, _, _ -> },
-    val rename: (eventId: String, name: String) -> Unit = { _, _ -> },
+    ) -> Unit,
+    val rename: (eventId: String, name: String) -> Unit,
     /**
      * Suspending, unlike the other latch-driven commands: the screen fires this **after** consuming a
      * terminal status and may start the next rename immediately, so the clear has to have happened by
      * the time the call returns. Detaching it opened a window where a second rename began with the
      * previous `Succeeded` still latched.
      */
-    val resetRename: suspend () -> Unit = {},
-    val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
+    val resetRename: suspend () -> Unit,
+    val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)?,
 )

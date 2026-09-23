@@ -105,18 +105,18 @@ class StatusDiagnostics(
     /**
      * Dev-path abort logging: the headless negative oracle for a `SNAPSYNC_EVENT_LINK` run (autoJoin has
      * no UI to show a load/commit failure, and a gate parked on a failed details load has no one watching
-     * its dialog). No-op by default; the iOS shell wires it into `debug.log`.
+     * its dialog). The iOS shell wires it into `debug.log`.
      */
-    val log: (String) -> Unit = {},
+    val log: (String) -> Unit,
     /**
      * The container's ERROR seam (spec `sync-status-screen`, "A failing command never disables the status
      * container"): every throwable that escapes an intent arrives here instead of propagating. The
      * composition binds it to `Error` severity, which is the threshold at which a Kermit line becomes a
      * crash-reporting EVENT rather than a breadcrumb (capability `crash-reporting`).
      *
-     * No-op by default — but note that the DEFAULT still keeps the container alive, because it is the
-     * handler's PRESENCE that stops Orbit's rethrow. A host binding nothing loses the report, never the
-     * liveness.
+     * Required: a host that binds nothing here must say so. The container stays alive either way, because
+     * it is the handler's PRESENCE that stops Orbit's rethrow — a host binding a no-op loses the report,
+     * never the liveness.
      */
-    val onIntentError: (Throwable) -> Unit = {},
+    val onIntentError: (Throwable) -> Unit,
 )
