@@ -6,8 +6,10 @@ import app.snapsync.album.IosAlbumManager
 import app.snapsync.compose.PermissionAwareAssetPresence
 import app.snapsync.compose.PermissionAwareCandidateSource
 import app.snapsync.contracts.AlbumManagerContract
+import app.snapsync.contracts.BackgroundTransferContract
 import app.snapsync.contracts.AlbumManagerState
 import app.snapsync.contracts.Binding
+import app.snapsync.contracts.DownloadTransportContract
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CandidateSourceContract
 import app.snapsync.contracts.CandidateSourceState
@@ -100,6 +102,8 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(ProtectedStorageContract, SimAppProtectedStorageBinding(), ::hostRefusal),
     simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
+    simulatorAppContract(BackgroundTransferContract, SimAppBackgroundTransferBinding(), ::refusal),
+    simulatorAppContract(DownloadTransportContract, SimAppDownloadTransportBinding(), ::hostRefusal),
 )
 
 /** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */
