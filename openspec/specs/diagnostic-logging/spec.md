@@ -28,7 +28,7 @@ Decision record: `changes/archive/2026-07-29-add-diagnostic-dump` (the operator-
 extension log's move to the App Group, and the measured Bugsink limits behind the byte budget); the
 required written description, the sheet that collects it, grouping by description (which **reverses**
 that record's constant-message decision), the tag-carried redaction exemption, and the full-height
-sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`; the per-report process-metric line: `changes/archive/2026-09-14-add-os-exit-attribution`; the thread-scoped claim and the measured overlap that retired serial delivery as the prefix's justification: `changes/archive/2026-09-14-thread-scoped-log-prefix`.
+sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`; the per-report process-metric line: `changes/archive/2026-09-14-add-os-exit-attribution`; the thread-scoped claim and the measured overlap that retired serial delivery as the prefix's justification: `changes/archive/2026-09-14-thread-scoped-log-prefix`; the byte budget as one row of a whole-event sum, and why an over-cap dump blocks the queue rather than being lost: `changes/archive/2026-09-23-bound-diagnostic-event-size`.
 ## Requirements
 ### Requirement: Per-process un-redacted device log
 
@@ -429,12 +429,15 @@ other's unused share, so a device whose extension has barely run still yields a 
 Each tail SHALL be cut at a line boundary and taken from the **current** log file only, never its
 rolled `.1` sibling.
 
-The budget SHALL be chosen to keep an assembled dump below the reporting channel's maximum event
-size with headroom for the reporting SDK's own contributions. An over-budget dump is **rejected at
-ingest and silently lost** — the sender observes success — so the budget is a hard bound and not a
-target to be maximised. The budget bounds the **log** content only; the description does not count
+The budget SHALL be chosen so the **whole** event a dump rides in (its five sections, the breadcrumbs
+the process has accumulated, and the reporting SDK's own contributions) stays below the reporting
+channel's maximum event size. The sum is stated and each of its other parts is capped (capability
+`crash-reporting`). An over-cap dump is **refused at ingest, and the refusal is not the end of it**:
+the reporting SDK keeps the refused event queued and holds back every later report from the app
+behind it, across launches, while the sender observes success. So the budget is a hard bound and not
+a target to be maximised. The budget bounds the **log** content only; the description does not count
 against it and does not reduce either tail, its bound being three orders of magnitude below the
-budget's headroom.
+whole-event sum's slack.
 
 The dump SHALL read no data the app does not already read, SHALL perform no write, and SHALL add no
 port surface for diagnostics alone.
@@ -480,6 +483,11 @@ port surface for diagnostics alone.
 #### Scenario: A dump reads only, and never writes
 - **WHEN** a dump is assembled
 - **THEN** no ledger, download-store, or configuration write occurs
+
+#### Scenario: A full-budget dump fits the whole event
+- **WHEN** a dump whose log tails fill the budget is sent after the process has accumulated its full
+  count of maximally long breadcrumbs
+- **THEN** the event is accepted by an ingest that refuses anything over the maximum event size
 
 ### Requirement: Diagnostic dumps are delivered verbatim
 
