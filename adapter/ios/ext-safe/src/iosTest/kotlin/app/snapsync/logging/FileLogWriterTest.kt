@@ -1,10 +1,19 @@
 package app.snapsync.logging
 
+import app.snapsync.model.utcLogStamp
 import app.snapsync.testsupport.fileExists
+import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.readTextFile
 import app.snapsync.testsupport.withTempDirectory
+import app.snapsync.testsupport.writeTextFile
 
 import co.touchlab.kermit.Severity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import platform.Foundation.NSDate
+import platform.Foundation.dateWithTimeIntervalSince1970
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,8 +31,9 @@ import kotlin.test.assertTrue
  * "the platform call was slow" from "the process was frozen after it returned" (the deduction
  * SNAPSYNC-6 had to make from durations because the stamps could not say).
  *
- * None of it is reachable from the JVM: `NSFileManager`, the `O_APPEND` write and `NSDate`'s
- * description are all Foundation.
+ * None of it is reachable from the JVM: `NSFileManager` and the `O_APPEND` write are Foundation and POSIX,
+ * and so is the one identity check below — that the arithmetic stamp is the text `NSDate.description` used
+ * to produce.
  */
 class FileLogWriterTest {
 
@@ -56,10 +66,8 @@ class FileLogWriterTest {
     }
 
     /**
-     * Millisecond resolution, in the exact shape the stamp promises. `NSDate.description` is
-     * seconds-only; the milliseconds are spliced in ahead of the zone, and the whole reason the clock
-     * is read once and floored is that reading it twice could straddle a boundary and stamp a line a
-     * full second wrong.
+     * Millisecond resolution, in the exact shape the stamp promises. The whole reason the clock is read
+     * once is that reading it twice could straddle a boundary and stamp a line a full second wrong.
      */
     @Test
     fun `the stamp carries milliseconds ahead of the zone`() {
@@ -177,6 +185,105 @@ class FileLogWriterTest {
             assertFalse(fileExists("$path.1"), "rolling early throws away the evidence a dump is for")
             val text = readTextFile(path).orEmpty()
             assertTrue("one" in text && "two" in text)
+        }
+    }
+
+    /**
+     * The stamp's identity with Foundation — the one check [utcLogStamp]'s platform-free test cannot make.
+     *
+     * The writer used to build the stamp from `NSDate.description` (`yyyy-MM-dd HH:mm:ss +0000`, UTC) with
+     * the milliseconds spliced in ahead of the zone. It is now arithmetic, which is cheaper per line and
+     * must print byte-identical text; this pins that against the Foundation on the test host, across the
+     * instants calendar arithmetic gets wrong.
+     */
+    @Test
+    fun `the arithmetic stamp is the text NSDate's description spliced with milliseconds`() {
+        val instants = listOf(
+            0L, 7L, 946_684_799_999L, 951_825_600_050L, 951_868_800_000L, 1_677_628_799_999L,
+            1_709_251_199_999L, 1_709_251_200_000L, 1_735_689_599_999L, 1_790_172_309_123L, 4_107_542_400_000L,
+        )
+        for (millis in instants) {
+            val desc = NSDate.dateWithTimeIntervalSince1970((millis / 1000).toDouble()).description.orEmpty()
+            val zone = desc.lastIndexOf(' ')
+            val ms = (millis % 1000).toString().padStart(3, '0')
+            val expected = desc.substring(0, zone) + "." + ms + desc.substring(zone)
+            assertEquals(expected, utcLogStamp(millis), "epochMillis=$millis")
+        }
+    }
+
+    // ---- the held descriptor ---------------------------------------------------------------------
+
+    /**
+     * The size is tracked in memory from the file's size at open — so a log a previous process left past the
+     * ceiling must roll on this process's FIRST line, exactly as the per-line `stat` rolled it.
+     */
+    @Test
+    fun `a log left past the ceiling by a previous process rolls on the first line`() {
+        withTempDirectory { dir ->
+            val path = "$dir/debug.log"
+            writeTextFile(path, "x".repeat(100) + "\n")
+
+            log(path, maxBytes = 64).log(Severity.Info, "fresh", "t", null)
+
+            assertTrue("x".repeat(100) in readTextFile("$path.1").orEmpty(), "the old content is the rolled sibling")
+            val current = readTextFile(path).orEmpty()
+            assertTrue("fresh" in current && "xxx" !in current, "the first line starts a fresh log: $current")
+        }
+    }
+
+    /** A log that is appended to keeps what it held: opening once must not truncate. */
+    @Test
+    fun `an existing log is appended to rather than replaced`() {
+        withTempDirectory { dir ->
+            val path = "$dir/debug.log"
+            writeTextFile(path, "earlier run\n")
+
+            log(path).log(Severity.Info, "this run", "t", null)
+
+            val text = readTextFile(path).orEmpty()
+            assertTrue(text.startsWith("earlier run\n") && "this run" in text, "unexpected log: $text")
+        }
+    }
+
+    /**
+     * The descriptor is held open, so a log removed from outside would swallow every later line into an
+     * unlinked file. The periodic re-check notices and recreates it.
+     */
+    @Test
+    fun `a log removed from outside is recreated once the re-check runs`() {
+        withTempDirectory { dir ->
+            val path = "$dir/debug.log"
+            var now = 1_790_172_309_123L
+            val writer = FileLogWriter(path, 10L * 1024 * 1024) { now }
+            writer.log(Severity.Info, "before", "t", null)
+            removeDirectory(path) // removes a plain file just the same
+
+            now += 1_000
+            writer.log(Severity.Info, "after", "t", null)
+
+            val text = readTextFile(path).orEmpty()
+            assertTrue("after" in text, "the line after the removal must reach a file someone can read: $text")
+            assertFalse("before" in text, "the recreated log is a fresh file")
+        }
+    }
+
+    /** Lines from many threads arrive whole — the held descriptor and the lock must not cost atomicity. */
+    @Test
+    fun `lines logged from many threads are never torn`() {
+        withTempDirectory { dir ->
+            val path = "$dir/debug.log"
+            val writer = log(path)
+            runBlocking {
+                (0 until 4).map { n ->
+                    launch(Dispatchers.Default) {
+                        repeat(100) { writer.log(Severity.Info, "worker-$n line-$it end", "t", null) }
+                    }
+                }.joinAll()
+            }
+
+            val lines = readTextFile(path).orEmpty().trimEnd('\n').split('\n')
+            assertEquals(400, lines.size, "every line lands exactly once")
+            lines.forEach { assertTrue(Regex(""" worker-\d line-\d+ end$""").containsMatchIn(it), "a torn line: $it") }
         }
     }
 
