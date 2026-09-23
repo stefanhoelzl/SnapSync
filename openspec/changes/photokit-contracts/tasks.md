@@ -27,21 +27,21 @@
 
 ## 3. No-grant bindings on the Kotlin/Native test binary (D3, D4)
 
-- [ ] 3.1 Measure the kexe's photo grant (`currentPhotoPermission()`), and whether album creation and
+- [x] 3.1 Measure the kexe's photo grant (`currentPhotoPermission()`), and whether album creation and
       imports fail, return, or throw without a grant. Record the readings in the design's Open Questions
       and in `port-contracts`' host matrix.
-- [ ] 3.2 Add `IOS_SIM_KEXE` live bindings in `:adapter:ios:ext-safe` `iosTest`:
+- [x] 3.2 Add `IOS_SIM_KEXE` live bindings in `:adapter:ios:ext-safe` `iosTest`:
       - composed `PermissionAwareCandidateSource(PhotoKitCandidateSource, …)`
       - `IosDiscovery`
       - `IosAlbumManager`, for whatever 3.1 measured it reaches
 
       Reach sets are declared as literals from the measurement. Add the test dependency on `:domain:compose`.
-- [ ] 3.3 Add `IOS_SIM_KEXE` live bindings in `:adapter:ios:app-only` `iosTest`: composed
+- [x] 3.3 Add `IOS_SIM_KEXE` live bindings in `:adapter:ios:app-only` `iosTest`: composed
       `PermissionAwareAssetPresence(PhotoKitAssetPresence, …)` and `PhotoLibraryPermission`.
-- [ ] 3.4 Commit with `UploadDiscoveryContract`'s no-grant clause red against `IosDiscovery`, and quote the
+- [x] 3.4 Commit with `UploadDiscoveryContract`'s no-grant clause red against `IosDiscovery`, and quote the
       outcome table in the commit message. Then, in the next commit, make `IosDiscovery` claim
       `fullEnumeration` only under `GRANTED` (D4). Green.
-- [ ] 3.5 Shrink `PhotoKitSmokeTest` to its upload-job fetch test, and point its KDoc at the carved-out
+- [x] 3.5 Shrink `PhotoKitSmokeTest` to its upload-job fetch test, and point its KDoc at the carved-out
       upload-job phase as its successor. Update `PhotoKitCandidateSource`'s KDoc to stop citing the smoke
       test.
 

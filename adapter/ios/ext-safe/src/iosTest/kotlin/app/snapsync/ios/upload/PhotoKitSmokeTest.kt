@@ -1,49 +1,30 @@
 package app.snapsync.ios.upload
 
-import platform.Photos.PHAccessLevelReadWrite
-import platform.Photos.PHAsset
 import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
 import platform.Photos.PHAssetResourceUploadJobActionRetry
-import platform.Photos.PHPhotoLibrary
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
- * A smoke test that the **PhotoKit surface `IosPhotoKitUploadPlatform` relies on** is available and
- * callable on the iOS simulator — it links, and the calls return rather than trap. It needs no photo
- * authorization: `authorizationStatus` is always answerable, and both `fetchAssets` and
- * `fetchJobsWithAction` return an empty result (not a trap) in the unauthorized state.
+ * A smoke test that the **upload-job fetches `IosPhotoKitUploadPlatform` relies on** are callable on the iOS
+ * simulator: they link, and return rather than trap, with no photo authorization.
  *
- * It lives here rather than in `:app:ios:extension` because that is a wiring-only, untested module
- * (root `CLAUDE.md`) and the adapter it smoke-tests has lived in `:adapter:ios:ext-safe` since the
- * migration finale — the test was simply in the wrong module.
+ * This used to smoke-test the library reads as well (the authorization status, an unauthorized asset fetch).
+ * Those are now contract clauses run against the real adapters on this host and in the simulator app
+ * (capability `port-contracts`: `PhotoAccessContract`, `UploadDiscoveryContract`, `CandidateSourceContract`),
+ * which assert outcomes rather than the absence of a trap.
  *
- * **What is still device-only.** This file used to claim the whole background-upload-job subsystem was
- * simulator-unavailable. That was too strong: the *fetch* half is callable here, as
- * [fetching_upload_jobs_returns_an_empty_result_without_trapping] now asserts on every CI run
- * (measured by hand first — simulator, iOS 26.x / Xcode 26.6 / macOS 26.5.2, 2026-08-09 — and turned
- * into a standing assertion so it stops being an n=1 note). What remains unmeasured, and therefore
- * genuinely device-only, is job **creation** (`creationRequestForJobWithDestination`) and whether the
- * OS ever performs the upload. The cloud-identifier mapping stays out of scope for the same reason it
- * always was: it is iCloud-dependent.
+ * What remains is the upload-job subsystem, which no contract binds yet. It runs in the device extension
+ * process, a host `port-contracts` lists as unbound, and on a simulator job **creation** terminates the
+ * process. **Successor:** the upload-job phase carved out of `photokit-contracts`, which is expected to
+ * replace this with a `BackgroundTransfer` contract.
+ *
+ * The fetch half was measured by hand first (simulator, iOS 26.x / Xcode 26.6 / macOS 26.5.2, 2026-08-09) and
+ * turned into a standing assertion so it stops being an n=1 note. What stays genuinely device-only is job
+ * **creation** (`creationRequestForJobWithDestination`) and whether the OS ever performs the upload.
  */
 class PhotoKitSmokeTest {
-
-    @Test
-    fun authorization_status_is_answerable_on_the_simulator() {
-        // PHAuthorizationStatus is a non-negative enum; the real assertion is "this did not trap".
-        val status = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
-        assertTrue(status >= 0L)
-    }
-
-    @Test
-    fun fetching_assets_returns_a_result_without_trapping() {
-        // Unauthorized fetch returns an empty PHFetchResult rather than crashing.
-        val assets = PHAsset.fetchAssetsWithOptions(null)
-        assertTrue(assets.count >= 0uL)
-    }
 
     /**
      * Both fetch actions the adapter drives (`fetchRetryJobs` / `fetchAckJobs`) are callable here and

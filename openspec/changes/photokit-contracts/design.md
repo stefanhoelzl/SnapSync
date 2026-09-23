@@ -346,9 +346,10 @@ every shipped path.
 
 ## Open Questions
 
-- The kexe's measured photo grant, and which no-grant states `IosAlbumManager` and `IosPhotoLibraryImporter`
-  reach there (for example, whether creation fails or throws without a grant). The bindings' declarations
-  are written from the measurement.
+- ~~The kexe's measured photo grant.~~ **Measured 2026-09-23** (simulator iOS 26.5): the kexe reads `DENIED`
+  (`PHAuthorizationStatus` 2), not `NOT_DETERMINED`. The `NO_GRANT` state covers both, so no clause changed.
+  `AlbumManagerContract` and `PhotoLibraryImporterContract` have no no-grant clause, so their no-grant
+  creation behaviour was not measured and binds nothing on the kexe.
 - Whether a request shape reproducing `ChangeNotSupported` exists (D9).
 - The upload-job tier's host: whether the device extension process becomes `IOS_DEVICE_EXT`, and how its
   runs are triggered. This is for the carved-out phase.
