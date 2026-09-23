@@ -21,7 +21,7 @@ import platform.Photos.PHFetchResult
  * The iOS [PhotoSelectionChangeSource] (capability `limited-photo-access`): observes the photo
  * library **only while permission is [PermissionStatus.LIMITED]** and emits the full current
  * selection as resources — once when observation begins (the cold-launch baseline read; opening the
- * app is the user action that makes it in-flow) and once per change ([PhotoSelectionObserver] fires
+ * app is the user action that makes it in-flow) and after each change ([PhotoSelectionObserver] fires
  * for the in-app picker, Settings-side edits, and iCloud sync alike).
  *
  * Every read here is **in-flow** (capability `limited-photo-access`): the baseline is one scope query per
@@ -37,8 +37,10 @@ import platform.Photos.PHFetchResult
  *
  * Snapshots conflate: the flow keeps only the newest unprocessed snapshot (each is the whole
  * selection, so an unconsumed older one is superseded by construction, and emission never blocks the
- * observer callback). The ordering — one serial lane for the baseline, every change and every emission — is
- * [SelectionSnapshotLane]'s, platform-free and tested on the JVM; this file is only the PhotoKit binding.
+ * observer callback). So do the reads behind them: at most one enumeration runs at a time, and changes that
+ * arrive while it runs are folded into one more enumeration for the latest. The ordering and that folding —
+ * one serial lane for the baseline, every change and every emission — are [SelectionSnapshotLane]'s,
+ * platform-free and tested on the JVM; this file is only the PhotoKit binding.
  */
 class PhotoSelectionSnapshotSource(
     permission: StateFlow<PermissionStatus>,

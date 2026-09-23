@@ -53,7 +53,22 @@ class SelectionSnapshotLaneTest {
 
         override fun after(held: List<String>, change: String): List<String> = held + change
 
-        override suspend fun snapshot(of: List<String>): List<Resource> =
+        /** Holds the NEXT enumeration open until completed; consumed by it. */
+        var snapshotGate: CompletableDeferred<Unit>? = null
+
+        /** Every enumeration, by the selection it read — the expensive call the lane folds. */
+        val enumerations = mutableListOf<List<String>>()
+
+        override suspend fun snapshot(of: List<String>): List<Resource> {
+            enumerations += of
+            snapshotGate?.let { gate ->
+                snapshotGate = null
+                gate.await()
+            }
+            return render(of)
+        }
+
+        private fun render(of: List<String>): List<Resource> =
             of.map { Resource(filename = "$it.heic", assetId = it, contentType = "image/heic", metadata = emptyMap(), data = it) }
 
         fun change(id: String) = checkNotNull(onChange) { "not observing" }(id)
@@ -147,6 +162,59 @@ class SelectionSnapshotLaneTest {
 
         assertTrue(snapshot.isCompleted)
         assertEquals(1, platform.stops)
+        scope.cancel()
+    }
+
+    @Test
+    fun changes_queued_behind_a_running_enumeration_are_folded_into_one_more() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(MutableStateFlow(PermissionStatus.LIMITED), scope, lane, platform)
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle() // the baseline is read and emitted
+
+        val running = CompletableDeferred<Unit>().also { platform.snapshotGate = it }
+        platform.change("a")
+        advanceUntilIdle() // a's enumeration is running, held open
+        platform.change("b")
+        platform.change("c")
+        platform.change("d")
+        running.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(listOf("base"), listOf("base", "a"), listOf("base", "a", "b", "c", "d")),
+            platform.enumerations,
+            "at most one enumeration in flight, and ONE more for the latest of the changes queued behind it",
+        )
+        assertEquals(listOf("base", "a", "b", "c", "d"), emitted.last(), "the final snapshot is the one per-change emission ends on")
+        scope.cancel()
+    }
+
+    @Test
+    fun a_fold_stops_at_an_ended_observation_and_still_ends_it() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(PermissionStatus.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle()
+
+        val running = CompletableDeferred<Unit>().also { platform.snapshotGate = it }
+        platform.change("a")
+        advanceUntilIdle()
+        platform.change("b") // queued before the end
+        permission.value = PermissionStatus.GRANTED // the end queues behind b
+        advanceUntilIdle()
+        running.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf("base", "a", "b"), emitted.last(), "the change queued before the end is applied")
+        assertEquals(1, platform.stops, "and the end the fold stopped at is still handled")
         scope.cancel()
     }
 
