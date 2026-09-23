@@ -17,6 +17,7 @@ import app.snapsync.contracts.ImportedAssetPresenceContract
 import app.snapsync.contracts.ImportedAssetPresenceState
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
+import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
@@ -28,6 +29,7 @@ import app.snapsync.contracts.ProtectedStorageContract
 import app.snapsync.contracts.ProtectedStorageState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
+import app.snapsync.contracts.SharePresenterContract
 import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.UploadDiscoveryContract
 import app.snapsync.contracts.UploadDiscoveryState
@@ -75,7 +77,8 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The simulator app's live bindings of the photo-library contracts (capability `port-contracts`), and the
- * registry the `ios-contracts` job runs on every push.
+ * registry the `ios-contracts` job runs on every push — which also runs the hand-off contracts, whose bindings
+ * live in `HandoffContracts.kt` and need no photo grant.
  *
  * This is where PhotoKit runs under a real full grant: the app bundle is the only simulator process
  * `applesimutils` can grant photo access to. Every binding declares the `GRANTED` states only, and every entry
@@ -95,6 +98,8 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(AlbumManagerContract, SimAppAlbumManagerBinding(), ::refusal),
     simulatorAppContract(PhotoLibraryImporterContract, SimAppImporterBinding(), ::refusal),
     simulatorAppContract(ProtectedStorageContract, SimAppProtectedStorageBinding(), ::hostRefusal),
+    simulatorAppContract(LinkOpenerContract, SimAppLinkOpenerBinding(), ::hostRefusal),
+    simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
 )
 
 /** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */

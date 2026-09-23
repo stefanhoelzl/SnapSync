@@ -25,6 +25,8 @@ rule, the create-don't-reuse contract and the placeholder's backdrop:
 `changes/archive/2026-08-26-stop-rebuilding-the-composed-scene`; subscribing for process-metric reports at process start: `changes/archive/2026-09-14-add-os-exit-attribution`.
 
 Decision record for the inbound ports and the shell as their driving adapter: `changes/archive/2026-09-22-shell-as-driving-adapter`.
+Decision record for the share command recording whether the sheet was presented:
+`changes/archive/2026-09-23-contract-platform-handoffs`.
 
 ## Requirements
 ### Requirement: iOS application shell
@@ -484,7 +486,8 @@ hook).
   command with the invite link, and the `SharePresenter` port the root supplied —
   `:adapter:ios:app-only`'s `IosShareSheet`, whose presenter walk is adapter technology mechanics —
   presents a `UIActivityViewController` carrying that link; the UI never constructs UIKit directly
-  and observes no result
+  and observes no result, while the command records whether the sheet was presented — on the tap's own
+  log line, and at a severity that reaches crash reporting when it was not
 
 #### Scenario: The picker reaches the platform through the permission port
 

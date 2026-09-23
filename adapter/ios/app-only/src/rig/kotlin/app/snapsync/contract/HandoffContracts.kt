@@ -1,0 +1,140 @@
+package app.snapsync.contract
+
+import app.snapsync.contracts.Binding
+import app.snapsync.contracts.BindingKind
+import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.Entered
+import app.snapsync.contracts.Host
+import app.snapsync.contracts.InAppContract
+import app.snapsync.contracts.LinkOpenerContract
+import app.snapsync.contracts.LinkOpenerState
+import app.snapsync.contracts.Recorder
+import app.snapsync.contracts.Replayer
+import app.snapsync.contracts.SharePresenterState
+import app.snapsync.contracts.render
+import app.snapsync.contracts.run
+import app.snapsync.link.IosLinkOpener
+import app.snapsync.link.SystemUrlOpenerApi
+import app.snapsync.link.UrlOpenerApi
+import app.snapsync.logging.deviceDiagnosticEnvironment
+import app.snapsync.ports.LinkOpener
+import app.snapsync.ports.SharePresenter
+import app.snapsync.share.IosShareSheet
+import platform.Foundation.NSDate
+import platform.Foundation.NSISO8601DateFormatter
+import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSURL
+import platform.UIKit.UIApplication
+import platform.darwin.dispatch_get_main_queue
+import platform.darwin.dispatch_sync
+
+/*
+ * The hand-off ports' contract bindings on iOS (capability `port-contracts`): `LinkOpenerContract` recorded on a
+ * device and replayed on every CI build, both hand-off contracts run live in the simulator app.
+ *
+ * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true`, and into `iosTest` otherwise — one
+ * file, so the recorder and the replayer cannot spell a call differently.
+ */
+
+private fun call(url: NSURL): String = "openURL:options:completionHandler:(url=${url.absoluteString} options={})"
+
+/** Passes every call to [real] and records it, with iOS's answer, in the clause block [recorder] has open. */
+internal class RecordingUrlOpenerApi(private val real: UrlOpenerApi, private val recorder: Recorder) : UrlOpenerApi {
+    override fun open(url: NSURL, completion: (Boolean) -> Unit) =
+        real.open(url) { opened ->
+            recorder.record(call(url), "$opened")
+            completion(opened)
+        }
+}
+
+/** Answers every call from one clause's recorded block, exactly and in order. */
+internal class ReplayingUrlOpenerApi(private val replayer: Replayer) : UrlOpenerApi {
+    override fun open(url: NSURL, completion: (Boolean) -> Unit) =
+        completion(replayer.answer(call(url)).toBooleanStrict())
+}
+
+internal const val SIM_APP_UNREACHABLE_CLAIMED =
+    "opening a URL another app claims backgrounds the app under test mid-run; this state is recorded on a device"
+
+/**
+ * The real [IosLinkOpener] in the app on a device, recording its `openURL` call and iOS's answer. Replayed on
+ * every CI build by `IosLinkOpenerReplayContractTest`.
+ */
+internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding<LinkOpenerState, LinkOpener> {
+    override val host = Host.IOS_DEVICE_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
+
+    override fun create(state: LinkOpenerState, clauseId: String): Entered<LinkOpener> {
+        recorder.open(clauseId)
+        return Entered.Ready(IosLinkOpener(RecordingUrlOpenerApi(SystemUrlOpenerApi, recorder)))
+    }
+}
+
+/**
+ * This module's contracts the rig can run on a device, by name — `POST /contract/<name>`. Each answers with the
+ * recording to commit verbatim at `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`.
+ */
+fun appDeviceContracts(): List<InAppContract> = listOf(
+    InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) { recordLinkOpener() },
+)
+
+/**
+ * Runs `LinkOpenerContract` against this app's real `UIApplication` and renders the recording. Its last clause
+ * opens a web page, so the app is in the background when the answer is sent.
+ *
+ * It refuses on a simulator: a recording taken there would be filed under the device's name, and the simulator
+ * app runs this contract live instead.
+ */
+private fun recordLinkOpener(): String {
+    if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
+        return CONTRACT_REFUSED +
+            "this process is a simulator app, not ${Host.IOS_DEVICE_APP}; the simulator app runs LinkOpener live. " +
+            "Record on a device.\n"
+    }
+    val recorder = Recorder()
+    val results = run(LinkOpenerContract, DeviceLinkOpenerBinding(recorder))
+    val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
+    val header = listOf(
+        "contract" to LinkOpenerContract.name,
+        "host" to Host.IOS_DEVICE_APP.name,
+        "device" to env.deviceModel,
+        "os" to env.osVersion,
+        "build" to env.buildNumber,
+        "kotlin" to KotlinVersion.CURRENT.toString(),
+        "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
+    ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
+    return recorder.recording(header).render()
+}
+
+/** The real [IosLinkOpener] in the simulator app, for the state that leaves the app where it is. */
+class SimAppLinkOpenerBinding : Binding<LinkOpenerState, LinkOpener> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(LinkOpenerState.UNCLAIMED)
+
+    override fun create(state: LinkOpenerState, clauseId: String): Entered<LinkOpener> = when (state) {
+        LinkOpenerState.UNCLAIMED -> Entered.Ready(IosLinkOpener())
+        LinkOpenerState.CLAIMED -> Entered.Unreachable(SIM_APP_UNREACHABLE_CLAIMED)
+    }
+}
+
+/**
+ * The real [IosShareSheet] in the simulator app, which the rig drives in the foreground. Disposal dismisses the
+ * sheet the clause presented, so the next contract finds the app as it was.
+ */
+class SimAppSharePresenterBinding : Binding<SharePresenterState, SharePresenter> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(SharePresenterState.PRESENTABLE)
+
+    override fun create(state: SharePresenterState, clauseId: String): Entered<SharePresenter> =
+        Entered.Ready(IosShareSheet(), dispose = ::dismissPresented)
+}
+
+/** Dismisses whatever the key window's root controller presents. Called off the main queue, by the runner. */
+private fun dismissPresented() = dispatch_sync(dispatch_get_main_queue()) {
+    UIApplication.sharedApplication.keyWindow?.rootViewController?.let { root ->
+        root.presentedViewController?.let { root.dismissViewControllerAnimated(false, completion = null) }
+    }
+}

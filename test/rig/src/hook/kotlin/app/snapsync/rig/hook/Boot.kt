@@ -19,6 +19,7 @@ import app.snapsync.rig.RigUserCommand
 import app.snapsync.rig.UploaderSwitch
 import app.snapsync.rig.deviceCommands
 import app.snapsync.keychain.contract.deviceContracts
+import app.snapsync.contract.appDeviceContracts
 import app.snapsync.contract.simulatorAppContracts
 import app.snapsync.rig.galleryReader
 import app.snapsync.model.uploadersCarried
@@ -152,7 +153,7 @@ private fun iosHooks() = RigHooks(
     // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling
     // already pulls from the same place — neither needs an entitlement to get at it.
     publishBoundPort = { bound -> writeTextFile(rigPortFilePath(documentsDirectory()), bound.toString()) },
-    contracts = deviceContracts() + simulatorAppContracts(),
+    contracts = deviceContracts() + appDeviceContracts() + simulatorAppContracts(),
 )
 
 /**

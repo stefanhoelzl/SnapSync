@@ -254,7 +254,10 @@ class RigServer(
      */
     private suspend fun ApplicationCall.respondContract() {
         val name = routeName("/contract")
-        val contract = hooks.contracts.firstOrNull { it.name == name }?.run
+        // One name can be registered for two hosts — `LinkOpener` is recorded on a device and run live on the
+        // simulator app — so this process's own entry wins; another host's entry still answers, with its refusal.
+        val named = hooks.contracts.filter { it.name == name }
+        val contract = (named.firstOrNull { it.host == currentHost } ?: named.firstOrNull())?.run
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "contract"),
                 status = HttpStatusCode.NotFound,
