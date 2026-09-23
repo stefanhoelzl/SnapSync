@@ -1,5 +1,6 @@
 package app.snapsync.keychain
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreResolution
@@ -110,7 +111,7 @@ class KeychainDeviceIdentity(
      */
     private val legacy: SecureStore = deviceIdLegacyStore(),
     private val mint: () -> String = { NSUUID().UUIDString() },
-) {
+) : DeviceIdentity {
 
     private val cached: String by lazy {
         var resolution: SecureStoreResolution? = null
@@ -141,7 +142,7 @@ class KeychainDeviceIdentity(
         id
     }
 
-    fun deviceId(): String = cached
+    override fun deviceId(): String = cached
 
     companion object {
         /**

@@ -61,6 +61,9 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
+import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.ports.DeviceIdentity
+import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.Clock
 import app.snapsync.ports.AlbumManager
@@ -197,9 +200,9 @@ class AppPorts(
     val attestKey: AttestKey,
     val attestClient: AttestClient,
     val attestStore: AttestStore,
-    /** The device-identity resolve; throws while protected data is unavailable. Kept a thunk so no
-     *  composition-time resolve can abort a locked background launch. */
-    val deviceId: () -> String,
+    /** The device identity (a port: its resolve reads the Keychain and throws while protected data is
+     *  unavailable). Read per use, so no composition-time resolve can abort a locked background launch. */
+    val deviceIdentity: DeviceIdentity,
     /** Wall-clock now, through the port that has always existed for it (`ports/Time.kt`). This was a
      *  `() -> Long` lambda the shell filled with an inline `NSDate()` call — a platform read supplied
      *  to the core past a seam built for exactly this (spec `module-architecture`). Two clocks were
@@ -261,11 +264,12 @@ class AppPorts(
     val refreshAttestation: suspend () -> Unit = {},
     /** Re-read the persisted membership into the config StateFlow (migration step 12: every trigger
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
-     *  this process's StateFlow). The default is inert: world/tests hold their config in-process. */
-    val reloadConfig: suspend () -> Unit = {},
+     *  this process's StateFlow). A port: on iOS it is an App-Group file read. */
+    val configRefresh: ConfigRefresh,
 
-    /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
-    val scheduleBackstop: suspend () -> Unit = {},
+    /** Queues the download import-tail backstop wake (`photo-download` 5.4). A port: on iOS a
+     *  `BGTaskScheduler` submit, whose refusal the adapter reports. */
+    val backstopScheduler: BackgroundScheduler,
 
     /** Selection snapshots under a partial grant (capability `limited-photo-access`); the inert default
      *  serves every composition that never sees one (world by default, desktop harnesses). */
@@ -316,7 +320,7 @@ class AppCore internal constructor(
             key = ports.attestKey,
             client = ports.attestClient,
             store = ports.attestStore,
-            deviceId = ports.deviceId,
+            identity = ports.deviceIdentity,
             clock = ports.clock,
         )
     }
@@ -439,7 +443,7 @@ class AppCore internal constructor(
             importer = ports.importer,
             presence = assetPresence,
             stagedBytes = ports.stagedBytes,
-            myDeviceId = ports.deviceId(),
+            myDeviceId = ports.deviceIdentity.deviceId(),
             // Three-valued, no fallback (capability `photo-download`): no membership → `null` → no arm.
             downloadEnabled = { ports.configSource.config.value?.direction?.includesDownload },
             logScope = ports.logScope,
@@ -584,7 +588,7 @@ class AppCore internal constructor(
     val joinEvent: JoinEvent by lazy {
         JoinEvent(
             configSource = ports.configSource,
-            deviceId = ports.deviceId,
+            identity = ports.deviceIdentity,
             details = ports.directory,
             enroller = ManifestDeviceEnroller(ports.eventJoin),
             // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
@@ -799,7 +803,7 @@ class AppCore internal constructor(
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
             statusPoller = statusCountsPoller,
-            reloadConfig = ports.reloadConfig,
+            reloadConfig = { ports.configRefresh.refresh() },
             // The tier pump and the stored-upload settle, built in `foregroundUploadsFor`.
             uploads = foregroundUploadsFor(ports),
             refreshStatus = { refreshStatusSources() },
@@ -810,12 +814,12 @@ class AppCore internal constructor(
     }
 
     val backgroundFlow: Background by lazy {
-        Background(statusPoller = statusCountsPoller, scheduleBackstop = ports.scheduleBackstop)
+        Background(statusPoller = statusCountsPoller, scheduleBackstop = { ports.backstopScheduler.scheduleNext() })
     }
 
     val silentPushFlow: SilentPush by lazy {
         SilentPush(
-            reloadConfig = ports.reloadConfig,
+            reloadConfig = { ports.configRefresh.refresh() },
             refreshAttestation = ports.refreshAttestation,
             // Download arm first, then the upload arm on the app-driven tier (order preserved from the
             // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
@@ -835,7 +839,7 @@ class AppCore internal constructor(
     val downloadBackstopFlow: DownloadBackstop by lazy {
         DownloadBackstop(
             downloadController = downloadController,
-            reloadConfig = ports.reloadConfig,
+            reloadConfig = { ports.configRefresh.refresh() },
             refreshAttestation = ports.refreshAttestation,
         )
     }

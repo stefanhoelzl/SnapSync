@@ -1,5 +1,6 @@
 package app.snapsync.membership
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.LeaveNotifier
 import io.ktor.client.HttpClient
 import io.ktor.client.request.delete
@@ -18,9 +19,9 @@ import io.ktor.http.isSuccess
  * abandon-leak), it never blocks or rolls back leaving locally. Invoked by both the explicit Leave
  * action and the switch path (provisioning a different event while joined; see `event-link`).
  *
- * **[deviceId] is bound here, as a thunk, and that is the whole reason this class holds it.** The port
+ * **[identity] is bound here, and that is the whole reason this class holds it.** The port
  * says "this device is leaving"; *which* device is a per-process constant, not a per-call choice (see
- * [LeaveNotifier]). It is a thunk rather than a value because on iOS resolving the identity reads the
+ * [LeaveNotifier]). It is read through the port rather than held as a value because on iOS resolving it reads the
  * Keychain, which is unavailable before first unlock — binding it eagerly would drag that read into
  * composition and abort a locked background launch. It is read once per call, at the moment the request
  * is built, exactly as the composition's former `{ eventId -> leaveNotifier.leave(eventId, deviceId) }`
@@ -32,13 +33,13 @@ import io.ktor.http.isSuccess
 class HttpLeaveNotifier(
     private val client: HttpClient,
     host: String,
-    private val deviceId: () -> String,
+    private val identity: DeviceIdentity,
 ) : LeaveNotifier {
 
     private val base = host.trimEnd('/')
 
     override suspend fun notifyLeaving(eventId: String): Result<Unit> = runCatching {
-        val id = deviceId()
+        val id = identity.deviceId()
         val response: HttpResponse = client.delete("$base/events/$eventId/devices/$id")
         check(response.status.isSuccess()) {
             "leave $eventId/$id: HTTP ${response.status.value}"

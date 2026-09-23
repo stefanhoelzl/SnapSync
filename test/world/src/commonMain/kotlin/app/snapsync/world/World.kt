@@ -245,9 +245,9 @@ class World(
         private set
 
     /** Counts the download backstop queued by the real flows — the Background flow arms it, and the backstop entry
-     *  re-queues it however it ends — so a test can tell those entries apart (capability `photo-download`). */
-    var backstopsScheduled: Int = 0
-        private set
+     *  re-queues it however it ends — so a test can tell those entries apart (capability `photo-download`). Read
+     *  off the world's backstop scheduler port, which the composition now reaches the platform through. */
+    val backstopsScheduled: Int get() = backstopScheduler.scheduled
     val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
 
@@ -464,6 +464,9 @@ class World(
      * [snapSyncApp] the iOS shell calls, over the world's ports. Features, flows, and the user-tap
      * command bundle all live on this — the world adds only operator levers and inspection around it.
      */
+    /** The download backstop's scheduler — counted, never run (the operator plays the OS). */
+    val backstopScheduler: CountingBackstopScheduler = CountingBackstopScheduler()
+
     val core: AppCore = snapSyncApp(
         scope = scope,
         ports = AppPorts(
@@ -482,6 +485,9 @@ class World(
             // operator seeds them, which is honest: a world has no device writing log files.
             deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
             configSource = configSource,
+            // The world's membership lives in-process in the config cell, so there is nothing to re-read.
+            configRefresh = {},
+            backstopScheduler = backstopScheduler,
             configStore = configStore,
             photoAccess = permission,
             photoAccessRequester = requester,
@@ -516,7 +522,7 @@ class World(
             attestKey = attestKey,
             attestClient = attestClient,
             attestStore = inMemoryAttestStore(),
-            deviceId = { ownDeviceId },
+            deviceIdentity = { ownDeviceId },
             clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
             // The operator IS the engine: nothing auto-runs; a cycle happens when invoked by hand.
             appDrivenUpload = { operatorEngine },
@@ -535,7 +541,6 @@ class World(
             },
             // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
             registerPush = { registerPushCount++ },
-            scheduleBackstop = { backstopsScheduled++ },
             onEventMinted = { eventId -> onEventMinted(eventId) },
             log = logs.logger("World"),
         ),
@@ -816,7 +821,7 @@ class World(
                 // takes the app process's admission — the same resolution the device app engine gates on.
                 admission = { core.appUploadAdmission() },
                 config = configReader,
-                deviceId = { ownDeviceId },
+                deviceIdentity = { ownDeviceId },
                 host = { host },
                 ledger = ledgerBackend,
                 transfer = platform,

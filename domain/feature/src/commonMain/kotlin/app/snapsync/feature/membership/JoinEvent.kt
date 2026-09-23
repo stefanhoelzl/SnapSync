@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.JoinResult
@@ -50,7 +51,7 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
  */
 class JoinEvent(
     private val configSource: ConfigSource,
-    private val deviceId: () -> String,
+    private val identity: DeviceIdentity,
     private val details: EventDirectory,
     private val enroller: DeviceEnroller,
     private val provision: suspend (EventConfig) -> Unit,
@@ -100,7 +101,7 @@ class JoinEvent(
         saveToAlbum: Boolean,
     ): JoinOutcome {
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
-        when (enroller.enroll(eventId, deviceId())) {
+        when (enroller.enroll(eventId, identity.deviceId())) {
             JoinResult.JOINED -> Unit
             JoinResult.EVENT_FULL -> return JoinOutcome.EventFull
             JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed

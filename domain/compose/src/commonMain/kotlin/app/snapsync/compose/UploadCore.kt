@@ -16,6 +16,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.UploadDiscovery
 import app.snapsync.ports.ConfigRead
@@ -42,11 +43,11 @@ class UploadPorts(
     /** The three-state membership read (capability `event-link`). Read fresh once per cycle. */
     val config: ConfigReader,
     /**
-     * The device-identity resolve. MUST throw [SecureStoreUnavailable] while protected data is
-     * unavailable (never mint, never return a placeholder); each root keeps its own caching (a
-     * `lazy` caches the first success, so this is one Keychain read per process in practice).
+     * The device identity. Its resolve MUST throw [SecureStoreUnavailable] while protected data is
+     * unavailable (never mint, never return a placeholder); the implementation caches its first success,
+     * so this is one Keychain read per process in practice.
      */
-    val deviceId: () -> String,
+    val deviceIdentity: DeviceIdentity,
     /** The build-time upload host, read per gate call (the extension reads its bundle each time). */
     val host: () -> String?,
     val ledger: LedgerStore,
@@ -123,7 +124,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         DeviceManifestProducer(
             store = ports.manifestStore,
             publisher = ports.manifestPublisher,
-            deviceId = ports.deviceId(),
+            deviceId = ports.deviceIdentity.deviceId(),
         )
     }
     return UploadCycle(
@@ -135,7 +136,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
             SyncEngine(
                 EdgeUploadRequestProvider(
                     config.host,
-                    ports.deviceId(),
+                    ports.deviceIdentity.deviceId(),
                     ports.token,
                     ports.appVersion(),
                 ),
@@ -191,7 +192,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
  *  - the gate *outcome* is provably unchanged: the controller decided from a second, fresh
  *    `read()` after the reload, identical to reading once;
  *  - the StateFlow's one real staleness case (seeded `null` while locked) is repaired by the
- *    trigger flows' membership re-read (`AppPorts.reloadConfig`, migration step 12 — before that,
+ *    trigger flows' membership re-read (`AppPorts.configRefresh`, migration step 12 — before that,
  *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
  */
 private suspend fun readGate(ports: UploadPorts): CycleGate {
@@ -211,7 +212,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
     // is exactly what must not happen: an invented id partitions this device's bytes away from its own
     // manifest. Anything else still propagates — a genuine fault must not be silently downgraded to a
     // skipped cycle.
-    val identityFailure = runCatching { ports.deviceId() }
+    val identityFailure = runCatching { ports.deviceIdentity.deviceId() }
         .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
         .exceptionOrNull()
     val idReadable = identityFailure == null

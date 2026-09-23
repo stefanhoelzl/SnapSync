@@ -27,7 +27,7 @@ internal fun albumGather(
     policyFor = policyFor,
     union = ports.union,
     downloads = ports.downloadStore,
-    ownDeviceId = ports.deviceId,
+    identity = ports.deviceIdentity,
     isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
     coordinator = coordinator,
     scope = scope,

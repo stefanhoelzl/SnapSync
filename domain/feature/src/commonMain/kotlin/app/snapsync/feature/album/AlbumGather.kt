@@ -1,5 +1,6 @@
 package app.snapsync.feature.album
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
@@ -65,7 +66,7 @@ class AlbumGather(
     private val policyFor: suspend (EventConfig) -> SelectionPolicy,
     private val union: EventUnionSource,
     private val downloads: DownloadStore,
-    private val ownDeviceId: () -> String,
+    private val identity: DeviceIdentity,
     /** Whether photo access is usable (`grantsPhotoAccess`): a gather without it could only fail its adds. */
     private val isGranted: () -> Boolean,
     private val coordinator: AlbumCoordinator,
@@ -137,7 +138,7 @@ class AlbumGather(
             log.w(it) { "gather: union read failed for event=$eventId — gathering own photos only" }
             return emptyList()
         }
-        val self = ownDeviceId()
+        val self = identity.deviceId()
         val refs = assets.filter { it.deviceId != self }.map { AssetRef(it.deviceId, it.assetId) }
         return downloads.importedLocalIds(refs).values.sorted()
     }

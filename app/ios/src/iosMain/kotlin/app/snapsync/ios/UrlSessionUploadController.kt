@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
@@ -59,7 +60,7 @@ class UrlSessionUploadController(
     // cleanly, and this tier is relaunched cold by the OS to deliver background-session events — a path
     // with no first-unlock guarantee (unlike `BGTaskScheduler`, which Apple guarantees waits). Resolving
     // per cycle costs nothing: the identity caches for the process lifetime after its first success.
-    private val resolveDeviceId: () -> String,
+    private val deviceIdentity: DeviceIdentity,
     private val host: String,
     private val log: Logger,
     // The shared Darwin HTTP client — used for the in-cycle device-manifest PUT and the event-notify POST.
@@ -108,7 +109,7 @@ class UrlSessionUploadController(
     }
 
     private val discovery = IosDiscovery(log, PhotoKitCandidateSource())
-    private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
+    private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER, requiresNetwork = true)
 
     private val platform = IosUrlSessionUploadPlatform(
         log = log,
@@ -201,8 +202,8 @@ class UrlSessionUploadController(
                 admission = graph.admission,
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
-                // cycle cleanly, not throw out of whatever first touches it (see [resolveDeviceId]).
-                deviceId = resolveDeviceId,
+                // cycle cleanly, not throw out of whatever first touches it (see [deviceIdentity]).
+                deviceIdentity = deviceIdentity,
                 host = { host },
                 ledger = ledgerStore,
                 transfer = platform,

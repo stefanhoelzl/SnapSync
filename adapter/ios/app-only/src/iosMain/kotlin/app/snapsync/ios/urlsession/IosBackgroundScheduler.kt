@@ -26,6 +26,11 @@ import platform.Foundation.dateWithTimeIntervalSinceNow
 class IosBackgroundScheduler(
     private val log: Logger,
     private val taskIdentifier: String,
+    /**
+     * Whether the wake needs the network. The upload heartbeat does; the download backstop does not — it
+     * imports bytes that are already staged, and requiring a network would only defer it.
+     */
+    private val requiresNetwork: Boolean,
     // A small delay so a burst of re-arms coalesces into roughly one wake; the OS treats it as a
     // lower bound, scheduling opportunistically after it.
     private val earliestBeginSeconds: Double = 60.0,
@@ -33,7 +38,7 @@ class IosBackgroundScheduler(
 
     override fun scheduleNext() = log.invocation("scheduler.scheduleNext") {
         val request = BGProcessingTaskRequest(taskIdentifier)
-        request.requiresNetworkConnectivity = true
+        request.requiresNetworkConnectivity = requiresNetwork
         request.requiresExternalPower = false
         request.earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(earliestBeginSeconds)
         memScoped {

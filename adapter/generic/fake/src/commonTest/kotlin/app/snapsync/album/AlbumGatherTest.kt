@@ -88,7 +88,7 @@ class AlbumGatherTest {
             policyFor = { c -> selectionPolicyFor(c, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }) },
             union = union,
             downloads = downloads,
-            ownDeviceId = { SELF },
+            identity = { SELF },
             isGranted = { this.granted },
             coordinator = AlbumCoordinator(manager, inMemoryAlbumMapStore(mapOf("E2" to "ALBUM-2"))),
             scope = scope,

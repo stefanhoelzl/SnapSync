@@ -3,9 +3,9 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 
 ## 1. G1: seam contracts (PR 1)
 
-- [ ] 1.1 Add the `DeviceIdentity` port to `ports/` with its throw contract. `KeychainDeviceIdentity` implements it, and the world gets a constant fake. Replace every `deviceId: () -> String` seam in `AppPorts`, `UploadPorts` and the six features (design D3).
-- [ ] 1.2 Add `refresh()` to the config port, bound to `FileBackedConfigStore.reload()`. Delete `AppPorts.reloadConfig`, and have the flows' `reloadConfig` collaborators built in `compose/` call the port.
-- [ ] 1.3 Replace `AppPorts.scheduleBackstop` with a backstop `BackgroundScheduler` bound to `IosBackgroundScheduler(DOWNLOAD_BACKSTOP_TASK_ID)`, and delete `SnapSyncRoot.scheduleDownloadBackstop` (fixes B8 for the backstop).
+- [x] 1.1 Add the `DeviceIdentity` port to `ports/` with its throw contract. `KeychainDeviceIdentity` implements it, and the world gets a constant fake. Replace every `deviceId: () -> String` seam in `AppPorts`, `UploadPorts` and the six features (design D3).
+- [x] 1.2 Add `refresh()` to the config port, bound to `FileBackedConfigStore.reload()`. Delete `AppPorts.reloadConfig`, and have the flows' `reloadConfig` collaborators built in `compose/` call the port.
+- [x] 1.3 Replace `AppPorts.scheduleBackstop` with a backstop `BackgroundScheduler` bound to `IosBackgroundScheduler(DOWNLOAD_BACKSTOP_TASK_ID)`, and delete `SnapSyncRoot.scheduleDownloadBackstop` (fixes B8 for the backstop).
 - [ ] 1.4 Derive the extension's admission in `uploadCore` from a permission port plus a tier kind. Delete the inline `currentPhotoPermission()` lambda in `UploadExtensionRoot`.
 - [ ] 1.5 Carry `AlbumManager` in both bundles in place of `albumExcludedAssetIds`. Make `appVersion` and `host` plain `String` values.
 - [ ] 1.6 Replace the feature lambdas for `now`, `permission`, `joined`, `activeEventId` and `activeConfig` with the existing ports (`Clock`, `PhotoAccessStatusSource`, `ConfigSource`), and change `SecureStore.resolveOrMint` to take `legacy: SecureStore?`.

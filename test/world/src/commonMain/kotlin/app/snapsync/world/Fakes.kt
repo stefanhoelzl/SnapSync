@@ -145,3 +145,22 @@ class OperatorUploadEngine : AppUploadEngine {
         completion()
     }
 }
+
+/**
+ * The world's download-backstop scheduler: the operator plays the OS, so a scheduled wake is only counted —
+ * nothing runs until the operator invokes the backstop. Counting it lets a test assert the re-arm happened.
+ */
+class CountingBackstopScheduler : app.snapsync.ports.BackgroundScheduler {
+    var scheduled: Int = 0
+        private set
+    var cancelled: Int = 0
+        private set
+
+    override fun scheduleNext() {
+        scheduled++
+    }
+
+    override fun cancel() {
+        cancelled++
+    }
+}
