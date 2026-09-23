@@ -37,7 +37,7 @@ class IosBackgroundScheduler(
         request.requiresExternalPower = false
         request.earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(earliestBeginSeconds)
         checkedObjC("submitTaskRequest($taskIdentifier)") { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, it) }
-            .onFailure { log.w(it) { "BGTask submit refused" } }
+            .onFailure { log.w(it) { "BGTask submit failed" } }
     }
 
     override fun cancel() = log.invocation("scheduler.cancel") {
