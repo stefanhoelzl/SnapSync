@@ -10,6 +10,7 @@ The grammar is `TransferFixture` in :test:contracts — change both or neither:
 
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/s200-n1024-len    answer 200; a GET gets 1024 bytes, Content-Length declared
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/s404-n0-nolen     answer 404; a GET's body carries no Content-Length
+    GET     /<Contract>/<CLAUSE_ID>/<name>/s200-n64-short    answer 200 declaring 64 bytes, send 32, close
     GET|PUT /<Contract>/<CLAUSE_ID>/<name>/hold              never answer (closed after HOLD_SECONDS)
     GET /_landed/<route>                                     200 {"contentType": …} if a 2xx PUT landed there, else 404
     GET /_health                                             200, once the server is up
@@ -26,7 +27,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SEGMENT = re.compile(r"s(\d{3})-n(\d+)-(len|nolen)")
+SEGMENT = re.compile(r"s(\d{3})-n(\d+)-(len|nolen|short)")
 # Longer than any clause waits, so a held transfer ends by its clause's cancel, not by this; bounded so a transfer a
 # clause leaked cannot hold the job.
 HOLD_SECONDS = 60
@@ -42,7 +43,7 @@ def answer_of(path):
     m = SEGMENT.fullmatch(segment)
     if not m:
         return None
-    return int(m.group(1)), int(m.group(2)), m.group(3) == "len"
+    return int(m.group(1)), int(m.group(2)), m.group(3)
 
 
 def body(length):
@@ -81,8 +82,15 @@ class Handler(BaseHTTPRequestHandler):
         if answer == "hold":
             time.sleep(HOLD_SECONDS)
             return
-        status, length, declare = answer
-        self._send(status, body(length), declare=declare)
+        status, length, mode = answer
+        if mode == "short":
+            self.send_response(status)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(length))
+            self.end_headers()
+            self.wfile.write(body(length)[: length // 2])
+            return
+        self._send(status, body(length), declare=mode == "len")
 
     def do_PUT(self):
         size = int(self.headers.get("Content-Length") or 0)

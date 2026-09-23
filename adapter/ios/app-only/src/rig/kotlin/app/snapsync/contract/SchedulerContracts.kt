@@ -144,3 +144,16 @@ internal fun recordScheduler(): String {
     ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
     return recorder.recording(header).render()
 }
+
+/**
+ * MEASUREMENT (task 5.1 of `contract-background-transfers`): does the simulator app's `BGTaskScheduler` accept the
+ * heartbeat? Run live once; the outcome decides whether this host is bound or declared unreachable.
+ */
+class SimAppSchedulerBinding : Binding<BackgroundSchedulerState, ScheduledWakes> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(BackgroundSchedulerState.EMPTY)
+
+    override fun create(state: BackgroundSchedulerState, clauseId: String): Entered<ScheduledWakes> =
+        schedulerInState(SystemBackgroundTaskApi)
+}

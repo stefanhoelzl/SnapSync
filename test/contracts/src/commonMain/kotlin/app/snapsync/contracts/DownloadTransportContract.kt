@@ -178,6 +178,24 @@ object DownloadTransportContract : Contract<DownloadTransportState, DownloadUnde
             assertEquals(32, outcome.receivedBytes)
         }
 
+        clause("SHORT_READ_IS_REPORTED_TRUTHFULLY", DownloadTransportState.READY) { subject ->
+            val id = "SHORT_READ_IS_REPORTED_TRUTHFULLY"
+            val host = ClauseHost(subject.disk, subject.destination(id))
+            val route = path(id, FixtureAnswer.Respond(200, length = 64, short = true))
+            assertNotNull(subject.open(host).start(subject.base + route, "d-$id"))
+            awaitWithin { host.events.any { it is HostEvent.Completed } }
+            // Either the transport fails a body cut short — no judgement asked, completed with an error — or it asks
+            // the owner with the TRUE facts, so the owner's integrity check can refuse it. What it may never do is
+            // report a cut transfer as whole: that is the one lie the integrity check cannot catch.
+            val judged = host.events.filterIsInstance<HostEvent.Judged>()
+            if (judged.isEmpty()) {
+                assertNotNull(host.events.filterIsInstance<HostEvent.Completed>().single().error, "a cut transfer fails")
+            } else {
+                val outcome = judged.single().outcome
+                assertTrue(outcome.receivedBytes < 64, "a cut transfer is not reported whole: $outcome")
+            }
+        }
+
         clause("CANCEL_COMPLETES_WITH_ERROR", DownloadTransportState.READY) { subject ->
             val id = "CANCEL_COMPLETES_WITH_ERROR"
             val dest = subject.destination(id)
@@ -191,12 +209,27 @@ object DownloadTransportContract : Contract<DownloadTransportState, DownloadUnde
             assertNull(subject.disk.read(dest))
         }
 
-        clause("UNPARSABLE_URL_IS_NULL", DownloadTransportState.READY) { subject ->
-            val id = "UNPARSABLE_URL_IS_NULL"
+        clause("UNUSABLE_URL_NEVER_STAGES", DownloadTransportState.READY) { subject ->
+            val id = "UNUSABLE_URL_NEVER_STAGES"
             val host = ClauseHost(subject.disk, subject.destination(id))
-            assertNull(subject.open(host).start("", "d-$id"), "not started, for any reason, is null — never a throw")
-            transferSettle()
-            assertEquals(emptyList(), host.events, "a transfer never started tells its owner nothing")
+            // Never a throw. The port leaves filtering an unusable URL to its caller and collapses "not started"
+            // with "started, then failed" because they converge — so either answer is honest, and what is
+            // asserted is the convergence: nothing staged, and a transfer that did start completes with an error.
+            // Measured 2026-09-23 (iOS 26.5 simulator): `NSURL.URLWithString("")` is NOT nil, so the real
+            // transport starts one; the world's double answers null.
+            val task = subject.open(host).start("", "d-$id")
+            if (task == null) {
+                transferSettle()
+                assertEquals(emptyList(), host.events, "a transfer never started tells its owner nothing")
+            } else {
+                awaitWithin { host.events.any { it is HostEvent.Completed } }
+                assertTrue(host.events.none { it is HostEvent.Staged }, "an unusable URL stages nothing")
+                assertNotNull(
+                    host.events.filterIsInstance<HostEvent.Completed>().single().error,
+                    "a started transfer of an unusable URL completes with an error",
+                )
+            }
+            assertNull(subject.disk.read(subject.destination(id)))
         }
     }
 }

@@ -77,6 +77,8 @@ object PhotoLibrary {
             ImportedAssetPresenceContract,
             AlbumManagerContract,
             PhotoLibraryImporterContract,
+            // Last, so every window allocated before it stays where it was: its clauses seed the photos they upload.
+            BackgroundTransferContract,
         )
     }
 
