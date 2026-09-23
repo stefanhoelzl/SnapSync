@@ -1,6 +1,7 @@
 package app.snapsync.control
 
 import app.snapsync.rig.DeviceAdvertisement
+import app.snapsync.rig.GalleryView
 import app.snapsync.rig.RigState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -97,6 +98,27 @@ class RigClient(
         }
         return reached ?: error("the state did not reach the condition within $timeout; last seen: $last")
     }
+
+    /**
+     * `GET /device/gallery` — the photo library as the app's own candidate seam and selection policy read it:
+     * every asset, its policy facts and verdict, and (with [resources]) its resources and capture names.
+     */
+    suspend fun gallery(cutoff: String? = null, resources: Boolean = false, downloadOnly: Boolean = false): GalleryView =
+        json.decodeFromString(
+            GalleryView.serializer(),
+            http.get("$base/device/gallery") {
+                cutoff?.let { parameter("cutoff", it) }
+                if (resources) parameter("resources", "true")
+                if (downloadOnly) parameter("direction", "download")
+            }.bodyAsText(),
+        )
+
+    /** `GET /device/logs` — the tail of a process's device log (`app` or `extension`). */
+    suspend fun logs(process: String = "app", bytes: Int? = null): String =
+        http.get("$base/device/logs") {
+            parameter("process", process)
+            bytes?.let { parameter("bytes", it) }
+        }.bodyAsText()
 
     /** `POST /user/<name>` — a user command at the intent level, as a tap reaches it. */
     suspend fun user(name: String, params: Map<String, String> = emptyMap()): Reply =
