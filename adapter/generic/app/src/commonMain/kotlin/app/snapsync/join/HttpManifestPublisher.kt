@@ -1,5 +1,6 @@
 package app.snapsync.join
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.ManifestPublisher
 import io.ktor.client.HttpClient
 import io.ktor.client.request.put
@@ -24,7 +25,7 @@ class HttpManifestPublisher(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun publish(eventId: String, deviceId: String, json: String): Boolean = runCatching {
+    override suspend fun publish(eventId: String, deviceId: String, json: String): Boolean = runCatchingCancellable {
         client.put("$base/events/$eventId/devices/$deviceId/manifest") {
             contentType(ContentType.Application.Json)
             setBody(json)

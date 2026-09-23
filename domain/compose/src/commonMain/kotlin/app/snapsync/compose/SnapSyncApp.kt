@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.PushHttpClient
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -1164,7 +1165,7 @@ class AppCore internal constructor(
      */
     fun installPushRegistration() {
         scope.launch {
-            runCatching { attestation.ensureFresh() }
+            runCatchingCancellable { attestation.ensureFresh() }
             pushRegistration.run(ports.pushTokens, attestation.tokenChanged)
         }
     }

@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.Discovery
@@ -24,6 +25,7 @@ import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
@@ -515,7 +517,7 @@ class UploadCycle(
      */
     private suspend fun placeFirstEnqueued(ready: Ready, row: LedgerEntry) {
         if (!ready.saveToAlbum || row.state != LedgerState.DISCOVERED) return
-        runCatching { placeInAlbum(ready.eventId, setOf(row.assetId)) }
+        runCatchingCancellable { placeInAlbum(ready.eventId, setOf(row.assetId)) }
             .onFailure { log.w(it) { "event-album placement failed this cycle" } }
     }
 
@@ -535,7 +537,7 @@ class UploadCycle(
      */
     private suspend fun placeHealed(ready: Ready, assetIds: Set<String>) {
         if (!ready.saveToAlbum || assetIds.isEmpty()) return
-        runCatching { placeInAlbum(ready.eventId, assetIds) }
+        runCatchingCancellable { placeInAlbum(ready.eventId, assetIds) }
             .onFailure { log.w(it) { "event-album placement of healed rows failed this cycle" } }
     }
 
@@ -763,9 +765,15 @@ class UploadCycle(
         // "the projection was unchanged, so nothing was PUT" and "the write failed or timed out" alike,
         // and both mean the same thing to a recipient — the union does not list anything it did not list
         // before, so waking anyone would be a wasted background launch.
-        return runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy, manifestVersion) } }
-            .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+        // `withTimeoutOrNull`, not a caught `withTimeout`: a timeout is an answer here, and catching the
+        // `TimeoutCancellationException` would also have caught this cycle's own cancellation.
+        val published = runCatchingCancellable {
+            withTimeoutOrNull(deviceManifestTimeoutMs) { onDiscovery(eventId, policy, manifestVersion) }
+        }
+            .onFailure { log.w(it) { "device.json production failed this cycle" } }
             .getOrDefault(false)
+        if (published == null) log.w { "device.json production timed out this cycle" }
+        return published ?: false
     }
 
     /**

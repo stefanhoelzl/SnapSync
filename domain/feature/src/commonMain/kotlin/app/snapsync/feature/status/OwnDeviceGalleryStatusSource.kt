@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.ports.GalleryStatusSource
@@ -119,7 +120,7 @@ class OwnDeviceGalleryStatusSource(
         //   • an admitted set    → publish it
         //   • NOT READABLE       → publish nothing (below)
         //   • a thrown walk      → publish nothing (the `runCatching` arm)
-        val counted = runCatching {
+        val counted = runCatchingCancellable {
             EventPhotoSet.readable(policy, source::candidates)?.assets()?.mapTo(mutableSetOf()) { it.facts.assetId }
         }
         counted.exceptionOrNull()?.let { failure ->

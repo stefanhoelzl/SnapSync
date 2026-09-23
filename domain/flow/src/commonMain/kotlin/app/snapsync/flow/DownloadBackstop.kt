@@ -1,5 +1,6 @@
 package app.snapsync.flow
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.download.DownloadController
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.coroutineScope
@@ -36,7 +37,7 @@ class DownloadBackstop(
         // Awaited, not launched (law "A trigger flow never outlives its own run"). This flow exists to
         // drain the import tail, and its caller answers a `BGTask` when it returns — so returning while
         // the drain is merely queued reported work that had not started.
-        runCatching { downloadController.importReady() }
+        runCatchingCancellable { downloadController.importReady() }
             .onFailure { log.w(it) { "download backstop import failed" } }
     }
 }

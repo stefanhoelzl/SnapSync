@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
@@ -510,7 +511,7 @@ class DownloadController(
     }
 
     private suspend fun releaseStagedBytes(ref: AssetRef) {
-        runCatching {
+        runCatchingCancellable {
             val paths = store.stagedResources(ref).map { it.stagedPath }
             if (paths.isNotEmpty()) stagedBytes.release(paths)
             store.dropResources(ref)
@@ -531,10 +532,10 @@ class DownloadController(
      * and not the download backstop.
      */
     suspend fun releaseSettledBytes() = log.invocation(logScope, "releaseSettledBytes") {
-        val paths = runCatching { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
+        val paths = runCatchingCancellable { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
         if (paths.isEmpty()) return@invocation
         log.i { "releasing ${paths.size} staged file(s) of already-imported assets" }
-        runCatching {
+        runCatchingCancellable {
             stagedBytes.release(paths)
             mutex.withLock { store.dropResourcesOfImportedAssets() }
         }.onFailure { log.w(it) { "staged-byte reclaim failed — retried later" } }
@@ -584,7 +585,7 @@ class DownloadController(
      */
     private suspend fun releaseAndPruneLocked() {
         val stranded = store.pruneNonTerminal(protecting = importing.toSet())
-        runCatching { stagedBytes.release(stranded) }
+        runCatchingCancellable { stagedBytes.release(stranded) }
             .onFailure { log.w(it) { "releasing pruned staged bytes failed — files left behind" } }
     }
 }

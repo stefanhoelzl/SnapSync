@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DownloadStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +35,7 @@ class StoreDownloadStatusSource(private val store: DownloadStore) : DownloadStat
      * zero — the distinction `DownloadProgress.UNREAD` exists to protect.
      */
     override suspend fun refresh() {
-        val counts = runCatching { store.counts() }.getOrNull() ?: return
+        val counts = runCatchingCancellable { store.counts() }.getOrNull() ?: return
         _progress.value = DownloadProgress(
             downloaded = counts.imported,
             total = counts.stillArriving,

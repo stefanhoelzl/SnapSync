@@ -1,5 +1,6 @@
 package app.snapsync.join
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventJoin
 import app.snapsync.ports.JoinResult
 import io.ktor.client.HttpClient
@@ -23,7 +24,7 @@ class HttpEventJoin(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun join(eventId: String, deviceId: String): JoinResult = runCatching {
+    override suspend fun join(eventId: String, deviceId: String): JoinResult = runCatchingCancellable {
         when (val status = client.put("$base/events/$eventId/devices/$deviceId").status) {
             HttpStatusCode.Conflict -> JoinResult.EVENT_FULL
             HttpStatusCode.NotFound -> JoinResult.EVENT_NOT_FOUND

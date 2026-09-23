@@ -1,5 +1,6 @@
 package app.snapsync.download
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.UnionAsset
 import app.snapsync.ports.UnionResource
@@ -25,7 +26,7 @@ class HttpEventUnionSource(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun union(eventId: String): Result<List<UnionAsset>> = runCatching {
+    override suspend fun union(eventId: String): Result<List<UnionAsset>> = runCatchingCancellable {
         val response = client.get("$base/events/$eventId/files")
         check(response.status.isSuccess()) { "union $eventId: HTTP ${response.status.value}" }
         json.decodeFromString(ListSerializer(AssetDto.serializer()), response.bodyAsText())

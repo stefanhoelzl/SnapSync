@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.runCatchingCancellable
 import java.awt.datatransfer.StringSelection
 import java.awt.Toolkit
 import app.snapsync.model.JoinLoad
@@ -151,7 +152,7 @@ class PanelController {
         // Harness share stub (test equipment): the joined-layer presets force CANNED_CONFIG, so the host
         // derives a real invite URL — copy it to the clipboard and log it rather than open a share sheet.
         share = { url ->
-            runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+            runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
             println("share invite → $url")
         },
         requestAccess = requester::request,

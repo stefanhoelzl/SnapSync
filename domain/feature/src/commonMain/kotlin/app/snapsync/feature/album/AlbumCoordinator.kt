@@ -1,5 +1,6 @@
 package app.snapsync.feature.album
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
 import co.touchlab.kermit.Logger
@@ -79,7 +80,7 @@ class AlbumCoordinator(
             log.i { "place: no album yet for event=$eventId — skipping ${rawLocalIds.size} asset(s)" }
             return
         }
-        runCatching {
+        runCatchingCancellable {
             manager.add(albumId, rawLocalIds)
             log.i { "place: added ${rawLocalIds.size} asset(s) to album=$albumId for event=$eventId" }
         }.onFailure { log.w(it) { "place: add to album failed for event=$eventId" } }

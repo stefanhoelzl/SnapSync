@@ -98,3 +98,16 @@ inline fun Logger.logAt(severity: Severity, message: () -> String) = when (sever
     Severity.Error -> e { message() }
     Severity.Assert -> a { message() }
 }
+
+/**
+ * Run [block] as a **best-effort** step: a failure is logged at `Warn` with [name] and swallowed, so the caller
+ * carries on; cancellation is rethrown, never logged as a failure (law "Catch sites keep cancellation", capability
+ * `module-architecture`). Returns whether the step completed.
+ *
+ * For a step whose failure must STOP the sequence, do not use this: a required step lets its failure propagate
+ * (law "A multi-step use case declares which steps are required").
+ */
+inline fun Logger.bestEffort(name: String, block: () -> Unit): Boolean =
+    app.snapsync.model.runCatchingCancellable(block)
+        .onFailure { w(it) { "best-effort step failed: $name" } }
+        .isSuccess

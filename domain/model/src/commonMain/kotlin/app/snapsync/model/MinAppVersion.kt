@@ -32,6 +32,6 @@ private class RefusalBody(@SerialName("minAppVersion") val minAppVersion: String
  * different consequence than any other.
  */
 fun minAppVersionFromRefusal(body: String): String? =
-    runCatching { refusalJson.decodeFromString(RefusalBody.serializer(), body).minAppVersion }
+    runCatchingCancellable { refusalJson.decodeFromString(RefusalBody.serializer(), body).minAppVersion }
         .getOrNull()
         ?.takeIf { it.isNotBlank() }

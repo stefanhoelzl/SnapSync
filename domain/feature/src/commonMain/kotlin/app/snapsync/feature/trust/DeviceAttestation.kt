@@ -1,5 +1,6 @@
 package app.snapsync.feature.trust
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.Clock
@@ -205,7 +206,7 @@ class DeviceAttestation(
      * [isUnusable], which is the `SNAPSYNC-20` correction.)
      */
     private suspend fun refreshOutcome(): Boolean {
-        val ok = runCatching { ensureFresh() }.getOrDefault(false)
+        val ok = runCatchingCancellable { ensureFresh() }.getOrDefault(false)
         return ok || !isUnusable(token())
     }
 
@@ -220,6 +221,14 @@ class DeviceAttestation(
         val current = store.token()
         if (!isStale(current)) return true
 
+        // Resolved first, and on its own: it is a Keychain read that throws while protected data is unavailable,
+        // and inside the renewal's guard below that throw was reported as a failed Secure-Enclave assertion —
+        // and answered by attesting afresh, for a key that was fine.
+        val deviceId = runCatchingCancellable { identity.deviceId() }.getOrElse {
+            log.w(it) { "the device identity is unreadable — leaving the existing token in place" }
+            return false
+        }
+
         val challenge = client.challenge()
         if (challenge == null) {
             log.w { "could not obtain a challenge — leaving the existing token in place" }
@@ -231,8 +240,8 @@ class DeviceAttestation(
         // install, or one whose Secure-Enclave key died with a reinstall) pays for a full attestation.
         val existingKeyId = store.keyId()
         if (existingKeyId != null) {
-            val renewed = runCatching {
-                client.renewToken(identity.deviceId(), key.assert(existingKeyId, challenge), challenge)
+            val renewed = runCatchingCancellable {
+                client.renewToken(deviceId, key.assert(existingKeyId, challenge), challenge)
             }.getOrElse {
                 // The assertion itself failed, LOCALLY — no renewal request was ever sent. `AttestClient`
                 // maps every transport and refusal outcome to null by contract, so the only thing that can
@@ -260,10 +269,10 @@ class DeviceAttestation(
             log.w { "renewal did not yield a token — attesting afresh" }
         }
 
-        return runCatching {
+        return runCatchingCancellable {
             val keyId = key.generateKey()
             val attestation = key.attest(keyId, challenge)
-            val minted = client.mintToken(identity.deviceId(), keyId, attestation, challenge)
+            val minted = client.mintToken(deviceId, keyId, attestation, challenge)
             if (minted == null) {
                 log.w { "the backend refused the attestation" }
                 false

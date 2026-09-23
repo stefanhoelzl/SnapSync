@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
@@ -87,7 +88,7 @@ class StatusRefresh(
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case
         // that actually reaches members — a partial grant whose selection snapshot has not landed,
         // counted as a zero and settling the screen at "In sync" (capability `gallery-status`).
-        val derived = runCatching { policyFor(config) }
+        val derived = runCatchingCancellable { policyFor(config) }
         derived.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed read. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which

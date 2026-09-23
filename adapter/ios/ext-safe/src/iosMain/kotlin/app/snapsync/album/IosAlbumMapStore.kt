@@ -1,5 +1,6 @@
 package app.snapsync.album
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumMapSource
 import app.snapsync.feature.album.albumMapSource
@@ -59,7 +60,7 @@ class IosAlbumMapStore(
         val stored = defaults.stringForKey(ALBUM_MAP_KEY)
         if (stored != null) return decode(stored)
 
-        val legacy = runCatching { legacyKeychain.read() }.getOrNull() ?: return emptyMap()
+        val legacy = runCatchingCancellable { legacyKeychain.read() }.getOrNull() ?: return emptyMap()
         return when (val source = albumMapSource(stored = null, legacy = legacy)) {
             is AlbumMapSource.Current -> decode(source.raw) // fresh install: nothing anywhere
             is AlbumMapSource.Migrate -> {
@@ -79,11 +80,11 @@ class IosAlbumMapStore(
 
     private fun decode(raw: String?): Map<String, String> {
         if (raw == null) return emptyMap()
-        return runCatching { json.decodeFromString(serializer, raw) }.getOrDefault(emptyMap())
+        return runCatchingCancellable { json.decodeFromString(serializer, raw) }.getOrDefault(emptyMap())
     }
 
     private fun write(raw: String) {
-        runCatching { defaults.setObject(raw, forKey = ALBUM_MAP_KEY) }
+        runCatchingCancellable { defaults.setObject(raw, forKey = ALBUM_MAP_KEY) }
             .onFailure { log.w(it) { "could not persist the event-album map" } }
     }
 }

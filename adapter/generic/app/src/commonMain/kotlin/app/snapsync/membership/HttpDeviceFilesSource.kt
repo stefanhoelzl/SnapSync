@@ -1,5 +1,6 @@
 package app.snapsync.membership
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.DeviceFilesSource
@@ -45,12 +46,12 @@ class HttpDeviceFilesSource(
     private val base = host.trimEnd('/')
 
     override suspend fun list(deviceId: String): Result<List<StoredResource>> {
-        val body = runCatching {
+        val body = runCatchingCancellable {
             val response = client.get("$base/files/devices/$deviceId")
             check(response.status.isSuccess()) { "list device $deviceId: HTTP ${response.status.value}" }
             response.bodyAsText()
         }.getOrElse { return Result.failure(it) } // transport: transient; the caller decides what it costs
-        return runCatching {
+        return runCatchingCancellable {
             json.decodeFromString(ListSerializer(ResourceDto.serializer()), body)
                 .map { StoredResource(uploadKey(it.assetId, it.role, it.filename), it.assetId) }
         }.recoverCatching {

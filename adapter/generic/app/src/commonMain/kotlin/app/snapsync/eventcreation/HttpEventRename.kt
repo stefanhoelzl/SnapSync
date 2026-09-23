@@ -1,5 +1,6 @@
 package app.snapsync.eventcreation
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventRename
 import app.snapsync.ports.RenameOutcome
 
@@ -41,7 +42,7 @@ class HttpEventRename(
     private val base = host.trimEnd('/')
 
     override suspend fun rename(eventId: String, name: String): RenameOutcome =
-        runCatching {
+        runCatchingCancellable {
             val response = client.patch("$base/events/$eventId") {
                 contentType(ContentType.Application.Json)
                 setBody(json.encodeToString(RenameRequest.serializer(), RenameRequest(name)))

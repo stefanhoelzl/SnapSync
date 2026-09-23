@@ -1,5 +1,6 @@
 package app.snapsync.join
 
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 
@@ -39,7 +40,7 @@ class HttpEventDirectory(
     private val base = host.trimEnd('/')
 
     override suspend fun fetch(eventId: String): EventDetails =
-        runCatching {
+        runCatchingCancellable {
             val response = client.get("$base/events/$eventId")
             when (response.status) {
                 HttpStatusCode.OK -> {
@@ -90,7 +91,7 @@ class HttpEventDirectory(
      * direction — so a photo taken within the cutoff's own second is admitted rather than lost.
      */
     private fun canonicalOrNull(raw: String): CaptureDate? =
-        runCatching { instantToCutoff(Instant.parse(raw)) }.getOrNull()
+        runCatchingCancellable { instantToCutoff(Instant.parse(raw)) }.getOrNull()
 
     @Serializable
     private class MetaDto(

@@ -1,6 +1,7 @@
 package app.snapsync.feature.push
 
 import app.snapsync.model.ApnsPushToken
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
 
@@ -23,9 +24,14 @@ class PushRegistration(
     private val publisher: PushTokenPublisher,
     private val log: Logger = Logger.withTag("PushRegistration"),
 ) {
-    /** Publish [token] now. Absorbs any failure (never throws to the caller). */
+    /**
+     * Publish [token] now. Absorbs any failure (never throws to the caller) — a throw from the publisher included,
+     * though its contract forbids one: a throw here would end [run]'s collector for the rest of the process, and no
+     * later token or credential change would be registered (B11: an unreadable device identity did exactly that).
+     * Cancellation still propagates.
+     */
     suspend fun register(token: ApnsPushToken) {
-        publisher.publish(token)
+        runCatchingCancellable { publisher.publish(token) }.getOrElse { Result.failure(it) }
             .onSuccess { log.i { "push token registered" } }
             .onFailure { log.w(it) { "push registration failed (will retry on next token)" } }
     }

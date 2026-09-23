@@ -38,6 +38,33 @@ class PushRegistrationTest {
         assertEquals(1, client.calls.size)
     }
 
+    /**
+     * B11: an unreadable device identity (a locked device) used to throw OUT of `register`, which ends `run`'s
+     * collector for the rest of the process — no later token or credential change would ever re-register. It is
+     * absorbed now, and the NEXT trigger registers once the identity is readable.
+     */
+    @Test
+    fun an_unreadable_identity_is_absorbed_and_the_next_trigger_registers() = runTest {
+        val client = FakePushHttpClient()
+        var locked = true
+        val registration = PushRegistration(client, "https://edge.example", identity = {
+            if (locked) throw IllegalStateException("secure store unavailable") else deviceId
+        })
+        val source = PushTokenSource("sandbox")
+        val credential = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val job = launch { registration.run(source, credential) }
+
+        source.deliver("DEADBEEF")
+        testScheduler.runCurrent()
+        assertEquals(0, client.calls.size, "no write while the identity is unreadable")
+
+        locked = false
+        credential.tryEmit(Unit)
+        testScheduler.runCurrent()
+        assertEquals(1, client.calls.size, "the collector survived and registered on the next trigger")
+        job.cancel()
+    }
+
     @Test
     fun re_register_same_token_is_idempotent() = runTest {
         val client = FakePushTokenPublisher()

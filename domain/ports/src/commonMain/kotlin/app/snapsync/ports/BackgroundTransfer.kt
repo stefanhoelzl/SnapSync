@@ -172,9 +172,20 @@ suspend fun runProcessCycle(
     onCycleFailed: (Throwable) -> Unit = {},
     onRequeue: (Int) -> Unit = {},
     onLateFailure: (Throwable) -> Unit = {},
-): CycleResult = runCatching {
-    runCatching { run() }
-        .onSuccess(onCycleFinished)
-        .getOrElse { onCycleFailed(it); CycleResult.FAILED }
-        .requeueWhilePending(pending, onRequeue)
-}.getOrElse { onLateFailure(it); CycleResult.FAILED }
+): CycleResult =
+    // Catches EVERYTHING, cancellation included, and deliberately: this is an ObjC boundary, where a Kotlin
+    // throwable — a `CancellationException` no less than any other — aborts the extension process. The one
+    // sanctioned catch-all outside the `model/` helpers (named in the catch gate).
+    try {
+        val ran = try {
+            run()
+        } catch (t: Throwable) {
+            onCycleFailed(t)
+            null
+        }
+        // The hook runs outside the cycle's own guard, so a throwing hook is a LATE failure, not a failed cycle.
+        ran?.also(onCycleFinished)?.requeueWhilePending(pending, onRequeue) ?: CycleResult.FAILED
+    } catch (t: Throwable) {
+        onLateFailure(t)
+        CycleResult.FAILED
+    }
