@@ -19,8 +19,8 @@
 - [x] 3.3 Add the `DownloadTransport` live binding (over `IosDownloadTransport`) to `:adapter:ios:app-only`'s rig source set, and register it in `SimulatorAppContracts`
 - [x] 3.4 Add the `BackgroundTransfer` live binding (over `IosUrlSessionUploadPlatform`, an in-memory ledger as its `TransferRecord`, and a photo seeded in the clause's own capture-date window), and register it
 - [x] 3.5 Start the fixture in `scripts/sim-contracts` before launch, fail on no health answer, and keep its request log in `build/sim-contracts/`
-- [ ] 3.6 Run `scripts/sim-contracts` on a Mac session (`ssh-mac-build`); commit any failing clause red first (D7), then fix the adapter, never the clause, unless the clause is wrong
-- [ ] 3.7 Measure a short read (declared length > delivered) on the default session; add the clause only if it is deterministic, otherwise document the observed behaviour on `IosDownloadTransport`
+- [x] 3.6 Run `scripts/sim-contracts` on a Mac session (`ssh-mac-build`); commit any failing clause red first (D7), then fix the adapter, never the clause, unless the clause is wrong
+- [x] 3.7 Measure a short read (declared length > delivered) on the default session; add the clause only if it is deterministic, otherwise document the observed behaviour on `IosDownloadTransport`
 
 ## 4. `BackgroundScheduler` seam
 
@@ -30,7 +30,7 @@
 
 ## 5. Scheduler hosts
 
-- [ ] 5.1 Measure `BGTaskScheduler.submit` on the simulator app; bind `IOS_SIM_APP` live if it is accepted, or declare the states unreachable naming the measured error
+- [x] 5.1 Measure `BGTaskScheduler.submit` on the simulator app; bind `IOS_SIM_APP` live if it is accepted, or declare the states unreachable naming the measured error
 - [ ] 5.2 Take the lease (`snapsync-device`, `rig-channel`), install a rig build on the SE2, `POST /contract/BackgroundScheduler`, and commit `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` unedited
 - [ ] 5.3 Add the `Replay` binding in `:adapter:ios:app-only` `iosTest` over that recording
 

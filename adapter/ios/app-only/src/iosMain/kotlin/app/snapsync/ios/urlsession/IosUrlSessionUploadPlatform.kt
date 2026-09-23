@@ -170,7 +170,10 @@ class IosUrlSessionUploadPlatform(
             log.w { "createJob: staging failed for ${resource.filename} — not creating" }
             return@invocation CreateResult.FAILED
         }
-        val url = NSURL.URLWithString(request.url) ?: run {
+        // Not a nil check alone: since iOS 17 `URLWithString` percent-encodes what it cannot parse, so "" and most
+        // malformed strings come back non-nil (measured 2026-09-23, iOS 26.5 simulator — `BackgroundTransferContract`
+        // CREATE_BAD_DESTINATION). A destination is an http(s) URL with a host, or it is not a job.
+        val url = NSURL.URLWithString(request.url)?.takeIf { it.host != null && it.scheme in UPLOAD_SCHEMES } ?: run {
             deleteFile(fileUrl)
             log.w { "createJob: malformed destination URL — not creating" }
             return@invocation CreateResult.FAILED
@@ -326,6 +329,9 @@ class IosUrlSessionUploadPlatform(
  * because a type was unavailable to look up.
  */
 private const val STRANDED_CONTENT_TYPE = "application/octet-stream"
+
+/** The schemes an upload destination may carry; anything else is a malformed destination, never a job. */
+private val UPLOAD_SCHEMES = setOf("http", "https")
 
 /**
  * The request's `Content-Type`, matched case-insensitively (HTTP header names are), falling back to the
