@@ -5,6 +5,7 @@ module :adapter:generic:app
 module :adapter:generic:fake
 module :adapter:ios:app-only
 module :adapter:ios:ext-safe
+module :app:composition
 module :app:desktop
 module :app:ios
 module :app:ios:extension
@@ -47,10 +48,16 @@ edge :adapter:ios:ext-safe :domain:feature
 edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports
 edge :adapter:ios:ext-safe :test:contracts
+edge :app:composition :domain:compose
+edge :app:composition :domain:feature
+edge :app:composition :domain:model
+edge :app:composition :domain:ports
+edge :app:composition :ui:presentation
 edge :app:desktop :adapter:generic:app
 edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
 edge :app:desktop :domain:ports
+edge :app:desktop :test:control
 edge :app:desktop :test:world
 edge :app:desktop :ui:components
 edge :app:desktop :ui:presentation
@@ -58,6 +65,7 @@ edge :app:desktop :ui:screens
 edge :app:ios :adapter:generic:app
 edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
+edge :app:ios :app:composition
 edge :app:ios :domain:compose
 edge :app:ios :domain:feature
 edge :app:ios :domain:model
@@ -94,15 +102,7 @@ edge :test:control :ui:presentation
 edge :test:edge :adapter:generic:app
 edge :test:edge :test:contracts
 edge :test:harness-driver :app:desktop
-edge :test:integration :adapter:generic:app
-edge :test:integration :domain:compose
-edge :test:integration :domain:feature
-edge :test:integration :domain:flow
-edge :test:integration :domain:model
-edge :test:integration :domain:ports
-edge :test:integration :test:contracts
-edge :test:integration :test:world
-edge :test:integration :ui:presentation
+edge :test:integration :test:control
 edge :test:rig :adapter:ios:app-only
 edge :test:rig :adapter:ios:ext-safe
 edge :test:rig :domain:compose
@@ -114,6 +114,7 @@ edge :test:rig :test:world
 edge :test:rig :ui:presentation
 edge :test:world :adapter:generic:app
 edge :test:world :adapter:generic:fake
+edge :test:world :app:composition
 edge :test:world :domain:compose
 edge :test:world :domain:feature
 edge :test:world :domain:model

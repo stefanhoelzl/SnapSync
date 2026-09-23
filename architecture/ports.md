@@ -15,6 +15,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
+| `BackendVerdicts` | `:domain:ports` | — | no |
 | `BackgroundScheduler` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundScheduler; `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler; `:test:world` CountingBackstopScheduler | yes |
 | `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer, NetworkedTransfer | yes |
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
@@ -65,7 +66,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts | no |
-| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore; `:test:integration` VersionReadHook | yes |
+| `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore | yes |
 | `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
 | `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope, IosThreadLogScope; `:domain:ports` NoOp, RecordingScope | no |
 | `ManifestPublisher` | `:domain:ports` | `:adapter:generic:app` HttpManifestPublisher; `:domain:feature` FakeUploader | yes |
