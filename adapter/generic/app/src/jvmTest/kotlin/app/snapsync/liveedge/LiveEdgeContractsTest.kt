@@ -24,6 +24,8 @@ import app.snapsync.contracts.LeaveNotifierContract
 import app.snapsync.contracts.LeaveNotifierState
 import app.snapsync.contracts.ManifestPublisherContract
 import app.snapsync.contracts.ManifestPublisherState
+import app.snapsync.contracts.PushTokenPublisherContract
+import app.snapsync.contracts.PushTokenPublisherState
 import app.snapsync.contracts.verify
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
@@ -42,6 +44,8 @@ import app.snapsync.ports.EventRename
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.LeaveNotifier
 import app.snapsync.ports.ManifestPublisher
+import app.snapsync.ports.PushTokenPublisher
+import app.snapsync.push.HttpPushTokenPublisher
 import kotlin.test.Test
 
 /**
@@ -164,4 +168,20 @@ class LiveEdgeContractsTest {
 
     @Test
     fun `the real edge satisfies the AttestClient contract`() = verify(AttestClientContract, attest)
+
+    private val pushToken = object : Binding<PushTokenPublisherState, EdgeSubject<PushTokenPublisher>> {
+        override val host = Host.JVM
+        override val kind = BindingKind.Live
+        override val reaches = setOf(PushTokenPublisherState.ENROLLED, PushTokenPublisherState.FOREIGN_TOKEN)
+
+        // ENROLLED needs no setup step: the dev edge enrols the device a token-less push registration names
+        // (`api/src/dev/fallback.ts`), because on a host without App Attest nothing else ever could.
+        override fun create(state: PushTokenPublisherState, clauseId: String): Entered<EdgeSubject<PushTokenPublisher>> =
+            LiveEdge.enter({ PushTokenPublisherContract.seed(state, clauseId, it) }) { client, base, seeded ->
+                HttpPushTokenPublisher(client, base) { seeded.deviceId }
+            }
+    }
+
+    @Test
+    fun `the real edge satisfies the PushTokenPublisher contract`() = verify(PushTokenPublisherContract, pushToken)
 }

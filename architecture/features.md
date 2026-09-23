@@ -34,7 +34,7 @@ on drift; regenerate instead.
 ## `feature/push`
 
 - files: `PushRegistration.kt`
-- top-level types: `ApnsPushToken (class)`, `DeviceConfigDto (class)`, `PushRegistration (class)`, `PushTokenDto (class)`
+- top-level types: `PushRegistration (class)`
 
 ## `feature/status`
 

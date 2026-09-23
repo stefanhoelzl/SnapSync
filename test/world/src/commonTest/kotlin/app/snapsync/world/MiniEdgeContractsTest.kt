@@ -20,6 +20,8 @@ import app.snapsync.contracts.EventUnionSourceState
 import app.snapsync.contracts.GateRecorder
 import app.snapsync.contracts.LeaveNotifierContract
 import app.snapsync.contracts.LeaveNotifierState
+import app.snapsync.contracts.PushTokenPublisherContract
+import app.snapsync.contracts.PushTokenPublisherState
 import app.snapsync.contracts.ManifestPublisherContract
 import app.snapsync.contracts.ManifestPublisherState
 import app.snapsync.contracts.Seeded
@@ -41,6 +43,8 @@ import app.snapsync.ports.EventJoin
 import app.snapsync.ports.EventRename
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.LeaveNotifier
+import app.snapsync.ports.PushTokenPublisher
+import app.snapsync.push.HttpPushTokenPublisher
 import app.snapsync.ports.ManifestPublisher
 import io.ktor.client.HttpClient
 import kotlin.test.Test
@@ -185,4 +189,22 @@ class MiniEdgeContractsTest {
         /** The deployed edge's minimum (`api/src/config.ts` `MIN_APP_VERSION`); any X.Y a refusal can name. */
         const val DEPLOYED_MINIMUM = "0.4"
     }
+
+    private val pushToken = object : Binding<PushTokenPublisherState, EdgeSubject<PushTokenPublisher>> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val reaches = setOf(PushTokenPublisherState.ENROLLED)
+
+        override fun create(state: PushTokenPublisherState, clauseId: String): Entered<EdgeSubject<PushTokenPublisher>> =
+            if (state == PushTokenPublisherState.FOREIGN_TOKEN) {
+                Entered.Unreachable("the mini-edge verifies no credential, so it cannot reject one (World.kt: modelling it is not done)")
+            } else {
+                enter({ PushTokenPublisherContract.seed(state, clauseId, it) }) { client, base, seeded ->
+                    HttpPushTokenPublisher(client, base) { seeded.deviceId }
+                }
+            }
+    }
+
+    @Test
+    fun `the mini-edge satisfies the PushTokenPublisher contract`() = verify(PushTokenPublisherContract, pushToken)
 }

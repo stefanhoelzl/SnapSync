@@ -1,0 +1,25 @@
+# contract: AttestKey
+# host: IOS_DEVICE_APP
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.0
+# recorded: 2026-09-23T10:58:42Z
+# live AN_UNSUPPORTED_SERVICE_SAYS_SO: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live AN_UNSUPPORTED_SERVICE_REFUSES_TO_GENERATE: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live AN_UNSUPPORTED_SERVICE_REFUSES_TO_ATTEST: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live AN_UNSUPPORTED_SERVICE_REFUSES_TO_ASSERT: NotRunHere(the app process on a device has App Attest (the kexe host covers UNSUPPORTED))
+# live A_SUPPORTED_SERVICE_SAYS_SO: Passed
+# live A_GENERATED_KEY_ATTESTS_THEN_ASSERTS: Passed
+# live AN_UNKNOWN_KEY_CANNOT_ATTEST: Passed
+# live AN_UNKNOWN_KEY_CANNOT_ASSERT: Passed
+[AN_UNKNOWN_KEY_CANNOT_ASSERT]
+generateAssertion(keyId=unknown-key:AN_UNKNOWN_KEY_CANNOT_ASSERT clientDataHash=4b8d25219365c48d77ed07b101361d4c3e04f6fa1dab5254a1504a92caf76d46) -> error domain=com.apple.devicecheck.error code=3 description=The operation couldn’t be completed. (com.apple.devicecheck.error error 3.)
+[AN_UNKNOWN_KEY_CANNOT_ATTEST]
+attestKey(keyId=unknown-key:AN_UNKNOWN_KEY_CANNOT_ATTEST clientDataHash=0fde5905bb284b892f6c6fb27721fb40a132868b6e4386a8c46e717d8a0aebf1) -> error domain=com.apple.devicecheck.error code=3 description=The operation couldn’t be completed. (com.apple.devicecheck.error error 3.)
+[A_GENERATED_KEY_ATTESTS_THEN_ASSERTS]
+generateKey() -> keyId=<masked>
+attestKey(keyId=<masked> clientDataHash=05913fc2680ecf82fd18bd523626a59a24838b7995df2e8219a8a105dc585ebd) -> data=<masked>
+generateAssertion(keyId=<masked> clientDataHash=05913fc2680ecf82fd18bd523626a59a24838b7995df2e8219a8a105dc585ebd) -> data=<masked>
+[A_SUPPORTED_SERVICE_SAYS_SO]
+isSupported() -> true

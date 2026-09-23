@@ -2,6 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.ports.AttestClient
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The backend states an [AttestClient] clause needs. */
@@ -12,10 +13,18 @@ enum class AttestClientState {
 
 /**
  * What the attestation client promises that a real host can check (capability `port-contracts` — this list IS
- * the port's specification). ONLY the challenge: `mintToken` and `renewToken` need an App Attest attestation or
- * assertion the edge verifies, and no host CI runs can produce one, so their beliefs stay in
- * `HttpAttestClient`'s documentation and their behaviour in `HttpAttestClientTest` ("Every clause runs against
- * a real implementation on some host").
+ * the port's specification): the challenge, and every **refusal** — a forged attestation, a challenge the edge
+ * never issued, a renewal for a device that never attested.
+ *
+ * A **successful** mint or renewal has no clause, and cannot: it needs a genuine App Attest attestation over a
+ * challenge the edge issued within the last five minutes, verified against a certificate chain valid NOW. A
+ * device recording is dead five minutes after it is taken, and teaching the dev edge to accept one would be the
+ * rig faking attestation. So those beliefs stay in `HttpAttestClient`'s documentation, their behaviour in
+ * `HttpAttestClientTest`, and the edge's verification in `api/test/attest.test.ts` against a real Apple fixture
+ * ("Every clause runs against a real implementation on some host").
+ *
+ * The refusal inputs are shaped like what the in-memory double's own key would produce, so a double that
+ * minted for any bytes — or over any challenge — fails here rather than passing by accident.
  */
 object AttestClientContract : Contract<AttestClientState, EdgeSubject<AttestClient>>("AttestClient") {
 
@@ -29,5 +38,25 @@ object AttestClientContract : Contract<AttestClientState, EdgeSubject<AttestClie
             val challenge = assertNotNull(s.port.challenge(), "the ungated challenge route answers")
             assertTrue(challenge.isNotBlank())
         }
+
+        clause("A_FORGED_ATTESTATION_IS_REFUSED", AttestClientState.SERVING) { s ->
+            val challenge = assertNotNull(s.port.challenge())
+            val forged = "not an attestation".encodeToByteArray()
+            assertNull(s.port.mintToken(s.seeded.deviceId, KEY_ID, forged, challenge), "no token for a forgery")
+        }
+
+        clause("A_CHALLENGE_THE_EDGE_NEVER_ISSUED_IS_REFUSED", AttestClientState.SERVING) { s ->
+            val notIssued = "a-challenge-no-edge-issued"
+            val overIt = "attestation:$KEY_ID:$notIssued".encodeToByteArray()
+            assertNull(s.port.mintToken(s.seeded.deviceId, KEY_ID, overIt, notIssued), "no replay against another nonce")
+        }
+
+        clause("AN_UNATTESTED_DEVICE_CANNOT_RENEW", AttestClientState.SERVING) { s ->
+            val challenge = assertNotNull(s.port.challenge())
+            val assertion = "assertion:$KEY_ID:$challenge".encodeToByteArray()
+            assertNull(s.port.renewToken(s.seeded.deviceId, assertion, challenge), "renewal needs an enrolment")
+        }
     }
+
+    private const val KEY_ID = "contract-key"
 }

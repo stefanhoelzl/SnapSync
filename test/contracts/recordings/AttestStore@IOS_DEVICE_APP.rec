@@ -1,0 +1,67 @@
+# contract: AttestStore
+# host: IOS_DEVICE_APP
+# device: iPhone12,8
+# os: Version 26.6.2 (Build 23G90)
+# build: 1
+# kotlin: 2.4.0
+# recorded: 2026-09-23T10:58:42Z
+# live AN_UNREADABLE_TOKEN_IS_NOT_ABSENCE: NotRunHere(the entitled app runs unlocked: its Keychain is accessible (the kexe host covers INACCESSIBLE))
+# live AN_UNREADABLE_KEY_ID_IS_NOT_ABSENCE: NotRunHere(the entitled app runs unlocked: its Keychain is accessible (the kexe host covers INACCESSIBLE))
+# live AN_EMPTY_STORE_HOLDS_NEITHER: Passed
+# live A_WRITTEN_CREDENTIAL_READS_BACK: Passed
+# live A_HELD_CREDENTIAL_READS_BACK: Passed
+# live CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID: Passed
+# live A_NEW_TOKEN_REPLACES_THE_HELD_ONE: Passed
+[AN_EMPTY_STORE_HOLDS_NEITHER]
+SecItemDelete(acct=s:AN_EMPTY_STORE_HOLDS_NEITHER.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:AN_EMPTY_STORE_HOLDS_NEITHER.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemCopyMatching(acct=s:AN_EMPTY_STORE_HOLDS_NEITHER.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> -25300
+SecItemCopyMatching(acct=s:AN_EMPTY_STORE_HOLDS_NEITHER.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:AN_EMPTY_STORE_HOLDS_NEITHER.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:AN_EMPTY_STORE_HOLDS_NEITHER.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+[A_HELD_CREDENTIAL_READS_BACK]
+SecItemDelete(acct=s:A_HELD_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:A_HELD_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:A_HELD_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:A_HELD_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:6b65793a415f48454c445f43524544454e5449414c5f52454144535f4241434b) -> 0
+SecItemDelete(acct=s:A_HELD_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:A_HELD_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:746f6b656e3a415f48454c445f43524544454e5449414c5f52454144535f4241434b) -> 0
+SecItemCopyMatching(acct=s:A_HELD_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:A_HELD_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract.attest sync=n:0 tomb=n:0 v_Data=d:746f6b656e3a415f48454c445f43524544454e5449414c5f52454144535f4241434b
+SecItemCopyMatching(acct=s:A_HELD_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:A_HELD_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract.attest sync=n:0 tomb=n:0 v_Data=d:6b65793a415f48454c445f43524544454e5449414c5f52454144535f4241434b
+SecItemDelete(acct=s:A_HELD_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+SecItemDelete(acct=s:A_HELD_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+[A_NEW_TOKEN_REPLACES_THE_HELD_ONE]
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:6b65793a415f4e45575f544f4b454e5f5245504c414345535f5448455f48454c445f4f4e45) -> 0
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:746f6b656e3a415f4e45575f544f4b454e5f5245504c414345535f5448455f48454c445f4f4e45) -> 0
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+SecItemAdd(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:72656e657765643a415f4e45575f544f4b454e5f5245504c414345535f5448455f48454c445f4f4e45) -> 0
+SecItemCopyMatching(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract.attest sync=n:0 tomb=n:0 v_Data=d:72656e657765643a415f4e45575f544f4b454e5f5245504c414345535f5448455f48454c445f4f4e45
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+SecItemDelete(acct=s:A_NEW_TOKEN_REPLACES_THE_HELD_ONE.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+[A_WRITTEN_CREDENTIAL_READS_BACK]
+SecItemDelete(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:6b65793a415f5752495454454e5f43524544454e5449414c5f52454144535f4241434b) -> 0
+SecItemDelete(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:746f6b656e3a415f5752495454454e5f43524544454e5449414c5f52454144535f4241434b) -> 0
+SecItemCopyMatching(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract.attest sync=n:0 tomb=n:0 v_Data=d:746f6b656e3a415f5752495454454e5f43524544454e5449414c5f52454144535f4241434b
+SecItemCopyMatching(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract.attest sync=n:0 tomb=n:0 v_Data=d:6b65793a415f5752495454454e5f43524544454e5449414c5f52454144535f4241434b
+SecItemDelete(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+SecItemDelete(acct=s:A_WRITTEN_CREDENTIAL_READS_BACK.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+[CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID]
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:6b65793a434c454152494e475f5448455f544f4b454e5f4b454550535f5448455f4b45595f4944) -> 0
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemAdd(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp pdmn=s:ck svce=s:app.snapsync.contract.attest v_Data=d:746f6b656e3a434c454152494e475f5448455f544f4b454e5f4b454550535f5448455f4b45595f4944) -> 0
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0
+SecItemCopyMatching(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> -25300
+SecItemCopyMatching(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp m_Limit=s:m_LimitOne r_Attributes=n:1 r_Data=n:1 svce=s:app.snapsync.contract.attest) -> 0 accc=o:<SecAccessControlRef:%20ck> acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.keyid agrp=s:E9Z8BADH58.app.snapsync.shared cdat=<masked> mdat=<masked> musr=d: pdmn=s:ck sha1=<masked> svce=s:app.snapsync.contract.attest sync=n:0 tomb=n:0 v_Data=d:6b65793a434c454152494e475f5448455f544f4b454e5f4b454550535f5448455f4b45595f4944
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.token agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> -25300
+SecItemDelete(acct=s:CLEARING_THE_TOKEN_KEEPS_THE_KEY_ID.keyid agrp=s:E9Z8BADH58.app.snapsync.shared class=s:genp svce=s:app.snapsync.contract.attest) -> 0

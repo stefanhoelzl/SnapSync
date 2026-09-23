@@ -139,7 +139,7 @@ class CompositionSeamTest {
                 "back into the core — the work happens later, in a flow the OS triggers",
             "registerPush" to
                 "re-PUTs the token the OS already delivered (an in-memory PushTokenSource read) through " +
-                "PushRegistration over the PushHttpClient port — both ends are ports",
+                "PushRegistration over the PushTokenPublisher port — both ends are ports",
         ),
         "UploadPorts" to mapOf(
             "deviceId" to

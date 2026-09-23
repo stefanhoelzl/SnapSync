@@ -29,15 +29,16 @@ import kotlinx.serialization.json.jsonPrimitive
  * would take down work that has nothing to do with attestation. A null simply leaves the old token in
  * place, and the next wake tries again.
  *
- * WHAT IS CONTRACTED, AND WHAT CANNOT BE. `AttestClientContract` holds only [challenge] to the real backend
- * (`LiveEdgeContractsTest`). [mintToken] and [renewToken] have no host CI runs: the backend verifies an App
- * Attest attestation (or an assertion over a key it attested) before minting, only an entitled app on a
- * physical device can produce one — `DCAppAttestService.isSupported` is false on the simulator, and a JVM has
- * no Secure Enclave — and the local rig deliberately fakes ENROLMENT (`api/src/dev/fallback.ts`), never
- * attestation. A clause for them would be reachable only by `InMemoryAttestClient`, which `port-contracts`
- * refuses ("Every clause runs against a real implementation on some host"). So their beliefs live here: a
- * refused attestation or assertion answers `401`, which maps to `null`; a stale challenge answers `401` too;
- * a malformed body answers `400`. Their mapping is pinned by `HttpAttestClientTest`.
+ * WHAT IS CONTRACTED, AND WHAT CANNOT BE. `AttestClientContract` holds [challenge] and every REFUSAL against the
+ * real backend (`LiveEdgeContractsTest`): a forged attestation, a challenge the edge never issued, and a renewal
+ * for a device that never attested each answer `null`. A SUCCESSFUL [mintToken] or [renewToken] has no host: the
+ * backend verifies a genuine App Attest attestation (or an assertion by a key it attested) over a challenge it
+ * issued within the last 300 s, against a certificate chain valid at request time. Only an entitled app on a
+ * physical device produces one, a recording of it is dead five minutes later, and the local rig deliberately
+ * fakes ENROLMENT (`api/src/dev/fallback.ts`), never attestation. So those beliefs live here: a genuine
+ * attestation or assertion answers a fresh token; a stale challenge answers `401`; a malformed body answers
+ * `400`. The mapping is pinned by `HttpAttestClientTest`, and the edge's verification of a real Apple
+ * attestation by `api/test/attest.test.ts`.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class HttpAttestClient(

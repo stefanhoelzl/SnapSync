@@ -24,6 +24,8 @@ import app.snapsync.contracts.PhotoAccessState
 import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.contracts.PhotoLibraryImporterContract
 import app.snapsync.contracts.PhotoLibraryImporterState
+import app.snapsync.contracts.ProtectedStorageContract
+import app.snapsync.contracts.ProtectedStorageState
 import app.snapsync.contracts.SEED_COUNT
 import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.StagedImport
@@ -45,6 +47,8 @@ import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
+import app.snapsync.ports.ProtectedStorage
+import app.snapsync.protection.IosProtectedStorage
 import app.snapsync.ports.StagedResource
 import app.snapsync.ports.UploadDiscovery
 import co.touchlab.kermit.Logger
@@ -90,12 +94,18 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
     simulatorAppContract(AlbumManagerContract, SimAppAlbumManagerBinding(), ::refusal),
     simulatorAppContract(PhotoLibraryImporterContract, SimAppImporterBinding(), ::refusal),
+    simulatorAppContract(ProtectedStorageContract, SimAppProtectedStorageBinding(), ::hostRefusal),
 )
 
+/** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */
+private fun hostRefusal(): String? = if (currentHost != Host.IOS_SIM_APP) {
+    "this process is $currentHost, not ${Host.IOS_SIM_APP}; the simulator app's bindings run only there"
+} else {
+    null
+}
+
 /** Why this process cannot run the simulator app's bindings, or `null` when it can. */
-private fun refusal(): String? = when {
-    currentHost != Host.IOS_SIM_APP ->
-        "this process is $currentHost, not ${Host.IOS_SIM_APP}; the simulator app's bindings run only there"
+private fun refusal(): String? = hostRefusal() ?: when {
     currentPhotoPermission() != PermissionStatus.GRANTED ->
         "the simulator app holds ${currentPhotoPermission()}, not GRANTED; grant photo access with applesimutils " +
             "before launch (simctl privacy writes a TCC row PhotoKit does not consult)"
@@ -249,4 +259,18 @@ class SimAppImporterBinding : Binding<PhotoLibraryImporterState, StagedImport> {
         }
         return Entered.Ready(StagedImport(importer, stage, library))
     }
+}
+
+/**
+ * `UIApplication.isProtectedDataAvailable` in a running app — the one host with a `UIApplication` a CI job
+ * reaches (a test executable has none). The app is running and the simulator implements no data protection, so
+ * this host presents only `UNLOCKED`; no host presents the locked state at all (`ProtectedStorageContract`).
+ */
+class SimAppProtectedStorageBinding : Binding<ProtectedStorageState, ProtectedStorage> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(ProtectedStorageState.UNLOCKED)
+
+    override fun create(state: ProtectedStorageState, clauseId: String): Entered<ProtectedStorage> =
+        Entered.Ready(IosProtectedStorage())
 }
