@@ -88,9 +88,8 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.newFixedThreadPoolContext
+import app.snapsync.ios.qos.newUserInitiatedLane
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSNotificationCenter
@@ -1001,11 +1000,16 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
  * is **`internal`** on Kotlin/Native (coroutines 1.10.2): it is in the klib but not callable, measured
  * by compile, not read off a symbol table. Expiry trigger: a coroutines release that publishes it.
  *
- * `@DelicateCoroutinesApi` flags contexts that are never closed. That is the requirement here, not the
- * hazard: this scope lives as long as the process, and closing its dispatcher is what must not happen.
+ * **Why pinned at `QOS_CLASS_USER_INITIATED`.** Its blocking platform calls are XPC round-trips (PhotoKit
+ * commits and fetches, the Keychain, SQLite on the App Group) and the calling thread's QoS propagates over
+ * them: measured on an SE2, PhotoKit commits issued at `QOS_CLASS_BACKGROUND` took ~400 ms against ~60 ms (6–7×).
+ * A thread that inherits its class would carry whatever the wake it was created in carried. The pin is the
+ * lane's first task, logged once with the class it replaced ([newUserInitiatedLane]).
+ *
+ * The lane is never closed. That is the requirement here, not the hazard: this scope lives as long as the
+ * process, and closing its dispatcher is what must not happen.
  */
-@OptIn(DelicateCoroutinesApi::class)
-private val compositionLane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-composition")
+private val compositionLane = newUserInitiatedLane(name = "snapsync-composition")
 
 /**
  * The core's implementation of the app's inbound port, with what the root holds and `:domain` cannot name (spec

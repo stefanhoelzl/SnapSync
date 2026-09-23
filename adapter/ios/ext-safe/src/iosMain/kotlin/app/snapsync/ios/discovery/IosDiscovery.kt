@@ -13,7 +13,8 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.UploadDiscovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.Dispatchers
+import app.snapsync.ios.qos.photoKitReadLane
+import app.snapsync.ios.qos.qosLabel
 import kotlinx.coroutines.withContext
 import platform.Photos.PHAsset
 
@@ -26,7 +27,8 @@ import platform.Photos.PHAsset
  *
  * Both reads are wrapped in the same `platform.discoverResources` / `platform.resourcesFor` invocation lines
  * the transports used to emit when they forwarded here, under the logger the root passes, so a device log
- * reads exactly as it did.
+ * reads as it did — now also carrying the calling thread's QoS class (and, for the walk, the class the
+ * PhotoKit calls were issued at), because that class propagates into `assetsd` and decides how fast it answers.
  *
  * Held to `UploadDiscoveryContract` on the simulator's test executable (no grant) and in the simulator app
  * (a full grant); the in-memory fake the harness uses is held to the same clauses.
@@ -61,15 +63,17 @@ class IosDiscovery(
      * unreachable today, and it still states the right answer rather than a convenient one: no candidates
      * and NOT authoritative, so an un-enumerated cycle costs an idle pass, never a photo's rows.
      *
-     * **The whole body hops to [Dispatchers.Default], and that hop buys CONCURRENCY, not safety.**
+     * **The whole body hops to [photoKitReadLane], and that hop buys CONCURRENCY, not safety.**
      * Keeping this off the main thread is no longer this seam's job: the app's composition scope is a
      * dedicated non-UI lane, so every adapter is off-main whether it hops or not (spec
      * `module-architecture`, law "Dispatcher lanes are fixed by the composition"). What the hop still
      * buys is that this walk does not occupy that **serial** lane while it runs, so other app-scope work
-     * proceeds alongside it. `Dispatchers.Default` rather than an I/O pool because Kotlin/Native exposes
-     * no **public** `Dispatchers.IO` (coroutines 1.10.2: it exists in the klib and is `internal` —
-     * established by compile, not by reading the symbol table). Expiry: a coroutines release that
-     * publishes it.
+     * proceeds alongside it. A lane pinned at USER_INITIATED rather than `Dispatchers.Default`, because
+     * the calling thread's QoS propagates over every XPC below: a `Default` worker in a background wake
+     * carries a background class, and PhotoKit calls made at `QOS_CLASS_BACKGROUND` measured 6–7× slower on
+     * an SE2. Not an I/O pool because Kotlin/Native exposes no **public** `Dispatchers.IO` (coroutines
+     * 1.10.2: it exists in the klib and is `internal` — established by compile, not by reading the symbol
+     * table).
      *
      * Why any of this matters: **every** PhotoKit touch below is a synchronous XPC round-trip into
      * `assetsd` — the policy-narrowed fetch and the per-asset `creationDate` read behind every candidate.
@@ -85,9 +89,17 @@ class IosDiscovery(
      * cooperative and the thread is inside a synchronous XPC call, so it would free the coroutine and
      * leak the thread.
      */
-    override suspend fun discover(policy: SelectionPolicy): Discovery =
-        log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
-            withContext(Dispatchers.Default) {
+    override suspend fun discover(policy: SelectionPolicy): Discovery {
+        // Both QoS classes on the one line (capability `diagnostic-logging`): the caller's, and the lane's the
+        // PhotoKit calls were actually issued at — the class that propagates into `assetsd` (see [photoKitReadLane]).
+        var readQos = "?"
+        return log.invocation(
+            "platform.discoverResources",
+            params = "qos=${qosLabel()}",
+            result = { "${it.candidates.size} candidate(s), read at qos=$readQos" },
+        ) {
+            withContext(photoKitReadLane) {
+                readQos = qosLabel()
                 val authoritative = grant() == PermissionStatus.GRANTED
                 when (val read = source.candidates(policy)) {
                     is CandidateRead.Readable ->
@@ -96,6 +108,7 @@ class IosDiscovery(
                 }
             }
         }
+    }
 
     /**
      * Resolve ledger [keys] to uploadable resources, **by identifier** — the id-scoped read that lets a
@@ -110,13 +123,17 @@ class IosDiscovery(
      * asked for are kept, so a Live Photo's paired video is never smuggled in beside a request for its
      * still.
      *
-     * On [Dispatchers.Default] for the reason [discover] documents at length: every call below is a
+     * On [photoKitReadLane] for the reason [discover] documents at length: every call below is a
      * synchronous XPC round-trip into `assetsd`, and this hop keeps them off the composition's serial
-     * lane rather than off the main thread (which the composition already guarantees).
+     * lane rather than off the main thread (which the composition already guarantees) — at a known QoS.
      */
     override suspend fun resourcesFor(keys: Set<String>): List<Resource> =
-        log.invocation("platform.resourcesFor", params = "${keys.size} key(s)", result = { "${it.size} resource(s)" }) {
-            withContext(Dispatchers.Default) {
+        log.invocation(
+            "platform.resourcesFor",
+            params = "${keys.size} key(s), qos=${qosLabel()}",
+            result = { "${it.size} resource(s)" },
+        ) {
+            withContext(photoKitReadLane) {
                 if (keys.isEmpty()) return@withContext emptyList()
                 val localIds = keys.mapTo(linkedSetOf()) { denormalizeAssetId(assetIdFromUploadKey(it)) }
                 val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIds.toList(), null)

@@ -1,6 +1,7 @@
 package app.snapsync.download
 
 import app.snapsync.gallery.Iso8601
+import app.snapsync.ios.qos.qosLabel
 import app.snapsync.model.importFilename
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.AssetRef
@@ -88,6 +89,8 @@ class IosPhotoLibraryImporter(
         if (typed.isEmpty()) return ImportResult.Failed("no importable resources for ${ref.sourceAssetId}")
 
         val created = CreatedAsset()
+        // The class `performChanges` is called at — read here, on the caller's thread, for the block's trace.
+        val callerQos = qosLabel()
         // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission (capability
         // `photo-download`).
         //
@@ -115,7 +118,7 @@ class IosPhotoLibraryImporter(
                     // below judges that commit exactly as it judges any other: no placeholder means `Failed`, and
                     // an asset that did land is reported as landed, because retrying it would duplicate it.
                     objcBoundary(log, "import.changeBlock") {
-                        requestCreation(ref, typed, captureDate, created)
+                        requestCreation(ref, typed, captureDate, created, callerQos)
                     }
                 },
                 { success, error ->
@@ -175,6 +178,7 @@ private fun consumedResources(error: NSError?): Boolean {
         typed: List<Triple<Long, String, String>>,
         captureDate: NSDate?,
         created: CreatedAsset,
+        callerQos: String,
     ) {
         // Traced INSIDE the block, not before the call (capability `diagnostic-logging`).
         // The two say different things: the call returning proves only that we asked, while
@@ -182,7 +186,13 @@ private fun consumedResources(error: NSError?): Boolean {
         // decides whether an import we stop waiting for can still land — i.e. whether it
         // becomes a duplicate. Observed in SNAPSYNC-6: one import was still awaiting its
         // completion when the process ended, and the log could not say how far it had got.
-        log.i { "import: change block running for ${ref.sourceAssetId} (${typed.size} resource(s))" }
+        //
+        // With both QoS classes: the thread that asked for the commit, and the one PhotoKit runs this block on —
+        // the class the request propagated at (commits at QOS_CLASS_BACKGROUND measured 6–7× slower, SE2).
+        log.i {
+            "import: change block running for ${ref.sourceAssetId} (${typed.size} resource(s)); " +
+                "qos caller=$callerQos block=${qosLabel()}"
+        }
         val request = PHAssetCreationRequest.creationRequestForAsset()
         for ((type, path, filename) in typed) {
             // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it

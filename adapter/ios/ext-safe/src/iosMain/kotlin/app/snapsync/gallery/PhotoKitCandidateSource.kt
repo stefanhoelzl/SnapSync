@@ -11,7 +11,7 @@ import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.CandidateSource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.Dispatchers
+import app.snapsync.ios.qos.photoKitReadLane
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSDate
 import platform.Foundation.distantPast
@@ -46,13 +46,16 @@ import platform.UniformTypeIdentifiers.UTType
  * read of an unchanged library raise iOS's limited-access prompt, which the app suppresses anyway —
  * capability `limited-photo-access`.)
  *
- * **Every read hops to [Dispatchers.Default], for concurrency rather than for safety.** Off-main is the
+ * **Every read hops to [photoKitReadLane], for concurrency rather than for safety.** Off-main is the
  * composition's job now — the app scope is a dedicated non-UI lane (spec `module-architecture`, law
  * "Dispatcher lanes are fixed by the composition") — so what this hop buys is that a resource read does
- * not hold that **serial** lane while it waits on `assetsd`. `Default` rather than an I/O pool because
- * Kotlin/Native exposes no **public** `Dispatchers.IO` (coroutines 1.10.2: present in the klib,
- * `internal`; established by compile). Expiry: a release that publishes it. Blocking on main would still
- * trip the 10 s scene-update watchdog (`0x8BADF00D`) — that is simply no longer reachable from here.
+ * not hold that **serial** lane while it waits on `assetsd`. Its own pinned lane rather than
+ * `Dispatchers.Default` because the calling thread's QoS propagates over the XPC into `assetsd`: a
+ * `Default` worker in a background wake carries a background class, and PhotoKit calls made there measured
+ * 6–7× slower on an SE2 (see [photoKitReadLane]). Not an I/O pool because Kotlin/Native exposes no
+ * **public** `Dispatchers.IO` (coroutines 1.10.2: present in the klib, `internal`; established by compile).
+ * Blocking on main would still trip the 10 s scene-update watchdog (`0x8BADF00D`) — that is simply no
+ * longer reachable from here.
  *
  * Held to `CandidateSourceContract` (capability `port-contracts`) through the grant-aware composition production
  * calls: on the simulator's test executable without a grant, and in the simulator app under a full one. The rule
@@ -81,7 +84,7 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
      * failure, not this answer, and is caught by the consumer that owns the count.
      */
     override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
-        withContext(Dispatchers.Default) {
+        withContext(photoKitReadLane) {
             if (resourceReads > 0) log.i { "gallery: $resourceReads resource read(s) since the last walk" }
             resourceReads = 0
             val fetched = PHAsset.fetchAssetsWithOptions(fetchOptions(policy))
@@ -132,7 +135,7 @@ private class PhotoKitCandidate(
 
     override val facts = asset.toAssetFacts(creationDate)
 
-    override suspend fun resources(): List<Resource> = withContext(Dispatchers.Default) {
+    override suspend fun resources(): List<Resource> = withContext(photoKitReadLane) {
         onResourceRead()
         val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
             val resource = any as PHAssetResource
