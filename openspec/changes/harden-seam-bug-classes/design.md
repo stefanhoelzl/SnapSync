@@ -277,9 +277,10 @@ state, which resets whenever `config.eventId` changes.
   keeps it that way: `World.kt` may reach `core.` only when deferred. *As built:* this replaced the planned
   test-only `initializedMembers()` accessor, because common Kotlin cannot enumerate `Lazy` delegates without
   reflection, and a production hook for a test would be the wrong trade.
-- **Parity tests:** the entry-point inventory comes from the root's `Shell` delegate (the surface
-  `ios-app-shell` names), not from `OsHandlerContainmentTest`, which enumerates handler *storage* rather than
-  entry points. Each
+- **Parity tests:** superseded on rebase. Main's `shell-as-driving-adapter` turned the OS entry points into an
+  inbound port (`PlatformEntries`, implemented in `compose/`) and contracts every entry through it over a fresh
+  World (`PlatformEntriesContract`, coverage enforced by `ContractCoverageTest`). With the world booting cold, that
+  contract is the cold-core parity test, so the separate `@ParityFor` tests and their gate were dropped. Each
   entry point gets a `@ParityFor("<entry>")`-tagged test in `:test:integration`, and the parity gate matches
   the two sets exactly.
 

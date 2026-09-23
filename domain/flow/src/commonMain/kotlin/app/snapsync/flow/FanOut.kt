@@ -3,7 +3,7 @@ package app.snapsync.flow
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import kotlin.coroutines.cancellation.CancellationException
+import app.snapsync.model.runCatchingCancellable
 
 /**
  * Run a flow's independent [children] concurrently, **isolated** from one another, and return once every one of
@@ -22,18 +22,13 @@ internal suspend fun fanOut(flow: String, declare: FanOut.() -> Unit) {
     val log = Logger.withTag(flow)
     val children = FanOut().apply(declare).children
     supervisorScope {
-        children.forEach { (name, child) ->
-            launch {
-                try {
-                    child()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (t: Throwable) {
-                    log.e(t) { "$flow: `$name` failed — its siblings carry on" }
-                }
-            }
-        }
+        children.forEach { (name, child) -> launch { log.runIsolated(flow, name, child) } }
     }
+}
+
+/** Run one child: a failure is logged under its name and swallowed; cancellation propagates. */
+private suspend fun Logger.runIsolated(flow: String, name: String, child: suspend () -> Unit) {
+    runCatchingCancellable { child() }.onFailure { e(it) { "$flow: `$name` failed — its siblings carry on" } }
 }
 
 /** The children a [fanOut] runs, each named so a failure says which one it was. */

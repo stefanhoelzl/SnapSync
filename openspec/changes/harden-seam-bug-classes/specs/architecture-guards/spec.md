@@ -172,15 +172,3 @@ lane-decorated.
 #### Scenario: A screen takes a suspend count query
 - **WHEN** a screen's action bundle declares `shareableCount: suspend (…) -> Int?`
 - **THEN** the gate fails
-
-### Requirement: Every OS entry point has a parity test
-
-A gate SHALL fail the build when an OS entry point in the iOS root (the `fun` members of its `Shell`
-delegate, excluding the Compose door) has no integration test tagged with that entry point's name, and when a
-tag names an entry point that does not exist. The inventory is
-derived from the shell source, never hand-listed, and the gate SHALL fail closed when it resolves no entry
-point.
-
-#### Scenario: A new OS entry point is added
-- **WHEN** the root gains a new handler for an OS callback
-- **THEN** the gate fails until an integration test exercises it from a cold core

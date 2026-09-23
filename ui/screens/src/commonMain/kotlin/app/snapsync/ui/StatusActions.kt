@@ -21,8 +21,9 @@ import kotlinx.datetime.LocalDateTime
  * NO FIELD IS DEFAULTED, at either level (law "Function-typed parameters have no defaults in production",
  * capability `module-architecture`). Every field used to default to an inert lambda so each host could wire
  * only what it needed — and three hosts copied the wiring table by hand, and one of them silently dropped
- * "Choose more photos". Every host now builds this through the ONE factory, [statusActions] (`HostStatusActions.kt`), over
- * its container, so a new action is wired once and a forgotten one does not compile.
+ * "Choose more photos". Every host now builds this through the ONE factory, [statusActions]
+ * (`HostStatusActions.kt`), over its container, so a new action is wired once and a forgotten one does not
+ * compile.
  *
  * [onSendDiagnostics] stays NULLABLE rather than defaulting to an inert lambda, and that is a contract
  * rather than a convenience: a build with no reporting channel must wire no gesture at all, because an

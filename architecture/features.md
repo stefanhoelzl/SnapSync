@@ -28,8 +28,8 @@ on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `SwitchDecision.kt`
-- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventRenamer (interface)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `NoOpEventRenamer (object)`, `NoOpResetRename (object)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ResetRename (interface)`, `ShareSetLoad (class)`, `SwitchDecision (interface)`
+- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
+- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventRenamer (interface)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `NoOpEventRenamer (object)`, `NoOpResetRename (object)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ResetRename (interface)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 
