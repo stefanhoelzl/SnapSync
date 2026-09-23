@@ -47,33 +47,33 @@
 
 ## 4. Simulator-app host and in-app bindings (D2, D3, D7)
 
-- [ ] 4.1 Add `Host.IOS_SIM_APP` with its KDoc, and give `currentHost` a way to tell the simulator app from
+- [x] 4.1 Add `Host.IOS_SIM_APP` with its KDoc, and give `currentHost` a way to tell the simulator app from
       the kexe and the device (for the refusal).
-- [ ] 4.2 Add a rig-gated source directory to `:adapter:ios:app-only`, built the way ext-safe's is:
+- [x] 4.2 Add a rig-gated source directory to `:adapter:ios:app-only`, built the way ext-safe's is:
       `iosMain` under `-Psnapsync.rig=true`, `iosTest` otherwise.
-- [ ] 4.3 Add `IOS_SIM_APP` live bindings, running under `GRANTED`, in both modules' rig-gated source sets.
+- [x] 4.3 Add `IOS_SIM_APP` live bindings, running under `GRANTED`, in both modules' rig-gated source sets.
       Seeding goes through `PHAssetCreationRequest` from committed fixtures with explicit creation dates.
       No deletes.
-- [ ] 4.4 Add the grant precondition: each simulator-app binding refuses the whole run (`CONTRACT_REFUSED`,
+- [x] 4.4 Add the grant precondition: each simulator-app binding refuses the whole run (`CONTRACT_REFUSED`,
       `409`) outside a simulator app holding `GRANTED`.
-- [ ] 4.5 Add the simulator-app registry and serve it from the rig: `GET /contract` lists it, and
+- [x] 4.5 Add the simulator-app registry and serve it from the rig: `GET /contract` lists it, and
       `POST /contract/<name>` runs an entry and answers its outcome table.
-- [ ] 4.6 Run the registry by hand on a simulator (load `ssh-mac-build` and `ios-simulator`) and triage every
+- [x] 4.6 Run the registry by hand on a simulator (load `ssh-mac-build` and `ios-simulator`) and triage every
       `Failed` outcome: fix the code or the clause. Decide `ChangeNotSupported` (D9) here.
 
 ## 5. CI and the coverage gate (D8)
 
-- [ ] 5.1 Add the `ios-contracts` job to `ios.yml`: rig simulator build, `sim-sign`, a fresh simulator,
+- [x] 5.1 Add the `ios-contracts` job to `ios.yml`: rig simulator build, `sim-sign`, a fresh simulator,
       pinned `applesimutils`, launch, and a run of the registry. It fails on `Failed`, a refusal, an empty
       registry, or no answer, attaching a screenshot and the log.
-- [ ] 5.2 Extend `ContractCoverageTest`: an `IOS_SIM_APP` live binding counts only if the registry names it,
+- [x] 5.2 Extend `ContractCoverageTest`: an `IOS_SIM_APP` live binding counts only if the registry names it,
       and fails naming it otherwise. Add a non-vacuity twin for the registry.
 - [ ] 5.3 Push, and confirm `ios-contracts` is green on the PR before `/ship` makes it required.
 
 ## 6. Docs and diagrams
 
-- [ ] 6.1 Update CLAUDE.md: the module list (the app-only rig source set, the new fakes, `:test:contracts`
+- [x] 6.1 Update CLAUDE.md: the module list (the app-only rig source set, the new fakes, `:test:contracts`
       bindings) and the testing notes (PhotoKit contracts replace the smoke test).
-- [ ] 6.2 Update the `rig-channel` skill (the `GET /contract` registry, and simulator-app runs) and the
+- [x] 6.2 Update the `rig-channel` skill (the `GET /contract` registry, and simulator-app runs) and the
       `ios-simulator` skill (the contract run, and the no-delete isolation rule).
-- [ ] 6.3 Run `./gradlew architectureDiagrams`, commit, and confirm `./gradlew build` is green.
+- [x] 6.3 Run `./gradlew architectureDiagrams`, commit, and confirm `./gradlew build` is green.

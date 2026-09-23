@@ -12,6 +12,17 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
+// ---- Port contracts (capability `port-contracts`) ---------------------------------------------------
+//
+// `src/rig/kotlin` holds the simulator app's live bindings of the photo-library contracts: every PhotoKit adapter
+// of both iOS adapter modules, run under the full grant only an app bundle can hold. They live here rather than
+// beside each adapter because a rig directory compiles into its module's `iosTest` without the property, and one
+// module's tests cannot see another's; this module sees both modules' adapters. Under `-Psnapsync.rig=true` the
+// directory compiles into `iosMain`, together with `:test:contracts`, and a build without the property contains
+// neither (`module-architecture`, "A build-time-only module is contained by compilation"). Otherwise it compiles
+// into `iosTest`, so the bindings are compile-checked on every build.
+val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
+
 kotlin {
     iosArm64()
     iosSimulatorArm64()
@@ -29,6 +40,17 @@ kotlin {
         }
     }
     sourceSets {
+        if (rigEnabled) {
+            iosMain { kotlin.srcDir("src/rig/kotlin") }
+        } else {
+            iosTest { kotlin.srcDir("src/rig/kotlin") }
+        }
+        iosMain.dependencies {
+            if (rigEnabled) {
+                implementation(project(":test:contracts"))
+                implementation(project(":domain:compose"))
+            }
+        }
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))

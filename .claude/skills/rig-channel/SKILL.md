@@ -104,7 +104,9 @@ POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
 
-POST /contract/<name>                   run a port contract in-app; answers its RECORDING (see below)
+GET  /contract                          the contracts registered for THIS host, one name per line
+POST /contract/<name>                   run a port contract in-app; answers its RECORDING (device) or its
+                                        OUTCOME TABLE (simulator app) — see below
 ```
 
 There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
@@ -143,6 +145,27 @@ git diff test/contracts/recordings/        # review it like code, then commit it
 - Two runs in a row should differ only in the header. If a block moves between runs, a volatile key is
   unmasked — add it to `VOLATILE_KEYS` in `adapter/ios/ext-safe/src/rig/kotlin/…/KeychainTape.kt`.
 - `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
+
+## `/contract` on the simulator app — the PhotoKit contracts, live
+
+On a **simulator** the same verb runs the photo-library contracts against real PhotoKit under a real full
+grant. The app bundle is the only simulator process `applesimutils` can grant photo access to. Nothing is
+recorded: the answer is the outcome table, and the `ios-contracts` CI job runs exactly what `GET /contract`
+lists, on every push. `scripts/sim-contracts` is that job, and running it on a Mac session reproduces it.
+
+```bash
+curl -s localhost:$PORT/contract                          # CandidateSource, UploadDiscovery, … (this host's)
+curl -s -X POST localhost:$PORT/contract/AlbumManager     # "# host: IOS_SIM_APP" then one line per clause
+```
+
+- **`409` + `refused: …`** means the precondition failed and **no clause ran**: the process is not the
+  simulator app, or it does not hold `GRANTED`. Grant with `applesimutils … --setPermissions "photos=YES"`
+  **before** launch; `simctl privacy grant photos` writes a TCC row PhotoKit never consults.
+- The contracts **seed photos and never delete them** (a delete raises a confirmation someone must tap).
+  Each clause owns a one-day capture window in 1980–1999, so repeat runs only add assets. Use a fresh
+  simulator when the library's size matters.
+- `SecureStore` is **not** in the simulator's list: it records only on an entitled device, and asking
+  for it here answers `409`.
 
 ## `/os/photokit-ext` — the OS-driven upload tier's own root
 

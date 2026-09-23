@@ -23,7 +23,7 @@ class PhotoLibraryWindowsTest {
     }
 
     @Test
-    fun `a window is one day, with its seed inside it`() {
+    fun `a window is one day with its seed inside it`() {
         val window = CaptureWindow(epochDay = 3652)
         assertEquals("1980-01-01T00:00:00Z", window.start)
         assertEquals("1980-01-02T00:00:00Z", window.end)

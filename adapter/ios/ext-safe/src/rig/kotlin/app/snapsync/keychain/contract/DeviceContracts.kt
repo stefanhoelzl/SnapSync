@@ -5,6 +5,7 @@ import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
@@ -48,8 +49,8 @@ internal class DeviceKeychainBinding(private val recorder: Recorder) : Binding<S
  * a provenance header, the live outcome of every clause (as header lines, so the committed file says what the
  * device concluded when it was recorded), then one block per clause.
  */
-fun deviceContracts(): Map<String, () -> String> = mapOf(
-    SecureStoreContract.name to { recordSecureStore() },
+fun deviceContracts(): List<InAppContract> = listOf(
+    InAppContract(SecureStoreContract.name, Host.IOS_DEVICE_APP) { recordSecureStore() },
 )
 
 /**

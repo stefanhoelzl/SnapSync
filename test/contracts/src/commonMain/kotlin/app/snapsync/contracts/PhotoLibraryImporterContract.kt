@@ -37,10 +37,14 @@ interface ImportedLibrary {
     fun marker(ref: AssetRef): MarkerState
 }
 
-/** The importer as a clause receives it: the port, what the binding staged, and the handle over its library. */
+/**
+ * The importer as a clause receives it: the port, a way to stage the state's resources, and the handle over its
+ * library. [stage] stages a FRESH copy on every call, because a library takes a resource's file when it ingests
+ * it, so a second import needs files of its own.
+ */
 class StagedImport(
     val importer: PhotoLibraryImporter,
-    val staged: List<StagedResource>,
+    val stage: () -> List<StagedResource>,
     val library: ImportedLibrary,
 )
 
@@ -62,7 +66,7 @@ object PhotoLibraryImporterContract : Contract<PhotoLibraryImporterState, Staged
         clause("IMPORT_LANDS_AT_ITS_CAPTURE_DATE", PhotoLibraryImporterState.GRANTED_VALID_STAGED) { subject ->
             val clauseId = "IMPORT_LANDS_AT_ITS_CAPTURE_DATE"
             val window = PhotoLibrary.window(name, clauseId)
-            val result = subject.importer.import(ref(clauseId), subject.staged, window.seedDate)
+            val result = subject.importer.import(ref(clauseId), subject.stage(), window.seedDate)
             val id = assertIs<ImportResult.Imported>(result, "an ordinary photo imports").createdLocalId
             assertEquals(
                 window.seedDate,
@@ -75,8 +79,8 @@ object PhotoLibraryImporterContract : Contract<PhotoLibraryImporterState, Staged
         clause("A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET", PhotoLibraryImporterState.GRANTED_VALID_STAGED) { subject ->
             val clauseId = "A_REPEAT_IMPORT_CREATES_A_SECOND_ASSET"
             val date = PhotoLibrary.window(name, clauseId).seedDate
-            val first = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.staged, date))
-            val second = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.staged, date))
+            val first = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.stage(), date))
+            val second = assertIs<ImportResult.Imported>(subject.importer.import(ref(clauseId), subject.stage(), date))
             assertNotEquals(
                 first.createdLocalId,
                 second.createdLocalId,
@@ -89,7 +93,7 @@ object PhotoLibraryImporterContract : Contract<PhotoLibraryImporterState, Staged
         clause("AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED", PhotoLibraryImporterState.GRANTED_INVALID_STAGED) { subject ->
             val clauseId = "AN_UNDECODABLE_FILE_FAILS_AND_IS_CONSUMED"
             val date = PhotoLibrary.window(name, clauseId).seedDate
-            val failed = assertIs<ImportResult.Failed>(subject.importer.import(ref(clauseId), subject.staged, date))
+            val failed = assertIs<ImportResult.Failed>(subject.importer.import(ref(clauseId), subject.stage(), date))
             assertTrue(
                 failed.consumedResources,
                 "the library takes a file when it ingests it, before validating it; retrying reads a file that is gone",

@@ -583,8 +583,9 @@ jobs:
           #
           # It ALSO runs source sets with no JVM equivalent, so this is their only run:
           # :adapter:ios:ext-safe's and :adapter:ios:app-only's iosTest (Keychain, PhotoKit, logging,
-          # config — incl. IosKeychainTest and PhotoKitSmokeTest: general PhotoKit is callable on the
-          # sim, while the cloud-id + upload-job subsystems are device-only and not exercised here),
+          # config — incl. IosKeychainTest and the PhotoKit contracts' no-grant bindings; PhotoKit under a
+          # full grant runs in the simulator APP, in ios-contracts below, and the cloud-id + upload-job
+          # subsystems are device-only and not exercised here),
           # plus the native SQLDelight drivers behind the shared storage contracts hosted in
           # :test:world (:adapter:generic:app's NativeLedgerStoreTest and NativeDownloadStoreTest).
           #
@@ -630,3 +631,47 @@ jobs:
               gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent \
                 || echo "::warning::could not delete superseded cache $key"
             done
+
+  ios-contracts:
+    # Display name = the status-check context the branch ruleset requires (capability `ios-ci`, "Run the
+    # in-app port contracts on a simulator on every push"). Parallel to ios-build and ios-test, with no
+    # `needs:` edge, for the reason those two carry none: a red gate must never skip another's required check.
+    #
+    # WHAT IT RUNS: the port contracts whose bindings live in the APP — the simulator app is the only
+    # simulator process `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real
+    # full grant (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). The
+    # registry is whatever `GET /contract` lists for this host; `scripts/sim-contracts` runs every entry and
+    # fails on any `Failed(…)`, a refusal, or an empty registry.
+    name: ios-contracts
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      # A pure consumer of ios-test's simulator-family konan entry (rationale on ios-test's restore step):
+      # this job compiles the same iosSimulatorArm64 target, so its caches are the same caches. It never saves.
+      - name: Restore Kotlin/Native (~/.konan)
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-${{ github.run_id }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
+            konan-${{ runner.os }}-
+      - name: Run the simulator app's port contracts
+        # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed
+        # `snapsync.rig=true` would link the control channel into every shipped build.
+        run: |
+          mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
+          scripts/sim-contracts
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ios-contracts-evidence
+          path: build/sim-contracts/
+          if-no-files-found: ignore
