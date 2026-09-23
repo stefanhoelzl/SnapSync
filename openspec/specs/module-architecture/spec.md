@@ -29,7 +29,6 @@ Decision record for the inbound ports and the shell as their driving adapter: `c
 Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 Decision record for the control protocol's client and the real backend as support modules: `changes/archive/2026-09-23-add-rig-jvm-host`.
-
 ## Requirements
 ### Requirement: The module set withholds; packages organize
 The system SHALL consist of exactly the modules enumerated below, and **every** module the build
@@ -50,8 +49,8 @@ existence; a module justified by no law is a package with a derived text gate in
   (its own binary target, linked under `-Psnapsync.forge`), `:test:rig` (contributes its own call
   site into the iOS app shell, linked under `-Psnapsync.rig`; its JVM target, the control channel's JVM
   host, links into no shipped-format binary and is consumed only by test equipment), `:test:contracts` (the port contracts,
-  linked under `-Psnapsync.rig` into the app and into the rig-gated source sets of the two iOS adapter
-  modules, the extension-safe one and the app-only one; it withholds the test-assertion library from every other main source set — it is the
+  linked under `-Psnapsync.rig` into the app, into the upload extension, and into the rig-gated source sets of
+  the two iOS adapter modules, the extension-safe one and the app-only one; it withholds the test-assertion library from every other main source set — it is the
   only module whose main code may assert). A contained module is grouped by the law that governs it,
   **not** by its name prefix: these three are the same species and the containment law describes
   exactly their shapes.
@@ -131,6 +130,12 @@ group it joins and the argument for that group.
   `compose/`
 - **THEN** compilation fails (unresolvable symbol), because no dependency on its compile path exports those
   zones
+
+#### Scenario: The contracts module in the upload extension
+
+- **WHEN** the upload extension is built with `-Psnapsync.rig`
+- **THEN** the contracts module is linked into it together with the rig-gated source it runs through, and a
+  build without the property contains neither
 
 ### Requirement: Zones inside the core
 `:domain` SHALL contain exactly five package zones with these import laws, enforced by
@@ -659,6 +664,14 @@ the compile path, and with it the directory and the contained module arrive toge
 SHALL depend on nothing beyond the contained module, and no declaration SHALL be widened for it — reaching
 `internal` from inside the owning module is the reason it lives there.
 
+Where the contained module must **replace** a call path in a shell rather than add a call site — the rig
+build's upload extension routing `process()` to a contract run — the shell's build script SHALL select
+between two source directories by the property: a production directory holding the one declaration the
+path goes through, and a directory the contained module contributes, declaring the same symbol. Exactly one
+is on the compile path. The production directory is shell source like the rest; the contributed one SHALL
+hold no decision either, delegating any branch to the contained module or to a withholding module's
+property-gated directory, so the shell gate's zero-decision rule holds over both.
+
 This is the inverse of `:adapter:generic:fake`, which never links into a shipped framework at all.
 
 A dev/test control surface SHALL NOT rely on **runtime** inertness in a shipped binary. A launch-environment
@@ -698,6 +711,19 @@ because the file reading it is absent from a production build.
 - **WHEN** the module is added to the module set
 - **THEN** its withholding argument is recorded here, and the dependency it withholds is unreachable from
   every other module by compile error
+
+#### Scenario: A shell's call path is substituted under the property
+
+- **WHEN** the upload extension is built with `-Psnapsync.rig`
+- **THEN** its build compiles the rig-contributed directory in place of the production one, so the entry the
+  operating system calls reaches the contract runner, and a build without the property compiles only the
+  production directory, whose entry reaches the core exactly as before
+
+#### Scenario: The substituted directory holds a decision
+
+- **WHEN** the contributed directory's declaration branches on the run request itself
+- **THEN** the shell gate fails over it, and the branch moves into the contained module or the withholding
+  module's property-gated directory
 
 ### Requirement: OS entry points cross an inbound port
 
@@ -902,3 +928,4 @@ usable access, not for a grant.
 
 - **WHEN** a collaborator is bound to "full or limited access"
 - **THEN** its name says usable access, and no caller compares it against a full grant
+

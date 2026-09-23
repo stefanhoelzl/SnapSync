@@ -89,7 +89,7 @@
 
 ## 8. Archive preparation
 
-- [ ] 8.1 Add this change to the Purpose's decision-record lists of `port-contracts` and `ios-photokit-upload`
+- [x] 8.1 Add this change to the Purpose's decision-record lists of `port-contracts` and `ios-photokit-upload`
 - [x] 8.2 Delta accounting per module touched (`:adapter:ios:ext-safe`, `:adapter:ios:app-only`,
       `:app:ios:extension`, `:test:contracts`, `:test:rig`, `:domain:compose`, `:test:architecture`): name the
       capability delta, or record why none is needed (`:domain:compose`: a log line, no spec states its meaning)
