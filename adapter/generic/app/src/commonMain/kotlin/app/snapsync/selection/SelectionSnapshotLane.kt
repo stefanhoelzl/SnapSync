@@ -50,7 +50,9 @@ interface SelectionPlatform<F : Any, C : Any> {
  *  - a change that arrives while the baseline is being read queues behind it and is applied to it, instead of
  *    finding no held read and being dropped;
  *  - a baseline whose observation ended while it was being read (a grant upgraded to full mid-read) emits nothing:
- *    each begin carries a generation, and the permission collector advances it the moment the grant moves.
+ *    each begin carries a generation, and the permission collector advances it the moment the grant moves;
+ *  - changes that queue up behind a running enumeration are folded into ONE more enumeration for the latest of
+ *    them, instead of one full resource read each (see [change]).
  *
  * The held read and the observing flag are touched only by the consumer, on [lane]; [generation] is written only by
  * the permission collector and read by the consumer.
@@ -87,7 +89,15 @@ class SelectionSnapshotLane<F : Any, C : Any>(
     override val snapshots: Flow<List<Resource>> = emitted
 
     init {
-        scope.launch(lane) { for (item in work) handle(item) }
+        scope.launch(lane) {
+            // A change handler may drain the Changes queued behind it and stop at the first item that is not one;
+            // that item is handed back here and handled next, so nothing is reordered or lost.
+            var carried: LaneWork<C>? = null
+            while (true) {
+                val item = carried ?: work.receiveCatching().getOrNull() ?: break
+                carried = handle(item)
+            }
+        }
         scope.launch {
             var limited = false
             permission.collect { status ->
@@ -100,12 +110,14 @@ class SelectionSnapshotLane<F : Any, C : Any>(
         }
     }
 
-    private suspend fun handle(item: LaneWork<C>) {
+    /** Handle [item]; returns work a change handler dequeued but did not handle, which runs next. */
+    private suspend fun handle(item: LaneWork<C>): LaneWork<C>? {
         when (item) {
             is LaneWork.Begin -> begin(item.generation)
             LaneWork.End -> end()
-            is LaneWork.Change -> change(item.change)
+            is LaneWork.Change -> return change(item.change)
         }
+        return null
     }
 
     private suspend fun begin(started: Int) {
@@ -125,10 +137,36 @@ class SelectionSnapshotLane<F : Any, C : Any>(
         held = null
     }
 
-    private suspend fun change(change: C) {
-        val current = held ?: return
-        val after = platform.after(current, change) ?: return
+    /**
+     * Apply [first] and every change already queued behind it, then enumerate ONCE, for the latest.
+     *
+     * Each snapshot is a full, eager resource read of the selection, and each is the WHOLE selection — so a
+     * snapshot computed for a change that another has already superseded is work whose result the conflating
+     * flow would drop anyway. Changes that arrived while the previous enumeration ran are therefore folded into
+     * one: at most one enumeration runs, the changes behind it only move [held] forward, and when it finishes
+     * one more runs for the latest. The last snapshot emitted is the one per-change emission would have ended on.
+     *
+     * Folding [held] through [SelectionPlatform.after] one change at a time is what keeps that true: each change
+     * is relative to the read before it, and `after` reads only the change it was pushed (the pushed
+     * `fetchResultAfterChanges`), never the library. Draining stops at the first queued item that is not a
+     * change — an observation ending or restarting — and hands it back to run next, so no change is ever applied
+     * across one.
+     */
+    private suspend fun change(first: C): LaneWork<C>? {
+        val current = held ?: return null
+        var latest: F? = platform.after(current, first)
+        var carried: LaneWork<C>? = null
+        while (true) {
+            val queued = work.tryReceive().getOrNull() ?: break
+            if (queued !is LaneWork.Change) {
+                carried = queued
+                break
+            }
+            platform.after(latest ?: current, queued.change)?.let { latest = it }
+        }
+        val after = latest ?: return carried
         held = after
         emitted.emit(platform.snapshot(after))
+        return carried
     }
 }
