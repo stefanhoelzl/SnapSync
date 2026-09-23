@@ -10,7 +10,6 @@ import app.snapsync.model.uploadKey
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.PlatformUploadJob
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -24,13 +23,23 @@ enum class BackgroundTransferState {
     /** As many transfers in flight, to routes that never answer, as the tier allows at once. */
     AT_CAP,
 
-    /**
-     * Nothing in flight, on a tier that offers a transfer the destination refused ONCE for retry before settling it
-     * — the PhotoKit tier's single free `.retry`. The URLSession tier settles a refusal at once, so its bindings
-     * declare this unreachable; the clauses on it are the PhotoKit tier's own vocabulary, which is why they are
-     * conditioned on a state rather than stated for every tier.
+    /*
+     * The PhotoKit tier's own vocabulary: a transfer the OS has ALREADY settled and now presents, prepared by the
+     * binding before the clause — on a device, across operating-system calls, because a job the upload extension
+     * creates is uploaded only after its `process()` call returns (measured, SE2, iOS 26.6). The prepared transfer
+     * is the clause's own: key [BackgroundTransferContract.key], route [BackgroundTransferContract.preparedRoute],
+     * its row seeded `REQUESTED` with that destination. The URLSession tier settles a transfer at once and offers no
+     * free retry, so its bindings declare all three unreachable.
      */
-    SINGLE_FREE_RETRY,
+
+    /** A transfer the destination accepted, presented as succeeded. */
+    PRESENTED_SUCCEEDED,
+
+    /** A transfer the destination refused once, presented for its single free retry (and for acknowledgement). */
+    PRESENTED_REFUSED_ONCE,
+
+    /** A transfer refused again after its free retry to the identical destination, presented as retry-spent. */
+    PRESENTED_RETRY_SPENT,
 }
 
 /**
@@ -79,6 +88,17 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
     fun path(clauseId: String, answer: FixtureAnswer, n: Int = 1): String =
         TransferFixture.path(name, clauseId, "upload-$n", answer)
 
+    /** The states whose transfer the binding prepares and the OS settles before the clause. */
+    val PRESENTED: Set<BackgroundTransferState> = setOf(
+        BackgroundTransferState.PRESENTED_SUCCEEDED,
+        BackgroundTransferState.PRESENTED_REFUSED_ONCE,
+        BackgroundTransferState.PRESENTED_RETRY_SPENT,
+    )
+
+    /** The route a presented state's prepared transfer goes to: accepted for a success, refused otherwise. */
+    fun preparedRoute(clauseId: String, state: BackgroundTransferState): String =
+        path(clauseId, if (state == BackgroundTransferState.PRESENTED_SUCCEEDED) ACCEPT else REJECT)
+
     private val ACCEPT = FixtureAnswer.Respond(200)
     private val REJECT = FixtureAnswer.Respond(500)
 
@@ -102,21 +122,11 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             objects.landed(path) != null && rowState(key) == state
         }
 
-    /** Waits until the tier offers a refused transfer for [key] for retry, and answers it. */
-    private suspend fun TransferUnderTest.awaitOfferedForRetry(key: String): PlatformUploadJob {
-        var offered: PlatformUploadJob? = null
-        awaitWithin {
-            offered = transfer.fetchRetryJobs().firstOrNull { it.key == key }
-            offered != null
-        }
-        return checkNotNull(offered)
-    }
-
     /*
-     * The PhotoKit tier's retry, on SINGLE_FREE_RETRY: a refusal is offered once for retry, and a retry refused again
-     * is handed up for re-creation once. A retry that then SUCCEEDS has no clause: production retries to the identical
-     * destination, and a fixture route answers one status for good (`TransferFixture`), so no route can refuse the
-     * first attempt and accept the second.
+     * The PRESENTED_* clauses act on a transfer the OS already settled — they create nothing, so none waits on an
+     * upload. A retry that then SUCCEEDS has no clause: production retries to the identical destination, and a
+     * fixture route answers one status for good (`TransferFixture`), so no route can refuse the first attempt and
+     * accept the second.
      */
     override val clauses = clauses {
 
@@ -232,40 +242,39 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             )
         }
     
-        clause("REFUSED_IS_OFFERED_FOR_RETRY", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
-            val id = "REFUSED_IS_OFFERED_FOR_RETRY"
-            val resource = subject.usable(key(id))
-            val route = path(id, REJECT)
-            subject.seed(resource, LedgerState.REQUESTED, route)
-            assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
-            val offered = subject.awaitOfferedForRetry(resource.filename)
-            assertEquals(resource.contentType, offered.contentType, "a retried transfer keeps the type it was created with")
+        clause("PRESENTED_SUCCESS_IS_RECORDED_IN_PLACE", BackgroundTransferState.PRESENTED_SUCCEEDED) { subject ->
+            val id = "PRESENTED_SUCCESS_IS_RECORDED_IN_PLACE"
+            val key = key(id)
+            val handedUp = subject.transfer.drainTerminals().map { it.key }
+            assertEquals(LedgerState.COMPLETED, subject.rowState(key), "a presented success is recorded COMPLETED by the drain")
+            assertTrue(key !in handedUp, "a terminal fact never crosses the seam: a success is recorded in place, not handed up")
+            assertEquals(
+                "image/jpeg",
+                subject.objects.landed(preparedRoute(id, BackgroundTransferState.PRESENTED_SUCCEEDED))?.contentType,
+                "the object landed under the type it was created with",
+            )
         }
 
-        clause("RETRY_SPENT_IS_HANDED_UP_ONCE", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
-            val id = "RETRY_SPENT_IS_HANDED_UP_ONCE"
-            val resource = subject.usable(key(id))
-            val refused = path(id, REJECT)
-            subject.seed(resource, LedgerState.REQUESTED, refused)
-            assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(refused, resource), resource))
-            val offered = subject.awaitOfferedForRetry(resource.filename)
-            // The retry goes where production sends it: the IDENTICAL destination (the cycle rebuilds the same edge
-            // URL), which is also what keeps the row's recorded destination the job's.
-            subject.transfer.retryJob(offered, subject.request(refused, resource))
-            val handedUp = mutableListOf<String>()
-            awaitWithin {
-                handedUp += subject.transfer.drainTerminals().map { it.key }
-                resource.filename in handedUp
-            }
-            transferSettle()
-            handedUp += subject.transfer.drainTerminals().map { it.key }
+        clause("PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY", BackgroundTransferState.PRESENTED_REFUSED_ONCE) { subject ->
+            val id = "PRESENTED_REFUSAL_IS_OFFERED_FOR_RETRY"
+            val offered = subject.transfer.fetchRetryJobs().firstOrNull { it.key == key(id) }
+            assertTrue(offered != null, "a transfer the destination refused once is offered for its free retry")
+            assertEquals("image/jpeg", offered.contentType, "a retried transfer keeps the type it was created with")
+            assertNotEquals(LedgerState.COMPLETED, subject.rowState(key(id)), "a refused transfer is not completed")
+        }
+
+        clause("PRESENTED_RETRY_SPENT_IS_HANDED_UP_ONCE", BackgroundTransferState.PRESENTED_RETRY_SPENT) { subject ->
+            val id = "PRESENTED_RETRY_SPENT_IS_HANDED_UP_ONCE"
+            val key = key(id)
+            val first = subject.transfer.drainTerminals().map { it.key }
+            val second = subject.transfer.drainTerminals().map { it.key }
             assertEquals(
                 1,
-                handedUp.count { it == resource.filename },
-                "a transfer whose free retry was refused too is handed up for re-creation once — the tier " +
-                    "acknowledged it, so it is not presented again",
+                (first + second).count { it == key },
+                "a transfer whose free retry was refused too is handed up for re-creation once — the tier acknowledged " +
+                    "it, so it is not presented again",
             )
-            assertNotEquals(LedgerState.COMPLETED, subject.rowState(resource.filename), "a refused transfer is not completed")
+            assertNotEquals(LedgerState.COMPLETED, subject.rowState(key), "a refused transfer is not completed")
         }
-}
+    }
 }

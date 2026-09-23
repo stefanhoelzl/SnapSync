@@ -3,8 +3,11 @@
 package app.snapsync.contract.extension
 
 import app.snapsync.contracts.CONTRACT_REFUSED
-import app.snapsync.contracts.InAppContract
-import app.snapsync.ios.upload.extensionTransferContract
+import app.snapsync.contracts.BackgroundTransferContract
+import app.snapsync.ios.upload.Step
+import app.snapsync.ios.upload.callsFor
+import app.snapsync.ios.upload.extensionTransferClauses
+import app.snapsync.ios.upload.transferRunStep
 import app.snapsync.logging.appGroupDirectory
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.ExtensionEntries
@@ -76,35 +79,65 @@ fun clearLanded() {
     contractRunFile(LANDED_DIRECTORY)?.let(::deleteContractRunFile)
 }
 
-/**
- * The contracts that record inside the upload extension, by name — the registry a requested run is resolved
- * against. Each answers the recording to commit verbatim, as an in-app device run does.
- */
-fun extensionContracts(): List<InAppContract> = listOf(extensionTransferContract())
+/** How many calls the current staged run has made — kept between the extension's processes. */
+const val RUN_CALL_FILE: String = "contract-run-call"
+
+/** What the current staged run has recorded so far — kept between the extension's processes. */
+const val RUN_TAPE_FILE: String = "contract-run-tape"
 
 /**
- * [core] with one difference: when the app's rig has requested a contract run, `process()` runs that contract
- * INSTEAD of the upload cycle and answers `COMPLETED`.
- *
- * `COMPLETED`, never `PROCESSING`: `PROCESSING` asks the OS for another call, which comes five minutes later
- * (measured, SE2, iOS 26.6), and nothing about a finished run needs one. The request is deleted BEFORE the run,
- * so a run the OS kills — about 60 s into a call, with no notice — is not repeated by the next call.
+ * The runs the extension records, in order: one per presented-state clause of the upload-job contract, each with the
+ * number of operating-system calls it takes (its preparation calls, then the clause's own). A run is requested as
+ * `<Contract> <CLAUSE_ID>`.
  */
-fun contractRunningEntries(
-    core: ExtensionEntries,
-    contracts: () -> List<InAppContract> = ::extensionContracts,
-): ExtensionEntries = object : ExtensionEntries by core {
+fun extensionRunPlan(): List<Pair<String, Int>> =
+    extensionTransferClauses().map { id -> id to callsFor(BackgroundTransferContract.clauses.first { it.id == id }.state) }
+
+/**
+ * [core] with one difference: when the app's rig has requested a contract run, `process()` performs the run's next
+ * call INSTEAD of the upload cycle.
+ *
+ * A run spans calls — a job the extension creates is uploaded only after the call returns (measured, SE2, iOS 26.6) —
+ * so a call that prepared answers `PROCESSING`, which brings the next call five minutes later (measured), and keeps
+ * the request, the call count and the partial recording in the App Group; the run's last call writes the recording
+ * and answers `COMPLETED`. The request is deleted BEFORE each call's work and rewritten only after it, so a call the OS
+ * kills — about 60 s in, with no notice — ends the run rather than repeating.
+ */
+fun contractRunningEntries(core: ExtensionEntries): ExtensionEntries = object : ExtensionEntries by core {
     private val log = Logger.withTag("ExtensionContract")
 
     override suspend fun process(): CycleResult {
         val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return core.process()
-        val requested = readContractRunFile(requestPath)?.trim() ?: return core.process()
+        val request = readContractRunFile(requestPath)?.trim() ?: return core.process()
         deleteContractRunFile(requestPath)
-        log.i { "[contract] running $requested in place of the upload cycle" }
-        val body = contracts().firstOrNull { it.name == requested }?.run?.invoke(emptyMap())
-            ?: "${CONTRACT_REFUSED}no contract named '$requested' records inside the upload extension\n"
-        val written = contractRunFile(RUN_RESULT_FILE)?.let { writeContractRunFile(it, body) } ?: false
-        log.i { "[contract] $requested finished; result written=$written" }
-        return CycleResult.COMPLETED
+        val call = contractRunFile(RUN_CALL_FILE)?.let(::readContractRunFile)?.trim()?.toIntOrNull() ?: 1
+        val tape = contractRunFile(RUN_TAPE_FILE)?.let(::readContractRunFile)
+        log.i { "[contract] $request: call $call, in place of the upload cycle" }
+        val step = if (request.substringBefore(' ') == BackgroundTransferContract.name) {
+            transferRunStep(request.substringAfter(' '), call, tape)
+        } else {
+            Step.Done("${CONTRACT_REFUSED}no contract named '${request.substringBefore(' ')}' records inside the upload extension\n")
+        }
+        return when (step) {
+            is Step.Continue -> {
+                contractRunFile(RUN_TAPE_FILE)?.let { writeContractRunFile(it, step.tape) }
+                contractRunFile(RUN_CALL_FILE)?.let { writeContractRunFile(it, "${call + 1}") }
+                writeContractRunFile(requestPath, request)
+                log.i { "[contract] $request: call $call prepared; asking for the next" }
+                CycleResult.PROCESSING
+            }
+            is Step.Done -> {
+                clearRunProgress()
+                val written = contractRunFile(RUN_RESULT_FILE)?.let { writeContractRunFile(it, step.body) } ?: false
+                log.i { "[contract] $request: finished; result written=$written" }
+                CycleResult.COMPLETED
+            }
+        }
     }
+}
+
+/** Forgets a staged run's progress — before a new request, and after a run ends. */
+fun clearRunProgress() {
+    contractRunFile(RUN_CALL_FILE)?.let(::deleteContractRunFile)
+    contractRunFile(RUN_TAPE_FILE)?.let(::deleteContractRunFile)
 }

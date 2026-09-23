@@ -16,7 +16,9 @@ import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.engine.iosLedgerStore
+import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
+import app.snapsync.model.toLedgerRow
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
@@ -49,7 +51,9 @@ class SimulatorUploadJobQueueContractTest {
         override val reaches = setOf(
             BackgroundTransferState.IDLE,
             BackgroundTransferState.AT_CAP,
-            BackgroundTransferState.SINGLE_FREE_RETRY,
+            BackgroundTransferState.PRESENTED_SUCCEEDED,
+            BackgroundTransferState.PRESENTED_REFUSED_ONCE,
+            BackgroundTransferState.PRESENTED_RETRY_SPENT,
         )
 
         override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
@@ -68,6 +72,7 @@ class SimulatorUploadJobQueueContractTest {
                     }
                 }
             }
+            if (state in BackgroundTransferContract.PRESENTED) runEntry { presentPrepared(state, clauseId, jobs, os, ledger) }
             return Entered.Ready(
                 TransferUnderTest(
                     transfer = os,
@@ -79,6 +84,30 @@ class SimulatorUploadJobQueueContractTest {
                 ),
             )
         }
+    }
+
+    /**
+     * Enters a presented state as the OS leaves it: the clause's transfer already settled, its row `REQUESTED` with
+     * the destination it was created with — what the upload extension's binding prepares across calls on a device.
+     */
+    private suspend fun presentPrepared(
+        state: BackgroundTransferState,
+        clauseId: String,
+        jobs: SimulatorJobSets,
+        os: PlayedOs,
+        ledger: app.snapsync.ports.LedgerStore,
+    ) {
+        val key = BackgroundTransferContract.key(clauseId)
+        val url = BASE + BackgroundTransferContract.preparedRoute(clauseId, state)
+        val resource = resource(key, StandInPhoto)
+        ledger.recordUnlessSettled(resource.toLedgerRow(LedgerState.REQUESTED, destinationPath = destinationPathOf(url)))
+        val request = UploadRequest(url, mapOf("Content-Type" to "image/jpeg"), resource)
+        check(os.createJob(request, resource) == CreateResult.CREATED)
+        if (state == BackgroundTransferState.PRESENTED_RETRY_SPENT) {
+            val offered = os.fetchRetryJobs().first { it.key == key }
+            os.retryJob(offered, request)
+        }
+        check(jobs.createdThisCycle().isNotEmpty())
     }
 
     @Test
@@ -107,7 +136,7 @@ class SimulatorUploadJobQueueContractTest {
             val contentType = request.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value
             when (val answer = TransferFixture.answerOf(path)) {
                 FixtureAnswer.Hold, null -> Unit
-                is FixtureAnswer.Respond -> if (answer.status in 200..299) {
+                is FixtureAnswer.Respond -> if (answer.status in HTTP_SUCCESS) {
                     landed[path] = Landed(contentType)
                     jobs.present(FinishedUploadJob(request.url, SimulatorJobAction.ACKNOWLEDGE, PhotoKitJobState.SUCCEEDED, null, null, contentType))
                 } else {
@@ -124,6 +153,7 @@ class SimulatorUploadJobQueueContractTest {
         const val BASE_PATH = "/api/v2"
         const val BASE = "http://127.0.0.1:18099$BASE_PATH"
         const val CAP = 3
+        val HTTP_SUCCESS = 200..299
 
         fun resource(key: String, data: Any) = Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), data)
 

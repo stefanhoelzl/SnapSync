@@ -138,7 +138,7 @@ class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, Transfe
     override fun accept(params: Map<String, String>): String? = fixture.accept(params)
 
     override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-        if (state == BackgroundTransferState.SINGLE_FREE_RETRY) return Entered.Unreachable(URL_SESSION_HAS_NO_FREE_RETRY)
+        if (state in BackgroundTransferContract.PRESENTED) return Entered.Unreachable(URL_SESSION_SETTLES_AT_ONCE)
         val base = fixture.require()
         val contract = BackgroundTransferContract.name
         // A real SQLDelight ledger over a fresh directory — never the app's own, which lives in the App Group.
@@ -219,7 +219,7 @@ class SimAppDownloadTransportBinding : Binding<DownloadTransportState, DownloadU
     }
 }
 
-/** Why the URLSession tier never reaches [BackgroundTransferState.SINGLE_FREE_RETRY]. */
-internal const val URL_SESSION_HAS_NO_FREE_RETRY =
-    "the URLSession tier settles a refused transfer at once; it offers no free retry"
+/** Why the URLSession tier never reaches [BackgroundTransferContract.PRESENTED]. */
+internal const val URL_SESSION_SETTLES_AT_ONCE =
+    "the URLSession tier settles a transfer the moment it ends and offers no free retry; nothing is presented later"
 

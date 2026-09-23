@@ -173,9 +173,12 @@ object SimulatorUploadJobs : SimulatorJobSets()
 internal class SimulatorUploadJobQueue(
     private val log: Logger,
     private val ledger: TransferRecord,
-    private val jobs: SimulatorJobSets = SimulatorUploadJobs,
-    private val usablePayload: (Any?) -> Boolean = { it is PHAssetResource },
+    private val jobs: SimulatorJobSets,
+    private val usablePayload: (Any?) -> Boolean,
 ) : BackgroundTransfer {
+
+    /** The substitute the app composes: the process-wide sets, and `PHAssetResource` as the only usable payload. */
+    constructor(log: Logger, ledger: TransferRecord) : this(log, ledger, SimulatorUploadJobs, { it is PHAssetResource })
 
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {

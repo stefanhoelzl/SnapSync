@@ -103,8 +103,8 @@ class TransferContractsTest {
         override val reaches = setOf(BackgroundTransferState.IDLE, BackgroundTransferState.AT_CAP)
 
         override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-            if (state == BackgroundTransferState.SINGLE_FREE_RETRY) {
-                return Entered.Unreachable("the world's transfer double models no free retry: a refusal settles at once")
+            if (state in BackgroundTransferContract.PRESENTED) {
+                return Entered.Unreachable("the world's transfer double settles a transfer at once and presents none later")
             }
             val received = mutableSetOf<String>()
             val ledger = inMemoryLedgerStore()

@@ -2,29 +2,38 @@
 
 package app.snapsync.ios.upload
 
+import app.snapsync.config.bakedUploadBase
 import app.snapsync.contract.extension.landedAt
 import app.snapsync.contracts.BackgroundTransferContract
 import app.snapsync.contracts.BackgroundTransferState
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.Clause
+import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
-import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.Landed
 import app.snapsync.contracts.Recorder
+import app.snapsync.contracts.Recording
 import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
-import app.snapsync.config.bakedUploadBase
+import app.snapsync.contracts.runEntry
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
+import app.snapsync.model.LedgerState
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
+import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.destinationPathOf
+import app.snapsync.model.toLedgerRow
 import app.snapsync.ports.BackgroundTransfer
+import app.snapsync.ports.CreateResult
+import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
@@ -38,9 +47,15 @@ import platform.Photos.PHAssetResource
 import platform.Photos.PHFetchOptions
 
 /*
- * `BackgroundTransferContract`'s PhotoKit bindings (capability `port-contracts`): the real
- * `IosPhotoKitUploadPlatform` recorded INSIDE the upload extension on a device — the process production calls the
- * job API from — and replayed on every CI build on the simulator's test executable.
+ * `BackgroundTransferContract`'s PhotoKit bindings (capability `port-contracts`): the real `IosPhotoKitUploadPlatform`
+ * recorded INSIDE the upload extension on a device — the process production calls the job API from — and replayed on
+ * every CI build on the simulator's test executable.
+ *
+ * A job the extension creates is uploaded only after its `process()` call returns (measured, SE2, iOS 26.6: the
+ * receiver saw every PUT only after the call ended). So a presented state is PREPARED across calls — create in one,
+ * retry in the next, where the state needs it — and its clause runs in the call after the last preparation. The
+ * preparation's calls are recorded into the clause's block, in call order, and a replay makes them in the same order
+ * before the clause, in one go.
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true`, and into `iosTest` otherwise.
  */
@@ -51,43 +66,80 @@ import platform.Photos.PHFetchOptions
  */
 internal const val CONTRACT_UPLOAD_BASE: String = "http://127.0.0.1:18099/api/v2"
 
-internal const val EXTENSION_UNREACHABLE_AT_CAP =
-    "the PhotoKit tier's in-flight cap is not known, and filling it with jobs that never answer would outlast the " +
-        "~60 s a process() call is given; AT_CAP_DEFERS is covered by the simulator app's URLSession binding"
+internal const val EXTENSION_ONLY_PRESENTED =
+    "inside the upload extension a job is uploaded only after the process() call that created it returns, so a " +
+        "clause that creates a transfer and awaits it cannot pass within one call; the extension records the " +
+        "PRESENTED states, prepared across calls, and the simulator app's URLSession binding covers these"
 
-/** A payload the PhotoKit tier cannot upload: not a `PHAssetResource`. */
-private object NotAPhotoResource
+/** The operating-system calls a presented state takes: its preparation calls, then the clause's own. */
+internal fun callsFor(state: BackgroundTransferState): Int = when (state) {
+    BackgroundTransferState.PRESENTED_SUCCEEDED, BackgroundTransferState.PRESENTED_REFUSED_ONCE -> 2
+    BackgroundTransferState.PRESENTED_RETRY_SPENT -> 3
+    else -> 1
+}
 
-/** A fresh, empty directory under the process's temporary directory, for one clause. */
-private fun scratch(clauseId: String): String {
-    val dir = NSTemporaryDirectory() + "contracts/${BackgroundTransferContract.name}/$clauseId"
+/** A fresh, empty directory under the process's temporary directory. */
+private fun scratch(name: String): String {
+    val dir = NSTemporaryDirectory() + "contracts/${BackgroundTransferContract.name}/$name"
     NSFileManager.defaultManager.removeItemAtPath(dir, error = null)
     NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
     return dir
 }
 
+/** The transfer a presented state prepares, as the contract derives it from the clause id. */
+private class Prepared(clauseId: String, state: BackgroundTransferState, photo: Any) {
+    val key = BackgroundTransferContract.key(clauseId)
+    val url = CONTRACT_UPLOAD_BASE + BackgroundTransferContract.preparedRoute(clauseId, state)
+    val resource = Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), photo)
+    val request = UploadRequest(url, mapOf("Content-Type" to "image/jpeg"), resource)
+}
+
+/** A fresh ledger holding the prepared transfer's row, `REQUESTED` with the destination it was created with. */
+private suspend fun seededLedger(name: String, prepared: Prepared): LedgerStore =
+    iosLedgerStore(scratch(name)).also {
+        it.recordUnlessSettled(prepared.resource.toLedgerRow(LedgerState.REQUESTED, destinationPath = destinationPathOf(prepared.url)))
+    }
+
 /**
- * The PhotoKit tier in [state] over [api], with a fresh SQLDelight ledger — never the app's own — and [objects] as
- * the fixture's read. [photo] is what a usable resource carries: a library photo's `PHAssetResource` on a device,
- * [ReplayPhoto] on replay.
+ * Preparation call [call] (1-based, below [callsFor]) of [state]'s transfer, over [api]: call 1 creates it; call 2 of a
+ * retry-spent state re-points its free retry to the identical destination, as production does.
  */
+internal fun prepareCall(state: BackgroundTransferState, clauseId: String, call: Int, api: UploadJobApi, photo: Any) = runEntry {
+    val prepared = Prepared(clauseId, state, photo)
+    val ledger = seededLedger("$clauseId-prep$call", prepared)
+    val transfer: BackgroundTransfer = IosPhotoKitUploadPlatform(Logger.withTag("contract"), ledger, api)
+    when (call) {
+        1 -> check(transfer.createJob(prepared.request, prepared.resource) == CreateResult.CREATED) {
+            "preparing $clauseId: the transfer was not created"
+        }
+        else -> {
+            val offered = checkNotNull(transfer.fetchRetryJobs().firstOrNull { it.key == prepared.key }) {
+                "preparing $clauseId: the refused transfer was not offered for its free retry"
+            }
+            transfer.retryJob(offered, prepared.request)
+        }
+    }
+}
+
+/** The subject for [state]'s clause: the tier over [api], with the prepared transfer's row seeded. */
 internal fun photoKitTransferInState(
     state: BackgroundTransferState,
     clauseId: String,
     api: UploadJobApi,
     objects: FixtureObjects,
-    photo: () -> Any,
+    photo: Any,
     afterDispose: () -> Unit = {},
 ): Entered<TransferUnderTest> {
-    if (state == BackgroundTransferState.AT_CAP) return Entered.Unreachable(EXTENSION_UNREACHABLE_AT_CAP)
-    val ledger = iosLedgerStore(scratch(clauseId))
-    val transfer: BackgroundTransfer = IosPhotoKitUploadPlatform(Logger.withTag("contract"), ledger, api)
+    if (state !in BackgroundTransferContract.PRESENTED) return Entered.Unreachable(EXTENSION_ONLY_PRESENTED)
+    val prepared = Prepared(clauseId, state, photo)
+    lateinit var ledger: LedgerStore
+    runEntry { ledger = seededLedger(clauseId, prepared) }
     return Entered.Ready(
         TransferUnderTest(
-            transfer = transfer,
+            transfer = IosPhotoKitUploadPlatform(Logger.withTag("contract"), ledger, api),
             base = CONTRACT_UPLOAD_BASE,
-            usable = { key -> Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), photo()) },
-            unusable = { key -> Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), NotAPhotoResource) },
+            usable = { key -> Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), photo) },
+            unusable = { key -> Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), "not a photo") },
             ledger = ledger,
             objects = objects,
         ),
@@ -96,7 +148,7 @@ internal fun photoKitTransferInState(
 }
 
 /** The newest photo in the library, as the resource an upload job sends — reused, so a run seeds nothing. */
-private fun newestPhotoResource(): PHAssetResource {
+internal fun newestPhotoResource(): PHAssetResource {
     val options = PHFetchOptions().apply { sortDescriptors = listOf(NSSortDescriptor(key = "creationDate", ascending = false)) }
     val asset = PHAsset.fetchAssetsWithMediaType(PHAssetMediaTypeImage, options).firstObject() as? PHAsset
         ?: error("the library holds no photo to upload — add one and re-run")
@@ -105,44 +157,63 @@ private fun newestPhotoResource(): PHAssetResource {
 }
 
 /**
- * The real PhotoKit tier inside the upload extension on a device, recording every job-API call and every fixture read.
- * Replayed on every CI build by `IosPhotoKitUploadReplayContractTest`.
+ * The real PhotoKit tier inside the upload extension on a device, for the clause's LAST call: its preparation calls
+ * were recorded by earlier calls, so the block is resumed, not opened. Replayed by `IosPhotoKitUploadReplayContractTest`.
  */
 internal class ExtensionPhotoKitTransferBinding(private val recorder: Recorder) :
     Binding<BackgroundTransferState, TransferUnderTest> {
     override val host = Host.IOS_DEVICE_PHOTOKIT_EXT
     override val kind = BindingKind.Live
-    override val reaches = setOf(BackgroundTransferState.IDLE, BackgroundTransferState.SINGLE_FREE_RETRY)
+    override val reaches = setOf(
+        BackgroundTransferState.PRESENTED_SUCCEEDED,
+        BackgroundTransferState.PRESENTED_REFUSED_ONCE,
+        BackgroundTransferState.PRESENTED_RETRY_SPENT,
+    )
 
     override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-        recorder.open(clauseId)
-        val log = Logger.withTag("contract")
+        recorder.resume(clauseId)
         return photoKitTransferInState(
             state = state,
             clauseId = clauseId,
-            api = RecordingUploadJobApi(SystemUploadJobApi(log), recorder),
+            api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder),
             objects = recordingFixtureObjects(recorder) { route -> landedAt(route)?.let { Landed(it.ifEmpty { null }) } },
-            photo = ::newestPhotoResource,
+            photo = newestPhotoResource(),
         )
     }
 }
 
+/** What one call of a staged clause run answers: another call is needed, or the run is done with [body]. */
+internal sealed interface Step {
+    /** The partial recording to keep for the next call. */
+    class Continue(val tape: String) : Step
+
+    class Done(val body: String) : Step
+}
+
 /**
- * Runs `BackgroundTransferContract` inside this extension process and renders the recording to commit verbatim at
- * `test/contracts/recordings/BackgroundTransfer@IOS_DEVICE_PHOTOKIT_EXT.rec`. Refuses without a full grant, or under a
- * build baked to any upload base but [CONTRACT_UPLOAD_BASE].
+ * One operating-system call of the run of [clauseId], inside the extension: call [call] of the clause's
+ * [callsFor]. [tape] is what earlier calls recorded. Answers the next step; refuses without a full grant, under an
+ * upload base other than [CONTRACT_UPLOAD_BASE], or for a clause the extension does not record.
  */
-internal fun recordTransferInExtension(): String {
-    val grant = currentPhotoPermission()
-    val base = bakedUploadBase()
+internal fun transferRunStep(clauseId: String, call: Int, tape: String?): Step {
+    val clause = BackgroundTransferContract.clauses.firstOrNull { it.id == clauseId && it.state in BackgroundTransferContract.PRESENTED }
     val refused = when {
-        grant != PermissionStatus.GRANTED -> "the upload-job contract records under a full photo grant; this process holds $grant"
-        base != CONTRACT_UPLOAD_BASE -> "this build uploads to $base; the contract's recording names $CONTRACT_UPLOAD_BASE (the rig build's local deployment)"
+        clause == null -> "no presented-state clause $clauseId in ${BackgroundTransferContract.name}"
+        currentPhotoPermission() != PermissionStatus.GRANTED ->
+            "the upload-job contract records under a full photo grant; this process holds ${currentPhotoPermission()}"
+        bakedUploadBase() != CONTRACT_UPLOAD_BASE ->
+            "this build uploads to ${bakedUploadBase()}; the recording names $CONTRACT_UPLOAD_BASE (the rig build's local deployment)"
         else -> null
     }
-    if (refused != null) return "$CONTRACT_REFUSED$refused\n"
-    val recorder = Recorder()
-    val results = run(BackgroundTransferContract, ExtensionPhotoKitTransferBinding(recorder))
+    if (refused != null || clause == null) return Step.Done("$CONTRACT_REFUSED$refused\n")
+    val recorder = Recorder(tape?.let(Recording::parse))
+    if (call < callsFor(clause.state)) {
+        if (call == 1) recorder.open(clauseId) else recorder.resume(clauseId)
+        val api = RecordingUploadJobApi(SystemUploadJobApi(Logger.withTag("contract")), recorder)
+        prepareCall(clause.state, clauseId, call, api, newestPhotoResource())
+        return Step.Continue(recorder.recording(emptyList()).render())
+    }
+    val results = run(single(clause), ExtensionPhotoKitTransferBinding(recorder))
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
     val header = listOf(
         "contract" to BackgroundTransferContract.name,
@@ -154,9 +225,15 @@ internal fun recordTransferInExtension(): String {
         "kotlin" to KotlinVersion.CURRENT.toString(),
         "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
     ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
-    return recorder.recording(header).render()
+    return Step.Done(recorder.recording(header).render())
 }
 
-/** The upload-job contract, as the extension's registry of contracts it records. */
-internal fun extensionTransferContract(): InAppContract =
-    InAppContract(BackgroundTransferContract.name, Host.IOS_DEVICE_PHOTOKIT_EXT) { recordTransferInExtension() }
+/** The contract reduced to [clause] — a staged run records one clause, alone in the OS queue. */
+private fun single(clause: Clause<BackgroundTransferState, TransferUnderTest>) =
+    object : Contract<BackgroundTransferState, TransferUnderTest>(BackgroundTransferContract.name) {
+        override val clauses = listOf(clause)
+    }
+
+/** The clauses the extension records, one run each: every presented-state clause. */
+internal fun extensionTransferClauses(): List<String> =
+    BackgroundTransferContract.clauses.filter { it.state in BackgroundTransferContract.PRESENTED }.map { it.id }
