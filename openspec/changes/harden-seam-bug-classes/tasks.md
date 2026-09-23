@@ -20,7 +20,7 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 ## 2. G2: the world matches production (PR 2)
 
 - [x] 2.1 Build `provision`, `refreshAttestation` and `registerPush` in `compose/` from the core, and remove them from `AppPorts`, `SnapSyncRoot` and `World`. `registerPush` gets `PushRegistration` and `PushTokenSource` from the core.
-- [ ] 2.2 Make the world's operator `provision()` lever a separate operator edge (behaviour unchanged, per the harness-world-model spec), and point `onEventMinted`'s default at the composed Provision flow.
+- [x] 2.2 Make the world's operator `provision()` lever a separate operator edge (behaviour unchanged, per the harness-world-model spec), and point `onEventMinted`'s default at the composed Provision flow.
 - [ ] 2.3 Delete the world's `init`-time touches of core lazies (for example `core.downloadController`). Add a test-only `initializedMembers()` accessor on `AppCore`, and a test asserting that a freshly built world has initialized only what the iOS root forces at process start.
 - [ ] 2.4 Add a `@ParityFor("<entry>")` integration test in `:test:integration` for each OS entry point in `SnapSyncRoot`: foreground, background, open-url, push token, silent push, upload heartbeat, download backstop, and background-URLSession relaunch. Each starts from a cold core.
 - [ ] 2.5 Add the entry-point parity gate: derive the entry points from `OsHandlerContainmentTest`'s scan and match them exactly against the tagged tests.

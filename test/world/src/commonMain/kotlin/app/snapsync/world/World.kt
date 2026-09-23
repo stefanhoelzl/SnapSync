@@ -1,5 +1,7 @@
 package app.snapsync.world
 
+import app.snapsync.feature.membership.toJoinLoad
+import app.snapsync.model.JoinLoad
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.PushHttpClient
@@ -420,11 +422,24 @@ class World(
 
     /**
      * Where a minted event routes (the shell's `onEventMinted` lambda, supplied here because the
-     * world IS the shell): the default provisions the minted event directly (whole-library); the
-     * desktop inspector points it at the status host's pending-join gate so create shows the real
-     * join surface, exactly like the iOS app.
+     * world IS the shell). The default JOINS it through the real path — its details load, then the composed
+     * command bundle's commit, which runs `flow/Provision` — with the join gate's default choices, as a
+     * member who confirms the gate unchanged would. The desktop inspector points it at the status host's
+     * pending-join gate instead, so create shows the real join surface, exactly like the iOS app.
+     *
+     * It used to call the operator's [provision] lever, which writes the config cell directly: a create in the
+     * world then skipped the Provision flow a device runs (capability `harness-world-model`).
      */
-    var onEventMinted: suspend (eventId: String) -> Unit = { provision(it) }
+    var onEventMinted: suspend (eventId: String) -> Unit = { eventId -> joinMinted(eventId) }
+
+    private suspend fun joinMinted(eventId: String) {
+        val event = core.joinEvent.loadDetails(eventId).toJoinLoad() as? JoinLoad.Found
+            ?: error("a minted event $eventId has no loadable details — the mini-edge lost its marker")
+        userCommands.commitJoin(
+            eventId, event.name, event.startsAt, event.endsAt, event.deletesAt,
+            CaptureCutoff(event.startsAt.at), CaptureCeiling(event.endsAt.at), Direction.Both, false,
+        )
+    }
 
     /**
      * The world's photo-access requester: the honest fake's, over the same cell as [permission]. Asked while
