@@ -72,7 +72,8 @@ class MiniEdgeContractsTest {
         port: (client: HttpClient, base: String, seeded: Seeded) -> P,
     ): Entered<EdgeSubject<P>> = runBlocking {
         val store = BackendStore().apply { minAppVersion = DEPLOYED_MINIMUM }
-        val seeded = seed(EdgeSetup(miniEdgeClient(store), BASE))
+        val setup = EdgeSetup(miniEdgeClient(store), BASE)
+        val seeded = seed(setup)
         val gate = GateRecorder()
         val client = miniEdgeClient(store).withCredentialInterceptor(
             token = { seeded.identity.token },
@@ -80,7 +81,7 @@ class MiniEdgeContractsTest {
             appVersion = { seeded.identity.appVersion },
             onVersionRefused = gate::onVersionRefused,
         )
-        Entered.Ready(EdgeSubject(port(client, BASE, seeded), seeded, gate), dispose = { client.close() })
+        Entered.Ready(EdgeSubject(port(client, BASE, seeded), seeded, gate, setup), dispose = { client.close() })
     }
 
     private val directory = object : Binding<EventDirectoryState, EdgeSubject<EventDirectory>> {
@@ -138,7 +139,7 @@ class MiniEdgeContractsTest {
     private val manifest = object : Binding<ManifestPublisherState, EdgeSubject<ManifestPublisher>> {
         override val host = currentHost
         override val kind = BindingKind.Fake
-        override val reaches = setOf(ManifestPublisherState.MEMBER, ManifestPublisherState.NON_MEMBER, ManifestPublisherState.NO_SUCH_EVENT)
+        override val reaches = ManifestPublisherState.entries.toSet()
 
         override fun create(state: ManifestPublisherState, clauseId: String): Entered<EdgeSubject<ManifestPublisher>> =
             enter({ ManifestPublisherContract.seed(state, clauseId, it) }) { client, base, _ -> HttpManifestPublisher(client, base) }

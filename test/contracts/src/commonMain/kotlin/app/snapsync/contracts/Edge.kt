@@ -1,5 +1,9 @@
 package app.snapsync.contracts
 
+import kotlinx.serialization.json.jsonArray
+
+import io.ktor.client.request.get
+
 import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -105,7 +109,19 @@ class Seeded(
 )
 
 /** A backend clause's subject: the port, the addresses its state was entered at, and the gate's outcomes. */
-class EdgeSubject<P>(val port: P, val seeded: Seeded, val gate: GateObservation)
+class EdgeSubject<P>(
+    val port: P,
+    val seeded: Seeded,
+    val gate: GateObservation,
+    /**
+     * The edge's public surface, for a clause whose promise is observable only on another route — a publish's effect
+     * on the union. Null for a binding with no edge behind it (an in-memory attest client).
+     */
+    private val edge: EdgeSetup? = null,
+) {
+    /** The edge's public surface; a clause asking for it on a binding with none fails naming that. */
+    val setup: EdgeSetup get() = requireNotNull(edge) { "this binding has no edge to read through" }
+}
 
 /**
  * Enters backend states through the edge's public HTTP surface. [client] carries no interceptor: setup is not
@@ -164,6 +180,13 @@ class EdgeSetup(private val client: HttpClient, base: String) {
                 setBody(manifest.encodeToJson())
             },
         )
+    }
+
+    /** The asset ids the event's union serves — a read of the backend's public surface, as a member makes it. */
+    suspend fun unionAssetIds(eventId: String): Set<String> {
+        val response = checked("read the union", client.get("$base/events/$eventId/files") { served() })
+        return json.parseToJsonElement(response.bodyAsText()).jsonArray
+            .mapTo(mutableSetOf()) { it.jsonObject.getValue("assetId").jsonPrimitive.content }
     }
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */

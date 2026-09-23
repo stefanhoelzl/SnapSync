@@ -74,10 +74,14 @@ object LiveEdge {
         port: (client: HttpClient, base: String, seeded: Seeded) -> P,
     ): Entered<EdgeSubject<P>> = runBlocking {
         val (setup, setupClient) = setup()
-        val seeded = setupClient.use { seed(setup) }
+        val seeded = seed(setup)
         val gate = GateRecorder()
         val client = client(seeded.identity, gate)
-        Entered.Ready(EdgeSubject(port(client, base, seeded), seeded, gate), dispose = { client.close() })
+        // The setup client stays open for the clause: a clause may read another route through it.
+        Entered.Ready(
+            EdgeSubject(port(client, base, seeded), seeded, gate, setup),
+            dispose = { client.close(); setupClient.close() },
+        )
     }
 
     private fun start(): String {
