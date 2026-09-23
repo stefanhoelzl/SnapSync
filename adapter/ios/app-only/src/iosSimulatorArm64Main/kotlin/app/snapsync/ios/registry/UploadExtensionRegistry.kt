@@ -28,10 +28,18 @@ actual fun uploadExtensionRegistry(log: Logger): UploadExtensionRegistry = Simul
  * rather than fixed: persisting it would let a record planted by one scenario silently condition the next,
  * which is the failure mode a rig can least afford.
  */
-object SimulatorExtensionRecord {
+object SimulatorExtensionRecord : SimulatorRecord()
+
+/**
+ * One registration record, as [SimulatorExtensionRegistry] holds it. The process-wide [SimulatorExtensionRecord]
+ * is the one the app composes and the rig's levers reach; a contract binding constructs a fresh one per clause,
+ * in the state the clause needs, so no clause inherits another's record (capability `port-contracts`, "Clauses
+ * are conditioned on states that bindings enter at construction").
+ */
+open class SimulatorRecord(registered: Boolean = false) {
 
     /** Whether a configuration record currently exists. */
-    var registered: Boolean = false
+    var registered: Boolean = registered
         private set
 
     /**
@@ -58,23 +66,26 @@ object SimulatorExtensionRecord {
 }
 
 /**
- * A registry over [SimulatorExtensionRecord].
+ * A registry over one [SimulatorRecord] — the process-wide [SimulatorExtensionRecord] unless a binding passes its own.
  *
  * The outcomes are the **tested classifier's**, not this class's: it reports the same three raw facts the
  * PhotoKit adapter reports — did the write succeed, and if not, which domain and code — and renders what
  * [registrationOutcome] decides. So a scenario driven here and a device exercising the same code path
  * cannot disagree about what an outcome means, which is the one place a substitute could quietly lie.
  */
-private class SimulatorExtensionRegistry(private val log: Logger) : UploadExtensionRegistry {
+internal class SimulatorExtensionRegistry(
+    private val log: Logger,
+    private val record: SimulatorRecord = SimulatorExtensionRecord,
+) : UploadExtensionRegistry {
 
     override suspend fun setEnabled(enabled: Boolean): RegistrationOutcome {
-        val forced = SimulatorExtensionRecord.consumeFailure()
+        val forced = record.consumeFailure()
         // A disable against no record is a genuine failure on a real device (`3201`), not a courtesy
         // success — and the ritual's leading disable relies on exactly that outcome being classified as
         // expected. Reproducing it is what makes a clean-device join look here as it does there.
-        val naturalFailure = if (!enabled && !SimulatorExtensionRecord.registered) PHOTOS_IDENTIFIER_NOT_FOUND else null
+        val naturalFailure = if (!enabled && !record.registered) PHOTOS_IDENTIFIER_NOT_FOUND else null
         val code = forced ?: naturalFailure
-        if (code == null) SimulatorExtensionRecord.setRegistered(enabled)
+        if (code == null) record.setRegistered(enabled)
         val outcome = registrationOutcome(
             enabling = enabled,
             ok = code == null,
@@ -85,7 +96,7 @@ private class SimulatorExtensionRegistry(private val log: Logger) : UploadExtens
         return outcome
     }
 
-    override fun isEnabled(): Boolean? = SimulatorExtensionRecord.registered
+    override fun isEnabled(): Boolean? = record.registered
 }
 
 /** Apple's own domain string, so a rendered outcome reads identically to a device's. */

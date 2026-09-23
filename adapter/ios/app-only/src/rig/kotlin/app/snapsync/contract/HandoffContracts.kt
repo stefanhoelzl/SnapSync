@@ -4,6 +4,7 @@ import app.snapsync.contracts.BackgroundSchedulerContract
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CONTRACT_REFUSED
+import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.InAppContract
@@ -12,12 +13,16 @@ import app.snapsync.contracts.LinkOpenerState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SharePresenterState
+import app.snapsync.contracts.UploadExtensionRegistryContract
+import app.snapsync.contracts.recordingName
+import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.link.IosLinkOpener
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
 import app.snapsync.logging.deviceDiagnosticEnvironment
+import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.LinkOpener
 import app.snapsync.ports.SharePresenter
 import app.snapsync.share.IosShareSheet
@@ -74,38 +79,64 @@ internal class DeviceLinkOpenerBinding(private val recorder: Recorder) : Binding
 
 /**
  * This module's contracts the rig can run on a device, by name — `POST /contract/<name>`. Each answers with the
- * recording to commit verbatim at `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`.
+ * recording to commit verbatim at `test/contracts/recordings/<name>.rec`, the name its header's `contract`,
+ * `host` and (where declared) `grant` lines spell ([recordingName]).
+ *
+ * [refusal] is the rig's precondition for a run that rewrites durable OS state: the registration contract's
+ * full-grant run disables and re-enables the extension, which wipes every in-flight upload job, so it is
+ * refused while a membership could own one. It answers the reason, or `null` to proceed.
  */
-fun appDeviceContracts(): List<InAppContract> = listOf(
-    InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) { recordLinkOpener() },
+fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> = listOf(
+    InAppContract(LinkOpenerContract.name, Host.IOS_DEVICE_APP) {
+        recordAppOnDevice(LinkOpenerContract, null) { DeviceLinkOpenerBinding(it) }
+    },
     InAppContract(BackgroundSchedulerContract.name, Host.IOS_DEVICE_APP) { recordScheduler() },
+    InAppContract(UploadExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
 )
 
 /**
- * Runs `LinkOpenerContract` against this app's real `UIApplication` and renders the recording. Its last clause
- * opens a web page, so the app is in the background when the answer is sent.
- *
- * It refuses on a simulator: a recording taken there would be filed under the device's name, and the simulator
- * app runs this contract live instead.
+ * Runs the registration contract under the grant this process holds — the grant is a precondition of the run,
+ * not something a binding can enter (capability `port-contracts`, "An authorization the process cannot give
+ * itself is a precondition of the run") — so a person switches it in Settings between the two recordings.
  */
-private fun recordLinkOpener(): String {
+private fun recordRegistry(refusal: () -> String?): String = when (val grant = currentPhotoPermission()) {
+    PermissionStatus.GRANTED -> refusal()?.let { "$CONTRACT_REFUSED$it\n" }
+        ?: recordAppOnDevice(UploadExtensionRegistryContract, grant) { DeviceRegistryGrantedBinding(it) }
+    PermissionStatus.LIMITED ->
+        recordAppOnDevice(UploadExtensionRegistryContract, grant) { DeviceRegistryLimitedBinding(it) }
+    else -> CONTRACT_REFUSED +
+        "the registration contract records under a full grant or a partial one; this process holds $grant. " +
+        "Set photo access in Settings and re-run.\n"
+}
+
+/**
+ * Runs [contract] against this app's real platform through the recording binding [binding] builds, under
+ * [grant] where the binding declares one, and renders the recording.
+ *
+ * It refuses on a simulator: a recording taken there would be filed under the device's name.
+ */
+private fun <K : Enum<K>, T> recordAppOnDevice(
+    contract: Contract<K, T>,
+    grant: PermissionStatus?,
+    binding: (Recorder) -> Binding<K, T>,
+): String {
     if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
         return CONTRACT_REFUSED +
-            "this process is a simulator app, not ${Host.IOS_DEVICE_APP}; the simulator app runs LinkOpener live. " +
-            "Record on a device.\n"
+            "this process is a simulator app, not ${Host.IOS_DEVICE_APP}; record ${contract.name} on a device.\n"
     }
     val recorder = Recorder()
-    val results = run(LinkOpenerContract, DeviceLinkOpenerBinding(recorder))
+    val results = run(contract, binding(recorder))
     val env = deviceDiagnosticEnvironment(uploadTier = "n/a")
-    val header = listOf(
-        "contract" to LinkOpenerContract.name,
-        "host" to Host.IOS_DEVICE_APP.name,
-        "device" to env.deviceModel,
-        "os" to env.osVersion,
-        "build" to env.buildNumber,
-        "kotlin" to KotlinVersion.CURRENT.toString(),
-        "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
-    ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
+    val header = listOf("contract" to contract.name, "host" to Host.IOS_DEVICE_APP.name) +
+        listOfNotNull(grant?.let { "grant" to it.name }) +
+        listOf(
+            "file" to recordingName(contract.name, Host.IOS_DEVICE_APP, grant) + ".rec",
+            "device" to env.deviceModel,
+            "os" to env.osVersion,
+            "build" to env.buildNumber,
+            "kotlin" to KotlinVersion.CURRENT.toString(),
+            "recorded" to NSISO8601DateFormatter().stringFromDate(NSDate()),
+        ) + results.map { "live ${it.clauseId}" to it.outcome.render() }
     return recorder.recording(header).render()
 }
 
