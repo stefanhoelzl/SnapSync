@@ -60,11 +60,19 @@ fun tokenExpirySeconds(token: String): Long? = token.split(".").getOrNull(1)?.to
 class DeviceAttestation(
     private val key: AttestKey,
     private val client: AttestClient,
-    private val store: AttestStore,
+    store: AttestStore,
     private val identity: DeviceIdentity,
     private val clock: Clock,
     private val log: Logger = Logger.withTag("DeviceAttestation"),
 ) {
+
+    /**
+     * The store, with the token held in memory ([CachedAttestStore]): [token] is read for every request this
+     * process authenticates, and a Keychain read per request was a measurable cost. Every write here goes
+     * through it (so this process never reads its own write stale), and every attestation decision re-reads
+     * the store of record first ([refreshLocked]) — the extension shares the item and may have cleared it.
+     */
+    private val store = CachedAttestStore(store)
 
     private val _tokenChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -81,7 +89,13 @@ class DeviceAttestation(
      */
     val tokenChanged: Flow<Unit> = _tokenChanged
 
-    /** What every request builder reads. MAY be absent or expired — a `401` is a retryable failure. */
+    /**
+     * What every request builder reads. MAY be absent or expired — a `401` is a retryable failure.
+     *
+     * Served from memory between re-reads (see [store]); a rejection ([onRejected]) and every refresh re-read
+     * the store of record, so a copy the other process has outdated lives at most until this process's next
+     * wake or `401`.
+     */
     fun token(): String? = store.token()
 
     /**
@@ -227,6 +241,11 @@ class DeviceAttestation(
     }
 
     private suspend fun refreshLocked(): Boolean {
+        // Every decision starts from the store of record, not the in-memory copy: the upload extension shares the
+        // item and clears a token the backend rejected there, which this process's copy cannot have seen. This is
+        // the wake point (every launch, foreground, silent push and BGTask refreshes), so it is also what bounds
+        // how long [token] can serve a copy the other process has outdated.
+        store.reread()
         if (!key.isSupported()) {
             // The extension. It must never reach here — but if it ever does, do nothing rather than
             // half-attesting: it has no App Attest to attest WITH.

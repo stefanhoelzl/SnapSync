@@ -496,4 +496,46 @@ class DeviceAttestationTest {
         runCurrent()
         assertEquals(1, renews.size)
     }
+
+    // ---- the in-memory token copy: what each process sees of the other's writes ----
+
+    @Test
+    fun `a token the extension dropped is seen at the next wake - and renewed`() = runTest {
+        // The extension compare-and-clears a rejected token in the SHARED item; this process's copy cannot see
+        // that. Every refresh re-reads the store of record first, so the wake that follows renews it.
+        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val (attest, client, _) = attestation(client = FakeClient(renew = token(29)), store = store)
+        assertEquals(token(30), attest.token())
+
+        store.clearToken() // the extension, in its own process
+
+        attest.refresh()
+
+        assertEquals(1, client.renewCalls, "the refresh must see the drop, not the copy")
+        assertEquals(token(29), attest.token())
+        assertTrue(attest.attested.value)
+    }
+
+    @Test
+    fun `a rejection of a token the other process already dropped re-reads - and triggers nothing`() = runTest {
+        val store = InMemoryAttestStore(token = token(30), keyId = "k")
+        val (attest, _, _) = attestation(store = store)
+        assertEquals(token(30), attest.token())
+        store.clearToken() // the extension dropped it; a request carrying our copy is then refused
+
+        assertFalse(attest.onRejected(token(30)), "the compare runs against the store, which no longer holds it")
+
+        assertNull(attest.token(), "and the next request reads what the store holds, not the copy")
+    }
+
+    @Test
+    fun `this process's own renewal is what the next request carries`() = runTest {
+        val store = InMemoryAttestStore(token = token(1), keyId = "k")
+        val (attest, _, _) = attestation(store = store)
+        assertEquals(token(1), attest.token())
+
+        assertTrue(attest.ensureFresh())
+
+        assertEquals(token(30), attest.token())
+    }
 }
