@@ -9,6 +9,7 @@ import app.snapsync.model.uploadKey
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.PlatformUploadJob
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -21,6 +22,14 @@ enum class BackgroundTransferState {
 
     /** As many transfers in flight, to routes that never answer, as the tier allows at once. */
     AT_CAP,
+
+    /**
+     * Nothing in flight, on a tier that offers a transfer the destination refused ONCE for retry before settling it
+     * — the PhotoKit tier's single free `.retry`. The URLSession tier settles a refusal at once, so its bindings
+     * declare this unreachable; the clauses on it are the PhotoKit tier's own vocabulary, which is why they are
+     * conditioned on a state rather than stated for every tier.
+     */
+    SINGLE_FREE_RETRY,
 }
 
 /**
@@ -75,8 +84,13 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
     private fun TransferUnderTest.request(path: String, resource: Resource) =
         UploadRequest(url = base + path, headers = mapOf("Content-Type" to resource.contentType), resource = resource)
 
-    private suspend fun TransferUnderTest.seed(resource: Resource, state: LedgerState) =
-        ledger.recordUnlessSettled(resource.toLedgerRow(state))
+    /**
+     * Seeds the row for [resource] in [state], carrying the destination its transfer to [route] is created with —
+     * as the cycle's own record does. A tier that resolves a returned job by its destination (the PhotoKit tier,
+     * through `TransferRecord.entryForDestination`) finds no row for a job whose row names none.
+     */
+    private suspend fun TransferUnderTest.seed(resource: Resource, state: LedgerState, route: String) =
+        ledger.recordUnlessSettled(resource.toLedgerRow(state, destinationPath = destinationPathOf(base + route)))
 
     private suspend fun TransferUnderTest.rowState(key: String): LedgerState? = ledger.get(key)?.state
 
@@ -86,6 +100,20 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             transfer.drainTerminals()
             objects.landed(path) != null && rowState(key) == state
         }
+
+    /** The path of [url] — what a destination-resolving tier reads back off the job. */
+    private fun destinationPathOf(url: String): String =
+        url.substringAfter("://").let { rest -> "/" + rest.substringAfter('/', "") }.substringBefore('?')
+
+    /** Waits until the tier offers a refused transfer for [key] for retry, and answers it. */
+    private suspend fun TransferUnderTest.awaitOfferedForRetry(key: String): PlatformUploadJob {
+        var offered: PlatformUploadJob? = null
+        awaitWithin {
+            offered = transfer.fetchRetryJobs().firstOrNull { it.key == key }
+            offered != null
+        }
+        return checkNotNull(offered)
+    }
 
     override val clauses = clauses {
 
@@ -116,7 +144,7 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             val id = "CREATE_LANDS_AND_RECORDS"
             val resource = subject.usable(key(id))
             val route = path(id, ACCEPT)
-            subject.seed(resource, LedgerState.REQUESTED)
+            subject.seed(resource, LedgerState.REQUESTED, route)
             assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
             subject.awaitRecorded(route, resource.filename, LedgerState.COMPLETED)
         }
@@ -125,7 +153,7 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             val id = "CREATE_KEEPS_CONTENT_TYPE"
             val resource = subject.usable(key(id))
             val route = path(id, ACCEPT)
-            subject.seed(resource, LedgerState.REQUESTED)
+            subject.seed(resource, LedgerState.REQUESTED, route)
             assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
             subject.awaitRecorded(route, resource.filename, LedgerState.COMPLETED)
             assertEquals(
@@ -139,7 +167,7 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             val id = "REJECTED_NEVER_COMPLETES"
             val resource = subject.usable(key(id))
             val route = path(id, REJECT)
-            subject.seed(resource, LedgerState.REQUESTED)
+            subject.seed(resource, LedgerState.REQUESTED, route)
             assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
             transferSettle()
             subject.transfer.drainTerminals()
@@ -171,7 +199,7 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             val route = path(id, ACCEPT)
             // The row is NOT in flight — another uploader settled it, or a walk demoted it — when this completion
             // arrives. Several writers reach a row with no shared lock, so the record must be the guarded one.
-            subject.seed(resource, LedgerState.DISCOVERED)
+            subject.seed(resource, LedgerState.DISCOVERED, route)
             assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
             awaitWithin { subject.objects.landed(route) != null }
             transferSettle()
@@ -187,7 +215,7 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             val id = "DRAIN_HANDS_UP_NO_SUCCESS"
             val resource = subject.usable(key(id))
             val route = path(id, ACCEPT)
-            subject.seed(resource, LedgerState.REQUESTED)
+            subject.seed(resource, LedgerState.REQUESTED, route)
             assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
             val handedUp = mutableListOf<String>()
             awaitWithin {
@@ -200,5 +228,52 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
                 "a terminal fact never crosses the seam: a success is recorded in place, not handed up",
             )
         }
-    }
+    
+        clause("REFUSED_IS_OFFERED_FOR_RETRY", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
+            val id = "REFUSED_IS_OFFERED_FOR_RETRY"
+            val resource = subject.usable(key(id))
+            val route = path(id, REJECT)
+            subject.seed(resource, LedgerState.REQUESTED, route)
+            assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(route, resource), resource))
+            val offered = subject.awaitOfferedForRetry(resource.filename)
+            assertEquals(resource.contentType, offered.contentType, "a retried transfer keeps the type it was created with")
+        }
+
+        clause("RETRY_REPOINTS_AND_COMPLETES", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
+            val id = "RETRY_REPOINTS_AND_COMPLETES"
+            val resource = subject.usable(key(id))
+            val refused = path(id, REJECT)
+            val retried = path(id, ACCEPT, n = 2)
+            subject.seed(resource, LedgerState.REQUESTED, refused)
+            assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(refused, resource), resource))
+            val offered = subject.awaitOfferedForRetry(resource.filename)
+            subject.transfer.retryJob(offered, subject.request(retried, resource))
+            subject.awaitRecorded(retried, resource.filename, LedgerState.COMPLETED)
+        }
+
+        clause("RETRY_SPENT_IS_HANDED_UP_ONCE", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
+            val id = "RETRY_SPENT_IS_HANDED_UP_ONCE"
+            val resource = subject.usable(key(id))
+            val refused = path(id, REJECT)
+            val refusedAgain = path(id, REJECT, n = 2)
+            subject.seed(resource, LedgerState.REQUESTED, refused)
+            assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(refused, resource), resource))
+            val offered = subject.awaitOfferedForRetry(resource.filename)
+            subject.transfer.retryJob(offered, subject.request(refusedAgain, resource))
+            val handedUp = mutableListOf<String>()
+            awaitWithin {
+                handedUp += subject.transfer.drainTerminals().map { it.key }
+                resource.filename in handedUp
+            }
+            transferSettle()
+            handedUp += subject.transfer.drainTerminals().map { it.key }
+            assertEquals(
+                1,
+                handedUp.count { it == resource.filename },
+                "a transfer whose free retry was refused too is handed up for re-creation once — the tier " +
+                    "acknowledged it, so it is not presented again",
+            )
+            assertNotEquals(LedgerState.COMPLETED, subject.rowState(resource.filename), "a refused transfer is not completed")
+        }
+}
 }

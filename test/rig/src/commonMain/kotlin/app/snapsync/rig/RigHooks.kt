@@ -131,6 +131,12 @@ class RigHooks(
     private val osExtensionNotApplicable: String =
         "isUploadJobExtensionEnabled is a 26.1 selector; this OS has none, so the extension " +
             "could never be registered here and `false` would misreport that as `not registered`",
+    /**
+     * Keeps what a `PUT` landed on the upload receiver — the fixture route and the content type it arrived with — where
+     * the process running the upload-job contract can read it: the upload extension, which cannot read this app's
+     * memory, reads it from the App Group. A verb for the same reason as [publishBoundPort].
+     */
+    val recordLanded: (route: String, contentType: String?) -> Unit = { _, _ -> },
 ) {
 
     /**

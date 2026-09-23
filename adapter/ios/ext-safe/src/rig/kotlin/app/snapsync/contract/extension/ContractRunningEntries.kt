@@ -4,6 +4,7 @@ package app.snapsync.contract.extension
 
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.InAppContract
+import app.snapsync.ios.upload.extensionTransferContract
 import app.snapsync.logging.appGroupDirectory
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.ExtensionEntries
@@ -54,11 +55,32 @@ fun deleteContractRunFile(path: String) {
     NSFileManager.defaultManager.removeItemAtPath(path, error = null)
 }
 
+/** Where the upload receiver keeps what landed, one file per fixture route, holding its content type. */
+private const val LANDED_DIRECTORY: String = "contract-landed"
+
+private fun landedFile(route: String): String? =
+    contractRunFile(LANDED_DIRECTORY)?.let { "$it/" + route.trim('/').replace('/', '_') }
+
+/** Keeps that a `PUT` to [route] landed with [contentType]. Called by the app's upload receiver. */
+fun recordLanded(route: String, contentType: String?) {
+    val dir = contractRunFile(LANDED_DIRECTORY) ?: return
+    NSFileManager.defaultManager.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = null)
+    landedFile(route)?.let { writeContractRunFile(it, contentType.orEmpty()) }
+}
+
+/** What landed at [route]: its content type (empty when none was sent), or `null` when nothing has. */
+fun landedAt(route: String): String? = landedFile(route)?.let(::readContractRunFile)
+
+/** Forgets everything that landed — before a run, so a route never reads a previous run's object. */
+fun clearLanded() {
+    contractRunFile(LANDED_DIRECTORY)?.let(::deleteContractRunFile)
+}
+
 /**
  * The contracts that record inside the upload extension, by name — the registry a requested run is resolved
  * against. Each answers the recording to commit verbatim, as an in-app device run does.
  */
-fun extensionContracts(): List<InAppContract> = emptyList()
+fun extensionContracts(): List<InAppContract> = listOf(extensionTransferContract())
 
 /**
  * [core] with one difference: when the app's rig has requested a contract run, `process()` runs that contract

@@ -24,6 +24,7 @@ import app.snapsync.rig.noMembershipRefusal
 import app.snapsync.keychain.contract.deviceContracts
 import app.snapsync.contract.appDeviceContracts
 import app.snapsync.contract.simulatorAppContracts
+import app.snapsync.contract.extension.recordLanded
 import app.snapsync.rig.galleryReader
 import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.osExtensionEnabled
@@ -165,6 +166,7 @@ private fun iosHooks() = RigHooks(
         simulatorAppContracts(),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
     refusals = iosRefusals(),
+    recordLanded = ::recordLanded,
 )
 
 /**

@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.contract.extension.RUN_REQUEST_FILE
 import app.snapsync.contract.extension.RUN_RESULT_FILE
+import app.snapsync.contract.extension.clearLanded
 import app.snapsync.contract.extension.contractRunFile
 import app.snapsync.contract.extension.deleteContractRunFile
 import app.snapsync.contract.extension.extensionContracts
@@ -63,6 +64,7 @@ private fun runInExtension(
 private fun requestRun(name: String, registry: () -> UploadExtensionRegistry?): String? {
     val requestPath = contractRunFile(RUN_REQUEST_FILE) ?: return "this process has no App Group container"
     contractRunFile(RUN_RESULT_FILE)?.let(::deleteContractRunFile)
+    clearLanded()
     if (!writeContractRunFile(requestPath, name)) return "could not write the run request"
     val enabled = runBlocking {
         registry()?.setEnabled(false)

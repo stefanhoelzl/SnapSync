@@ -27,15 +27,16 @@
 
 - [x] 4.1 `:adapter:ios:ext-safe`: the `internal` `UploadJobApi` seam in `IosPhotoKitUploadPlatform` — `fetch`
       returning job facts + handles, `create`/`retry`/`acknowledge` — with the adapter's logic otherwise unchanged
-- [ ] 4.2 `:test:contracts`: add `SINGLE_FREE_RETRY` to `BackgroundTransferState` and the PhotoKit-only clauses
+- [x] 4.2 `:test:contracts`: add `SINGLE_FREE_RETRY` to `BackgroundTransferState` and the PhotoKit-only clauses
       on it (offered for retry; retry re-points and completes; retry spent is handed up; every presented job is
-      acknowledged); 8b's URLSession bindings declare it unreachable
+      acknowledged); 8b's URLSession bindings declare it unreachable. Also: 8b's `seed` now records the
+      destination each job is created with — the PhotoKit tier resolves a job's row only through it
 - [ ] 4.3 `Fake` binding for `SimulatorUploadJobQueue` declaring exactly what the substitute reaches
-- [ ] 4.4 `Host.IOS_DEVICE_PHOTOKIT_EXT` lands with its first binding; the ext-safe rig source set: the extension's
+- [x] 4.4 `Host.IOS_DEVICE_PHOTOKIT_EXT` lands with its first binding; the ext-safe rig source set: the extension's
       `Live` binding (usable = a library photo's resource; unusable = a non-resource payload; ledger = a fresh
       SQLDelight file per clause; `FixtureObjects` over the App Group's landed routes), and the recorder over
       `UploadJobApi` and the fixture reads, handle tokens and timestamps masked; registered in `extensionContracts()`
-- [ ] 4.5 `Replay` binding in ext-safe `iosTest` on `IOS_SIM_KEXE`, beside `IosKeychainReplayContractTest`
+- [x] 4.5 `Replay` binding in ext-safe `iosTest` on `IOS_SIM_KEXE`, beside `IosKeychainReplayContractTest`
 
 ## 5. Running inside the extension
 
@@ -50,7 +51,7 @@
 - [x] 5.4 `:test:rig`: `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` — preconditions in order (full grant, no
       membership → refusal naming the reset verb; then re-registration), write the request, wait bounded for
       the result file, answer it verbatim or a distinct timeout status
-- [ ] 5.5 `:test:rig`: the receiver answers 8b's route grammar (`TransferFixture`) under `/api/v2`, and writes each
+- [x] 5.5 `:test:rig`: the receiver answers 8b's route grammar (`TransferFixture`) under `/api/v2`, and writes each
       landed route and its content type into the App Group
 - [ ] 5.6 Confirm a production build contains none of 5.1–5.5 (no `app.snapsync.rig` or contract symbols in the
       extension binary)
