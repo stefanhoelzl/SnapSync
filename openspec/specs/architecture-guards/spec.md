@@ -29,6 +29,8 @@ property true of the whole app.
 
 Decision record: `changes/archive/2026-07-14-fix-locked-device-keychain-access`. Runtime-identity
 pins and the pending zone gates: `changes/archive/2026-07-17-pin-runtime-identity-and-zone-gates`.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: Architecture guards are executable and gate the build
 

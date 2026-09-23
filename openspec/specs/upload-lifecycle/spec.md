@@ -42,6 +42,8 @@ non-destructive verbs), `changes/archive/2026-08-27-fix-cap-truncation-loop` (se
 is decided by outcome), `changes/archive/2026-09-21-retire-the-upload-arm` (the transitions, the admission outcomes,
 launch-compares-join-forces), `changes/archive/2026-09-22-both-uploaders-active` (both uploaders active, registration spanning the
 membership, no repairs, create-until-refused).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: The arm's direction gate lives at the choke point, never at the invoker
 

@@ -27,6 +27,8 @@ The world composes attestation because `AppPorts` requires the seams, and leaves
 extension and on a simulator. An opt-in lever turns it on for the tests that need a credential *change* to
 happen at all. Two backend behaviours it still does not model, stated so they are not assumed: the token
 gate itself, and the `401` a device-scoped write answers when the backend holds no attestation record.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: Controllable in-memory world module
 

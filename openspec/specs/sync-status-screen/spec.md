@@ -27,6 +27,7 @@ Decision record: `changes/archive/2026-06-27-permission-on-status-screen`,
 `changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the screen is a function of its state).
 
 Decision record for the inbound ports and the shell as their driving adapter: `changes/archive/2026-09-22-shell-as-driving-adapter`.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ## Requirements
 ### Requirement: Sync status snapshots reduce to UI state

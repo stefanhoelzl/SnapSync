@@ -24,6 +24,8 @@ This is an **anti-abuse** mechanism, not a privacy or ownership one: the token a
 expired token stalls uploads and is renewed on the next wake, but never causes a photo to be lost.
 
 Decision record: `changes/archive/2026-07-14-add-device-attestation`.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: Only an attested SnapSync instance may call the API
 

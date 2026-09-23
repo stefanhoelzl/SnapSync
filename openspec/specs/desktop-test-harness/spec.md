@@ -3,6 +3,8 @@
 ## Purpose
 
 The desktop dual-pane harness that previews the real shared status screen in a phone-sized frame and drives it into any supported state via a control panel.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+
 ## Requirements
 ### Requirement: Dual-pane harness layout
 

@@ -26,6 +26,7 @@ expected value out of the guard and into this requirement, so the enumeration be
 `ModuleSetTest` at test runtime rather than copied into it.
 
 Decision record for the inbound ports and the shell as their driving adapter: `changes/archive/2026-09-22-shell-as-driving-adapter`.
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ## Requirements
 ### Requirement: The module set withholds; packages organize

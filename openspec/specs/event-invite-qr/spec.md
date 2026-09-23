@@ -11,6 +11,7 @@ joined-layer visibility rule, the QR display, the fire-and-forget share as the
 displayed QR is the full join capability (any scanner becomes an uploader; an existing member
 re-scanning reconciles and uploads nothing new).
 Decision record: `changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the invite URL is reduced, not a parameter).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ## Requirements
 ### Requirement: The invite link is derived from the joined event

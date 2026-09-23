@@ -28,6 +28,7 @@ remaining inert on the simulator is a known, accepted limitation", while leaving
 `changes/archive/2026-08-27-stop-repeating-futile-import-work` (why adjudication is a once-per-process
 recovery sweep rather than every trigger's first act, why an import the library cannot perform settles
 terminally and is reported at `Error`, and the measured ingest-time move semantics both rest on).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ## Requirements
 

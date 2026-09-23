@@ -33,6 +33,7 @@ unavailable and the surface renders no row.
 
 Decision record: `changes/archive/2026-07-22-show-join-share-count`,
 `changes/archive/2026-08-28-make-the-screen-a-function-of-state` (absent and zero are different answers).
+Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ## Requirements
 ### Requirement: A pre-commit count of the photos that would be shared
