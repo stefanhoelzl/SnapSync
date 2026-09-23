@@ -1,5 +1,8 @@
 package app.snapsync.world
 
+import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.ports.PushTokenSource
+import app.snapsync.ports.PushHttpClient
 import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
@@ -240,8 +243,9 @@ class World(
     fun consumeStagedBytes(vararg paths: String) {
         stagedFiles.removeAll(paths.toSet())
     }
-    /** Counts the real `Provision` flow's on-join push re-registration (capability `push-registration`):
-     *  the `registerPush` effect below increments it, so a test can assert the join path fired it. */
+    /** Push-registration writes that LANDED on the mini-edge (capability `push-registration`), counted at the
+     *  port: the composed registration — its launch/rotation collector and the join's re-PUT — writes through
+     *  it, so a test can assert the join path fired it. Counted after the write, so a count is a landed write. */
     var registerPushCount: Int = 0
         private set
 
@@ -249,6 +253,9 @@ class World(
      *  re-queues it however it ends — so a test can tell those entries apart (capability `photo-download`). Read
      *  off the world's backstop scheduler port, which the composition now reaches the platform through. */
     val backstopsScheduled: Int get() = backstopScheduler.scheduled
+
+    /** The OS-delivered APNs token, as the world's shell delivers it (none until a test delivers one). */
+    val pushTokens: PushTokenSource = PushTokenSource("sandbox")
     val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
 
@@ -492,8 +499,6 @@ class World(
             // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
             extensionRegistration = { null },
             uploaderPin = { null },
-            // TODO(G2 task 2.1): built in compose/ rather than supplied here; until then stated explicitly.
-            refreshAttestation = {},
             configStore = configStore,
             photoAccess = permission,
             photoAccessRequester = requester,
@@ -537,15 +542,18 @@ class World(
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
             // constant over the world's forgeable album membership, exactly as the shell wires it.
             leaveNotifier = leaveNotifier,
-            // The world IS the shell, and its provision is the operator's: load the share set as a join
-            // does, then persist — so a join through the REAL `UserCommands` ends with the same ledger a
-            // device's would (capability `harness-world-model`).
-            provision = { cfg ->
-                loadShareSetFor(cfg.eventId)
-                configCell.value = cfg
+            // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
+            // world runs the REAL Provision flow now — including this re-registration — rather than a
+            // world-local provision body (capability `harness-world-model`).
+            pushHttpClient = object : PushHttpClient {
+                private val inner = KtorPushHttpClient(client)
+                override suspend fun put(url: String, jsonBody: String): Result<Unit> =
+                    inner.put(url, jsonBody).also { registerPushCount++ }
+
+                override suspend fun post(url: String): Result<Unit> = inner.post(url)
             },
-            // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
-            registerPush = { registerPushCount++ },
+            backendHost = host,
+            pushTokens = pushTokens,
             onEventMinted = { eventId -> onEventMinted(eventId) },
             log = logs.logger("World"),
         ),

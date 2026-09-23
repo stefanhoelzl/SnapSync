@@ -1,7 +1,5 @@
 package app.snapsync.ios
 
-import app.snapsync.model.ApnsPushToken
-import app.snapsync.model.EventConfig
 import app.snapsync.model.SceneMode
 import app.snapsync.model.appVisibilityFrom
 import app.snapsync.model.resolveScene
@@ -21,25 +19,17 @@ import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.join.HttpEventJoin
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.toFacts
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.registry.uploadExtensionRegistry
 import app.snapsync.ports.UploadExtensionRegistry
-import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
-import app.snapsync.feature.membership.toJoinLoad
-import app.snapsync.push.HttpPushTokenPublisher
-import app.snapsync.feature.push.PushRegistration
+import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
@@ -96,26 +86,19 @@ import co.touchlab.kermit.Severity
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSUserActivity
-import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSOperatingSystemVersion
-import platform.Foundation.NSPredicate
 import platform.Foundation.NSProcessInfo
-import platform.Photos.PHAsset
-import platform.Photos.PHFetchOptions
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationWillResignActiveNotification
@@ -454,28 +437,19 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 leaveNotifier = leaveNotifier,
-                // Coordination is the `flow/` zone's (step 8); this root supplies the provision flow's
-                // entry (a thin log-wrapped delegator) and the shell/platform effect lambdas the flows
-                // coordinate over — each a port/platform touch a flow may not make directly.
-                provision = ::provisionEvent,
+                // A minted event routes into the host's join gate, so create and a scanned QR take one gate.
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
-                refreshAttestation = ::refreshAttestation,
                 // The trigger-time membership re-read (migration step 12): every flow re-reads the
                 // persisted config before acting — cross-process writes and a pre-first-unlock seed
                 // never notify this process's StateFlow, and the reload retains the last good value
                 // on an unreadable read (the pure `configAfterReload` rule).
                 configRefresh = config,
                 backstopScheduler = backstopScheduler,
-                // Re-register the APNs token on join (capability `push-registration`): re-`PUT`s the
-                // current OS-delivered token so a device whose config the nightly sweep collected
-                // (capability `scheduled-cleanup`) is pushable again the instant it rejoins warm. The
-                // same idempotent `register` the launch/rotation collector uses; a null token (none
-                // delivered yet) is a no-op.
-                registerPush = {
-                    pushTokenSource.token.value?.let { token ->
-                        pushRegistration.register(ApnsPushToken(token, pushTokenSource.env))
-                    }
-                },
+                // The push registration's port, host and token source (capability `push-registration`):
+                // `compose/` builds the registration, its launch/rotation collector and the on-join re-PUT.
+                pushHttpClient = KtorPushHttpClient(http),
+                backendHost = backendHost,
+                pushTokens = pushTokenSource,
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
                 log = log,
@@ -502,36 +476,13 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // Deliberately detached, unlike every wake path: this fires from inside this client's
                 // own response interceptor, so awaiting a refresh here would re-enter the interceptor
                 // from within itself. It carries no OS receipt, so nothing is being falsely reported.
-                scope.launch { refreshAttestation() }
+                scope.launch { app.attestation.refresh() }
             },
             // The backend refuses this build as too old (capability `min-app-version`). Reported
             // straight into the read-model the screen observes; a served response clears it.
             onVersionRefused = { minimum -> app.versionGate.refused(minimum) },
             onServed = { app.versionGate.served() },
         )
-    }
-
-    /**
-     * Refresh the token if it is stale. Called at EVERY point this process is already awake — launch,
-     * foreground, a silent-push wake, and each `BGTask` handler — rather than from a dedicated background
-     * task: iOS budgets task identifiers per app, so a third one would compete with the two we have and
-     * would still fire only when the system felt like it. Checking at every wake gets strictly more
-     * chances to renew than any schedule could.
-     *
-     * Best-effort and non-throwing: a background wake must not die because attestation failed.
-     */
-    private suspend fun refreshAttestation() {
-        // Awaited, not launched (law "A trigger flow never outlives its own run"). The launch also made
-        // every trigger race its own credential: `refreshAttestation()` was fired alongside the fetches
-        // it exists to authorize, so a request could go out carrying the token being replaced.
-        // `refresh()` short-circuits on a fresh token, so awaiting costs nothing in the common case.
-        //
-        // Wiring, and nothing else. Both rules live in the trust feature: whether to surface at all
-        // (only when the token is UNUSABLE and could not be replaced) and how long a verdict may be
-        // shown (never past the start of the next refresh). The shell used to hold the cell those
-        // rules wrote into, which is how a background wake's verdict survived a 26-hour suspension
-        // onto a member's first frame (`SNAPSYNC-20`).
-        app.attestation.refresh()
     }
 
     // The app-side handle on the shared App-Group ledger: the app's own uploader's `LedgerWriter` (built by
@@ -580,12 +531,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // adapter, not inline: what an absent key becomes is a decision, and this shell holds none.
     internal val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
 
-    // Registers the device APNs token with the backend (PUT devices/<id>) over the shared Darwin
-    // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
-    // on the next token, never blocking join/upload/download. The collector is launched from [host].
-    private val pushRegistration: PushRegistration by lazy {
-        PushRegistration(HttpPushTokenPublisher(http, backendHost, deviceId = { deviceIdentity.deviceId() }))
-    }
 
     // The silent-push cross-arm fan-out (a push means "the event changed": foreign photos to pull, and —
     // since the event is live — a good moment to contribute our own) is now the `flow/SilentPush` trigger.
@@ -607,7 +552,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         // live in `compose/` (`AppCore.installPushRegistration`) — they are a join between two blind
         // features, which is behaviour rather than wiring — and install ONLY from this host-assembly
         // path, beside the permission subscriptions and for the same reason.
-        app.installPushRegistration(pushRegistration, pushTokenSource)
+        app.installPushRegistration()
         // The host observes the adapters' read-model StateFlows directly (migration step 9's split:
         // presentation names no ports — the Keychain/PhotoKit adapters stay behind their flows).
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
@@ -996,22 +941,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * half was a no-op below iOS 26.1 — so joining an event tore the upload arm down and started nothing,
      * then re-uploaded the whole post-cutoff library. The seam now has no destructive verb to reach.
      */
-    // Persist the WHOLE [EventConfig] the join/create use-case built and run the join side effects.
-    // Taking the object (not its fields) is deliberate: the composition root must never destructure and
-    // rebuild it, or a newly-added field (the `minPhotoDate` cutoff was such a field) is silently dropped
-    // before the Keychain save the extension reads. Named `cfg` to avoid shadowing the `config` store.
-    private suspend fun provisionEvent(cfg: EventConfig) = log.invocation(
-        "provisionEvent",
-        params = "eventId=${cfg.eventId} name=${cfg.name} cutoff=${cfg.minPhotoDate}",
-    ) {
-        // The switch-leave → save → refresh → arm → album → reconcile coordination is the
-        // `flow/Provision` trigger's; this thin wrapper keeps only the entry-point log context (over
-        // IosLogScope) so the flow's synchronous steps carry `[provisionEvent]` and its escaping launches
-        // (reconcile / push) self-label, exactly as before. Nothing here destructures the config (a
-        // newly-added field must not be dropped before the save the extension reads).
-        app.provisionFlow.run(cfg)
-    }
-
     // The permission-grant subscriptions (upload-arm start + event-album ensure) live in `compose/`
     // (`AppCore.installPermissionSubscriptions`, migration step 8) and are installed ONLY from the
     // [host] assembly above — never on mere [AppCore] construction, so a cold background wake starts

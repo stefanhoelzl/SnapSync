@@ -1,5 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.feature.push.ApnsPushToken
+import app.snapsync.ports.PushHttpClient
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
@@ -234,8 +236,15 @@ class AppPorts(
      *  [LeaveNotifier]). The `flow/` and `feature/` consumers still take a lambda, which `compose/`
      *  builds from this port — they may not name a port at all (law "flow/ never references ports/"). */
     val leaveNotifier: LeaveNotifier,
-    val provision: suspend (EventConfig) -> Unit,
     val onEventMinted: suspend (eventId: String) -> Unit,
+    /** The push-registration write (capability `push-registration`): the PUT of this device's APNs token.
+     *  A port, from which `compose/` builds `PushRegistration` — the registration used to be built by the
+     *  shell and re-entered through a `registerPush` lambda the world bound to a counter instead. */
+    val pushHttpClient: PushHttpClient,
+    /** The backend base the push registration writes under (the same host every other seam uses). */
+    val backendHost: String,
+    /** The OS-delivered APNs token and its environment (capability `push-registration`). */
+    val pushTokens: PushTokenSource,
     /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
      *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
     val diagnosticsReporter: DiagnosticsReporter,
@@ -251,17 +260,9 @@ class AppPorts(
      *  than a port, because every field is a constant of the running build rather than a seam to be
      *  stubbed. */
     val diagnosticEnvironment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
-    // ── Shell/platform effect lambdas the `flow/` triggers coordinate over (migration step 8) ──
-    // Each is a port/platform touch a flow may not make directly (law "flow/ never references ports/"):
-    // the shell supplies it here and `compose/` passes it to the flow. All default to inert for the
-    // world harness / tests, which drive the features directly and never mount a flow.
-    //
-    // Every Unit-returning one is `suspend` — law "A trigger flow never outlives its own run". Not
-    // because they all suspend (a `BGTaskScheduler` submit does not), but because a flow cannot see
-    // which of them the shell backed with a detached launch, and a non-suspend `() -> Unit` can only
-    // ever be fire-and-forget. Typing them `suspend` is what makes the flow's await mean something.
-    /** Renew the attestation token if stale — a wake point (`device-attestation`). */
-    val refreshAttestation: suspend () -> Unit,
+    // ── The ports the `flow/` triggers coordinate over (migration step 8) ──
+    // A flow may not name a port (law "flow/ never references ports/"): `compose/` builds each flow's
+    // collaborator from the port here, so no shell can bind a flow's effect to a body of its own.
     /** Re-read the persisted membership into the config StateFlow (migration step 12: every trigger
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
      *  this process's StateFlow). A port: on iOS it is an App-Group file read. */
@@ -275,10 +276,6 @@ class AppPorts(
      *  serves every composition that never sees one (world by default, desktop harnesses). */
     val selectionChanges: PhotoSelectionChangeSource = PhotoSelectionChangeSource.None,
 
-    /** Re-register the device's APNs push token on join (capability `push-registration`): the shell
-     *  builds it from its `PushRegistration` + `PushTokenSource`. Inert by default (world/tests hold no
-     *  push stack). Closes the warm-rejoin window the nightly sweep's config collection opens. */
-    val registerPush: suspend () -> Unit,
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
      *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell
@@ -596,7 +593,7 @@ class AppCore internal constructor(
             // HERE rather than inside `flow/Provision`: a flow may not detach work (law "A trigger flow never
             // outlives its own run"), and the gather must not hold up the join (capability `event-album`).
             provision = { cfg ->
-                ports.provision(cfg)
+                provisionEvent(cfg)
                 albumGather.start("provision", cfg.eventId)
             },
         )
@@ -810,7 +807,7 @@ class AppCore internal constructor(
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
-            refreshAttestation = ports.refreshAttestation,
+            refreshAttestation = { refreshAttestation() },
         )
     }
 
@@ -821,7 +818,7 @@ class AppCore internal constructor(
     val silentPushFlow: SilentPush by lazy {
         SilentPush(
             reloadConfig = { ports.configRefresh.refresh() },
-            refreshAttestation = ports.refreshAttestation,
+            refreshAttestation = { refreshAttestation() },
             // Download arm first, then the upload arm on the app-driven tier (order preserved from the
             // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
             // lazily; on iOS ≥26.1 it is null and only the download arm is woken.
@@ -841,7 +838,7 @@ class AppCore internal constructor(
         DownloadBackstop(
             downloadController = downloadController,
             reloadConfig = { ports.configRefresh.refresh() },
-            refreshAttestation = ports.refreshAttestation,
+            refreshAttestation = { refreshAttestation() },
         )
     }
 
@@ -865,7 +862,7 @@ class AppCore internal constructor(
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `limited-photo-access`).
             isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
-            registerPush = ports.registerPush,
+            registerPush = { registerPush() },
         )
     }
 
@@ -1184,12 +1181,40 @@ class AppCore internal constructor(
      * (a Ktor client over the shell's shared HTTP stack, and the compile-time APNs environment), and
      * `:domain` builds no platform object.
      */
-    fun installPushRegistration(registration: PushRegistration, tokens: PushTokenSource) {
+    fun installPushRegistration() {
         scope.launch {
             runCatching { attestation.ensureFresh() }
-            registration.run(tokens, attestation.tokenChanged)
+            pushRegistration.run(ports.pushTokens, attestation.tokenChanged)
         }
     }
+
+    /**
+     * The device's push registration (capability `push-registration`), built HERE over the push port rather
+     * than by a shell: the launch/rotation collector above and the join's re-registration below are the same
+     * instance on every composition, so the world exercises the real one.
+     */
+    val pushRegistration: PushRegistration by lazy {
+        PushRegistration(ports.pushHttpClient, ports.backendHost, identity = ports.deviceIdentity)
+    }
+
+    /** Re-register the delivered APNs token on join — a no-op before the OS has delivered one. */
+    private suspend fun registerPush() {
+        ports.pushTokens.token.value?.let { pushRegistration.register(ApnsPushToken(it, ports.pushTokens.env)) }
+    }
+
+    /** Renew the attestation token if it is stale — a wake point every trigger flow awaits (`device-attestation`). */
+    private suspend fun refreshAttestation() = attestation.refresh()
+
+    /**
+     * Persist the WHOLE config a join or create built and run the join side effects: `flow/Provision`, under the
+     * `provisionEvent` entry-point label so its synchronous steps carry it. Built here, not supplied by the shell:
+     * the world used to bind this seam to a body of its own, so a join in the world never ran the Provision flow.
+     */
+    private suspend fun provisionEvent(cfg: EventConfig) = ports.log.invocation(
+        ports.logScope,
+        "provisionEvent",
+        params = "eventId=${cfg.eventId} name=${cfg.name} cutoff=${cfg.minPhotoDate}",
+    ) { provisionFlow.run(cfg) }
 }
 
 /**
