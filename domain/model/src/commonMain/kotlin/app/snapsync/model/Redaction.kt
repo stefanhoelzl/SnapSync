@@ -9,7 +9,28 @@ package app.snapsync.model
  * SDK-generated per-install `user.id` is the deliberate structured-field exception (see the spec);
  * it never passes through here because it is not message text.
  */
-fun redactUuids(text: String): String = UUID_SHAPED.replace(text, REDACTED_UUID)
+fun redactUuids(text: String): String =
+    if (mayHoldUuid(text)) UUID_SHAPED.replace(text, REDACTED_UUID) else text
+
+/**
+ * Whether [text] can hold a UUID-shaped token at all: one needs 36 characters, four of them hyphens.
+ *
+ * A pure short-cut, never a second rule — it only skips the regex where the regex could not match, so
+ * [redactUuids]' output is unchanged. It exists because the scrub runs twice per log line bound for the
+ * reporting channel (the writer, then the breadcrumb hook that also covers the SDK's own crumbs), and most
+ * lines carry no identifier.
+ */
+private fun mayHoldUuid(text: String): Boolean {
+    if (text.length < UUID_LENGTH) return false
+    var hyphens = 0
+    for (c in text) {
+        if (c == '-' && ++hyphens == UUID_HYPHENS) return true
+    }
+    return false
+}
+
+private const val UUID_LENGTH = 36
+private const val UUID_HYPHENS = 4
 
 const val REDACTED_UUID: String = "‹uuid›"
 

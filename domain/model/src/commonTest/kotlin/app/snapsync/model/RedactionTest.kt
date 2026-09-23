@@ -51,6 +51,39 @@ class RedactionTest {
     }
 
     @Test
+    fun leavesTextThePreCheckSkipsIntact() {
+        // The cheap pre-check skips the regex for text that cannot hold a UUID (under 36 characters, or
+        // fewer than four hyphens). These sit right at its edges — it must only ever skip, never change
+        // the answer.
+        val skipped = listOf(
+            "",
+            "550e8400-e29b-41d4-a716-44665544000", // 35 characters, four hyphens
+            "550e8400e29b41d4a716446655440000xyzw", // 36 characters, no hyphens
+            "550e8400-e29b-41d4-a716446655440000", // 35 characters, three hyphens
+            "550e8400-e29b-41d4-a716x446655440000", // 36 characters, three hyphens
+            "a-b-c-d", // four hyphens, far too short
+        )
+        for (text in skipped) assertEquals(text, redactUuids(text))
+    }
+
+    @Test
+    fun redactsAUuidThatExactlyFillsTheText(): Unit =
+        assertEquals("‹uuid›", redactUuids("550e8400-e29b-41d4-a716-446655440000"))
+
+    @Test
+    fun hyphensElsewhereDoNotMakeANearMissMatch() {
+        // Enough length and hyphens to pass the pre-check, still no UUID: the regex decides, as before.
+        val text = "2026-09-23 upload-cycle: re-try of IMG-4021.HEIC (size 3024-4032)"
+        assertEquals(text, redactUuids(text))
+    }
+
+    @Test
+    fun aUuidWhoseHyphensComeLateInALongLineIsStillFound() {
+        val line = "x".repeat(200) + " 550e8400-e29b-41d4-a716-446655440000"
+        assertEquals("x".repeat(200) + " ‹uuid›", redactUuids(line))
+    }
+
+    @Test
     fun redactsAUuidTouchingWordCharacters() {
         // Log lines interpolate without spaces ("id=<uuid>," or "…/<uuid>)"). The rule is
         // content-blind: even a UUID glued to other characters is scrubbed.
