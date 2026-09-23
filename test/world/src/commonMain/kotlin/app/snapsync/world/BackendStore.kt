@@ -370,7 +370,16 @@ class BackendStore {
     /** Store a device's config doc (the `PUT /devices/<id>` effect — push-token registration). */
     fun putDeviceConfig(deviceId: String, json: String) {
         deviceConfigs[deviceId] = json
+        deviceConfigWrites[deviceId] = (deviceConfigWrites[deviceId] ?: 0) + 1
     }
+
+    private val deviceConfigWrites = mutableMapOf<String, Int>()
+
+    /**
+     * How many registrations the backend STORED for a device — inspectable outcome. A count, because the config
+     * is last-write-wins: the document after two identical writes is the document after one.
+     */
+    fun deviceConfigWritesOf(deviceId: String): Int = deviceConfigWrites[deviceId] ?: 0
 
     /**
      * Leave an event (the `DELETE /events/<id>/devices/<id>` endpoint, capability `api-endpoints`).
