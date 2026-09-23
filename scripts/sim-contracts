@@ -9,7 +9,8 @@
 # photos` writes a TCC row PhotoKit never consults), launches it, and runs every contract `GET /contract` lists
 # for this host. The contracts seed photos and never delete them, which is why the simulator is fresh.
 #
-# It FAILS on: any `Failed(` or `NotWithin(` outcome, any refusal (409: the process is not the simulator app, or it does not
+# It FAILS on: any outcome that fails a run — `Failed(`, `Diverged(`, `NotWithin(` (capability `port-contracts`,
+# "Outcomes are explicit and none is silent") — any refusal (409: the process is not the simulator app, or it does not
 # hold GRANTED), an empty registry, and an app that never publishes its rig port. Everything it learns goes to
 # build/sim-contracts/, which CI keeps as an artifact: the outcome tables, and on a no-answer the screenshot
 # and log, because a pending system alert is visible only in a screenshot.
@@ -86,6 +87,7 @@ for name in $(cat "$OUT/registry"); do
     cat "$OUT/$name.txt"
     if [ "$code" != 200 ]; then echo "  -> refused or missing"; status=1; fi
     if grep -q ' Failed(' "$OUT/$name.txt"; then echo "  -> a clause failed"; status=1; fi
+    if grep -q ' Diverged(' "$OUT/$name.txt"; then echo "  -> a clause diverged"; status=1; fi
     # A bounded wait on an OS callback that expired ran nothing: on a host CI runs live, that is not coverage.
     if grep -q ' NotWithin(' "$OUT/$name.txt"; then echo "  -> a clause's callback never came"; status=1; fi
 done

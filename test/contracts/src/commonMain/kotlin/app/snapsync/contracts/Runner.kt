@@ -75,12 +75,15 @@ const val CONTRACT_REFUSED: String = "refused: "
 
 /**
  * The CI entry point: runs the whole contract and fails ONCE, with the full outcome table, if any clause is
- * [Outcome.Failed] or [Outcome.Diverged]. `NotRunHere` never fails a run by itself — whether it is
- * admissible is the contract-coverage gate's question.
+ * [Outcome.Failed], [Outcome.Diverged] or [Outcome.NotWithin], whatever the binding's kind (capability
+ * `port-contracts`, "Outcomes are explicit and none is silent"). An expired wait established nothing: on a
+ * `Live` binding the clause ran nothing, on a `Replay` a recorded answer was never delivered, and on a `Fake`
+ * the double did not deliver what the clause requires. `NotRunHere` never fails a run by itself — whether it
+ * is admissible is the contract-coverage gate's question.
  */
 fun <K : Enum<K>, T> verify(contract: Contract<K, T>, binding: Binding<K, T>) {
     val results = run(contract, binding)
-    val bad = results.count { it.outcome is Outcome.Failed || it.outcome is Outcome.Diverged }
+    val bad = results.count { it.outcome is Outcome.Failed || it.outcome is Outcome.Diverged || it.outcome is Outcome.NotWithin }
     if (bad > 0) {
         fail("${contract.name} on ${binding.host} (${binding.kind}): $bad of ${results.size} clauses failed\n${results.table()}")
     }
