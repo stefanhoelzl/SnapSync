@@ -64,6 +64,6 @@
 
 ## 9. Docs and specs of record
 
-- [ ] 9.1 Update CLAUDE.md's module list: `:app:composition`, `:test:integration` JVM-only over the protocol, `:test:world` hosting the inbound bindings, `:app:ios`'s root delegating to `snapSyncHost`.
-- [ ] 9.2 Update the `ios-simulator` / `local-backend` skills where the journeys' deno-on-8080 and two-simulator setup changes what they say.
+- [x] 9.1 Update CLAUDE.md's module list: `:app:composition`, `:test:integration` JVM-only over the protocol, `:test:world` hosting the inbound bindings, `:app:ios`'s root delegating to `snapSyncHost`.
+- [x] 9.2 Update the `ios-simulator` / `local-backend` skills where the journeys' deno-on-8080 and two-simulator setup changes what they say.
 - [ ] 9.3 Run `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `./gradlew build`, and dispatch `gh workflow run ios.yml --ref integration-over-control` to smoke-check the `SnapSyncRoot` change on device (join, upload, version-refusal screen).
