@@ -53,8 +53,8 @@ a port first.
 #### Scenario: Mirroring a simulator app
 
 - **WHEN** the harness is launched attached to a simulator app's forwarded rig port
-- **THEN** the left pane shows that app's current status screen, and a leave tap reaches it as the `/user`
-  leave intent
+- **THEN** the left pane shows that app's current status screen, and tapping Join on its join gate reaches the
+  app as the `/user` confirm-join intent
 
 #### Scenario: A surface tap in the mirror
 

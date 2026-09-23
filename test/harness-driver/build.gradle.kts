@@ -54,8 +54,10 @@ fun registerDrive(taskName: String, harness: String, blurb: String) =
         jvmArgs("-Djava.awt.headless=true")
         systemProperty("harness.name", harness)
         systemProperty("harness.portFile", portFile.get().asFile.absolutePath)
+        (project.findProperty("snapsync.attach") as String?)?.let { systemProperty("snapsync.attach", it) }
         outputs.upToDateWhen { false }
     }
 
 registerDrive("driveForge", "forge", "Serve the forge harness (:app:desktop:runForge) headlessly over HTTP.")
 registerDrive("driveWorld", "world", "Serve the full-stack world harness (:app:desktop:run) headlessly over HTTP.")
+registerDrive("driveMirror", "mirror", "Serve the world harness mirroring a remote host (-Psnapsync.attach=<url>) headlessly.")

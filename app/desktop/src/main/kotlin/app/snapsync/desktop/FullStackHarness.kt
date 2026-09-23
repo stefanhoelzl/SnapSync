@@ -39,12 +39,15 @@ import kotlinx.coroutines.newSingleThreadContext
  * only; all testable logic lives in `:test:world` and the presentation/status modules.
  */
 fun main() = application {
+    // `-Psnapsync.attach=<url>` mirrors a remote control-channel host instead of composing a world (see
+    // [MirrorHarnessRoot]); the run task forwards it as this system property.
+    val attach = System.getProperty("snapsync.attach")?.takeIf { it.isNotBlank() }
     Window(
         onCloseRequest = ::exitApplication,
-        title = "SnapSync — full-stack world",
+        title = if (attach == null) "SnapSync — full-stack world" else "SnapSync — mirror of $attach",
         state = WindowState(size = DpSize(WORLD_WIDTH.dp, WORLD_HEIGHT.dp)),
     ) {
-        WorldHarnessRoot()
+        if (attach == null) WorldHarnessRoot() else MirrorHarnessRoot(attach)
     }
 }
 

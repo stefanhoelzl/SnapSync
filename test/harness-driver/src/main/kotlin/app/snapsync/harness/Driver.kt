@@ -25,6 +25,7 @@ import app.snapsync.desktop.FORGE_WIDTH
 import app.snapsync.desktop.ForgeHarnessRoot
 import app.snapsync.desktop.PHONE_TAG
 import app.snapsync.desktop.WORLD_HEIGHT
+import app.snapsync.desktop.MirrorHarnessRoot
 import app.snapsync.desktop.WORLD_WIDTH
 import app.snapsync.desktop.WorldHarnessRoot
 import com.sun.net.httpserver.HttpExchange
@@ -134,8 +135,8 @@ fun main() {
         // Match each harness's real window size. The scene default is 1024x768, which would clip the
         // world inspector (1240 wide) and silently truncate captures.
         "forge" -> FORGE_WIDTH to FORGE_HEIGHT
-        "world" -> WORLD_WIDTH to WORLD_HEIGHT
-        else -> error("unknown harness '$name' (expected: forge | world)")
+        "world", "mirror" -> WORLD_WIDTH to WORLD_HEIGHT
+        else -> error("unknown harness '$name' (expected: forge | world | mirror)")
     }
 
     val queue = LinkedBlockingQueue<Command>()
@@ -211,7 +212,14 @@ fun main() {
     route("/quit", quit = true) { { Reply.text("bye\n") } }
 
     runDesktopComposeUiTest(width, height) {
-        setContent { if (name == "forge") ForgeHarnessRoot() else WorldHarnessRoot() }
+        setContent {
+            when (name) {
+                "forge" -> ForgeHarnessRoot()
+                // The world harness attached to a remote control-channel host (`-Psnapsync.attach=<url>`).
+                "mirror" -> MirrorHarnessRoot(requireNotNull(System.getProperty("snapsync.attach")) { "mirror needs -Psnapsync.attach=<url>" })
+                else -> WorldHarnessRoot()
+            }
+        }
         waitForIdle()
 
         server.executor = null // handlers just enqueue and wait; the scene thread does the work.
