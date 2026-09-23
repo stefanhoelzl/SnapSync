@@ -3,6 +3,8 @@ package app.snapsync.rig
 import app.snapsync.compose.AppCore
 import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
+import app.snapsync.contracts.FixtureAnswer
+import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.presentation.StatusContainerHost
@@ -54,6 +56,9 @@ internal const val LOOPBACK = "127.0.0.1"
  * does not exist in a non-rig build).
  */
 const val DEFAULT_RIG_PORT: Int = 18099
+
+/** The path of the rig build's loopback upload base, under which the upload receiver answers. */
+const val UPLOAD_BASE_PATH: String = "/api/v2"
 
 private val json = Json { encodeDefaults = true; prettyPrint = true }
 
@@ -171,11 +176,11 @@ class RigServer(
             post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
             get("/contract") { call.traced { call.respondContractList() } }
             post("/contract/{name}") { call.traced { call.respondContract() } }
-            // The upload receiver a contract run inside the upload extension points its jobs at (capability
-            // `port-contracts`): the OS's upload daemon PUTs each job's bytes here, over the rig build's loopback
-            // upload base, and gets the status the clause's setup put in the path. The answer is a STIMULUS —
-            // it puts the OS's job queue into the clause's state — and no clause asserts it.
-            route("/api/v2/contract/{clause}/{status}") { handle { call.respondUpload() } }
+            // The upload receiver the upload-job contract's jobs are pointed at (capability `port-contracts`): the OS's
+            // upload daemon PUTs each job's bytes here, over the rig build's loopback upload base, in the fixture route
+            // grammar `scripts/transfer-fixture.py` serves the simulator app (`TransferFixture`). The answer is a
+            // STIMULUS — it puts the OS's job queue into the clause's state — and no clause asserts it.
+            route("$UPLOAD_BASE_PATH/{route...}") { handle { call.respondUpload() } }
         }
     }
 
@@ -224,11 +229,20 @@ class RigServer(
     }
 
     private suspend fun ApplicationCall.respondUpload() {
-        val clause = parameters["clause"]
-        val status = parameters["status"]?.toIntOrNull()?.let(HttpStatusCode::fromValue) ?: HttpStatusCode.BadRequest
+        val route = request.path().removePrefix(UPLOAD_BASE_PATH)
+        val answer = TransferFixture.answerOf(route)
         val bytes = runCatching { receive<ByteArray>().size }.getOrElse { -1 }
-        log.i { "[upload-receiver] ${request.httpMethod.value} clause=$clause bytes=$bytes -> ${status.value}" }
-        respondText("", status = status)
+        log.i { "[upload-receiver] ${request.httpMethod.value} $route bytes=$bytes -> $answer" }
+        when (answer) {
+            // Never answered: the transfer stays open until the OS gives up or the job is cancelled.
+            FixtureAnswer.Hold -> awaitCancellation()
+            is FixtureAnswer.Respond -> {
+                val contentType = request.headers["Content-Type"]
+                if (request.httpMethod.value == "PUT" && answer.status in 200..299) hooks.recordLanded(route, contentType)
+                respondText("", status = HttpStatusCode.fromValue(answer.status))
+            }
+            null -> respondText("not a fixture route: $route\n", status = HttpStatusCode.NotFound)
+        }
     }
 
     private suspend fun ApplicationCall.respondState() =
