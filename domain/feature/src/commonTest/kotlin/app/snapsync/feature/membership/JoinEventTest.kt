@@ -80,7 +80,7 @@ private fun joinEvent(
     enroller: FakeEnroller = FakeEnroller(enrollResult),
 ) = JoinEvent(
     configSource = FakeConfigSource(config),
-    deviceId = { DEVICE },
+    identity = { DEVICE },
     details = FakeDetails(details),
     enroller = enroller,
     provision = { provisioned += it },

@@ -68,6 +68,9 @@ import app.snapsync.downloadstore.iosDownloadStore
 import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
+import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.ports.DeviceIdentity
+import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
@@ -104,8 +107,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import platform.BackgroundTasks.BGProcessingTaskRequest
-import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -344,18 +345,15 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // shared group is empty but an id exists in a group an older build wrote to, that value is taken
     // over verbatim rather than re-minted — a second identity would orphan this device's byte
     // partition and make its own uploads read as another member's.
-    // `by lazy` and NOT memoizing a failure is load-bearing here: Kotlin's SynchronizedLazyImpl assigns
-    // its value only on success, so a resolve that throws is retried on the next access rather than fixed
-    // for the process. On a LOCKED device the store raises `SecureStoreUnavailable` rather than serving an
-    // id, and without the retry one early touch would poison the identity for the life of the process —
-    // silently, since nothing would re-attempt. `DeviceIdentityRetryTest` pins it rather than inheriting it.
+    // The resolve is the adapter's, behind the `DeviceIdentity` port (capability `module-architecture`):
+    // it caches its first success and never a failure — Kotlin's SynchronizedLazyImpl assigns its value
+    // only on success — so a resolve that throws on a LOCKED device (`SecureStoreUnavailable`) is retried
+    // on the next call rather than fixed for the process. `DeviceIdentityRetryTest` pins that property.
     //
     // The store itself is chosen by COMPILATION TARGET (`deviceIdPrimaryStore`, capability
     // `device-identity`): the addressed Keychain on `iosArm64`, an App-Group file on `iosSimulatorArm64`
     // where that group cannot exist. Nothing here decides which — that is the point.
-    private val deviceId: String by lazy {
-        KeychainDeviceIdentity(DeviceIdentityRole.MINTING).deviceId()
-    }
+    private val deviceIdentity: DeviceIdentity by lazy { KeychainDeviceIdentity(DeviceIdentityRole.MINTING) }
 
     /**
      * The composed app graph (spec `module-architecture`, "One shared composition"): this root
@@ -454,7 +452,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 attestKey = IosAttestKey(),
                 attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
                 attestStore = KeychainAttestStore(),
-                deviceId = { deviceId },
+                deviceIdentity = deviceIdentity,
                 clock = SystemClock,
                 // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
                 // every transition (capability `upload-lifecycle`) — this root supplies only facts.
@@ -478,8 +476,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // persisted config before acting — cross-process writes and a pre-first-unlock seed
                 // never notify this process's StateFlow, and the reload retains the last good value
                 // on an unreadable read (the pure `configAfterReload` rule).
-                reloadConfig = { config.reload() },
-                scheduleBackstop = ::scheduleDownloadBackstop,
+                configRefresh = config,
+                backstopScheduler = backstopScheduler,
                 // Re-register the APNs token on join (capability `push-registration`): re-`PUT`s the
                 // current OS-delivered token so a device whose config the nightly sweep collected
                 // (capability `scheduled-cleanup`) is pushable again the instant it rejoins warm. The
@@ -570,7 +568,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // is constructed while the graph is composed — which a locked background launch reaches before
     // first unlock. It is read per call, exactly as the composition's former closure over `deviceId`
     // did.
-    private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) { deviceId } }
+    private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost, deviceIdentity) }
 
     // The device-facing backend host (baked at compile time); shared by every generic HTTP adapter
     // handed to the composed graph and the event-metadata (name) fetch. Reads through
@@ -598,7 +596,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
     // on the next token, never blocking join/upload/download. The collector is launched from [host].
     private val pushRegistration: PushRegistration by lazy {
-        PushRegistration(HttpPushTokenPublisher(http, backendHost, deviceId = { deviceId }))
+        PushRegistration(HttpPushTokenPublisher(http, backendHost, deviceId = { deviceIdentity.deviceId() }))
     }
 
     // The silent-push cross-arm fan-out (a push means "the event changed": foreign photos to pull, and —
@@ -971,14 +969,15 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         }
     }
 
-    /** Queue a `BGProcessingTask` request so the OS runs the download backstop (`onBackgroundTask`) at a future idle moment. */
-    @OptIn(ExperimentalForeignApi::class)
-    fun scheduleDownloadBackstop() {
-        val request = BGProcessingTaskRequest(DOWNLOAD_BACKSTOP_TASK_ID)
-        request.requiresNetworkConnectivity = false // imports operate on already-staged bytes
-        request.requiresExternalPower = false
-        runCatching { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, null) }
-            .onFailure { log.w(it) { "could not schedule download backstop" } }
+    /**
+     * Queues the `BGProcessingTask` request so the OS runs [runDownloadBackstop] at a future idle moment.
+     *
+     * The same adapter the upload heartbeat uses, so a refused submit is reported with the platform's error
+     * rather than lost: the hand-written submit this replaced wrapped a call that returns `false` instead of
+     * throwing in `runCatching`, so a refusal — which ends the backstop chain — left no trace.
+     */
+    private val backstopScheduler: BackgroundScheduler by lazy {
+        IosBackgroundScheduler(log, DOWNLOAD_BACKSTOP_TASK_ID, requiresNetwork = false, earliestBeginSeconds = 0.0)
     }
 
     /**
@@ -1074,7 +1073,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
             // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
             // success, so this is one read per process, as before.
-            resolveDeviceId = { deviceId },
+            deviceIdentity = deviceIdentity,
             host = backendHost, log = log,
             httpClient = http,
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.

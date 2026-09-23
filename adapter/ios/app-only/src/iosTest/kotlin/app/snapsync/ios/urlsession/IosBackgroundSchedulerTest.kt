@@ -39,6 +39,7 @@ class IosBackgroundSchedulerTest {
     private val scheduler = IosBackgroundScheduler(
         log = Logger(StaticConfig(minSeverity = Severity.Verbose, logWriterList = listOf(captured)), "test"),
         taskIdentifier = "app.snapsync.test.unregistered",
+        requiresNetwork = true,
     )
 
     @Test

@@ -17,6 +17,6 @@ import app.snapsync.feature.membership.ShareSetLoad
 internal fun shareSetLoadFor(ports: AppPorts): ShareSetLoad = ShareSetLoad(
     files = ports.uploadRecord.files,
     ledger = ports.uploadRecord.ledger,
-    deviceId = ports.deviceId,
+    identity = ports.deviceIdentity,
     log = ports.log,
 )

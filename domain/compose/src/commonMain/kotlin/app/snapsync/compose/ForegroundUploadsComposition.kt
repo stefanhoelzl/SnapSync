@@ -37,6 +37,6 @@ internal fun foregroundUploadsFor(ports: AppPorts): ForegroundUploads = Foregrou
 internal fun storedUploadSettleFor(ports: AppPorts): StoredUploadSettle = StoredUploadSettle(
     files = ports.uploadRecord.files,
     ledger = ports.uploadRecord.ledger,
-    deviceId = ports.deviceId,
+    identity = ports.deviceIdentity,
     log = ports.log,
 )

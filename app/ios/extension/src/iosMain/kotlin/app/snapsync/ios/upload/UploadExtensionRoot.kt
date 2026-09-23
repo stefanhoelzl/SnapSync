@@ -1,5 +1,6 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.ports.AttestStore
@@ -137,9 +138,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // this device two identities: the extension uploaded under one while the app reconciled under the
     // other, so the app re-imported every photo the device itself had uploaded. Absence raises
     // `DeviceIdentityAbsent` and the cycle gate skips, exactly as it does for an unreadable Keychain.
-    private val deviceId: String by lazy {
-        KeychainDeviceIdentity(DeviceIdentityRole.READ_ONLY).deviceId()
-    }
+    private val deviceIdentity: DeviceIdentity by lazy { KeychainDeviceIdentity(DeviceIdentityRole.READ_ONLY) }
 
     // One shared Darwin (NSURLSession) HTTP client for both in-cycle network calls (the reconcile
     // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed
@@ -220,7 +219,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.
-                deviceId = { deviceId },
+                deviceIdentity = deviceIdentity,
                 // Read per gate call, as this root always has: the compile-time
                 // `uploadBase` baked into the extension bundle.
                 host = { bakedUploadBase() },

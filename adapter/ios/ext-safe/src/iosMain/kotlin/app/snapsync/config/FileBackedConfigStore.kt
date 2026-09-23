@@ -2,6 +2,7 @@
 
 package app.snapsync.config
 
+import app.snapsync.ports.ConfigRefresh
 import app.snapsync.model.EventConfig
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.ConfigFileRead
@@ -94,7 +95,7 @@ class FileBackedConfigStore(
         .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)
         ?.path,
     private val log: Logger = Logger.withTag("fileConfig"),
-) : ConfigSource, ConfigStore, ConfigReader {
+) : ConfigSource, ConfigStore, ConfigReader, ConfigRefresh {
 
     private val state = MutableStateFlow(read().joinedOrNull())
     override val config: StateFlow<EventConfig?> = state
@@ -145,6 +146,8 @@ class FileBackedConfigStore(
     fun reload() {
         state.value = configAfterReload(read(), state.value)
     }
+
+    override suspend fun refresh() = reload()
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
     private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config

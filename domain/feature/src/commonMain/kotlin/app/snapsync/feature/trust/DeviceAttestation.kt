@@ -1,5 +1,6 @@
 package app.snapsync.feature.trust
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.Clock
 import app.snapsync.ports.AttestKey
@@ -58,7 +59,7 @@ class DeviceAttestation(
     private val key: AttestKey,
     private val client: AttestClient,
     private val store: AttestStore,
-    private val deviceId: () -> String,
+    private val identity: DeviceIdentity,
     private val clock: Clock,
     private val log: Logger = Logger.withTag("DeviceAttestation"),
 ) {
@@ -231,7 +232,7 @@ class DeviceAttestation(
         val existingKeyId = store.keyId()
         if (existingKeyId != null) {
             val renewed = runCatching {
-                client.renewToken(deviceId(), key.assert(existingKeyId, challenge), challenge)
+                client.renewToken(identity.deviceId(), key.assert(existingKeyId, challenge), challenge)
             }.getOrElse {
                 // The assertion itself failed, LOCALLY — no renewal request was ever sent. `AttestClient`
                 // maps every transport and refusal outcome to null by contract, so the only thing that can
@@ -262,7 +263,7 @@ class DeviceAttestation(
         return runCatching {
             val keyId = key.generateKey()
             val attestation = key.attest(keyId, challenge)
-            val minted = client.mintToken(deviceId(), keyId, attestation, challenge)
+            val minted = client.mintToken(identity.deviceId(), keyId, attestation, challenge)
             if (minted == null) {
                 log.w { "the backend refused the attestation" }
                 false

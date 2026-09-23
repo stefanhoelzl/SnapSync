@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.ports.DeviceFilesSource
@@ -45,14 +46,14 @@ class ShareSetLoad(
     private val files: DeviceFilesSource,
     private val ledger: LedgerStore,
     /** The device identity; a thunk because it resolves against a protected store on first use. */
-    private val deviceId: () -> String,
+    private val identity: DeviceIdentity,
     private val log: Logger = Logger.withTag("ShareSetLoad"),
 ) {
     suspend fun load() {
         // `list` answers failures as a `Result`; a throw (the device-id read, say) is folded into the same
         // arm. Cancellation is not a failure and is rethrown — the caller is being torn down.
         val listing = try {
-            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(deviceId()) }
+            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(identity.deviceId()) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

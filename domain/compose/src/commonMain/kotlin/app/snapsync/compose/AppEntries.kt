@@ -171,7 +171,7 @@ internal class AppEntries(
                     }
                 }
             } finally {
-                ports.scheduleBackstop()
+                ports.backstopScheduler.scheduleNext()
             }
         }
     }

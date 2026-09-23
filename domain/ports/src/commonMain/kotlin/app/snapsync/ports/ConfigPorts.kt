@@ -164,6 +164,20 @@ interface ConfigSource {
 }
 
 /**
+ * Re-read the persisted membership into this process's [ConfigSource].
+ *
+ * A port, not a `suspend () -> Unit`: on iOS the re-read is an App-Group file read, which is a platform
+ * read the composition must not hand the core as a bare lambda (law "Ports are the I/O boundary named for
+ * the need", capability `module-architecture`). Every trigger flow re-reads before acting, because
+ * cross-process writes and a pre-first-unlock seed never notify this process's state flow. An implementation
+ * that holds its membership in-process only (the world harness) refreshes nothing, and says so by
+ * implementing this as a no-op rather than by the composition defaulting it away.
+ */
+fun interface ConfigRefresh {
+    suspend fun refresh()
+}
+
+/**
  * The command port for provisioning config: persist [config] and update the [ConfigSource].
  * Saving a config equal (field-for-field, incl. `name`) to the current one is an idempotent no-op;
  * saving a config differing in `eventId` **or** `name` replaces it and emits (a name-only change
