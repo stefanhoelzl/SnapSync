@@ -1,4 +1,4 @@
-package app.snapsync.integration
+package app.snapsync.world
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind

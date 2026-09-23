@@ -1,4 +1,4 @@
-package app.snapsync.integration
+package app.snapsync.world
 
 import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.extensionEntries
@@ -13,17 +13,11 @@ import app.snapsync.contracts.PlatformEntriesState
 import app.snapsync.contracts.PlatformEntriesSubject
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.Layer
-import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusSources
-import app.snapsync.world.World
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlin.time.Instant
-import kotlinx.datetime.TimeZone
 
 /**
  * The world side of the inbound-port contracts' bindings (capability `port-contracts`): enter a named state over a
@@ -58,7 +52,8 @@ internal object EntryContractFixtures {
                 w.addForeignDevice("DEV-F", JOINED_EVENT, listOf(World.foreignAsset("FQ")))
             }
         }
-        val host = statusHost(w, scope)
+        // The status host the world's composition assembles — the one the iOS root builds over its ports.
+        val host = w.statusHost
         var active = false
         val tokens = mutableListOf<String>()
         val entries = platformEntries(
@@ -108,18 +103,4 @@ internal object EntryContractFixtures {
         }
         return Entered.Ready(ExtensionEntriesSubject(entries, observe)) { scope.cancel() }
     }
-
-    /** The container the world's links open into — the same composed join gate the iOS root builds. */
-    private fun statusHost(w: World, scope: CoroutineScope) = StatusContainerHost(
-        StatusSources(
-            sync = w.syncStatusSource,
-            permission = w.permission.permission,
-            config = w.configSource.config,
-        ),
-        scope = scope,
-        queries = w.core.userQueries,
-        diagnostics = quietDiagnostics(),
-        commands = w.userCommands,
-        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-    )
 }
