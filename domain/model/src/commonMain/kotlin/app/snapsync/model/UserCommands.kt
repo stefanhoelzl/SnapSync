@@ -46,7 +46,8 @@ package app.snapsync.model
  * - [reconfigure] — change the joined membership's participation settings in place (direction, cutoff,
  *   album opt-in) without leaving (capability `reconfigure-membership`). [eventId] is the event the
  *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
- *   Fire-and-forget; the change lands via the config read-model on the next cycle.
+ *   Awaited: it answers a [ReconfigureOutcome], so a save that did not land is told to the member rather than
+ *   closing the surface as if it had; the change itself lands via the config read-model.
  * - [rename] — rename the joined event for **every** member (capability `event-rename`). [eventId] is
  *   the event the heading affordance was opened for; the use-case no-ops if the current membership no
  *   longer matches. Fire-and-forget; the outcome arrives via `RenameStatusSource`, and the new name
@@ -113,7 +114,7 @@ class UserCommands(
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
-    ) -> Unit,
+    ) -> ReconfigureOutcome,
     val rename: (eventId: String, name: String) -> Unit,
     /**
      * Suspending, unlike the other latch-driven commands: the screen fires this **after** consuming a

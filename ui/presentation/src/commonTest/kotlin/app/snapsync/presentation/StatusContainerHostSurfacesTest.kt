@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
@@ -66,6 +67,7 @@ private class Spy {
     val renames = mutableListOf<Pair<String, String>>()
     var renameResets = 0
     val reconfigures = mutableListOf<Reconfigure>()
+    var reconfigureOutcome = ReconfigureOutcome.Saved
     val diagnostics = mutableListOf<Pair<String, String>>()
 }
 
@@ -100,6 +102,7 @@ class StatusContainerHostSurfacesTest {
         commands = testCommands(
             reconfigure = { id, direction, from, until, album ->
                 spy.reconfigures += Reconfigure(id, direction, from, until, album)
+                spy.reconfigureOutcome
             },
             rename = { id, name -> spy.renames += id to name },
             resetRename = { spy.renameResets++ },
@@ -317,6 +320,27 @@ class StatusContainerHostSurfacesTest {
             val form = host.reconfigureForm()
             assertTrue(form.saveToAlbum, "the refresh reset an edit the member had already made")
             assertTrue(form.shareOn, "the refresh moved a control the member was not touching")
+        }
+    }
+
+    @Test
+    fun `a save that did not land reopens the surface with the edits and says so`() {
+        // B5's other half: the use case now stops on a failed save and answers SaveFailed. Closing the surface
+        // anyway would read as saved.
+        val spy = Spy().apply { reconfigureOutcome = ReconfigureOutcome.SaveFailed }
+        return onHost(spy) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onSaveToAlbum(true)
+            host.stateWhere("the edit") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.form?.saveToAlbum == true
+            }
+            host.onReconfigure()
+            val surface = host.stateWhere("the failed save") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.saveFailed == true
+            }.let { ((it.layer as Layer.Joined).surface as JoinedSurface.Reconfigure) }
+            assertTrue(surface.form.saveToAlbum, "the member's edit is still in hand")
+            assertEquals(1, spy.reconfigures.size)
         }
     }
 

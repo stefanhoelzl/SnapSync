@@ -100,12 +100,13 @@ private fun renaming(renameState: RenameState = RenameState.Idle) =
 private fun reconfiguring(
     membership: EventConfig = MEMBERSHIP,
     form: RangeForm = RangeForm(),
+    saveFailed: Boolean = false,
 ) = UiState(
     Layer.Joined(
         membership = membership,
         inviteUrl = SAMPLE_INVITE,
         health = SyncHealth.InSync,
-        surface = JoinedSurface.Reconfigure(form, reconfigureResolved(membership, form)),
+        surface = JoinedSurface.Reconfigure(form, reconfigureResolved(membership, form), saveFailed),
     ),
 )
 
@@ -972,6 +973,19 @@ class StatusScreenTest {
         onNodeWithText("Save").assertExists()
         onNodeWithText("Share my photos").assertExists()
         onNodeWithText("Cancel").assertExists()
+    }
+
+    @Test
+    fun `a failed save keeps the surface and says nothing changed`() = runComposeUiTest {
+        setContent { TestStatusScreen(reconfiguring(saveFailed = true), cutoff = fixedCutoff()) }
+        onNodeWithText("Your settings couldn't be saved, so nothing changed. Try again.").assertExists()
+        onNodeWithText("Save").assertExists()
+    }
+
+    @Test
+    fun `an open surface with no failed save shows no failure`() = runComposeUiTest {
+        setContent { TestStatusScreen(reconfiguring(), cutoff = fixedCutoff()) }
+        onNodeWithText("couldn't be saved", substring = true).assertDoesNotExist()
     }
 
     @Test

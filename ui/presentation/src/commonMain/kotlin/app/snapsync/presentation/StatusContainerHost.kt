@@ -21,6 +21,7 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.CreationFailureReason
@@ -128,7 +129,7 @@ class StatusContainerHost(
 
     // Whether the joined layer is showing its settings surface. A flag rather than a `UiState` family, for
     // the reason `reconfigure-membership` D4 gives: opening is client-side navigation that touches no port.
-    private val reconfiguringState = MutableStateFlow(false)
+    private val reconfiguringState = MutableStateFlow(SettingsSurface.Closed)
 
     // The shareable count for whichever surface is showing a range (capability `join-share-count`). Computed
     // HERE, over the query bundle, and reduced into the range — the screen renders it and asks nothing. It
@@ -286,7 +287,7 @@ class StatusContainerHost(
                         values[8] as RenameStatus,
                         values[9] as String?,
                         values[11] as RangeForm,
-                        values[12] as Boolean,
+                        values[12] as SettingsSurface,
                         updateLayerFor(values[13] as AppVersionGate.Refusal?, appStoreUrl),
                         ::resolveRange,
                     ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer)) }
@@ -450,11 +451,11 @@ class StatusContainerHost(
         fun onOpenReconfigure() = intent {
             val config = config.value ?: return@intent
             formState.value = reconfigureForm(config, cutoffFormatter::toLocal)
-            reconfiguringState.value = true
+            reconfiguringState.value = SettingsSurface.Open
         }
 
         /** Cancel the settings surface: the edits are discarded, and no port was ever touched. */
-        fun onCancelReconfigure() = intent { reconfiguringState.value = false }
+        fun onCancelReconfigure() = intent { reconfiguringState.value = SettingsSurface.Closed }
     }
 
     /**
@@ -501,10 +502,15 @@ class StatusContainerHost(
         val config = config.value ?: return@intent
         val form = formState.value
         val range = resolveRange(form, config.startsAt, config.endsAt, config.maxPhotoDate)
-        reconfiguringState.value = false
+        reconfiguringState.value = SettingsSurface.Closed
         // The id rides with the values so a switch landing mid-edit makes the use-case a no-op rather
         // than overwriting a different membership.
-        commands.reconfigure(config.eventId, range.direction, range.chosenFrom, range.chosenUntil, form.saveToAlbum)
+        val outcome = commands.reconfigure(
+            config.eventId, range.direction, range.chosenFrom, range.chosenUntil, form.saveToAlbum,
+        )
+        // A save that did not land reopens the surface with the member's edits still in hand (the form was never
+        // reset) and says so — closing it would read as saved (capability `reconfigure-membership`).
+        if (outcome == ReconfigureOutcome.SaveFailed) reconfiguringState.value = SettingsSurface.SaveFailed
     }
 
 
@@ -1002,7 +1008,7 @@ private fun reduceFrom(
     // The member's uncommitted choices on whichever decision surface is open, and everything needed to
     // resolve them: the window comes off the loaded phase (join gate) or the membership (reconfigure).
     form: RangeForm,
-    reconfiguring: Boolean,
+    reconfiguring: SettingsSurface,
     // The backend's refusal of this build (capability `min-app-version`), already carrying its remedy,
     // or null while this build is served. Arrives composed — see `updateLayerFor`.
     updateRequired: Layer.UpdateRequired?,
@@ -1072,7 +1078,7 @@ private fun joinedLayer(
     permission: PermissionStatus,
     ended: Boolean,
     rename: RenameStatus,
-    reconfiguring: Boolean,
+    reconfiguring: SettingsSurface,
     transient: String?,
     form: RangeForm,
     resolveAgainst: (RangeForm, EventStart, EventEnd?, CaptureCeiling?, DeletesAt?) -> ResolvedRange,
@@ -1095,10 +1101,11 @@ private fun joinedLayer(
         // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window — which is
         // the one deliberate divergence from the join gate: a legacy membership carrying no event end
         // bounds against its own ceiling, so a no-edit Save is idempotent rather than silently widening.
-        surface = if (reconfiguring) {
+        surface = if (reconfiguring != SettingsSurface.Closed) {
             JoinedSurface.Reconfigure(
                 form = form,
                 range = resolveAgainst(form, config.startsAt, config.endsAt, config.maxPhotoDate, null),
+                saveFailed = reconfiguring == SettingsSurface.SaveFailed,
             )
         } else {
             JoinedSurface.Status
@@ -1179,3 +1186,6 @@ internal fun Layer.countedRange(): ResolvedRange? = when (this) {
     is Layer.Joined -> (surface as? JoinedSurface.Reconfigure)?.takeIf { it.form.shareOn }?.range
     else -> null
 }
+
+/** Whether the joined layer shows its settings surface, and whether its last save failed. */
+internal enum class SettingsSurface { Closed, Open, SaveFailed }

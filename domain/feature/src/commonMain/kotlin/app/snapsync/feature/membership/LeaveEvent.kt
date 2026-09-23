@@ -60,31 +60,20 @@ class LeaveEvent(
     private val notifyLeave: suspend (eventId: String) -> Unit,
     private val scope: CoroutineScope,
 ) {
-    private val log = Logger.withTag("LeaveEvent")
+    private val steps = Steps(Logger.withTag("LeaveEvent"), "leave")
 
     suspend fun leave() {
         // Snapshot the eventId synchronously BEFORE the clears so the backgrounded notify targets the
         // right event even though the config is gone by the time it runs (no race on the cleared cell).
         val eventId = configSource.config.value?.eventId
-        step("stop uploads") { stopUploads() }
-        step("clear upload ledger") { clearLedger() }
-        step("clear config") { config.clear() }
+        steps.bestEffort("stop uploads") { stopUploads() }
+        steps.bestEffort("clear upload ledger") { clearLedger() }
+        steps.bestEffort("clear config") { config.clear() }
         // Fire-and-forget on the app-lifetime scope: the local teardown (and thus the screen flip) never
         // waits on the DELETE. Dispatched unconditionally after the clears (a failed clear does not gate it).
         if (eventId != null) {
-            scope.launch { step("notify backend") { notifyLeave(eventId) } }
+            scope.launch { steps.bestEffort("notify backend") { notifyLeave(eventId) } }
         }
     }
 
-    private inline fun step(name: String, block: () -> Unit) {
-        try {
-            block()
-        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-            // A cancelled step is not a failed one: it is not reported (law "Catch sites keep cancellation").
-            throw e
-        } catch (e: Throwable) {
-            // Best-effort: a failed step never aborts the leave (the order self-heals; see the class doc).
-            log.e(e) { "leave step failed: $name" }
-        }
-    }
 }

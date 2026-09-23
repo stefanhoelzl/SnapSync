@@ -60,6 +60,7 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.DeviceIdentity
@@ -1016,7 +1017,11 @@ class AppCore internal constructor(
             // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-                awaitingOnCoreLane<Unit>("tap.reconfigure", params = "eventId=$eventId") {
+                awaitingOnCoreLane(
+                    "tap.reconfigure",
+                    params = "eventId=$eventId",
+                    result = { outcome: ReconfigureOutcome -> "$outcome" },
+                ) {
                     reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
                 }
             },

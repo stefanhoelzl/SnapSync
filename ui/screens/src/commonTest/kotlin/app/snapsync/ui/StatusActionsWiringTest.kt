@@ -4,6 +4,7 @@ import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
@@ -52,7 +53,7 @@ class StatusActionsWiringTest {
             openSettings = { hit("openSettings") },
             openLink = { hit("openLink") },
             choosePhotos = { hit("choosePhotos") },
-            reconfigure = { _, _, _, _, _ -> hit("reconfigure") },
+            reconfigure = { _, _, _, _, _ -> hit("reconfigure"); ReconfigureOutcome.Saved },
             rename = { _, _ -> hit("rename") },
             resetRename = { hit("resetRename") },
             sendDiagnostics = { _, _ -> hit("sendDiagnostics") },
