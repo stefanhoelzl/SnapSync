@@ -268,8 +268,13 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 /**
  * The core's implementation of the extension's inbound port over this root's cycle. A top-level function because a
  * delegation expression is evaluated before the object's body; both providers resolve on first call.
+ *
+ * The root delegates to `extensionRootEntries()`, which the build takes from one of two directories
+ * (capability `module-architecture`, "A build-time-only module is contained by compilation, not by a runtime
+ * check"): `src/entries`, which answers exactly this, or — only under `-Psnapsync.rig=true` — the rig's, which
+ * answers this wrapped so a requested port-contract run takes the place of a cycle.
  */
-private fun extensionRootEntries(): ExtensionEntries = extensionEntries(
+internal fun productionExtensionEntries(): ExtensionEntries = extensionEntries(
     ports = { UploadExtensionRoot.ports },
     cycle = { UploadExtensionRoot.cycle },
     logScope = IosLogScope,

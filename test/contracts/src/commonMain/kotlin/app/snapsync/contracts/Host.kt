@@ -10,8 +10,8 @@ package app.snapsync.contracts
  * change on the same host, with history, never a new host without any.
  *
  * Only hosts some binding names are listed; the gate fails an unused value. The measured matrix,
- * including hosts nothing binds yet (the simulator's Swift `.xctest`, the simulator app, the device
- * extension), is kept in the spec so the next binding starts from it.
+ * including hosts nothing binds yet (the simulator's Swift `.xctest`), is kept in the spec so the next
+ * binding starts from it.
  */
 enum class Host {
     /** A JVM test task. No Keychain at all. */
@@ -35,6 +35,16 @@ enum class Host {
 
     /** The entitled app on a real device, reached through the rig. Recorded there, replayed in CI. */
     IOS_DEVICE_APP,
+
+    /**
+     * The upload extension process on a real device — its own process kind: the OS launches it, bounds each
+     * `process()` call to about 60 s and kills it without notice past that, and only it receives `process()`
+     * (measured, SE2, iOS 26.6). Production calls the upload-job API only from here, which is why the job
+     * clauses record here although the app process can call the same API. The rig cannot reach it: a run is
+     * requested and answered through the App Group, and the OS invokes the extension to perform it. Recorded
+     * there, replayed in CI. Named for the extension TYPE, so another extension kind is another host.
+     */
+    IOS_DEVICE_PHOTOKIT_EXT,
 }
 
 /** Whether a binding is the honest fake, a real implementation run live, or a recording replayed. */

@@ -15,9 +15,9 @@
 
 ## 3. The registry contract
 
-- [ ] 3.1 `:adapter:ios:app-only`: an `internal` two-call seam in `PhotoKitExtensionRegistry` (`setEnabled`,
+- [x] 3.1 `:adapter:ios:app-only`: an `internal` two-call seam in `PhotoKitExtensionRegistry` (`setEnabled`,
       `isEnabled`), behaviour unchanged
-- [ ] 3.2 `:test:contracts`: `UploadExtensionRegistryContract` — state vocabulary (record present / absent, per
+- [x] 3.2 `:test:contracts`: `UploadExtensionRegistryContract` — state vocabulary (record present / absent, per
       grant) and clauses: enable → registered and read back; disable of an absent record; the `3311` refusal in
       both directions under a partial grant; outcomes classified by `registrationOutcome`
 - [ ] 3.3 Bindings: `Fake` over `SimulatorExtensionRecord`; `Live` device bindings (rig source set of
@@ -25,7 +25,7 @@
 
 ## 4. The upload-job seam and PhotoKit clauses
 
-- [ ] 4.1 `:adapter:ios:ext-safe`: the `internal` `UploadJobApi` seam in `IosPhotoKitUploadPlatform` — `fetch`
+- [x] 4.1 `:adapter:ios:ext-safe`: the `internal` `UploadJobApi` seam in `IosPhotoKitUploadPlatform` — `fetch`
       returning job facts + handle token, `create`/`retry`/`acknowledge`, and one-call `awaitPresented` — with
       the adapter's logic otherwise unchanged; `PhotoKitJobMappingTest` stays green
 - [ ] 4.2 `:test:contracts`: add the PhotoKit states to `BackgroundTransferContract` (succeeded, failed once,
@@ -40,18 +40,18 @@
 
 ## 5. Running inside the extension
 
-- [ ] 5.1 Move `extensionRootEntries()` out of `UploadExtensionRoot.kt` into a production source directory of
+- [x] 5.1 Move `extensionRootEntries()` out of `UploadExtensionRoot.kt` into a production source directory of
       `:app:ios:extension`; the build script selects it, or a `:test:rig`-contributed directory, by
       `-Psnapsync.rig`; `:test:contracts` linked into the extension under the same property
-- [ ] 5.2 `ContractRunningEntries` (ext-safe rig source set): with a run request in the App Group, run the named
+- [x] 5.2 `ContractRunningEntries` (ext-safe rig source set): with a run request in the App Group, run the named
       contract instead of the cycle, write recording + outcome table after each stage, delete the request,
       return `COMPLETED`; otherwise delegate unchanged
-- [ ] 5.3 The shell gate scans the contributed directory and it holds no decision; the extension-safety gate
+- [x] 5.3 The shell gate scans the contributed directory and it holds no decision; the extension-safety gate
       and `ModuleSetTest` stay green
-- [ ] 5.4 `:test:rig`: `POST /contract/<name>?host=photokit-ext` — preconditions in order (full grant, no
+- [x] 5.4 `:test:rig`: `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` — preconditions in order (full grant, no
       membership → refusal naming the reset verb; then re-registration), write the request, wait bounded for
       the result file, answer it verbatim or a distinct timeout status
-- [ ] 5.5 `:test:rig`: the receiver `PUT /api/v2/contract/<CLAUSE_ID>/<status>` answering the path's status
+- [x] 5.5 `:test:rig`: the receiver `PUT /api/v2/contract/<CLAUSE_ID>/<status>` answering the path's status
 - [ ] 5.6 Confirm a production build contains none of 5.1–5.5 (no `app.snapsync.rig` or contract symbols in the
       extension binary)
 

@@ -26,7 +26,19 @@ kotlin {
     // (verified on a macOS-26 runner, 2026-08-09). Should a test ever belong here again, copy the
     // provisioning back from `:adapter:ios:app-only`, which needs it for exactly that reason.
 
+    // The inbound port the root delegates to comes from ONE of two directories (capability
+    // `module-architecture`, "A build-time-only module is contained by compilation, not by a runtime check").
+    // Without `-Psnapsync.rig=true`: `src/entries`, the core's port unchanged. With it: `:test:rig`'s
+    // `src/ext-hook`, the same symbol wrapped so a port-contract run requested through the App Group takes the
+    // place of a cycle. Exactly one is on the compile path, so a production extension carries no route to a
+    // contract run — and the rig's wrapper reaches only `:adapter:ios:ext-safe`'s rig source set, which that
+    // module compiles under the same property.
+    val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
+
     sourceSets {
+        iosMain {
+            kotlin.srcDir(if (rigEnabled) "../../../test/rig/src/ext-hook/kotlin" else "src/entries/kotlin")
+        }
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))

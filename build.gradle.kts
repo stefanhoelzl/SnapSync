@@ -128,6 +128,8 @@ val appShellSources = files(
     // failure mode these gates exist to remove. `KotlinShellGuardTest.shellSourceRoots` mirrors this
     // list and must move with it.
     "test/rig/src/hook",
+    // The same, compiled INTO `:app:ios:extension` in place of its `src/entries` under the same property.
+    "test/rig/src/ext-hook",
 )
 
 // The detekt plugin registers its own `detekt` task against the ROOT project's Kotlin source set —
@@ -326,7 +328,7 @@ registerDetektTier("detektHarnessTier", "harness", tierSrcDirs("harness")) {
     exclude(*excludeTests)
     // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2. Scanning it
     // here too would subject it to a ceiling 20× looser than the one it already passes.
-    exclude("**/test/rig/src/hook/**")
+    exclude("**/test/rig/src/hook/**", "**/test/rig/src/ext-hook/**")
 }
 
 // The two zones whose decision-free law is written but was never enforced (capability
