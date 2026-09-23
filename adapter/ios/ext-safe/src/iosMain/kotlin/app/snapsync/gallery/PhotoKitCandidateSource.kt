@@ -15,9 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSDate
 import platform.Foundation.distantPast
-import platform.Foundation.NSISO8601DateFormatWithFractionalSeconds
-import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
-import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSPredicate
 import platform.Foundation.dateByAddingTimeInterval
 import platform.Photos.PHAsset
@@ -108,8 +105,9 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
         while (index < assets.count) {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
-            // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset.
-            val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""
+            // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset. Through the ONE
+            // shared formatter: building one per asset was most of this loop's CPU (see [Iso8601]).
+            val creationDate = asset.creationDate?.let { Iso8601.format(it) } ?: ""
             out += PhotoKitCandidate(asset, creationDate) { resourceReads++ }
         }
         return out
@@ -246,12 +244,7 @@ internal fun predicateFor(policy: SelectionPolicy): NSPredicate? {
  * the backend's raw `toISOString()` milliseconds. Losing the predicate there would silently restore the
  * whole-library fetch that trips the watchdog, so parse both shapes rather than trust the invariant.
  */
-private fun parseBound(iso: String): NSDate? =
-    NSISO8601DateFormatter().apply { formatOptions = NSISO8601DateFormatWithInternetDateTime }
-        .dateFromString(iso)
-        ?: NSISO8601DateFormatter().apply {
-            formatOptions = NSISO8601DateFormatWithInternetDateTime or NSISO8601DateFormatWithFractionalSeconds
-        }.dateFromString(iso)
+private fun parseBound(iso: String): NSDate? = Iso8601.parseTolerant(iso)
 
 /**
  * One day of slack on each date bound. The authoritative compare is a *lexicographic* string compare in

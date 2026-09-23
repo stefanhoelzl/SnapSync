@@ -2,6 +2,7 @@
 
 package app.snapsync.album
 
+import app.snapsync.gallery.Iso8601
 import app.snapsync.model.normalizeAssetId
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
@@ -10,9 +11,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
-import platform.Foundation.NSISO8601DateFormatWithFractionalSeconds
-import platform.Foundation.NSISO8601DateFormatWithInternetDateTime
-import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSPredicate
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
@@ -105,12 +103,8 @@ class IosAlbumManager(
         return out
     }
 
-    private fun parseSince(since: String): NSDate? {
-        NSISO8601DateFormatter().dateFromString(since)?.let { return it }
-        return NSISO8601DateFormatter().apply {
-            formatOptions = NSISO8601DateFormatWithInternetDateTime or NSISO8601DateFormatWithFractionalSeconds
-        }.dateFromString(since)
-    }
+    // Second precision first, then with a fraction — through the shared formatters (see [Iso8601]).
+    private fun parseSince(since: String): NSDate? = Iso8601.parseTolerant(since)
 
     override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
         if (rawLocalIds.isEmpty()) return
