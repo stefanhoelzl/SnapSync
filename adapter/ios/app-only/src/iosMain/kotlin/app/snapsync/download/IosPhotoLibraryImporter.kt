@@ -16,7 +16,6 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSMutableArray
 import platform.Foundation.NSURL
-import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCreationRequest
@@ -131,7 +130,7 @@ class IosPhotoLibraryImporter(
                             "import.settle",
                             ImportResult.Failed("the import's completion threw (logged above)", consumedResources = success),
                         ) {
-                            settle(ref, success, error, created, creationDate)
+                            settle(ref, success, error, created)
                         }
                         cont.resume(result)
                     }
@@ -169,7 +168,6 @@ private fun consumedResources(error: NSError?): Boolean {
     /** What the change block learned about the asset it asked for, read by the completion. */
     private class CreatedAsset {
         var localId: String? = null
-        var rawLocalId: String? = null
     }
 
     /** The change block's body: request the asset, write its marker, and file it in the event album. */
@@ -233,7 +231,6 @@ private fun consumedResources(error: NSError?): Boolean {
         val placeholder = request.placeholderForCreatedAsset
         val raw = placeholder?.localIdentifier
         if (raw != null) {
-            created.rawLocalId = raw
             // `/`→`_` MUST match `:domain:gallery`'s `normalizeAssetId` (the discovery-side
             // transform) exactly, or the discovered assetId never meets this createdLocalId
             // and the echo re-uploads. Inlined (no gallery dep here); kept identical by the
@@ -278,13 +275,12 @@ private fun consumedResources(error: NSError?): Boolean {
         success: Boolean,
         error: NSError?,
         created: CreatedAsset,
-        creationDate: String,
     ): ImportResult {
         // The commit's own verdict, logged before it is interpreted (capability
         // `diagnostic-logging`): a failed commit and a missing placeholder both reduce to
         // one `Failed`, and only this line tells them apart after the fact.
-        log.i { "import: commit for ${ref.sourceAssetId} success=$success error=${error?.localizedDescription}" }
         val id = created.localId
+        log.i { "import: commit for ${ref.sourceAssetId} success=$success created=$id error=${error?.localizedDescription}" }
         // ORDER MATTERS, and it is store-write FIRST, forget SECOND, on both branches.
         //
         // Forgetting is what re-enables the adjudicator's absent branch for this ref, so it
@@ -301,7 +297,10 @@ private fun consumedResources(error: NSError?): Boolean {
             // ago — which is what makes an abandoned import settle itself instead of waiting
             // for a later pass to ask the library what this callback already knew.
             confirmCreatedLocalId(ref, id)
-            logImportedDate(created.rawLocalId, creationDate)
+            // No read-back of the created asset here. There used to be one — a `PHAsset` fetch by the new
+            // identifier, purely to log its stored creation date — costing ~35 ms of synchronous library work
+            // per import for a diagnostic line no decision reads. The commit verdict above still names the
+            // created identifier, which is what that line carried besides the date.
             ImportResult.Imported(id)
         } else {
             // THE MIRROR of the in-block write (capability `download-store`). The library has
@@ -320,13 +319,6 @@ private fun consumedResources(error: NSError?): Boolean {
                 consumedResources = consumedResources(error),
             )
         }
-    }
-
-    /** Readback proof: fetch the created asset and log its actual creationDate vs the intended one. */
-    private fun logImportedDate(rawLocalId: String?, intended: String) {
-        val id = rawLocalId ?: return
-        val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id), null).firstObject() as? PHAsset
-        log.i { "imported ${id} creationDate(actual)=${asset?.creationDate?.description} intended=$intended" }
     }
 
     /** Map a generic role + MIME content type to the PhotoKit resource-type raw value, or null if unmapped. */
