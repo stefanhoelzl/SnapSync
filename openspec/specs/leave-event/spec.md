@@ -94,9 +94,10 @@ config, then notify backend — SHALL be chosen so the worst partial outcome sel
 notify SHALL NOT abort or reverse the local teardown (the device still leaves locally; the un-removed
 backend membership is the accepted abandon-leak), and if the config clear fails, the event remains
 configured (the user is simply still joined, with the producer disabled until the next enable) rather
-than leaving a half-torn-down state — the store's own clear ordering (Keychain copy first, file second)
-guarantees a partial clear leaves the file, and therefore the membership, intact rather than a state the
-migration fallback would resurrect. The backend notify SHALL be dispatched **unconditionally** after the
+than leaving a half-torn-down state. That guarantee rests on the store: its `clear` either removes the
+config or fails, and it SHALL fail — never return — when it could not reach its storage at all (capability
+`event-link`, "iOS file-backed config store"), because a `clear` that returned without deleting would show
+the setup gate while the persisted membership survived to reappear at the next launch. The backend notify SHALL be dispatched **unconditionally** after the
 clear step — a failed `clear()` SHALL NOT suppress it — preserving the independence of each best-effort
 step; the resulting transient state (backend told the device left while it is still joined locally)
 self-heals when the producer re-enables and re-writes the device manifest. A failed **ledger clear** SHALL
@@ -116,6 +117,12 @@ at worst re-uploads resources the backend already holds, idempotently to the sam
 - **WHEN** the producer has been disabled but `ConfigStore.clear()` fails
 - **THEN** the event is still configured and consistent; re-running leave retries the clear, and the only
   cost of the already-emptied ledger is an idempotent re-upload of what the backend already holds
+
+#### Scenario: A clear that cannot reach its store fails the step rather than faking it
+
+- **WHEN** a leave runs on a build whose config store cannot resolve its storage
+- **THEN** the config clear fails, the failure is logged, the event is still configured, and the backend
+  notify is still dispatched — the same outcome as any failed config clear
 
 #### Scenario: A failed ledger clear still leaves
 
