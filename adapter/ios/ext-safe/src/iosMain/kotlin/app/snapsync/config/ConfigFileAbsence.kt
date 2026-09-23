@@ -31,6 +31,14 @@ private const val POSIX_ENOENT: Long = 2L
  * unknown error into the absent class would recreate the false-leave bug this whole seam exists to
  * prevent, which is why the `else` arm answers `false` rather than guessing.
  *
+ * **What runs, and what is only believed.** `ConfigStoreContract` drives the real store through this
+ * classifier on the simulator's test executable: a missing file (`NSCocoaErrorDomain` 260, underlying
+ * `ENOENT`) reads as not joined, and a present file the process may not read (257, underlying `EACCES`,
+ * measured 2026-09-23) reads as unreadable. The locked-since-boot read itself — 257 over `EPERM`, per
+ * Apple's data-protection contract — is reachable by no host a test can run on (the simulator implements
+ * no data protection, and the rig drives only an unlocked app), so it is not a contract clause: this
+ * paragraph is where that belief lives, with its evidence (capability `port-contracts`).
+ *
  * **Why it lives here and not in `model/`.** Its inputs are an `NSError` domain and code — a
  * platform encoding, not a platform-independent fact — so translating them is an adapter's job
  * (spec `module-architecture`). It sat in `model/` to be exercised on both targets, but a JVM run

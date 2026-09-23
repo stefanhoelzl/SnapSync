@@ -138,7 +138,7 @@ How each binding reaches them:
 | binding | reaches |
 |---|---|
 | **config, fake** | `INACCESSIBLE` (readable flag false), `ABSENT`, `JOINED`. The fake stores an `EventConfig`, not text, so it answers `Unreachable` for `FOREIGN`, `UNUSABLE` and `FILE_UNREADABLE`. |
-| **config, live** | all six. `FILE_UNREADABLE` is entered by placing an unreadable entry at the file's path: a mode-000 file, or a directory. Which one yields a non-not-found error in the kexe is **measured during implementation**; see the risks. |
+| **config, live** | all six. `FILE_UNREADABLE` is a mode-000 file at the record's path. Measured in the kexe (2026-09-23, CI `ios-test`, uid 501): its read fails `NSCocoaErrorDomain` 257 (`NSFileReadNoPermissionError`, underlying `EACCES`), the same Cocoa code Apple documents for a protected read. A directory at the path fails 256 (underlying `EISDIR`), and a missing file fails 260 (underlying `ENOENT`). |
 | **manifest, staged bytes, album map — fakes** | answer `Unreachable` for `UNAVAILABLE` and `CORRUPT`, which have no in-memory meaning. The real adapters reach every state. |
 | **device log** | the fake reaches `NO_LOG`, `EMPTY_LOG` and `HOLDING`, and answers `Unreachable` for `ROLLED_ONLY`, since it has no roll concept. |
 
@@ -194,8 +194,13 @@ The `Unavailable` status is `NSFileReadNoPermissionError` (257), the permission 
 protected read. It is chosen so a world log reads like a device log, and it is not asserted anywhere.
 
 `:test:world` keeps its cell and passes it in. Operator actions that write the cell directly (provision, the
-leave helper) are unchanged. `membershipUnreadable` becomes a property over the `readable` cell. That is the
-wrapper posture `FakeHonestyTest` requires: levers live in `:test:world`, never in the fake.
+leave helper) are unchanged. `membershipUnreadable` becomes a property over the `readable` cell: levers live
+in `:test:world`, never in the fake.
+
+Fake honesty is enforced by the compiler, not by a text gate: the fake class is `internal`, and its public
+surface is factories in `Factories.kt` that return port types. So the one double is exposed as three
+factories — `inMemoryConfigSource`, `inMemoryConfigStore` and `inMemoryConfigReader` — each a view over the
+caller's two cells. (The handoff and the old CLAUDE.md named a `FakeHonestyTest`; it no longer exists.)
 
 ### D9. Binding placement
 
@@ -214,14 +219,11 @@ what the real adapter does on a host with no Keychain.
 
 ## Risks / Trade-offs
 
-- **[`FILE_UNREADABLE` may be unreachable in the kexe]** → If neither a mode-000 file nor a directory at the
-  path yields a non-not-found error, the live binding answers `Unreachable`. The gate then fails the clause,
-  and it must be dropped. The else-branch stays covered only by `ConfigFileAbsenceTest`'s named constants, as
-  today. This is measured first, before anything else is written, so the proposal's coverage claim is
-  corrected early if it falls.
-- **[`NSUserDefaults` suites may not persist in the unentitled kexe]** → Measured with the album-map binding.
-  If a suite does not round-trip there, the album-map live binding cannot cover `HOLDING`. The fallback is to
-  say so and move that contract to the PhotoKit phase's host discussion, not to fake coverage.
+- **[`FILE_UNREADABLE` might have been unreachable in the kexe]** → measured first, and it is reachable: a
+  mode-000 file fails 257 over `EACCES` (see D5). The stand-in shares the Cocoa code with the locked read,
+  not the underlying POSIX error (`EPERM` on a device), and the classifier reads only the outer code.
+- **[`NSUserDefaults` suites might not persist in the unentitled kexe]** → measured first, and they do: a
+  named suite round-trips, and `removePersistentDomainForName` empties it (2026-09-23).
 - **[World tests that save while the membership is unreadable]** → the fake now refuses those saves where
   the old inline object accepted them. `CycleEntryGateIntegrationTest` is the only lever user, and it does not
   save while unreadable. Any other failure is a test that relied on an impossible state, and is fixed there.

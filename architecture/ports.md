@@ -25,9 +25,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `ConfigFileRead` | `:domain:ports` | `:domain:ports` Content, Failed, Missing | no |
 | `ConfigRead` | `:domain:ports` | `:domain:ports` Joined, None, Unavailable | no |
-| `ConfigReader` | `:domain:ports` | `:adapter:ios:ext-safe` FileBackedConfigStore | no |
-| `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigSource | yes |
-| `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigStore | yes |
+| `ConfigReader` | `:domain:ports` | `:adapter:generic:fake` InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore | yes |
+| `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigSource | yes |
+| `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigStore | yes |
 | `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |

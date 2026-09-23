@@ -64,6 +64,11 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  * ⚠️ With the fallback gone, [isConfigFileAbsence] is **solely load-bearing** for the leave
  * decision: a read error misclassified as not-found is an uncaught logout. See its own doc.
  *
+ * An **unreachable container** — [containerPath] `null`, which only a build without the App-Group
+ * entitlement reaches — is unreadable on every member: the read defers, and both [save] and [clear]
+ * raise (capability `event-link`). What all three ports promise together is `ConfigStoreContract`
+ * (`:test:contracts`), run against this class on the simulator.
+ *
  * All decode/decision intelligence is pure and `commonTest`-covered (`configReadViaFile` in
  * `ports/`, the envelope codec in `model/`, the absence classifier beside this file); this class
  * only performs the file IO and maps its `NSError`s onto [ConfigFileRead]. Writes are **atomic** ([NSDataWritingAtomic]:
@@ -78,6 +83,16 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  * **Readers that act on the absence of a config must use [read], not [config]** — see [ConfigRead].
  */
 class FileBackedConfigStore(
+    /**
+     * Where the App-Group container is, or `null` when this process cannot reach one. The composition's
+     * decision rather than this adapter's, and defaulting to the shared container so both shells omit it
+     * (capability `event-link`). A test hands it a directory it owns, which is what lets the port contract
+     * run this class's own file IO and error mapping; the `null` a missing entitlement yields reads as
+     * unreadable on every member, never as absence.
+     */
+    private val containerPath: String? = NSFileManager.defaultManager
+        .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)
+        ?.path,
     private val log: Logger = Logger.withTag("fileConfig"),
 ) : ConfigSource, ConfigStore, ConfigReader {
 
@@ -136,10 +151,7 @@ class FileBackedConfigStore(
 
     // ---- file IO (wiring-only; every decision above is in the pure, commonTest-covered layer) ----
 
-    private fun configFilePath(): String? = NSFileManager.defaultManager
-        .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)
-        ?.path
-        ?.let { "$it/$CONFIG_FILE_NAME" }
+    private fun configFilePath(): String? = containerPath?.let { "$it/$CONFIG_FILE_NAME" }
 
     private fun readFileRaw(): ConfigFileRead = memScoped {
         // A missing container is a provisioning/entitlement failure, not evidence about membership:
@@ -178,7 +190,12 @@ class FileBackedConfigStore(
     }
 
     private fun deleteFile(): Unit = memScoped {
-        val path = configFilePath() ?: return
+        // An unreachable container is NOT "nothing to delete": returning here used to let `clear` report
+        // success and null the flow while a file it never touched survived to resurrect the membership at
+        // the next launch — the half-completed leave the throw below exists to prevent. Refuse, as
+        // `writeFile` does (capability `event-link`).
+        val path = configFilePath()
+            ?: error("App Group container '$LEDGER_APP_GROUP' unavailable — cannot clear config")
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val ok = NSFileManager.defaultManager.removeItemAtPath(path, error = errorVar.ptr)
         if (!ok) {

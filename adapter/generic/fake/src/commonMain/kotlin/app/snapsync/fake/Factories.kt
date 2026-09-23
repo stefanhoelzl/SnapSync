@@ -1,6 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.EventConfig
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
@@ -9,6 +10,9 @@ import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.CandidateSource
+import app.snapsync.ports.ConfigReader
+import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.DiagnosticsReporter
@@ -58,6 +62,28 @@ fun inMemorySecureStore(
     unavailable: Boolean = false,
 ): SecureStore = InMemorySecureStore(value?.let { SecureStoreRead.Found(it, protection) }, unavailable)
 
+
+/*
+ * The config ports: ONE honest double behind three port-typed factories. Each returns a view over the same
+ * two cells, so a save through the store is what the source shows and the reader reads, exactly as the
+ * App-Group file store's three ports are one file. [persisted] is the membership, [readable] whether it can
+ * be read at all (a device before first unlock); both are the caller's cells.
+ */
+
+fun inMemoryConfigSource(
+    persisted: MutableStateFlow<EventConfig?>,
+    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
+): ConfigSource = InMemoryConfigStore(persisted, readable)
+
+fun inMemoryConfigStore(
+    persisted: MutableStateFlow<EventConfig?>,
+    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
+): ConfigStore = InMemoryConfigStore(persisted, readable)
+
+fun inMemoryConfigReader(
+    persisted: MutableStateFlow<EventConfig?>,
+    readable: MutableStateFlow<Boolean> = MutableStateFlow(true),
+): ConfigReader = InMemoryConfigStore(persisted, readable)
 
 fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestStore()
 

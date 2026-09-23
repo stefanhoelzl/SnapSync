@@ -39,6 +39,9 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // The live `StagedBytesContract` binding (capability `port-contracts`): bound beside
+            // `IosStagedBytes`, which lives in this module by linkage.
+            implementation(project(":test:contracts"))
         }
     }
 }

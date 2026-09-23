@@ -95,7 +95,8 @@ None.
   - `:test:world`: the config double is replaced by the fake plus a lever.
 - **Gates:**
   - `ContractCoverageTest` must see every new clause reached by a `Live` binding on `IOS_SIM_KEXE`.
-  - `FakeHonestyTest` must accept `InMemoryConfigStore`'s surface.
+  - `InMemoryConfigStore` stays `internal`, behind port-typed factories, which is how fake honesty is
+    enforced now.
   - `RuntimeIdentityTest`'s pinned literals do not move.
 - **CI:** the new live bindings run in the existing `iosSimulatorArm64Test` job. No new job and no new
   recording file.
