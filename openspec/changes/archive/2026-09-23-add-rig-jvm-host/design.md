@@ -303,3 +303,16 @@ The next change migrates callers and retires the old surface.
 
 None blocking. Whether the `StatusContainerHost` / `platformEntries` assembly moves into `:test:world` is
 deferred to the next change, which will have the integration tests as its second consumer.
+
+## Delta accounting (archive gate 2)
+
+| module touched | capability | delta, or why none |
+|---|---|---|
+| `:test:rig` | `testing-architecture`, `port-contracts` | deltas: the protocol and two hosts; the contract verb's refusal |
+| `:test:control`, `:test:edge` | `module-architecture`, `testing-architecture` | deltas: support-group membership; the test-only module list |
+| `:test:world` | `harness-world-model` | deltas: the backend seam, the neutral surface, completion by PUT |
+| `:test:architecture` | `architecture-guards` | delta: the loopback bind guard |
+| `:adapter:generic:app` | `port-contracts` | none: `LiveEdge` moved out of its `jvmTest` unchanged, and the bindings' contract is unchanged |
+| `:app:ios` | `ios-app-shell` | none: one dependency line, added only under `-Psnapsync.rig=true`; no production build changes |
+| root `build.gradle.kts` | `complexity-budgets` | none: two modules joined the `harness` tier. Membership is derived coverage, and no ceiling moved |
+| `CLAUDE.md`, `.claude/skills/rig-channel` | none | documentation |
