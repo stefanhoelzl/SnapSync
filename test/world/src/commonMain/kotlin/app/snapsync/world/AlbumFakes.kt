@@ -1,45 +1,49 @@
 package app.snapsync.world
 
+import app.snapsync.fake.inMemoryAlbumManager
 import app.snapsync.ports.AlbumManager
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * A recording [AlbumManager] for the world (capability `event-album`): tracks created albums and every
- * `add`, so integration tests can assert exactly which asset identifiers landed in which album — without
- * PhotoKit. Album ids are deterministic (`album-<n>`) so tests can vary by index rather than time.
+ * The world's rigging around the honest `:adapter:generic:fake` [inMemoryAlbumManager] (capability
+ * `event-album`): it records created albums and every `add`, so integration tests can assert exactly which
+ * asset identifiers landed in which album without PhotoKit.
+ *
+ * Every answer is the honest fake's, the one `AlbumManagerContract` holds to `IosAlbumManager`. What lives
+ * here is only what a fake may not carry: the inspection lists, the [placeIn] and [delete] levers, and the
+ * [holdAdds] gate.
  */
 class FakeAlbumManager : AlbumManager {
-    private var counter = 0
-    val created = mutableListOf<Pair<String, String>>()      // (albumId, name)
-    val added = mutableListOf<Pair<String, List<String>>>()   // (albumId, rawLocalIds)
-    private val live = mutableSetOf<String>()
 
     /**
-     * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. This
-     * is the lever that lets the harness and the integration tests forge "this photo arrived via WhatsApp"
-     * without PhotoKit (capability `photo-selection-policy`).
+     * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. The
+     * honest fake reads this cell; [placeIn] is how the harness and the integration tests forge "this photo
+     * arrived via WhatsApp" without PhotoKit (capability `photo-selection-policy`).
      */
-    val membership = mutableMapOf<String, MutableSet<String>>()
+    private val userAlbums = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
+    private val honest: AlbumManager = inMemoryAlbumManager(userAlbums)
+
+    val created = mutableListOf<Pair<String, String>>()      // (albumId, name)
+    val added = mutableListOf<Pair<String, List<String>>>()   // (albumId, rawLocalIds)
+    private val deleted = mutableSetOf<String>()
 
     /** Put [assetId] into an album titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
     fun placeIn(title: String, assetId: String) {
-        membership.getOrPut(title) { mutableSetOf() }.add(assetId)
+        userAlbums.value = userAlbums.value + (title to (userAlbums.value[title].orEmpty() + assetId))
     }
 
     /** Simulate the user deleting an album (so `exists` returns false and a re-join recreates). */
-    fun delete(albumId: String) { live.remove(albumId) }
+    fun delete(albumId: String) { deleted.add(albumId) }
 
     /** Every raw localId added to [albumId] across all `add` calls, in order. */
     fun assetsIn(albumId: String): List<String> = added.filter { it.first == albumId }.flatMap { it.second }
 
-    override suspend fun ensureCreated(name: String): String {
-        val id = "album-${counter++}"
-        created.add(id to name)
-        live.add(id)
-        return id
-    }
+    override suspend fun ensureCreated(name: String): String? =
+        honest.ensureCreated(name)?.also { created.add(it to name) }
 
-    override suspend fun exists(albumLocalId: String): Boolean = albumLocalId in live
+    override suspend fun exists(albumLocalId: String): Boolean =
+        albumLocalId !in deleted && honest.exists(albumLocalId)
 
     private var addsHeld: CompletableDeferred<Unit>? = null
 
@@ -58,11 +62,9 @@ class FakeAlbumManager : AlbumManager {
     override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
         addsHeld?.await()
         added.add(albumLocalId to rawLocalIds)
+        honest.add(albumLocalId, rawLocalIds)
     }
 
-    /** Mirrors the real seam: case-insensitive exact title match over the forged [membership]. */
     override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> =
-        membership.entries
-            .filter { (title, _) -> titles.any { it.equals(title.trim(), ignoreCase = true) } }
-            .flatMapTo(mutableSetOf()) { it.value }
+        honest.assetIdsInAlbums(titles, since)
 }
