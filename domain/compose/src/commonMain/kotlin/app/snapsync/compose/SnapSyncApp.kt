@@ -61,6 +61,7 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
+import app.snapsync.model.UserQueries
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ConfigRefresh
@@ -952,6 +953,27 @@ class AppCore internal constructor(
      */
     private fun <T> onUiLane(name: String, result: (T) -> String = { "" }, block: suspend () -> T) {
         scope.launch(ports.uiLane) { tapLog.invocation(ports.logScope, name, result = result) { block() } }
+    }
+
+    /**
+     * The user-query bundle (spec `module-architecture`, "Queries cross a lane-gated door"): the reads the
+     * status container invokes, built here beside the commands and awaited on the composition lane, so a
+     * store, photo-library or network read never runs on the thread that asked — for the shareable count
+     * that used to be a composable effect on the main thread.
+     */
+    val userQueries: UserQueries by lazy {
+        UserQueries(
+            loadJoinDetails = { eventId ->
+                awaitingOnCoreLane("query.loadJoinDetails", params = "eventId=$eventId") {
+                    joinEvent.loadDetails(eventId).toJoinLoad()
+                }
+            },
+            shareableCount = { cutoff, until ->
+                awaitingOnCoreLane("query.shareableCount", result = { n: Int? -> "count=$n" }) {
+                    loadShareableCount(cutoff, until)
+                }
+            },
+        )
     }
 
     val userCommands: UserCommands by lazy {

@@ -11,7 +11,6 @@ import app.snapsync.contracts.ExtensionEntriesSubject
 import app.snapsync.contracts.PlatformEntriesObservations
 import app.snapsync.contracts.PlatformEntriesState
 import app.snapsync.contracts.PlatformEntriesSubject
-import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.presentation.CutoffFormatter
@@ -118,7 +117,7 @@ internal object EntryContractFixtures {
             config = w.configSource.config,
         ),
         scope = scope,
-        loadJoinDetails = { id -> w.joinEvent.loadDetails(id).toJoinLoad() },
+        queries = w.core.userQueries,
         commands = w.userCommands,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
     )

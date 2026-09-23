@@ -1,8 +1,5 @@
 package app.snapsync.ui
 
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.ui.components.RangeChoiceActions
 
@@ -16,16 +13,11 @@ import app.snapsync.ui.components.RangeChoiceActions
  * is where a crossed or forgotten binding hides, because nothing that runs in a test composes a shell. Here it is
  * clicked (`HostStatusActionsTest`), and the table clicked is the table that ships.
  *
- * A host passes only what it genuinely supplies. [shareableCount] is the live count query where the host has a
- * gallery (the app, the world) and absent where it does not (the forge); [photoPermission] is the grant that is that
- * query's recompute key. Everything else is the container's, so it is bound here and nowhere else — a callback this
- * function does not bind is a change to its signature, visible at every call site.
+ * Everything is the container's, so it is bound here and nowhere else — a callback this function does not bind is
+ * a change to its signature, visible at every call site. (The shareable count is no longer a callback at all: the
+ * container computes it over its lane-decorated query bundle and the screen renders it.)
  */
-fun statusActions(
-    host: StatusContainerHost,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
-    photoPermission: PermissionStatus,
-): StatusActions = StatusActions(
+fun statusActions(host: StatusContainerHost): StatusActions = StatusActions(
     join = JoinGateActions(
         onConfirmJoin = host::onConfirmJoin,
         onAcknowledgeAccess = host::onAcknowledgeAccess,
@@ -75,8 +67,6 @@ fun statusActions(
         onShareOn = host.form::onShareOn,
         onReceiveOn = host.form::onReceiveOn,
         onSaveToAlbum = host.form::onSaveToAlbum,
-        shareableCount = shareableCount,
-        photoPermission = photoPermission,
     ),
     // Null when the build has no reporting channel: the screen then wires no gesture (capability `diagnostic-logging`).
     onSendDiagnostics = host.onSendDiagnostics,

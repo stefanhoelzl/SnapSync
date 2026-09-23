@@ -19,6 +19,7 @@ import app.snapsync.model.UntilChoice
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserCommands
+import app.snapsync.model.UserQueries
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.CreationFailureReason
@@ -48,6 +49,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -62,7 +64,7 @@ import org.orbitmvi.orbit.container
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
     // KIND of thing — values observed and folded into `UiState` — while what the container INVOKES
-    // ([commands], [loadJoinDetails]) and what it EMITS ([StatusDiagnostics]) stay separate.
+    // ([commands], [queries]) and what it EMITS ([StatusDiagnostics]) stay separate.
     sources: StatusSources,
     private val scope: CoroutineScope,
     // Supplies "now" as a cutoff string and converts a local pick (capability `photo-selection-policy`).
@@ -83,12 +85,11 @@ class StatusContainerHost(
     // `commitJoin` command, inside `JoinEvent` — this container passes the chosen value through raw,
     // so no entry path can reach a provision without the floor by forgetting to clamp here.
     private val commands: UserCommands = UserCommands(),
-    // The join gate's details READ (capability `join-event`), injected as a plain lambda:
-    // `loadJoinDetails` = `GET /events/:id` mapped to a block/retry/ready outcome. A query the gate
-    // reduces on, not a command — so it stays an individual seam beside the bundle. The default is
-    // inert (load fails) so hosts and tests that don't exercise join construct unchanged; iOS binds
-    // it to the `JoinEvent` use-case's fetch composed with `feature/membership`'s `toJoinLoad`.
-    private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
+    // The user-query bundle (spec `module-architecture`, "Queries cross a lane-gated door"): the join gate's
+    // details read and the shareable count. Reads this container INVOKES and reduces on, built and
+    // lane-decorated in `compose/` beside the commands — so neither runs a port read on the thread that
+    // asked, which for the count used to be a composable effect on the main thread.
+    private val queries: UserQueries,
     // The two out-channels (see [StatusDiagnostics]): the dev-path log and the intent-error seam.
     diagnostics: StatusDiagnostics = StatusDiagnostics(),
 ) : ContainerHost<UiState, Nothing> {
@@ -130,6 +131,12 @@ class StatusContainerHost(
     // the reason `reconfigure-membership` D4 gives: opening is client-side navigation that touches no port.
     private val reconfiguringState = MutableStateFlow(false)
 
+    // The shareable count for whichever surface is showing a range (capability `join-share-count`). Computed
+    // HERE, over the query bundle, and reduced into the range — the screen renders it and asks nothing. It
+    // starts Unavailable (no row) rather than Counting: a count is only "being computed" once one has been
+    // asked for, which `countInto` states itself.
+    private val shareCountState = MutableStateFlow<ShareCount>(ShareCount.Unavailable)
+
     /**
      * Resolve a form against an event window, in the DEVICE's zone.
      *
@@ -157,6 +164,7 @@ class StatusContainerHost(
             nowLocal = cutoffFormatter.nowLocal(),
             nowAvailable = nowWithinWindow(cutoffFormatter.nowCutoff(), startsAt.at, endsAt?.at),
             toCutoff = cutoffFormatter::toCutoff,
+            shareCount = shareCountState.value,
             deletesLocal = deletesAt?.let { cutoffFormatter.toLocal(it.at) },
         )
     }
@@ -263,6 +271,8 @@ class StatusContainerHost(
                     formState,
                     reconfiguringState,
                     versionRefusal,
+                    // Read through `resolveRange`, not by index: listed so a new count re-reduces the range.
+                    shareCountState,
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
                     reduceFrom(
@@ -284,7 +294,32 @@ class StatusContainerHost(
                 }
                     .collect { ui -> reduce { ui } }
             }
+            // The shareable count follows the range the showing surface resolves, and the grant (a late
+            // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
+            intent {
+                combine(container.stateFlow.map { it.layer.countedRange() }, permission) { range, grant ->
+                    range?.let { CountKey(it.chosenFrom, it.chosenUntil, grant) }
+                }
+                    .distinctUntilChanged()
+                    .collectLatest { key -> if (key != null) countInto(key) }
+            }
         }
+
+    /** What the count is recomputed on — the bounds and the grant, never the count itself. */
+    private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: PermissionStatus)
+
+    private suspend fun countInto(key: CountKey) {
+        shareCountState.value = ShareCount.Counting
+        shareCountState.value = try {
+            queries.shareableCount(key.from, key.until)?.let { ShareCount.Ready(it) } ?: ShareCount.Unavailable
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A failed read is no count, not a crash: the row is omitted (capability `join-share-count`).
+            log("shareable count failed: ${e.message}")
+            ShareCount.Unavailable
+        }
+    }
 
     /**
      * Flash the transient invalid-link error (capability `event-link`): a link arrived that the decoder
@@ -683,7 +718,7 @@ class StatusContainerHost(
      */
     private suspend fun loadInto(eventId: String) {
         val load = try {
-            loadJoinDetails(eventId)
+            queries.loadJoinDetails(eventId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (t: Throwable) {
@@ -836,7 +871,7 @@ class StatusContainerHost(
         explicitDirection: String?,
         explicitSaveToAlbum: Boolean?,
     ) {
-        val load = loadJoinDetails(eventId)
+        val load = queries.loadJoinDetails(eventId)
         if (load !is JoinLoad.Found) {
             log("autoJoin aborted: details load did not succeed for $eventId ($load)")
             return
@@ -1133,4 +1168,15 @@ private fun CreationFailureReason.message(): String = when (this) {
     // name; the copy says what to try rather than asserting a constraint it doesn't know.
     CreationFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a different one."
     CreationFailureReason.SERVER -> "Couldn't reach the server."
+}
+
+/**
+ * The range the showing surface resolves and would count (capability `join-share-count`), or `null` when no
+ * surface shows the count row — which renders only while sharing is on, so no photo-library read is made for
+ * a row nobody sees.
+ */
+internal fun Layer.countedRange(): ResolvedRange? = when (this) {
+    is Layer.JoiningEvent -> range.takeIf { form.shareOn }
+    is Layer.Joined -> (surface as? JoinedSurface.Reconfigure)?.takeIf { it.form.shareOn }?.range
+    else -> null
 }

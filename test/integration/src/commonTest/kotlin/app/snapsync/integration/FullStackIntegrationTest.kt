@@ -153,6 +153,7 @@ class FullStackIntegrationTest {
                 // The COMPOSED user-tap bundle (migration step 10): create routes through the real
                 // `AppCore.eventCreator`; the world's default `onEventMinted` provisions directly.
                 commands = w.userCommands,
+                queries = w.core.userQueries,
             )
             assertEquals(UiState(Layer.CreateEvent()), host.container.stateFlow.value)
 
@@ -429,6 +430,7 @@ class FullStackIntegrationTest {
                 scope = scope,
                 cutoffFormatter = fixedCutoffFormatter(),
                 commands = w.userCommands,
+                queries = w.core.userQueries,
             )
             host.await { it.layer is Layer.Joined }
 
@@ -580,6 +582,7 @@ class FullStackIntegrationTest {
                 scope = scope,
                 cutoffFormatter = fixedCutoffFormatter(),
                 commands = UserCommands(leave = { leaveEvent.leave() }),
+                queries = w.core.userQueries,
             )
             host.await { it.layer is Layer.Joined }
 
@@ -606,6 +609,7 @@ class FullStackIntegrationTest {
         ),
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
+        queries = w.core.userQueries,
     )
 
     private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health

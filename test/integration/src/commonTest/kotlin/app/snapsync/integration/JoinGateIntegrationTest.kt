@@ -528,7 +528,7 @@ class JoinGateIntegrationTest {
                 config = w.configSource.config,
             ),
             scope = scope,
-            loadJoinDetails = { id -> w.joinEvent.loadDetails(id).toJoinLoad() },
+            queries = w.core.userQueries,
             commands = UserCommands(
                 leave = leave,
                 commitJoin = w.userCommands.commitJoin,

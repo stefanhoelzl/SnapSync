@@ -120,10 +120,6 @@ private fun composeScene(): UIViewController =
         val host = SnapSyncRoot.renderHost
         val state by host.container.stateFlow.collectAsState()
 
-        // The photo grant — the shareable-count row's recompute trigger (a late first-join resolve makes the
-        // count appear); capability `join-share-count`.
-        val photoPermission by SnapSyncRoot.photoPermission.collectAsState()
-
         // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
         // cross-platform accessor for it, so the composition root supplies it — this is the only place that
         // knows. Read on each composition rather than `remember`ed: it is a cheap property read, and caching it
@@ -135,7 +131,7 @@ private fun composeScene(): UIViewController =
                 // the through-ports repayment; forge and live share this same instance).
                 cutoff = SnapSyncRoot.cutoffFormatter,
                 // The one tap → intent table (spec `sync-status-screen`); this shell binds no tap itself.
-                actions = statusActions(host, SnapSyncRoot.shareableCount, photoPermission),
+                actions = statusActions(host),
             )
         }
     }

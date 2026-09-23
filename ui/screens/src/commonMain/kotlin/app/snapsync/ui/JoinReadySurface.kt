@@ -7,32 +7,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.PermissionStatus
 import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppMinorSection
 import app.snapsync.ui.components.AppRangePresetChoices
 import app.snapsync.ui.components.AppSectionNote
-import app.snapsync.ui.components.AppSectionValue
 import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.presentation.ResolvedRange
-import app.snapsync.model.FromChoice
+import app.snapsync.presentation.ShareCount
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
-import app.snapsync.model.UntilChoice
-import kotlinx.datetime.LocalDateTime
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.ui.components.RangeChoices
 
 // The **Ready** join surface (capability `join-event`): the decision the guest actually makes, and the
 // shareable-count row it shares with the reconfigure screen. Split out of `JoinFlowScreens.kt` because
@@ -151,44 +138,23 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
     }
 }
 
-/** The live state of the shareable-count row (capability `join-share-count`). */
-private sealed interface CountState {
-    /** The count is being (re)computed — the row shows `counting…`. */
-    data object Counting : CountState
-
-    /** No count is available (DENIED / unresolved grant) — the row is omitted entirely. */
-    data object Unavailable : CountState
-
-    /** The count resolved to [count] photos. */
-    data class Ready(val count: Int) : CountState
-}
-
 /**
- * The shareable-count row (capability `join-share-count`): `XX photos from your gallery will be shared`,
- * recomputed whenever the resolved [chosenCutoff] changes (the member tunes the cutoff) or [permissionKey]
- * flips (a late first-join grant resolves). A brief `counting…` shows while it recomputes; a zero carries a
- * forward gloss so it does not read as broken; an unavailable count (no usable grant) renders **nothing**.
+ * The shareable-count row (capability `join-share-count`): `XX photos from your gallery will be shared`. A
+ * brief `counting…` shows while the container recomputes; a zero carries a forward gloss so it does not read
+ * as broken; an unavailable count (no usable grant, or a failed read) renders **nothing**.
  *
- * Shared by the join, switch, and reconfigure surfaces. It is a rendering concern living entirely in the
- * screen — [shareableCount] is the permission-aware, no-network query built in `compose/`.
+ * Shared by the join and reconfigure surfaces. It renders reduced state and asks nothing: the container
+ * computes the count over the lane-decorated user-query bundle whenever the range or the grant changes. The
+ * row used to run the query itself from a composable effect — a store and photo-library read on the main
+ * thread at every preset tap.
  */
 @Composable
-internal fun ShareCountRow(
-    chosenCutoff: CaptureCutoff,
-    chosenUntil: CaptureCeiling?,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
-    permissionKey: PermissionStatus,
-) {
-    var state by remember { mutableStateOf<CountState>(CountState.Counting) }
-    LaunchedEffect(chosenCutoff, chosenUntil, permissionKey) {
-        state = CountState.Counting
-        val n = shareableCount(chosenCutoff, chosenUntil)
-        state = if (n == null) CountState.Unavailable else CountState.Ready(n)
-    }
-    when (val s = state) {
-        CountState.Counting -> AppSectionNote("Counting your photos…")
-        CountState.Unavailable -> Unit // no row without a usable photo grant
-        is CountState.Ready -> {
+internal fun ShareCountRow(count: ShareCount) {
+    when (count) {
+        ShareCount.Counting -> AppSectionNote("Counting your photos…")
+        ShareCount.Unavailable -> Unit // no row without a usable photo grant
+        is ShareCount.Ready -> {
+            val s = count
             val noun = if (s.count == 1) "photo" else "photos"
             AppSectionNote("${s.count} $noun from your gallery will be shared")
             if (s.count == 0) {

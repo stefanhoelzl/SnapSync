@@ -1,7 +1,5 @@
 package app.snapsync.ui
 
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureCeiling
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -9,41 +7,27 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.JoinedSurface
 import app.snapsync.presentation.ResolvedRange
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.presentation.Layer
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.plus
 import app.snapsync.ui.components.AppRangePresetChoices
-import app.snapsync.model.FromChoice
-import app.snapsync.model.UntilChoice
 import app.snapsync.ui.components.AppEventHeaderCompact
-import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppMinorSection
-import app.snapsync.ui.components.AppSectionValue
-import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.ui.components.appDateTimeLabel
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.ui.components.RangeChoices
 import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
 
@@ -76,7 +60,6 @@ internal fun ReconfigureScreen(
     membership: EventConfig,
     surface: JoinedSurface.Reconfigure,
     participation: ParticipationActions,
-    photoPermission: PermissionStatus,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -102,7 +85,6 @@ internal fun ReconfigureScreen(
                     form = surface.form,
                     range = range,
                     rangeLabel = appRangeLabel(range.from, range.until),
-                    photoPermission = photoPermission,
                 ),
                 actions = participation,
                 notes = reconfigureNotes(membership, range, surface.form.saveToAlbum),

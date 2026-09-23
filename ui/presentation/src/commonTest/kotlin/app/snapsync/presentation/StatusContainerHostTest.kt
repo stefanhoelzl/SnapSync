@@ -269,7 +269,7 @@ private fun host(
 ) = StatusContainerHost(
     StatusSources(source, permission.permission, configFake.config, attested = attested),
     scope,
-    loadJoinDetails = loadJoinDetails,
+    queries = joinDetails(loadJoinDetails),
     commands = UserCommands(
         leave = leave, commitJoin = commitJoin,
         requestAccess = requester::request, openSettings = requester::openSettings,
@@ -382,6 +382,7 @@ class StatusContainerHostTest {
             ),
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
+            queries = noQueries,
         )
         host.test(this) {
             runOnCreate()
@@ -439,6 +440,7 @@ class StatusContainerHostTest {
                 download = InMemoryDownloadStatusSource(download),
             ), scope,
             cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
     }
 
@@ -525,6 +527,7 @@ class StatusContainerHostTest {
             ), scope,
             commands = UserCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
     }
 
@@ -604,7 +607,7 @@ class StatusContainerHostTest {
                     JoinCommit.Committed
                 },
             ),
-            loadJoinDetails = { JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT) },
+            queries = joinDetails { JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT) },
             cutoffFormatter = fixedCutoffFormatter(),
         )
         host.test(this) {
@@ -632,6 +635,7 @@ class StatusContainerHostTest {
                 config.config, creation = creationStatus,
             ), backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         host.test(this) {
             runOnCreate()
@@ -1300,7 +1304,7 @@ class StatusContainerHostTest {
                 FakeSyncStatusSource(SyncStatus.Loading),
                 FakePermissionSource(PermissionStatus.GRANTED).permission, FakeConfig(null).config,
             ), backgroundScope,
-            loadJoinDetails = { JoinLoad.NotFound },
+            queries = joinDetails { JoinLoad.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = StatusDiagnostics(log = { logged.trySend(it) }),
         )
@@ -1326,7 +1330,7 @@ class StatusContainerHostTest {
                 FakeSyncStatusSource(SyncStatus.Loading),
                 FakePermissionSource(PermissionStatus.GRANTED).permission, FakeConfig(null).config,
             ), backgroundScope,
-            loadJoinDetails = { JoinLoad.NotFound },
+            queries = joinDetails { JoinLoad.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = StatusDiagnostics(log = { logged.trySend(it) }),
         )
@@ -1469,6 +1473,7 @@ class StatusContainerHostTest {
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, commands = UserCommands(leave = { leaves++ }),
             cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         containerHost.test(this) {
             containerHost.onLeaveEvent()
@@ -1492,6 +1497,7 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         val invite = (host.container.stateFlow.value.layer as Layer.Joined).inviteUrl
         assertEquals(encodeEventUrl(EventLinkPayload(EVENT_ID)), invite)
@@ -1506,6 +1512,7 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         // The invite URL has no home outside the joined state now, so "no event" IS "no invite URL":
         // there is no state that could carry one, rather than a state carrying a null (capability
@@ -1545,6 +1552,7 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         // One name, one source: the heading, the rename prefill and the reconfigure header all read
         // this membership, so there is no second event-name value to drift from it.
@@ -1559,6 +1567,7 @@ class StatusContainerHostTest {
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, commands = UserCommands(share = { shared += it }),
             cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -1576,6 +1585,7 @@ class StatusContainerHostTest {
             StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
             backgroundScope, commands = UserCommands(share = { shared += it }),
             cutoffFormatter = fixedCutoffFormatter(),
+            queries = noQueries,
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -1961,6 +1971,7 @@ class StatusContainerHostJoinGateTest {
                     ),
                     cutoffFormatter = fixedCutoffFormatter(),
                     diagnostics = StatusDiagnostics(onIntentError = { reported.complete(it) }),
+                    queries = noQueries,
                 )
 
                 host.onLeaveEvent()

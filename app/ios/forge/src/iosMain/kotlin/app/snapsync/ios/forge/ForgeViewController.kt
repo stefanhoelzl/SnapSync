@@ -47,10 +47,7 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         StatusScreen(
             state = state,
             cutoff = cutoffFormatter,
-            // A constant, exactly as `ForgeShell` supplied: this is the shareable-count row's recompute
-            // trigger, and there is no live grant in this binary to observe. The forged frame's own
-            // permission is one of the preset's inputs and reaches the screen through the reduction.
-            actions = statusActions(host, shareableCount = { _, _ -> null }, photoPermission = PermissionStatus.GRANTED),
+            actions = statusActions(host),
         )
     }
 }

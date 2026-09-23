@@ -153,4 +153,5 @@ private fun gateHost(
     scope,
     commands = UserCommands(openLink = openLink),
     cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+    queries = noQueries,
 )

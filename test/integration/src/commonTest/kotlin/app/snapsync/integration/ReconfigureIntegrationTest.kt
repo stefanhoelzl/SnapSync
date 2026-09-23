@@ -140,6 +140,7 @@ class ReconfigureIntegrationTest {
         ),
         scope = scope,
         cutoffFormatter = fixedCutoffFormatter(),
+        queries = w.core.userQueries,
     )
 
     private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health

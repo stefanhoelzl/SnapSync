@@ -2,6 +2,7 @@
 
 package app.snapsync.ui
 
+import app.snapsync.presentation.ShareCount
 import app.snapsync.model.captureCeiling
 
 import app.snapsync.model.EventConfig
@@ -93,12 +94,17 @@ class JoinScreenTest {
      * screen renders what it is given, and `RangeResolutionTest` owns whether the rules are right. Doing
      * it the other way would make this file agree with the implementation by construction.
      */
-    private fun joining(phase: JoinPhase, form: RangeForm = RangeForm()) = UiState(
+    private fun joining(
+        phase: JoinPhase,
+        form: RangeForm = RangeForm(),
+        // The count the container reduced into the range; unavailable unless a test is about the row.
+        count: ShareCount = ShareCount.Unavailable,
+    ) = UiState(
         Layer.JoiningEvent(
             eventId = "11111111-1111-4111-8111-111111111111",
             phase = phase,
             form = form,
-            range = resolvedFor(phase, form),
+            range = resolvedFor(phase, form)?.copy(shareCount = count),
         ),
     )
 
@@ -108,13 +114,11 @@ class JoinScreenTest {
         onReceiveOn: (Boolean) -> Unit = {},
         onSaveToAlbum: (Boolean) -> Unit = {},
         choices: RangeChoiceActions = RangeChoiceActions(),
-        shareableCount: suspend (CaptureCutoff, CaptureCeiling?) -> Int? = { _, _ -> null },
     ) = ParticipationActions(
         choices = choices,
         onShareOn = onShareOn,
         onReceiveOn = onReceiveOn,
         onSaveToAlbum = onSaveToAlbum,
-        shareableCount = shareableCount,
     )
 
     /**
@@ -509,9 +513,8 @@ class JoinScreenTest {
     fun `the share section shows how many photos will be shared`() = runComposeUiTest {
         setScreen {
             StatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Ready(34)),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(participation = participationActions(shareableCount = { _, _ -> 34 }))
             )
         }
         onNodeWithText("34 photos from your gallery will be shared").assertExists()
@@ -521,9 +524,8 @@ class JoinScreenTest {
     fun `a zero count carries the forward gloss`() = runComposeUiTest {
         setScreen {
             StatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Ready(0)),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(participation = participationActions(shareableCount = { _, _ -> 0 }))
             )
         }
         onNodeWithText("0 photos from your gallery will be shared").assertExists()
@@ -534,12 +536,9 @@ class JoinScreenTest {
     fun `no count is shown when none is available`() = runComposeUiTest {
         setScreen {
             StatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                // Unavailable = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
+                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Unavailable),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
-                    // null = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
-                    participation = participationActions(shareableCount = { _, _ -> null }),
-                )
             )
         }
         onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
@@ -547,15 +546,14 @@ class JoinScreenTest {
     }
 
     @Test
-    fun `turning share off hides the count`() = runComposeUiTest {
+    fun `a count still being computed says so`() = runComposeUiTest {
         setScreen {
             StatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Counting),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(participation = participationActions(shareableCount = { _, _ -> 34 }))
             )
         }
-        onNodeWithText("34 photos from your gallery will be shared").assertExists()
+        onNodeWithText("Counting your photos…").assertExists()
     }
 
     @Test
@@ -567,24 +565,22 @@ class JoinScreenTest {
                 joining(
                     phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
                     form = RangeForm(shareOn = false),
+                    count = ShareCount.Ready(34),
                 ),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(participation = participationActions(shareableCount = { _, _ -> 34 })),
             )
         }
         onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
     }
 
     @Test
-    fun `the count recomputes as the cutoff changes`() = runComposeUiTest {
+    fun `the row renders the count the container reduced`() = runComposeUiTest {
+        // Recomputing as the range changes is the container's job now (StatusContainerHostTest); the row
+        // renders whatever count the reduction carries.
         setScreen {
             StatusScreen(
-                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                joining(phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES), count = ShareCount.Ready(5)),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
-                    // A cutoff-dependent count: Now shares just 1 (singular), Event start reaches back to 5.
-                    participation = participationActions(shareableCount = { c, _ -> if (c == NOW) 1 else 5 }),
-                )
             )
         }
         onNodeWithText("5 photos from your gallery will be shared").assertExists()
@@ -598,11 +594,9 @@ class JoinScreenTest {
                 joining(
                     phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES),
                     form = RangeForm(fromPreset = FromChoice.NOW),
+                    count = ShareCount.Ready(1),
                 ),
                 cutoff = fixedCutoff(),
-                actions = StatusActions(
-                    participation = participationActions(shareableCount = { c, _ -> if (c == NOW) 1 else 5 }),
-                ),
             )
         }
         onNodeWithText("1 photo from your gallery will be shared").assertExists()
@@ -807,9 +801,6 @@ class JoinScreenTest {
                     switch = SwitchActions(
                         onConfirmSwitch = { confirms++ },
                     ),
-                    // A count is wired deliberately: the switch dialog must still show none, there being
-                    // no chosen range to count yet (capability `join-share-count`).
-                    participation = participationActions(shareableCount = { _, _ -> 42 }),
                 )
             )
         }
@@ -817,7 +808,7 @@ class JoinScreenTest {
         onNodeWithText("You'll leave \"Summer Trip\" and join \"New Event\".").assertExists()
         // No participation promise, and no count for a range the member has not chosen.
         onNodeWithText("You'll share photos you take and receive everyone's.").assertDoesNotExist()
-        onNodeWithText("42 photos from your gallery will be shared.").assertDoesNotExist()
+        onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
 
         onNodeWithText("Switch").performClick()
         assertEquals(1, confirms)

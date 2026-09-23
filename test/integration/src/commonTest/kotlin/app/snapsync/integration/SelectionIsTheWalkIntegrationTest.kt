@@ -157,6 +157,7 @@ class SelectionIsTheWalkIntegrationTest {
         ),
         scope = scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+        queries = w.core.userQueries,
     )
 
     private fun UiState.health(): SyncHealth? = (this.layer as? Layer.Joined)?.health
