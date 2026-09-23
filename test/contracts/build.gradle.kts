@@ -28,6 +28,10 @@ kotlin {
             api(kotlin("test"))
             api(libs.coroutines.test)
             implementation(libs.coroutines.core)
+            // The backend contracts' setup (`Edge.kt`) enters states through the edge's public HTTP surface:
+            // `HttpClient` is in `EdgeSetup`'s constructor, so it is API; the JSON is only read and built.
+            api(libs.ktor.client.core)
+            implementation(libs.kotlinx.serialization.json)
         }
         // kotlin-test's @Test on JVM comes from a framework artifact the Kotlin plugin attaches to TEST
         // compilations only; the bindings' JVM test tasks run JUnit 4.

@@ -84,9 +84,16 @@ class MainLaneContainmentTest {
     private val runBlockingAllowed =
         "/app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt"
 
+    // Production source only: the spec exempts TEST SOURCE SETS, which a path names as `src/<name>Test/`
+    // (`commonTest`, `jvmTest`, `iosSimulatorArm64Test`, …) or, for a JVM-only module, `src/test/`. A file-name
+    // match alone missed a helper in a test source set not named `*Test.kt` — the backend contracts' `LiveEdge`
+    // in `:adapter:generic:app` jvmTest, whose setup must block because `Binding.create` does.
     private fun productionFiles() = SourceScan.kotlinFiles()
         .filterNot { it.path.contains("/test/") } // test source sets, incl. this file, name the forms
+        .filterNot { testSourceSet.containsMatchIn(it.path) }
         .filterNot { it.path.contains("Test.kt") }
+
+    private val testSourceSet = Regex("""/src/\w*Test/""")
 
     @Test
     fun `the main lane is named only by platform-UI adapters and the shell that injects it`() {

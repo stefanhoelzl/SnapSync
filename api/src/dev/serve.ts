@@ -45,17 +45,34 @@ import { startTunnel, type Tunnel } from "./tunnel.ts";
 
 const HOST_FILE = ".localdev/host";
 
-type Options = { port: number; store: string; tunnel: boolean };
+type Options = { port: number; store: string; tunnel: boolean; ephemeral: boolean };
 
 function parseOptions(args: string[]): Options {
-  const options: Options = { port: 8080, store: ".localstore", tunnel: false };
+  const options: Options = { port: 8080, store: ".localstore", tunnel: false, ephemeral: false };
   for (const arg of args) {
     if (arg === "--tunnel") options.tunnel = true;
+    else if (arg === "--ephemeral") options.ephemeral = true;
     else if (arg.startsWith("--port=")) options.port = Number(arg.slice("--port=".length));
     else if (arg.startsWith("--store=")) options.store = arg.slice("--store=".length);
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (!Number.isInteger(options.port) || options.port <= 0) {
+  if (options.ephemeral) {
+    // EPHEMERAL MODE is the rig as a TEST launches it (the backend port contracts' live binding, capability
+    // `port-contracts`): the port defaults to `0` so parallel test JVMs never collide, and the tunnel is
+    // refused because a test must never be reachable from outside loopback.
+    //
+    // Its launcher grants exactly `--allow-net=127.0.0.1 --allow-read=<api/>,<store> --allow-write=<store>`
+    // and nothing else (measured sufficient, 2026-09-23, deno 2.9). The net grant is the zone guarantee:
+    // under it a request to any non-loopback host fails `NotCapable` rather than reaching bunny — the same
+    // guarantee `deno task test` gets by withholding `--allow-net` entirely. No `--allow-run`: only the
+    // tunnel spawns a process.
+    if (options.tunnel) throw new Error("--ephemeral cannot be combined with --tunnel");
+    if (!args.some((a) => a.startsWith("--port="))) options.port = 0;
+  }
+  if (
+    !Number.isInteger(options.port) || options.port < 0 ||
+    (options.port === 0 && !options.ephemeral)
+  ) {
     throw new Error(`invalid --port: ${options.port}`);
   }
   return options;
@@ -67,7 +84,17 @@ const options = parseOptions(Deno.args);
 // Config exists. cloudflared announces the hostname without waiting for the origin to answer.
 let tunnel: Tunnel | null = null;
 if (options.tunnel) tunnel = await startTunnel(options.port);
-const origin = tunnel ? tunnel.origin : `http://127.0.0.1:${options.port}`;
+
+// The listener binds BEFORE the app is composed, because an ephemeral port is known only once bound and the
+// Config needs the origin. Until `app` exists every request is answered 503 — in ephemeral mode none can
+// arrive before the readiness line, which is printed only after composition.
+let serveRequest: (request: Request) => Promise<Response> = () =>
+  Promise.resolve(new Response("starting", { status: 503 }));
+const server = Deno.serve(
+  { port: options.port, hostname: "127.0.0.1", onListen: options.ephemeral ? () => {} : undefined },
+  (request) => serveRequest(request),
+);
+const origin = tunnel ? tunnel.origin : `http://127.0.0.1:${server.addr.port}`;
 const publicHost = new URL(origin).host;
 // Both halves of the origin travel into the Config. The scheme matters because a presigned download URL
 // is fetched by the DEVICE: minting `https://` for a plain-HTTP loopback server hands every simulator a
@@ -125,6 +152,22 @@ async function handler(request: Request): Promise<Response> {
   return await app.fetch(request);
 }
 
+serveRequest = handler;
+
+if (options.ephemeral) {
+  // NO host file: `.localdev/host` is how a developer's running rig publishes its origin, and a test run
+  // overwriting it would silently repoint their next device build at a server that is about to exit.
+  // One greppable line is the readiness signal, written synchronously so it is never lost in a pipe
+  // buffer (the launcher reads stdout line by line and waits for exactly this).
+  Deno.stdout.writeSync(new TextEncoder().encode(`LIVE-EDGE READY ${origin}\n`));
+  // The launcher holds our stdin open for as long as it lives. EOF means it is gone — killed without its
+  // shutdown hook running — and a server nobody will ever stop must not outlive it.
+  for await (const _ of Deno.stdin.readable) { /* drain until the launcher closes it */ }
+  await server.shutdown();
+  db.close();
+  Deno.exit(0);
+}
+
 await Deno.mkdir(".localdev", { recursive: true });
 await Deno.writeTextFile(HOST_FILE, origin);
 
@@ -148,8 +191,6 @@ console.log(`
   a push registration from an un-attested caller (curl, or a SIMULATOR — App Attest does not exist
   there) is enrolled by the rig rather than refused.
 `);
-
-Deno.serve({ port: options.port, hostname: "127.0.0.1" }, handler);
 
 // A quick tunnel outlives the process it was spawned from unless it is explicitly killed.
 globalThis.addEventListener("unload", () => tunnel?.close());

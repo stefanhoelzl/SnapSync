@@ -104,6 +104,7 @@ edge :test:world :domain:compose
 edge :test:world :domain:feature
 edge :test:world :domain:model
 edge :test:world :domain:ports
+edge :test:world :test:contracts
 edge :ui:components :domain:model
 edge :ui:presentation :domain:feature
 edge :ui:presentation :domain:model

@@ -28,6 +28,16 @@ import kotlinx.serialization.json.jsonPrimitive
  * Every failure maps to `null` (never an exception): this runs on background wakes, where a thrown error
  * would take down work that has nothing to do with attestation. A null simply leaves the old token in
  * place, and the next wake tries again.
+ *
+ * WHAT IS CONTRACTED, AND WHAT CANNOT BE. `AttestClientContract` holds only [challenge] to the real backend
+ * (`LiveEdgeContractsTest`). [mintToken] and [renewToken] have no host CI runs: the backend verifies an App
+ * Attest attestation (or an assertion over a key it attested) before minting, only an entitled app on a
+ * physical device can produce one — `DCAppAttestService.isSupported` is false on the simulator, and a JVM has
+ * no Secure Enclave — and the local rig deliberately fakes ENROLMENT (`api/src/dev/fallback.ts`), never
+ * attestation. A clause for them would be reachable only by `InMemoryAttestClient`, which `port-contracts`
+ * refuses ("Every clause runs against a real implementation on some host"). So their beliefs live here: a
+ * refused attestation or assertion answers `401`, which maps to `null`; a stale challenge answers `401` too;
+ * a malformed body answers `400`. Their mapping is pinned by `HttpAttestClientTest`.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class HttpAttestClient(

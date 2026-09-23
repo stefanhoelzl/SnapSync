@@ -1,5 +1,7 @@
 package app.snapsync.world
 
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.uploadKey
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -73,6 +75,7 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                 ?.let { return@MockEngine respond(it, HttpStatusCode.UpgradeRequired, jsonHeaders()) }
 
             if (version == 2) {
+                v2Upload(store, method, segments, request.url.parameters["filename"])?.let { return@MockEngine it }
                 v2Route(store, json, method, segments, body)?.let { return@MockEngine it }
             }
 
@@ -234,6 +237,28 @@ private fun MockRequestHandleScope.v2Route(
 }
 
 /**
+ * `PUT /files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — the v2 byte upload, or null when
+ * this request is not one. The world's own uploader deposits store-direct (it plays the OS's transfer), so this
+ * route exists for callers that upload the way the app's uploader ADDRESSES the edge: the backend port
+ * contracts' setup (capability `port-contracts`), which enters "a device holds uploads" through the public
+ * surface on every edge it binds. It stores under the key the real edge composes for the same resource.
+ */
+private fun MockRequestHandleScope.v2Upload(
+    store: BackendStore,
+    method: HttpMethod,
+    segments: List<String>,
+    filename: String?,
+): HttpResponseData? {
+    if (method != HttpMethod.Put || segments.size != 5 || segments[0] != "files" || segments[1] != "devices") return null
+    val role = ResourceRole.entries.firstOrNull { it.wire == segments[4] }
+        ?: return respond("invalid role", HttpStatusCode.BadRequest)
+    if (filename.isNullOrEmpty()) return respond("missing filename", HttpStatusCode.BadRequest)
+    if (store.offline) return respond("offline", HttpStatusCode.BadGateway)
+    store.deposit(segments[2], uploadKey(segments[3], role, filename))
+    return respond("", HttpStatusCode.Created)
+}
+
+/**
  * The `426` body when the version gate is armed and this request cannot be served, or null to proceed.
  *
  * Off unless [BackendStore.minAppVersion] is set: a gate that refused by default would fail every seam
@@ -298,12 +323,14 @@ private fun parseCreateEvent(json: Json, body: String): CreateEvent {
     if (startsAt == null || !CANONICAL_CUTOFF.matches(startsAt)) {
         return CreateEvent.Invalid("invalid startsAt")
     }
-    // `endsAt` is creator-supplied at mint (capability `event-limits`): when present it must be canonical
-    // AND strictly after `startsAt`; when absent it falls back to `startsAt + 30d`.
+    // `endsAt` is creator-supplied at mint (capability `event-limits`): when present it must be canonical,
+    // strictly after `startsAt`, AND no later than `startsAt + 30d` (the window maximum); when absent it falls
+    // back to that maximum. The upper bound was missing here until `EventCreationContract` held this edge to
+    // the real one, which refuses a longer window.
     val rawEndsAt = obj["endsAt"]?.jsonPrimitive?.content
     val endsAt = when {
         rawEndsAt == null -> plus30Days(startsAt)
-        !CANONICAL_CUTOFF.matches(rawEndsAt) || rawEndsAt <= startsAt ->
+        !CANONICAL_CUTOFF.matches(rawEndsAt) || rawEndsAt <= startsAt || rawEndsAt > plus30Days(startsAt) ->
             return CreateEvent.Invalid("invalid endsAt")
         else -> rawEndsAt
     }

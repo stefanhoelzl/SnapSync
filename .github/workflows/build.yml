@@ -24,6 +24,14 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
+      # `./gradlew build` launches the REAL backend: `:adapter:generic:app`'s jvmTest runs the backend port
+      # contracts' live bindings against `api/src/dev/serve.ts --ephemeral` (capability `port-contracts`;
+      # `testing-architecture`, "The canonical check and its Kotlin/Native half"). Offline and zone-safe —
+      # a filesystem store, network granted to loopback only. Same pin as `api.yml`, so the contracts run
+      # the backend under the Deno its own suite runs under. Without it they FAIL naming Deno; they never skip.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
       # Compose Desktop UI tests render offscreen under -Djava.awt.headless=true
       # (set on :domain:ui's test task), so no X server is needed.
       - run: ./gradlew build

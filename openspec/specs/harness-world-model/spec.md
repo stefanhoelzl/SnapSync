@@ -6,8 +6,9 @@ A controllable in-memory "world" (`:test:world`) that the REAL platform-agnostic
 + `UploadCycle`, the join-time `ShareSetLoad`, `DeviceManifestProducer`, `DownloadController` +
 `QueuedPhotoDownloadJobs`, `OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource`,
 `CreateEvent` — runs against, so the whole system (upload AND download) is observable and testable on
-JVM + `iosSimulatorArm64` without a device. It provides a backend object store computing the edge's read-models faithfully (drift
-accepted, no golden fixture), a Ktor `MockEngine` mini-edge serving both device-API versions over the real common-Ktor seams,
+JVM + `iosSimulatorArm64` without a device. It provides a backend object store computing the edge's read-models faithfully (on every
+route a backend port contract covers, held to the real `api/` edge by those contracts; elsewhere drift is
+accepted, with no golden fixture), a Ktor `MockEngine` mini-edge serving both device-API versions over the real common-Ktor seams,
 operator-driven upload/download job fakes, a one-own-plus-injectable-foreign device model, controllable
 failure levers, and composition helpers mirroring the extension composition root. Consumed by BOTH the
 desktop full-stack harness (`:app:desktop`) and `:test:integration`.
@@ -19,6 +20,8 @@ which is what makes the standing target rule (capability `testing-architecture`,
 every target its module declares") achievable for orchestration and not just for pure functions.
 
 Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
+
+Decision record for the mini-edge as the backend contracts' `Fake`: `changes/archive/2026-09-23-contract-backend-clients`.
 The world composes attestation because `AppPorts` requires the seams, and leaves it **inert by default** —
 `isSupported()` is false, so a refresh returns early without attesting, exactly as it does in the upload
 extension and on a simulator. An opt-in lever turns it on for the tests that need a credential *change* to
@@ -70,14 +73,21 @@ each membership's asset set, and the device-scoped resources with their `uploade
 SHALL compute the edge's read-models **faithfully in behavior** — the per-device file listing
 (`GET /files/devices/<id>`), the event-wide union (`GET /events/<id>/files`), and the join-load
 listing — where the join-load listing is the **same** per-device read-model the join-time share-set load
-consumes (capability `upload-state-reconciliation`). Byte-level fidelity to the real Deno `api/` edge is **NOT** required: drift is **accepted**,
-there is **no golden fixture**, and the store SHALL NOT mint real presigned S3 URLs (each `url` is a
+consumes (capability `upload-state-reconciliation`). Byte-level fidelity to the real Deno `api/` edge is **NOT** required, and the store SHALL NOT mint
+real presigned S3 URLs (each `url` is a
 synthetic in-memory handle the fake download seams resolve store-direct).
 
 The per-device listing SHALL return one `{filename, url}` entry per resource recorded as uploaded. The
 event-union SHALL span a device's memberships whether `active` or `departed`, include an asset **only when
 every** resource that asset names is recorded as uploaded, tag each asset with its owning `deviceId`, and
 gate on event existence (an unregistered event is absent, not empty).
+
+Behavioural fidelity on every route a backend port contract covers (capability `port-contracts`) SHALL
+NOT be a matter of accepted drift: the mini-edge, serving this store, SHALL be bound as those contracts'
+`Fake`, and the real `api/` edge passing the same clauses is its reference. A clause the real edge passes
+and the mini-edge fails is a defect in the mini-edge, fixed there. A state the mini-edge does not model is
+declared unreachable by its binding and never simulated. Drift on routes and fields no contract covers
+remains accepted, with no golden fixture.
 
 Membership SHALL be modelled as a state on one membership record. The world SHALL NOT model the retired
 active/departed sibling objects, nor resolve membership from object timestamps.
@@ -110,6 +120,12 @@ active/departed sibling objects, nor resolve membership from object timestamps.
 - **WHEN** a provision into a new membership loads the ledger with the photos the backend already stores for
   a device
 - **THEN** it consumes the world's per-device listing read-model — the same one the backend serves, exposed once
+
+#### Scenario: The mini-edge diverges from the real edge on a contracted route
+
+- **WHEN** a backend contract clause passes against the real `api/` edge and fails against the mini-edge
+- **THEN** the build fails naming the clause and the mini-edge binding, and the fix is made in the
+  mini-edge rather than by declaring the clause's state unreachable
 
 ### Requirement: MockEngine mini-edge over the four common-Ktor seams
 
@@ -157,6 +173,14 @@ object-name shape under v1. Serving one shape for both would let a client that m
 every test, because the two shapes carry a field of the same name meaning different things. The world does
 not model a capture name distinct from the storage key, and SHALL answer with the key: a client consumes
 only that value's extension, which the two share.
+
+Under **v2** the mini-edge SHALL also accept the **byte upload** the app's uploader addresses —
+`PUT /files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — refusing an unknown role or a
+missing filename `400`, and storing the object under the key the real backend composes for that resource,
+answered `201`. The world's own uploader keeps depositing store-direct, because it plays the operating
+system's transfer; the route exists so a caller that enters "a device holds uploads" through the edge's
+public surface — the backend port contracts' setup (capability `port-contracts`) — reaches the same state
+on the mini-edge as on the real backend.
 
 The mini-edge SHALL be able to enforce the **version gate**: when armed, a v2 request that declares no app
 version, or one below the configured minimum, SHALL be refused `426` with the minimum in the body, so the
@@ -231,6 +255,12 @@ every seam that does not yet declare a version, which is all of them until the c
 - **WHEN** `POST /events` is answered
 - **THEN** a canonical event id is minted, the response is `201 { eventId, name, createdAt }`, and the
   event marker is registered so a subsequent union read is gated in (not 404)
+
+#### Scenario: A v2 byte upload is listed and completes an asset
+
+- **WHEN** a device uploads a resource through the v2 byte route and has published a manifest declaring
+  only that resource for an asset
+- **THEN** the per-device listing carries the resource, and the union lists the asset as complete
 
 ### Requirement: Operator-driven, inspectable upload-job lifecycle
 

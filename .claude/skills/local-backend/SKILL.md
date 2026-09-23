@@ -21,6 +21,11 @@ Dev infrastructure: non-gating, no spec, same posture as `:test:harness-driver`.
 `main.ts` never imports `src/dev/`, and `deno bundle` roots the deployed bundle at `main.ts`, so none
 of it can ship.
 
+**The build runs a rig of its own.** `./gradlew build` launches `serve.ts --ephemeral` for the backend
+port contracts (`LiveEdge` in `:adapter:generic:app` jvmTest): port `0`, loopback-only network, a store
+under `build/`, and **no** `.localdev/host` write — so it never repoints a device build at a server
+about to exit, and it runs beside your `dev:local` without colliding. It exits when its test JVM does.
+
 ## The chain
 
 1. **Start the rig** — `cd api && deno task dev:local` (curl loop, `127.0.0.1:8080`) or
