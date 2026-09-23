@@ -47,7 +47,9 @@ class FakeDownloadTransport(
 
     val started = mutableListOf<Started>()
 
+    /** `null` for a URL that is not one, as the real transport answers — never a throw (`DownloadTransportContract`). */
     override fun start(url: String, description: String): DownloadTask? {
+        if (url.isBlank()) return null
         val s = Started(url, description)
         started += s
         return object : DownloadTask {
