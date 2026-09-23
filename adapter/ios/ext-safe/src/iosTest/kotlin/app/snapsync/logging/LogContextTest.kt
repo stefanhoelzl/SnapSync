@@ -98,6 +98,20 @@ class LogContextTest {
     }
 
     @Test
+    fun `a nested process-wide enter claims nothing and its exit leaves the outer claim`() {
+        val outer = LogContext.enter("onSilentPush")
+        try {
+            val nested = LogContext.enter("DownloadController.reconcile")
+            LogContext.exit(nested)
+            assertFalse(nested, "outermost wins")
+            assertEquals("onSilentPush", LogContext.current, "a nested exit must not clear the outer claim")
+        } finally {
+            LogContext.exit(outer)
+        }
+        assertNull(LogContext.current, "an owned claim is gone once it exits")
+    }
+
+    @Test
     fun `a process-wide enter nested under a thread-scoped claim claims nothing`() {
         val outer = LogContext.enterThread("didReceiveMetricPayloads")
         try {
