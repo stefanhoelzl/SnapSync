@@ -48,8 +48,8 @@ change):
   - An `AppPorts` seam binds a platform adapter, never core code: `provision`, `refreshAttestation` and
     `registerPush` are built in `compose/`.
   - The world boots cold: its construction forces no core lazy.
-  - Every OS entry point in the iOS root has a parity test: it starts from a fresh `AppCore` and touches
-    only what the shell touches, and a guard asserts the coverage.
+  - Every OS entry point is exercised from a cold core. On rebase this is main's `PlatformEntriesContract`
+    (driven through the inbound port over a fresh World), which the cold world now makes honest.
 - **G3**
   - `runCatchingCancellable` in `model/`. `runCatching` and `catch (Throwable|Exception)` are banned in
     production source outside the ObjC-boundary helpers (fixes B12, B11).
@@ -96,12 +96,11 @@ None. Every rule lands in an existing capability.
   - The composition seam gate widens.
   - The command-lane gate covers `UserQueries`.
   - New gates: callback-var, lambda-default, catch, flow fan-out, ObjC-boundary, confinement,
-    screens-take-no-suspend-seam, entry-point parity coverage.
+    screens-take-no-suspend-seam, the world boots cold.
 - `ios-app-shell`: the composition root no longer supplies `reloadConfig`/`scheduleBackstop` as lambdas.
   Both become ports, and `refreshAttestation`/`registerPush` leave `AppPorts`.
 - `harness-world-model`: the world boots cold and binds no core glue. Its operator provision becomes an
   explicit operator lever rather than a second body for `AppPorts.provision`.
-- `testing-architecture`: an OS entry-point parity test per shell entry point.
 - `device-attestation`:
   - Only a token-bearing request's rejection on a gated route invalidates the credential, and only that
     credential.

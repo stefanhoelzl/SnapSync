@@ -38,6 +38,7 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
 import app.snapsync.model.UserCommands
+import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
@@ -146,7 +147,7 @@ class HostStatusActionsTest {
                 openSettings = { record("openSettings") },
                 openLink = { record("openLink:$it") },
                 choosePhotos = { record("choosePhotos") },
-                reconfigure = { eventId, _, _, _, _ -> record("reconfigure:$eventId") },
+                reconfigure = { eventId, _, _, _, _ -> record("reconfigure:$eventId"); ReconfigureOutcome.Saved },
                 rename = { eventId, name -> record("rename:$eventId:$name") },
                 resetRename = { record("resetRename") },
                 sendDiagnostics = if (diagnostics) ({ note, _ -> record("sendDiagnostics:$note") }) else null,

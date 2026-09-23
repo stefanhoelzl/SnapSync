@@ -44,8 +44,11 @@ class IosDiscovery(
      * Found by the contract on its first run against this adapter: it reported the no-grant empty fetch as a
      * full enumeration, and only the cycles' own grant gates kept that from the presence diff.
      */
-    private val grant: () -> PermissionStatus = ::currentPhotoPermission,
+    private val grant: () -> PermissionStatus,
 ) : UploadDiscovery {
+
+    /** Production: the process's own photo grant (a secondary constructor, not a default — capability `module-architecture`). */
+    constructor(log: Logger, source: PhotoKitCandidateSource) : this(log, source, ::currentPhotoPermission)
     /**
      * Every in-scope candidate asset — a **full enumeration**, narrowed by [policy] at the fetch. There is no
      * change-token cursor (capability `ios-photokit-upload`, "In-extension discovery by full enumeration"):

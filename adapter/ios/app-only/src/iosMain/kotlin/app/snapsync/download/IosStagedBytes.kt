@@ -42,13 +42,16 @@ import platform.Foundation.NSFileManager
 class IosStagedBytes(
     /**
      * Resolves the App-Group container, or `null` when this process has none. A provider rather than a
-     * value so [stagingRoot] stays lazy (see the class doc); defaulting to the shared container, so the
-     * shell omits it. A test supplies a directory it owns (capability `port-contracts`).
+     * value so [stagingRoot] stays lazy (see the class doc); the no-argument constructor binds the shared
+     * container, so the shell names nothing. A test supplies a directory it owns (capability `port-contracts`).
      */
-    private val container: () -> String? = {
-        NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
-    },
+    private val container: () -> String?,
 ) : StagedBytes {
+
+    /** Production: the shared App-Group container (a secondary constructor, not a default — capability `module-architecture`). */
+    constructor() : this({
+        NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
+    })
 
     override fun stagingRoot(): String {
         val container = container()

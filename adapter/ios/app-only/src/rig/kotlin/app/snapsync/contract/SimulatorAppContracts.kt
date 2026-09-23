@@ -235,6 +235,8 @@ class SimAppImporterBinding : Binding<PhotoLibraryImporterState, StagedImport> {
             recordCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.RECORDED; true },
             clearCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CLEARED },
             confirmCreatedLocalId = { ref, _ -> markers[ref] = MarkerState.CONFIRMED },
+            // No event album in a contract run: the importer places nothing.
+            albumId = { null },
             log = Logger.withTag("contract"),
         )
         var staged = 0

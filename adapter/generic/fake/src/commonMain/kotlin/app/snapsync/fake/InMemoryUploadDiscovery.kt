@@ -34,7 +34,7 @@ internal class InMemoryUploadDiscovery(
      * The process's photo grant. As on a device, a walk is authoritative for deletion only under a full grant:
      * without one there is no library to have read, and under a partial one only a selection.
      */
-    private val grant: () -> PermissionStatus = { PermissionStatus.GRANTED },
+    private val grant: () -> PermissionStatus,
 ) : UploadDiscovery {
 
     /**

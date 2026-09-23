@@ -136,6 +136,21 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
+        "AppEntries.core" to
+            "the composed AppCore, provided rather than held so the root can delegate its inbound port from its own " +
+            "initializer and each entry resolves the graph only when the OS first calls it — the core itself",
+        "EntryHooks.markActive" to
+            "records in the root's own memory that the app became active (SnapSyncRoot.markActive) — read by its " +
+            "scene rule; nothing leaves the process",
+        "EntryHooks.openUrl" to
+            "the status container's link intent (host.onOpenUrl): decodes the link and opens the join gate — " +
+            "presentation's own reduction",
+        "EntryHooks.assembleHost" to
+            "touches the root's lazily assembled host so its collectors run before a background wake's work lands — " +
+            "in-process assembly, no platform read",
+        "EntryHooks.deliverPushToken" to
+            "hands the OS-delivered token to the in-memory PushTokenSource the registration collector observes; the " +
+            "network write is PushRegistration's, over the PushHttpClient port",
         "App.admission" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",
