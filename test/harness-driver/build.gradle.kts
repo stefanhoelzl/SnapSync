@@ -60,4 +60,8 @@ fun registerDrive(taskName: String, harness: String, blurb: String) =
 
 registerDrive("driveForge", "forge", "Serve the forge harness (:app:desktop:runForge) headlessly over HTTP.")
 registerDrive("driveWorld", "world", "Serve the full-stack world harness (:app:desktop:run) headlessly over HTTP.")
-registerDrive("driveMirror", "mirror", "Serve the world harness mirroring a remote host (-Psnapsync.attach=<url>) headlessly.")
+registerDrive(
+    "driveMirror",
+    "mirror",
+    "Serve the world harness mirroring a remote host (-Psnapsync.attach=<url>) headlessly over HTTP.",
+)

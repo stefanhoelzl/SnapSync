@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.RigClient
 import app.snapsync.model.FromChoice
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.UntilChoice
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.Layer
@@ -71,9 +72,9 @@ fun MirrorHarnessRoot(url: String) {
         // Polled on a real dispatcher, never the composition's frame clock: a clock the scene drives (the headless
         // driver's is virtual) would pause the mirror between frames and show a host that moved on long ago.
         withContext(Dispatchers.IO) {
-            advertisement = runCatching { client.device() }.onFailure { note("GET /device failed: $it") }.getOrNull()
+            advertisement = runCatchingCancellable { client.device() }.onFailure { note("GET /device failed: $it") }.getOrNull()
             while (true) {
-                state = runCatching { client.state() }.onFailure { note("GET /device/state failed: $it") }.getOrNull() ?: state
+                state = runCatchingCancellable { client.state() }.onFailure { note("GET /device/state failed: $it") }.getOrNull() ?: state
                 delay(POLL_MS)
             }
         }
@@ -114,7 +115,7 @@ private fun mirrorActions(
     note: (String) -> Unit,
 ): StatusActions {
     fun post(name: String, vararg params: Pair<String, String>): () -> Unit = {
-        scope.launch(Dispatchers.IO) { note("/user/$name → ${runCatching { client.user(name, mapOf(*params)) }.getOrElse { it }}") }
+        scope.launch(Dispatchers.IO) { note("/user/$name → ${runCatchingCancellable { client.user(name, mapOf(*params)) }.getOrElse { it }}") }
     }
     fun inert(what: String): () -> Unit = { note("$what: no /user intent — the surface lives in the host's container") }
     val form: () -> RangeForm? = { (latest()?.ui?.layer as? Layer.JoiningEvent)?.form }

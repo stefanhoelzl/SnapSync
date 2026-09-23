@@ -112,7 +112,12 @@ class LiveEdgeContractsTest {
     private val manifest = object : Binding<ManifestPublisherState, EdgeSubject<ManifestPublisher>> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
-        override val reaches = ManifestPublisherState.entries.toSet()
+        override val reaches = setOf(
+            ManifestPublisherState.MEMBER,
+            ManifestPublisherState.NON_MEMBER,
+            ManifestPublisherState.NO_SUCH_EVENT,
+            ManifestPublisherState.MEMBER_WITH_TWO_UPLOADED_ASSETS,
+        )
 
         override fun create(state: ManifestPublisherState, clauseId: String): Entered<EdgeSubject<ManifestPublisher>> =
             LiveEdge.enter({ ManifestPublisherContract.seed(state, clauseId, it) }) { client, base, _ -> HttpManifestPublisher(client, base) }
