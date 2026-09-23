@@ -120,6 +120,8 @@ class UploadCycleTest {
         var discoverPolicyArg: SelectionPolicy? = null
         /** Keys the cycle asked to resolve — how a test asserts it enqueued from the ledger, not a walk. */
         val resolvedKeys = mutableSetOf<String>()
+        /** How many resolve round-trips the cycle made, counted with repeats — what reusing the walk saves. */
+        var resolveCalls = 0
         /** Assets whose resources the cycle read off a walk's candidates — the per-asset round-trip a skip saves. */
         val readAssets = mutableListOf<String>()
 
@@ -152,6 +154,7 @@ class UploadCycleTest {
          */
         override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
             resolvedKeys += keys
+            resolveCalls++
             return library.filter { it.filename in keys }
         }
 
@@ -894,8 +897,13 @@ class UploadCycleTest {
 
     @Test
     fun a_refusal_stops_the_pass_with_no_further_resolve() = runTest {
+        // Rows the ledger already holds and this cycle's walk does not return — so every row is RESOLVED by key.
+        // (A row the walk just read is created from the handle in hand and resolves nothing; see the next test.)
         val backend = InMemoryLedgerStore()
-        val platform = FakePlatform(discovered = (1..10).map { resource("r${it.toString().padStart(2, '0')}") }, limitAfter = 2)
+        val library = (1..10).map { resource("r${it.toString().padStart(2, '0')}") }
+        LedgerWriter(backend).recordDiscovered(library)
+        val platform = FakePlatform(discovered = library, limitAfter = 2)
+        platform.discovered = emptyList()
 
         val result = cycleOver(backend, platform).run()
 
@@ -906,6 +914,41 @@ class UploadCycleTest {
         )
         assertEquals(CycleResult.PROCESSING, result, "the platform refused, so work remains")
         assertEquals(LedgerState.DISCOVERED, backend.get("r10")?.state, "the remainder is remembered")
+    }
+
+    @Test
+    fun a_row_this_walk_read_is_created_without_a_second_resolve() = runTest {
+        // The walk already read these resources through the same port; resolving them again would repeat one
+        // synchronous platform round-trip per new photo for the handle already in hand.
+        val backend = InMemoryLedgerStore()
+        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b"), resource("c")))
+
+        val result = cycleOver(backend, platform).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(listOf("a", "b", "c"), platform.created.map { it.filename }, "every discovered row got a job")
+        assertEquals(listOf("a", "b", "c"), platform.readAssets, "the walk read each asset once")
+        assertEquals(0, platform.resolveCalls, "no row the walk just read was resolved a second time")
+        assertTrue(platform.resolvedKeys.isEmpty())
+    }
+
+    @Test
+    fun only_the_rows_the_walk_did_not_read_are_resolved() = runTest {
+        // A mixed pass: "old" rests DISCOVERED from an earlier cycle and its asset is fully known, so the walk
+        // skips it; "new" is discovered now. Only "old" (and the departed "gone") cost a resolve — and a real
+        // miss is still deleted by key.
+        val backend = InMemoryLedgerStore()
+        LedgerWriter(backend).recordDiscovered(listOf(resource("old"), resource("gone")))
+        val platform = FakePlatform(discovered = listOf(resource("old"), resource("new")))
+
+        val result = cycleOver(backend, platform).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(setOf("old", "new"), platform.created.mapTo(mutableSetOf()) { it.filename })
+        assertEquals(listOf("new"), platform.readAssets, "the fully known asset was not re-read by the walk")
+        assertEquals(setOf("old", "gone"), platform.resolvedKeys, "only rows the walk did not read are resolved")
+        assertEquals(2, platform.resolveCalls, "one resolve per missed row, one row at a time")
+        assertNull(backend.get("gone"), "a row that resolves to nothing is still deleted by key")
     }
 
     @Test
