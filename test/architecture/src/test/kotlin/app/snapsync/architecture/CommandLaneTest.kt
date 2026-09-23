@@ -47,9 +47,12 @@ class CommandLaneTest {
             .map { it.groupValues[1] }
             .toList()
 
-    /** The `<type>(...)` argument block in the one place the bundles are built. */
+    /** Where each bundle is built — one file per bundle, both in `compose/`. */
+    private val builtIn = mapOf("UserCommands" to "SnapSyncApp.kt", "UserQueries" to "QueryComposition.kt")
+
+    /** The `<type>(...)` argument block in the one place the bundle is built. */
     private fun built(type: String): String {
-        val text = file("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt").text
+        val text = file("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/${builtIn.getValue(type)}").text
         val start = text.indexOf("$type(")
         assertTrue(start >= 0, "compose/ no longer builds a $type bundle — this gate is stale")
         var depth = 0
@@ -62,7 +65,7 @@ class CommandLaneTest {
                 }
             }
         }
-        fail("unbalanced $type( block in SnapSyncApp.kt")
+        fail("unbalanced $type( block in ${builtIn.getValue(type)}")
     }
 
     /** The fields of [type] built through none of [allowed]. */
@@ -70,7 +73,7 @@ class CommandLaneTest {
         val bundle = built(type)
         // Split into per-argument chunks at the argument indentation the bundle is written with, so a
         // decorator naming one field cannot vouch for its neighbour.
-        val chunks = Regex("""\n {12}(\w+) = """).findAll(bundle).toList()
+        val chunks = Regex("""\n {4,12}(\w+) = """).findAll(bundle).toList()
         assertTrue(chunks.isNotEmpty(), "no arguments parsed from the $type( block")
         return chunks.mapIndexedNotNull { index, match ->
             val to = chunks.getOrNull(index + 1)?.range?.first ?: bundle.length
@@ -104,7 +107,7 @@ class CommandLaneTest {
     fun `the gate sees every command and query the bundles declare`() {
         listOf("UserCommands", "UserQueries").forEach { type ->
             val bundle = built(type)
-            val missing = declared(type).filterNot { bundle.contains("\n            $it = ") }
+            val missing = declared(type).filterNot { Regex("""\n {4,12}$it = """).containsMatchIn(bundle) }
             assertTrue(
                 missing.isEmpty(),
                 "declared in $type but not built in compose/, so the lane gate never sees them: $missing",

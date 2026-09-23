@@ -63,8 +63,9 @@ device.
 - **THEN** a world-driven test that exercises the first collaborator without the second fails, rather than
   passing because the world built the second at construction
 
-#### Scenario: The world's construction is inspected
+#### Scenario: The world's source touches the core eagerly
 
-- **WHEN** the world finishes construction
-- **THEN** no `AppCore` lazy member other than those the iOS root forces at process start has been
-  initialized
+- **WHEN** `World.kt` reads a member of the composed core in an `init` block or an eagerly initialized
+  property, outside a lambda body
+- **THEN** the boots-cold gate fails, naming the line — the access must be deferred to use (`by lazy`,
+  `get()`, or the function that needs it)

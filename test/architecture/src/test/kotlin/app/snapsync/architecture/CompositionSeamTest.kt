@@ -104,20 +104,10 @@ class CompositionSeamTest {
                 "rebuilding the graph. `null` in a production build not by convention but by " +
                 "CONSTRUCTION: the only writer of the root source behind it is the control channel's boot " +
                 "hook, whose source is absent from a build made without the channel's build property",
-            "provision" to
-                "SLATED FOR REMOVAL (G2): re-enters this core's own flow/Provision through the shell's " +
-                "log-wrapping delegator. Being a bundle field is what let the world bind a different body; " +
-                "compose/ will build it from the core it already holds",
             "onEventMinted" to
                 "hands a minted event id back to the shell's link entry, which forwards it into THIS " +
                 "core's join gate — a U-turn through the entry surface so create and a scanned QR take " +
                 "one gate, not two. Nothing leaves the process",
-            "refreshAttestation" to
-                "SLATED FOR REMOVAL (G2): drives the core's own DeviceAttestation feature (whose network " +
-                "call is the AttestClient port); nothing but the awaited call is the shell's",
-            "registerPush" to
-                "SLATED FOR REMOVAL (G2): re-PUTs the token the OS already delivered through the core's " +
-                "PushRegistration over the PushTokenPublisher port — both ends are ports",
         ),
         "UploadPorts" to mapOf(
             "selectionScope" to
@@ -166,8 +156,8 @@ class CompositionSeamTest {
             "delivers a staged resource to the sibling DownloadController, resolving its lazy when INVOKED so a " +
             "download-only relaunch reaches it too (capability `photo-download`)",
         "JoinEvent.provision" to
-            "runs the provision the composition owns (AppPorts.provision, then the album gather start) — core " +
-            "machinery the join use-case may not name",
+            "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
+            "gather start) — core machinery the join use-case may not name",
         "LeaveEvent.stopUploads" to
             "the sibling UploadTransitions.onLeave() — feature-blindness; its platform touches are the " +
             "uploaders' own adapters",
@@ -223,7 +213,6 @@ class CompositionSeamTest {
             "model/'s pure registrability fact over the OS fact, the grant and the rig pin",
         "UploadTransitions.appEngine" to "AppPorts.appDrivenUpload, forwarded — a factory for the app's uploader",
     )
-
 
     // ---- scanning ---------------------------------------------------------------------------------
 
