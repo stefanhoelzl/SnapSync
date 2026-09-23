@@ -25,7 +25,11 @@ import app.snapsync.engine.iosLedgerStore
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.LedgerState
+import app.snapsync.gallery.photoKitResourceRole
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.uploadKey
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
@@ -86,9 +90,23 @@ private fun scratch(name: String): String {
     return dir
 }
 
+/**
+ * The key a prepared transfer of [photo] is created under: on a device the photo's own — as production keys it, so a
+ * re-creation can fetch the photo the key names — and on replay, where no photo exists, the contract's derivation. The
+ * key is masked in the one recorded call that names it ([UploadJobApi.liveResource]), so both replay alike.
+ */
+internal fun presentedKeyOf(clauseId: String, photo: Any): String =
+    (photo as? PHAssetResource)?.let { resource ->
+        uploadKey(
+            normalizeAssetId(resource.assetLocalIdentifier),
+            photoKitResourceRole(resource.type) ?: ResourceRole.PRIMARY,
+            resource.originalFilename,
+        )
+    } ?: BackgroundTransferContract.key(clauseId)
+
 /** The transfer a presented state prepares, as the contract derives it from the clause id. */
 private class Prepared(clauseId: String, state: BackgroundTransferState, photo: Any) {
-    val key = BackgroundTransferContract.key(clauseId)
+    val key = presentedKeyOf(clauseId, photo)
     val url = CONTRACT_UPLOAD_BASE + BackgroundTransferContract.preparedRoute(clauseId, state)
     val resource = Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), photo)
     val request = UploadRequest(url, mapOf("Content-Type" to "image/jpeg"), resource)
@@ -142,6 +160,7 @@ internal fun photoKitTransferInState(
             unusable = { key -> Resource(key, assetIdFromUploadKey(key), "image/jpeg", emptyMap(), "not a photo") },
             ledger = ledger,
             objects = objects,
+            presentedKey = { id -> presentedKeyOf(id, photo) },
         ),
         dispose = afterDispose,
     )

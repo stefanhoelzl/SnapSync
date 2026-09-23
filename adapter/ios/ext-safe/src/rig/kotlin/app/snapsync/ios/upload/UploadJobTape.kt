@@ -51,7 +51,8 @@ private fun ackCall(job: UploadJobFacts) = "acknowledge(path=${job.destinationPa
 private fun retryCall(job: UploadJobFacts, to: NSURLRequest) = "retry(path=${job.destinationPath.orNone()} ${to.render()})"
 private fun createCall(to: NSURLRequest, resource: Any) = "create(${to.render()} resource=${resourceKind(resource)})"
 private fun landedCall(route: String) = "landed($route)"
-private fun liveResourceCall(key: String) = "liveResource(key=$key)"
+/** The key names a photo of THIS device, so it is masked: a replay, which has no such photo, makes the same call. */
+private fun liveResourceCall(@Suppress("UNUSED_PARAMETER") key: String) = "liveResource(key=<masked>)"
 
 private fun LiveResource?.render() = if (this == null) "none" else "photo type=${type.orNone()}"
 
