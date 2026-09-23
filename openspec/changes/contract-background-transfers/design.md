@@ -209,7 +209,9 @@ No production behaviour changes, except adapter fixes D7 may surface. Rollback i
 
 ## Open Questions
 
-- Does `BGTaskScheduler` accept a submission on the simulator app? This is measured in task 5.1, and the answer
-  decides whether that host is `Live` or declared unreachable.
-- Is a short read deterministic on a default session over loopback? This is measured in task 3.7, and it
-  decides whether D2 gets a short-read clause.
+- ~~Does `BGTaskScheduler` accept a submission on the simulator app?~~ **Measured 2026-09-23 (iOS 26.5): no.** Every
+  submission is refused with `BGTaskSchedulerErrorDomain/1` (`Unavailable`), and nothing is left pending. So no simulator
+  host binds `BackgroundScheduler`, and the fact is documented on `IosBackgroundScheduler`.
+- ~~Is a short read deterministic on a default session over loopback?~~ The clause asserts only what either answer
+  must satisfy (a cut transfer fails, or is judged on its true, short facts), so it holds whichever way the platform
+  answers. `SHORT_READ_IS_REPORTED_TRUTHFULLY` passes live on the simulator app.
