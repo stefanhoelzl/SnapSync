@@ -4,6 +4,7 @@ import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadRequest
+import app.snapsync.model.destinationPathOf
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.BackgroundTransfer
@@ -101,10 +102,6 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             objects.landed(path) != null && rowState(key) == state
         }
 
-    /** The path of [url] — what a destination-resolving tier reads back off the job. */
-    private fun destinationPathOf(url: String): String =
-        url.substringAfter("://").let { rest -> "/" + rest.substringAfter('/', "") }.substringBefore('?')
-
     /** Waits until the tier offers a refused transfer for [key] for retry, and answers it. */
     private suspend fun TransferUnderTest.awaitOfferedForRetry(key: String): PlatformUploadJob {
         var offered: PlatformUploadJob? = null
@@ -115,6 +112,12 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
         return checkNotNull(offered)
     }
 
+    /*
+     * The PhotoKit tier's retry, on SINGLE_FREE_RETRY: a refusal is offered once for retry, and a retry refused again
+     * is handed up for re-creation once. A retry that then SUCCEEDS has no clause: production retries to the identical
+     * destination, and a fixture route answers one status for good (`TransferFixture`), so no route can refuse the
+     * first attempt and accept the second.
+     */
     override val clauses = clauses {
 
         clause("CREATE_UNUSABLE_PAYLOAD", BackgroundTransferState.IDLE) { subject ->
@@ -239,27 +242,16 @@ object BackgroundTransferContract : Contract<BackgroundTransferState, TransferUn
             assertEquals(resource.contentType, offered.contentType, "a retried transfer keeps the type it was created with")
         }
 
-        clause("RETRY_REPOINTS_AND_COMPLETES", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
-            val id = "RETRY_REPOINTS_AND_COMPLETES"
-            val resource = subject.usable(key(id))
-            val refused = path(id, REJECT)
-            val retried = path(id, ACCEPT, n = 2)
-            subject.seed(resource, LedgerState.REQUESTED, refused)
-            assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(refused, resource), resource))
-            val offered = subject.awaitOfferedForRetry(resource.filename)
-            subject.transfer.retryJob(offered, subject.request(retried, resource))
-            subject.awaitRecorded(retried, resource.filename, LedgerState.COMPLETED)
-        }
-
         clause("RETRY_SPENT_IS_HANDED_UP_ONCE", BackgroundTransferState.SINGLE_FREE_RETRY) { subject ->
             val id = "RETRY_SPENT_IS_HANDED_UP_ONCE"
             val resource = subject.usable(key(id))
             val refused = path(id, REJECT)
-            val refusedAgain = path(id, REJECT, n = 2)
             subject.seed(resource, LedgerState.REQUESTED, refused)
             assertEquals(CreateResult.CREATED, subject.transfer.createJob(subject.request(refused, resource), resource))
             val offered = subject.awaitOfferedForRetry(resource.filename)
-            subject.transfer.retryJob(offered, subject.request(refusedAgain, resource))
+            // The retry goes where production sends it: the IDENTICAL destination (the cycle rebuilds the same edge
+            // URL), which is also what keeps the row's recorded destination the job's.
+            subject.transfer.retryJob(offered, subject.request(refused, resource))
             val handedUp = mutableListOf<String>()
             awaitWithin {
                 handedUp += subject.transfer.drainTerminals().map { it.key }

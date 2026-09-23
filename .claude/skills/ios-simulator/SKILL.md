@@ -56,8 +56,12 @@ State these before writing a scenario against this host, or you will write one t
 
   # present it back as finished, and the next cycle records it
   curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
-       -d '{"finished":[{"key":"…","action":"acknowledge","state":"succeeded"}]}'
+       -d '{"finished":[{"destination":"<created[].destination>","action":"acknowledge","state":"succeeded"}]}'
   ```
+
+  Play the sets as a device's OS does (measured, SE2 iOS 26.6): a **first** failure is presented in BOTH
+  `retry` and `acknowledge` (state it twice); a retry-spent one in `acknowledge` only; a success in
+  `acknowledge` only. A job acknowledged or re-pointed leaves both sets within the cycle.
 
   ⚠️ **The transfers `perform` makes use a DEFAULT session, so they die with the process** — the OS's own
   queue genuinely survives. Kill the app mid-transfer and the job is simply lost, where a device would
