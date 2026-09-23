@@ -22,7 +22,7 @@ private val json = Json { encodeDefaults = true; prettyPrint = true }
 internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = mapOf(
     "reset" to resetCommand { world.core },
     "gallery/seed" to seedCommand { n, kind -> seedWorld(world, n, kind) },
-    "backend/offline" to RigCommand { params, _ -> answered(world.setBackendOffline(flag(params, "on"))) },
+    "backend/offline" to RigCommand { params, _ -> answered(world.neutral.setOffline(flag(params, "on"))) },
     "jobs" to RigCommand { _, _ ->
         CommandResult.ok(
             """{"live":${jsonList(world.platform.liveJobKeys())},"created":${world.platform.created.size}}""",
@@ -116,7 +116,7 @@ internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = mapOf(
     // `device` defaults to this host's own.
     "backend/objects" to RigCommand { params, _ ->
         val device = params["device"] ?: world.ownDeviceId
-        when (val objects = world.objectsOf(device)) {
+        when (val objects = world.neutral.objectsOf(device)) {
             is Answer.Available ->
                 CommandResult.ok("""{"device":${jsonString(device)},"objects":${jsonList(objects.value.sorted())}}""")
             is Answer.Unavailable -> CommandResult.refused(objects.reason)

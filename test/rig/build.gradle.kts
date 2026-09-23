@@ -4,9 +4,10 @@ plugins {
 }
 
 // The dev/test CONTROL CHANNEL (`:test:rig`) — an HTTP server that runs INSIDE the iOS app so an agent
-// can force OS-callback entry points and read live state over `usbmux forward`. Dev infrastructure:
-// non-gating, NO SPEC — the same posture as `:test:harness-driver`, and for the same
-// reason it states: every surface here is a mechanical projection of a contract specified elsewhere
+// can force OS-callback entry points and read live state over `usbmux forward`. Its protocol is specified
+// (capability `testing-architecture`, "One control protocol, served by two hosts") and its JVM host is tested in
+// the canonical check; beyond that it is honest for the reason it always was: every surface is a projection
+// of a contract specified elsewhere
 // (`/state` is a compiler-generated encoder over the real `UiState`, `/trigger` invokes the real
 // `@PlatformEntry` members, `/logs` passes `DeviceLogSource.tail` through verbatim), so there is no
 // second way-to-drive that can rot or lie. Decision record:

@@ -35,8 +35,8 @@
 
 ## 5. Guards, specs of record, docs
 
-- [ ] 5.1 Add the loopback bind guard to `:test:architecture` (every `embeddedServer(` in `test/rig/src` binds `LOOPBACK`; no other address literal; fails on an empty result); make `RigServer`'s citation match the requirement name
-- [ ] 5.2 `ModuleSetTest` / `DetektTierCoverageTest` green with the two new modules; run `./gradlew architectureDiagrams` and commit `architecture/`
-- [ ] 5.3 CLAUDE.md module map: add `:test:edge` and `:test:control`, update `:test:rig` (JVM host) and `:test:world` (backend seam) and `:adapter:generic:app` (LiveEdge moved); no law digest
-- [ ] 5.4 `rig-channel` skill: a JVM-host section (`runJvmHost`, backends, `GET /device`, refusals)
-- [ ] 5.5 `./gradlew build` green (Deno on PATH); `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate add-rig-jvm-host --strict` green
+- [x] 5.1 Add the loopback bind guard to `:test:architecture` (every `embeddedServer(` in `test/rig/src` binds `LOOPBACK`; no other address literal; fails on an empty result); make `RigServer`'s citation match the requirement name
+- [x] 5.2 `DetektTierCoverageTest` green with the two new modules (both in the `harness` tier); `./gradlew architectureDiagrams` committed. `ModuleSetTest` reads the MAIN `module-architecture` spec, so it turns green only when this change's delta is synced
+- [x] 5.3 CLAUDE.md module map: add `:test:edge` and `:test:control`, update `:test:rig` (JVM host) and `:test:world` (backend seam) and `:adapter:generic:app` (LiveEdge moved); no law digest
+- [x] 5.4 `rig-channel` skill: a JVM-host section (`runJvmHost`, backends, `GET /device`, refusals)
+- [x] 5.5 `./gradlew build` green (Deno on PATH) apart from `ModuleSetTest`, which turns green at sync (see 5.2); `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `validate add-rig-jvm-host --strict` green

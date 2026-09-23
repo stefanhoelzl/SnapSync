@@ -26,20 +26,20 @@ class DenoWorldTest {
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
 
         w.platform.completeJob(KEY)
-        assertTrue(KEY in w.objectsOf(w.ownDeviceId).orFail(), "the real backend lists the completed object")
+        assertTrue(KEY in w.neutral.objectsOf(w.ownDeviceId).orFail(), "the real backend lists the completed object")
 
         w.addForeignDeviceMinted(FOREIGN, listOf(World.foreignAsset(FOREIGN_ASSET)), eventId)
-        val union = w.unionOf(eventId).orFail()
+        val union = w.neutral.unionOf(eventId).orFail()
         assertTrue(union.any { it.deviceId == FOREIGN && it.assetId == FOREIGN_ASSET }, "the foreign asset is in the union")
-        assertEquals(true, w.isRegistered(eventId).orFail())
+        assertEquals(true, w.neutral.isRegistered(eventId).orFail())
     }
 
     @Test
     fun what_only_the_mini_edge_models_is_refused_not_faked() = worldTest {
         val w = World(this, backend = DenoBackend())
-        assertIs<Answer.Unavailable>(w.setBackendOffline(true))
-        assertIs<Answer.Unavailable>(w.manifestOf("any", w.ownDeviceId))
-        assertIs<Answer.Unavailable>(w.sweepEvent("any"))
+        assertIs<Answer.Unavailable>(w.neutral.setOffline(true))
+        assertIs<Answer.Unavailable>(w.neutral.manifestOf("any", w.ownDeviceId))
+        assertIs<Answer.Unavailable>(w.neutral.sweepEvent("any"))
         val refused = assertFailsWith<IllegalStateException> { w.store }
         assertTrue("provisionMinted" in refused.message.orEmpty(), "the error names the neutral route")
     }

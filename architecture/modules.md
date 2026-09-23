@@ -24,6 +24,8 @@ flowchart LR
   domain_ports[":domain:ports"]
   test_architecture[":test:architecture"]
   test_contracts[":test:contracts"]
+  test_control[":test:control"]
+  test_edge[":test:edge"]
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_rig[":test:rig"]
@@ -35,6 +37,7 @@ flowchart LR
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
   adapter_generic_app --> test_contracts
+  adapter_generic_app --> test_edge
   adapter_generic_fake --> domain_compose
   adapter_generic_fake --> domain_feature
   adapter_generic_fake --> domain_flow
@@ -94,6 +97,10 @@ flowchart LR
   test_contracts --> domain_feature
   test_contracts --> domain_model
   test_contracts --> domain_ports
+  test_control --> test_rig
+  test_control --> ui_presentation
+  test_edge --> adapter_generic_app
+  test_edge --> test_contracts
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic_app
   test_integration --> domain_compose
@@ -107,9 +114,11 @@ flowchart LR
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
   test_rig --> domain_compose
+  test_rig --> domain_feature
   test_rig --> domain_model
   test_rig --> domain_ports
   test_rig --> test_contracts
+  test_rig --> test_world
   test_rig --> ui_presentation
   test_world --> adapter_generic_app
   test_world --> adapter_generic_fake
@@ -118,6 +127,7 @@ flowchart LR
   test_world --> domain_model
   test_world --> domain_ports
   test_world --> test_contracts
+  test_world --> test_edge
   ui_components --> domain_model
   ui_presentation --> domain_feature
   ui_presentation --> domain_model
