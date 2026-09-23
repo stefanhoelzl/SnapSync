@@ -22,14 +22,23 @@ import platform.Foundation.writeToFile
  * upload extension binaries. The duplication is four lines; the alternative ships test code to users.
  */
 internal fun withTempDirectory(block: (String) -> Unit) {
-    val manager = NSFileManager.defaultManager
-    val path = NSTemporaryDirectory().trimEnd('/') + "/snapsync-test-" + NSUUID().UUIDString()
-    manager.createDirectoryAtPath(path, withIntermediateDirectories = true, attributes = null, error = null)
+    val path = newTempDirectory()
     try {
         block(path)
     } finally {
-        manager.removeItemAtPath(path, error = null)
+        removeDirectory(path)
     }
+}
+
+/** A fresh, empty directory; the caller removes it with [removeDirectory] (a contract binding's dispose). */
+internal fun newTempDirectory(): String {
+    val path = NSTemporaryDirectory().trimEnd('/') + "/snapsync-test-" + NSUUID().UUIDString()
+    NSFileManager.defaultManager.createDirectoryAtPath(path, withIntermediateDirectories = true, attributes = null, error = null)
+    return path
+}
+
+internal fun removeDirectory(path: String) {
+    NSFileManager.defaultManager.removeItemAtPath(path, error = null)
 }
 
 /** Write [text] to [path], creating or replacing it. */

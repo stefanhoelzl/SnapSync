@@ -10,6 +10,9 @@ import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.fake.inMemoryAttestClient
+import app.snapsync.fake.inMemoryConfigReader
+import app.snapsync.fake.inMemoryConfigSource
+import app.snapsync.fake.inMemoryConfigStore
 import app.snapsync.fake.inMemoryProtectedStorage
 import app.snapsync.fake.inMemoryAttestKey
 import app.snapsync.fake.inMemoryAttestStore
@@ -92,8 +95,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -307,17 +308,16 @@ class World(
      */
     private val leaveNotifier = HttpLeaveNotifier(client, host) { ownDeviceId }
 
+    // The membership: the world's own cells behind the honest config ports (`:adapter:generic:fake`, held to
+    // `ConfigStoreContract` as the App-Group file store is). [configCell] is what operator actions write
+    // directly; [configReadable] is what the [membershipUnreadable] lever moves.
     private val configCell = MutableStateFlow<EventConfig?>(null)
-    val configSource: ConfigSource = object : ConfigSource {
-        override val config: StateFlow<EventConfig?> = configCell.asStateFlow()
-    }
+    private val configReadable = MutableStateFlow(true)
+    val configSource: ConfigSource = inMemoryConfigSource(configCell, configReadable)
 
-    // The write side of the same cell [configSource] reads — the composed `LeaveEvent`/`JoinEvent`
-    // clear/set the config the container reduces from.
-    val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: EventConfig) { configCell.value = config }
-        override suspend fun clear() { configCell.value = null }
-    }
+    // The write side of the same cells — the composed `LeaveEvent`/`JoinEvent` clear/set the config the
+    // container reduces from.
+    val configStore: ConfigStore = inMemoryConfigStore(configCell, configReadable)
 
     // The real common-Ktor seams over the mini-edge (single client, exactly as production shares one).
     val deviceFiles = HttpDeviceFilesSource(client, host)
@@ -394,20 +394,19 @@ class World(
      * *joined* or *absent*, which is exactly the modelling gap that mattered: the outcome three shipped
      * bugs turned on was the one no test could reach. Set it and a cycle takes [CycleGate.Skip].
      */
-    var membershipUnreadable: Boolean = false
+    var membershipUnreadable: Boolean
+        get() = !configReadable.value
+        set(value) {
+            configReadable.value = !value
+        }
 
     /**
-     * The world's membership read as the shared `ConfigReader` port — the [membershipUnreadable]
-     * lever surfaces as [ConfigRead.Unavailable] with the real locked-device OSStatus
-     * (`errSecInteractionNotAllowed`), so the shared entry gate's skip forensics read like a
-     * device's. The gate itself is `uploadCore`'s — the world carries no translation of its own.
+     * The world's membership read as the shared `ConfigReader` port — the honest fake over the same cells,
+     * so the [membershipUnreadable] lever surfaces as [ConfigRead.Unavailable] exactly as an unreadable
+     * store answers, and writes are refused meanwhile. The gate itself is `uploadCore`'s — the world
+     * carries no translation of its own.
      */
-    private val configReader: ConfigReader = object : ConfigReader {
-        override fun read(): ConfigRead = when {
-            membershipUnreadable -> ConfigRead.Unavailable(status = -25308)
-            else -> configCell.value?.let { ConfigRead.Joined(it) } ?: ConfigRead.None
-        }
-    }
+    private val configReader: ConfigReader = inMemoryConfigReader(configCell, configReadable)
 
     // ---- the composed APP graph (the REAL snapSyncApp, over the fakes) --------------------------
 

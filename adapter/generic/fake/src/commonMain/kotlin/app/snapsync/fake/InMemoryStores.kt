@@ -1,12 +1,10 @@
 package app.snapsync.fake
 
-import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.DeviceManifestStore
 
 /** The honest in-memory [DeviceManifestStore] for the composed `DeviceManifestProducer`. */
-internal class InMemoryDeviceManifestStore : DeviceManifestStore {
-    private var lastUploaded: String? = null
+internal class InMemoryDeviceManifestStore(private var lastUploaded: String? = null) : DeviceManifestStore {
 
     override fun loadLastUploaded(): String? = lastUploaded
     override fun saveLastUploaded(json: String) {

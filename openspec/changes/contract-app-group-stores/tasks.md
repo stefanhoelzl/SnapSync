@@ -22,14 +22,16 @@
   `UNUSABLE`, `FILE_UNREADABLE`), the subject holder over the three ports, and `ConfigStoreContract` with the
   D6 clauses. Seed configs and their file text derive from the clause id.
 - [ ] 3.2 `:adapter:generic:fake`: `InMemoryConfigStore(persisted, readable)` implementing all three ports,
-  plus its `inMemoryConfigStore(...)` factory. `FakeHonestyTest` is green.
+  plus port-typed factories (`inMemoryConfigSource`/`inMemoryConfigStore`/`inMemoryConfigReader`) over the
+  caller's cells. The class stays `internal`: that, not a `FakeHonestyTest` (which no longer exists), is the
+  honesty rule.
 - [ ] 3.3 Fake binding in `:adapter:generic:fake` commonTest: `currentHost`, `Fake`, reaching `INACCESSIBLE`,
   `ABSENT` and `JOINED`.
 - [ ] 3.4 Live binding in `:adapter:ios:ext-safe` iosTest on `IOS_SIM_KEXE`:
   - readable states use a fresh temporary directory with the seed written as the adapter would write it;
   - `INACCESSIBLE` uses the default container argument;
   - `FILE_UNREADABLE` uses the entry measured in 1.1.
-- [ ] 3.5 Watch `INACCESSIBLE_CLEAR_REFUSES` fail against the current adapter, then make `clear()` raise
+- [ ] 3.5 Make `clear()` raise
   when the container path is `null`, leaving `config` unchanged. A missing file stays success.
 - [ ] 3.6 Update the `FileBackedConfigStore` and `isConfigFileAbsence` KDoc:
   - the unresolvable-container `clear` now fails;
@@ -47,7 +49,6 @@
   - add `implementation(project(":test:contracts"))` to `:adapter:ios:app-only`'s iosTest;
   - the live binding is `IosStagedBytes` there.
 - [ ] 4.3 `DeviceLogSourceContract` (`NO_LOG`, `EMPTY_LOG`, `HOLDING`, `ROLLED_ONLY`):
-  - watch the fake's `EMPTY_LOG` clause fail;
   - fix `InMemoryDeviceLogSource` to answer `null` for an empty log;
   - the live binding is `IosDeviceLogSource` over injected paths.
 - [ ] 4.4 `AlbumMapStoreContract` (`EMPTY`, `HOLDING`, `CORRUPT`):

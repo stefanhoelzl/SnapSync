@@ -35,6 +35,7 @@ edge :adapter:generic:fake :test:contracts
 edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain:model
 edge :adapter:ios:app-only :domain:ports
+edge :adapter:ios:app-only :test:contracts
 edge :adapter:ios:ext-safe :adapter:generic:app
 edge :adapter:ios:ext-safe :domain:feature
 edge :adapter:ios:ext-safe :domain:model

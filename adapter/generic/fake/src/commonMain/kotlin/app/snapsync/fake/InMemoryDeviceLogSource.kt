@@ -19,7 +19,9 @@ internal class InMemoryDeviceLogSource(
 
     override suspend fun tail(process: DeviceLogSource.Process, maxBytes: Int): String? {
         val text = logs.value[process] ?: return null
-        if (maxBytes <= 0) return null
+        // An empty log is nothing to read, as on a device: the real adapter answers null for a zero-length
+        // file, and this double answered "" until the port contract compared the two.
+        if (text.isEmpty() || maxBytes <= 0) return null
         val bytes = text.encodeToByteArray()
         if (bytes.size <= maxBytes) return text
         val tail = bytes.decodeToString(bytes.size - maxBytes, bytes.size, throwOnInvalidSequence = false)

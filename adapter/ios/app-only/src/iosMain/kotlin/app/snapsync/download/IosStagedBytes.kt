@@ -39,11 +39,19 @@ import platform.Foundation.NSFileManager
  * the operation is idempotent and a partially-completed release costs nothing.
  */
 @OptIn(ExperimentalForeignApi::class)
-class IosStagedBytes : StagedBytes {
+class IosStagedBytes(
+    /**
+     * Resolves the App-Group container, or `null` when this process has none. A provider rather than a
+     * value so [stagingRoot] stays lazy (see the class doc); defaulting to the shared container, so the
+     * shell omits it. A test supplies a directory it owns (capability `port-contracts`).
+     */
+    private val container: () -> String? = {
+        NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
+    },
+) : StagedBytes {
 
     override fun stagingRoot(): String {
-        val container = NSFileManager.defaultManager
-            .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
+        val container = container()
             ?: error("App Group container '$LEDGER_APP_GROUP' unavailable")
         return "$container/download-staging"
     }
