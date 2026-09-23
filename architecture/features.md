@@ -43,8 +43,8 @@ on drift; regenerate instead.
 
 ## `feature/trust`
 
-- files: `DeviceAttestation.kt`
-- top-level types: `DeviceAttestation (class)`
+- files: `CachedAttestStore.kt`, `DeviceAttestation.kt`
+- top-level types: `CachedAttestStore (class)`, `DeviceAttestation (class)`
 
 ## `feature/upload`
 
