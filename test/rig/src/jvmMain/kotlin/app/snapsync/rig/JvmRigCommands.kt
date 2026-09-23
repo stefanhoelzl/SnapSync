@@ -19,8 +19,8 @@ import kotlin.uuid.Uuid
 private val json = Json { encodeDefaults = true; prettyPrint = true }
 
 /** The JVM host's `/device` write commands. */
-internal fun worldDeviceCommands(world: World): Map<String, RigCommand> = inspectorLevers(world) +
-    worldIntegrationCommands(world)
+internal fun worldDeviceCommands(world: World, afterRelaunch: () -> Unit): Map<String, RigCommand> =
+    inspectorLevers(world) + worldIntegrationCommands(world, afterRelaunch)
 
 /** The full-stack world inspector's levers (capability `full-stack-harness`). */
 private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(

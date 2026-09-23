@@ -39,14 +39,14 @@
 
 ## 6. Integration suite onto the protocol (D3, D4, D8)
 
-- [ ] 6.1 Convert `:test:integration` to a JVM-only module (`src/test`). Set its dependencies to `:test:control` and `:test:rig`'s JVM entry point, with no `:test:world`, and state the forgone Kotlin/Native coverage in the build file.
-- [ ] 6.2 Write the `rigTest { rig -> }` fixture and the client-only helpers (create-and-join with a window containing the seed date, seed, cycle, gallery ids, await health). Delete `LedgerReads.kt` and `HostFixtures.kt`.
-- [ ] 6.3 Migrate FullStack (16) and JoinGate (15).
-- [ ] 6.4 Migrate ShareSet, SelectionPolicy, SelectionIsTheWalk, NarrowedScope, AdmittedSet, ShareableCount.
-- [ ] 6.5 Migrate Reconfigure, VersionGate, BoundedStatusStaleness, BoundedTopUp (`:23`), CapTruncatedPublish (`:24`), DeclaredIntent, LostUploadAck, ColdDownloadRelaunch.
-- [ ] 6.6 Migrate InterruptedImport, UnreadStatus, Rename, CycleEntryGate, DiagnosticDump, ManifestVersion (`:105`), PushRegistration (`:65`, `:112`, `:146` reshaped), StagedByteReclaim.
-- [ ] 6.7 Delete the nine tests in design D8 (BoundedTopUp `:51`, CapTruncatedPublish `:48`, InterruptedImport `:148`, ManifestVersion `:32` `:53` `:79`, UnreadStatus `:99`, Rename `:134`, PushRegistration `:35`), and list them with their remaining coverage in the PR description.
-- [ ] 6.8 Grep the suite and confirm that no test asserts `RigState.ledger`, and that no source names `World`, `app.snapsync.ports`, `app.snapsync.flow` or `app.snapsync.compose`.
+- [x] 6.1 Convert `:test:integration` to a JVM-only module (`src/test`). Set its dependencies to `:test:control` and `:test:rig`'s JVM entry point, with no `:test:world`, and state the forgone Kotlin/Native coverage in the build file.
+- [x] 6.2 Write the `rigTest { rig -> }` fixture and the client-only helpers (create-and-join with a window containing the seed date, seed, cycle, gallery ids, await health). Delete `LedgerReads.kt` and `HostFixtures.kt`.
+- [x] 6.3 Migrate FullStack (16) and JoinGate (15).
+- [x] 6.4 Migrate ShareSet, SelectionPolicy, SelectionIsTheWalk, NarrowedScope, AdmittedSet, ShareableCount.
+- [x] 6.5 Migrate Reconfigure, VersionGate, BoundedStatusStaleness, BoundedTopUp (`:23`), CapTruncatedPublish (`:24`), DeclaredIntent, LostUploadAck, ColdDownloadRelaunch.
+- [x] 6.6 Migrate InterruptedImport, UnreadStatus, Rename, CycleEntryGate, DiagnosticDump, ManifestVersion (`:105`), PushRegistration (`:65`, `:112`, `:146` reshaped), StagedByteReclaim.
+- [x] 6.7 Delete the nine tests in design D8 (BoundedTopUp `:51`, CapTruncatedPublish `:48`, InterruptedImport `:148`, ManifestVersion `:32` `:53` `:79`, UnreadStatus `:99`, Rename `:134`, PushRegistration `:35`), and list them with their remaining coverage in the PR description.
+- [x] 6.8 Grep the suite and confirm that no test asserts `RigState.ledger`, and that no source names `World`, `app.snapsync.ports`, `app.snapsync.flow` or `app.snapsync.compose`.
 - [ ] 6.9 Port any integration test added on `main` meanwhile, e.g. the `os-recipe-timeouts` branch's `ExtensionCredentialRereadIntegrationTest`, when rebasing.
 
 ## 7. Journeys in `ios-contracts` (D11)

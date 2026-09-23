@@ -25,8 +25,8 @@ import kotlin.time.Duration.Companion.seconds
 // over the real backend a read it cannot serve answers `409` with the reason rather than an empty value.
 
 /** The integration surface's `/device` verbs over [world]. */
-internal fun worldIntegrationCommands(world: World): Map<String, RigCommand> =
-    backendReads(world) + backendLevers(world) + osAndLibraryLevers(world) + deviceFacts(world)
+internal fun worldIntegrationCommands(world: World, afterRelaunch: () -> Unit): Map<String, RigCommand> =
+    backendReads(world) + backendLevers(world) + osAndLibraryLevers(world, afterRelaunch) + deviceFacts(world)
 
 private fun backendReads(world: World): Map<String, RigCommand> = mapOf(
     "backend/union" to RigCommand { params, _ ->
@@ -118,7 +118,7 @@ private fun backendLevers(world: World): Map<String, RigCommand> = mapOf(
     "backend/refuse-credential" to RigCommand { _, _ -> done(world.neutral.refuseNextCredential()) },
 )
 
-private fun osAndLibraryLevers(world: World): Map<String, RigCommand> = mapOf(
+private fun osAndLibraryLevers(world: World, afterRelaunch: () -> Unit): Map<String, RigCommand> = mapOf(
     // The operating system's wall clock, as the core reads it. `to` is an ISO instant.
     "clock/advance" to RigCommand { params, _ ->
         val to = params["to"]?.let { runCatching { kotlin.time.Instant.parse(it) }.getOrNull() }
@@ -132,8 +132,11 @@ private fun osAndLibraryLevers(world: World): Map<String, RigCommand> = mapOf(
         world.appVersion = version
         CommandResult.ok(buildJsonObject { put("appVersion", version) }.toString())
     },
+    // Process death and a cold foreground launch: the new app's host is assembled — its subscriptions installed,
+    // the startup sweep among them — and shown, as a phone brings a scene up.
     "relaunch" to RigCommand { _, _ ->
         world.relaunch()
+        afterRelaunch()
         CommandResult.ok("""{"relaunched":true}""")
     },
     // The limited selection, as the picker's outcome delivers it: exactly `assets` (comma-separated; empty allowed).
