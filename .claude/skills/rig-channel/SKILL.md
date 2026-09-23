@@ -27,14 +27,22 @@ rot or lie.
 To **build** the IPA, load `ssh-mac-build`. To install/launch it, load `snapsync-device` (which has
 you load the global `ios-device` skill first).
 
-## Take the device lease first
+## Take the device lock first
 
 This skill drives a phone every project on this machine shares, so everything here is inside the
-global `ios-device` guard's fence. Take the lease exactly as that skill describes — as a
-**background** call, **always** under `ch bg`:
+global `ios-device` guard's fence. Take CodeHydra's `ios-device` lock exactly as that skill describes —
+as a **background** Bash call, **never** under `ch bg` (waiting for the phone is this workspace being
+busy):
 
 ```
-ch bg ~/.claude/skills/ios-device/lease "<why you need the phone>"      # blocks; THIS process is the lease
+ch lock take ios-device "<why you need the phone>"      # queues FCFS; exits once this workspace holds it
+```
+
+The **workspace** holds the lock, not a process: it stays held across calls and turns until you release
+it. `ch lock ls` shows the holder, age, reason and waiters. When the device work is done:
+
+```
+ch lock release ios-device
 ```
 
 ## Containment — why this never ships

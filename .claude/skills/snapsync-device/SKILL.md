@@ -14,9 +14,11 @@ description: >-
 # snapsync-device — SnapSync on the phone
 
 ⚠️ **Load the global `ios-device` skill first.** It owns everything generic, and this skill repeats
-none of it: the **device lease** (`ch bg ~/.claude/skills/ios-device/lease "<why>"`, required before any
-device command), the guard, building on the runner, **signing on Linux**, `install`, launch, restart,
-screenshots, measured timeouts, and the usbmux traps. What follows is only what is true of SnapSync.
+none of it: the **device lock** (CodeHydra's global `ios-device` lock — take it with a *background* Bash
+call, not under `ch bg`: `ch lock take ios-device "<why>"`; required before any device command, held by
+the workspace until `ch lock release ios-device` at the end of device work), the guard, building on the
+runner, **signing on Linux**, `install`, launch, restart, screenshots, measured timeouts, and the usbmux
+traps. What follows is only what is true of SnapSync.
 
 To build, load `ssh-mac-build` (the SnapSync half: `.ios-device.yml`, deployments, the rig property). To
 point a build at a local backend, load `local-backend`. To drive a running app, load `rig-channel`.

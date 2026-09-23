@@ -43,7 +43,7 @@ about to exit, and it runs beside your `dev:local` without colliding. It exits w
    a local backend* for the exact commands. A quick tunnel's hostname is random per session, so the IPA
    is rebuilt per session (~1 min incremental Debug).
 3. **Install, launch, then RESET over the channel** — load **`snapsync-device`** (it has you load the
-   global `ios-device` skill, which owns the device lease every phone command requires) to sign, install
+   global `ios-device` skill, which owns the `ios-device` lock every phone command requires) to sign, install
    and launch, then **`rig-channel`** for
    `POST /device/reset`. The reset is not optional; see below.
 
