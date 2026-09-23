@@ -31,9 +31,7 @@ Decision record for the inbound ports and the shell as their driving adapter: `c
 Decision record for the live backend in the canonical check: `changes/archive/2026-09-23-contract-backend-clients`.
 
 Decision record for the control protocol and its two hosts: `changes/archive/2026-09-23-add-rig-jvm-host`.
-
 ## Requirements
-
 ### Requirement: A test lives with the code it tests
 
 A test SHALL live in the module that owns the logic under test. A test that would need a technology
@@ -312,7 +310,9 @@ simulator app and are therefore asserted there; so are the app's byte transfers 
 background session's lifecycle (capability `port-contracts`, "An adapter bound per compilation target is real
 for the clauses it runs there"). The upload-job subsystem, a partial grant, the limited-access alert's arming,
 the background session's lifecycle, and `BGTaskScheduler` remain device-only; the scheduler is reached through
-a device recording replayed on every build. A smoke test SHALL remain only for a device-only surface
+a device recording replayed on every build, and so is the upload-job subsystem — recorded **inside the upload
+extension**, the process production calls it from — together with the extension registration, whose refusal
+under a partial grant is recorded too. A smoke test SHALL remain only for a device-only surface
 no contract yet binds, and SHALL name the change expected to replace it.
 
 A test that appears to cover such behaviour asserts a copy of the platform's constants against
@@ -333,7 +333,7 @@ Kotlin/Native distribution instead (`architecture-guards`).
 
 #### Scenario: A remaining smoke test names its successor
 
-- **WHEN** a simulator smoke test still calls an unbound device-only surface, such as the upload-job fetch
+- **WHEN** a simulator smoke test still calls an unbound device-only surface
 - **THEN** its documentation names the change expected to replace it with a contract
 
 #### Scenario: A byte transfer is covered by a contract, not by a device-only claim
@@ -341,6 +341,13 @@ Kotlin/Native distribution instead (`architecture-guards`).
 - **WHEN** it is in question whether the download transport stages an accepted body at the owner's path
 - **THEN** the answer is the `DownloadTransport` contract's live binding on the simulator app, and only the
   background session's lifecycle stays a recorded measurement
+
+#### Scenario: The upload-job fetch smoke test retires
+
+- **WHEN** the upload-job contract is recorded inside the upload extension and replayed on every build
+- **THEN** the simulator smoke test that fetched the job sets without asserting an outcome is deleted, because
+  the surface it stood in for is now bound
+
 ### Requirement: Build-property-gated source sets are compiled and run by CI, tests included
 
 CI SHALL compile every build-property-gated source set on every push, and that obligation SHALL cover a
@@ -446,3 +453,4 @@ file records.
 
 - **WHEN** a test needs a tap or a rendered pixel
 - **THEN** it belongs in the UI tier's tests, because the protocol carries no such verb
+
