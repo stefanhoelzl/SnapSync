@@ -373,7 +373,9 @@ class UploadCycle(
             val newWork = mutableListOf<Resource>()
             var alreadyUploaded = 0
             for (resource in plan.liveResources) {
-                if (engine.handle(SyncEvent.ResourceChanged(resource)) is SyncDecision.Work) {
+                // The engine decides; nothing is minted here — no request is sent from this loop, and the one
+                // that is sent is minted where the job is created ([createOne]).
+                if (engine.isWork(resource)) {
                     newWork += resource
                 } else {
                     alreadyUploaded++
