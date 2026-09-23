@@ -108,8 +108,14 @@ class FakeBackgroundTransfer(
         j.error = null
     }
 
+    /**
+     * Refuses what a real tier refuses before any job exists (`BackgroundTransferContract`): a payload that is not
+     * the world's platform handle — its photos carry `Unit`, as a device's carry a `PHAssetResource` — and a
+     * destination that is not a URL. Both answer `FAILED`, so the cycle records no `REQUESTED` for them.
+     */
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
         if (failCreate) return CreateResult.FAILED
+        if (resource.data != Unit || request.url.isBlank()) return CreateResult.FAILED
         if (jobs.size >= jobLimit) return CreateResult.LIMIT_EXCEEDED
         jobs.add(FakeJob(resource.filename, resource.contentType, resource.data, handleSeq++))
         created.add(resource)

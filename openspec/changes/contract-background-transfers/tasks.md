@@ -7,10 +7,10 @@
 
 ## 2. Fakes and world bindings
 
-- [ ] 2.1 Add `inMemoryBackgroundScheduler` to `:adapter:generic:fake` (an `internal` class behind a port-typed factory), bind `BackgroundSchedulerContract` to it in `commonTest`, and make it green
-- [ ] 2.2 Bind `BackgroundTransferContract` and `DownloadTransportContract` to `FakeBackgroundTransfer` / `FakeDownloadTransport` in `:test:world` `commonTest`, with the binding playing the network through their operator actions
-- [ ] 2.3 Fix the world doubles wherever a clause fails (commit red first), keeping their levers and inspection; `./gradlew :test:world:jvmTest :test:integration:jvmTest` and the desktop module still pass
-- [ ] 2.4 Replace the two private `FakeScheduler`s in `:domain:feature` tests with the honest fake where they only stand in; keep a private one only where a test records calls on purpose
+- [x] 2.1 Add `inMemoryBackgroundScheduler` to `:adapter:generic:fake` (an `internal` class behind a port-typed factory), bind `BackgroundSchedulerContract` to it in `commonTest`, and make it green
+- [x] 2.2 Bind `BackgroundTransferContract` and `DownloadTransportContract` to `FakeBackgroundTransfer` / `FakeDownloadTransport` in `:test:world` `commonTest`, with the binding playing the network through their operator actions
+- [x] 2.3 Fix the world doubles wherever a clause fails (commit red first), keeping their levers and inspection; `./gradlew :test:world:jvmTest :test:integration:jvmTest` and the desktop module still pass
+- [x] 2.4 Replace the two private `FakeScheduler`s in `:domain:feature` tests with the honest fake where they only stand in; keep a private one only where a test records calls on purpose — both do (they assert whether the pump re-armed), and `:domain:feature` cannot depend on the fake module, so both stay
 
 ## 3. Live `URLSession` bindings on `IOS_SIM_APP`
 
