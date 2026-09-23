@@ -425,7 +425,9 @@ with the proxy task above).
   sends the oldest first, so a rejected one stays in the process's `Caches/io.sentry`, is re-sent on every
   trigger, and **blocks every report behind it, across launches**, until `maxCacheItems` (30) newer
   envelopes evict it. Nothing on screen says so (source: `SentryHttpTransport.m` at 8.58.2; M7 in
-  `changes/archive/2026-09-23-diagnostics-reporter-contracts`).
+  `changes/archive/2026-09-23-diagnostics-reporter-contracts`). So every outgoing event is bounded **by
+  construction** (capability `crash-reporting`; the caps sit in `model/EventBounds.kt`), and the
+  `DiagnosticsReporter` contract's `WIRE_WORST_CASE_DUMP_ARRIVES` clause fails `ios-test` if they stop fitting.
   Dumps group as one issue (`diagnostic dump`); read them with `/bugsink`.
   ⚠️ **Do not reach for `NSLog` when debugging — not even "just this once", not even from Swift.** An
   interpolated `NSLog("x \(y)")` is a *dynamic format string*, which os_log redacts wholesale: your line

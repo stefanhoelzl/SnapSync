@@ -125,6 +125,8 @@ internal class LoopbackIngest {
     private fun serve(client: Int) {
         val request = readRequest(client) ?: return
         val body = gunzipIfNeeded(request)
+        // The worst-case clause's real total, printed so the whole-event sum's slack is a measurement, not a claim.
+        if (body.size > REPORTED_SIZE_FLOOR) println("LoopbackIngest: decoded envelope ${body.size} B of $MAX_EVENT_SIZE")
         val status = if (body.size > MAX_EVENT_SIZE) {
             413
         } else {
@@ -244,6 +246,9 @@ internal class LoopbackIngest {
 
         /** Bugsink's `MAX_EVENT_SIZE`, measured 2026-07-29: larger events are refused with a `413`. */
         const val MAX_EVENT_SIZE = 1024 * 1024
+
+        /** Only envelopes this large are worth a line: the dumps, not the per-clause sentinels. */
+        private const val REPORTED_SIZE_FLOOR = 64 * 1024
 
         val HEADER_END = "\r\n\r\n".encodeToByteArray()
 

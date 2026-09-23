@@ -1,6 +1,9 @@
 package app.snapsync.contracts
 
+import app.snapsync.model.BREADCRUMB_TEXT_BYTES
+import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.MAX_BREADCRUMBS
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.ports.DiagnosticsReporter
 import co.touchlab.kermit.Logger
@@ -76,6 +79,8 @@ class DiagnosticsReporterSubject(val reporter: DiagnosticsReporter, val observe:
  *   per-install id, the deliberate exception.
  * - The operator's dump is delivered verbatim, identifiers included.
  * - The latest process account supersedes the earlier one on every later event.
+ * - Every event stays below the ingest's maximum size, so a refused one never blocks the queue: the worst-case dump
+ *   (full log budget, a full set of over-long breadcrumbs) still arrives, and a later event arrives after it.
  *
  * **Not clauses**, each for want of a host (both stay documented on the adapter):
  * - that the account rides a crash delivered on a LATER launch — it needs a fatal event and a relaunch inside one
@@ -109,6 +114,26 @@ object DiagnosticsReporterContract :
         appLog = "$clauseId app log\n",
         extensionLog = "$clauseId extension log\n",
     )
+
+    /**
+     * The largest dump the app can compose: log tails filling [DIAGNOSTIC_LOG_BUDGET_BYTES] between them, a 100-char
+     * non-ASCII event name (the backend's `MAX_EVENT_NAME_LENGTH`) and a long note. The log lines are escape-heavy
+     * (quotes and backslashes, as request and path lines carry), so JSON escaping is measured rather than assumed.
+     */
+    fun worstCaseDumpFor(clauseId: String): DiagnosticDump {
+        val line = "12:00:00.000 [process] GET https://edge/events/\"a\"/devices?x=\"\\\" → 200 in 12 ms\n"
+        fun tail(bytes: Int): String {
+            val whole = line.repeat(bytes / line.encodeToByteArray().size)
+            return whole + "x".repeat(bytes - whole.encodeToByteArray().size)
+        }
+        return DiagnosticDump(
+            note = "$clauseId: " + "the upload never finished and nothing on screen said why. ".repeat(4),
+            state = mapOf("clause" to clauseId, "event_name" to "ü".repeat(100)),
+            ledger = mapOf("pending" to "1"),
+            appLog = tail(DIAGNOSTIC_LOG_BUDGET_BYTES / 2),
+            extensionLog = tail(DIAGNOSTIC_LOG_BUDGET_BYTES / 2),
+        )
+    }
 
     private fun sentinel(clauseId: String) = "sentinel $clauseId"
 
@@ -234,6 +259,24 @@ object DiagnosticsReporterContract :
             assertTrue(
                 UUID_SHAPED.matches(installId),
                 "and it is the one identifier the scrub lets through, intact: '$installId'",
+            )
+        }
+
+        clause("WIRE_WORST_CASE_DUMP_ARRIVES", DiagnosticsReporterState.CONFIGURED_ON_THE_WIRE) { s ->
+            s.reporter.start()
+            // A full set of breadcrumbs, each far over the cap: the breadcrumb row of the whole-event sum at its worst.
+            repeat(MAX_BREADCRUMBS) { i -> Logger.w("WIRE_WORST_CASE_DUMP_ARRIVES crumb $i " + "\"q\\".repeat(2_000)) }
+            s.reporter.send(worstCaseDumpFor("WIRE_WORST_CASE_DUMP_ARRIVES"))
+            // The sentinel is sent after the dump. An ingest refusal would leave the dump at the head of the queue,
+            // so the sentinel would never arrive either: this is the "nothing is left stuck" half.
+            val before = s.observe.deliveredBefore(sentinel("WIRE_WORST_CASE_DUMP_ARRIVES"))
+            val dump = before.singleOrNull { it.isDump }
+            assertNotNull(dump, "the worst-case dump arrived below the ingest's maximum event size")
+            val crumbs = dump.breadcrumbs.filter { "WIRE_WORST_CASE_DUMP_ARRIVES crumb" in it }
+            assertTrue(crumbs.isNotEmpty(), "the over-long lines rode the dump as breadcrumbs")
+            assertTrue(
+                crumbs.all { it.encodeToByteArray().size <= BREADCRUMB_TEXT_BYTES && "…[+" in it },
+                "each over-long breadcrumb arrives capped and says it was cut",
             )
         }
 
