@@ -233,6 +233,13 @@ what the real adapter does on a host with no Keychain.
 - **[A contract clause could surface further adapter defects]** → the intended outcome. Each one is fixed in
   this change if it preserves behaviour; otherwise it is raised with the user before it becomes a delta.
 
+  One did surface. `HOLDING_WITHIN_BUDGET_IS_WHOLE` failed against `IosDeviceLogSource` (CI run 35837231495):
+  the reader dropped everything before the first newline even after reading the file from its first byte, so
+  every log shorter than its budget lost its opening line. `IosDeviceLogSourceTest` pinned that drop under the
+  title "a log shorter than the budget comes back complete". With the user's agreement, the reader now drops a
+  partial first line only when its read began mid-file, and the pinning test asserts the whole log. This needs
+  no spec delta: `diagnostic-logging` asks only for a cut at a line boundary, and a whole file satisfies that.
+
 ## Migration Plan
 
 Additive, apart from the world's config double and the one `clear()` change.

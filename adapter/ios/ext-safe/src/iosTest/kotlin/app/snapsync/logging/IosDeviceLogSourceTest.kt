@@ -88,8 +88,9 @@ class IosDeviceLogSourceTest {
             writeTextFile(path, "alpha\nbeta\ngamma\n")
             val source = IosDeviceLogSource(appLogPath = path, extensionLogPath = null)
 
-            // The partial-first-line rule still applies: the first whole line here is `beta`.
-            assertEquals("beta\ngamma\n", tail(source, DeviceLogSource.Process.APP, 4096))
+            // Read from its first byte, so nothing was cut and `alpha` is whole. This test used to assert
+            // `beta\ngamma\n` under this very title — pinning the defect DeviceLogSourceContract then caught.
+            assertEquals("alpha\nbeta\ngamma\n", tail(source, DeviceLogSource.Process.APP, 4096))
         }
     }
 
