@@ -48,6 +48,11 @@ import platform.Foundation.NSURLSessionConfiguration
  *
  * ## What the default binding does NOT evidence
  *
+ * What it DOES evidence is everything after this lookup, and that is asserted rather than assumed: the
+ * `BackgroundTransfer` and `DownloadTransport` contracts run both transports live in the simulator app on every push
+ * (`SimAppBackgroundTransferBinding`, `SimAppDownloadTransportBinding`; capability `port-contracts`, "An adapter bound
+ * per compilation target is real for the clauses it runs there"). What follows is what no contract can reach.
+ *
  * A default session runs in-process and dies with it. A simulator run is **not** evidence of: transfers
  * continuing across suspension or termination; the OS relaunching a terminated app for
  * `handleEventsForBackgroundURLSession` (device-only by vendor guidance — Quinn, *Testing Background Session
