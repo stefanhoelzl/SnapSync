@@ -5,7 +5,6 @@ import app.snapsync.compose.extensionEntries
 import app.snapsync.compose.platformEntries
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.ReceiptDeadlines
-import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.world.DenoBackend
 import app.snapsync.world.MiniEdgeBackend
 import app.snapsync.world.World
@@ -17,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -43,7 +43,6 @@ class JvmRigHost private constructor(
      * client reaches the world only through the protocol (capability `module-architecture`).
      */
     internal val world: World,
-    internal val host: StatusContainerHost,
     /** The loopback port the server actually bound. */
     val port: Int,
     private val server: RigServer,
@@ -79,12 +78,15 @@ class JvmRigHost private constructor(
         internal suspend fun start(backend: WorldBackend, port: Int): JvmRigHost {
             val lane = newSingleThreadContext("rig-jvm-composition")
             val scope = CoroutineScope(SupervisorJob() + lane)
-            val (world, host) = withContext(lane) { compose(scope, backend) }
+            val world = withContext(lane) { compose(scope, backend) }
+            val screen = Screen(scope, world)
+            screen.show()
             val bound = CompletableDeferred<Int>()
             val server = RigServer(
                 core = { world.core },
-                host = { host },
-                hooks = jvmHooks(world, host, lane, publishBoundPort = { bound.complete(it) }),
+                // Read per request, never captured: a relaunch replaces the world's app, and its host with it.
+                host = { world.statusHost },
+                hooks = jvmHooks(world, lane, screen, publishBoundPort = { bound.complete(it) }),
                 port = port,
             )
             server.start()
@@ -99,10 +101,10 @@ class JvmRigHost private constructor(
                     timeout,
                 )
             }
-            return JvmRigHost(world, host, actual, server, scope, lane)
+            return JvmRigHost(world, actual, server, scope, lane)
         }
 
-        private fun compose(scope: CoroutineScope, backend: WorldBackend): Pair<World, StatusContainerHost> {
+        private fun compose(scope: CoroutineScope, backend: WorldBackend): World {
             // Attesting over the mini-edge, as a device attests; not over the real backend, whose local serve
             // attaches a dev fallback credential and models no attestation exchange.
             val world = World(scope, backend = backend, attests = backend is MiniEdgeBackend)
@@ -110,20 +112,21 @@ class JvmRigHost private constructor(
             // by `/user/confirmJoin`, the same two steps a person and the app host take.
             world.onEventMinted = { eventId -> world.statusHost.onEventCreated(eventId) }
             // Host assembly, by the shared host composition, exactly as the iOS shell performs it.
-            return world to world.statusHost
+            world.statusHost
+            return world
         }
 
         private fun jvmHooks(
             world: World,
-            host: StatusContainerHost,
             lane: kotlinx.coroutines.CoroutineDispatcher,
+            screen: Screen,
             publishBoundPort: (Int) -> Unit,
         ): RigHooks {
             val entries = platformEntries(
                 core = { world.core },
                 hooks = EntryHooks(
                     markActive = {},
-                    openUrl = host::onOpenUrl,
+                    openUrl = { url -> world.statusHost.onOpenUrl(url) },
                     assembleHost = {},
                     deliverPushToken = { hex -> world.pushTokens.deliver(hex) },
                     // The iOS identifiers, so a test passes the same argument to either host.
@@ -160,9 +163,9 @@ class JvmRigHost private constructor(
                         excluded = emptyMap(),
                     ),
                 ),
-                userCommands = userCommands { host },
+                userCommands = userCommands { world.statusHost },
                 excludedUserCommands = excludedUserCommands(),
-                deviceCommands = worldDeviceCommands(world),
+                deviceCommands = worldDeviceCommands(world, afterRelaunch = screen::show),
                 readGallery = worldGalleryReader(world),
                 osExtensionEnabled = { null },
                 publishBoundPort = publishBoundPort,
@@ -205,5 +208,21 @@ class JvmRigHost private constructor(
         const val DOWNLOAD_BACKSTOP_TASK = "app.snapsync.download.backstop"
         const val UPLOAD_HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"
         const val UPLOAD_TRANSFER_CHANNEL = "app.snapsync.upload.session"
+    }
+}
+
+/**
+ * What the phone's UI does to its status host that nothing else here does: it OBSERVES it. The host's Orbit container
+ * starts its reduction only once its state is collected (or an intent arrives), so a host nobody watches stays on its
+ * initial frame. [show] collects the world's current host for as long as the world runs that app — at start, and again
+ * after every relaunch, whose new host the dead app's collector never saw.
+ */
+internal class Screen(private val scope: CoroutineScope, private val world: World) {
+    private var watching: kotlinx.coroutines.Job? = null
+
+    fun show() {
+        watching?.cancel()
+        val host = world.statusHost
+        watching = scope.launch { host.container.stateFlow.collect { } }
     }
 }

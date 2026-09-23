@@ -593,7 +593,7 @@ class World(
         stagedBytes = stagedBytes,
         importer = importer,
         newDownloadTransport = { transportHost ->
-            FakeDownloadTransport(transportHost, stagedFiles).also { downloadTransport = it }
+            FakeDownloadTransport(transportHost, stagedFiles, downloadSession).also { downloadTransport = it }
         },
         union = unionSource,
         directory = HttpEventDirectory(client, host),
