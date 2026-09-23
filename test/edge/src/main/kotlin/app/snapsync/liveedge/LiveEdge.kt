@@ -34,12 +34,14 @@ import kotlinx.coroutines.runBlocking
  * naming it — it is never `Unreachable`, because a missing tool is not a state this host cannot reach, and
  * reading it as one would let a machine without Deno report the whole backend `NotRunHere`.
  *
- * Depends on nothing in `:test:world`: this fixture is the backend that outlives the mini-edge.
+ * Depends on nothing in `:test:world`: this fixture is the backend that outlives the mini-edge. It lives in
+ * `:test:edge` so that both of its consumers — the backend contracts' live bindings and the world's
+ * real-backend option — stand on the same process lifecycle rather than two copies of it.
  */
-internal object LiveEdge {
+object LiveEdge {
 
     private val apiDir: File = File(
-        System.getProperty("snapsync.apiDir") ?: error("snapsync.apiDir is not set — run through Gradle"),
+        System.getProperty("snapsync.apiDir") ?: error("snapsync.apiDir is not set — run through Gradle (the consumer contract is in test/edge/build.gradle.kts)"),
     )
 
     private val storeRoot: File = File(System.getProperty("snapsync.liveEdgeStore") ?: "build/live-edge")

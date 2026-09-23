@@ -51,6 +51,12 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.serialization.json)
         }
+        // The REAL backend (`DenoBackend`, capability `harness-world-model`): JVM-only, because it is a local
+        // process `:test:edge` launches, which a Kotlin/Native target cannot.
+        jvmMain.dependencies {
+            implementation(project(":test:edge"))
+            implementation(libs.ktor.client.cio)
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
@@ -59,4 +65,16 @@ kotlin {
             implementation(project(":test:contracts"))
         }
     }
+}
+
+// The real backend's consumer contract (see `test/edge/build.gradle.kts`): `DenoWorldTest` starts it, so the
+// deployment is resolved first and the backend's sources are inputs — a change touching only `api/` re-runs it.
+val apiDir = rootProject.layout.projectDirectory.dir("api")
+tasks.named<Test>("jvmTest") {
+    dependsOn(":test:edge:resolveLocalDeployment")
+    inputs.dir(apiDir.dir("src")).withPropertyName("liveEdgeSources")
+    inputs.dir(apiDir.dir("migrations")).withPropertyName("liveEdgeMigrations")
+    inputs.dir(rootProject.layout.projectDirectory.dir("deployments")).withPropertyName("liveEdgeDeployments")
+    systemProperty("snapsync.apiDir", apiDir.asFile.absolutePath)
+    systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)
 }

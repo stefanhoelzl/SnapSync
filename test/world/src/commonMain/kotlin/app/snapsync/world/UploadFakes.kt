@@ -16,6 +16,12 @@ import app.snapsync.ports.UploadDiscovery
 import app.snapsync.fake.inMemoryUploadDiscovery
 import kotlinx.coroutines.flow.StateFlow
 import app.snapsync.model.TerminalOutcome
+import io.ktor.client.HttpClient
+import io.ktor.client.request.headers
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
+import io.ktor.http.isSuccess
+import app.snapsync.model.runCatchingCancellable
 
 /**
  * An operator-driven, **inspectable** [BackgroundTransfer] (capability `harness-world-model`): the
@@ -24,9 +30,11 @@ import app.snapsync.model.TerminalOutcome
  *
  * - `createJob` enqueues a PENDING job and returns `CREATED`, unless the settable [jobLimit] in-flight
  *   cap is reached (`LIMIT_EXCEEDED`) or [failCreate] is set (`FAILED`).
- * - [completeJob] deposits the object key into the [store] **store-direct** (byte transfer is not
- *   routed through ktor) and moves the job to the terminal bucket, so the next `drainTerminals` records
- *   it `COMPLETED`.
+ * - [completeJob] performs the job's own request — a real `PUT` to the URL, with the headers, the engine
+ *   minted — over [network], the network an OS transfer crosses. A `2xx` moves the job to the terminal
+ *   bucket, so the next `drainTerminals` records it `COMPLETED`; anything else fails it exactly as [failJob]
+ *   would, with the status the backend answered (capability `harness-world-model`). There is no
+ *   store-direct deposit: a completed object is one the chosen backend itself accepted.
  * - [failJob] moves a job to the retry bucket carrying a chosen [UploadError], driving the real engine
  *   retry chain. A first failure surfaces via `fetchRetryJobs` (the system's single free retry); a
  *   second failure of the same job returns its row to `DISCOVERED` through [drainTerminals] and is handed
@@ -40,8 +48,8 @@ import app.snapsync.model.TerminalOutcome
  * this queue exactly as a device root binds `IosDiscovery` beside its transport.
  */
 class FakeBackgroundTransfer(
-    private val store: BackendStore,
-    private val ownDeviceId: String,
+    /** The network an OS transfer crosses: the world's backend's bare client, or a binding's fixture engine. */
+    private val network: HttpClient,
     /** The same ledger the composed cycle writes — this adapter records terminal outcomes into it. */
     private val ledger: TransferRecord,
 ) : BackgroundTransfer {
@@ -70,6 +78,8 @@ class FakeBackgroundTransfer(
         val contentType: String,
         val data: Any,
         val handle: Int,
+        /** The request the OS would perform — replaced by the fresh one a retry hands in. */
+        var request: UploadRequest,
     ) {
         var state: FakeJobState = FakeJobState.PENDING
         var error: UploadError? = null
@@ -104,6 +114,7 @@ class FakeBackgroundTransfer(
         // Matched by key: the seam no longer carries an opaque system handle.
         val j = jobs.firstOrNull { it.key == job.key && it.state == FakeJobState.FAILED } ?: return
         j.retriedOnce = true
+        j.request = request
         j.state = FakeJobState.PENDING // in-flight again after the single free retry
         j.error = null
     }
@@ -117,18 +128,36 @@ class FakeBackgroundTransfer(
         if (failCreate) return CreateResult.FAILED
         if (resource.data != Unit || request.url.isBlank()) return CreateResult.FAILED
         if (jobs.size >= jobLimit) return CreateResult.LIMIT_EXCEEDED
-        jobs.add(FakeJob(resource.filename, resource.contentType, resource.data, handleSeq++))
+        jobs.add(FakeJob(resource.filename, resource.contentType, resource.data, handleSeq++, request))
         created.add(resource)
         return CreateResult.CREATED
     }
 
     // ---- operator actions -----------------------------------------------------------------------
 
-    /** Complete a created job: deposit its object store-direct and move it to the acknowledge bucket. */
-    fun completeJob(key: String) {
+    /**
+     * Let the "OS" perform a created job: its request goes over [network], and the job settles on what the
+     * backend answered — acknowledged on a `2xx`, failed with that status otherwise, or with
+     * [UploadError.Network] when the request never got an answer.
+     */
+    suspend fun completeJob(key: String) {
         val j = jobs.firstOrNull { it.key == key && it.state == FakeJobState.PENDING } ?: return
-        j.state = FakeJobState.SUCCEEDED
-        store.deposit(ownDeviceId, key)
+        val status = runCatchingCancellable {
+            network.put(j.request.url) {
+                headers { j.request.headers.forEach { (name, value) -> append(name, value) } }
+                setBody(TRANSFERRED_BYTES)
+            }.status
+        }.getOrElse {
+            j.state = FakeJobState.FAILED
+            j.error = UploadError.Network
+            return
+        }
+        if (status.isSuccess()) {
+            j.state = FakeJobState.SUCCEEDED
+        } else {
+            j.state = FakeJobState.FAILED
+            j.error = UploadError.Http(status.value)
+        }
     }
 
     /** Fail a created job with a chosen [error], driving the real retry chain next cycle. */
@@ -140,6 +169,11 @@ class FakeBackgroundTransfer(
 
     /** Inspection: the keys of every live (in-flight/terminal-unacked) job. */
     fun liveJobKeys(): List<String> = jobs.map { it.key }
+
+    private companion object {
+        /** A minimal JPEG: the world's photos carry no bytes, and no backend reads these back. */
+        val TRANSFERRED_BYTES = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+    }
 }
 
 /**

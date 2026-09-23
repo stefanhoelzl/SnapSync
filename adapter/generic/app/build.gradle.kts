@@ -67,9 +67,9 @@ kotlin {
             dependencies {
                 implementation(project(":test:contracts"))
                 implementation(libs.sqldelight.driver.sqlite)
-                // The backend contracts' live bindings talk to the real `api/` over a socket (`LiveEdge`). A
-                // test-only engine: production picks Darwin in the iOS shells, and nothing shipped links this.
-                implementation(libs.ktor.client.cio)
+                // The backend contracts' live bindings talk to the real `api/` over a socket, through the one
+                // process lifecycle `:test:edge` holds for every JVM consumer of the real backend.
+                implementation(project(":test:edge"))
             }
         }
         val iosSimulatorArm64Test by getting {
@@ -97,21 +97,13 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimu
 // PATH is a prerequisite of `./gradlew build` (capability `testing-architecture`, "The canonical check and its
 // Kotlin/Native half"). Two things here keep that honest:
 //
-//  - the `local` deployment is RESOLVED first: `serve.ts` imports the generated rendering, and a missing one
-//    is a module-not-found rather than a clause failure anyone could read;
+//  - the `local` deployment is RESOLVED first (`:test:edge`'s task): `serve.ts` imports the generated
+//    rendering, and a missing one is a module-not-found rather than a clause failure anyone could read;
 //  - the backend's sources are INPUTS of the test task. Without them a change touching only `api/` leaves this
 //    task up-to-date, and the contracts that exist to catch exactly that change would never run against it.
 val apiDir = rootProject.layout.projectDirectory.dir("api")
-val resolveLocalDeployment by tasks.registering(Exec::class) {
-    description = "Resolves the `local` deployment the live edge serves (deno task config:local)."
-    workingDir = apiDir.asFile
-    commandLine("deno", "task", "config:local")
-    inputs.dir(rootProject.layout.projectDirectory.dir("deployments"))
-    inputs.file(rootProject.layout.projectDirectory.file("scripts/resolve-deployment.py"))
-    outputs.upToDateWhen { false }
-}
 tasks.named<Test>("jvmTest") {
-    dependsOn(resolveLocalDeployment)
+    dependsOn(":test:edge:resolveLocalDeployment")
     inputs.dir(apiDir.dir("src")).withPropertyName("liveEdgeSources")
     inputs.dir(apiDir.dir("migrations")).withPropertyName("liveEdgeMigrations")
     inputs.dir(rootProject.layout.projectDirectory.dir("deployments")).withPropertyName("liveEdgeDeployments")

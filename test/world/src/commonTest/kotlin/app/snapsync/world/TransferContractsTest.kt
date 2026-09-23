@@ -1,5 +1,9 @@
 package app.snapsync.world
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
 import app.snapsync.contracts.BackgroundTransferContract
 import app.snapsync.contracts.BackgroundTransferState
 import app.snapsync.contracts.Binding
@@ -38,7 +42,7 @@ import kotlin.test.Test
  * bindings. It answers every transfer the way the clause's route says, through the double's own operator actions:
  * an accepting upload is `completeJob`, a refusing one `failJob`, a download `finish` with the outcome the route
  * describes, and a held route is never answered. Every outcome a clause reads is read back from the double's own
- * state: the objects it deposited, the paths it staged.
+ * state and the network it crossed: the bytes it transferred, the paths it staged.
  */
 class TransferContractsTest {
 
@@ -54,7 +58,8 @@ class TransferContractsTest {
     /** The world's upload double, with the binding answering each created job the way its route says. */
     private class NetworkedTransfer(
         val double: FakeBackgroundTransfer,
-        private val store: BackendStore,
+        /** The routes the network received a transfer's bytes on — the double's [recordingNetwork]. */
+        private val received: Set<String>,
         private val route: (String) -> String,
     ) : BackgroundTransfer by double {
         private val keyAt = mutableMapOf<String, String>()
@@ -72,13 +77,25 @@ class TransferContractsTest {
                 }
             }
 
-        /** What landed at [path]: an object the double deposited, under the type its job was created with. */
+        /** What landed at [path]: bytes the double transferred there, under the type its job was created with. */
         val objects = FixtureObjects { path ->
             val key = keyAt[path] ?: return@FixtureObjects null
-            if (key !in store.objectsOf(OWN_DEVICE)) return@FixtureObjects null
+            if (path !in received) return@FixtureObjects null
             Landed(double.created.last { it.filename == key }.contentType)
         }
     }
+
+    /**
+     * The network the upload double's transfers cross, as the binding plays it: every request reaches it and is
+     * accepted, and the route is recorded. The binding completes only jobs whose fixture route accepts, so an
+     * accepting network is the fixture's answer rather than a lever (capability `harness-world-model`).
+     */
+    private fun recordingNetwork(received: MutableSet<String>) = HttpClient(
+        MockEngine { request ->
+            received += routeOf(request.url.toString())
+            respond("", HttpStatusCode.Created)
+        },
+    )
 
     private val upload = object : Binding<BackgroundTransferState, TransferUnderTest> {
         override val host = currentHost
@@ -86,9 +103,13 @@ class TransferContractsTest {
         override val reaches = setOf(BackgroundTransferState.IDLE, BackgroundTransferState.AT_CAP)
 
         override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
-            val store = BackendStore()
+            val received = mutableSetOf<String>()
             val ledger = inMemoryLedgerStore()
-            val networked = NetworkedTransfer(FakeBackgroundTransfer(store, OWN_DEVICE, ledger), store, ::routeOf)
+            val networked = NetworkedTransfer(
+                FakeBackgroundTransfer(recordingNetwork(received), ledger),
+                received,
+                ::routeOf,
+            )
             if (state == BackgroundTransferState.AT_CAP) {
                 networked.double.jobLimit = CAP
                 // Fill the cap with transfers to routes that never answer.
