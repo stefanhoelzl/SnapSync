@@ -7,6 +7,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.destinationPathOf
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
@@ -46,16 +47,30 @@ private const val GENERIC_CONTENT_TYPE: String = "application/octet-stream"
  */
 enum class SimulatorJobAction { RETRY, ACKNOWLEDGE }
 
-/** One job the OS has finished with, as stated by whoever is playing the OS. */
+/**
+ * One job the OS has finished with, as stated by whoever is playing the OS.
+ *
+ * A job is identified by its [destination] — the URL it was created (or last re-pointed) with — because that is the
+ * only field the real queue reliably answers for every job, and the one the real adapter resolves a job's ledger row
+ * by (`TransferRecord.entryForDestination`). A job the OS presents in BOTH sets — a first failure is, measured on an
+ * SE2 (iOS 26.6) — is stated once per set.
+ */
 class FinishedUploadJob(
-    /** The ledger key — the destination URL's last path segment, exactly as the real adapter reads it. */
-    val key: String,
+    /** The destination URL the job was created or re-pointed with. */
+    val destination: String,
     /** Which fetch set this job is presented in. */
     val action: SimulatorJobAction,
     /** The platform state, in the vocabulary `PlatformVocabularyPinTest` pins against the SDK. */
     val state: PhotoKitJobState,
-    /** The error to carry, where the state is not a success. */
+    /** The error to carry, where the state is not a success. The real queue answered none for a refused upload. */
     val error: UploadError?,
+    /**
+     * The resource the OS hands back on the job, or `null` to fetch it by identifier. The real queue answers the
+     * job's own resource; a caller playing the OS who kept it passes it on.
+     */
+    val resource: Any? = null,
+    /** The `Content-Type` the job's destination request carries — the OS keeps the request, header and all. */
+    val contentType: String? = null,
 )
 
 /** One job the cycle asked the OS to create during an invocation. */
@@ -66,6 +81,8 @@ class CreatedUploadJob(
     val contentType: String,
     /** True when this job replaces a retry-bucket job rather than being created from discovery. */
     val isRetry: Boolean,
+    /** The resource the job uploads — what the OS keeps on the job and answers back with it. */
+    val resource: Any? = null,
 )
 
 /**
@@ -75,6 +92,12 @@ class CreatedUploadJob(
  * handed the current sets and hands back new ones. Keeping the book with whoever plays the OS reproduces
  * that topology rather than inventing a second one, and it means this object cannot drift between cycles,
  * cannot survive a relaunch into a state the ledger disagrees with, and has nothing to serialize.
+ *
+ * Within an invocation the sets change as the real ones do: a job acknowledged or re-pointed leaves BOTH sets
+ * (measured on an SE2, iOS 26.6: acknowledging a failed-once job removes it from the retry set too).
+ *
+ * The process-wide [SimulatorUploadJobs] is the one the app composes and the rig's caller plays the OS through; a
+ * contract binding constructs a fresh one per clause (capability `port-contracts`).
  *
  * ## Every accessor is guarded, and that is not defensive
  *
@@ -90,32 +113,38 @@ class CreatedUploadJob(
  * Every accessor therefore takes the mutex, and the writes a cycle makes are published to whatever thread
  * reads them afterwards.
  */
-object SimulatorUploadJobs {
+open class SimulatorJobSets {
 
     private val mutex = Mutex()
-    private var finished: List<FinishedUploadJob> = emptyList()
+    private val finished: MutableList<FinishedUploadJob> = mutableListOf()
     private var created: MutableList<CreatedUploadJob> = mutableListOf()
     private var limit: Int = Int.MAX_VALUE
 
     /** Hand in this invocation's sets. Clears whatever the previous invocation created. */
     suspend fun beginCycle(finished: List<FinishedUploadJob>, jobLimit: Int) = mutex.withLock {
-        this.finished = finished
+        this.finished.clear()
+        this.finished += finished
         this.created = mutableListOf()
         this.limit = jobLimit
     }
+
+    /** Present one more finished job, as the OS does when a job it was running ends mid-invocation. */
+    suspend fun present(job: FinishedUploadJob) = mutex.withLock { finished += job }
 
     /** What the cycle asked to create, in the order it asked. */
     suspend fun createdThisCycle(): List<CreatedUploadJob> = mutex.withLock { created.toList() }
 
     /**
-     * The OS's in-flight job cap in force for this cycle. `createJob` answers `LIMIT_EXCEEDED` at or above
-     * it, which is what drives a cap-truncated cycle: creation stops, the remainder rests `DISCOVERED`, and
-     * the result is `PROCESSING`.
+     * The in-flight cap this invocation was handed. Reported back so a caller can tell a cap-truncated cycle from
+     * one that simply had little to do.
      */
     suspend fun jobLimit(): Int = mutex.withLock { limit }
 
     internal suspend fun inSet(action: SimulatorJobAction): List<FinishedUploadJob> =
         mutex.withLock { finished.filter { it.action == action } }
+
+    /** The job at [destination] leaves every set — acknowledged, or re-pointed. */
+    internal suspend fun remove(destination: String) = mutex.withLock { finished.removeAll { it.destination == destination } }
 
     internal suspend fun record(job: CreatedUploadJob): CreateResult = mutex.withLock {
         if (created.size >= limit) {
@@ -130,60 +159,89 @@ object SimulatorUploadJobs {
     internal suspend fun createdCount(): Int = mutex.withLock { created.size }
 }
 
+/** The sets the app composes, and the rig's caller plays the OS through. */
+object SimulatorUploadJobs : SimulatorJobSets()
+
 /**
- * A [BackgroundTransfer] over [SimulatorUploadJobs] — the four job verbs, and nothing else.
+ * The substituted queue: the real adapter's decisions — row by recorded destination ([jobRowOf]), terminal
+ * disposition, acknowledgement of every presented job — over sets whoever plays the OS hands in.
  *
- * **Discovery is not here**, exactly as it is not in [IosPhotoKitUploadPlatform]: the root binds the real
- * PhotoKit full-enumeration walk (`IosDiscovery`) beside this queue on every target. The walk, the `PHAsset`
- * fetches and the selection policy's inputs are real platform behaviour that works on this host, and
- * answering them here would throw away the most valuable coverage the host offers.
- *
- * **Ledger adjudication is shared, not re-implemented**: `drainTerminals` applies the same
- * [terminalDisposition] the PhotoKit queue applies, so this host and a device cannot disagree about what a
- * terminal job means. That was the one place a substitute could quietly lie.
+ * [usablePayload] is the payload-type boundary the real adapter draws at `PHAssetResource`: a payload it rejects is
+ * not a job. A contract binding on a host with no photo library passes its own resource stand-in here, as the
+ * world's transfer double does.
  */
-private class SimulatorUploadJobQueue(
+internal class SimulatorUploadJobQueue(
     private val log: Logger,
     private val ledger: TransferRecord,
+    private val jobs: SimulatorJobSets = SimulatorUploadJobs,
+    private val usablePayload: (Any?) -> Boolean = { it is PHAssetResource },
 ) : BackgroundTransfer {
 
     override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
         log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
-            SimulatorUploadJobs.inSet(SimulatorJobAction.RETRY).map { it.asPlatformJob() }
+            jobs.inSet(SimulatorJobAction.RETRY).mapNotNull { job ->
+                when (val row = rowFor(job)) {
+                    is JobRow.Found -> job.asPlatformJob(row.key)
+                    // Answered here, never handed to the cycle — as the real adapter does.
+                    JobRow.Pruned, JobRow.Unmappable -> { jobs.remove(job.destination); null }
+                }
+            }
         }
 
     /**
-     * Record every presented terminal job and return the retry-spent failures the cycle can re-create.
-     *
-     * There is no acknowledge step: acknowledgement exists so the OS stops presenting a job, and here the
-     * caller decides what to present next. Its absence is not a silent simplification — the real queue's
-     * un-acknowledged job reappears on the next fetch, which the caller reproduces by presenting it again.
+     * Record every terminal job into the ledger, acknowledge it, and hand up only retry-spent failures whose
+     * resource is live — the real adapter's `drainTerminals`, over the handed-in set.
      */
     override suspend fun drainTerminals(): List<PlatformUploadJob> =
         log.invocation("platform.drainTerminals", result = { "${it.size} job(s)" }) {
-            SimulatorUploadJobs.inSet(SimulatorJobAction.ACKNOWLEDGE).mapNotNull { job ->
-                val resource = resourceForKey(job.key)
-                val disposition = terminalDisposition(job.state, resourceIsLive = resource != null)
-                if (!ledger.markTerminal(job.key, disposition.outcome)) {
-                    log.i { "terminal ${job.key} -> ${disposition.outcome} applied to no row" }
+            val out = ArrayList<PlatformUploadJob>()
+            for (job in jobs.inSet(SimulatorJobAction.ACKNOWLEDGE)) {
+                val row = rowFor(job)
+                if (row is JobRow.Found) {
+                    val resource = resourceOf(job, row.key)
+                    val disposition = terminalDisposition(job.state, resourceIsLive = resource != null)
+                    if (!ledger.markTerminal(row.key, disposition.outcome)) {
+                        log.i { "terminal ${row.key} -> ${disposition.outcome} applied to no row" }
+                    }
+                    if (disposition.reCreate) out += job.asPlatformJob(row.key, resource)
                 }
-                if (disposition.reCreate) job.asPlatformJob(resource) else null
+                jobs.remove(job.destination)
             }
+            out
         }
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
         log.invocation("platform.createJob(key=${resource.filename})", result = { "$it" }) {
-            SimulatorUploadJobs.record(request.asCreatedJob(resource.filename, isRetry = false))
-                .also { log.i { "queue: ${SimulatorUploadJobs.createdCount()} job(s) created this cycle" } }
+            if (!usablePayload(resource.data)) {
+                log.w { "createJob: resource payload is not a PHAssetResource — not creating" }
+                return@invocation CreateResult.FAILED
+            }
+            if (!isUploadDestination(request.url)) {
+                log.w { "createJob: malformed destination URL — not creating" }
+                return@invocation CreateResult.FAILED
+            }
+            jobs.record(request.asCreatedJob(resource.filename, isRetry = false, resource.data))
+                .also { log.i { "queue: ${jobs.createdCount()} job(s) created this cycle" } }
         }
 
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
         log.invocation("platform.retryJob(key=${job.key})") {
-            SimulatorUploadJobs.record(request.asCreatedJob(job.key, isRetry = true))
+            val offered = jobs.inSet(SimulatorJobAction.RETRY).firstOrNull { (rowFor(it) as? JobRow.Found)?.key == job.key }
+            if (offered == null) {
+                log.w { "retryJob: no live .retry job for ${job.key} — it settled underneath us" }
+                return@invocation
+            }
+            jobs.remove(offered.destination)
+            jobs.record(request.asCreatedJob(job.key, isRetry = true, job.data ?: offered.resource))
             Unit
         }
 
-    private fun UploadRequest.asCreatedJob(key: String, isRetry: Boolean) = CreatedUploadJob(
+    private suspend fun rowFor(job: FinishedUploadJob): JobRow {
+        val path = destinationPathOf(job.destination)
+        return jobRowOf(path, ledger.entryForDestination(path)?.key)
+    }
+
+    private fun UploadRequest.asCreatedJob(key: String, isRetry: Boolean, resource: Any?) = CreatedUploadJob(
         key = key,
         destination = url,
         headers = headers,
@@ -193,33 +251,26 @@ private class SimulatorUploadJobQueue(
             ?.takeIf { it.isNotBlank() }
             ?: GENERIC_CONTENT_TYPE,
         isRetry = isRetry,
+        resource = resource,
     )
 
-    private fun FinishedUploadJob.asPlatformJob(resource: PHAssetResource? = resourceForKey(key)) =
+    private fun FinishedUploadJob.asPlatformJob(key: String, resource: Any? = resourceOf(this, key)) =
         PlatformUploadJob(
             key = key,
-            contentType = resource?.uniformTypeIdentifier ?: GENERIC_CONTENT_TYPE,
+            contentType = jobContentType(contentType, (resource as? PHAssetResource)?.uniformTypeIdentifier),
             error = error,
             data = resource,
         )
 
+    /** The job's own resource where the OS player kept it; otherwise fetched by identifier (see [resourceForKey]). */
+    private fun resourceOf(job: FinishedUploadJob, key: String): Any? =
+        if (job.state == PhotoKitJobState.SUCCEEDED) null else job.resource ?: resourceForKey(key)
+
     /**
-     * Recover the live `PHAssetResource` a ledger key names, or `null` when the asset or the resource is
-     * gone.
+     * The live resource the real OS would have handed back on the job object, fetched by identifier.
      *
-     * The real queue never needs this: the OS hands the resource back on the job object. Here a job
-     * arrives as a plain key, so the resource has to be found again — and it is **load-bearing rather than
-     * a convenience**. `drainTerminals` must return retry-spent failures *whose resource is still live* for
-     * the cycle to re-create them; a substitute that always answered `null` would take the legal
-     * "resource no longer live" branch every time, so the re-create path would degrade **silently** and a
-     * scenario asserting it would pass having tested nothing.
-     *
-     * Key-derived identity is the established idiom here, not a rig invention: the event-album add path
-     * already recovers a `PHAsset` from a completed upload's key the same way, and the retried `Resource`
-     * is one the cycle rebuilds from the key alone.
-     *
-     * It is **not discovery**, and deliberately not routed through `UploadDiscovery`: it stands in for the
-     * `resource` field a device job object carries, which is part of the job subsystem this file substitutes.
+     * A stand-in for a job field, not discovery (capability `ios-photokit-upload`: a substituted queue MAY fetch it
+     * by identifier, and SHALL NOT route it through `UploadDiscovery`). `null` when the asset has left the library.
      */
     private fun resourceForKey(key: String): PHAssetResource? {
         val localId = denormalizeAssetId(assetIdFromUploadKey(key))

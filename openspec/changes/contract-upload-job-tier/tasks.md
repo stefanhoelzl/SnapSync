@@ -28,10 +28,13 @@
 - [x] 4.1 `:adapter:ios:ext-safe`: the `internal` `UploadJobApi` seam in `IosPhotoKitUploadPlatform` — `fetch`
       returning job facts + handles, `create`/`retry`/`acknowledge` — with the adapter's logic otherwise unchanged
 - [x] 4.2 `:test:contracts`: add `SINGLE_FREE_RETRY` to `BackgroundTransferState` and the PhotoKit-only clauses
-      on it (offered for retry; retry re-points and completes; retry spent is handed up; every presented job is
-      acknowledged); 8b's URLSession bindings declare it unreachable. Also: 8b's `seed` now records the
+      on it (a refusal is offered for retry; a retry refused again — to the identical destination, as production
+      retries — is handed up once, i.e. acknowledged); 8b's URLSession bindings declare it unreachable. Also: 8b's `seed` now records the
       destination each job is created with — the PhotoKit tier resolves a job's row only through it
-- [ ] 4.3 `Fake` binding for `SimulatorUploadJobQueue` declaring exactly what the substitute reaches
+- [x] 4.3 `Fake` binding for `SimulatorUploadJobQueue` declaring exactly what the substitute reaches — and the
+      substitute made honest: rows by recorded destination (`jobRowOf`), acknowledged/re-pointed jobs leave both
+      sets, the payload and destination checks the real adapter makes, a job keeps its resource and content type;
+      the rig and the `ios-simulator` runbook hand in destinations
 - [x] 4.4 `Host.IOS_DEVICE_PHOTOKIT_EXT` lands with its first binding; the ext-safe rig source set: the extension's
       `Live` binding (usable = a library photo's resource; unusable = a non-resource payload; ledger = a fresh
       SQLDelight file per clause; `FixtureObjects` over the App Group's landed routes), and the recorder over

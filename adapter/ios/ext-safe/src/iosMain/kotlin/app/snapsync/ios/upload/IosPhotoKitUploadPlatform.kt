@@ -113,7 +113,7 @@ class IosPhotoKitUploadPlatform internal constructor(
                         if (disposition.reCreate) {
                             out += PlatformUploadJob(
                                 key = key,
-                                contentType = photoKitContentType(job.contentTypeHeader, job.resourceType),
+                                contentType = jobContentType(job.contentTypeHeader, job.resourceType),
                                 error = classified.error,
                                 data = job.resource,
                             )
@@ -143,7 +143,7 @@ class IosPhotoKitUploadPlatform internal constructor(
                 is FetchedJob.Emit -> when (val row = rowFor(classified)) {
                     is JobRow.Found -> out += PlatformUploadJob(
                         key = row.key,
-                        contentType = photoKitContentType(job.contentTypeHeader, job.resourceType),
+                        contentType = jobContentType(job.contentTypeHeader, job.resourceType),
                         error = classified.error,
                         data = job.resource,
                     )

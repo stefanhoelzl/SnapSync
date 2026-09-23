@@ -239,10 +239,10 @@ fun photoKitJobState(state: PHAssetResourceUploadJobState): PhotoKitJobState = w
  */
 @OptIn(ExperimentalForeignApi::class)
 fun photoKitContentType(destination: NSURLRequest?, resource: PHAssetResource?): String =
-    photoKitContentType(destination.contentTypeHeader(), resource?.uniformTypeIdentifier)
+    jobContentType(destination.contentTypeHeader(), resource?.uniformTypeIdentifier)
 
 /** [photoKitContentType] over the facts a job yields: the header first, the resource's type second, then generic. */
-fun photoKitContentType(contentTypeHeader: String?, resourceType: String?): String =
+fun jobContentType(contentTypeHeader: String?, resourceType: String?): String =
     contentTypeHeader ?: resourceType ?: "application/octet-stream"
 
 /**
@@ -301,3 +301,17 @@ suspend fun <J> retryJobMatching(
 ): J? = candidates.firstOrNull { (_, classified) ->
     classified is FetchedJob.Emit && resolve(classified) == key
 }?.first
+
+/**
+ * Whether [url] can be an upload job's destination: an `http` or `https` URL with a host.
+ *
+ * `NSURL.URLWithString` is no guard: since iOS 17 it percent-encodes where it used to answer `nil`, so an empty
+ * string parses (found by phase 8b on the URLSession adapter, iOS 26.5). A destination that is not a URL is not a
+ * job (capability `port-contracts`, `BackgroundTransferContract`'s `CREATE_BAD_DESTINATION`).
+ */
+fun isUploadDestination(url: String): Boolean {
+    val scheme = url.substringBefore("://", missingDelimiterValue = "").lowercase()
+    val host = url.substringAfter("://", missingDelimiterValue = "").substringBefore('/').substringBefore('?')
+    return (scheme == "http" || scheme == "https") && host.isNotEmpty()
+}
+

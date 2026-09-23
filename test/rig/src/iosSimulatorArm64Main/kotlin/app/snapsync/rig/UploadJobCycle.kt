@@ -40,8 +40,11 @@ private val json = Json { ignoreUnknownKeys = false; prettyPrint = true }
  */
 @Serializable
 private class FinishedJobRequest(
-    /** The ledger key — the destination URL's last path segment, as the real adapter reads it. */
-    val key: String,
+    /**
+     * The destination URL the job was created (or re-pointed) with — a `created[].destination` from an earlier
+     * cycle's answer. The substitute resolves the ledger row by it, as the real adapter does.
+     */
+    val destination: String,
     /** `retry` or `acknowledge`. */
     val action: String,
     /** `succeeded` · `failed` · `cancelled` · `pending` · `registered`. */
@@ -52,6 +55,8 @@ private class FinishedJobRequest(
     @SerialName("httpStatus") val httpStatus: Int? = null,
     /** The detail for `error=unknown`. */
     val detail: String? = null,
+    /** The job's `Content-Type` — `created[].contentType` — as the OS keeps it on the job's request. */
+    val contentType: String? = null,
 )
 
 @Serializable
@@ -72,7 +77,7 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
             // a cycle the caller did not ask for, and the caller would read its result as the answer to the
             // scenario they thought they wrote.
             return """{"refused":"could not read the job sets","detail":"${failure.message}",""" +
-                """"shape":"{\\"finished\\":[{\\"key\\":\\"…\\",\\"action\\":\\"retry|acknowledge\\",""" +
+                """"shape":"{\\"finished\\":[{\\"destination\\":\\"…\\",\\"action\\":\\"retry|acknowledge\\",""" +
                 """\\"state\\":\\"succeeded|failed|cancelled|pending|registered\\",""" +
                 """\\"error\\":\\"network|cancelled|http|unknown\\"}],\\"jobLimit\\":N}"}""" + "\n"
         }
@@ -87,7 +92,9 @@ internal actual suspend fun beginUploadJobCycle(body: String?): String? {
         } else {
             return refusal("error", job.error, listOf("network", "cancelled", "http", "unknown"))
         }
-        finished += FinishedUploadJob(key = job.key, action = action, state = state, error = error)
+        finished += FinishedUploadJob(
+            destination = job.destination, action = action, state = state, error = error, contentType = job.contentType,
+        )
     }
     SimulatorUploadJobs.beginCycle(finished, jobLimit = request.jobLimit ?: Int.MAX_VALUE)
     return null
