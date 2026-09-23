@@ -28,22 +28,30 @@ class CommandLaneTest {
 
     private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane", "onUiLane")
 
+    /**
+     * The query bundle's ONE admissible decorator (law "Queries cross a lane-gated door"): a query returns a
+     * value the caller waits for, and presents no platform UI, so it is awaited on the core lane — never
+     * detached (the caller would have no answer) and never on the UI lane (the reads are the blocking work
+     * the main lane must never see; the shareable count used to run there).
+     */
+    private val queryDecorators = listOf("awaitingOnCoreLane")
+
     private fun file(nameEnd: String) = SourceScan.kotlinFiles()
         .firstOrNull { it.path.endsWith(nameEnd) }
         ?: fail("expected to find $nameEnd")
 
-    /** The bundle's declared commands — `val <name>: <type>` in the `model/` type. */
-    private fun declaredCommands(): List<String> =
+    /** A bundle's declared fields — `val <name>: <type>` in its `model/` type. */
+    private fun declared(type: String): List<String> =
         Regex("""^\s{4}val (\w+):""", RegexOption.MULTILINE)
-            .findAll(file("/domain/model/src/commonMain/kotlin/app/snapsync/model/UserCommands.kt").text)
+            .findAll(file("/domain/model/src/commonMain/kotlin/app/snapsync/model/$type.kt").text)
             .map { it.groupValues[1] }
             .toList()
 
-    /** The `UserCommands(...)` argument block in the one place commands are built. */
-    private fun builtBundle(): String {
+    /** The `<type>(...)` argument block in the one place the bundles are built. */
+    private fun built(type: String): String {
         val text = file("/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt").text
-        val start = text.indexOf("UserCommands(")
-        assertTrue(start >= 0, "compose/ no longer builds a UserCommands bundle — this gate is stale")
+        val start = text.indexOf("$type(")
+        assertTrue(start >= 0, "compose/ no longer builds a $type bundle — this gate is stale")
         var depth = 0
         for (i in start until text.length) {
             when (text[i]) {
@@ -54,27 +62,27 @@ class CommandLaneTest {
                 }
             }
         }
-        fail("unbalanced UserCommands( block in SnapSyncApp.kt")
+        fail("unbalanced $type( block in SnapSyncApp.kt")
+    }
+
+    /** The fields of [type] built through none of [allowed]. */
+    private fun undecorated(type: String, allowed: List<String>): List<String> {
+        val bundle = built(type)
+        // Split into per-argument chunks at the argument indentation the bundle is written with, so a
+        // decorator naming one field cannot vouch for its neighbour.
+        val chunks = Regex("""\n {12}(\w+) = """).findAll(bundle).toList()
+        assertTrue(chunks.isNotEmpty(), "no arguments parsed from the $type( block")
+        return chunks.mapIndexedNotNull { index, match ->
+            val to = chunks.getOrNull(index + 1)?.range?.first ?: bundle.length
+            val body = bundle.substring(match.range.first, to)
+            // Anything with a body must say where it runs.
+            match.groupValues[1].takeIf { allowed.none { d -> body.contains(d) } }
+        }
     }
 
     @Test
     fun `every command in the bundle is built through a lane-declaring decorator`() {
-        val bundle = builtBundle()
-        // Split into per-argument chunks at the argument indentation the bundle is written with, so a
-        // decorator naming one command cannot vouch for its neighbour.
-        val chunks = Regex("""\n {12}(\w+) = """).findAll(bundle).toList()
-        assertTrue(chunks.isNotEmpty(), "no arguments parsed from the UserCommands( block")
-
-        val undeclared = chunks.mapIndexedNotNull { index, match ->
-            val from = match.range.first
-            val to = chunks.getOrNull(index + 1)?.range?.first ?: bundle.length
-            val name = match.groupValues[1]
-            val body = bundle.substring(from, to)
-            // A command bound to a plain default (`= {}`) or wired to nothing declares no lane and needs
-            // none; anything with a body must say where it runs.
-            name.takeIf { decorators.none { d -> body.contains(d) } }
-        }
-
+        val undeclared = undecorated("UserCommands", decorators)
         assertTrue(
             undeclared.isEmpty(),
             "these commands are built without a lane-declaring decorator " +
@@ -83,13 +91,24 @@ class CommandLaneTest {
     }
 
     @Test
-    fun `the gate sees every command the bundle declares`() {
-        val declared = declaredCommands()
-        val bundle = builtBundle()
-        val missing = declared.filterNot { bundle.contains("\n            $it = ") }
+    fun `every query in the bundle is awaited on the core lane`() {
+        val undeclared = undecorated("UserQueries", queryDecorators)
         assertTrue(
-            missing.isEmpty(),
-            "declared in UserCommands but not built in compose/, so the lane gate never sees them: $missing",
+            undeclared.isEmpty(),
+            "these queries are built without `awaitingOnCoreLane` — a query run where it was asked runs its port " +
+                "reads on the main thread (law \"Queries cross a lane-gated door\"): $undeclared",
         )
+    }
+
+    @Test
+    fun `the gate sees every command and query the bundles declare`() {
+        listOf("UserCommands", "UserQueries").forEach { type ->
+            val bundle = built(type)
+            val missing = declared(type).filterNot { bundle.contains("\n            $it = ") }
+            assertTrue(
+                missing.isEmpty(),
+                "declared in $type but not built in compose/, so the lane gate never sees them: $missing",
+            )
+        }
     }
 }

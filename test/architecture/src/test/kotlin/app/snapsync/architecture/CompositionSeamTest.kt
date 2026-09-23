@@ -20,9 +20,10 @@ import kotlin.test.assertTrue
  * exactly that value, bypassed and invisible.
  *
  * **A pin, not an analysis — because the property is not decidable from source** (D1). Whether a
- * lambda's invocation leaves the process cannot be read off its type: `downloadStagingRoot: () ->
- * String` resolved an App-Group container and `deviceId: () -> String` returns a value the composition
- * already holds, and the two are type-identical. Nor is it decidable from the body, which is in another
+ * lambda's invocation leaves the process cannot be read off its type: two `() -> String` seams are
+ * type-identical while one resolves an App-Group container and the other returns a constant. (The example
+ * this sentence used to give — `deviceId`, pinned as "a value the composition already holds" — was itself
+ * wrong: its first call was a Keychain read, and it is the `DeviceIdentity` port now.) Nor is it decidable from the body, which is in another
  * module and often another binary. So the gate records the human judgement at the moment it is made,
  * exactly as [KotlinShellGuardTest] does for complexity suppressions, and forces the next person to
  * make one: a new function-typed field fails until it is either given a port type or entered below
@@ -34,19 +35,19 @@ import kotlin.test.assertTrue
  * It says nothing about **what the OS hands the shell**. Registering an `NSNotificationCenter`
  * observer, adopting a scene-delegate callback, or submitting a `BGProcessingTaskRequest` is the shell
  * *being called by* the platform — arranging to be woken — not reaching out to read or write something.
- * That surface is out of scope here, and no green run makes a claim about it. (One pinned entry,
- * `scheduleBackstop`, sits exactly on that line and says so; whether the line holds is an Open Question
- * in the decision record, to be settled by the first site that straddles it — not by this gate.)
+ * That surface is out of scope here, and no green run makes a claim about it. (`scheduleBackstop` once sat
+ * on that line; it is the `BackgroundScheduler` port now, because the submit it hid could fail silently.)
  *
  * Two narrower blind spots, so a green run is not over-read either:
  *  - **It reads a declaration, not a call graph.** A pinned lambda whose body is later rewritten to
  *    reach out of the process still passes: the pin's reason goes stale silently, because nothing here
  *    re-derives it. The reason is a receipt for a judgement, not a proof of one.
- *  - **It is scoped to the two bundles.** A platform touch smuggled in as a field of some *other* type
- *    the shell constructs — a data class carrying a lambda, say — is not function-typed at this level
- *    and is not seen. The bundle set itself is pinned (below) so a *further* bundle cannot appear
- *    unnoticed, which is the one novelty this gate can close — `UploadRecordPorts` arrived that way and
- *    is listed with an empty inventory, which is a statement rather than an omission.
+ *  - **It is scoped to constructors in `feature/` and `compose/`** — the bundles, and every class the core
+ *    builds (`harden-seam-bug-classes` widened it from the bundles alone, where features taking a lambda
+ *    for a port read went unseen). A platform touch smuggled in as a field of some *other* type — a data
+ *    class carrying a lambda, say — is not function-typed at this level and is not seen. The bundle set
+ *    itself is pinned (below) so a *further* bundle cannot appear unnoticed — `UploadRecordPorts` arrived
+ *    that way and is listed with an empty inventory, which is a statement rather than an omission.
  *
  * The tone is [MainLaneContainmentTest]'s, deliberately: *it contains a lane; it does not decide
  * whether a call blocks.* This one pins a seam inventory; it does not decide whether a seam crosses.
@@ -75,9 +76,9 @@ class CompositionSeamTest {
      *  - **a re-entry into this same core** through a shell surface that decides nothing (law "Shells
      *    are wiring only").
      *
-     * Two entries are judgement calls at the edge rather than instances of those shapes, and they say
-     * so at the site instead of borrowing a shape that does not fit: `AppPorts.reloadConfig` and
-     * `UploadPorts.host`.
+     * The admissible reasons are the law's (`module-architecture`, "Ports are the I/O boundary named for the
+     * need"): a callback INTO the core's own machinery. A reason claiming a seam "returns a value the
+     * composition already holds" is not accepted for a value obtained by a platform read, however cached.
      */
     private val pins: Map<String, Map<String, String>> = mapOf(
         "AppPorts" to mapOf(
@@ -89,15 +90,10 @@ class CompositionSeamTest {
                 "builds the DownloadTransport PORT, which is where the crossing is declared; a lambda " +
                 "only because the transport takes the host queue that does not exist until the feature " +
                 "is constructed",
-            // D1's own example of why this gate is a pin and not an analysis.
-            "deviceId" to
-                "returns a value the composition already holds — the identity `resolveOrMint` produced " +
-                "over the Keychain port. A thunk so the resolve happens at first use, never while " +
-                "assembling a locked background launch, where the Keychain read would throw out of the " +
-                "composition",
             "appDrivenUpload" to
-                "hands back core machinery (a feature/upload type). A thunk so the engine is " +
-                "constructed at first use rather than while the graph is being assembled",
+                "a factory for the app's uploader (an AppUploadEngine, whose platform touches are its own " +
+                "adapter's). A thunk so the engine is constructed at first use rather than while the graph " +
+                "is being assembled",
             "extensionRegistration" to
                 "the same, and `null` where this OS does not carry that mechanism at all — the " +
                 "nullability IS that OS answer, and it must be a call rather than a value the bundle " +
@@ -106,83 +102,128 @@ class CompositionSeamTest {
             "uploaderPin" to
                 "reads the rig's per-uploader switch, re-read at every use so it can change without " +
                 "rebuilding the graph. `null` in a production build not by convention but by " +
-                "CONSTRUCTION: the only writer of the root thunk behind it is the control channel's boot " +
-                "hook, whose source is absent from a build made without the channel's build property — so " +
-                "a shipped binary has nothing able to assign it, and what it uploads with stays a function " +
-                "of the device and its grant",
-            // The lambda carries the tier's FAILURE POSTURE, which a shared port would erase: the app
-            // admits on doubt, the extension lets a throw fail the cycle (stated at the field).
-            "albumExcludedAssetIds" to
-                "the process's admit-on-doubt wrapper over the AlbumManager port — the chain terminates " +
-                "at a port (D9); the lambda carries the per-tier failure posture, and is shared verbatim " +
-                "with the status total so the two consumers of one policy cannot diverge",
+                "CONSTRUCTION: the only writer of the root source behind it is the control channel's boot " +
+                "hook, whose source is absent from a build made without the channel's build property",
             "provision" to
-                "re-enters this core's own flow/Provision through the shell's log-wrapping delegator; " +
-                "the shell decides nothing on the way (law \"Shells are wiring only\")",
+                "SLATED FOR REMOVAL (G2): re-enters this core's own flow/Provision through the shell's " +
+                "log-wrapping delegator. Being a bundle field is what let the world bind a different body; " +
+                "compose/ will build it from the core it already holds",
             "onEventMinted" to
                 "hands a minted event id back to the shell's link entry, which forwards it into THIS " +
                 "core's join gate — a U-turn through the entry surface so create and a scanned QR take " +
                 "one gate, not two. Nothing leaves the process",
             "refreshAttestation" to
-                "drives the core's own DeviceAttestation feature (whose network call is the AttestClient " +
-                "port); the shell adds only the awaited call and the health flag",
-            // The nearest thing here to a violation, named rather than dressed up.
-            "reloadConfig" to
-                "JUDGEMENT CALL: refreshes the core's own config read-model from the store already " +
-                "behind ConfigSource/ConfigStore — the file read is those ports'; what has no port is " +
-                "the refresh VERB, deliberately (see readGate in UploadCore.kt: `reload()` is a " +
-                "read-model side effect, not gate logic, and the spec names the gate's inputs " +
-                "exhaustively). Give it a port the moment it grows a second reason to exist",
-            "scheduleBackstop" to
-                "submits a BGProcessingTaskRequest: ARRANGING TO BE CALLED BACK, which is where this " +
-                "gate's scope stops (see the blind spot above). Nothing is read out and no value comes " +
-                "back into the core — the work happens later, in a flow the OS triggers",
+                "SLATED FOR REMOVAL (G2): drives the core's own DeviceAttestation feature (whose network " +
+                "call is the AttestClient port); nothing but the awaited call is the shell's",
             "registerPush" to
-                "re-PUTs the token the OS already delivered (an in-memory PushTokenSource read) through " +
+                "SLATED FOR REMOVAL (G2): re-PUTs the token the OS already delivered through the core's " +
                 "PushRegistration over the PushTokenPublisher port — both ends are ports",
         ),
         "UploadPorts" to mapOf(
-            "deviceId" to
-                "as AppPorts.deviceId — the identity the composition already resolved over the Keychain " +
-                "port, thunked so a locked launch is never forced to read it while assembling",
-            // The second judgement call, and the one with an expiry attached.
-            "host" to
-                "JUDGEMENT CALL: the compile-time upload base baked into THIS binary's own bundle — a " +
-                "build constant of the running process rather than another system's state, which cannot " +
-                "change while it runs. A thunk because the extension re-reads its bundle per gate call " +
-                "and an absent host must skip the cycle, not crash it. EXPIRY: if the destination ever " +
-                "becomes runtime-resolved (the open uploadBase question), it is a port",
-            "admission" to
-                "whether THIS process may create now (capability `upload-lifecycle`): the app's answer " +
-                "is its own usable grant, the extension's a status read of its own full grant — a call " +
-                "because both change between cycles, and required because a default would silently " +
-                "admit the extension to read the whole library under a partial grant",
             "selectionScope" to
                 "what discovery may read right now (capability `limited-photo-access`), derived by the " +
                 "app composition from current permission plus the in-memory snapshot — a call and not a " +
                 "value because the answer changes between cycles. Pure core read",
-            "albumExcludedAssetIds" to
-                "as AppPorts — the AlbumManager port at the far end; on this tier a thrown lookup fails " +
-                "the cycle, which is exactly the per-tier difference a shared port member would erase",
             "token" to
                 "the attestation bearer, read per request from the AttestStore port (extension) or the " +
                 "core's own DeviceAttestation (app) — a call because a renewal must be picked up without " +
                 "rebuilding the cycle",
-            "appVersion" to
-                "JUDGEMENT CALL, and the SAME judgement as `host` directly above: the marketing version " +
-                "baked into THIS binary's own bundle — a build constant of the running process, not " +
-                "another system's state, and it cannot change while it runs. A thunk because the " +
-                "extension re-reads its own bundle and must declare ITS version on the byte upload the " +
-                "OS performs (capability `min-app-version`), which no shared client can reach. EXPIRY: " +
-                "if the declared version ever becomes runtime-resolved, it is a port — the same expiry " +
-                "`host` carries, for the same reason",
         ),
         // DELIBERATELY EMPTY, and that is the entry rather than an omission. A cohesive sub-bundle of
-        // AppPorts, holding three PORT-typed fields and no lambda at all — so there is nothing here to
-        // judge, and a bundle whose inventory is empty must still be listed or the set-of-bundles check
-        // below cannot tell "no seams" from "not scanned".
+        // AppPorts, holding PORT-typed fields and no lambda at all — so there is nothing here to judge, and
+        // a bundle whose inventory is empty must still be listed or the set-of-bundles check below cannot
+        // tell "no seams" from "not scanned".
         "UploadRecordPorts" to emptyMap(),
     )
+
+    /**
+     * Every OTHER class the core builds (`feature/` and `compose/`): `Class.param` → its binding, and why that
+     * binding is a callback into the core rather than a platform touch. Discovered, not listed — a new
+     * function-typed constructor parameter anywhere in those zones fails until it is pinned here.
+     *
+     * The recurring shape is feature-blindness: a feature may not name a sibling feature (law "Zones inside the
+     * core"), so `compose/` hands it the sibling as a lambda. Such a lambda reaches the platform, if at all,
+     * only through the sibling's own ports.
+     */
+    private val constructorPins: Map<String, String> = mapOf(
+        "App.admission" to
+            "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
+            "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",
+        "AlbumGather.policyFor" to
+            "the membership's ONE selection-policy derivation, built in compose/ over the download store and the " +
+            "album port — a sibling the gather may not name (feature-blindness)",
+        "CreateEvent.onMinted" to
+            "hands the minted event to AppPorts.onEventMinted, which routes it into this core's join gate",
+        "CollectDiagnosticDump.uploadFacts" to
+            "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
+        "DownloadController.downloadEnabled" to
+            "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
+            "the ConfigSource port the composition already reads",
+        "QueuedPhotoDownloadJobs.newTransport" to
+            "builds the DownloadTransport PORT around the jobs' own host queue — the object-graph cycle " +
+            "AppPorts.newDownloadTransport breaks",
+        "QueuedPhotoDownloadJobs.onStaged" to
+            "delivers a staged resource to the sibling DownloadController, resolving its lazy when INVOKED so a " +
+            "download-only relaunch reaches it too (capability `photo-download`)",
+        "JoinEvent.provision" to
+            "runs the provision the composition owns (AppPorts.provision, then the album gather start) — core " +
+            "machinery the join use-case may not name",
+        "LeaveEvent.stopUploads" to
+            "the sibling UploadTransitions.onLeave() — feature-blindness; its platform touches are the " +
+            "uploaders' own adapters",
+        "LeaveEvent.clearLedger" to
+            "the ledger reset family, invoked from compose/ where ledger writes are confined (capability " +
+            "`sync-ledger`: which code may perform which write); the store is the LedgerStore port",
+        "LeaveEvent.notifyLeave" to
+            "compose/'s best-effort wrapper over the LeaveNotifier PORT, which logs a failed Result rather " +
+            "than failing the leave — the port is where the network crossing is declared",
+        "MembershipEntry.stopUploads" to "the sibling UploadTransitions.onLeave() — feature-blindness",
+        "MembershipEntry.notifyLeave" to "the same best-effort wrapper as LeaveEvent.notifyLeave, over the LeaveNotifier port",
+        "MembershipEntry.loadShareSet" to
+            "the sibling ShareSetLoad feature (its listing crosses the DeviceFilesSource port) — feature-blindness",
+        "MembershipEntry.saveConfig" to
+            "the ConfigStore port's save, handed in so the entry's ordered steps are recorded by its tests " +
+            "exactly as they run",
+        "MembershipEntry.startUploads" to "the sibling UploadTransitions.onJoin() — feature-blindness",
+        "ReconfigureEvent.refreshStatus" to
+            "this core's own status refresh (AppCore.refreshStatusSources) — feature-blindness",
+        "ReconfigureEvent.armUpload" to "the sibling UploadTransitions.onReconfigure() — feature-blindness",
+        "ReconfigureEvent.ensureAlbum" to
+            "the sibling AlbumCoordinator's ensure (its PhotoKit touches are the AlbumManager port's)",
+        "ReconfigureEvent.gatherAlbum" to "the sibling AlbumGather.start — feature-blindness",
+        "ReconfigureEvent.startDownloads" to "the sibling DownloadController.reconcile — feature-blindness",
+        "ReconfigureEvent.cancelDownloads" to "the sibling DownloadController.onLeaveOrSwitch() — feature-blindness",
+        "ReconfigureEvent.bumpManifestVersion" to
+            "the ledger's manifest-version bump, invoked from compose/ where ledger writes are confined " +
+            "(capability `sync-ledger`); the store is the LedgerStore port",
+        "ResetDeviceState.resetDownloads" to "the sibling DownloadController.onDurableStateReset() — feature-blindness",
+        "ReadingLedgerCountsSource.read" to
+            "a read-only LedgerStore.assetProgress() mapped to LedgerCounts in compose/, so ledger types never " +
+            "reach feature/status (stated at the class); the store is the LedgerStore port",
+        "ShareableCountSource.suppressedLocalIds" to
+            "the DownloadStore port's suppressed set, the same read the status total and the cycle use",
+        "ShareableCountSource.albumExcludedAssetIds" to
+            "compose/'s admit-on-doubt read over the AlbumManager PORT — the one wrapper both consumers share",
+        "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
+        "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
+        "StatusRefresh.policyFor" to "the membership's ONE selection-policy derivation, built in compose/",
+        "BackgroundUploadPump.runCycle" to "the tier's own UploadCycle.run — core machinery",
+        "BackgroundUploadPump.onCycleComplete" to "the sibling ledger-counts refresh — feature-blindness",
+        "BackgroundUploadPump.mayCreate" to "this core's own app admission, read fresh at each completion",
+        "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
+        "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
+        "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",
+        "UploadCycle.engineFor" to
+            "builds the SyncEngine over the gate's config per cycle — core machinery, whose transfer is a port",
+        "UploadCycle.onDiscovery" to
+            "the sibling DeviceManifestProducer (its publish crosses the ManifestPublisher PORT)",
+        "UploadCycle.placeInAlbum" to
+            "the sibling AlbumCoordinator.place (its PhotoKit touches are the AlbumManager port's)",
+        "UploadTransitions.extensionRegistrable" to
+            "model/'s pure registrability fact over the OS fact, the grant and the rig pin",
+        "UploadTransitions.appEngine" to "AppPorts.appDrivenUpload, forwarded — a factory for the app's uploader",
+    )
+
 
     // ---- scanning ---------------------------------------------------------------------------------
 
@@ -276,12 +317,11 @@ class CompositionSeamTest {
         return found
     }
 
-    /** A type is function-typed iff it carries a `->` at nesting depth 0 — `() -> (X) -> Y` included. */
-    private fun isFunctionType(type: String): Boolean {
-        var arrow = false
-        scan(type, null) { arrow = true }
-        return arrow
-    }
+    /**
+     * A type is function-typed iff it carries a `->` at nesting depth 0 — `() -> (X) -> Y` included — or is a
+     * nullable function type `(… -> …)?`, whose arrow sits one level down and which this gate used to miss.
+     */
+    private fun isFunctionType(type: String): Boolean = KotlinDecls.isFunctionType(type)
 
     private fun functionFields(bundle: String): List<Field> = params(bundle).filter { isFunctionType(it.type) }
 
@@ -323,6 +363,39 @@ class CompositionSeamTest {
                 "  And remember what this gate does NOT see: it constrains what the composition hands " +
                 "the core, never what the OS hands the shell, and it reads declarations rather than " +
                 "call graphs. Green here is not a claim that no seam crosses.",
+        )
+    }
+
+    /** Every function-typed constructor parameter of a non-bundle class declared in `feature/` or `compose/`. */
+    private fun constructorInventory(): Map<String, String> {
+        val files = ZoneGates.requireZone("composition-seam", "feature") + ZoneGates.requireZone("composition-seam", "compose")
+        return files.flatMap { file ->
+            KotlinDecls.constructorParams(ZoneGates.stripComments(file.readText()))
+                .filter { it.owner !in bundles && isFunctionType(it.type) }
+                .map { "${it.owner}.${it.name}" to "${file.path.substringAfter("/domain/")}:${it.line}" }
+        }.toMap()
+    }
+
+    @Test
+    fun `every function-typed constructor parameter in feature and compose is pinned, exactly`() {
+        val found = constructorInventory()
+        val unpinned = (found.keys - constructorPins.keys).sorted().map { "  + $it  (${found.getValue(it)})" }
+        val stale = (constructorPins.keys - found.keys).sorted().map { "  - $it — pinned but no longer declared" }
+        assertTrue(
+            unpinned.isEmpty() && stale.isEmpty(),
+            "the core's constructor seam inventory drifted (law: module-architecture, \"Ports are the I/O " +
+                "boundary named for the need\").\n" +
+                (unpinned + stale).joinToString("\n") + "\n" +
+                "  `+` — a new function-typed constructor parameter. If its binding reads a platform value, " +
+                "performs a platform effect or crosses the network, it is a port (a feature may name ports; " +
+                "reach for an existing one first). If it is a callback into the core's own machinery — a sibling " +
+                "feature the zone law forbids it to name — pin it in `constructorPins` WITH its binding.\n" +
+                "  `-` — a pin outlived its parameter. Delete it in the same commit.",
+        )
+        assertTrue(
+            found.size >= 30,
+            "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
+                "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )
     }
 
@@ -371,6 +444,13 @@ class CompositionSeamTest {
      */
     @Test
     fun `every pin states a reason`() {
+        constructorPins.forEach { (seam, reason) ->
+            assertTrue(
+                reason.trim().length >= 40 && !reason.contains("TODO"),
+                "composition seam gate: $seam is pinned without a real reason — state its binding and why it " +
+                    "is a callback into the core rather than a platform touch.",
+            )
+        }
         pins.forEach { (bundle, entries) ->
             entries.forEach { (field, reason) ->
                 assertTrue(
@@ -400,6 +480,7 @@ class CompositionSeamTest {
                 val deviceId: () -> String,
                 val albumExcluded: suspend (cutoff: CaptureCutoff) -> Set<String>,
                 val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
+                val onEdit: (() -> Unit)?,
                 val lane: CoroutineContext,
                 val log: Logger = Logger.withTag("x"),
                 val counts: Map<String, List<Int>> = emptyMap(),
@@ -418,13 +499,13 @@ class CompositionSeamTest {
             }
 
         assertEquals(
-            setOf("clock", "deviceId", "albumExcluded", "uploadSilentPush", "lane", "log", "counts"),
+            setOf("clock", "deviceId", "albumExcluded", "uploadSilentPush", "onEdit", "lane", "log", "counts"),
             decls.keys,
             "the constructor split lost or invented a parameter — nested generics, defaults and a " +
                 "trailing comma are all live in the real bundles",
         )
         assertTrue("ghost" !in decls, "a commented-out field was parsed as live — the stripper is not running")
-        listOf("deviceId", "albumExcluded", "uploadSilentPush").forEach {
+        listOf("deviceId", "albumExcluded", "uploadSilentPush", "onEdit").forEach {
             assertTrue(isFunctionType(decls.getValue(it)), "`${decls[it]}` is a function type and was missed")
         }
         listOf("clock", "lane", "log", "counts").forEach {

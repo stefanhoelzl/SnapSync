@@ -13,8 +13,8 @@ Each numbered group ships as its own PR, in order (design D1). Every group ends 
 - [x] 1.8 Pass `QueuedPhotoDownloadJobs.onStaged` as a constructor parameter that resolves `downloadController` when invoked. Delete the `var` and the `?: return` (fixes B1), and do the same for `MetricKitProcessMetricSource.onReport` and `SnapSyncRoot.uploaderPinSource`.
 - [x] 1.9 Remove every default from function-typed constructor parameters in production source (`UserCommands`, `StatusActions`, `BackgroundUploadPump`, `ShareableCountSource`, `Provision`, `candidatesFromFacts`, …) and fix every construction site.
 - [x] 1.10 Add the `StatusContainerHost.statusActions(…)` factory in `:ui:screens`, used by the iOS shell, the forge and the desktop pane. `StatusPane` takes the world's `UserCommands` instead of rebuilding them, which restores `choosePhotos` and `openLink`.
-- [ ] 1.11 Widen `CompositionSeamTest` to discover every function-typed constructor parameter in `feature/` and `compose/`, including nullable function types. Pin each one with its binding per composition. Rewrite the stale pins (`deviceId`, `refreshAttestation`, `appVersion`, `UploadRecordPorts`), and add a nullable-function-type sample case.
-- [ ] 1.12 Add the callback-slot gate and the lambda-default gate (content slots exempt; fail closed on an empty scan), and extend `CommandLaneTest` to cover `UserQueries`.
+- [x] 1.11 Widen `CompositionSeamTest` to discover every function-typed constructor parameter in `feature/` and `compose/`, including nullable function types. Pin each one with its binding per composition. Rewrite the stale pins (`deviceId`, `refreshAttestation`, `appVersion`, `UploadRecordPorts`), and add a nullable-function-type sample case.
+- [x] 1.12 Add the callback-slot gate and the lambda-default gate (content slots exempt; fail closed on an empty scan), and extend `CommandLaneTest` to cover `UserQueries`.
 - [x] 1.13 Add a regression test that builds `AppCore`, touches only `downloadJobs`, stages a resource through the fake transport, and asserts that the controller marked it staged and imported it.
 
 ## 2. G2: the world matches production (PR 2)
