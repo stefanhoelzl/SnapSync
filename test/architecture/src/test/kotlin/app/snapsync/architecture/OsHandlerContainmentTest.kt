@@ -12,7 +12,8 @@ import kotlin.test.fail
  * iOS hands the app a completion block on every background wake, and calling it declares *"I am done"*.
  * Failing to call one costs the app its **future** background wakes — uploads and downloads silently stop
  * happening in the background, permanently, with no error anywhere. Two properties prevent that, and a
- * bare field can express neither: the hold must be **bounded**, and a second handover must not **replace**
+ * bare field can express neither: the hold must **end** — after the wake's own work, or at the operating
+ * system's expiry, never at a clock of the app's own — and a second handover must not **replace**
  * an outstanding handler rather than releasing it.
  *
  * **This confines; it does not forbid** — and the distinction is the whole design. Storing the handler is
@@ -45,14 +46,14 @@ import kotlin.test.fail
  * caught the very KDoc written to explain the field's removal). That is the same trade
  * [MainLaneContainmentTest] makes, and it errs toward noticing. `val` is deliberately outside the
  * rule: `OsCompletions.Handover`'s own `handler` parameter is an immutable nullary-`Unit` function, and an immutable
- * parameter can be neither overwritten nor left unbounded. **If one of these bites, widen the rule** — do
+ * parameter can be neither overwritten nor left unreleased. **If one of these bites, widen the rule** — do
  * not add an exception, which is the hand-maintained list this design exists to avoid.
  */
 class OsHandlerContainmentTest {
 
     /** The one type licensed to hold an OS completion handler, and why. */
     private val allowed = mapOf(
-        OWNER to "the one type that bounds the hold and releases every outstanding handler",
+        OWNER to "the one type that releases every outstanding handler — after the wake's own work, or at the OS's expiry",
     )
 
     /**
@@ -109,6 +110,12 @@ class OsHandlerContainmentTest {
             files.size >= 100,
             "scanned only ${files.size} production files — the source tree moved and this gate proves nothing",
         )
+        // The licence must point at the type that exists: an exemption for a moved or renamed owner exempts
+        // nothing, and the handler's real home would then be judged by the rule it is licensed to break.
+        assertTrue(
+            files.any { it.path.endsWith(OWNER) && Regex("""\bclass\s+OsCompletions\b""").containsMatchIn(it.text) },
+            "the licensed owner $OWNER is missing or no longer declares OsCompletions — re-aim the licence",
+        )
 
         val swift = swiftShellFiles()
         assertTrue(
@@ -154,7 +161,8 @@ class OsHandlerContainmentTest {
         fail(
             buildString {
                 appendLine("A stored OS completion handler must live in $OWNER and nowhere else.")
-                appendLine("It bounds the hold and releases every outstanding handler; a bare field does neither,")
+                appendLine("It releases every outstanding handler after its own work or at the OS's expiry; a bare field")
+                appendLine("does neither,")
                 appendLine("and an unanswered handler costs the app its future background wakes.")
                 offenders.forEach { (path, decl) -> appendLine("  $path :: $decl") }
             },
