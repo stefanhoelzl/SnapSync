@@ -43,6 +43,12 @@ if ! command -v applesimutils >/dev/null; then
 fi
 
 python3 scripts/resolve-deployment.py local >/dev/null || fail "could not render the local deployment"
+# The Gradle build the xcodebuild runs RE-RENDERS the deployment at configuration time, from
+# `snapsync.deployment` — `prod` by the repo's default. Without this the simulator app is baked for the SHARED
+# production backend (measured: the journeys' first run POSTed a create there). A system property through
+# GRADLE_OPTS reaches the Gradle that Xcode's build phase launches (an `ORG_GRADLE_PROJECT_` variable does not: its
+# name cannot carry the dot, measured), and touches no gradle.properties on the machine. Everything below inherits it.
+export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.project.snapsync.deployment=local"
 
 # The real backend, on the loopback address the `local` deployment bakes into the build. `dev:local` rather than
 # `serve.ts --ephemeral`, which exits when its stdin closes and so cannot be backgrounded from a script. Its store is
@@ -115,6 +121,13 @@ launch "$DEVICE_B" "$RIG_PORT_B"
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
 DATA_B="$(xcrun simctl get_app_container "$DEVICE_B" app.snapsync data)"
 PORT="$RIG_PORT"
+
+# Both apps must be baked for the LOCAL backend. This is checked before anything drives them: a build pointed at the
+# shared production backend would carry the journeys' traffic to real users' data.
+for p in "$RIG_PORT" "$RIG_PORT_B"; do
+    base="$(curl -sS "http://127.0.0.1:$p/device/state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"].get("uploadBase",""))')"
+    [ "$base" = "$BACKEND" ] || fail "the app on $p is baked for '$base', not the local backend $BACKEND — refusing to run"
+done
 
 # Each app host's classification of the control vocabulary, read once: nothing else checks the app host's
 # advertisement for completeness, and an unclassified entry answers 500 only when someone asks.
