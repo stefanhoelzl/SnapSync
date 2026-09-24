@@ -47,10 +47,10 @@
 
 ## 7. Walk memo (app process only)
 
-- [ ] 7.1 Add the `currentChangeToken` read behind a port (read before the walk) with a contract clause bound to a real implementation
-- [ ] 7.2 Memo in the app's discovery binding keyed on (token, fetch predicate, grant); store only a completed, full-grant, readable walk; answer identical to a fresh walk; never in the extension
-- [ ] 7.3 Tests: unchanged token reuses; changed token/predicate/grant walks; a limited or unreadable result is never memoised
-- [ ] 7.4 Device check: an external change (a Camera photo, and if possible an iCloud edit) moves the token; until recorded, the memo is not relied on
+- [x] 7.1 Add the `currentChangeToken` read behind a port (read before the walk) with a contract clause bound to a real implementation
+- [x] 7.2 Memo in the app's discovery binding keyed on (token, selection policy, grant); store only a completed, full-grant, readable walk; answer identical to a fresh walk; never in the extension
+- [x] 7.3 Tests: unchanged token reuses; changed token/predicate/grant walks; a limited or unreadable result is never memoised
+- [ ] 7.4 Device check: an external change (a Camera photo, and if possible an iCloud edit) moves the token; until recorded, the memo runs in SHADOW (walks every time, logs a would-be-stale answer at Error); flip `APP_WALK_MEMO_USE` to SERVE in the same change that records the result
 
 ## 8. Status and limited grant
 
