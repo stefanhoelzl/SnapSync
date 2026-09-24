@@ -14,7 +14,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AppUploadEngine` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeEngine; `:test:architecture` Engine; `:test:world` OperatorUploadEngine | yes |
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
-| `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore | yes |
+| `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore; `:domain:feature` CachedAttestStore, SharedItem | yes |
 | `BackendVerdicts` | `:domain:ports` | — | no |
 | `BackgroundScheduler` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundScheduler; `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler; `:test:world` CountingBackstopScheduler | yes |
 | `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer, NetworkedTransfer | yes |
@@ -95,6 +95,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Proceeding, Short | no |
 | `SharePresenter` | `:domain:ports` | `:adapter:ios:app-only` IosShareSheet | no |
+| `Slot` | `:domain:feature` | `:domain:feature` Held, Unread | no |
 | `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes, RecordingStagedBytes; `:adapter:ios:app-only` IosStagedBytes | yes |
 | `SuppressionSource` | `:domain:ports` | — | no |
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |

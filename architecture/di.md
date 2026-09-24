@@ -20,6 +20,7 @@ Roots found:
 | `AlbumCoordinator` | | x |
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
+| `CachedAttestStore` | | x |
 | `EntryHooks` | x | |
 | `FileBackedConfigStore` | x | x |
 | `FileLogWriter` | x | x |
