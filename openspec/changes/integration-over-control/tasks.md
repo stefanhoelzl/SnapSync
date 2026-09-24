@@ -66,4 +66,4 @@
 
 - [x] 9.1 Update CLAUDE.md's module list: `:app:composition`, `:test:integration` JVM-only over the protocol, `:test:world` hosting the inbound bindings, `:app:ios`'s root delegating to `snapSyncHost`.
 - [x] 9.2 Update the `ios-simulator` / `local-backend` skills where the journeys' deno-on-8080 and two-simulator setup changes what they say.
-- [ ] 9.3 Run `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `./gradlew build`, and dispatch `gh workflow run ios.yml --ref integration-over-control` to smoke-check the `SnapSyncRoot` change on device (join, upload, version-refusal screen).
+- [x] 9.3 `validate --specs --strict` and `./gradlew build` (only `ModuleSetTest` red, pending the sync). Device smoke of the `SnapSyncRoot` change on a Debug rig build (SE2, iOS 26.6) against a local backend over a tunnel, instead of a TestFlight dispatch: boot on the tunnel base, create + join a fresh event, seeded photos uploaded into the local store, the update-required screen (minimum 999.0, with the App Store URL from `AppPorts.appStoreUrl`), and its clearing once the backend served again.
