@@ -288,8 +288,19 @@ empty.
 labelled HEIC) would not survive a real PhotoKit import. A second real member is the only honest foreign
 device.
 
-**Cost.** The job takes 8.5–14.5 min today. Estimated +3–5 min (a parallel boot, deno setup, about 1–2 min
-of journeys). Measured in the change's CI runs and recorded here before archive.
+**Cost, measured** (PR #306's runs, per-stage timestamps in `build/sim-contracts/stages`): the stages the journeys
+add come to about +5–6 min:
+- installing and granting the second app, about 1.5 min;
+- launching it, about 0.5 min;
+- the journeys themselves, 3–4 min.
+
+The second boot and the backend's start overlap the xcodebuild and cost nothing.
+
+The branch's `ios-contracts` wall-clock (31–42 min, against 11–13 on main) is NOT the journeys. It is a cold
+Kotlin/Native framework compile, 23 min of xcodebuild: the branch changes the composition, and the job now builds
+for the `local` deployment, so it hit none of main's cached outputs. Contract times swung from 2 to 10 min between
+two runs on the same code. Re-read the job time from main's first runs after merge; if it stays above +6 min,
+the next lever is the build, not the journeys.
 
 ### D12. The mirror: a remote `UiState`, re-composed locally
 
@@ -367,5 +378,5 @@ Rollback is a revert; nothing it touches is persisted anywhere users hold.
 - Whether the relaunch must also model the OS's delivery of a background-session completion to a
   relaunched app (`ColdDownloadRelaunch`), or only the adoption of an already-staged transfer. The existing
   test does the latter; the design keeps to it unless the port can express more.
-- The journey cost is estimated, not measured. If it exceeds about +6 min, the second simulator's boot is
-  moved ahead of the xcodebuild.
+- ~~The journey cost is estimated, not measured.~~ Measured: see D11. The second simulator's boot already starts
+  before the xcodebuild.

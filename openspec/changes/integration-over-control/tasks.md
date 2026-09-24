@@ -47,7 +47,7 @@
 - [x] 6.6 Migrate InterruptedImport, UnreadStatus, Rename, CycleEntryGate, DiagnosticDump, ManifestVersion (`:105`), PushRegistration (`:65`, `:112`, `:146` reshaped), StagedByteReclaim.
 - [x] 6.7 Delete the nine tests in design D8 (BoundedTopUp `:51`, CapTruncatedPublish `:48`, InterruptedImport `:148`, ManifestVersion `:32` `:53` `:79`, UnreadStatus `:99`, Rename `:134`, PushRegistration `:35`), and list them with their remaining coverage in the PR description.
 - [x] 6.8 Grep the suite and confirm that no test asserts `RigState.ledger`, and that no source names `World`, `app.snapsync.ports`, `app.snapsync.flow` or `app.snapsync.compose`.
-- [ ] 6.9 Port any integration test added on `main` meanwhile, e.g. the `os-recipe-timeouts` branch's `ExtensionCredentialRereadIntegrationTest`, when rebasing.
+- [x] 6.9 Port any integration test added on `main` meanwhile, e.g. the `os-recipe-timeouts` branch's `ExtensionCredentialRereadIntegrationTest`, when rebasing. (Rebased onto main at 4813b149: no new integration test had landed; `os-recipe-timeouts` has not merged.)
 
 ## 7. Journeys in `ios-contracts` (D11)
 
@@ -55,7 +55,7 @@
 - [x] 7.2 Extend `scripts/sim-contracts` (or add `scripts/sim-journeys`): create, boot and grant a second simulator in parallel with the first, and launch both apps on their own rig ports.
 - [x] 7.3 Have the same script read each app's `GET /device` and fail on `unclassified` or `outsideVocabulary`.
 - [x] 7.4 In `ios.yml`'s `ios-contracts` job: add `denoland/setup-deno`, background `deno task dev:local` on 8080 with its output captured, warm it up with one request, run the journeys after the contracts, and upload the backend log and both app logs as evidence.
-- [ ] 7.5 Measure the job's wall clock on the PR's runs and record the result in design D11. If it exceeds +6 min, move the second simulator's boot ahead of the xcodebuild.
+- [x] 7.5 Measure the job's wall clock on the PR's runs and record the result in design D11. If it exceeds +6 min, move the second simulator's boot ahead of the xcodebuild.
 
 ## 8. The mirror (D12)
 
