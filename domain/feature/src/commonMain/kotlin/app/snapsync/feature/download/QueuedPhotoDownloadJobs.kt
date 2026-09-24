@@ -1,7 +1,7 @@
 package app.snapsync.feature.download
 
 import app.snapsync.model.ConfinedTo
-import app.snapsync.ports.BackgroundEventsReceipts
+import app.snapsync.ports.OsCompletions
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
@@ -11,7 +11,6 @@ import app.snapsync.ports.TransferOutcome
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PendingDownload
-import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +19,8 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -100,10 +101,9 @@ class QueuedPhotoDownloadJobs(
      * download-session events — which builds the jobs and nothing else — dropped every staged resource
      * without a line in the log. The composition's binding resolves the controller when it is invoked.
      *
-     * `suspend`, and launched HERE rather than by the composition, so this class can track the import
-     * it starts. The composition's former `scope.launch { … }` handed the work to the app scope and kept
-     * no handle, which is why [onBackgroundEventsFinished] had nothing to wait for and released the OS
-     * handler while the imports it announced were merely queued.
+     * `suspend`, and launched HERE rather than by the composition, so this class can track the staging
+     * it starts: the wake's OS handler is released only once every staging it announced is recorded. The
+     * import that follows is not this callback's — it is the process tail's first unit.
      */
     private val onStaged: suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit,
     // Where this session's OS completion handler is released (capability `ios-app-shell`). UIKit owns
@@ -118,34 +118,37 @@ class QueuedPhotoDownloadJobs(
 ) : PhotoDownloadJobs {
 
     /**
-     * The OS completion handlers of this session's background-events wakes (capability `ios-app-shell`).
-     *
-     * This used to be a single mutable field holding the raw handler. It awaited the imports honestly —
-     * which the upload tier's equivalent did not — but it did so with **no bound at all**: an import that
-     * never reported left the handler unanswered for the process's life, and an unanswered handler costs
-     * the app the very download wakes this capability depends on. A single slot also silently overwrote
-     * an earlier wake's handler rather than releasing it.
+     * The OS completion handlers of this session's background-events wakes (capability `ios-app-shell`), held across
+     * the wake's own work — **staging** the delivered files — and released at the session's drain report once that
+     * staging is recorded; never held for the photo-library imports, which are the process tail's first unit
+     * (capability `photo-download`, "The download session's OS handler is released after staging"; decision record
+     * `changes/own-work-per-wake`, D5). No deadline of the app's own bounds the hold: a drain report that never comes
+     * ends in the operating system's expiry, which the wake's owner forwards to the [OsCompletions.Handover] it was
+     * handed by [adoptBackgroundEvents].
      */
-    private val backgroundEvents = BackgroundEventsReceipts(
-        scope = scope,
+    private val backgroundEvents = OsCompletions(
         entryPoint = "download.onBackgroundSessionEvents",
-        deadline = ReceiptDeadlines.BACKGROUND_EVENTS,
-        work = { awaitOutstandingImports() },
         releaseLane = uiLane,
         log = log,
     )
 
     /**
-     * The imports started by [DownloadTransportHost.onStaged] since the last drain. Held so the OS's
-     * background-events handler can be released *after* them (capability `photo-download`) — the
-     * session reports its own events drained, which says nothing about the imports they caused.
+     * Serialises the drains: taking the outstanding stagings is a **destructive** read, so a second drain overlapping
+     * the first would find the list empty and release its handlers against stagings that are still being recorded.
+     */
+    private val drains = Mutex()
+
+    /**
+     * The stagings started by [DownloadTransportHost.onStaged] since the last drain. Held so the OS's background-events
+     * handler is released *after* they are recorded (capability `photo-download`) — the session reports its own
+     * events drained, which says nothing about the store writes they caused.
      *
      * A thread-safe cell, not a plain list (law "State reached from OS callbacks is confined", capability
      * `module-architecture`): [DownloadTransportHost.onStaged] registers from the transport's delegate queue while
-     * [awaitOutstandingImports] takes the list from a coroutine, and a plain list shared between them could drop a
-     * registration — releasing the OS handler before an import it announced — or throw mid-iteration.
+     * [awaitOutstandingStagings] takes the list from a coroutine, and a plain list shared between them could drop a
+     * registration — releasing the OS handler before a staging it announced — or throw mid-iteration.
      */
-    private val outstandingImports = MutableStateFlow<List<Job>>(emptyList())
+    private val outstandingStagings = MutableStateFlow<List<Job>>(emptyList())
 
     /**
      * The not-yet-started transfers, keyed by transfer description like [inFlight] — so a key is queued at
@@ -205,10 +208,10 @@ class QueuedPhotoDownloadJobs(
                 return
             }
             // Launched here, and REMEMBERED: this fires on the transport's delegate queue, which must
-            // not be blocked by an import, but the job has to remain reachable so the wake's OS handler
+            // not be blocked by a store write, but the job has to remain reachable so the wake's OS handler
             // can wait for it. Pruning completed jobs keeps the list from growing across a long session.
-            val import = scope.launch { onStaged(tag.ref, tag.resourceKey, stagedPath) }
-            outstandingImports.update { held -> held.filterNot { it.isCompleted } + import }
+            val staging = scope.launch { onStaged(tag.ref, tag.resourceKey, stagedPath) }
+            outstandingStagings.update { held -> held.filterNot { it.isCompleted } + staging }
         }
 
         override fun onCompleted(description: String, error: String?) {
@@ -231,25 +234,27 @@ class QueuedPhotoDownloadJobs(
         }
 
         /**
-         * The session has delivered every event it had. That is NOT the same as the app being done:
-         * each delivery started an import, and those are what the OS handler is really reporting on
-         * (capability `photo-download`). So join them first, then release — which the receipts do,
-         * bounded, and for every handler outstanding rather than only the most recent one.
+         * The session has delivered every event it had. That is not yet the wake's own work done: each delivery
+         * started a staging, and recording those is what the OS handler reports on (capability `photo-download`).
+         * So join them first, then release every handler outstanding — never waiting for the imports, which are
+         * the tail's.
          *
-         * Unconditional now: a foreground drain has no handler waiting on it, but the imports it
-         * announces are joined all the same, and the receipts simply have nobody to release.
+         * Unconditional: a foreground drain has no handler waiting on it, but the stagings it announces are joined
+         * all the same, and there is simply nobody to release.
          */
-        override fun onBackgroundEventsFinished() = backgroundEvents.drained()
+        override fun onBackgroundEventsFinished() {
+            scope.launch { drains.withLock { backgroundEvents.releaseAfter { awaitOutstandingStagings() } } }
+        }
     }
 
     /**
-     * Await every import started since the last drain. Public because two callers need it and neither may
-     * reach the list: the background-events handler above (so the OS handler is released after the
-     * imports, capability `photo-download`), and the world harness's `stageAllDownloads`, whose operator
-     * drives the world synchronously and would otherwise race every download assertion.
+     * Await every staging started since the last drain. Public because two callers need it and neither may reach
+     * the list: the background-events handler above (so the OS handler is released after the stagings, capability
+     * `photo-download`), and the world harness's `stageAllDownloads`, whose operator drives the world synchronously
+     * and would otherwise race every download assertion.
      */
-    suspend fun awaitOutstandingImports() {
-        outstandingImports.getAndUpdate { emptyList() }.forEach { it.join() }
+    suspend fun awaitOutstandingStagings() {
+        outstandingStagings.getAndUpdate { emptyList() }.forEach { it.join() }
     }
 
     private fun transport(): DownloadTransport = transport ?: newTransport(host).also { transport = it }
@@ -278,24 +283,21 @@ class QueuedPhotoDownloadJobs(
     }
 
     /**
-     * Called from the Swift host's `handleEventsForBackgroundURLSession`: realize the transport so its
-     * delegate receives the pending events, and store the completion handler to call once they drain.
+     * Called from the core's `handleEventsForBackgroundURLSession` entry: hold the OS [completion] until this wake's
+     * stagings are recorded, and realize the transport so its delegate receives the pending events. Returns the
+     * handover, through which the wake's owner learns of the release and forwards the operating system's expiry.
      */
-    fun adoptBackgroundEvents(completion: () -> Unit): Unit = log.invocation(logScope, "download.adoptBackgroundEvents") {
-        // Logged, because it was not (law "Absence is never silent"): this call wrote nothing at all, so
-        // no diagnostic dump could distinguish a wake whose handler was released from one where it was
-        // never called — while the upload tier's equivalent was measurable line by line.
-        //
-        // Adopt BEFORE realizing the transport, so the realize is inside the bound: a session that never
-        // reports is exactly what the deadline exists for. (The clock starts a dispatch later, not on
-        // this line — see `BackgroundEventsReceipts`.)
-        backgroundEvents.adopt(completion)
-        transport() // realize → the session exists with its delegate, so the OS's events are delivered
-        // Explicitly `Unit`. `invocation` returns its block's value, so without this the realized
-        // transport becomes this function's return type — an internal handle appearing in an exported,
-        // ObjC-visible signature for no reason.
-        Unit
-    }
+    fun adoptBackgroundEvents(completion: () -> Unit): OsCompletions.Handover =
+        log.invocation(logScope, "download.adoptBackgroundEvents") {
+            // Logged (law "Absence is never silent"): without it no diagnostic dump could distinguish a wake whose
+            // handler was released from one where it was never called.
+            //
+            // Adopt BEFORE realizing the transport, so every event the realized session delivers — and the drain
+            // report that follows them — lands in this handler's window.
+            val handover = backgroundEvents.adopt(completion)
+            transport() // realize → the session exists with its delegate, so the OS's events are delivered
+            handover
+        }
 
     private fun pump() {
         while (inFlight.size < MAX_IN_FLIGHT) {

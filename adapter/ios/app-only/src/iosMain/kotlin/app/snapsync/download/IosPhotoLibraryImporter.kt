@@ -96,8 +96,9 @@ class IosPhotoLibraryImporter(
         // The bound that used to sit here existed to protect `DownloadController`'s mutex: the import ran
         // under it, and the SNAPSYNC-6 field hang held it from 09:03:37 until the process died. The import
         // no longer runs under that lock, so there is nothing left for a per-import clock to protect — and
-        // the wake it would otherwise bound is bounded already by `OsReceipt`, which releases the OS
-        // handler on its own deadline and deliberately lets the work run on (capability `ios-app-shell`).
+        // the wake it would otherwise bound is bounded already by the operating system's own expiry signal,
+        // which ends the wake's background time at once and deliberately lets this work run on (capability
+        // `ios-app-shell`).
         //
         // Keeping a clock here would restate the mistake this capability already names: the process is
         // suspended for arbitrary spans between a change block and its completion (measured 116 s and

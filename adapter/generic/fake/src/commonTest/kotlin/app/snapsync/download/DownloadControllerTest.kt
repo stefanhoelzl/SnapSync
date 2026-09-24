@@ -25,7 +25,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
-import app.snapsync.ports.OsReceipt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -256,6 +255,8 @@ class DownloadControllerTest {
         c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
         assertTrue(importer.imported.isEmpty()) // live still missing → not importable
         c.onResourceStaged(ref, "Q-live.mov", "/stage/l")
+        assertTrue(importer.imported.isEmpty(), "staging records; the import is the tail's first unit")
+        c.importReady()
 
         assertEquals(listOf(ref), importer.imported)
         assertTrue(store.isSettled(ref))
@@ -273,6 +274,7 @@ class DownloadControllerTest {
         c.reconcile("event")
         c.onResourceStaged(ref, "Q-primary.heic", "/p")
         c.onResourceStaged(ref, "Q-live.mov", "/l")
+        c.importReady() // the tail's ① — staging itself imports nothing
         assertFalse(store.isSettled(ref)) // failed → not imported
 
         importer.failNext = false
@@ -340,7 +342,7 @@ class DownloadControllerTest {
      * assets for no reason.
      */
     @Test
-    fun union_failure_still_drains_staged_imports() = runTest {
+    fun union_failure_leaves_the_staged_imports_to_the_tail() = runTest {
         val store = InMemoryDownloadStore()
         val jobs = RecordingJobs()
         val importer = FakeImporter()
@@ -354,11 +356,14 @@ class DownloadControllerTest {
         assertTrue(importer.imported.isEmpty())
 
         // The second resource lands, then the NEXT wake's union fetch times out. The asset is fully
-        // staged, so this wake must still import it.
+        // staged, so this wake must still import it — through its tail's ①, which runs whatever the union
+        // answered (capability `photo-download`, "A failed union fetch still drains the staged imports").
         store.markStaged(ref, "Q-live.mov", "/stage/l")
         val enqueuedBefore = jobs.enqueued.size
-        controller(FakeUnion(emptyList(), ok = false), store = store, jobs = jobs, importer = importer)
-            .reconcile("event")
+        val next = controller(FakeUnion(emptyList(), ok = false), store = store, jobs = jobs, importer = importer)
+        next.reconcile("event")
+        assertTrue(importer.imported.isEmpty(), "the reconcile itself imports nothing, on a failure as on a success")
+        next.importReady()
 
         assertEquals(listOf(ref), importer.imported, "a fast union failure must not strand a staged asset")
         assertTrue(store.isSettled(ref))
@@ -448,17 +453,14 @@ class DownloadControllerTest {
     }
 
     /**
-     * A wake whose import never answers must still release its OS handler, and must leave the photo
-     * importable (capability `ios-app-shell` + `photo-download`).
-     *
-     * Nothing bounds the import any more; `OsReceipt` bounds the HOLD and lets the work run on, which is
-     * the only bound left in the system. The shell wiring that supplies the real handler is `:app:ios`,
-     * untested by rule and verified on device.
+     * An import that never answers is not waited for by anything but its own drain, and leaves the photo importable
+     * (capability `photo-download`). Nothing bounds the import: the wake's background time does, through the
+     * operating system's expiry — which ends the wake at once and leaves this import claimed and running (the
+     * inbound port's contract, `PlatformEntriesContract`, pins that half).
      */
     @Test
-    fun a_hung_import_still_releases_the_receipt_and_leaves_the_asset_importable() = runTest {
+    fun a_hung_import_leaves_the_asset_importable() = runTest {
         val store = InMemoryDownloadStore()
-        var released = false
         val ref = AssetRef("DEVICE-A", "Q")
         val importer = FakeImporter().also { it.hangFor += "Q" }
         val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
@@ -466,16 +468,84 @@ class DownloadControllerTest {
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val receipt = OsReceipt("test-wake", 1.seconds, release = { released = true })
-        val held = launch { receipt.heldFor { c.importReady() } }
+        val drain = launch { c.importReady() }
         importer.hanging.await()
-        // The receipt's deadline is the only clock left in the system; the import is still parked.
-        delay(2.seconds)
-        assertTrue(released, "the OS handler must be released even though the import never answered")
-
         assertFalse(store.isSettled(ref), "a photo whose import never reported stays importable")
         assertEquals(1, store.importableAssets().size)
-        held.cancel()
+        drain.cancel()
+    }
+
+    /**
+     * The tail's unit ① honours the operating system's stop between two imports (capability `ios-app-shell`,
+     * "Expiry stops work cooperatively at the next boundary"): the import in flight completes, no further one
+     * starts, and what is left stays staged for a later wake.
+     */
+    @Test
+    fun a_stop_ends_the_drain_between_two_imports() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
+            store = store,
+            importer = importer,
+        )
+        c.reconcile("event")
+        for (id in listOf("Q", "R")) {
+            store.markStaged(AssetRef("DEVICE-A", id), "$id-primary.heic", "/p/$id")
+            store.markStaged(AssetRef("DEVICE-A", id), "$id-live.mov", "/l/$id")
+        }
+        assertEquals(2, store.importableAssets().size, "the reconcile imported nothing itself")
+
+        var checks = 0
+        c.importReady(stopRequested = { checks++ >= 1 })
+
+        assertEquals(1, store.importableAssets().size, "one import completed, and the stop started no second")
+    }
+
+    /**
+     * A drain that gives up waiting on an import (the tail's, when its time is up or another request is due) moves on
+     * to the next importable asset; the abandoned import stays claimed, so it is never imported twice.
+     */
+    @Test
+    fun a_drain_that_gives_up_on_a_hung_import_imports_the_rest() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().also { it.hangFor += "Q" }
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-A", "R"))),
+            store = store,
+            importer = importer,
+        )
+        c.reconcile("event")
+        for (id in listOf("Q", "R")) {
+            store.markStaged(AssetRef("DEVICE-A", id), "$id-primary.heic", "/p/$id")
+            store.markStaged(AssetRef("DEVICE-A", id), "$id-live.mov", "/l/$id")
+        }
+
+        // Every wait is given up at once; the import itself runs on, claimed.
+        c.importReady(awaitImport = { import -> backgroundScope.launch { import() } })
+        importer.hanging.await()
+        yield()
+
+        assertEquals(listOf(AssetRef("DEVICE-A", "R")), importer.imported, "the drain moved past the hung import")
+        c.importReady()
+        assertEquals(1, importer.attempted.count { it.sourceAssetId == "Q" }, "the hung import stays claimed")
+    }
+
+    /** A reconcile plans and enqueues only; the drain is the tail's (capability `photo-download`). */
+    @Test
+    fun a_reconcile_imports_nothing_even_when_assets_are_staged() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+
+        c.reconcile("event")
+        assertEquals(1, store.importableAssets().size, "still importable: no reconcile imports")
+        c.importReady()
+        assertTrue(store.importableAssets().isEmpty(), "the drain imports it")
     }
 
     @Test
