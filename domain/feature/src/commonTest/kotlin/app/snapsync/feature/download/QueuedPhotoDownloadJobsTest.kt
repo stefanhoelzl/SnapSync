@@ -29,6 +29,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.TestScope
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -322,6 +323,77 @@ class QueuedPhotoDownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(1, h.transport.started.size)
+    }
+
+    /**
+     * Every reconcile hands the jobs its WHOLE pending snapshot, so a second reconcile while a backlog is
+     * still queued re-enqueues resources that are queued (not yet started) or running. Neither may transfer
+     * twice: the second copy of a queued key used to start after the first finished, re-downloading a
+     * resource whose asset was already imported (measured on the SE2: 136 transfers for 100 resources).
+     */
+    @Test
+    fun re_enqueuing_a_backlog_transfers_each_resource_once() = runTest {
+        val h = Harness(this)
+        val backlog = (1..100).map { pending("A$it", "k-$it") }
+        h.jobs.enqueue(backlog)
+        advanceUntilIdle()
+        // A first wake finishes the first window …
+        h.transport.started.take(MAX_IN_FLIGHT).forEach { h.transport.finish(it.description) }
+        advanceUntilIdle()
+        // … then the next foreground's reconcile re-sends everything not yet staged.
+        h.jobs.enqueue(backlog.drop(MAX_IN_FLIGHT))
+        advanceUntilIdle()
+
+        finishEverything(h, mutableSetOf())
+
+        val perKey = h.transport.started.groupingBy { it.description }.eachCount()
+        assertEquals(100, perKey.size)
+        assertEquals(emptyMap(), perKey.filterValues { it > 1 }, "no resource is transferred twice")
+    }
+
+    /**
+     * The field shape (S2 bench bk1, 2026-09-24): a re-enqueued backlog left stale duplicates in the queue
+     * and the window, so the NEXT reconcile's new photos were queued behind them in memory only — the
+     * enqueue started nothing. A SIGKILL then lost them; the OS finished only the stale duplicates, whose
+     * rows were long imported, and the relaunch staged 24 and imported 0.
+     */
+    @Test
+    fun a_new_batch_after_a_re_enqueued_backlog_is_handed_to_the_os() = runTest {
+        val h = Harness(this)
+        val old = (1..100).map { pending("OLD$it", "o-$it") }
+        h.jobs.enqueue(old)
+        advanceUntilIdle()
+        h.transport.started.take(MAX_IN_FLIGHT).forEach { h.transport.finish(it.description) }
+        advanceUntilIdle()
+        h.jobs.enqueue(old.drop(MAX_IN_FLIGHT))
+        advanceUntilIdle()
+        // Every OLD resource has now finished once — the store would call the backlog drained.
+        val done = mutableSetOf<FakeDownloadTransport.Started>()
+        val finished = mutableSetOf<String>()
+        while (finished.size < old.size) {
+            val next = h.transport.started.first { !it.cancelled && it.description !in finished && it !in done }
+            done += next
+            finished += next.description
+            h.transport.finish(next.description)
+            advanceUntilIdle()
+        }
+
+        val fresh = (1..100).map { pending("NEW$it", "n-$it") }
+        h.jobs.enqueue(fresh)
+        advanceUntilIdle()
+
+        val runningNew = h.transport.started.filter { it !in done && it.description.contains("NEW") }
+        assertEquals(MAX_IN_FLIGHT, runningNew.size, "the new batch fills the window — nothing stale occupies it")
+    }
+
+    /** Finish every started transfer, including any the completions start, until nothing is running. */
+    private fun TestScope.finishEverything(h: Harness, done: MutableSet<FakeDownloadTransport.Started>) {
+        while (true) {
+            val next = h.transport.started.firstOrNull { it !in done } ?: return
+            done += next
+            h.transport.finish(next.description)
+            advanceUntilIdle()
+        }
     }
 
     // ---- transfer-description codec ----------------------------------------------------------------
