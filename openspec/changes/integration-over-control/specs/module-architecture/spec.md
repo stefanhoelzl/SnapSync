@@ -25,8 +25,9 @@ existence; a module justified by no law is a package with a derived text gate in
   - `:test:rig` — contributes its own call site into the iOS app shell, linked under `-Psnapsync.rig`. Its
     JVM target, the control channel's JVM host, links into no shipped-format binary and is consumed only by
     test equipment.
-  - `:test:contracts` — the port contracts, linked under `-Psnapsync.rig` into the app and into the
-    rig-gated source sets of the two iOS adapter modules, the extension-safe one and the app-only one. It
+  - `:test:contracts` — the port contracts, linked under `-Psnapsync.rig` into the app, into the upload
+    extension, and into the rig-gated source sets of the two iOS adapter modules, the extension-safe one and the
+    app-only one. It
     withholds the test-assertion library from every other main source set: it is the only module whose main
     code may assert.
 
@@ -109,6 +110,12 @@ requirement with the group it joins and the argument for that group.
   from `ports/`, `flow/`, `compose/` or the world
 - **THEN** compilation fails (unresolvable symbol), because no dependency on its compile path exports those
   zones
+
+#### Scenario: The contracts module in the upload extension
+
+- **WHEN** the upload extension is built with `-Psnapsync.rig`
+- **THEN** the contracts module is linked into it together with the rig-gated source it runs through, and a
+  build without the property contains neither
 
 #### Scenario: Presentation reaches for the composition
 
