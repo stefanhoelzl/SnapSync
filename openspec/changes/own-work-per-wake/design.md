@@ -190,11 +190,13 @@ non-authoritative result (`IosDiscovery` is authoritative only under a full gran
 could not produce headlessly. Until then the memo runs in **shadow**: it walks every time, compares the answer it would
 have served, and logs a mismatch at Error (field evidence via Bugsink); serving is switched on with the result.
 
-### D10 — Event-album collection cache, observer-invalidated
-The importer caches the event album `PHAssetCollection`; the cache is dropped by the library change observer
-(album deleted/changed), never by a failed commit — a stale collection that is only discovered by a failed commit
-could consume move-semantics resources and violate "the album add SHALL never fail or defer the import".
-*Gate:* a device check of what PhotoKit does with a change request on a deleted collection, before enabling.
+### D10 — No event-album collection cache (considered, measured, declined at apply)
+A cache of the event album's `PHAssetCollection`, dropped only by the library change observer, was proposed to
+save the per-import re-fetch (4–8 ms of a ~60–100 ms commit). The risk that gated it was measured on the iOS 26.5
+simulator (n=6): a change request against a **deleted** collection is non-nil, the commit succeeds, the asset is
+created and its staged file consumed, and only the album add is dropped — silently. So a cache would have been
+safe, but it would also have lost the per-import lookup's immediate "album no longer resolves" warning, for a
+saving of ~0.1–0.2 s per 24-photo wake. Declined: the importer keeps fetching the album per import.
 
 ### D11 — Ledger counts refresh only while foregrounded
 The pump's per-cycle `onCycleComplete` is replaced by a refresh after tail units only while the app is
