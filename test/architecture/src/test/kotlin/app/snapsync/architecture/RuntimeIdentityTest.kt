@@ -22,7 +22,8 @@ import kotlin.test.fail
  * single-sited. Non-Kotlin surfaces (entitlements, `Info.plist`, `build.gradle.kts`) carry their
  * own pinned counts; the BGTask ids are pinned in BOTH Kotlin and `Info.plist`, because drift
  * between the two silently kills that background tier (the OS rejects an unpermitted submit and
- * nothing raises).
+ * nothing raises) — and the plist's listing must be EXACTLY the pinned set, each registered by the
+ * Swift shell, so a retired id left behind fails too.
  *
  * The pin inventory is the spec's (`openspec/specs/architecture-guards/spec.md`): adding, removing,
  * or re-valuing a pin is a spec delta, deliberately.
@@ -33,6 +34,9 @@ import kotlin.test.fail
  * the pin is — deliberately — a text assertion about source, exactly like every other pin here.
  */
 private const val SHARED_ACCESS_GROUP = "E9Z8BADH58.app.snapsync.shared"
+
+/** The app bundle's plist — the one that MUST declare the BGTask listing. */
+private const val APP_PLIST = "iosApp/iosApp/Info.plist"
 
 class RuntimeIdentityTest {
 
@@ -398,8 +402,8 @@ class RuntimeIdentityTest {
 
     @Test
     fun `BGTask ids agree between Kotlin and Info plist`() {
-        val plist = File(repoRoot, "iosApp/iosApp/Info.plist")
-        assertTrue(plist.isFile, "iosApp/iosApp/Info.plist is missing — the plist surface moved; fix this pin's path")
+        val plist = File(repoRoot, APP_PLIST)
+        assertTrue(plist.isFile, "$APP_PLIST is missing — the plist surface moved; fix this pin's path")
         val sources = productionKotlin()
         for (id in bgTaskIds) {
             // The Kotlin side is already pinned exactly-once above; here the OS-consulted side must
@@ -408,6 +412,116 @@ class RuntimeIdentityTest {
             assertExactlyOnce("BGTask id $id in Kotlin", occurrences(sources, "\"$id\""))
         }
     }
+
+    /**
+     * **`BGTaskSchedulerPermittedIdentifiers` lists exactly the pinned set** — in the app's plist, and in any
+     * other bundle's plist that declares the key at all (decision record `changes/own-work-per-wake`, D7).
+     *
+     * The agreement test above is one-directional: it proves every pinned id IS listed, never that nothing
+     * else is. A retired identifier left behind — `app.snapsync.download.backstop`, whose task and
+     * registration were deleted — is an identifier no registration serves, which is an operating-system
+     * error that no build, test or log would otherwise notice. Set equality closes that direction. The
+     * plist's XML comments are stripped first, so an explanation that names a retired id is not a listing.
+     */
+    @Test
+    fun `BGTaskSchedulerPermittedIdentifiers lists exactly the pinned BGTask set`() {
+        val plists = iosAppFiles { it.name == "Info.plist" }
+        assertTrue(plists.size >= 2, "found only ${plists.size} Info.plist files under iosApp/ — the scan is broken")
+        val declared = plists.mapNotNull { file ->
+            permittedIdentifiers(file.readText())?.let { file.toRelativeString(repoRoot) to it }
+        }.toMap()
+        assertTrue(
+            APP_PLIST in declared,
+            "$APP_PLIST declares no BGTaskSchedulerPermittedIdentifiers — the heartbeat's submit would be refused",
+        )
+        for ((path, ids) in declared) {
+            val unpinned = ids.filterNot { it in bgTaskIds }
+            val missing = bgTaskIds.filterNot { it in ids }
+            val duplicated = ids.groupBy { it }.filterValues { it.size > 1 }.keys
+            assertTrue(
+                unpinned.isEmpty() && missing.isEmpty() && duplicated.isEmpty(),
+                "$path's BGTaskSchedulerPermittedIdentifiers must list exactly the pinned BGTask set $bgTaskIds.\n" +
+                    "  unpinned (listed, served by no registration): $unpinned\n" +
+                    "  missing (pinned, not listed — its submit is refused): $missing\n" +
+                    "  duplicated: $duplicated\n" +
+                    "A retired id left listed is an operating-system error nothing else notices; retiring or " +
+                    "adding one is a spec delta to architecture-guards.",
+            )
+        }
+    }
+
+    /**
+     * **Every pinned BGTask id is registered by the Swift shell, and the shell registers nothing else.**
+     * Apple requires `BGTaskScheduler.register(forTaskWithIdentifier:)` before launch finishes, and it lives
+     * in the app delegate (which forwards the task to Kotlin by the identifier the OS delivers). A listed id
+     * nothing registers is the same silent operating-system error as a registered id nothing lists.
+     */
+    @Test
+    fun `every pinned BGTask id is registered in the Swift shell`() {
+        val swift = iosAppFiles { it.extension == "swift" }
+        assertTrue(swift.size >= 2, "found only ${swift.size} Swift shell files — iosApp/ moved and this pin proves nothing")
+        val registered = swift.flatMap { file -> registeredTaskIds(file.readText()) }
+        assertTrue(
+            registered.sorted() == bgTaskIds.sorted(),
+            "the Swift shell must register exactly the pinned BGTask set, once each.\n" +
+                "  pinned:     ${bgTaskIds.sorted()}\n" +
+                "  registered: ${registered.sorted()}",
+        )
+    }
+
+    /**
+     * The parsers' own non-vacuity: a regex that silently stops matching would turn both BGTask guards above
+     * into passes. Shown here, in the same run, still reading a stale listing and a registration.
+     */
+    @Test
+    fun `the BGTask parsers still recognise their shapes`() {
+        val plist = """
+            <key>UIBackgroundModes</key><array><string>processing</string></array>
+            <key>BGTaskSchedulerPermittedIdentifiers</key>
+            <array>
+                <!-- the <string>app.snapsync.commented.out</string> task was retired -->
+                <string>app.snapsync.upload.heartbeat</string>
+                <string>app.snapsync.download.backstop</string>
+            </array>
+        """.trimIndent()
+        assertTrue(
+            permittedIdentifiers(plist) == listOf("app.snapsync.upload.heartbeat", "app.snapsync.download.backstop"),
+            "the plist parser no longer reads the listing exactly: ${permittedIdentifiers(plist)}",
+        )
+        assertTrue(
+            permittedIdentifiers("<key>UIBackgroundModes</key><array/>") == null,
+            "a plist without the key must parse as absent",
+        )
+        val swift = """
+            BGTaskScheduler.shared.register(
+                forTaskWithIdentifier: "app.snapsync.upload.heartbeat",
+                using: nil
+            ) { task in }
+        """.trimIndent()
+        assertTrue(
+            registeredTaskIds(swift) == listOf("app.snapsync.upload.heartbeat"),
+            "the Swift registration parser no longer recognises a registration: ${registeredTaskIds(swift)}",
+        )
+    }
+
+    private fun iosAppFiles(predicate: (File) -> Boolean): List<File> = File(repoRoot, "iosApp").walkTopDown()
+        .onEnter { dir -> dir.name != "build" && !dir.name.startsWith(".") }
+        .filter { it.isFile && predicate(it) }
+        .toList()
+
+    /** The `<string>` entries of `BGTaskSchedulerPermittedIdentifiers`, comments stripped; `null` when the key is absent. */
+    private fun permittedIdentifiers(plist: String): List<String>? {
+        val text = plist.replace(Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL), "")
+        val array = Regex(
+            """<key>BGTaskSchedulerPermittedIdentifiers</key>\s*<array>(.*?)</array>""",
+            RegexOption.DOT_MATCHES_ALL,
+        ).find(text) ?: return null
+        return Regex("""<string>\s*([^<]*?)\s*</string>""").findAll(array.groupValues[1]).map { it.groupValues[1] }.toList()
+    }
+
+    /** The identifiers a Swift source registers via `register(forTaskWithIdentifier: "…"`. */
+    private fun registeredTaskIds(swift: String): List<String> =
+        Regex("""register\(\s*forTaskWithIdentifier:\s*"([^"]+)"""").findAll(swift).map { it.groupValues[1] }.toList()
 
     @Test
     fun `framework baseNames appear exactly once in build files`() {
