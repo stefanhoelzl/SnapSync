@@ -25,8 +25,9 @@ import kotlin.test.assertTrue
 
 /**
  * The partial-grant selection source's ORDERING (capability `limited-photo-access`; decision record
- * `harden-seam-bug-classes`, D12): snapshots leave in the order their reads happened, a change during the baseline
- * is applied to it rather than dropped, and a baseline whose observation ended while it was read emits nothing.
+ * `harden-seam-bug-classes`, D12; `own-work-per-wake`, D14): snapshots leave in the order their reads happened, a
+ * change during the baseline is applied to it rather than dropped, and no read — baseline or change — whose
+ * observation ended while it was read emits anything.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SelectionSnapshotLaneTest {
@@ -194,7 +195,10 @@ class SelectionSnapshotLaneTest {
     }
 
     @Test
-    fun a_fold_stops_at_an_ended_observation_and_still_ends_it() = runTest {
+    fun a_change_queued_before_the_grant_becomes_full_is_not_emitted_after_it() = runTest {
+        // Grant-flip gap (own-work-per-wake, D14): the change path used to skip the baseline path's generation check,
+        // so the running enumeration and the change queued before the end both emitted limited-scope snapshots
+        // after the grant had become full — and this test asserted it.
         val lane = StandardTestDispatcher(testScheduler)
         val scope = CoroutineScope(lane + Job())
         val permission = MutableStateFlow(PermissionStatus.LIMITED)
@@ -206,15 +210,63 @@ class SelectionSnapshotLaneTest {
 
         val running = CompletableDeferred<Unit>().also { platform.snapshotGate = it }
         platform.change("a")
-        advanceUntilIdle()
+        advanceUntilIdle() // a's enumeration is running, held open
         platform.change("b") // queued before the end
         permission.value = PermissionStatus.GRANTED // the end queues behind b
         advanceUntilIdle()
         running.complete(Unit)
         advanceUntilIdle()
 
-        assertEquals(listOf("base", "a", "b"), emitted.last(), "the change queued before the end is applied")
-        assertEquals(1, platform.stops, "and the end the fold stopped at is still handled")
+        assertEquals(listOf(listOf("base")), emitted, "nothing built under the limited grant is emitted once it is full")
+        assertEquals(listOf(listOf("base"), listOf("base", "a")), platform.enumerations, "b is not enumerated")
+        assertEquals(1, platform.stops, "the end the fold stopped at is still handled")
+        scope.cancel()
+    }
+
+    @Test
+    fun a_change_enumerated_across_the_grant_flip_is_dropped() = runTest {
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(PermissionStatus.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle()
+
+        val running = CompletableDeferred<Unit>().also { platform.snapshotGate = it }
+        platform.change("a")
+        advanceUntilIdle() // a's enumeration is running under the limited grant
+        permission.value = PermissionStatus.GRANTED
+        advanceUntilIdle()
+        running.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(listOf("base")), emitted, "a snapshot read across the flip is dropped, as a baseline's is")
+        assertEquals(1, platform.stops)
+        scope.cancel()
+    }
+
+    @Test
+    fun a_change_after_observation_restarts_is_emitted_again() = runTest {
+        // The check compares against the observation's own generation, so a new partial grant's changes still emit.
+        val lane = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(lane + Job())
+        val permission = MutableStateFlow(PermissionStatus.LIMITED)
+        val platform = FakePlatform(listOf("base"))
+        val source = SelectionSnapshotLane(permission, scope, lane, platform)
+        val emitted = mutableListOf<List<String>>()
+        scope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots.collect { emitted += it.ids() } }
+        advanceUntilIdle()
+        permission.value = PermissionStatus.GRANTED
+        advanceUntilIdle()
+        permission.value = PermissionStatus.LIMITED
+        advanceUntilIdle()
+
+        platform.change("a")
+        advanceUntilIdle()
+
+        assertEquals(listOf("base", "a"), emitted.last())
         scope.cancel()
     }
 

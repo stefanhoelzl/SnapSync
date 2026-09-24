@@ -49,13 +49,15 @@ interface SelectionPlatform<F : Any, C : Any> {
  *    the user had already changed (B9);
  *  - a change that arrives while the baseline is being read queues behind it and is applied to it, instead of
  *    finding no held read and being dropped;
- *  - a baseline whose observation ended while it was being read (a grant upgraded to full mid-read) emits nothing:
- *    each begin carries a generation, and the permission collector advances it the moment the grant moves;
+ *  - no snapshot read under an observation that has since ended (a grant upgraded to full mid-read) is emitted,
+ *    on the baseline path or the change path: each begin carries a generation, the permission collector advances
+ *    it the moment the grant moves, and every emission first checks that the generation its read was built under
+ *    is still the current one — whether or not the [LaneWork.End] the move queued has reached the lane yet;
  *  - changes that queue up behind a running enumeration are folded into ONE more enumeration for the latest of
  *    them, instead of one full resource read each (see [change]).
  *
- * The held read and the observing flag are touched only by the consumer, on [lane]; [generation] is written only by
- * the permission collector and read by the consumer.
+ * The held read, the observing flag and [observed] are touched only by the consumer, on [lane]; [generation] is
+ * written only by the permission collector and read by the consumer.
  */
 class SelectionSnapshotLane<F : Any, C : Any>(
     permission: StateFlow<PermissionStatus>,
@@ -82,6 +84,10 @@ class SelectionSnapshotLane<F : Any, C : Any>(
 
     @ConfinedTo("selection")
     private var held: F? = null
+
+    /** The generation of the observation [held] belongs to — what a change's snapshot is built under. */
+    @ConfinedTo("selection")
+    private var observed = 0
 
     // Snapshots conflate: each is the whole selection, so an unconsumed older one is superseded by construction,
     // and emission never suspends the lane.
@@ -124,6 +130,7 @@ class SelectionSnapshotLane<F : Any, C : Any>(
         if (started != generation) return
         platform.startObserving { change -> work.trySend(LaneWork.Change(change)) }
         observing = true
+        observed = started
         val baseline = platform.baseline()
         if (started != generation) return
         held = baseline
@@ -151,9 +158,16 @@ class SelectionSnapshotLane<F : Any, C : Any>(
      * `fetchResultAfterChanges`), never the library. Draining stops at the first queued item that is not a
      * change — an observation ending or restarting — and hands it back to run next, so no change is ever applied
      * across one.
+     *
+     * A change is built under the generation of the observation that holds [held]. If the grant has moved since
+     * (the collector advanced [generation] and queued the End or Begin that follows), nothing is enumerated or
+     * emitted: neither the change in hand, nor — checked again after the enumeration, which may span the move —
+     * the fold's one snapshot. The End that the move queued is then handled next, as it would be anyway.
      */
     private suspend fun change(first: C): LaneWork<C>? {
         val current = held ?: return null
+        val builtUnder = observed
+        if (builtUnder != generation) return null
         var latest: F? = platform.after(current, first)
         var carried: LaneWork<C>? = null
         while (true) {
@@ -165,8 +179,10 @@ class SelectionSnapshotLane<F : Any, C : Any>(
             platform.after(latest ?: current, queued.change)?.let { latest = it }
         }
         val after = latest ?: return carried
+        if (builtUnder != generation) return carried
         held = after
-        emitted.emit(platform.snapshot(after))
+        val snapshot = platform.snapshot(after)
+        if (builtUnder == generation) emitted.emit(snapshot)
         return carried
     }
 }
