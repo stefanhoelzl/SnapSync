@@ -12,35 +12,35 @@
 - [x] 2.3 Cooperative stop: a stop request lets the current unit (PhotoKit change block, ledger write, store transaction) complete and starts no new unit; a walk in flight is abandoned and writes nothing (never authoritative); a stopped tail reports `PROCESSING` for re-arm
 - [x] 2.4 Carry over every `BackgroundUploadPump` rule (see ios-url-session-upload delta): single-flight ledger writer, atomic decide-and-exit, failure fails all waiters and consumes the pending pass, `PROCESSING` never busy-loops, `SKIPPED` never re-arms, exhaustive re-arm decision outside the lock, per-trigger re-arm table, completions drive ② only on `Admit`
 - [x] 2.5 Unit tests over the fakes for 2.1–2.4 (commonTest, JVM + iosSimulatorArm64), including join-during-③, stop mid-walk, stop mid-import, and each re-arm row
-- [ ] 2.6 Delete `BackgroundUploadPump` and its tests once every caller uses the runner
+- [x] 2.6 Delete `BackgroundUploadPump` and its tests once every caller uses the runner
 
 ## 3. OS entry points: own work, then the tail
 
-- [ ] 3.1 Rewrite `AppEntries` so each entry runs only its own work after the prelude (push: union read + download enqueue; download-session relaunch: staging; upload-session relaunch: record terminals; heartbeat: none; limited selection change: snapshot-fed discovery → manifest; foreground: reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh), then requests the tail
-- [ ] 3.2 Begin the background task no later than the OS handler is handed over (push, URLSession); release the handler right after own work (URLSession at `urlSessionDidFinishEvents`, on main); a BGTask holds `setTaskCompleted` until its tail ends or its forwarded expiry fires
-- [ ] 3.3 Delete `OsReceipt` and `ReceiptDeadlines`; keep the "released on every path, exactly once, on the owner's thread" guarantees in the new holder; keep the 5 s per-request HTTP timeout
-- [ ] 3.4 Keep flows free of the tail (law "A trigger flow never outlives its own run"): the inbound port's implementation hands work to the tail after the flow returns
-- [ ] 3.5 Log the OS expiry line (which signal, entry point, unit running and whether it completed or was abandoned, what was left) — diagnostic-logging
-- [ ] 3.6 Update `PlatformEntriesContract` clauses for the new release points and expiry behaviour; run it on JVM and the simulator bindings
+- [x] 3.1 Rewrite `AppEntries` so each entry runs only its own work after the prelude (push: union read + download enqueue; download-session relaunch: staging; upload-session relaunch: record terminals; heartbeat: none; limited selection change: snapshot-fed discovery → manifest; foreground: reconcile, stored-upload settle, staged-byte reclaim, status and membership refresh), then requests the tail
+- [x] 3.2 Begin the background task no later than the OS handler is handed over (push, URLSession); release the handler right after own work (URLSession at `urlSessionDidFinishEvents`, on main); a BGTask holds `setTaskCompleted` until its tail ends or its forwarded expiry fires
+- [x] 3.3 Delete `OsReceipt` and `ReceiptDeadlines`; keep the "released on every path, exactly once, on the owner's thread" guarantees in the new holder; keep the 5 s per-request HTTP timeout
+- [x] 3.4 Keep flows free of the tail (law "A trigger flow never outlives its own run"): the inbound port's implementation hands work to the tail after the flow returns
+- [x] 3.5 Log the OS expiry line (which signal, entry point, unit running and whether it completed or was abandoned, what was left) — diagnostic-logging
+- [x] 3.6 Update `PlatformEntriesContract` clauses for the new release points and expiry behaviour; run it on JVM and the simulator bindings
 
 ## 4. Downloads
 
-- [ ] 4.1 `DownloadController.reconcile` stops draining imports itself; staging and reconcile request the tail; ① drains importable assets under the cooperative stop (claim semantics unchanged: a stalled import keeps its claim)
-- [ ] 4.2 A failed union fetch still gets ① (the tail runs regardless of own work's outcome)
-- [ ] 4.3 Remove the download backstop: `flow/DownloadBackstop`, `scheduleBackstop` / its `BackgroundScheduler` use, the Swift BGTask registration, the identifier in `BGTaskSchedulerPermittedIdentifiers` (same build), `Background` flow's arming, `BackgroundSchedulerContract`/`PlatformEntriesContract` backstop clauses, and its tests
+- [x] 4.1 `DownloadController.reconcile` stops draining imports itself; staging and reconcile request the tail; ① drains importable assets under the cooperative stop (claim semantics unchanged: a stalled import keeps its claim)
+- [x] 4.2 A failed union fetch still gets ① (the tail runs regardless of own work's outcome)
+- [x] 4.3 Remove the download backstop: `flow/DownloadBackstop`, `scheduleBackstop` / its `BackgroundScheduler` use, the Swift BGTask registration, the identifier in `BGTaskSchedulerPermittedIdentifiers` (same build), `Background` flow's arming, `BackgroundSchedulerContract`/`PlatformEntriesContract` backstop clauses, and its tests
 - [ ] 4.4 Device check (gate for 4.5): what PhotoKit does with a change request against a deleted `PHAssetCollection` (commit fails? resources consumed?) — record the result in the photo-download spec
 - [ ] 4.5 If 4.4 allows: cache the event-album collection in the importer, invalidated only by the library change observer (never by a failed commit); otherwise keep the per-import fetch and note why
 
 ## 5. Uploads
 
-- [ ] 5.1 Upload completions request ② only, and only when the app's admission is `Admit` (always recorded)
-- [ ] 5.2 Upload-session relaunch's own work is recording terminals; heartbeat BGTask is the tail; re-arm per the carried-over table
+- [x] 5.1 Upload completions request ② only, and only when the app's admission is `Admit` (always recorded)
+- [x] 5.2 Upload-session relaunch's own work is recording terminals; heartbeat BGTask is the tail; re-arm per the carried-over table
 - [x] 5.3 Remove the shared cycle's `deviceManifestTimeoutMs` (both tiers) and correct the stale "~3-minute cap" comment to the measured 60 s extension kill
-- [ ] 5.4 Upload extension: no cooperative stop; confirm `ExtensionCore`/`UploadExtensionRoot` hold nothing across `process()` calls (32 MB limit)
+- [x] 5.4 Upload extension: no cooperative stop; confirm `ExtensionCore`/`UploadExtensionRoot` hold nothing across `process()` calls (32 MB limit)
 
 ## 6. Silent push and push registration
 
-- [ ] 6.1 `flow/SilentPush`: own work is the download arm (union read + enqueue); the upload arm is no longer a receiver — the wake joins the tail only when the pushed `eventId` is the active event (no event, left event, unreadable membership or no `eventId` → no tail)
+- [x] 6.1 `flow/SilentPush`: own work is the download arm (union read + enqueue); the upload arm is no longer a receiver — the wake joins the tail only when the pushed `eventId` is the active event (no event, left event, unreadable membership or no `eventId` → no tail)
 - [x] 6.2 Install the push-registration subscription on every cold start (foreground and background), idempotently
 - [x] 6.3 Change-driven registration: persist the last-registered (token, env, deviceId) after a successful PUT; ask the OS for the token at every app entry (cold start in either state + each foreground entry — shell change, guard pins); PUT only on a difference, on join, and on a fresh credential (incl. renewals); keep the 401 re-send
 - [x] 6.4 Update the stale KDocs in `PushRegistration` and `DeviceAttestation` ("exactly once per OS-delivered token", "repeated launches are harmless")
@@ -54,7 +54,7 @@
 
 ## 8. Status and limited grant
 
-- [ ] 8.1 Ledger counts refresh after tail units only while foregrounded; foreground entry re-reads
+- [x] 8.1 Ledger counts refresh after tail units only while foregrounded; foreground entry re-reads
 - [x] 8.2 Close the grant-flip gap: the selection lane's change path gets the baseline path's generation check; invert `SelectionSnapshotLaneTest.a_fold_stops_at_an_ended_observation_and_still_ends_it`
 
 ## 9. Guards, diagrams, docs
