@@ -80,11 +80,10 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<!-- Background processing for the photo-download import-tail backstop (capability photo-download):
-	     a BGProcessingTask drains staged-but-unimported downloads at an idle/charging window when no
-	     further URLSession download event would wake the app. The identifier MUST match the Swift
-	     register(forTaskWithIdentifier:) call and SnapSyncRoot.DOWNLOAD_BACKSTOP_TASK_ID, or the
-	     register call crashes at launch. -->
+	<!-- Background processing for the app-driven upload heartbeat BGProcessingTask (capability
+	     ios-url-session-upload). Every identifier below MUST match a Swift register(forTaskWithIdentifier:)
+	     call and nothing else may be listed: registering an unlisted identifier, or listing one never
+	     registered, is an operating-system error. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
@@ -94,9 +93,10 @@
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>app.snapsync.download.backstop</string>
-		<!-- The app-driven (iOS 18–26.0) upload heartbeat (capability ios-url-session-upload): tops up
-		     the background URLSession queue + catches new captures while the app is closed. -->
+		<!-- The app-driven upload heartbeat (capability ios-url-session-upload): its work is the core's
+		     tail — imports staged downloads, tops up the background URLSession queue, catches new captures
+		     while the app is closed. The download import-tail backstop that was listed here is deleted
+		     (changes/own-work-per-wake, D7). -->
 		<string>app.snapsync.upload.heartbeat</string>
 	</array>
 </dict>

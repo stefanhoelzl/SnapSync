@@ -88,7 +88,6 @@ class RuntimeIdentityTest {
         // accumulator itself from growing back.
         "last-uploaded.json",
         "app.snapsync.upload.heartbeat",
-        "app.snapsync.download.backstop",
         "app.snapsync.upload.session",
         "app.snapsync.download.bg",
         // The shared Keychain access group (capability `device-identity`). It is runtime identity in
@@ -140,7 +139,7 @@ class RuntimeIdentityTest {
         "app.snapsync.album" to "albummap",
     )
 
-    private val bgTaskIds = listOf("app.snapsync.upload.heartbeat", "app.snapsync.download.backstop")
+    private val bgTaskIds = listOf("app.snapsync.upload.heartbeat")
 
     private val baseNames = listOf("SnapSyncKit", "SnapSyncUploadKit")
 
