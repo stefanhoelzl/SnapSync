@@ -28,6 +28,8 @@ set -u
 OUT=build/sim-contracts
 mkdir -p "$OUT"
 fail() { echo "sim-contracts: FAILED — $*" | tee -a "$OUT/result"; exit 1; }
+# A timestamped marker per stage, kept with the evidence, so the job's wall-clock can be attributed.
+stage() { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$OUT/stages"; }
 
 grep -q '^snapsync.rig=true' "$HOME/.gradle/gradle.properties" 2>/dev/null \
     || fail "snapsync.rig=true is not in ~/.gradle/gradle.properties (never put it in the repo's)"
@@ -52,41 +54,57 @@ export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.project.snapsync.deployment=lo
 
 # The real backend, on the loopback address the `local` deployment bakes into the build. `dev:local` rather than
 # `serve.ts --ephemeral`, which exits when its stdin closes and so cannot be backgrounded from a script. Its store is
-# the runner's own, fresh per run. Warmed with one request, because a cold deno exceeds the app's 5 s HTTP timeout.
+# the runner's own, fresh per run. Started now and awaited after the build, so its first start (dependency
+# downloads included) overlaps the xcodebuild; warmed with one request, because a cold deno exceeds the app's 5 s
+# HTTP timeout.
 command -v deno >/dev/null || fail "deno is not on PATH — the journeys need the real backend"
+stage "backend: starting"
 ( cd api && deno task dev:local ) > "$OUT/backend.log" 2>&1 &
 BACKEND_PID=$!
 BACKEND="http://127.0.0.1:8080/api/v2"
-i=0
-until curl -s --max-time 5 -o /dev/null "$BACKEND/events/00000000-0000-4000-8000-000000000000"; do
-    i=$((i + 1)); [ $i -lt 90 ] || { tail -40 "$OUT/backend.log"; fail "the local backend never answered on $BACKEND"; }; sleep 2
-done
-xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
-    -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build \
-    > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
-APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
-[ -n "$APP" ] || fail "no simulator .app was built"
-scripts/sim-sign "$APP" || fail "sim-sign"
 
+# Both simulators are created and their boots STARTED before the build, so the boots overlap it rather than
+# following it. A (the contracts, then journey member A) and B (journey member B).
 DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 16')" || fail "could not create a simulator"
-# Member B of the journeys, created and booted alongside A so the two boots overlap.
 DEVICE_B="$(xcrun simctl create "journeys-b-$$" 'iPhone 16')" || fail "could not create the second simulator"
 cleanup() {
-    kill "${FIXTURE_PID:-}" "${BACKEND_PID:-}" 2>/dev/null
+    kill "${FIXTURE_PID:-}" "${BACKEND_PID:-}" "${BOOT_PID:-}" "${BOOT_PID_B:-}" 2>/dev/null
     for d in "$DEVICE" "$DEVICE_B"; do
         xcrun simctl shutdown "$d" >/dev/null 2>&1; xcrun simctl delete "$d" >/dev/null 2>&1
     done
 }
 trap cleanup EXIT
+stage "simulators: booting"
+xcrun simctl boot "$DEVICE" > "$OUT/boot-a.log" 2>&1 &
+BOOT_PID=$!
+xcrun simctl boot "$DEVICE_B" > "$OUT/boot-b.log" 2>&1 &
+BOOT_PID_B=$!
+
+stage "xcodebuild: starting"
+xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
+    -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build \
+    > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
+stage "xcodebuild: done"
+APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
+[ -n "$APP" ] || fail "no simulator .app was built"
+scripts/sim-sign "$APP" || fail "sim-sign"
+
+i=0
+until curl -s --max-time 5 -o /dev/null "$BACKEND/events/00000000-0000-4000-8000-000000000000"; do
+    i=$((i + 1)); [ $i -lt 90 ] || { tail -40 "$OUT/backend.log"; fail "the local backend never answered on $BACKEND"; }; sleep 2
+done
+stage "backend: answering"
+
 # Each simulator is this run's alone, and so is its port: every simulator shares the Mac's loopback, so a second
 # instance on the default 18099 fails to bind while a curl reaches the FIRST one and answers plausibly.
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
 RIG_PORT="$(free_port)"
 RIG_PORT_B="$(free_port)"
-xcrun simctl boot "$DEVICE" || fail "the simulator did not boot"
-xcrun simctl boot "$DEVICE_B" || fail "the second simulator did not boot"
+wait "$BOOT_PID" || { cat "$OUT/boot-a.log"; fail "the simulator did not boot"; }
+wait "$BOOT_PID_B" || { cat "$OUT/boot-b.log"; fail "the second simulator did not boot"; }
 xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
 xcrun simctl bootstatus "$DEVICE_B" -b >/dev/null || fail "the second simulator did not finish booting"
+stage "simulators: booted"
 for d in "$DEVICE" "$DEVICE_B"; do
     xcrun simctl install "$d" "$APP" || fail "install on $d"
     applesimutils --byId "$d" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
@@ -116,8 +134,10 @@ launch() {
     fi
     [ "$(cat "$data/Documents/rig.port")" = "$2" ] || fail "the app on $1 bound $(cat "$data/Documents/rig.port"), not $2"
 }
+stage "apps: installed and granted"
 launch "$DEVICE" "$RIG_PORT"
 launch "$DEVICE_B" "$RIG_PORT_B"
+stage "apps: launched"
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
 DATA_B="$(xcrun simctl get_app_container "$DEVICE_B" app.snapsync data)"
 PORT="$RIG_PORT"
@@ -143,6 +163,7 @@ sys.exit(1 if gaps else 0)
 PY
 done
 
+stage "contracts: starting"
 curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fail "GET /contract"
 [ -s "$OUT/registry" ] || fail "the simulator app registers no contract"
 
@@ -160,12 +181,14 @@ done
 [ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null; fail "see the outcome tables above"; }
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
 
+stage "journeys: starting"
 # The journeys, against both apps and the backend. A failure is read first as a contract clause nobody wrote.
 ./gradlew --no-daemon -q :test:integration:journeys \
     -Psnapsync.journey.appA="http://127.0.0.1:$RIG_PORT" \
     -Psnapsync.journey.appB="http://127.0.0.1:$RIG_PORT_B" \
     -Psnapsync.journey.backend="$BACKEND" > "$OUT/journeys.log" 2>&1
 journeys=$?
+stage "journeys: done"
 cp -R test/integration/build/test-results/journeys "$OUT/journeys-results" 2>/dev/null
 cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
 cp "$DATA_B/Documents/debug.log" "$OUT/debug-b.log" 2>/dev/null
