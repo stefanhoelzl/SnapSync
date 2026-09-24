@@ -197,7 +197,7 @@ class RigHooks(
      *
      * Only `onBackgroundTransfers` earns a caveat, and only under `"default"` — the one binding whose session
      * reports nothing; a host with no `URLSession` at all (the JVM host's `"world"`) earns none. That entry is the one
-     * whose receipt is released by the session reporting its events drained — a callback a default session
+     * whose OS handler is released by the session reporting its events drained — a callback a default session
      * never sends (`ios-url-session-upload`, "The transport binding is fixed by the compilation target") —
      * so on that binding the hold always ends on the background time's expiry, which says nothing about the app. The
      * other receipted entries answer their own handlers and are unaffected.

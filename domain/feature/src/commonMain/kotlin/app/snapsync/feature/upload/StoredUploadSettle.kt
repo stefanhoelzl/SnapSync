@@ -30,8 +30,8 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  * **What it may write, and why it needs no lock.** Only through the guarded [LedgerStore.markTerminal], which
  * applies only while a row is still `REQUESTED`: a listed `DISCOVERED` row, a settled row, and a row deleted
  * meanwhile are all left exactly as they are, and a later OS acknowledgement finds a settled row and does nothing.
- * That is the same write the platform's callbacks already make beside a running cycle, so this runs beside the
- * pump rather than behind it (the pump can await one cycle for many minutes after a long suspension, and this
+ * That is the same write the platform's callbacks already make beside a running cycle, so this runs as foreground's
+ * own work rather than behind the tail (a tail can run for many minutes after a long suspension, and this
  * exists to correct the status on return). It never marks anything done without the listing naming its stored
  * bytes, and it seeds, resets, deletes and fails nothing.
  *

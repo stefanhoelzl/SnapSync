@@ -464,7 +464,7 @@ class UploadCycle(
             val enqueued = enqueue?.let { stop -> enqueue(ready, plan.liveResources.associateBy { it.filename }, stop) }
                 ?: Enqueued(created = 0, truncated = false)
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
-            // not create everything the ledger holds. Both mean the same thing to the pump — work remains.
+            // not create everything the ledger holds. Both mean the same thing to the tail's re-arm — work remains.
             val truncated = ready.capHit || enqueued.truncated
             val audit = Enumeration(
                 seen = plan.liveResources.size,
@@ -763,7 +763,7 @@ class UploadCycle(
 
         /**
          * Definitively not joined. `SKIPPED`, not `COMPLETED`: with no membership there is nothing to wake for,
-         * and the pump re-arms its heartbeat on anything but `SKIPPED` — so an unjoined device whose triggers
+         * and the tail runner re-arms the heartbeat on anything but `SKIPPED` — so an unjoined device whose triggers
          * now reach the app engine would carry a self-re-submitting `BGProcessingTask` for no event. The join
          * is what arms it (capability `upload-lifecycle`, "No membership, no arm").
          */
