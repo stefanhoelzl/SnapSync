@@ -8,6 +8,7 @@ import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.ports.AlbumManager
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
+import app.snapsync.compose.appUploadDiscovery
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
@@ -19,6 +20,8 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscovery
+import app.snapsync.ios.discovery.PhotoKitLibraryChangeTokenRead
+import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.join.HttpManifestPublisher
@@ -112,7 +115,14 @@ class UrlSessionUploadController(
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
     }
 
-    private val discovery = IosDiscovery(log, PhotoKitCandidateSource())
+    // The app process's discovery binding: the walk behind the walk memo (capability `sync-ledger`, "An unchanged
+    // library is answered from the walk memo"). The extension binds its walk bare — it never holds a memo.
+    private val discovery = appUploadDiscovery(
+        walk = IosDiscovery(log, PhotoKitCandidateSource()),
+        changeToken = PhotoKitLibraryChangeTokenRead(),
+        grant = PhotoGrantRead(::currentPhotoPermission),
+        log = log,
+    )
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER, requiresNetwork = true)
 
     private val platform = IosUrlSessionUploadPlatform(

@@ -23,7 +23,8 @@ import platform.Photos.PHAsset
  * full-enumeration library walk ([discover]) and the id-scoped resolve of ledger keys ([resourcesFor]).
  * Each composition root binds one instance as its cycle's discovery; no
  * transport holds it, because only the *job lifecycle* (create/fetch/retry/acknowledge) differs between the
- * tiers.
+ * tiers. The app's root binds it behind the walk memo (`appUploadDiscovery`, capability `sync-ledger`), which
+ * answers an unchanged library without calling [discover]; the extension binds it bare and walks every time.
  *
  * Both reads are wrapped in the same `platform.discoverResources` / `platform.resourcesFor` invocation lines
  * the transports used to emit when they forwarded here, under the logger the root passes, so a device log
