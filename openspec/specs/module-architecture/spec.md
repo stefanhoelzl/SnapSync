@@ -29,6 +29,8 @@ Decision record for the inbound ports and the shell as their driving adapter: `c
 Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 Decision record for the control protocol's client and the real backend as support modules: `changes/archive/2026-09-23-add-rig-jvm-host`.
+
+Decision record for the protocol-driven integration surface, the shared host composition and the journeys: `changes/archive/2026-09-24-integration-over-control`.
 ## Requirements
 ### Requirement: The module set withholds; packages organize
 The system SHALL consist of exactly the modules enumerated below, and **every** module the build
@@ -36,54 +38,64 @@ declares SHALL appear in exactly one group. A group names the law that justifies
 existence; a module justified by no law is a package with a derived text gate instead.
 
 - **Withholding modules** — each exists because it withholds a dependency from its consumers by compile
-  error. The withheld dependency is usually a third-party or platform one; it MAY also be **another zone
+  error. The withheld dependency is usually a third-party or platform one. It MAY also be **another zone
   of the core**, where a module boundary is the only construction that makes the zone edge unresolvable
-  rather than merely forbidden. Members: `:domain:model`, `:domain:ports`, `:domain:feature`,
-  `:domain:flow`, `:domain:compose` (the core's zones, each depending only along the permitted zone edge
-  and only via `implementation()`, so no zone leaks transitively; no `iosMain` source directory anywhere
-  in the tree), `:ui:presentation`, `:ui:screens`, `:ui:components` (the only module
-  that may depend on Material 3), `:adapter:ios:ext-safe`, `:adapter:ios:app-only`,
-  `:adapter:generic:app`, `:adapter:generic:fake`, `:app:ios`, `:app:ios:extension`, `:app:desktop`.
-- **Contained modules** — each exists so that something is absent from a production build, governed
-  by "A build-time-only module is contained by compilation, not by a runtime check": `:app:ios:forge`
-  (its own binary target, linked under `-Psnapsync.forge`), `:test:rig` (contributes its own call
-  site into the iOS app shell, linked under `-Psnapsync.rig`; its JVM target, the control channel's JVM
-  host, links into no shipped-format binary and is consumed only by test equipment), `:test:contracts` (the port contracts,
-  linked under `-Psnapsync.rig` into the app, into the upload extension, and into the rig-gated source sets of
-  the two iOS adapter modules, the extension-safe one and the app-only one; it withholds the test-assertion library from every other main source set — it is the
-  only module whose main code may assert). A contained module is grouped by the law that governs it,
-  **not** by its name prefix: these three are the same species and the containment law describes
-  exactly their shapes.
-- **Support modules** — never linked into any shipped-format binary, and exempt from the
-  production-module laws: `:test:world`, `:test:integration`, `:test:architecture`,
-  `:test:harness-driver`, `:tools:diagrams`, `:test:edge` (the real backend served as a local process for
-  JVM tests, JVM-only), `:test:control` (the typed client of the control channel's protocol, JVM-only).
-  The client depends on the control channel's JVM variant for the wire types, which stay in the contained
-  channel module because the device build needs them without a client; the channel declares its own
-  module dependencies with `implementation()`, so the client compiles against `model/` and `feature/`
-  read-model types (through the presentation module) and never against `ports/`, `flow/` or `compose/` —
-  that compile boundary is the whole of the client's read-model rule.
+  rather than merely forbidden. Members:
+  - `:domain:model`, `:domain:ports`, `:domain:feature`, `:domain:flow`, `:domain:compose` — the core's
+    zones, each depending only along the permitted zone edge and only via `implementation()`, so no zone
+    leaks transitively; no `iosMain` source directory anywhere in the tree;
+  - `:ui:presentation`, `:ui:screens`, `:ui:components` (the only module that may depend on Material 3);
+  - `:adapter:ios:ext-safe`, `:adapter:ios:app-only`, `:adapter:generic:app`, `:adapter:generic:fake`;
+  - `:app:ios`, `:app:ios:extension`, `:app:desktop`;
+  - `:app:composition` — the shared host composition ("One shared composition"). It is the one module that
+    sees both the core's composition zone and the presentation module, so that neither gains the other: the
+    presentation module never resolves the core's composition, and the composition zone never resolves
+    presentation.
+- **Contained modules** — each exists so that something is absent from a production build, governed by
+  "A build-time-only module is contained by compilation, not by a runtime check":
+  - `:app:ios:forge` — its own binary target, linked under `-Psnapsync.forge`.
+  - `:test:rig` — contributes its own call site into the iOS app shell, linked under `-Psnapsync.rig`. Its
+    JVM target, the control channel's JVM host, links into no shipped-format binary and is consumed only by
+    test equipment.
+  - `:test:contracts` — the port contracts, linked under `-Psnapsync.rig` into the app, into the upload
+    extension, and into the rig-gated source sets of the two iOS adapter modules, the extension-safe one and the
+    app-only one. It
+    withholds the test-assertion library from every other main source set: it is the only module whose main
+    code may assert.
 
-The core's zone split is the one place the withholding law is satisfied by an **internal** boundary, and it
+  A contained module is grouped by the law that governs it, **not** by its name prefix: these three are the
+  same species and the containment law describes exactly their shapes.
+- **Support modules** — never linked into any shipped-format binary, and exempt from the production-module
+  laws: `:test:world`, `:test:integration`, `:test:architecture`, `:test:harness-driver`, `:tools:diagrams`,
+  `:test:edge` (the real backend served as a local process for JVM tests, JVM-only), `:test:control` (the
+  typed client of the control channel's protocol, JVM-only).
+  - The client depends on the control channel's JVM variant for the wire types. Those stay in the contained
+    channel module, because the device build needs them without a client.
+  - The channel declares its own module dependencies with `implementation()`. So the client and the
+    integration surface built on it compile against `model/` and `feature/` read-model types (through the
+    presentation module), and never against `ports/`, `flow/`, `compose/` or the world. That compile boundary
+    is the whole of the client's read-model rule.
+
+**The core's zone split** is the one place the withholding law is satisfied by an **internal** boundary, and it
 is admitted for a stated reason: the zone edges were previously held by text gates that had to enumerate
 the forms a violation could take, could not see generated source, and passed green when their scope
 directory was renamed. A module boundary enumerates nothing and cannot be renamed into passivity. The cost
 is bounded and was measured before the split: eighteen `internal` declarations across the whole core, none
 in `ports/`, `flow/` or `compose/`.
 
-The adapter tree SHALL be uniformly two-level — `adapter:<platform-axis>:<linkage-leaf>` — with each
+**The adapter tree** SHALL be uniformly two-level — `adapter:<platform-axis>:<linkage-leaf>` — with each
 platform-axis prefix (`adapter/ios/`, `adapter/generic/`) a pure path grouping that is not itself a
 module (no build file: a prefix module would withhold nothing). The core's `domain/` prefix is likewise a
 path grouping and not itself a module. All finer structure SHALL be packages
 whose boundaries are enforced by derived text gates, not modules. The named test-equipment zone
-(harness panels, world inspector) is likewise exempt from production-module laws.
+(harness panels, world inspector, the remote mirror) is likewise exempt from production-module laws.
 
-The enumeration SHALL be exhaustive and SHALL NOT use wildcards: it is the expected value the
+**The enumeration** SHALL be exhaustive and SHALL NOT use wildcards: it is the expected value the
 module-set gate compares the build's include set against (capability `architecture-guards`), and a
 wildcard cannot be compared. Within a group, a backticked `:`-prefixed token **is** a membership
 claim; prose in a group SHALL refer to another module by description rather than by its backticked
-path, or it silently enrols that module in a second group. Adding a module therefore requires amending this requirement with the
-group it joins and the argument for that group.
+path, or it silently enrols that module in a second group. Adding a module therefore requires amending this
+requirement with the group it joins and the argument for that group.
 
 #### Scenario: A structural boundary that withholds nothing is rejected
 - **WHEN** a new module is proposed whose dependency block withholds no third-party dependency, no
@@ -126,8 +138,8 @@ group it joins and the argument for that group.
 
 #### Scenario: A test client reaches for a port
 
-- **WHEN** code in the control channel's client module, or its tests, names a type from `ports/`, `flow/` or
-  `compose/`
+- **WHEN** code in the control channel's client module, the integration surface or their tests names a type
+  from `ports/`, `flow/`, `compose/` or the world
 - **THEN** compilation fails (unresolvable symbol), because no dependency on its compile path exports those
   zones
 
@@ -136,6 +148,12 @@ group it joins and the argument for that group.
 - **WHEN** the upload extension is built with `-Psnapsync.rig`
 - **THEN** the contracts module is linked into it together with the rig-gated source it runs through, and a
   build without the property contains neither
+
+#### Scenario: Presentation reaches for the composition
+
+- **WHEN** code in the presentation module references the core's composition zone, or the composition zone
+  references presentation
+- **THEN** compilation fails, because only the shared host composition module depends on both
 
 ### Requirement: Zones inside the core
 `:domain` SHALL contain exactly five package zones with these import laws, enforced by
@@ -406,23 +424,42 @@ dies with the UI. The trigger inventory SHALL be derived from entry points, neve
 - **THEN** the wiring is corrected so the compose-built lambda calls a flow command
 
 ### Requirement: One shared composition
-Every binary that assembles the live core SHALL call the shared composition (`snapSyncApp` for
-the app graph, `uploadCore` for the extension's strict subset bundle); there SHALL be no second
-wiring. The composition functions SHALL receive a `CoroutineScope`. The wiring graph SHALL NOT
-be unit-tested (it is smoke-tested end to end by the world harness and integration tests over
-fake ports); a decision about which platform mechanism may be used — today the one fact whether the
-upload extension may be registered (`upload-lifecycle`, "Whether the extension may be registered is
-one pure fact") — SHALL be a pure, unit-tested **total** function from the **OS capability facts it
-reads** and current runtime state, and the shell SHALL invoke only the shell-supplied adapter thunks
-that answer permits, deciding nothing itself. A fact that is fixed by the compilation target SHALL NOT
-be re-derived at runtime and SHALL NOT enter that function. Such a function SHALL be re-evaluated
-whenever one of its inputs changes, rather than once per process, so a choice that depends on runtime
-state does not force the choice out of the function and into scattered guards.
+Every binary that assembles the live core SHALL call the shared composition, and there SHALL be no second
+wiring:
+- `snapSyncHost` for the app — the core from `snapSyncApp`, **and** the status host and the host-assembly
+  subscriptions;
+- `uploadCore` for the extension's strict subset bundle.
+
+**Inputs.** The composition functions SHALL receive a `CoroutineScope`.
+- `snapSyncHost` SHALL receive the app's ports and nothing else.
+- The credential-carrying HTTP client SHALL report the backend's verdicts through the one object the core
+  exposes for them, never through callbacks a root assembles one by one.
+- A root SHALL NOT construct the status host, install a subscription, or pass a read-model to the host itself.
+
+**Testing.** The wiring graph SHALL NOT be unit-tested. It is smoke-tested end to end by the world harness and
+by the integration surface over fake ports.
+
+**Platform-mechanism decisions.** A decision about which platform mechanism may be used — today the one fact
+whether the upload extension may be registered (`upload-lifecycle`, "Whether the extension may be registered
+is one pure fact") — SHALL be a pure, unit-tested **total** function from the **OS capability facts it reads**
+and current runtime state. The shell SHALL invoke only the shell-supplied adapter thunks that answer permits,
+deciding nothing itself.
+- A fact that is fixed by the compilation target SHALL NOT be re-derived at runtime and SHALL NOT enter that
+  function.
+- Such a function SHALL be re-evaluated whenever one of its inputs changes, rather than once per process, so
+  a choice that depends on runtime state does not force the choice out of the function and into scattered
+  guards.
 
 #### Scenario: The harness cannot drift from production
-- **WHEN** the world harness and the device binaries compose the core
+- **WHEN** the world harness, the control channel's JVM host and the device binaries compose the core and the
+  status host
 - **THEN** they execute the same composition function over different port implementations, so a
   wiring difference is impossible rather than undetected
+
+#### Scenario: A read-model the host observes is added
+- **WHEN** a new read-model joins the status host's sources
+- **THEN** it is wired once, inside the shared host composition, and every root's host observes it without
+  a root being edited
 
 #### Scenario: A new mechanism or a new input state is added
 - **WHEN** a new platform mechanism, or a new value of an input to such a function, is introduced
