@@ -4,8 +4,11 @@ import app.snapsync.ports.OsReceipt
 import app.snapsync.ports.PlatformEntries
 import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.invocation
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * What the core's [PlatformEntries] needs from the process it runs in and cannot name itself (spec
@@ -73,6 +76,9 @@ internal class AppEntries(
     private val scope: CoroutineScope get() = app.scope
     private val log get() = ports.log
 
+    /** The operating system's expiry signal for each background task this core is running (see [TaskExpiries]). */
+    private val taskExpiries = TaskExpiries()
+
     override fun onForeground() = log.invocation(ports.logScope, "onForeground", params = foregroundParams()) {
         hooks.markActive()
         // Launched, because the flow is `suspend` (law "A trigger flow never outlives its own run"). The entry line
@@ -127,14 +133,40 @@ internal class AppEntries(
     override fun onBackgroundTask(identifier: String, completion: () -> Unit) =
         log.invocation(ports.logScope, "onBackgroundTask", params = "identifier=$identifier") {
             when (identifier) {
-                hooks.downloadBackstopTaskId -> runDownloadBackstop(completion)
-                hooks.uploadHeartbeatTaskId -> runUploadHeartbeat(completion)
+                // The download import-tail backstop (capability `photo-download`, 5.4); re-queued however it ends.
+                hooks.downloadBackstopTaskId -> runTask(
+                    identifier,
+                    "runDownloadBackstop",
+                    completion,
+                    afterwards = { ports.backstopScheduler.scheduleNext() },
+                ) {
+                    log.invocation(
+                        ports.logScope,
+                        "runDownloadBackstop.run",
+                        params = "protectedData=${ports.protectedStorage.readable()}",
+                    ) {
+                        app.downloadBackstopFlow.run()
+                    }
+                }
+                // The app-driven uploader's heartbeat.
+                hooks.uploadHeartbeatTaskId -> runTask(identifier, "runUploadHeartbeat", completion, afterwards = {}) {
+                    ports.appDrivenUpload().onBackgroundTask()
+                }
                 // Registered in the shell but unknown here: complete it, and say so — a task held forever costs
                 // the app its future background time.
                 else -> {
                     log.w { "unknown background task '$identifier' — completed without work" }
                     completion()
                 }
+            }
+        }
+
+    override fun onBackgroundTaskTimeUp(identifier: String) =
+        log.invocation(ports.logScope, "onBackgroundTaskTimeUp", params = "identifier=$identifier") {
+            // Answered here and nowhere else: the shell forwards the OS's expiration handler and completes nothing
+            // (capability `ios-app-shell`, "Background tasks are forwarded by the identifier the OS delivered").
+            if (!taskExpiries.expire(identifier)) {
+                log.w { "time is up for background task '$identifier', which the core is not running — ignored" }
             }
         }
 
@@ -154,37 +186,32 @@ internal class AppEntries(
         }
     }
 
-    /** The download import-tail backstop (capability `photo-download`, 5.4); re-queued however it ends. */
-    private fun runDownloadBackstop(completion: () -> Unit) {
+    /**
+     * Runs the background task delivered as [identifier]: [work] inside the receipt holding its [completion], released
+     * after the work, on the operating system's expiry ([onBackgroundTaskTimeUp]) or on the deadline; then
+     * [afterwards], however it ended.
+     */
+    private fun runTask(
+        identifier: String,
+        entryPoint: String,
+        completion: () -> Unit,
+        afterwards: () -> Unit,
+        work: suspend () -> Unit,
+    ) {
+        // Opened before the launch, so an expiry the OS fires before the coroutine first runs is not lost.
+        val expiry = taskExpiries.open(identifier)
         scope.launch {
             try {
                 OsReceipt(
-                    entryPoint = "runDownloadBackstop",
+                    entryPoint = entryPoint,
                     deadline = ReceiptDeadlines.BACKGROUND_TASK,
                     release = completion,
-                ).heldFor {
-                    log.invocation(
-                        ports.logScope,
-                        "runDownloadBackstop.run",
-                        params = "protectedData=${ports.protectedStorage.readable()}",
-                    ) {
-                        app.downloadBackstopFlow.run()
-                    }
-                }
+                    expiry = expiry,
+                ).heldFor(work)
             } finally {
-                ports.backstopScheduler.scheduleNext()
+                taskExpiries.close(identifier, expiry)
+                afterwards()
             }
-        }
-    }
-
-    /** The app-driven uploader's heartbeat. */
-    private fun runUploadHeartbeat(completion: () -> Unit) {
-        scope.launch {
-            OsReceipt(
-                entryPoint = "runUploadHeartbeat",
-                deadline = ReceiptDeadlines.BACKGROUND_TASK,
-                release = completion,
-            ).heldFor { ports.appDrivenUpload().onBackgroundTask() }
         }
     }
 
@@ -196,5 +223,39 @@ internal class AppEntries(
     private companion object {
         /** How much of a push token the entry line shows — enough to tell two apart, not the credential. */
         const val TOKEN_PREFIX = 12
+    }
+}
+
+/**
+ * The operating system's "time is up" signal for each background task the core is running, keyed by the identifier
+ * it delivered (capability `ios-app-shell`, "Background tasks are forwarded by the identifier the OS delivered").
+ *
+ * A signal is opened when a task is routed and closed when its work ends; [expire] completes the one open for an
+ * identifier. The expiry arrives on a thread the core does not choose (the operating system calls the expiration
+ * handler on its own queue, and it must be answered promptly), so the table is one atomic reference replaced whole
+ * rather than state confined to the composition lane: a hop onto that lane could wait behind a blocking platform call.
+ * The operating system runs at most one task per identifier, so an identifier maps to at most one signal; a close
+ * removes only its own, so a later run of the same task is never closed by an earlier one's end.
+ */
+@OptIn(ExperimentalAtomicApi::class)
+internal class TaskExpiries {
+    private val running = AtomicReference<Map<String, CompletableDeferred<Unit>>>(emptyMap())
+
+    /** Opens the signal for a task now running as [identifier]. */
+    fun open(identifier: String): CompletableDeferred<Unit> =
+        CompletableDeferred<Unit>().also { signal -> replace { it + (identifier to signal) } }
+
+    /** Closes [signal], if it is still the one open for [identifier]. */
+    fun close(identifier: String, signal: CompletableDeferred<Unit>) =
+        replace { if (it[identifier] === signal) it - identifier else it }
+
+    /** Signals the task running as [identifier]; `false` when none is. */
+    fun expire(identifier: String): Boolean = running.load()[identifier]?.complete(Unit) != null
+
+    private fun replace(change: (Map<String, CompletableDeferred<Unit>>) -> Map<String, CompletableDeferred<Unit>>) {
+        while (true) {
+            val current = running.load()
+            if (running.compareAndSet(current, change(current))) return
+        }
     }
 }

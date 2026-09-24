@@ -42,11 +42,30 @@ interface PlatformEntries {
 
     /**
      * The operating system launched the background task registered as [identifier] — the identifier it
-     * delivered, never one the shell chose. [completion] is released after the task's work or its deadline; an
+     * delivered, never one the shell chose. [completion] is released after the task's work, on the operating
+     * system's expiry ([onBackgroundTaskTimeUp]) or on its deadline, whichever comes first — exactly once; an
      * identifier the core does not know is released at once and logged.
      */
     @PlatformEntry
     fun onBackgroundTask(identifier: String, completion: () -> Unit)
+
+    /**
+     * The operating system says the background task it launched as [identifier] — the identifier it delivered to
+     * [onBackgroundTask] — is out of time (a `BGTask`'s expiration handler, on iOS).
+     *
+     * This is the one place the operating system's own "time is up" for a background task reaches the core
+     * (capability `ios-app-shell`, "Time is up is learned only from the operating system"). The core answers it by
+     * stopping that task's work and releasing the completion it holds for it; the shell forwards it and does
+     * nothing else — above all, it does **not** complete the task itself, because the completion handed to
+     * [onBackgroundTask] is the only path to completing it and a second, racing completion from the shell is what
+     * this member replaces (spec `module-architecture`, "OS entry points cross an inbound port").
+     *
+     * It returns at once: the operating system expects its expiration handler back promptly, so the stop is
+     * requested here and the release follows once the work has stopped. An identifier the core holds no running task
+     * for — one that already finished, or one it never knew — is logged and otherwise ignored.
+     */
+    @PlatformEntry
+    fun onBackgroundTaskTimeUp(identifier: String)
 
     /**
      * The operating system is handing back finished background transfers for [channel]. [completion] is
