@@ -1,17 +1,17 @@
 ## 1. Ports and the shell's expiry forwarding
 
-- [ ] 1.1 Add the background-time outbound port in `domain/ports` (named for the need: begin(label, onExpiry) → a handle ended exactly once; no duration, no remaining-time read), its honest fake in `:adapter:generic:fake`, and its contract in `:test:contracts` (every clause bound to a real implementation somewhere)
-- [ ] 1.2 Implement it in `:adapter:ios:app-only` over `UIApplication.beginBackgroundTask`/`endBackgroundTask` (expiry handler only requests the stop and returns; invalid task id treated as immediately expired); keep it out of every extension-linked module (extension-safety gate)
-- [ ] 1.3 Extend `PlatformEntries` so a BGTask's expiration reaches the core by the delivered identifier (platform-free shape, named for the need); update its KDoc and `PlatformEntriesContract` with expiry clauses
-- [ ] 1.4 Swift shell: forward `task.expirationHandler` into the core instead of calling `setTaskCompleted` in it; update `SwiftShellGuardTest`/`KotlinShellGuardTest` pins if the inventory changes
+- [x] 1.1 Add the background-time outbound port in `domain/ports` (named for the need: begin(label, onExpiry) → a handle ended exactly once; no duration, no remaining-time read), its honest fake in `:adapter:generic:fake`, and its contract in `:test:contracts` (every clause bound to a real implementation somewhere)
+- [x] 1.2 Implement it in `:adapter:ios:app-only` over `UIApplication.beginBackgroundTask`/`endBackgroundTask` (expiry handler only requests the stop and returns; invalid task id treated as immediately expired); keep it out of every extension-linked module (extension-safety gate)
+- [x] 1.3 Extend `PlatformEntries` so a BGTask's expiration reaches the core by the delivered identifier (platform-free shape, named for the need); update its KDoc and `PlatformEntriesContract` with expiry clauses
+- [x] 1.4 Swift shell: forward `task.expirationHandler` into the core instead of calling `setTaskCompleted` in it; update `SwiftShellGuardTest`/`KotlinShellGuardTest` pins if the inventory changes
 
 ## 2. The tail runner
 
-- [ ] 2.1 Add the single-flight tail runner in the core (tested zone): units ① import staged downloads → ② upload top-up → ③ walk → manifest (full grant only), looping ③→② when ③ added rows; under a limited grant ① and ② only
-- [ ] 2.2 Joining: a request arriving while the tail runs makes the running tail do exactly one more pass covering it (no request lost, no second runner, no queue); a joiner awaits the tail and applies its own re-arm policy to the result; the runner never waits on itself
-- [ ] 2.3 Cooperative stop: a stop request lets the current unit (PhotoKit change block, ledger write, store transaction) complete and starts no new unit; a walk in flight is abandoned and writes nothing (never authoritative); a stopped tail reports `PROCESSING` for re-arm
-- [ ] 2.4 Carry over every `BackgroundUploadPump` rule (see ios-url-session-upload delta): single-flight ledger writer, atomic decide-and-exit, failure fails all waiters and consumes the pending pass, `PROCESSING` never busy-loops, `SKIPPED` never re-arms, exhaustive re-arm decision outside the lock, per-trigger re-arm table, completions drive ② only on `Admit`
-- [ ] 2.5 Unit tests over the fakes for 2.1–2.4 (commonTest, JVM + iosSimulatorArm64), including join-during-③, stop mid-walk, stop mid-import, and each re-arm row
+- [x] 2.1 Add the single-flight tail runner in the core (tested zone): units ① import staged downloads → ② upload top-up → ③ walk → manifest (full grant only), looping ③→② when ③ added rows; under a limited grant ① and ② only
+- [x] 2.2 Joining: a request arriving while the tail runs makes the running tail do exactly one more pass covering it (no request lost, no second runner, no queue); a joiner awaits the tail and applies its own re-arm policy to the result; the runner never waits on itself
+- [x] 2.3 Cooperative stop: a stop request lets the current unit (PhotoKit change block, ledger write, store transaction) complete and starts no new unit; a walk in flight is abandoned and writes nothing (never authoritative); a stopped tail reports `PROCESSING` for re-arm
+- [x] 2.4 Carry over every `BackgroundUploadPump` rule (see ios-url-session-upload delta): single-flight ledger writer, atomic decide-and-exit, failure fails all waiters and consumes the pending pass, `PROCESSING` never busy-loops, `SKIPPED` never re-arms, exhaustive re-arm decision outside the lock, per-trigger re-arm table, completions drive ② only on `Admit`
+- [x] 2.5 Unit tests over the fakes for 2.1–2.4 (commonTest, JVM + iosSimulatorArm64), including join-during-③, stop mid-walk, stop mid-import, and each re-arm row
 - [ ] 2.6 Delete `BackgroundUploadPump` and its tests once every caller uses the runner
 
 ## 3. OS entry points: own work, then the tail
