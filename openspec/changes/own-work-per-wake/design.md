@@ -143,14 +143,15 @@ left it is what stops a stalled union read from holding the push handler until A
 occur.
 
 ### D9 — Walk memo, app process only
-An in-memory memo keyed on (`PHPhotoLibrary.currentChangeToken`, the policy's fetch predicate, the grant) reuses
+An in-memory memo keyed on (`PHPhotoLibrary.currentChangeToken`, the membership's selection policy — a superset of the fetch predicate, which only the adapter builds — and the grant) reuses
 the last walk's candidates while the token is unchanged. It reproduces exactly what a fresh full walk returns, so it
 stays authoritative for deletion (amends the `always-full-enumerate` decision: "every walk is a full enumeration"
 becomes "every walk's answer is a full enumeration"). The grant is part of the key so a memo never upgrades a
 non-authoritative result (`IosDiscovery` is authoritative only under a full grant). **Not in the extension**: its
 32 MB limit leaves ~12 MB headroom and it holds nothing across `process()` calls.
 *Task:* verify that a change made outside the process (a Camera photo) moves the token — the only case the probe
-could not produce headlessly.
+could not produce headlessly. Until then the memo runs in **shadow**: it walks every time, compares the answer it would
+have served, and logs a mismatch at Error (field evidence via Bugsink); serving is switched on with the result.
 
 ### D10 — Event-album collection cache, observer-invalidated
 The importer caches the event album `PHAssetCollection`; the cache is dropped by the library change observer

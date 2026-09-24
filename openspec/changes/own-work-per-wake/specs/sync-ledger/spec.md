@@ -7,8 +7,9 @@ walk from it — without enumerating the library — when the library has not ch
 A memo entry SHALL be keyed on all three of:
 
 - the photo library's **change token** (`PHPhotoLibrary.currentChangeToken`), compared for equality;
-- the **fetch predicate** the selection policy narrows the walk by (capability `photo-selection-policy`), so
-  a changed cutoff, window or origin exclusion never reuses a walk made under another; and
+- the membership's whole **selection policy** (capability `photo-selection-policy`) — a superset of the fetch
+  predicate it narrows the walk by, keyed whole because that predicate is built only in the platform adapter —
+  so a changed cutoff, window, origin exclusion or excluded-id set never reuses a walk made under another; and
 - the **photo grant** the walk was made under.
 
 A memo answer SHALL reproduce **exactly** what a fresh full walk would return — the same candidates, and the
@@ -50,8 +51,8 @@ the next iOS major.
 - **THEN** the walk enumerates the library afresh and replaces the memo entry
 
 #### Scenario: A changed policy forces a fresh walk
-- **WHEN** the membership's fetch predicate changes (a new cutoff or window) while the library is unchanged
-- **THEN** the walk enumerates the library afresh under the new predicate
+- **WHEN** the membership's selection policy changes (a new cutoff or window) while the library is unchanged
+- **THEN** the walk enumerates the library afresh under the new policy
 
 #### Scenario: A grant change never reuses the memo
 - **WHEN** the photo grant differs from the one the memo entry was taken under
