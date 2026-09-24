@@ -8,7 +8,7 @@
 - [x] 1.6 Make `World` compose through `snapSyncHost` and expose `host`. Point the desktop `StatusPane`/world harness at `world.host`, and delete their hand assembly.
 - [x] 1.7 Shrink `JvmRigHost.compose` to building a world with the rig's `onEventMinted` routing. Use `attests = true` on the mini-edge and off on deno.
 - [x] 1.8 Add JVM host tests (`:test:control`): `UpdateRequired` is reachable after a minimum-version refusal, and a delivered push token lands as device config.
-- [ ] 1.9 Regenerate `architecture/` (`./gradlew architectureDiagrams`) and run `./gradlew build` green.
+- [x] 1.9 Regenerate `architecture/` (`./gradlew architectureDiagrams`) and run `./gradlew build` green (green once the specs are synced: `ModuleSetTest` passes after the sync).
 
 ## 2. World levers and reads (D5, D6, D7)
 

@@ -380,3 +380,19 @@ Rollback is a revert; nothing it touches is persisted anywhere users hold.
   test does the latter; the design keeps to it unless the port can express more.
 - ~~The journey cost is estimated, not measured.~~ Measured: see D11. The second simulator's boot already starts
   before the xcodebuild.
+
+## Delta accounting (archive gate 2)
+
+| Module touched | Capability | Delta, or why none |
+|---|---|---|
+| `:app:composition`, `:app:ios`, `:domain:compose`, `:domain:ports` | `module-architecture` | delta ("One shared composition", the module set) |
+| `:adapter:generic:app`, `:adapter:ios:ext-safe` | `device-attestation`, `min-app-version` | none: `withCredentialInterceptor`/`darwinHttpClient` gain an overload taking the core's `BackendVerdicts`; the interceptor's behaviour is unchanged |
+| `:test:world` | `harness-world-model` | delta |
+| `:test:rig`, `:test:control`, `:test:integration` | `testing-architecture` | delta |
+| `:app:desktop`, `:test:harness-driver` | `full-stack-harness` (the driver has no spec) | delta (mirror, sources); the driver's `driveMirror` is non-gating dev infra |
+| `:test:contracts`, `:test:edge` | `port-contracts` | none: the new `ManifestPublisherContract` clauses ARE the specification (the code is the spec), and `EdgeSubject` carrying the setup is mechanism |
+| `:test:architecture` | `architecture-guards` | none: "The token-rejection route into the trust feature is pinned" still holds as written — the rejection hook the root hands the client is now the core's `BackendVerdicts`, which the guard pins |
+| `scripts/sim-contracts`, `.github/workflows/ios.yml` | `ios-ci` | delta |
+| root `build.gradle.kts`, `settings.gradle.kts` | `complexity-budgets`, `module-architecture` | module set in the delta; the tier map and shell-source list take the new module the way they take any other, and no spec enumerates them |
+| `architecture/` | `architecture-diagrams` | none: regenerated output |
+| `CLAUDE.md`, `.claude/skills/*` | — | docs |
