@@ -41,9 +41,9 @@
 ## 6. Silent push and push registration
 
 - [ ] 6.1 `flow/SilentPush`: own work is the download arm (union read + enqueue); the upload arm is no longer a receiver — the wake joins the tail only when the pushed `eventId` is the active event (no event, left event, unreadable membership or no `eventId` → no tail)
-- [ ] 6.2 Install the push-registration subscription on every cold start (foreground and background), idempotently
-- [ ] 6.3 Change-driven registration: persist the last-registered (token, env, deviceId) after a successful PUT; ask the OS for the token at every app entry (cold start in either state + each foreground entry — shell change, guard pins); PUT only on a difference, on join, and on a fresh credential (incl. renewals); keep the 401 re-send
-- [ ] 6.4 Update the stale KDocs in `PushRegistration` and `DeviceAttestation` ("exactly once per OS-delivered token", "repeated launches are harmless")
+- [x] 6.2 Install the push-registration subscription on every cold start (foreground and background), idempotently
+- [x] 6.3 Change-driven registration: persist the last-registered (token, env, deviceId) after a successful PUT; ask the OS for the token at every app entry (cold start in either state + each foreground entry — shell change, guard pins); PUT only on a difference, on join, and on a fresh credential (incl. renewals); keep the 401 re-send
+- [x] 6.4 Update the stale KDocs in `PushRegistration` and `DeviceAttestation` ("exactly once per OS-delivered token", "repeated launches are harmless")
 
 ## 7. Walk memo (app process only)
 
