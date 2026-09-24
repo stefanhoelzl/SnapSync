@@ -29,7 +29,7 @@ class BackgroundTimeContractBindingTest {
     fun `the honest background time satisfies the contract`() = verify(BackgroundTimeContract, binding)
 
     @Test
-    fun `the table holds exactly the holds not yet ended, and an end removes only its own`() {
+    fun `the table holds exactly the holds not yet ended and an end removes only its own`() {
         val held = MutableStateFlow<List<HeldBackgroundTime>>(emptyList())
         val time = inMemoryBackgroundTime(held)
         val first = time.begin("first") {}
