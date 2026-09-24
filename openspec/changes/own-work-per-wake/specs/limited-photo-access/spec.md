@@ -118,6 +118,120 @@ on iOS 26.6.2 (one probe, n = 1 out-of-scope change).
   it, and then reads the library any number of times
 - **THEN** no limited-access prompt is presented, in the running app or after it is killed
 
+### Requirement: The read discipline is enforced at the mechanism, not at the trigger fan-out
+
+The rule that no autonomous library read occurs under a partial grant SHALL be enforced by the upload
+**mechanism** that would perform the read — at its cycle's entry gate and in its discovery — not by the
+trigger fan-out that wakes it. A trigger SHALL be
+delivered to the mechanism unconditionally (`upload-lifecycle`, "Triggers are delivered to the
+mechanism and declined explicitly"), and the mechanism SHALL decide whether responding would read the
+library.
+
+Placing the gate at the fan-out makes it an **invoker-gate**, and its soundness then depends on the
+fan-out's enumeration of who might read — an enumeration invalidated silently by a new mechanism or a new
+trigger. This is the same failure shape `upload-lifecycle` records for the direction gate ("The arm's
+direction gate lives at the choke point, never at the invoker"), and the same remedy applies.
+
+The mechanism is also the only component that **knows the answer**: whether a cycle walks the library or
+consumes the in-memory selection snapshot (`SelectionScopedDiscovery`, which wraps the cycle's
+`UploadDiscovery`) is a property of the mechanism, and it differs between mechanisms on the same OS and the
+same grant.
+
+Relocating this gate SHALL preserve the behaviour it currently produces. It SHALL NOT be widened as a
+side effect of the move — if the relocated gate would admit a trigger the fan-out currently refuses, that
+widening is a separate decision requiring its own evidence.
+
+The app process's **opportunistic tail** (capability `ios-app-shell`, "Each OS wake does its own work, then hands
+the rest to one opportunistic tail") runs its discovery walk (③) only under a full grant. That omission is **not**
+this discipline's enforcement and SHALL NOT be relied on as such: it is a scheduling choice — under a partial grant
+discovery is the selection change's own work, so a walk in every tail would re-run it for nothing — and the
+mechanism's own gate and discovery still hold the discipline whatever reaches them, the selection change's own
+walk included. The one widening the tail made is its own decision, with its evidence: a silent push under a
+partial grant now reaches the tail's top-up (②), which reads no library, because it resolves its rows from the
+held snapshot and is withheld while that snapshot is unread (decision record `changes/own-work-per-wake`, D1:
+accepted — already-selected rows upload sooner, with no read).
+
+A selection snapshot that has been **read** SHALL be reported as a full enumeration: it is authoritative for
+deletion exactly as a full-library walk is under a full grant (capability `sync-ledger`, "Deletion is a
+presence diff over an authoritative walk"). Under a partial grant the selection is the gallery, from the
+app's point of view. What the snapshot holds may be shared, subject to the selection policy. What it no
+longer holds is removed from the ledger, and so from the device manifest, whatever its upload state:
+**de-selecting is deleting.** Re-selecting a removed photo records it as new work and re-uploads the same
+object idempotently. That duplicate is accepted.
+
+A snapshot that has **not been read yet** SHALL be a distinct scope (`Unread`), and SHALL NOT be treated as
+an empty selection anywhere on the upload path. Between a grant turning partial (or a cold launch under
+one) and the first selection read, the app holds no selection. An authoritative empty snapshot would
+delete the rows of every photo, and an empty answer to a key resolution means "gone" to the enqueue, which
+also deletes. So the app's upload cycle SHALL be **Withheld** while the scope is `Unread` (capability
+`upload-lifecycle`, "The upload cycle owns its entry decision") — each of its units, the tail's top-up
+included. It settles narrowly, and reads, creates, deletes and publishes nothing. The observer's first emission
+then triggers the selection change's own work and the tail that follows it. The
+selection-scoped discovery SHALL refuse to answer for an `Unread` scope, failing the call rather than
+returning an empty result, so that no caller that reaches it anyway can mistake "not read" for "nothing".
+
+The status total already draws the same distinction, for its own reason: an unread snapshot must not settle
+the screen (see "One discovery serves both the status total and the enqueue"). Both SHALL read the one
+snapshot cell, so they cannot disagree about whether the selection has been read.
+
+Decision records: `changes/selection-is-the-walk` (D1); the tail's scheduling and its one widening:
+`changes/own-work-per-wake` (D1). It reverses the earlier requirement that a
+selection-scoped discovery never report a full enumeration because "deselection is not withdrawal and an
+upload is a publish". Its one real hazard, the un-read snapshot, is kept closed by the `Unread` scope
+rather than by making every snapshot non-authoritative.
+
+#### Scenario: A trigger that would walk the library is declined under a partial grant
+
+- **WHEN** a background trigger reaches an upload mechanism whose response would enumerate the photo
+  library, and photo access is `LIMITED`
+- **THEN** the mechanism performs no library read, and the decision is made in the mechanism rather than
+  by the component that delivered the trigger
+
+#### Scenario: A selection-scoped mechanism is not blocked by a gate meant for walks
+
+- **WHEN** a trigger reaches a mechanism whose discovery consumes the selection snapshot rather than
+  walking, under a `LIMITED` grant
+- **THEN** whether it responds is decided by that mechanism's own reading of the discipline, not by a
+  blanket refusal at the fan-out
+
+#### Scenario: De-selecting a photo withdraws it from the event
+
+- **WHEN** a read selection snapshot no longer carries a photo whose `COMPLETED` row is in the event's
+  window
+- **THEN** the discovery reports a full enumeration, the photo's rows are deleted, and the manifest that
+  cycle publishes no longer lists it
+
+#### Scenario: De-selecting a photo mid-upload withdraws it too
+
+- **WHEN** a read selection snapshot no longer carries a photo whose row is `REQUESTED`
+- **THEN** the row is deleted and the photo is not listed. The transfer may still complete, and its
+  terminal write applies to no row
+
+#### Scenario: Re-selecting a withdrawn photo shares it again
+
+- **WHEN** a photo whose rows a de-selection removed is selected again
+- **THEN** the next cycle records it as new work, re-uploads it to the same destination, and lists it again
+
+#### Scenario: An un-read snapshot withholds the cycle and deletes nothing
+
+- **WHEN** the app's upload cycle runs under a partial grant before any selection snapshot has been read,
+  while the ledger holds admitted `DISCOVERED` and `COMPLETED` rows
+- **THEN** the cycle is withheld: no row is deleted, no job is created, nothing is published, and the
+  observer's first emission starts the cycle that runs over the real selection
+
+#### Scenario: An un-read scope never answers empty
+
+- **WHEN** the selection-scoped discovery is asked to discover or to resolve keys while the scope is
+  `Unread`
+- **THEN** the call fails, and no empty result is returned
+
+#### Scenario: The tail's skipped walk is not the only guard
+
+- **WHEN** an upload unit that would read the library is reached under a partial grant by any path — the tail,
+  or a selection change's own work
+- **THEN** the mechanism's gate and discovery decide, and read no library, whether or not the tail would have
+  scheduled that unit
+
 ### Requirement: Selection snapshots are emitted in change order
 
 The selection-change source SHALL emit its snapshots from one serial lane, in the order of the changes

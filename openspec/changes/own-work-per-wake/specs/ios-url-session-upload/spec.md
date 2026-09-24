@@ -28,25 +28,43 @@ The tail's upload units are reached from these triggers, each with its own work 
 - (f) a **silent push for the active event** — own work: the download reconcile (capability `photo-download`);
   then the tail;
 - (g) a **selection change** under a partial grant — own work: the snapshot-fed discovery → manifest publish
-  (capability `limited-photo-access`); then the tail.
+  (capability `limited-photo-access`); then the tail;
+- (h) a **download-session relaunch** — own work: staging the delivered files (capability `photo-download`);
+  then the tail;
+- (i) a **download staged in a running process** — own work: recording the staging; then **① only** — it
+  reaches no upload unit, and a pass that ran none says nothing about uploads (below).
+
+The uploader these units belong to is a **mechanism**: it offers the top-up, the walk → manifest publish, its
+heartbeat, the leave's transfer cancellation and the session's reattach, and holds **no trigger and no OS
+completion handler**. Which wake runs what, how a wake's handler is held and when the heartbeat is re-armed are
+the core's — the tail runner and the inbound port's implementation — so a mechanism can neither fail to release a
+handler nor run a unit the tail did not ask for. What its transport observes — a recorded completion, the
+session's report that it delivered every event — reaches the core as one call each, and the upload session's
+handlers are held and released by the core (capability `ios-app-shell`).
 
 A completion requests ② alone for the reason `ios-app-shell` records (a freed slot is all it changes; design
 D2) — on this tier that is what ended a full library walk per freed slot.
 
-Because the tail is single-flight, no two of this process's upload units write the ledger concurrently (the
-extension's cycle, a separate process, may overlap one — see "The app holds a ledger record-writer on every OS
-version"). **A request that arrives while the tail runs SHALL NOT be lost.** Joining a tail that has already
+No two of this process's upload units SHALL write the ledger concurrently (the extension's cycle, a separate
+process, may overlap one — see "The app holds a ledger record-writer on every OS version"). The tail is
+single-flight, but a selection change's own work runs its walk **outside** the runner by design, so the exclusion
+SHALL be the upload cycle's own: it serialises its units — a whole cycle, a top-up, a walk → manifest — whoever
+calls them, rather than relying on a caller's convention. **A request that arrives while the tail runs SHALL NOT be lost.** Joining a tail that has already
 passed the unit a request needs — a completion's top-up arriving while the tail walks, say — would otherwise
 drop it; the running tail SHALL therefore make one more pass covering the units the requests that joined it
-need, however many arrived (they coalesce into that one pass), and the decision to end the tail and the clearing
-of its running state SHALL be one atomic step, so a request can never slip between "decide to stop" and "no tail
+need — the union of their units, however many arrived, coalesced into that one pass — and the decision to end
+the tail and the clearing of its running state SHALL be one atomic step, so a request can never slip between "decide to stop" and "no tail
 is running". This carries over the retired pump's trailing re-run; it extends the running tail and never queues
 a second one.
 
 **A truncated top-up never busy-loops.** When ② ends because the platform refused a creation
 (`LIMIT_EXCEEDED` — the cap is full), the tail SHALL NOT re-run ② for that reason alone: in the foreground the
 next completion frees a slot and requests ②; in a background context the re-armed heartbeat wakes the app. The
-③ → ② loop runs only because ③ recorded new rows.
+③ → ② loop runs only because ③ recorded new rows, and it runs ② once more — never ③ again.
+
+**A failed unit fails the tail.** A unit that throws SHALL end the whole tail: every caller awaiting it is failed
+(see "A wake that joins a running tail keeps its obligations"), and the pass joiners requested of it is consumed
+with it. A stop requested while no tail runs SHALL be a no-op.
 
 **Re-arm.** After its tail, each trigger SHALL decide whether to schedule the next `BGProcessingTask` from the
 **outcome** of the tail's upload units, as a `CycleResult`, with its own policy:
@@ -55,16 +73,27 @@ next completion frees a slot and requests ②; in a background context the re-ar
   always schedule the next task (the heartbeat's re-submission is what keeps it alive; the others are the moments
   the chain may have been severed — see "Foreground entry re-arms the heartbeat" and "A silent push drives an
   upload scan");
-- a **background-`URLSession` relaunch** SHALL schedule the next task **only when work remains**
-  (`PROCESSING`);
-- a **completion** SHALL schedule nothing: while the app is open, completions re-invoke the top-up.
+- a **background-`URLSession` relaunch** — of the upload session and of the download session alike — SHALL
+  schedule the next task **only when work remains** (`PROCESSING`): a background wake whose tail left upload work
+  re-arms the heartbeat, one that finished does not;
+- a **completion** SHALL schedule nothing: while the app is open, completions re-invoke the top-up;
+- a **download staged in a running process** SHALL schedule nothing: the wake or the foreground it arrived in owns
+  the heartbeat's re-arm.
+
+The tail's outcome SHALL be computed over the upload results of its **latest pass that ran an upload unit**: a
+pass that ran no upload unit (an import alone) keeps the previous one's, and a tail that never ran one reports
+`COMPLETED`. Over those results, the latest unit's `SKIPPED` wins — the freshest gate answer says the membership
+contributes nothing; otherwise a tail cut short by a stop, or with any unit that left work, is `PROCESSING`; then
+any `FAILED` is `FAILED`; otherwise `COMPLETED`.
 
 A tail that Apple's expiry signal stopped before its upload units finished — a `BGTask`'s `expirationHandler`
 or the expiry of the background task a push or `URLSession` wake began (capability `ios-app-shell`) — SHALL be
 treated as leaving work (`PROCESSING`) for this decision, at every trigger, never as `COMPLETED`: a stop says
 nothing about whether work remains, and the only safe reading is that it does. A relaunch whose tail was cut
 short therefore still re-arms. The one exception is an outcome the units had already reached as `SKIPPED`
-before the stop, which re-arms nothing (below).
+before the stop, which re-arms nothing (below). Because the expiry is answered at once (the handler released,
+the task completed, the background task ended), the stopped tail reaches its end — and this decision — only once
+the unit in flight completes, which may be when the process next runs rather than before it is suspended.
 
 On a `SKIPPED` outcome — the upload units declined because the membership contributes nothing (its selection
 policy admits nothing, as for a download-only membership), or because there is no membership at all
@@ -100,7 +129,7 @@ silently inherit a re-arm policy nobody chose for it, and it SHALL be made outsi
   whose re-arm is otherwise unconditional
 - **THEN** no `BGProcessingTask` is scheduled, so the device stops waking to upload
 
-#### Scenario: A completion re-pumps only while the app may create
+#### Scenario: A completion requests the top-up only while the app may create
 - **WHEN** an upload completion is delivered while the app's admission is not `Admit` (e.g. photo access was
   revoked)
 - **THEN** the tail runner is not requested for that completion
@@ -125,12 +154,13 @@ and, under a full grant, the discovery walk and manifest publish — run in the 
 arriving while another wake's walk is running SHALL do its download work at once rather than wait behind that
 walk (measured: an iPhone XS push waited 22.5 s behind a walk), then join the running tail.
 
-The active-event decision SHALL live in a tested feature, in a receive seam mirroring the download arm's
-(`UploadPushReceiver`, `:domain` `feature/upload`; the download arm's is `DownloadPushReceiver`,
-`feature/download`), and SHALL NOT be duplicated in the composition root. The cross-arm **fan-out** SHALL
-be the `flow/SilentPush` trigger (`:domain` `flow/`, built in `compose/`; it absorbed the former
-`FanOutPushReceiver`): one push fans out to each arm's receiver in order (download, then upload on this
-tier), isolated so one receiver's failure never robs the other of the scarce wake.
+The upload arm is **no longer a receiver** of the push: the `flow/SilentPush` trigger runs the download arm's
+receiver alone, and the upload units reach the push's wake only through the tail. The active-event decision —
+whether the wake joins the tail — SHALL live in a tested feature (`PushTailGuard`, `:domain` `feature/upload`),
+asked by the inbound port's implementation after the flow has returned (spec `module-architecture`, "A trigger
+flow never outlives its own run"), and SHALL NOT be duplicated in the composition root. It reads the membership
+the flow has just re-read; no event configured, another event, or an **unreadable** membership each join nothing,
+and an unreadable one is logged as its own answer. A download arm that fails still leaves the wake its tail.
 
 The active-event guard SHALL be **orthogonal** to the direction gate (capability `upload-lifecycle`): the
 active-event guard answers "is this push for my current event", the direction gate answers "should this device
@@ -140,8 +170,8 @@ therefore keeps pushing this device.
 
 The push handler SHALL be released once the push's own work is done and SHALL NOT be held for the upload units
 (capability `ios-app-shell`): iOS grants a silent push a short budget with no expiry callback, and a library walk
-can exceed it. The upload units run under the app's own background task and stop cooperatively on its expiry
-signal (capability `ios-app-shell`, "Expiry stops work cooperatively at the next boundary"); the scan is
+can exceed it. The upload units run under the app's own background task, which ends at once on its expiry
+signal while the units start nothing further (capability `ios-app-shell`, "Expiry stops work cooperatively at the next boundary"); the scan is
 therefore best-effort — a walk stopped mid-way is abandoned and writes nothing (`ios-app-shell`, "The discovery
 walk is atomic under a stop"), the ledger writes already made are idempotent, and the next wake's walk is a full
 enumeration that simply redoes it.
@@ -153,13 +183,13 @@ enumeration that simply redoes it.
 
 #### Scenario: A push for another event drives nothing
 - **WHEN** a silent push arrives naming an event that is not the device's active event, including a
-  locally-left event the backend still pushes
-- **THEN** no upload unit is driven
+  locally-left event the backend still pushes, or while the membership is unreadable
+- **THEN** its wake requests no tail, so no upload unit is driven
 
 #### Scenario: A push to a download-only membership passes the active-event guard and still uploads nothing
 - **WHEN** a silent push arrives for the active event on a membership whose direction excludes upload
-- **THEN** the receiver requests the upload units (the active-event guard passes) and they return `SKIPPED`, so
-  no upload job is created and no heartbeat is scheduled
+- **THEN** the wake joins the tail (the active-event guard passes), its upload units return `SKIPPED`, so no
+  upload job is created and no heartbeat is scheduled
 
 #### Scenario: The push completion handler is not held for the upload units
 - **WHEN** a silent push drives the upload units
@@ -202,13 +232,14 @@ grant; under a partial grant ① and ② only) and, when ③ recorded new rows, 
 
 The heartbeat handler SHALL hold `setTaskCompleted` until its tail has finished, or until the task's
 `expirationHandler` fires — the `BGProcessingTask` is what grants the minutes, so its tail runs under the
-task rather than under a separate background task. On expiry the work SHALL stop cooperatively at the next
-boundary (the running unit completes, nothing new starts; an in-flight walk is abandoned — capability
-`ios-app-shell`, "Expiry stops work cooperatively at the next boundary" and "The discovery walk is atomic under a
-stop"), and the task SHALL then be completed. No deadline of the app's own SHALL bound the task (`ios-app-shell`,
-"Time is up is learned only from the operating system"). Each handler SHALL re-submit the next task
-while an event remains joined (the request is one-shot) — whether its tail finished or was stopped by the
-expiry — subject only to the `SKIPPED` rule of "The tail runner reimplements the OS scheduler". Decision record: `changes/own-work-per-wake` (design D1, D3, D4, D5).
+task rather than under a separate background task. On expiry the tail's stop SHALL be requested and the task
+SHALL be completed **at once**, without waiting for the unit in flight, which runs on until the process is
+suspended while nothing new starts; an in-flight walk is abandoned (capability `ios-app-shell`, "Expiry stops
+work cooperatively at the next boundary" and "The discovery walk is atomic under a stop"). No deadline of the
+app's own SHALL bound the task (`ios-app-shell`, "Time is up is learned only from the operating system"). Each
+handler SHALL re-submit the next task while an event remains joined (the request is one-shot) — whether its tail
+finished or was stopped by the expiry, in which case the re-submission follows once the stopped tail ends —
+subject only to the `SKIPPED` rule of "The tail runner reimplements the OS scheduler". Decision record: `changes/own-work-per-wake` (design D1, D3, D4, D5).
 
 #### Scenario: Completions self-sustain the drain
 - **WHEN** background transfers complete while the app is suspended
@@ -222,8 +253,8 @@ expiry — subject only to the `SKIPPED` rule of "The tail runner reimplements t
 
 #### Scenario: The heartbeat holds its task until its tail ends or expires
 - **WHEN** the heartbeat's tail is still running when the task's `expirationHandler` fires
-- **THEN** the running unit completes, no further unit starts, `setTaskCompleted` is then called, and the next
-  task is re-submitted; had the tail finished first, the task would have been completed at that moment
+- **THEN** `setTaskCompleted` is called at once, no further unit starts, and the next task is re-submitted
+  once the stopped tail ends; had the tail finished first, the task would have been completed at that moment
 
 ### Requirement: BackgroundScheduler seam
 
@@ -249,8 +280,9 @@ independent of the PhotoKit extension's registration, which on iOS ≥26.1 spans
 leave wherever the OS allows it (capability `ios-photokit-upload`); the app engine is armed beside it.
 
 - **arm** (a join, any reconfigure, a permission change, or a launch, whenever photo access is usable —
-  `GRANTED` or `LIMITED`): run the tail immediately, and **schedule the first
-  `BGProcessingTask`** (the heartbeat is one-shot, so nothing else would arm it after a force-quit until the next
+  `GRANTED` or `LIMITED`): request the tail at once — **detached**, because a transition runs inside a flow or a
+  tap and neither awaits the tail (spec `module-architecture`, "A trigger flow never outlives its own run") — and
+  **schedule the first `BGProcessingTask`** from that tail's outcome (the heartbeat is one-shot, so nothing else would arm it after a force-quit until the next
   foreground). Arming repairs no ledger row. It does not read the membership's direction: on a membership that
   contributes nothing the upload units decline on the selection policy and return `SKIPPED`, so the tail runner
   schedules nothing. A re-provision of the already-joined event (`SwitchDecision.Stay`) arms nothing.
@@ -558,16 +590,18 @@ therefore still arm nothing, from any trigger, exactly as for a caller that star
 The awaited span is the running tail **including** the further pass the joining caller requested. No clock of
 the app's own SHALL bound that wait: what ends it early is Apple's expiry signal, which stops the tail
 cooperatively (capability `ios-app-shell`, "Expiry stops work cooperatively at the next boundary"), never a
-cancellation of the tail by the caller. The OS handler of a
-push or a background-session relaunch is not held across the wait at all — it is released after that wake's own
-work.
+cancellation of the tail by the caller. A stop consumes any pass joiners requested, and they receive the stopped
+tail's outcome. The OS handler of a push or a background-session relaunch is not held across the wait at all —
+it is released after that wake's own work — and a `BGTask`'s completion, like any background time the waiting
+wake holds, is released at once on the expiry rather than after the wait.
 
 Where a tail fails, every caller awaiting it SHALL be failed rather than left parked, and the further pass
 requested of it SHALL be consumed with it — it belonged to that tail, and leaving it set would arm a phantom
 pass on whichever request came next.
 
 A joining caller SHALL never be the tail runner itself: nothing a tail unit or its status refresh does may
-request and await the tail, or the join would wait on itself.
+request and await the tail, or the join would wait on itself — such a request SHALL be refused loudly (it
+throws) rather than deadlock.
 
 #### Scenario: A background-session relaunch that joins still re-arms on its result
 
@@ -658,9 +692,11 @@ in-process and dies with it. It SHALL NOT be treated as evidence of any of:
   the defect lives on.
 
 Because a default session never sends `URLSessionDidFinishEventsForBackgroundURLSession`, a
-`handleEventsForBackgroundURLSession` wake on that target never sees the signal its handler is released on,
-and holds the handler until the wake's expiry signal releases it (capability `ios-app-shell`) — there is no
-deadline of the app's own to expire. That outcome SHALL be **predicted rather than diagnosed**: the process
+`handleEventsForBackgroundURLSession` wake on that target never sees the signal its handler is released on:
+the core holds that handler until the background time it began at the handover expires, and releases it then
+(capability `ios-app-shell`, "OS completion handlers are released only after their work completes";
+`architecture-guards`, "OS completion handlers are held in one type") — there is no deadline of the app's own to expire, and whether that expiry fires in the simulator's relaunch setting is
+unmeasured (decision record `changes/own-work-per-wake`, Open Questions). That outcome SHALL be **predicted rather than diagnosed**: the process
 SHALL state its binding and this consequence when the session is constructed, so the expiry line is not read
 as a fault. Nothing SHALL synthesise the drain — a transport that reported events drained without the OS having
 delivered any would make a simulator run indistinguishable from a device one, which is exactly the false
@@ -707,9 +743,9 @@ this requirement restates unchanged.
 #### Scenario: A background-events wake on a simulator is released on expiry, and says so in advance
 
 - **WHEN** a `handleEventsForBackgroundURLSession` wake is driven on a simulator
-- **THEN** the handler is held until the wake's expiry signal releases it, because the session never reports
-  its events drained; the process has already stated that this binding cannot report them, and no drain is
-  synthesised
+- **THEN** the handler is held until the expiry of the background time begun at the handover releases it,
+  because the session never reports its events drained; the process has already stated that this binding
+  cannot report them, and no drain is synthesised
 
 #### Scenario: The binding is readable, not inferred
 
@@ -809,8 +845,10 @@ the **whole pass** at the first `LIMIT_EXCEEDED`, before the next row's resource
 capacity read, no fixed batch and no resolve chunk. Both transports refuse honestly: this tier's `createJob`
 counts the session's live tasks, so its cap binds across a relaunch, and PhotoKit refuses at its own job limit.
 
-**A row the walk just read is created from the walk's resource.** Where the walk that immediately precedes a
-top-up in the same run read a row's asset, the row's job SHALL be created from the resource that walk already
+**A row the walk just read is created from the walk's resource.** The tail's walk creates no job itself: it
+records what it found, publishes the manifest, and hands the resources it read to the one top-up that follows it
+in the same tail, which consumes them. Where the walk that immediately precedes a top-up in the same run read a
+row's asset, the row's job SHALL be created from the resource that walk already
 holds, keyed by the ledger key — one platform read of the same asset moments earlier, so a second synchronous
 round-trip would buy nothing but its cost. Only a **miss** — a row that walk did not read: a retried failure, a
 truncated pass's remainder whose asset the ledger already fully knows, or any row of a top-up no walk preceded —
