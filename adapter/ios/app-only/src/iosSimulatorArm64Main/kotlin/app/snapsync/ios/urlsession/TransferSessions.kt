@@ -44,7 +44,8 @@ private fun announceBinding(identifier: String) {
         "transfer session '$identifier': DEFAULT configuration (identifier ignored) — this is " +
             "iosSimulatorArm64. Transfers run in-process and die with it. This session never reports " +
             "didFinishEventsForBackgroundURLSession, so a handleEventsForBackgroundURLSession wake holds " +
-            "its receipt to the deadline and EXPIRES: that expiry is this host, not a fault. Suspension " +
+            "its completion handler until the background time's expiry: that expiry is this host, not a " +
+            "fault. Suspension " +
             "survival, OS relaunch and task reattachment are device-only and are not exercised here."
     }
 }

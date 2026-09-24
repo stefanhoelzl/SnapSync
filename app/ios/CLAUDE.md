@@ -111,12 +111,12 @@ is no per-root cycle or feature assembly any more.
   one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING` requeue and
   the raw-value handoff through the tested `ports/` rules.
 - The app-driven tier's `UrlSessionUploadController` calls the same `uploadCore` over its own ports
-  (background-`URLSession` platform, pump, scheduler stay tier-local mechanism).
+  (background-`URLSession` platform and scheduler stay tier-local mechanism; the app's `TailRunner` drives it).
 
 **Neither is the direction gate** (capability `upload-lifecycle`). Whether a membership uploads **at all** is
 decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's
 direction *and* its cutoff: `None` → the cycle returns `CycleResult.SKIPPED` before any walk, job, manifest, or
-notify, and the pump then schedules no `BGProcessingTask`. The roots only pass **facts** —
+notify, and the tail then re-arms no heartbeat `BGProcessingTask`. The roots only pass **facts** —
 `Contribution.of(direction.includesUpload, minPhotoDate)` — and never the branch.
 That gate sits at the **choke point every trigger funnels through**, not at the arm's invoker, because an
 invoker-gate is only as good as its enumeration of invokers. It used to be one: a download-only membership was
@@ -240,7 +240,7 @@ rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
 - **app-driven `URLSession` (`ios-url-session-upload`) — every iOS version, whenever access is usable.** The
   **main app process** uploads over a background `URLSession` + `BGProcessingTask`, via
   `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:adapter:ios:app-only`) driving the same `:domain`
-  feature/upload `UploadCycle` through the `BackgroundUploadPump`. Below 26.1 it is the only uploader; from 26.1
+  feature/upload `UploadCycle`, whose units (`topUp`, `walkAndPublish`) run in the app's one `TailRunner`. Below 26.1 it is the only uploader; from 26.1
   it runs beside the extension, both writing the one App-Group ledger (every write a guarded single transaction).
 
 **Exercising one uploader alone on a device works through the rig**: `POST /device/uploaders?app=on|off&extension=on|off`
