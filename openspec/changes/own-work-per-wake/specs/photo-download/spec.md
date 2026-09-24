@@ -19,11 +19,14 @@ The cache SHALL NOT change which album an import is added to, or whether one is:
 sourced from the shared `eventId → albumLocalId` map through the injected lookup, and an absent identifier
 still imports into the camera roll only. The cache holds only the platform handle that identifier resolves to.
 
-**Gated on a device check.** The cache SHALL NOT be enabled until PhotoKit's behaviour on a change request
-against a **deleted** collection has been measured on a device — specifically whether such a request fails the
-whole commit (and so, by move, consumes the staged bytes) or drops only the album add. Until that measurement
-exists the importer SHALL fetch the collection per import as it does today. Decision record:
-`changes/own-work-per-wake` (design D10; the open question it names).
+**Measured: a stale collection costs an album add, never an import.** Against a **deleted** collection (deleted
+from inside the app or from the Photos app), `changeRequestForAssetCollection` returns a non-nil request, the
+commit **succeeds**, the asset **is created** and its staged file is consumed, and only the album add is dropped —
+silently (iOS 26.5 simulator, n=6, 2026-09-27). So the feared outcome (a failed commit consuming move-semantics
+bytes) does not occur, and the cache MAY be enabled. Because a stale collection gives no failure signal at all,
+the library change observer SHALL be the only thing that drops the cache, and the drop SHALL be logged so a
+missed album add stays diagnosable. The same measurement on device hardware remains to be recorded. Decision
+record: `changes/own-work-per-wake` (design D10).
 
 #### Scenario: A deleted album is dropped by the observer, not by a failed import
 

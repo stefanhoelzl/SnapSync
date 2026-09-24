@@ -28,7 +28,7 @@
 - [x] 4.1 `DownloadController.reconcile` stops draining imports itself; staging and reconcile request the tail; ① drains importable assets under the cooperative stop (claim semantics unchanged: a stalled import keeps its claim)
 - [x] 4.2 A failed union fetch still gets ① (the tail runs regardless of own work's outcome)
 - [x] 4.3 Remove the download backstop: `flow/DownloadBackstop`, `scheduleBackstop` / its `BackgroundScheduler` use, the Swift BGTask registration, the identifier in `BGTaskSchedulerPermittedIdentifiers` (same build), `Background` flow's arming, `BackgroundSchedulerContract`/`PlatformEntriesContract` backstop clauses, and its tests
-- [ ] 4.4 Device check (gate for 4.5): what PhotoKit does with a change request against a deleted `PHAssetCollection` (commit fails? resources consumed?) — record the result in the photo-download spec
+- [x] 4.4 Device check (gate for 4.5): what PhotoKit does with a change request against a deleted `PHAssetCollection` (commit fails? resources consumed?) — record the result in the photo-download spec
 - [ ] 4.5 If 4.4 allows: cache the event-album collection in the importer, invalidated only by the library change observer (never by a failed commit); otherwise keep the per-import fetch and note why
 
 ## 5. Uploads
@@ -67,7 +67,7 @@
 ## 10. Verification
 
 - [x] 10.1 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green; iOS simulator tests and contracts green on CI
-- [ ] 10.2 Verify in the simulator app whether `beginBackgroundTask`'s expiry fires in the relaunch setting (open question in design)
+- [x] 10.2 Verify in the simulator app whether `beginBackgroundTask`'s expiry fires in the relaunch setting (open question in design)
 - [ ] 10.3 SE2 benchmark after stage 2 with the uncommitted harness (re-applied), on a build that includes the download-enqueue dedupe fix; per-wake duplicate check before using any S2 number; record results beside baseline and stage 1
 - [ ] 10.4 After release: watch Bugsink dumps for the OS expiry line and imports left staged (the field evidence this change rests on)
 
