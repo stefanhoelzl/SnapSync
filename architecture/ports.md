@@ -11,15 +11,17 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AlbumManager` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumManager, RecordingAlbumManager, RecordingAlbums; `:adapter:ios:ext-safe` IosAlbumManager; `:domain:compose` RecordingAlbums; `:domain:feature` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
 | `AlbumMapSource` | `:domain:feature` | `:domain:feature` Current, Migrate, Retry | no |
 | `AlbumMapStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAlbumMapStore; `:adapter:ios:ext-safe` IosAlbumMapStore; `:domain:feature` InMemoryAlbumMapStore | yes |
-| `AppUploadEngine` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:domain:feature` FakeEngine; `:test:architecture` Engine; `:test:world` OperatorUploadEngine | yes |
+| `AppUploadEngine` | `:domain:feature` | `:domain:feature` FakeEngine; `:test:architecture` Engine | yes |
+| `AppUploadEvents` | `:domain:feature` | — | no |
+| `AppUploadMechanism` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:test:world` OperatorUploadEngine | yes |
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
 | `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore; `:domain:feature` CachedAttestStore, SharedItem | yes |
 | `BackendVerdicts` | `:domain:ports` | — | no |
-| `BackgroundScheduler` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundScheduler; `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` FakeScheduler, Scheduler; `:test:world` CountingBackstopScheduler | yes |
+| `BackgroundScheduler` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundScheduler; `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` Scheduler; `:test:world` CountingScheduler | yes |
 | `BackgroundTime` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
 | `BackgroundTimeHold` | `:domain:ports` | `:adapter:generic:fake` Hold; `:adapter:ios:app-only` Held, Refused | no |
-| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:feature` FakePlatform; `:test:world` FakeBackgroundTransfer, NetworkedTransfer | yes |
+| `BackgroundTransfer` | `:domain:ports` | `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:feature` FakePlatform, Library; `:test:world` FakeBackgroundTransfer, NetworkedTransfer | yes |
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates, Switchable; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource | yes |
@@ -45,7 +47,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` InMemoryDownloadStatusSource, StoreDownloadStatusSource | yes |
-| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` DrainSpyStore, InMemoryDownloadStore, PlanCountingStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
+| `DownloadStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightDownloadStore; `:adapter:generic:fake` InMemoryDownloadStore, PlanCountingStore, ReclaimSpyStore; `:test:world` RecordingDownloadStore | yes |
 | `DownloadTask` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTask | no |
 | `DownloadTransport` | `:domain:ports` | `:adapter:ios:app-only` IosDownloadTransport; `:domain:feature` FakeDownloadTransport; `:test:world` FakeDownloadTransport | yes |
 | `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |
@@ -84,7 +86,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `ProcessMetricSource` | `:domain:ports` | `:adapter:ios:app-only` MetricKitProcessMetricSource | no |
 | `ProtectedStorage` | `:domain:ports` | `:adapter:generic:fake` InMemoryProtectedStorage; `:adapter:ios:app-only` IosProtectedStorage | yes |
-| `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver, UploadPushReceiver | no |
+| `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver | no |
 | `PushRegistrationRecord` | `:domain:ports` | `:adapter:generic:fake` InMemoryPushRegistrationRecord; `:adapter:ios:app-only` IosPushRegistrationRecord; `:domain:feature` FakeRecord | yes |
 | `PushTokenPublisher` | `:domain:ports` | `:adapter:generic:app` HttpPushTokenPublisher; `:domain:feature` FakePushTokenPublisher | yes |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable | no |
@@ -114,8 +116,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UploadDiscovery` | `:domain:ports` | `:adapter:generic:fake` InMemoryUploadDiscovery; `:adapter:ios:ext-safe` IosDiscovery; `:domain:feature` FakePlatform, Library, RecordingDelegate, SelectionScopedDiscovery, WalkMemo; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |
 | `UploadExtensionRegistry` | `:domain:ports` | `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:feature` RecordingRegistry | no |
-| `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | no |
-| `UploadTriggers` | `:domain:feature` | — | no |
+| `UploadRequestProvider` | `:domain:model` | `:adapter:generic:fake` RecordingUploadRequestProvider; `:domain:feature` Provider, StubUploadRequestProvider; `:domain:model` EdgeUploadRequestProvider | no |
 | `UploaderProcess` | `:domain:compose` | `:domain:compose` App, Extension | no |
 | `WalkOutcome` | `:domain:feature` | `:domain:feature` Abandoned, Walked | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |

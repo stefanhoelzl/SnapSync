@@ -48,8 +48,8 @@ on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `BackgroundUploadPump.kt`, `LedgerWriter.kt`, `OsDrivenRegistration.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadPushReceiver.kt`, `UploadTransitions.kt`, `WalkMemo.kt`
-- top-level types: `AppUploadEngine (interface)`, `BackgroundUploadPump (class)`, `CycleGate (interface)`, `ExtensionRegistration (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenRegistration (class)`, `Rearm (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadPushReceiver (class)`, `UploadTransitions (class)`, `UploadTriggers (interface)`, `WalkMemo (class)`, `WalkMemoUse (class)`, `WalkOutcome (interface)`
+- files: `AppUploadMechanism.kt`, `LedgerWriter.kt`, `OsDrivenRegistration.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `TailRunner.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WalkMemo.kt`
+- top-level types: `AppUploadEngine (interface)`, `AppUploadEvents (interface)`, `AppUploadMechanism (interface)`, `CycleGate (interface)`, `ExtensionRegistration (interface)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OsDrivenRegistration (class)`, `PushTailGuard (class)`, `Rearm (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `TailOutcome (class)`, `TailRunner (class)`, `TailScope (class)`, `TailSignal (class)`, `TailTrigger (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkMemo (class)`, `WalkMemoUse (class)`, `WalkOutcome (interface)`
 
 ## `feature/version`
 
