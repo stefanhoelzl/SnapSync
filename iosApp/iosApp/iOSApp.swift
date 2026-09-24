@@ -7,7 +7,8 @@ import BackgroundTasks
 // migration step 12): every OS callback forwards its raw, ObjC-visible input WHOLE to Kotlin, which
 // holds every decision in tested code. No `if`/`guard`/`switch` lives in this file — the pin table in
 // SwiftShellGuardTest holds that at zero. The hooks:
-//   1. `didFinishLaunchingWithOptions` — registers the two BGTask handlers (Apple requires
+//   1. `didFinishLaunchingWithOptions` — registers the two BGTask handlers, each forwarding its task and its
+//      expiration handler by the identifier the OS delivered (Apple requires
 //      registration before launch finishes; the identifiers MUST be in Info.plist
 //      BGTaskSchedulerPermittedIdentifiers), and calls SnapSyncRoot.onLaunch, which asks for an APNs
 //      token (at every cold start, and again at every foreground entry from its didBecomeActive observer —
@@ -28,8 +29,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             forTaskWithIdentifier: "app.snapsync.download.backstop",
             using: nil
         ) { task in
-            // Kotlin holds this task until the drain finishes; no expiry ⇒ the OS kills us instead.
-            task.expirationHandler = { task.setTaskCompleted(success: false) }
+            // The OS's "time is up" is FORWARDED, never answered here: Kotlin holds the task's completion and is the
+            // only one that completes it (capability `ios-app-shell`) — completing it here too raced that release.
+            task.expirationHandler = { SnapSyncRoot.shared.onBackgroundTaskTimeUp(identifier: task.identifier) }
             SnapSyncRoot.shared.onBackgroundTask(identifier: task.identifier) {
                 task.setTaskCompleted(success: true)
             }
@@ -42,7 +44,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             forTaskWithIdentifier: "app.snapsync.upload.heartbeat",
             using: nil
         ) { task in
-            task.expirationHandler = { task.setTaskCompleted(success: false) }
+            task.expirationHandler = { SnapSyncRoot.shared.onBackgroundTaskTimeUp(identifier: task.identifier) }
             SnapSyncRoot.shared.onBackgroundTask(identifier: task.identifier) {
                 task.setTaskCompleted(success: true)
             }

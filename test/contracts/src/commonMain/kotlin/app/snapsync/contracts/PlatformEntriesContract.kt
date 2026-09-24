@@ -176,6 +176,34 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             assertEquals(0, observe.backstopsScheduled(), "no backstop")
         }
 
+        clause("TIME_UP_RELEASES_THE_RUNNING_TASK_ONCE", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+            (entries, observe) ->
+            val completion = Completion { true }
+            entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
+            entries.onBackgroundTaskTimeUp(observe.identifiers.uploadHeartbeatTask)
+            // Whichever of the work and the expiry comes first releases it; the other must not release it again —
+            // the shell completing the task in its own expiration handler, and the core completing it again after
+            // the work, is the double completion this entry replaces.
+            completion.assertReleasedOnce()
+        }
+
+        clause("TIME_UP_AFTER_THE_TASK_ENDED_RELEASES_NOTHING", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+            (entries, observe) ->
+            val completion = Completion { observe.appUploaderBackgroundTasks() == 1 }
+            entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
+            completion.assertReleasedOnceAfterTheWork()
+            entries.onBackgroundTaskTimeUp(observe.identifiers.uploadHeartbeatTask)
+            completion.assertReleasedOnce()
+        }
+
+        clause("TIME_UP_FOR_AN_UNKNOWN_TASK_IS_IGNORED", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+            (entries, observe) ->
+            entries.onBackgroundTaskTimeUp("app.example.not-registered")
+            settle()
+            assertEquals(0, observe.appUploaderBackgroundTasks(), "an expiry starts no work")
+            assertEquals(0, observe.backstopsScheduled(), "and queues nothing")
+        }
+
         clause("UPLOAD_TRANSFERS_REACH_THE_APP_UPLOADER", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
             val completion = Completion { observe.appUploaderTransferHandbacks() == 1 }
@@ -209,6 +237,13 @@ private class Completion(private val workDone: () -> Boolean) {
     fun release() {
         if (doneAtRelease == null) doneAtRelease = workDone()
         releases++
+    }
+
+    /** Released, and exactly once — whether after the work or on the operating system's expiry. */
+    suspend fun assertReleasedOnce() {
+        assertTrue(eventually { releases > 0 }, "the completion is released")
+        settle()
+        assertEquals(1, releases, "the completion is released exactly once")
     }
 
     suspend fun assertReleasedOnceAfterTheWork() {

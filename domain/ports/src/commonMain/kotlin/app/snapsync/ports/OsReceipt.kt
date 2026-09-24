@@ -1,9 +1,12 @@
 package app.snapsync.ports
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.CoroutineContext
@@ -61,6 +64,18 @@ class OsReceipt(
      * the handler's owner demands.
      */
     private val releaseLane: CoroutineContext = EmptyCoroutineContext,
+    /**
+     * The operating system's own "time is up" for this wake, where it gives one — a `BGTask`'s expiration handler,
+     * forwarded into the core by the inbound port (capability `ios-app-shell`, "Background tasks are forwarded by
+     * the identifier the OS delivered"). `null` for a wake whose handler carries no expiry signal.
+     *
+     * Completing it releases the handler at once, exactly as [deadline] does and with the same consequence: the
+     * work is left running, not cancelled. That is the behaviour the shell had when it completed the task inside
+     * its own expiration handler — minus the second, racing completion the core used to make afterwards. It is an
+     * interim: the change that replaces this type with a cooperative stop (`changes/own-work-per-wake`, D3/D4)
+     * stops the work at its next boundary before releasing.
+     */
+    private val expiry: Deferred<Unit>? = null,
 ) {
 
     /**
@@ -79,11 +94,13 @@ class OsReceipt(
         try {
             coroutineScope {
                 val job = launch { work() }
-                if (withTimeoutOrNull(deadline) { job.join() } == null) {
+                when (withTimeoutOrNull(deadline) { finishedOrExpired(job) }) {
                     // Logged, never silent (capability `diagnostic-logging`): a bound that fires
                     // invisibly is indistinguishable from work that finished, and this line is the
                     // only evidence that the mechanism protecting the app actually engaged.
-                    log.w { "$entryPoint: OS handler released on its $deadline deadline — its work is still running" }
+                    null -> log.w { "$entryPoint: OS handler released on its $deadline deadline — its work is still running" }
+                    Ended.EXPIRED -> log.w { "$entryPoint: OS handler released on the operating system's expiry — its work is still running" }
+                    Ended.FINISHED -> Unit
                 }
                 releaseOnce()
                 // `coroutineScope` now awaits `job`: the receipt was let go, the work was not.
@@ -92,6 +109,17 @@ class OsReceipt(
             // Structurally, on EVERY path including a throw out of `work` — an unanswered handler
             // costs the app its future background wakes, which is a worse failure than whatever threw.
             releaseOnce()
+        }
+    }
+
+    private enum class Ended { FINISHED, EXPIRED }
+
+    /** Whichever comes first: [job] finishing, or the operating system's [expiry]. */
+    private suspend fun finishedOrExpired(job: Job): Ended {
+        val signal = expiry ?: return job.join().let { Ended.FINISHED }
+        return select {
+            job.onJoin { Ended.FINISHED }
+            signal.onAwait { Ended.EXPIRED }
         }
     }
 

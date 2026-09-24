@@ -90,4 +90,41 @@ class OsReceiptTest {
         receipt(h).heldFor { }
         assertEquals(1, h.releases)
     }
+
+    @Test
+    fun `the operating system's expiry releases the handler at once and leaves the work running`() = runTest {
+        val h = Handler()
+        val expiry = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        var workFinished = false
+
+        val held = launch {
+            OsReceipt("test", 120.seconds, release = { h.releases++ }, expiry = expiry).heldFor {
+                gate.await()
+                workFinished = true
+            }
+        }
+        advanceTimeBy(1.seconds)
+        assertFalse(h.released, "nothing has said time is up yet")
+
+        expiry.complete(Unit)
+        advanceTimeBy(1.seconds)
+        assertEquals(1, h.releases, "the expiry releases the handler without waiting for the deadline")
+        assertFalse(workFinished, "and does not cancel the work")
+
+        gate.complete(Unit)
+        held.join()
+        assertTrue(workFinished)
+        assertEquals(1, h.releases, "still exactly once")
+    }
+
+    @Test
+    fun `an expiry after the work finished releases nothing more`() = runTest {
+        val h = Handler()
+        val expiry = CompletableDeferred<Unit>()
+        OsReceipt("test", 120.seconds, release = { h.releases++ }, expiry = expiry).heldFor { }
+        expiry.complete(Unit)
+        advanceTimeBy(1.seconds)
+        assertEquals(1, h.releases)
+    }
 }
