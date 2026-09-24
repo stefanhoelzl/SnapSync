@@ -223,6 +223,18 @@ class CompositionSeamTest {
         "BackgroundUploadPump.runCycle" to "the tier's own UploadCycle.run — core machinery",
         "BackgroundUploadPump.onCycleComplete" to "the sibling ledger-counts refresh — feature-blindness",
         "BackgroundUploadPump.mayCreate" to "this core's own app admission, read fresh at each completion",
+        // The tail runner's units are injected so the runner knows their order and their stop, never their
+        // internals; none is bound in production until the entry points move onto it (`own-work-per-wake`, 3.x).
+        "TailRunner.importStaged" to
+            "the sibling download arm's staged-import drain (its PhotoKit touches are the importer PORT's) — " +
+            "feature-blindness",
+        "TailRunner.topUp" to "the tier's own UploadCycle top-up — core machinery, whose transfer is a port",
+        "TailRunner.walkAndPublish" to
+            "the tier's own UploadCycle walk → manifest publish — core machinery, whose reads and publish are ports",
+        "TailRunner.walkPermitted" to "this core's current photo permission, already held in memory — a pure core read",
+        "TailRunner.mayCreate" to "this core's own app admission, read fresh at each completion",
+        "TailRunner.foregrounded" to "this core's own lifecycle fact (whether the app is active), held in memory",
+        "TailRunner.refreshStatus" to "the sibling ledger-counts refresh — feature-blindness",
         "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",
