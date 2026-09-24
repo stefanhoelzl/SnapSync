@@ -9,8 +9,9 @@ import app.snapsync.model.PlatformEntry
  * Every other port here is outbound — the core calls it and an adapter answers. This one runs the other way: the
  * **core implements it** (`compose/`'s `platformEntries`) and the shell drives it. The composition root implements
  * it by Kotlin delegation, so the forwarding from the operating system's callback to the core is written by the
- * compiler and a crossed wire has nowhere to sit. The transcription that used to live in the untested shell — which
- * flow an entry runs, which receipt holds its completion, how a background task or transfer channel is routed — is
+ * compiler and a crossed wire has nowhere to sit. The transcription that used to live in the untested shell — what own
+ * work an entry runs, how its completion is held, when it hands the rest to the tail, how a background task or transfer
+ * channel is routed — is
  * the implementation's, and `:test:contracts`' `PlatformEntriesContract` specifies it.
  *
  * Members are named for what the operating system is saying, never for the API that says it, and carry only
@@ -34,16 +35,18 @@ interface PlatformEntries {
     fun onPushToken(hex: String)
 
     /**
-     * A silent push arrived, its [payload] forwarded **whole**. [completion] is released once the fan-out has
-     * finished or its deadline expired — always, including for a payload no receiver can use.
+     * A silent push arrived, its [payload] forwarded **whole**. [completion] is released once the push's own work —
+     * the download arm's union read and enqueue — has finished, or at once when the operating system says the
+     * process's background time is up; always, including for a payload no receiver can use. The rest of the push's
+     * work runs afterwards in the process's tail, for the active event only.
      */
     @PlatformEntry
     fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit)
 
     /**
      * The operating system launched the background task registered as [identifier] — the identifier it
-     * delivered, never one the shell chose. [completion] is released after the task's work, on the operating
-     * system's expiry ([onBackgroundTaskTimeUp]) or on its deadline, whichever comes first — exactly once; an
+     * delivered, never one the shell chose. [completion] is released after the task's work — its tail — or at once
+     * on the operating system's expiry ([onBackgroundTaskTimeUp]), whichever comes first, exactly once; an
      * identifier the core does not know is released at once and logged.
      */
     @PlatformEntry
@@ -61,15 +64,17 @@ interface PlatformEntries {
      * this member replaces (spec `module-architecture`, "OS entry points cross an inbound port").
      *
      * It returns at once: the operating system expects its expiration handler back promptly, so the stop is
-     * requested here and the release follows once the work has stopped. An identifier the core holds no running task
-     * for — one that already finished, or one it never knew — is logged and otherwise ignored.
+     * requested and the completion released here, without waiting for the unit in flight — which runs on until the
+     * process is suspended, and starts nothing after it. An identifier the core holds no running task for — one that
+     * already finished, or one it never knew — is logged and otherwise ignored.
      */
     @PlatformEntry
     fun onBackgroundTaskTimeUp(identifier: String)
 
     /**
      * The operating system is handing back finished background transfers for [channel]. [completion] is
-     * released once that channel's owner has absorbed them, or its deadline expired.
+     * released once that channel's session reports its events drained and the wake's own work — recording what they
+     * delivered — is done, or at once when the process's background time is up. The tail follows the release.
      */
     @PlatformEntry
     fun onBackgroundTransfers(channel: String, completion: () -> Unit)

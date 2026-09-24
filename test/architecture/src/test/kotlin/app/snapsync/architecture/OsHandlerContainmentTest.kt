@@ -24,7 +24,7 @@ import kotlin.test.fail
  * legal in exactly one tested place and nowhere else.
  *
  * **The owning type's exemption is a licence, not a description.** [OWNER] currently holds each handler in
- * a coroutine local inside its receipt rather than in a field, so it would pass this gate unexempted. The
+ * an immutable `val` of each handover rather than in a mutable field, so it would pass this gate unexempted. The
  * exemption is here so that the *rule* names its one home, and so that a future implementation which does
  * need a field is not forced to invent an exception.
  *
@@ -37,14 +37,14 @@ import kotlin.test.fail
  *
  * **Residue, stated rather than implied away.** This catches *storing*, not *releasing early*: an entry
  * point that invokes its raw handler inline stores nothing and passes here — that shape is prevented by
- * `OsReceipt`'s type, not by this gate, and only where a receipt is used at all. Not matched either: a
+ * `OsCompletions`' type, not by this gate, and only where it is used at all. Not matched either: a
  * handler held in a collection or a property delegate, one behind a `typealias`, and any shape that is not
  * a nullary `Unit`-returning function (a handler taking an argument, e.g. the silent-push fetch handler's
  * `(UIBackgroundFetchResult) -> Void`, would need the rule widened). It reads raw source text, so it also
  * matches the shape inside a **comment**: prose must describe the declaration rather than quote it (this
  * caught the very KDoc written to explain the field's removal). That is the same trade
  * [MainLaneContainmentTest] makes, and it errs toward noticing. `val` is deliberately outside the
- * rule: `OsReceipt`'s own `release` parameter is an immutable nullary-`Unit` function, and an immutable
+ * rule: `OsCompletions.Handover`'s own `handler` parameter is an immutable nullary-`Unit` function, and an immutable
  * parameter can be neither overwritten nor left unbounded. **If one of these bites, widen the rule** — do
  * not add an exception, which is the hand-maintained list this design exists to avoid.
  */
@@ -131,7 +131,7 @@ class OsHandlerContainmentTest {
             "var completion: () -> Unit = {}",
         )
         val mustNotMatch = listOf(
-            "private val release: () -> Unit,", // OsReceipt's own parameter — immutable, and legal
+            "private val handler: () -> Unit,", // OsCompletions.Handover's own parameter — immutable, and legal
             "private val onTerminal: () -> Unit,",
             "var onStaged: (suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit)? = null",
         )
@@ -162,6 +162,6 @@ class OsHandlerContainmentTest {
     }
 
     private companion object {
-        const val OWNER = "/domain/ports/src/commonMain/kotlin/app/snapsync/ports/BackgroundEventsReceipts.kt"
+        const val OWNER = "/domain/ports/src/commonMain/kotlin/app/snapsync/ports/OsCompletions.kt"
     }
 }

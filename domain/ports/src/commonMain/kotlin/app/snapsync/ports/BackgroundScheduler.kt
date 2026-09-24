@@ -1,13 +1,13 @@
 package app.snapsync.ports
 
 /**
- * Re-arm scheduling for the app-driven (iOS 18–26.0) upload tier — a platform-free seam so the
- * [BackgroundUploadPump]'s re-arm logic is JVM/simulator-testable against a fake.
+ * Re-arm scheduling for the app-driven upload tier — a platform-free seam so the tail runner's re-arm
+ * logic is JVM/simulator-testable against a fake.
  *
- * On the iOS ≥26.1 PhotoKit tier the OS owns re-invocation (`process()` is scheduled by the system),
- * so there is no scheduler. On <26.1 the app is the scheduler: after a cycle leaves work outstanding
- * (or on every `BGProcessingTask` handler, as the new-photo heartbeat), the pump asks this seam to
- * ensure the next background wake exists. The iOS implementation (`IosBackgroundScheduler`, in
+ * On the iOS ≥26.1 PhotoKit tier the OS owns re-invocation (`process()` is scheduled by the system).
+ * The app's own uploader has no such scheduler: after a tail leaves work outstanding (or after every
+ * `BGProcessingTask` handler, as the new-photo heartbeat), the tail runner asks this seam to ensure
+ * the next background wake exists. The iOS implementation (`IosBackgroundScheduler`, in
  * `:adapter:ios:app-only`) backs it with `BGTaskScheduler`; the genuinely OS-bound wiring
  * (registration, the `URLSession` delegate, `handleEventsForBackgroundURLSession`) stays in the thin
  * Swift shell.
