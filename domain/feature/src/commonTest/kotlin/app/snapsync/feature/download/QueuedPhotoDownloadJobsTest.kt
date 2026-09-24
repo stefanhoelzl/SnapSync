@@ -152,10 +152,10 @@ class QueuedPhotoDownloadJobsTest {
             val description = h.transport.started.single().description
 
             val registrations = List(REGISTRATIONS) { launch(Dispatchers.Default) { h.transport.stage(description) } }
-            val drains = launch(Dispatchers.Default) { repeat(50) { h.jobs.awaitOutstandingImports() } }
+            val drains = launch(Dispatchers.Default) { repeat(50) { h.jobs.awaitOutstandingStagings() } }
             registrations.joinAll()
             drains.join()
-            h.jobs.awaitOutstandingImports()
+            h.jobs.awaitOutstandingStagings()
 
             assertEquals(REGISTRATIONS, finished.value, "every announced import is awaited before the drain returns")
             threads.cancel()
@@ -463,21 +463,21 @@ class QueuedPhotoDownloadJobsTest {
     }
 
     /**
-     * The change's central behaviour (capability `photo-download`): the OS's background-events handler
-     * reports on the IMPORTS the session's events caused, not on the events themselves. Releasing it
-     * when the session drained — which is what this did — announced work that had only been queued, and
-     * iOS suspended the process on the strength of it. Field evidence (SNAPSYNC-6, 2026-08-01): five
-     * resources staged at 09:02:07, four imported, the fifth still un-imported when the process died.
+     * The OS's background-events handler reports on the wake's own work — the STAGINGS the session's events caused
+     * — not on the events themselves (capability `photo-download`, "The download session's OS handler is released
+     * after staging"). Releasing it when the session drained announced work that had only been queued, and iOS
+     * suspended the process on the strength of it (SNAPSYNC-6). Nor is it held for the imports any more: those are
+     * the process tail's, run after the release under the app's own background time (`changes/own-work-per-wake`).
      */
     @Test
-    fun the_os_handler_is_released_only_after_the_imports_its_events_caused() = runTest {
+    fun the_os_handler_is_released_only_after_the_stagings_its_events_caused() = runTest {
         val h = Harness(this)
         var released = false
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val importsStarted = mutableListOf<String>()
         h.deliver = { _, key, _ ->
             importsStarted += key
-            gate.await() // a slow import, exactly like a real PhotoKit commit
+            gate.await() // a slow staging record — the store write the delivery callback makes
         }
         h.jobs.adoptBackgroundEvents { released = true }
 
@@ -498,31 +498,30 @@ class QueuedPhotoDownloadJobsTest {
     }
 
     /**
-     * The other half of the same guarantee, and the one this side never had: awaiting the imports is
-     * correct, awaiting them **unboundedly** is not. An import that never reports used to leave the
-     * handler unanswered for the process's life, and an unanswered handler costs the app the very
-     * download wakes this capability runs on (capability `ios-app-shell`).
+     * The other half of the same guarantee: awaiting the stagings is correct, awaiting them **unboundedly** is not —
+     * an unanswered handler costs the app the very download wakes this capability runs on (capability
+     * `ios-app-shell`). No clock of ours bounds it: the operating system's expiry does, through the handover the
+     * wake's owner was given, and it releases at once without cancelling the work.
      */
     @Test
-    fun a_stalled_import_does_not_strand_the_os_handler() = runTest {
-        // `backgroundScope`, because this test deliberately parks an import that never reports: the
-        // deadline must release the handler and leave that import running, so it is still alive when the
-        // test body ends and must not be something runTest waits on.
+    fun a_stalled_staging_does_not_strand_the_os_handler_past_the_operating_systems_expiry() = runTest {
+        // `backgroundScope`, because this test deliberately parks a staging that never finishes: the expiry must
+        // release the handler and leave that work running, so it is still alive when the test body ends.
         val h = Harness(backgroundScope)
         var released = false
-        val neverImports = kotlinx.coroutines.CompletableDeferred<Unit>()
-        var importFinished = false
-        h.deliver = { _, _, _ -> neverImports.await(); importFinished = true }
-        h.jobs.adoptBackgroundEvents { released = true }
+        val neverStages = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var stagingFinished = false
+        h.deliver = { _, _, _ -> neverStages.await(); stagingFinished = true }
+        val handover = h.jobs.adoptBackgroundEvents { released = true }
 
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
         h.transport.eventsFinished()
-        runCurrent()
-        assertFalse(released, "released before its deadline")
+        advanceTimeBy(3_600.seconds)
+        assertFalse(released, "no clock of ours releases it")
 
-        advanceTimeBy(21.seconds)
-        assertTrue(released, "a stalled import must not hold the OS handler forever")
-        assertFalse(importFinished, "the deadline must release the handler, never cancel the import")
+        handover.releaseOnExpiry("test expiry")
+        assertTrue(released, "the operating system's expiry releases it at once")
+        assertFalse(stagingFinished, "and never cancels or awaits the work")
     }
 
     @Test

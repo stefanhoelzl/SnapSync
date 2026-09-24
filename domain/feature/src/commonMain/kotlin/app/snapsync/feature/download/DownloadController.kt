@@ -102,7 +102,7 @@ class DownloadController(
      * this wake's work finished?" — and that one broke: membership begins at the CLAIM, so work that had
      * been launched but not yet claimed was invisible to it, and a wake could report itself finished with
      * imports pending. That question is not about any ref, so no superset argument covers it. It is
-     * answered elsewhere and already: every trigger AWAITS its drain, and `OsReceipt` bounds the handler
+     * answered elsewhere and already: the tail AWAITS its drain, and the wake holds its background time until then
      * (capability `ios-app-shell`). This field is private so that answer cannot be sought here.
      *
      * **No clock, anywhere.** A claim ends because the library reported, or because the process did. The
@@ -128,8 +128,14 @@ class DownloadController(
     private val importing = mutableSetOf<AssetRef>()
 
     /**
-     * Discover + plan + enqueue + import, idempotently. Safe to call on join and on every foreground:
-     * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
+     * Discover + plan + enqueue, idempotently. Safe to call on join and on every foreground: already-imported and
+     * already-planned assets are no-ops, and only not-yet-staged resources enqueue.
+     *
+     * **It imports nothing** (capability `photo-download`, "A failed union fetch still drains the staged imports"):
+     * the import drain is the process tail's first unit ([importReady]), which every caller's wake requests after
+     * its own work — whatever the union answered. A reconcile that drained would be a second import path beside the
+     * tail's, running concurrently with it at foreground, which the single-flight tail exists to rule out (decision
+     * record `changes/own-work-per-wake`, D1).
      */
     suspend fun reconcile(eventId: String) = log.invocation(logScope, "reconcile", params = "eventId=$eventId") {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
@@ -139,15 +145,11 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
-        // A failed union fetch costs us this wake's DISCOVERY, not this wake's WORK. The import drain
-        // below reads only the store and the staged bytes already on disk — no network — so returning
-        // here would strand assets that are ready to import for no reason. That was harmless while a
-        // failing fetch took minutes (the wake was over regardless); once the client carries an explicit
-        // request timeout (capability `ios-app-shell`) a failure arrives in seconds with most of the
-        // wake budget unspent, and skipping the drain wastes it.
+        // A failed union fetch costs this wake its DISCOVERY, not its imports: the tail that follows the wake's own
+        // work drains what is staged whatever the union answered, because the drain reads only the store and the
+        // bytes already on disk.
         val assets = union.union(eventId).getOrElse {
-            log.w(it) { "union fetch failed — keeping last state, draining staged imports anyway" }
-            drainImportable()
+            log.w(it) { "union fetch failed — keeping last state; the tail still imports what is staged" }
             return@invocation
         }
         mutex.withLock {
@@ -181,24 +183,39 @@ class DownloadController(
             jobs.enqueue(pending)
             if (pending.isNotEmpty()) store.markAllEnqueued(pending)
         }
-        // OUTSIDE the lock: the drain takes it per decision and releases it across each platform call.
-        drainImportable()
     }
 
     /**
      * A resource's bytes finished downloading and were moved to durable staging (called by the
-     * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it and
-     * imports the asset if its set is now complete.
+     * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it staged — and that is
+     * all: staging is a download wake's own work, and the import it makes possible is the tail's first unit, which
+     * the composition requests once the staging is recorded (capability `photo-download`, "Import without foreground;
+     * staged by the wake, imported by the tail").
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
         log.invocation(logScope, "onResourceStaged", params = "key=$resourceKey") {
             mutex.withLock { store.markStaged(ref, resourceKey, stagedPath) }
-            drainImportable()
         }
 
-    /** Import every asset whose resources are all staged and that is not yet imported. */
-    suspend fun importReady() = log.invocation(logScope, "importReady") {
-        drainImportable()
+    /**
+     * Import every asset whose resources are all staged and that is not yet imported — the process tail's unit ①,
+     * and the only import drain any wake runs.
+     *
+     * [stopRequested] is the operating system's "time is up", forwarded (capability `ios-app-shell`, "Expiry stops
+     * work cooperatively at the next boundary"): checked before each import is claimed, so the import in flight runs
+     * to its report and no further one starts. Claim semantics are unchanged by a stop — an import that never reports
+     * keeps its claim — and every import left unstarted is a safe retry off its staged bytes.
+     *
+     * [awaitImport] runs one import and decides how long to wait for it. Inline by default. The tail passes one that
+     * gives the wait up — leaving the import claimed and running — when its time is up or another request is due, so a
+     * transaction that never reports holds no one hostage ("A stalled import blocks no other work"); the drain then
+     * moves on to the next importable asset, which the claim keeps from being the stalled one.
+     */
+    suspend fun importReady(
+        stopRequested: () -> Boolean = { false },
+        awaitImport: suspend (import: suspend () -> Unit) -> Unit = { it() },
+    ) = log.invocation(logScope, "importReady") {
+        drainImportable(stopRequested, awaitImport)
     }
 
     /**
@@ -387,7 +404,10 @@ class DownloadController(
      * stop-the-drain rule, which existed only to avoid abandoning one transaction per remaining asset —
      * and nothing is abandoned any more.
      */
-    private suspend fun drainImportable() {
+    private suspend fun drainImportable(
+        stopRequested: () -> Boolean = { false },
+        awaitImport: suspend (import: suspend () -> Unit) -> Unit = { it() },
+    ) {
         // Attempted-in-this-pass, so a ref is offered at most ONCE per drain. Without it this loop
         // live-locks: a `Failed` import leaves its row importable **and** releases its claim, so the next
         // iteration selects the same ref and fails again, forever — spinning on any permanently bad
@@ -395,9 +415,14 @@ class DownloadController(
         // because it iterated a fixed list; the per-ref form has to say so explicitly.
         val attempted = mutableSetOf<AssetRef>()
         while (true) {
+            // Between two imports, never inside one: the operating system's time is up, so nothing new starts.
+            if (stopRequested()) {
+                log.i { "import drain stopped — the operating system's time is up; the rest stays staged" }
+                return
+            }
             val claimed = mutex.withLock { claimNextImportableLocked(attempted) } ?: return
             attempted += claimed.ref
-            importOne(claimed)
+            awaitImport { importOne(claimed) }
         }
     }
 
@@ -542,7 +567,7 @@ class DownloadController(
      * to a membership, so it is reclaimed while unjoined and under an upload-only one too. That call is
      * what makes it a reclaim rather than a capability; it shipped without one, and every install that
      * predates per-asset release kept its orphaned files. See the trigger's own note for why foreground
-     * and not the download backstop.
+     * and not a background task.
      */
     suspend fun releaseSettledBytes() = log.invocation(logScope, "releaseSettledBytes") {
         val paths = runCatchingCancellable { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
