@@ -45,6 +45,7 @@ Roots found:
 | `IosLinkOpener` | x | |
 | `IosPhotoLibraryImporter` | x | |
 | `IosProtectedStorage` | x | |
+| `IosPushRegistrationRecord` | x | |
 | `IosShareSheet` | x | |
 | `IosStagedBytes` | x | |
 | `KeychainAttestStore` | x | x |
@@ -58,6 +59,7 @@ Roots found:
 | `PlatformHandoff` | x | |
 | `ProcessMetricHandler` | x | |
 | `PublicNSLogWriter` | x | x |
+| `PushPorts` | x | |
 | `PushTokenSource` | x | |
 | `SentryDiagnosticsReporter` | x | x |
 | `UploadPorts` | | x |

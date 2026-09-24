@@ -9,8 +9,9 @@ import BackgroundTasks
 // SwiftShellGuardTest holds that at zero. The hooks:
 //   1. `didFinishLaunchingWithOptions` — registers the two BGTask handlers (Apple requires
 //      registration before launch finishes; the identifiers MUST be in Info.plist
-//      BGTaskSchedulerPermittedIdentifiers), asks for an APNs token, and calls SnapSyncRoot.onLaunch,
-//      which installs the Kotlin-side NSNotificationCenter lifecycle observers
+//      BGTaskSchedulerPermittedIdentifiers), and calls SnapSyncRoot.onLaunch, which asks for an APNs
+//      token (at every cold start, and again at every foreground entry from its didBecomeActive observer —
+//      capability `push-registration`) and installs the Kotlin-side NSNotificationCenter lifecycle observers
 //      (didBecomeActive/willResignActive — the scenePhase `if` that used to live in the App body is
 //      a decision, so it moved to Kotlin with the OS notifications as its input).
 //   2. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
@@ -23,9 +24,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // APNs token → delivered async to the callbacks below; silent pushes need no user prompt.
-        application.registerForRemoteNotifications()
-
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.snapsync.download.backstop",
             using: nil
@@ -50,7 +48,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             }
         }
         // Kotlin observes the foreground/background lifecycle itself (NSNotificationCenter); this
-        // call installs those observers before the scene ever becomes active.
+        // call installs those observers before the scene ever becomes active, and asks for the APNs token
+        // (delivered async to the callbacks below; silent pushes need no user prompt).
         SnapSyncRoot.shared.onLaunch()
         return true
     }

@@ -9,6 +9,8 @@ import app.snapsync.contracts.DeviceLogSourceState
 import app.snapsync.contracts.DeviceManifestStoreContract
 import app.snapsync.contracts.DeviceManifestStoreState
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.PushRegistrationRecordContract
+import app.snapsync.contracts.PushRegistrationRecordState
 import app.snapsync.contracts.StagedBytesContract
 import app.snapsync.contracts.StagedBytesState
 import app.snapsync.contracts.currentHost
@@ -16,6 +18,7 @@ import app.snapsync.contracts.verify
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.StagedBytes
 import kotlin.test.Test
 
@@ -37,6 +40,20 @@ class AppGroupStoreContractBindingsTest {
                 DeviceManifestStoreState.EMPTY -> Entered.Ready(InMemoryDeviceManifestStore())
                 DeviceManifestStoreState.HOLDING ->
                     Entered.Ready(InMemoryDeviceManifestStore(DeviceManifestStoreContract.seedJson(clauseId)))
+            }
+    }
+
+    private val pushRecord = object : Binding<PushRegistrationRecordState, PushRegistrationRecord> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val reaches = setOf(PushRegistrationRecordState.EMPTY, PushRegistrationRecordState.HOLDING)
+
+        override fun create(state: PushRegistrationRecordState, clauseId: String): Entered<PushRegistrationRecord> =
+            when (state) {
+                PushRegistrationRecordState.UNAVAILABLE -> Entered.Unreachable("an in-memory record is always reachable")
+                PushRegistrationRecordState.EMPTY -> Entered.Ready(InMemoryPushRegistrationRecord())
+                PushRegistrationRecordState.HOLDING ->
+                    Entered.Ready(InMemoryPushRegistrationRecord(PushRegistrationRecordContract.seed(clauseId)))
             }
     }
 
@@ -88,6 +105,10 @@ class AppGroupStoreContractBindingsTest {
     @Test
     fun `the in-memory manifest record satisfies the DeviceManifestStore contract`() =
         verify(DeviceManifestStoreContract, manifest)
+
+    @Test
+    fun `the in-memory push registration record satisfies the PushRegistrationRecord contract`() =
+        verify(PushRegistrationRecordContract, pushRecord)
 
     @Test
     fun `the in-memory staged bytes satisfy the StagedBytes contract`() = verify(StagedBytesContract, staged)

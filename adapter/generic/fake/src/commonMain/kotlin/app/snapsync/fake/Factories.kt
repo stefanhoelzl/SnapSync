@@ -22,6 +22,7 @@ import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.ProtectedStorage
+import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
@@ -85,6 +86,8 @@ fun inMemoryConfigReader(
 ): ConfigReader = InMemoryConfigStore(persisted, readable)
 
 fun inMemoryDeviceManifestStore(): DeviceManifestStore = InMemoryDeviceManifestStore()
+
+fun inMemoryPushRegistrationRecord(): PushRegistrationRecord = InMemoryPushRegistrationRecord()
 
 fun inMemoryAlbumMapStore(initial: Map<String, String> = emptyMap()): AlbumMapStore =
     InMemoryAlbumMapStore(initial)

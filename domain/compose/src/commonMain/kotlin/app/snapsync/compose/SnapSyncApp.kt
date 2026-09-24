@@ -1,7 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
@@ -65,7 +64,6 @@ import app.snapsync.model.UserQueries
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ConfigRefresh
-import app.snapsync.ports.PushTokenSource
 import app.snapsync.ports.Clock
 import app.snapsync.ports.TimeZoneSource
 import app.snapsync.ports.AlbumManager
@@ -104,6 +102,8 @@ import app.snapsync.ports.ProtectedStorage
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filterNotNull
@@ -249,12 +249,8 @@ class AppPorts(
      *  builds from this port — they may not name a port at all (law "flow/ never references ports/"). */
     val leaveNotifier: LeaveNotifier,
     val onEventMinted: suspend (eventId: String) -> Unit,
-    /** The push-registration write (capability `push-registration`): the PUT of this device's APNs token.
-     *  A port, from which `compose/` builds `PushRegistration` — the registration used to be built by the
-     *  shell and re-entered through a `registerPush` lambda the world bound to a counter instead. */
-    val pushTokenPublisher: PushTokenPublisher,
-    /** The OS-delivered APNs token and its environment (capability `push-registration`). */
-    val pushTokens: PushTokenSource,
+    /** The push registration's ports (capability `push-registration`) — see [PushPorts]. */
+    val push: PushPorts,
     /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
      *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
     val diagnosticsReporter: DiagnosticsReporter,
@@ -1147,8 +1143,16 @@ class AppCore internal constructor(
 
     /**
      * Start registering the device's APNs token, and keep the registration alive across a credential
-     * change (capability `push-registration`). Invoked from the shell's host-assembly path, beside
-     * [installPermissionSubscriptions].
+     * change (capability `push-registration`). Installed on **every cold start** — a foreground launch and a
+     * background wake alike (a silent push, a background-`URLSession` relaunch, the upload heartbeat) — by the
+     * shared host composition as it composes the graph (capability `ios-app-shell`, "Push registration is started
+     * by the shared composition"). Unlike [installPermissionSubscriptions], which a cold background wake must not
+     * install, this one is needed there: a rotated APNs token or a renewed credential learned in a background wake
+     * is published from that wake, never deferred to the next foreground. It is cheap there because the
+     * registration publishes only on a changed (`token`, `env`, `deviceId`) triple, a join, or a fresh credential.
+     *
+     * **Idempotent: once per process.** Any second call — a host assembly after a background start, or any other
+     * path — installs nothing, so a delivered token is published at most once.
      *
      * **ATTEST FIRST.** `PUT /devices/<id>` is gated, and on a fresh install the APNs token can arrive
      * before this device has attested at all — measured on the SE2, where that `PUT` took a `401`.
@@ -1156,10 +1160,10 @@ class AppCore internal constructor(
      *
      * **THE `tokenChanged` ARM IS THE POINT, and it is a JOIN BETWEEN TWO BLIND FEATURES** — trust emits
      * that a new credential exists, push consumes it. Neither knows the other, and the join is the whole
-     * recovery path for a registration the backend refused: the device writes its registration once per
-     * APNs token the OS delivers, so without this a refused `PUT` waits for the next launch to be retried
-     * — no silent pushes, no download wakes, and none of the wake-driven attestation renewals that
-     * depend on them until then.
+     * recovery path for a registration the backend refused: the device publishes a delivered token only when it
+     * differs from the last registration the backend accepted, so without this a refused `PUT` waits for the next
+     * app entry — and a device that receives no silent pushes gets few of them, and none of the wake-driven
+     * attestation renewals that depend on them.
      *
      * That is why it lives HERE rather than in the shell. A join is behaviour, not wiring; assembled in
      * `:app:*` it is untested by law and invisible to the world harness, so nothing would observe it being
@@ -1168,12 +1172,18 @@ class AppCore internal constructor(
      * The registration is composed here over the push ports (see [pushRegistrationFor]); the token source is
      * the shell's, delivered by the OS.
      */
+    @OptIn(ExperimentalAtomicApi::class)
     fun installPushRegistration() {
+        if (!pushRegistrationInstalled.compareAndSet(expectedValue = false, newValue = true)) return
         scope.launch {
             runCatchingCancellable { attestation.ensureFresh() }
-            pushRegistration.run(ports.pushTokens, attestation.tokenChanged)
+            pushRegistration.run(ports.push.tokens, attestation.tokenChanged)
         }
     }
+
+    /** Whether [installPushRegistration] has installed its collector in this process. */
+    @OptIn(ExperimentalAtomicApi::class)
+    private val pushRegistrationInstalled = AtomicBoolean(false)
 
     /** The device's push registration (capability `push-registration`) — see [pushRegistrationFor]. */
     val pushRegistration: PushRegistration by lazy { pushRegistrationFor(ports) }

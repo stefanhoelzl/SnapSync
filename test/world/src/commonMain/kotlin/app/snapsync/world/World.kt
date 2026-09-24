@@ -9,6 +9,7 @@ import app.snapsync.compose.UploaderProcess
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.PushPorts
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
 import app.snapsync.composition.ComposedApp
@@ -30,6 +31,7 @@ import app.snapsync.fake.inMemoryAttestKey
 import app.snapsync.fake.inMemoryAttestStore
 import app.snapsync.fake.inMemoryDeviceLogSource
 import app.snapsync.fake.inMemoryDeviceManifestStore
+import app.snapsync.fake.inMemoryPushRegistrationRecord
 import app.snapsync.fake.inMemoryDiagnosticsReporter
 import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
@@ -94,6 +96,7 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.StagedBytes
@@ -291,6 +294,9 @@ class World(
     /** The OS-delivered APNs token, as the world's shell delivers it (none until a test delivers one). */
     val pushTokens: PushTokenSource = PushTokenSource("sandbox")
     val manifestStore: DeviceManifestStore = inMemoryDeviceManifestStore()
+
+    /** The last push registration the backend accepted — an App-Group file on a device, so durable across [relaunch]. */
+    private val pushRegistrationRecord: PushRegistrationRecord = inMemoryPushRegistrationRecord()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
 
     /** Whether the composition started reporting — the `DiagnosticsReporter.start()` observation. */
@@ -536,8 +542,9 @@ class World(
     /**
      * The core AND the status host over it, from the shared host composition the iOS shell calls (spec
      * `module-architecture`, "One shared composition"). The host is assembled on first touch of [statusHost], which
-     * installs the permission and push-registration subscriptions, exactly as on the phone; a world whose
-     * [statusHost] is never touched installs neither (the desktop harness, whose operator plays the OS).
+     * installs the permission-grant subscriptions, exactly as on the phone; a world whose [statusHost] is never
+     * touched installs none (the desktop harness, whose operator plays the OS, and every background cold start).
+     * The push registration is installed as this is composed, on every launch, as on the phone.
      * Replaced by [relaunch], which is the only thing that replaces it.
      */
     var composed: ComposedApp = snapSyncHost(appScope, appPorts())
@@ -622,10 +629,13 @@ class World(
         // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
         // world runs the REAL Provision flow now — including this re-registration — rather than a
         // world-local provision body (capability `harness-world-model`).
-        pushTokenPublisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
-            PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
-        },
-        pushTokens = pushTokens,
+        push = PushPorts(
+            publisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
+                PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
+            },
+            tokens = pushTokens,
+            record = pushRegistrationRecord,
+        ),
         onEventMinted = { eventId -> onEventMinted(eventId) },
         log = logs.logger("World"),
     )
@@ -638,8 +648,8 @@ class World(
      * one, through the same shared host composition, over the same ports.
      *
      * What survives is exactly what survives on a device, and this is the one place that says so:
-     * - **durable**: the ledger and the download store (App-Group databases); the membership and the manifest
-     *   record (App-Group files); the attestation record (Keychain); the staged files (App-Group directory); the
+     * - **durable**: the ledger and the download store (App-Group databases); the membership, the manifest
+     *   record and the last-registered push record (App-Group files); the attestation record (Keychain); the staged files (App-Group directory); the
      *   photo library, its albums and the album map; the backend; the operating system's upload jobs and its
      *   download session; the permission grant; the push token the OS re-delivers at every launch; the reporter's
      *   received dumps and the log;
@@ -647,8 +657,9 @@ class World(
      *   sources' last reads, the create and rename latches, the cycle), the status host, and the download
      *   transport this process had realized.
      *
-     * The new app installs nothing until its host is touched, as a background relaunch installs nothing until
-     * a scene connects.
+     * The new app installs nothing but its push registration until its host is touched, as a background relaunch
+     * installs nothing else until a scene connects; that registration sees the token the OS re-delivers and
+     * publishes it only if it differs from the last one the backend accepted.
      */
     fun relaunch() {
         appJob.cancel()

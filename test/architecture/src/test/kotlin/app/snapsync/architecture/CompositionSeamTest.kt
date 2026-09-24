@@ -59,6 +59,7 @@ class CompositionSeamTest {
         "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
         "UploadPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadCore.kt",
         "UploadRecordPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/UploadRecordPorts.kt",
+        "PushPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/PushComposition.kt",
     )
 
     /**
@@ -129,6 +130,8 @@ class CompositionSeamTest {
         // a bundle whose inventory is empty must still be listed or the set-of-bundles check below cannot
         // tell "no seams" from "not scanned".
         "UploadRecordPorts" to emptyMap(),
+        // Empty for the same reason: the push registration's three ports, grouped as one need.
+        "PushPorts" to emptyMap(),
     )
 
     /**
@@ -416,7 +419,7 @@ class CompositionSeamTest {
      */
     @Test
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
-        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 2) // the join marker left it
+        val floors = mapOf("AppPorts" to 30, "UploadPorts" to 10, "UploadRecordPorts" to 2, "PushPorts" to 3) // the join marker left it
         floors.forEach { (bundle, floor) ->
             assertTrue(
                 params(bundle).size >= floor,
