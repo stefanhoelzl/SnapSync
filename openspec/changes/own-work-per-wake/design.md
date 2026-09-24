@@ -258,8 +258,11 @@ Rollback = revert; the store schema is unchanged.
 
 ## Open Questions
 
-- PhotoKit's behaviour on a change request against a deleted collection (gates D10).
-- Whether an external (Camera/iCloud) change always moves `currentChangeToken` (verifies D9).
-- Whether `beginBackgroundTask`'s expiry fires in the simulator's relaunch setting (the simulator's upload-session
-  wake never gets a drain report; with no deadline, its handler is released on that expiry).
+- ~~PhotoKit's behaviour on a change request against a deleted collection~~ — measured (sim 26.5, n=6): request non-nil,
+  commit succeeds, asset created, file consumed, album add silently dropped; D10's cache is safe. Device check pending.
+- Whether an external (Camera/iCloud) change always moves `currentChangeToken` (verifies D9) — simulator: 15/15
+  external changes (add, favourite, delete; app foreground or suspended) moved it, and it held across relaunches;
+  a device Camera capture and iCloud remain.
+- ~~Whether `beginBackgroundTask`'s expiry fires in the simulator's relaunch setting~~ — measured: yes, 27.4–28.5 s
+  after entering the background, never in the foreground (sim 26.5, n=5).
 - The XS/iOS 18 darwinbg ratio (field 10–25× vs SE2 ~9×) — informational.

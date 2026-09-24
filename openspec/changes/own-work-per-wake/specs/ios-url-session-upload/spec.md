@@ -695,8 +695,10 @@ Because a default session never sends `URLSessionDidFinishEventsForBackgroundURL
 `handleEventsForBackgroundURLSession` wake on that target never sees the signal its handler is released on:
 the core holds that handler until the background time it began at the handover expires, and releases it then
 (capability `ios-app-shell`, "OS completion handlers are released only after their work completes";
-`architecture-guards`, "OS completion handlers are held in one type") — there is no deadline of the app's own to expire, and whether that expiry fires in the simulator's relaunch setting is
-unmeasured (decision record `changes/own-work-per-wake`, Open Questions). That outcome SHALL be **predicted rather than diagnosed**: the process
+`architecture-guards`, "OS completion handlers are held in one type") — there is no deadline of the app's own to expire. Measured on the iOS 26.5 simulator (n=5, 2026-09-27): that
+expiry fires **27.4–28.5 s after the app enters the background**, never while it is in the foreground (held up to
+302 s), and the handler is released on it exactly once — so the simulator's wake is bounded by Apple's background
+time, not held forever (decision record `changes/own-work-per-wake`). That outcome SHALL be **predicted rather than diagnosed**: the process
 SHALL state its binding and this consequence when the session is constructed, so the expiry line is not read
 as a fault. Nothing SHALL synthesise the drain — a transport that reported events drained without the OS having
 delivered any would make a simulator run indistinguishable from a device one, which is exactly the false
