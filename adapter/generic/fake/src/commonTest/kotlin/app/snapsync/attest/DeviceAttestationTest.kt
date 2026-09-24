@@ -475,9 +475,10 @@ class DeviceAttestationTest {
 
     @Test
     fun `obtaining a token announces it - so a refused registration can be re-sent`() = runTest {
-        // The APNs registration PUT is gated and is sent ONCE per OS-delivered token. If it was refused
-        // because this device had not attested yet, only a new credential can prompt a retry — so a mint
-        // and a renew must both announce themselves, or the device stays permanently unregistered.
+        // The APNs registration PUT is gated, and is sent only when the token differs from the last
+        // registration the backend accepted. If it was refused because this device had not attested yet, a new
+        // credential is what re-sends it at once — so a mint and a renew must both announce themselves, or the
+        // device waits unregistered for its next app entry.
         val minted = attestation()
         val mints = mutableListOf<Unit>()
         backgroundScope.launch { minted.first.tokenChanged.toList(mints) }
