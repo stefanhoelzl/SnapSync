@@ -44,8 +44,6 @@ it can spend.
   1.3–2.0 s darwinbg walk); still authoritative for deletion. It ships in **shadow** (walks every time, logs a
   would-be-wrong answer at Error) until a device check shows an external change always moves the token. The upload
   extension (32 MB memory limit) keeps a fresh walk.
-- **Event-album collection cache** in the importer, invalidated by the library change observer (never by a
-  failed commit), gated on a device check of PhotoKit's behaviour on a deleted collection.
 - **Ledger counts** refresh after tail units only while foregrounded.
 - **The limited-grant snapshot source closes its grant-flip gap:** a selection change queued before the grant
   becomes full is no longer emitted after it (pre-existing; the baseline path already checked this).
@@ -74,7 +72,7 @@ _None._
 - `module-architecture`: the inbound port carries the OS's expiry signals; a `beginBackgroundTask`-shaped outbound
   port; dispatcher lanes name the PhotoKit read lane and its pinned QoS (stage-1 sync).
 - `photo-download`: import-without-foreground no longer has a backstop; the relaunch wake releases after staging
-  and imports under a background task; planning wording (stage-1 sync); album-collection cache.
+  and imports under a background task; planning wording (stage-1 sync).
 - `ios-url-session-upload`: the pump is replaced by the tail runner; completions trigger top-up only; relaunch and
   heartbeat engines re-expressed as own work + tail; row resolve wording (stage-1 sync).
 - `upload-lifecycle`: how triggers reach the uploader under the tail runner.
@@ -103,7 +101,7 @@ _None._
 - Code: `domain/compose/AppEntries.kt` + `ExtensionCore.kt` (entry logic), `domain/ports/PlatformEntries.kt` +
   `OsReceipt.kt` (deleted/replaced), `BackgroundUploadPump` (replaced by the tail runner), `flow/` (SilentPush,
   DownloadBackstop removed, Background), `DownloadController`, `UploadCycle`, `IosDiscovery`/candidate source
-  (memo), `IosPhotoLibraryImporter` (album cache), push registration, the Swift shell's BGTask registration (one
+  (memo), push registration, the Swift shell's BGTask registration (one
   task identifier removed; expiration forwarded), `Info.plist` `BGTaskSchedulerPermittedIdentifiers`.
 - Contracts: `PlatformEntriesContract` (backstop clauses removed, expiry clauses added),
   `BackgroundSchedulerContract` (backstop), new clauses for the background-time port and the change-token read.

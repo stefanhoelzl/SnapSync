@@ -29,7 +29,7 @@
 - [x] 4.2 A failed union fetch still gets ① (the tail runs regardless of own work's outcome)
 - [x] 4.3 Remove the download backstop: `flow/DownloadBackstop`, `scheduleBackstop` / its `BackgroundScheduler` use, the Swift BGTask registration, the identifier in `BGTaskSchedulerPermittedIdentifiers` (same build), `Background` flow's arming, `BackgroundSchedulerContract`/`PlatformEntriesContract` backstop clauses, and its tests
 - [x] 4.4 Device check (gate for 4.5): what PhotoKit does with a change request against a deleted `PHAssetCollection` (commit fails? resources consumed?) — record the result in the photo-download spec
-- [ ] 4.5 If 4.4 allows: cache the event-album collection in the importer, invalidated only by the library change observer (never by a failed commit); otherwise keep the per-import fetch and note why
+- [x] 4.5 Not built (user decision): the deleted-collection measurement showed a cache would be safe, but the per-import lookup keeps its immediate warning for a ~4–8 ms/import cost — design D10 records the measurement and the decision
 
 ## 5. Uploads
 
@@ -50,7 +50,7 @@
 - [x] 7.1 Add the `currentChangeToken` read behind a port (read before the walk) with a contract clause bound to a real implementation
 - [x] 7.2 Memo in the app's discovery binding keyed on (token, selection policy, grant); store only a completed, full-grant, readable walk; answer identical to a fresh walk; never in the extension
 - [x] 7.3 Tests: unchanged token reuses; changed token/predicate/grant walks; a limited or unreadable result is never memoised
-- [ ] 7.4 Device check: an external change (a Camera photo, and if possible an iCloud edit) moves the token; until recorded, the memo runs in SHADOW (walks every time, logs a would-be-stale answer at Error); flip `APP_WALK_MEMO_USE` to SERVE in the same change that records the result
+- [ ] 7.4 (simulator: 15/15 external changes moved the token; gate chosen: ONE SE2 Camera photo after the benchmark, then flip to SERVE in this change) Device check: an external change (a Camera photo, and if possible an iCloud edit) moves the token; until recorded, the memo runs in SHADOW (walks every time, logs a would-be-stale answer at Error); flip `APP_WALK_MEMO_USE` to SERVE in the same change that records the result
 
 ## 8. Status and limited grant
 
