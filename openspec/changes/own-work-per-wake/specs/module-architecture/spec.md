@@ -32,10 +32,21 @@ zone gate stays green.
 The process-wide **opportunistic tail** (capability `ios-app-shell`, "Each OS wake does its own work, then
 hands the rest to one opportunistic tail") does not weaken this law, because it is **not a flow's child**. A
 flow orders a wake's **own work**, and its entry point returns only when that own work has finished — which is
-exactly what the handler's release waits for. The hand-off to the tail SHALL be made by the inbound port's
-implementation in `compose/` **after** the flow has returned, never from inside a flow: a flow that requested
-the tail would be handing work to something that outlives it, which is the detachment this law forbids. The
-tail's lifetime is bounded by the process's background time and the operating system's expiry signal, not by
+exactly what the handler's release waits for. An OS wake's hand-off to the tail SHALL be made by the inbound
+port's implementation in `compose/` **after** the flow has returned, never from inside a flow: a flow that
+requested the tail would be handing work to something that outlives it, which is the detachment this law
+forbids. That includes the decision **whether** a wake joins the tail — a silent push's active-event guard
+(capability `push-registration`) is asked by the inbound port's implementation after the `SilentPush` flow
+returns, not by the flow, whose entry point answers nothing.
+
+One request reaches the tail from a flow's call path, and it is not the flow's: a **membership transition's
+arm** (capability `upload-lifecycle`), which a join reaches from inside the `Provision` flow, requests the tail
+**detached** through the uploader seam the composition builds. The flow neither holds the runner nor awaits the
+tail; the join's own work is complete when the flow returns, no OS handler waits on it (a join is a tap), and
+the tail the arm starts is the process's — joined, if one is running, like any other request. A `flow/` class
+SHALL NOT itself take the tail runner or a tail request as a collaborator.
+
+The tail's lifetime is bounded by the process's background time and the operating system's expiry signal, not by
 any flow's run. Decision record: `changes/own-work-per-wake` (D1, D5).
 
 #### Scenario: A flow declares a scope
@@ -68,9 +79,15 @@ any flow's run. Decision record: `changes/own-work-per-wake` (D1, D5).
 
 #### Scenario: A flow hands work to the tail
 
-- **WHEN** a `flow/` class gains a collaborator that requests the opportunistic tail
-- **THEN** the law is violated — the tail is requested by the inbound port's implementation after the
+- **WHEN** a `flow/` class gains the tail runner, or a lambda that requests the tail, as a collaborator
+- **THEN** the law is violated — an OS wake's tail is requested by the inbound port's implementation after the
   flow returns, so the flow's entry point still returns only when the work it coordinates has finished
+
+#### Scenario: A push's tail decision is taken after its flow
+
+- **WHEN** a silent push's own work has run
+- **THEN** the inbound port's implementation, not the `SilentPush` flow, asks whether the pushed event is the
+  active one and requests the tail only then
 
 #### Scenario: A flow fans out with a bare coroutineScope
 
@@ -212,7 +229,8 @@ tested zone and calls the port.
 Where the operating system offers an **expiry signal** for an entry — a `BGTask`'s `expirationHandler` — the
 inbound port SHALL carry it into the core, shaped for the need ("this background task's time is up") and keyed
 by the identifier the operating system delivered, so the core that holds the task's completion is the one that
-stops the work and releases it. The shell SHALL forward the signal and decide nothing, and SHALL NOT answer it
+stops the work and releases it — at once, without waiting for the unit in flight (capability `ios-app-shell`,
+"Expiry stops work cooperatively at the next boundary"). The shell SHALL forward the signal and decide nothing, and SHALL NOT answer it
 itself (capability `ios-app-shell`). Where the operating system offers no expiry signal on the entry itself — a
 silent push, a background-`URLSession` wake — the core SHALL obtain one through the outbound background-time port
 (see "Background time is an outbound port named for the need"), not through the inbound port. The upload
@@ -223,7 +241,9 @@ The implementation SHALL live in `compose/`, beside the shared composition it dr
 composition"), and SHALL hold what the shell once held: the entry → flow command transcription, the holding of
 each wake's OS completion handler across that wake's own work, the hand-off of the rest to the opportunistic tail,
 the forwarding of the operating system's expiry signals into the running work, the entry-point logging, and the
-routing of a background task (and its expiry) or transfer channel to its handler. That routing SHALL be a comparison against identifiers the shell supplies **as data**, so
+routing of a background task (and its expiry) or transfer channel to its handler. It also holds what the shell
+never held: the process's background time for each push, transfer and foreground wake (see "Background time is
+an outbound port named for the need"), and whether a wake's own work is followed by a tail at all. That routing SHALL be a comparison against identifiers the shell supplies **as data**, so
 no platform constant enters `model/`, `ports/` or `feature/`. What the implementation cannot name because it lives
 outside `:domain` (the presentation container, the root's token-source adapter) SHALL reach it as in-process
 hooks the root supplies when it obtains the implementation; a hook calls back into the process and never reaches
@@ -246,9 +266,9 @@ A composition root SHALL implement its process's inbound port by **Kotlin delega
 #### Scenario: A background task's expiry reaches the core
 
 - **WHEN** the operating system fires a `BGTask`'s expiration handler
-- **THEN** the shell forwards it through the inbound port with the delivered identifier, and the port's
-  implementation in `compose/` stops the running work and releases the completion it holds — the shell
-  completes nothing itself
+- **THEN** the shell forwards it through the inbound port (`onBackgroundTaskTimeUp`) with the delivered
+  identifier, and the port's implementation in `compose/` requests the running tail's stop and releases the
+  completion it holds at once — the shell completes nothing itself
 
 #### Scenario: The routing needs a platform constant
 
@@ -287,33 +307,53 @@ The app process's background time SHALL be reached through one outbound port in 
 it. Its surface SHALL be platform-free: beginning a hold takes a label for the diagnostic line and an expiry
 callback, and returns a handle whose only operation is ending that hold. It SHALL carry no duration, no
 remaining-time read and no estimate, because the operating system's signal is the only notion of "time is up" the
-app acts on (capability `ios-app-shell`, "Time is up is learned only from the operating system").
+app acts on (capability `ios-app-shell`, "Time is up is learned only from the operating system"). It SHALL be a
+required `AppPorts` field (`backgroundTime`), with no default: a composition without it would hold nothing, and no
+expiry would ever stop a tail.
+
+The expiry callback SHALL be invoked **at most once**, on a thread the port does not choose (the main thread on
+iOS), and possibly **before the begin call returns**: a process whose time is already up is refused a hold, and
+that refusal SHALL be reported as an immediate expiry rather than as an error, because it means the same thing to
+the caller. An expiry SHALL NOT end the hold by itself — the core ends it, and it does so **at once, from inside
+its expiry callback**, after requesting the tail's stop and releasing any OS handler the wake still holds (capability
+`ios-app-shell`, "Expiry stops work cooperatively at the next boundary"). Ending SHALL be idempotent: the first call
+ends the hold with the operating system and every later call does nothing, so a core that ends on more than one path
+can neither end a hold twice nor end another hold that reuses the platform's identifier. A hold that is never ended
+is, per Apple, a termination.
 
 The iOS adapter SHALL be `UIApplication.beginBackgroundTask(withName:expirationHandler:)` /
-`endBackgroundTask(_:)`, and SHALL live in `:adapter:ios:app-only`: `UIApplication` is unavailable to app
-extensions, and the upload extension has no such signal to offer (capability `ios-photokit-upload`), so this port
-SHALL NOT be linked into, bound in, or faked for the extension's composition. The adapter SHALL invoke the expiry
-callback and return promptly — the callback only requests the stop — and SHALL end the hold exactly once, whether
-the core ends it after its work or after an expiry-driven stop; a hold that is never ended is, per Apple, a
-termination. The honest in-memory double in `:adapter:generic:fake` SHALL let the world harness and tests fire the
-expiry, and the port SHALL be covered by a contract both bindings extend.
+`endBackgroundTask(_:)` — a refusal is `UIBackgroundTaskInvalid` — and SHALL live in `:adapter:ios:app-only`:
+`UIApplication` is unavailable to app extensions, and the upload extension has no such signal to offer (capability
+`ios-photokit-upload`), so this port SHALL NOT be linked into, bound in, or faked for the extension's composition.
+The honest in-memory double in `:adapter:generic:fake` SHALL let the world harness and tests fire the expiry. The
+port SHALL be covered by a contract both bindings extend, whose clauses are the ones a real host can present: a hold
+is granted while time remains, holds do not refuse each other, and ending is safe to repeat. The contract carries
+**no** expiry clause — no host lets a binding enter "time is up", and a clause only the double could reach may not
+exist (capability `port-contracts`) — so the adapter's expiry behaviour is tested over its own operating-system seam,
+and the core's reaction to an expiry over the double.
 
 Because background time is **per app**, not additive per hold, a hold taken while another is active costs no time;
-the core MAY therefore take one for each wake's tail without accounting between them.
+the core MAY therefore take one for each wake without accounting between them.
 
-Decision record: `changes/own-work-per-wake` (D3, D5).
+Decision record: `changes/own-work-per-wake` (D3, D4, D5).
 
 #### Scenario: A push wake takes background time for its tail
 
 - **WHEN** a silent push is handed over
 - **THEN** the core begins a hold through the background-time port no later than the handover, and ends it when
-  the tail it handed to has finished or has stopped on the hold's expiry
+  the tail it handed to has finished, or at once on the hold's expiry
 
 #### Scenario: The operating system says time is up
 
 - **WHEN** the operating system fires the background task's expiration handler
-- **THEN** the adapter invokes the core's expiry callback and returns, the core stops at its next boundary, and
-  the hold is ended exactly once
+- **THEN** the adapter invokes the core's expiry callback and returns; inside it the core requests the tail's
+  stop, releases the handler it guards and ends the hold — exactly once — without waiting for the unit in flight
+
+#### Scenario: A refused hold is an immediate expiry
+
+- **WHEN** the operating system refuses a background task because the app's time is already up
+- **THEN** the port reports it as an expiry before the begin call returns, and the wake that asked requests no
+  tail
 
 #### Scenario: The extension cannot reach the port
 

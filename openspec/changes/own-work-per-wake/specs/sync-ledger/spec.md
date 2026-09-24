@@ -40,11 +40,25 @@ sync — always moves it. The memo's soundness rests on that, so it SHALL be ver
 result recorded here, before the memo is relied on (a task of `changes/own-work-per-wake`). ⏰ Re-measure at
 the next iOS major.
 
+**Until that result is recorded the memo SHALL run in shadow.** In shadow every walk enumerates the library,
+exactly as without a memo; a matching entry is only **compared** with the fresh walk's answer, and a disagreement
+— the token did not move, yet the walk found other candidates or another `fullEnumeration` report — SHALL be
+logged at `Error`, which reaches crash reporting, so the field gathers the evidence the device check lacks at the
+cost of the token read. Serving SHALL be switched on by a build constant in the same change that records the
+device result here — never by a runtime or rig switch, because what it gates is a deletion authority, and a build
+either relies on the token or it does not. The token is read behind a need-named port with a contract bound to a
+real implementation; where it cannot be read, the walk runs bare and nothing is memoised.
+
 #### Scenario: An unchanged library is not enumerated again
-- **WHEN** the app process walks the library under a full grant, and walks again with the same fetch
-  predicate while the library's change token is unchanged
+- **WHEN** serving is enabled, and the app process walks the library under a full grant and walks again with
+  the same selection policy while the library's change token is unchanged
 - **THEN** the second walk is answered from the memo without enumerating the library, and returns the same
   candidates and the same `fullEnumeration` report the first did
+
+#### Scenario: In shadow a matching entry is compared, not served
+- **WHEN** the memo runs in shadow and a walk's key matches the memo entry
+- **THEN** the library is enumerated anyway, the fresh answer is returned, and an answer that differs from the
+  entry is logged at `Error`
 
 #### Scenario: A library change forces a fresh walk
 - **WHEN** the library's change token differs from the memo entry's

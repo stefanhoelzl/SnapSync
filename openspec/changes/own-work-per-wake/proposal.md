@@ -27,19 +27,23 @@ it can spend.
   Under a limited grant the tail runs ① and ② only (② reads no library), so a silent push now also tops up there.
 - **BREAKING (internal contract): `ReceiptDeadlines` are deleted.** Handlers learn "time is up" only from Apple:
   a BGTask's `expirationHandler` (forwarded into the core through the inbound port); `beginBackgroundTask`'s
-  expiration handler for the push and URLSession wakes; never `backgroundTimeRemaining`. On expiry the running
-  work stops at the next boundary (the current PhotoKit change block / ledger write completes, nothing new
-  starts), then the task ends and the handler is released — replacing "release the handler, let the work run on".
+  expiration handler for the push and URLSession wakes (and foreground, which holds one too); never
+  `backgroundTimeRemaining`. On expiry the running work stops at the next boundary (nothing new starts; the
+  current PhotoKit change block / ledger write is not cancelled and runs on until suspension, a safe retry), and
+  the task ends and the handler is released **at once**, without waiting for it — replacing "release the handler,
+  let the work run on".
 - **The OS handler is released right after the wake's own work** (push, URLSession); the tail runs under
   `beginBackgroundTask` (background time is per app, so this costs no time and gains an expiry signal). A BGTask
-  holds `setTaskCompleted` until its tail finishes or its expiration handler fires.
+  holds `setTaskCompleted` until its tail finishes or its expiration handler fires (then at once).
 - **The download backstop BGTask is removed.** Leftover staged imports are drained by any later wake's tail and
   by foreground.
 - **The discovery walk is atomic** under a stop: abandoned on expiry (its decide stage writes nothing), retried
   next wake; a partial walk is never authoritative.
-- **Walk memo (app process only):** an in-memory memo keyed on `PHPhotoLibrary.currentChangeToken` + the fetch
-  predicate + the grant reuses the last walk while the library is unchanged (measured ~2 ms vs 1.3–2.0 s darwinbg
-  walk); still authoritative for deletion. The upload extension (32 MB memory limit) keeps a fresh walk.
+- **Walk memo (app process only):** an in-memory memo keyed on `PHPhotoLibrary.currentChangeToken` + the
+  membership's selection policy + the grant reuses the last walk while the library is unchanged (measured ~2 ms vs
+  1.3–2.0 s darwinbg walk); still authoritative for deletion. It ships in **shadow** (walks every time, logs a
+  would-be-wrong answer at Error) until a device check shows an external change always moves the token. The upload
+  extension (32 MB memory limit) keeps a fresh walk.
 - **Event-album collection cache** in the importer, invalidated by the library change observer (never by a
   failed commit), gated on a device check of PhotoKit's behaviour on a deleted collection.
 - **Ledger counts** refresh after tail units only while foregrounded.
@@ -84,7 +88,11 @@ _None._
 - `limited-photo-access`: the grant-flip gap is closed (a change queued before the grant becomes full is not
   emitted after it); under a limited grant the tail runs ① and ② from the snapshot, never ③; stage-1 fold wording.
 - `architecture-guards`: runtime identity pins drop the backstop task id and require `BGTaskSchedulerPermittedIdentifiers`
-  to equal the pinned set; the handler-holding guard follows the type that replaces `OsReceipt`.
+  to equal the pinned set (and the Swift registrations to equal it too); the handler-holding guard names
+  `OsCompletions`, the type that replaces `OsReceipt`; a new guard keeps the walk memo out of the extension.
+- `harness-world-model`: the world's uploader units are driven by the real tail runner, each OS entry's tail runs
+  the real import drain, the world holds an operator-expirable background-time table, and the last-registered push
+  record is durable across a relaunch.
 - `testing-architecture`, `upload-state-reconciliation`, `reconfigure-membership`, `join-event`: requirements that
   named the pump or the backstop restated for the tail runner (no behaviour change beyond this change's).
 - `photo-selection-policy`, `edge-upload-provider`, `device-attestation`, `sync-engine`: wording synced to the merged

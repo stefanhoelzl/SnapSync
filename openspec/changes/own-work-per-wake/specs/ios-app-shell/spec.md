@@ -14,6 +14,12 @@ else to one **opportunistic tail**:
 | upload heartbeat `BGTask` (iOS 18–26.0) | none beyond the prelude — the task is a grant of time, and its work is the tail |
 | limited-grant selection change | snapshot-fed discovery → manifest publish |
 | foreground | the download reconcile (union read, plan, enqueue), the stored-upload settle, the staged-byte reclaim, the status refresh and the membership refresh |
+| a download staged in a running process (no relaunch delivered it) | recording the staging |
+
+A wake's tail SHALL follow whatever its own work answered: a failed union read, or a foreground flow that
+threw, still hands the wake to its tail — the staged imports and the known rows do not depend on it. A silent
+push's wake joins the tail only when the pushed event is the device's active event (capability
+`push-registration`, "Silent-push receive seam").
 
 The tail SHALL run these steps, in this order: **① import staged downloads**; **② upload top-up** — re-create
 retry-spent failures and enqueue the known `DISCOVERED` rows; **③ discovery walk → manifest publish**, under a
@@ -25,16 +31,25 @@ run ① and ② only, never ③, and its ② SHALL read no library: it resolves 
 snapshot, and is withheld while that snapshot is unread (capability `limited-photo-access`). A limited grant's
 discovery is the selection-change wake's own work and the cold-launch baseline, and nothing else.
 
+Not every request needs every step. An upload completion needs ② alone (below); a download staged in a running
+process needs ① alone — a staged photo changes nothing the top-up or the walk would see, and a burst stages one
+resource at a time, so a walk per staging is exactly the waste the tail exists to avoid. Every other wake, and a
+membership transition that arms the uploader (capability `upload-lifecycle`), requests the whole tail.
+
 **Foreground goes through the runner too.** Foreground entry's own work is the table's; the import drain, the
 top-up and the walk it used to run concurrently with that work SHALL instead be requested of the one tail
 runner, like every other wake's. There SHALL be no second, concurrent path by which foreground imports or
 uploads; the download reconcile in particular SHALL NOT drain staged imports itself — the drain is ① of the
-tail, in every wake, foreground included (capability `photo-download`).
+tail, in every wake, foreground included (capability `photo-download`). The one import outside the tail is the
+once-per-process interrupted-import sweep at host assembly, which drains under the same per-asset claims as ①
+and so can never import an asset twice (capability `photo-download`, "Import without foreground; staged by
+the wake, imported by the tail").
 
 There SHALL be **one** tail runner per process, and it SHALL be **single-flight**. A wake that requests the tail
 while none runs starts it. A wake that requests it while one is running SHALL **join** it: the running tail SHALL
-make **exactly one more pass** covering the steps the joiners need — however many joined, they coalesce into that
-one pass — so no request is lost, no second runner starts, and no request is queued behind the tail (capability
+make **exactly one more pass** covering the steps the joiners need — the union of their steps, however many
+joined, coalesced into that one pass (a staged download and a freed slot together need ① and ②, not a walk) —
+so no request is lost, no second runner starts, and no request is queued behind the tail (capability
 `ios-url-session-upload`, "A wake that joins a running tail keeps its obligations", which also states what a
 joining caller awaits and how it re-arms). A wake's own work SHALL run **outside** the runner, so no wake's own
 work ever waits behind another wake's walk — measured on an iPhone XS, a push waited 22.5 s behind a walk it did
@@ -101,6 +116,16 @@ Decision record: `changes/own-work-per-wake` (D1, D2).
 - **THEN** it imports and tops up from the selection snapshot, reads no library, and runs no discovery walk —
   a limited grant's discovery is the selection-change wake's own work
 
+#### Scenario: A staging in a running process imports without walking
+
+- **WHEN** a download finishes staging while the app is already running
+- **THEN** the staging is recorded and the tail's import runs for it; no top-up and no walk run because of it
+
+#### Scenario: A failed own work still gets its tail
+
+- **WHEN** a silent push's union read fails while downloads are staged
+- **THEN** the handler is released, and the tail still imports the staged downloads
+
 ### Requirement: Time is up is learned only from the operating system
 
 The app SHALL learn that a wake's time is up **only** from the operating system's own signals, and SHALL
@@ -111,7 +136,10 @@ choose no deadline of its own for how long a wake may run:
 - a **silent push** and a **background-`URLSession` wake** — the expiration handler of the background task
   begun through the background-time port (`UIApplication.beginBackgroundTask`) no later than the OS handler is
   handed over (see "OS completion handlers are released only after their work completes", which states that
-  rule once for every such wake), because neither handler carries an expiry signal of its own.
+  rule once for every such wake), because neither handler carries an expiry signal of its own;
+- a **foreground entry** — the same background time, taken at the entry and held across its own work and its
+  tail, so a tail the member leaves running by switching away stops on Apple's signal rather than being frozen
+  mid-unit.
 
 The per-entry-point receipt deadlines (`ReceiptDeadlines`: silent push 20 s, background events 20 s,
 `BGTask` 120 s) SHALL NOT exist, and no replacement constant SHALL bound a handler hold or a background task.
@@ -137,12 +165,14 @@ Decision record: `changes/own-work-per-wake` (D3).
 #### Scenario: A BGTask learns of its expiry from the OS
 
 - **WHEN** the operating system fires a running `BGTask`'s expiration handler
-- **THEN** the core receives that expiry through the inbound port and stops the task's work cooperatively
+- **THEN** the core receives that expiry through the inbound port, requests the tail's stop and completes the
+  task at once
 
 #### Scenario: A push's tail learns of its expiry from the background task
 
 - **WHEN** the background task holding a silent push's tail is told by the operating system that its time is up
-- **THEN** the tail stops cooperatively and the background task is ended
+- **THEN** the tail is asked to stop, the push's handler is released if it is still held, and the background
+  task is ended at once
 
 #### Scenario: No constant of ours ends a wake
 
@@ -158,39 +188,59 @@ Decision record: `changes/own-work-per-wake` (D3).
 
 ### Requirement: Expiry stops work cooperatively at the next boundary
 
-When the operating system signals that time is up, the running work SHALL stop at its **next boundary**: the
-unit in flight — a photo-library change block, a ledger write, a store transaction, a network request —
-completes, and no new unit starts. Then the background task SHALL be ended and any OS handler still held
-SHALL be released. The work SHALL NOT be cancelled mid-unit (an in-flight photo-library transaction cannot be
-recalled anyway), and SHALL NOT keep running past the signal — which is what "release the handler and let the
-work run on" did, and what this replaces.
+When the operating system signals that time is up, the app SHALL answer it **at once** and stop its work
+**cooperatively**. The expiration handler SHALL request the tail's stop, release every OS handler the wake
+still holds, and end the background task — or, for a `BGTask`, complete the task through the completion the
+core holds — before it returns, never waiting for the unit in flight. That unit — a photo-library change
+block, a ledger write, a store transaction, a network request — SHALL NOT be cancelled (an in-flight
+photo-library transaction cannot be recalled anyway): it runs on until it completes or the process is
+suspended. After the stop **no new unit SHALL start**: the tail checks the stop between its steps, and a step
+that iterates checks it between two items (two imports, two job creations). The work SHALL NOT keep running
+past the signal as it did under "release the handler and let the work run on", which this replaces.
 
-Every unit is already a safe retry — staged bytes and their store rows survive, ledger writes are idempotent
-upserts — so work a stop leaves undone is resumed by the next wake's own work or tail, or by the next
-foreground.
+Answering at once is Apple's recipe — a `BGTask`'s expiration handler is to "cancel ongoing work … as short a
+time as possible", and an expiry left unanswered is a watchdog's to decide, which means a termination — and it
+is safe because every unit is already a safe retry: staged bytes and their store rows survive, ledger writes
+are idempotent upserts, and an import that never reports keeps its claim. So a unit the suspension cuts short,
+and work a stop leaves undone, is resumed by the next wake's own work or tail, or by the next foreground.
 
-An expiration handler SHALL only request the stop: the operating system expects it to return promptly, on the
-thread it calls it on, so it SHALL NOT itself wait for the unit in flight. Ending the background task and
-releasing the handler follow the stop, once the unit completes.
+The expiration handler runs on the thread the operating system calls it on and SHALL return promptly: it only
+flips the stop, releases and ends — each of those at most once, whichever path reaches it first. The tail SHALL
+NOT be held hostage by one wait either: an import the tail is awaiting gives way to a stop (and to a joining
+request), leaving that import claimed and running, and the tail starts nothing further (capability
+`photo-download`, "A stalled import blocks no other work").
+
+A stop SHALL be a no-op while no tail runs, so **a wake whose time is already up when its own work ends SHALL
+request no tail** — a tail requested then would run with no time left to run in. That includes a wake whose
+background time the operating system refused at the handover, which the background-time port reports as an
+immediate expiry (spec `module-architecture`, "Background time is an outbound port named for the need").
 
 Decision record: `changes/own-work-per-wake` (D4).
 
-#### Scenario: An import in flight completes before the stop
+#### Scenario: An import in flight is not waited for
 
 - **WHEN** the operating system signals expiry while the tail is committing one staged photo to the library
-- **THEN** that commit completes and records its outcome, no further import starts, and the background task
-  is ended
+- **THEN** the stop is requested and the background task is ended at once; that commit is not cancelled — it
+  records its outcome if the process runs long enough, and is retried from its staged bytes otherwise — and no
+  further import starts
 
 #### Scenario: The expiration handler returns at once
 
 - **WHEN** an expiration handler fires
-- **THEN** it records the stop request and returns without waiting for the running unit
+- **THEN** it requests the stop, releases the OS handler the wake still holds, ends the background task, and
+  returns without waiting for the running unit
 
 #### Scenario: Work left by a stop resumes later
 
 - **WHEN** a stop leaves staged downloads unimported or rows un-enqueued
 - **THEN** the next wake's tail or the next foreground picks them up from the store, with no duplicate import
   or upload
+
+#### Scenario: A wake whose time is up requests no tail
+
+- **WHEN** the operating system's expiry arrives — or its background time is refused at the handover — before a
+  silent push's own work has finished
+- **THEN** the push's handler is released at once, and when the own work ends no tail is requested
 
 ### Requirement: The discovery walk is atomic under a stop
 
@@ -297,7 +347,9 @@ see `event-album`) SHALL be installed by an explicit `AppCore.installPermissionS
 the repair"). The upload subscription SHALL NOT treat the permission StateFlow's replayed value as a
 transition. A cold background wake (the upload heartbeat, a silent push, or a
 background-`URLSession` relaunch) that merely touches the composed graph SHALL NOT install them and SHALL
-run no launch reconcile.
+run no launch reconcile. The host-assembly path SHALL be reached from the **foreground entry only**: no
+background entry — a silent push, a background transfer, a background task, a delivered push token — assembles
+the host, because everything a background wake's own work and its tail need is built by the composed graph.
 
 The root SHALL observe the app's foreground/background lifecycle **from Kotlin**: a plain
 `onLaunch()` entry — called by the Swift `AppDelegate` from `didFinishLaunchingWithOptions`, a
@@ -414,7 +466,7 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 
 #### Scenario: A cold background wake installs no grant subscription
 
-- **WHEN** the process is launched in the background by the upload heartbeat or a
+- **WHEN** the process is launched in the background by the upload heartbeat, a silent push or a
   background-`URLSession` relaunch, without the host-assembly path running
 - **THEN** touching the composed graph installs no permission-grant collector and runs no launch
   reconcile, so no registration is written and no engine is armed
@@ -430,7 +482,10 @@ the token — as the encoded token string plus the compile-time `env` — into t
 `feature/push` over the `ports/` token source). Whether a delivered token is then written to the backend is
 the push feature's decision (capability `push-registration`, "Registration timing — launch, join, and
 rotation": only when it differs from the last registration the backend accepted, plus on join and on a fresh
-credential), never the shell's. A registration failure
+credential), never the shell's. The ask SHALL be a plain statement in the Kotlin root — in its `onLaunch`
+entry, at every cold start, and in its `didBecomeActive` observer, at every foreground entry — deciding
+nothing; that observer also fires after a brief interruption (Control Center, an incoming call), and the
+repeated answer that follows is absorbed by the push feature's comparison. A registration failure
 (`didFailToRegisterForRemoteNotificationsWithError`) SHALL be logged and SHALL NOT crash or block the
 app. The Swift `AppDelegate` SHALL perform **no** decision logic — it is a pass-through to Kotlin,
 consistent with the existing deeplink / background-URL-session hooks. Decision record:
@@ -455,20 +510,24 @@ consistent with the existing deeplink / background-URL-session hooks. Decision r
 
 ### Requirement: Push registration is started by the shared composition
 
-Push registration SHALL be **started** by an explicit installer on the composed core (`compose/`),
-and the root SHALL do no more than invoke it on **every cold start** — from its host-assembly path on a
-foreground launch, and from the composed graph's construction on a background cold start (a silent push, a
-background-`URLSession` relaunch, the upload heartbeat) that never assembles the host — handing over the
-platform-shaped pieces it built. The installer SHALL be **idempotent**: a process that later assembles its host
-after a background start, or reaches the installer twice by any path, installs the subscription once. Unlike
+Push registration SHALL be **started** by an explicit installer on the composed core (`compose/`), and
+that installer SHALL be invoked **once, from one place**: the shared host composition (`snapSyncHost`; spec
+`module-architecture`, "One shared composition"), as it composes the graph — before, and independent of, host
+assembly. A process composes its graph on **every cold start**, whether it was launched into the foreground or
+in the background by a silent push, a background-`URLSession` relaunch or the upload heartbeat, none of which
+assembles the host; so the subscription is installed on every cold start. The root SHALL NOT invoke the
+installer, and host assembly SHALL NOT invoke it: the root hands over the platform-shaped pieces it built as
+ports and nothing else. The installer SHALL be **idempotent** all the same — once per process — so no second
+path can install the subscription twice. Unlike
 the permission-grant subscriptions (see "iOS live composition root"), which a cold background wake SHALL NOT
 install, this subscription SHALL be installed there too, so a rotated APNs token or a renewed device credential
 is published from whichever wake learns it; the cost is rare, because it publishes only on a changed
 (`token`, `env`, `deviceId`) triple, on join, or on a fresh credential (capability `push-registration`).
 Decision record: `changes/own-work-per-wake` (D12).
 
-The registration client and the token source remain **constructed by the shell**: both are platform
-objects — a Ktor client over the shell's shared HTTP stack, and the compile-time APNs environment — and
+The registration client, the token source and the last-registered record remain **constructed by the
+shell**: all are platform objects — a Ktor client over the shell's shared HTTP stack, the compile-time APNs
+environment, and an App-Group file — and
 `:domain` builds no platform object. What moves is the ordering and the subscription, which is where the
 behaviour is.
 
@@ -500,9 +559,9 @@ wiring-only and untested), so nothing would observe it being removed.
 
 #### Scenario: The shell installs and decides nothing
 
-- **WHEN** the root assembles the host
-- **THEN** it invokes the installer with the platform pieces it built, and holds no registration ordering
-  or retry logic of its own
+- **WHEN** the root composes the app
+- **THEN** it supplies the platform pieces it built as ports, invokes no installer — the shared host
+  composition installs the subscription — and holds no registration ordering or retry logic of its own
 
 #### Scenario: A token rotation learned in a background cold start is published from that wake
 
@@ -537,9 +596,13 @@ is handed to the opportunistic tail (see "Each OS wake does its own work, then h
 opportunistic tail"), which runs under the process's background time rather than under this handler. The
 release SHALL NOT wait on a deadline of ours: the background task begun no later than the handover (see "OS
 completion handlers are released only after their work completes") covers the own work too, and if the
-operating system signals through it that background time is up while the own work is still running, the work
-stops at its next boundary and the handler is released then (see "Time is up is learned only from the operating
-system").
+operating system signals through it that background time is up while the own work is still running, the handler
+is released at once, the own work runs on until the process is suspended, and no tail follows (see "Time is up
+is learned only from the operating system" and "Expiry stops work cooperatively at the next boundary").
+
+The push's wake SHALL join the tail only when the pushed event is the device's active event, read from the
+membership the prelude has just re-read (capability `push-registration`, "Silent-push receive seam"); otherwise
+it ends its background time once the handler is released. A push assembles no host.
 
 Decision record: `changes/own-work-per-wake` (D1, D3, D5).
 
@@ -560,6 +623,12 @@ Decision record: `changes/own-work-per-wake` (D1, D3, D5).
 - **WHEN** a silent push's own work has finished and staged downloads or upload work remain
 - **THEN** the handler is released without waiting for them, and the import, top-up and walk run in the
   opportunistic tail under the process's background time
+
+#### Scenario: A push for another event wakes no tail
+
+- **WHEN** a silent push names an event other than the device's active one
+- **THEN** the handler is released after the download arm's own guards decline, no tail is requested, and the
+  background time is ended
 
 #### Scenario: A malformed payload still releases the handler
 
@@ -676,31 +745,35 @@ What each wake's own work is, and when its handler is released:
   outcomes the session delivered; released at `urlSessionDidFinishEvents`.
 - **`BGTask`** — the grant of time *is* the task, so its tail is its work: the upload heartbeat has no own
   work beyond the prelude, and runs the tail (① import, ② top-up, ③ walk → manifest). `setTaskCompleted`
-  SHALL be held until that tail has finished, or until the task's expiration handler has fired and the
-  running work has stopped at its next boundary — whichever comes first.
+  SHALL be held until that tail has finished, or until the task's expiration handler fires — then at once,
+  whichever comes first.
 
 For the push and `URLSession` wakes, whatever remains after the own work runs in the opportunistic tail
 under the process's **background time** (the background-time port, bound to `beginBackgroundTask`; spec
 `module-architecture`). **That background task SHALL be begun no later than the OS handler is handed over**
-— before the own work starts, not after it — and SHALL be held until the tail it hands to has finished or has
-stopped on the background task's expiry. It therefore covers the own work, any wait for a signal the release
+— before the own work starts, not after it — and SHALL be held until the tail it hands to has finished, or be
+ended at once on its expiry. It therefore covers the own work, any wait for a signal the release
 depends on, and the tail: there is no instant between the handover and the tail's end at which the process
 holds nothing, and a signal that never comes ends in Apple's expiry rather than in a handler held forever.
 This is the one statement of the rule; every other requirement that relies on it refers here. Background time
 is per app, not per task, so holding it after the release costs the wake no time and gains the one expiry
-signal these two handlers do not carry.
+signal these two handlers do not carry. A foreground entry, which is handed no handler, SHALL hold the same
+background time across its own work and its tail (see "Time is up is learned only from the operating system").
 
 There SHALL be **no deadline of ours** on any handler: no per-entry-point constant, no timer that releases a
 handler and lets its work run on. A handler whose own work has not finished is released only when the
-operating system has said time is up and that work has stopped at its next boundary (see "Time is up is
-learned only from the operating system" and "Expiry stops work cooperatively at the next boundary").
+operating system says time is up — at once, on that signal, with the own work left to run on until the process
+is suspended (see "Time is up is learned only from the operating system" and "Expiry stops work cooperatively
+at the next boundary").
 Measured in the field (iPhone XS, iOS 18.7.9, builds 605–609) the self-chosen 20 s bound was itself the
 damage: it released on 45 % of download wakes and 66 % of upload-session wakes, iOS suspended the app
 ≤ 0.4 s later, and import batches needing 20–40 s were cut off mid-import.
 
-The handler SHALL be carried by a type whose only release path takes the own work as a `suspend` block, so
-that releasing before the own work is not expressible at a call site. That type SHALL live in `:domain`
-`ports/`, not in `:app:*` — the shell is wiring-only and untested by rule, so behaviour placed there cannot
+The handler SHALL be carried by one type (`ports/OsCompletions`) with exactly two release paths: one that
+takes the own work as a `suspend` block and releases after it, on every path, a throw included — so that
+releasing before the own work is not expressible at a call site — and one for the operating system's expiry,
+which releases at once. Each handler SHALL be released **exactly once**, by whichever path reaches it first,
+even when the two race on different threads. That type SHALL live in `:domain` `ports/`, not in `:app:*` — the shell is wiring-only and untested by rule, so behaviour placed there cannot
 be covered. The inbound port's implementation in `compose/` SHALL construct it from the raw handler it
 receives as a port argument (`module-architecture`, "OS entry points cross an inbound port"); the shell
 SHALL hand the handler over by delegation and construct nothing, and Swift SHALL continue to forward an
@@ -720,7 +793,9 @@ the app its future background wakes.
 **A background-`URLSession` handler SHALL be released on the main thread**, as its owning API requires
 (`URLSessionDelegate.urlSessionDidFinishEvents(forBackgroundURLSession:)`: *"Because the provided
 completion handler is part of UIKit, you must call it on your main thread."*). This applies to the
-release only; where the hold waits is unconstrained. No such requirement is stated for the silent-push
+release only; where the hold waits is unconstrained. A release on the expiry runs on the thread the expiry
+arrives on, which for this handler is the main thread already: its expiry is the background time's,
+`beginBackgroundTask`'s expiration handler, which UIKit calls on the main thread. No such requirement is stated for the silent-push
 fetch handler or for `BGTask` completion, and none SHALL be extended to them by this rule.
 
 Decision record: `changes/own-work-per-wake` (D1, D3, D5).
@@ -753,14 +828,16 @@ Decision record: `changes/own-work-per-wake` (D1, D3, D5).
 #### Scenario: Releasing early is not expressible
 
 - **WHEN** a new OS entry point is added that releases its handler without awaiting its own work
-- **THEN** the handler type offers no such call, so the shape does not compile
+- **THEN** the handler type offers no such call — only a release after the own work, or on the operating
+  system's expiry — so the shape does not compile
 
 #### Scenario: A BGTask is completed after its tail or on its expiry
 
 - **WHEN** a `BGTask` runs and the operating system fires its expiration handler before the tail has
   finished
-- **THEN** the running unit completes, no new unit starts, and `setTaskCompleted` is called — never
-  from the shell's expiration handler directly, and never on a constant of ours
+- **THEN** the tail is asked to stop and `setTaskCompleted` is called at once, through the completion the
+  core holds — the unit in flight is not waited for and nothing starts after it; never from the shell's
+  expiration handler directly, and never on a constant of ours
 
 #### Scenario: A drain signal that never arrives still ends in a release
 
@@ -827,14 +904,17 @@ neither of which runs an upload unit as its own work (see "Each OS wake does its
 opportunistic tail"). The
 uploader decides at its entry gate, through the app's own admission, whether it may create. The
 root SHALL NOT bind per-tier upload behaviour, and no entry point SHALL re-check a tier, the grant, or the
-registration. Decision record: `changes/both-uploaders-active`; own work and the tail:
+registration. The one condition on reaching the tail is a silent push's **event** guard — its wake joins the
+tail only for the device's active event (capability `push-registration`) — which is about which event a push
+names, not about which uploader may act. Decision record: `changes/both-uploaders-active`; own work and the tail:
 `changes/own-work-per-wake` (D1, D2).
 
 The entry point's implementation — the inbound port's, in `compose/` — SHALL hold its own OS wake's
 completion handler in the handler-carrying type (see "OS completion handlers are released only after their
-work completes") across its own work, and hand the rest to the tail runner — so the engine receives a plain
-`suspend` trigger and never holds a raw OS completion handler, and no entry point names a deadline. A cycle
-that declines still returns, so the handler is still released.
+work completes") across its own work, and hand the rest to the tail runner — so the uploader holds no trigger
+and no OS completion handler at all: the runner calls its tail units as plain `suspend` functions (capability
+`ios-url-session-upload`), and no entry point names a deadline. A unit that declines still returns, so the
+handler is still released.
 
 A cold background launch reaches the engine like any other entry: nothing about the host having been assembled
 decides whether the trigger does work.
@@ -843,8 +923,8 @@ decides whether the trigger does work.
 
 - **WHEN** the OS invokes an upload-driving entry point
 - **THEN** the entry point holds that wake's handler across its own work, reaches the app's uploader as
-  own work or through the tail, and releases the handler when its own work completes or the operating
-  system's expiry has stopped it
+  own work or through the tail, and releases the handler when its own work completes, or at once on the
+  operating system's expiry
 
 #### Scenario: A cold heartbeat wake does real work
 
@@ -875,8 +955,9 @@ inbound port and keyed by the same delivered identifier (the shape is the port's
 entry points cross an inbound port"). The expiration handler SHALL NOT complete the task itself: completing it
 from Swift while the core still holds the task's completion races the core's own release, and it answers the
 operating system's "time is up" without stopping the work the task was granted time for. The core SHALL answer the
-forwarded expiry by stopping the running work at its next boundary and then releasing the completion (see "Expiry
-stops work cooperatively at the next boundary"); the completion passed to `onBackgroundTask` SHALL remain the only
+forwarded expiry (`onBackgroundTaskTimeUp`) by requesting the running tail's stop and releasing the completion at
+once, without waiting for the unit in flight (see "Expiry stops work cooperatively at the next boundary"); the
+completion passed to `onBackgroundTask` SHALL remain the only
 path to `setTaskCompleted`. An expiry forwarded for an identifier the core holds no task for SHALL be logged and
 otherwise ignored.
 
@@ -899,8 +980,9 @@ Decision record: `changes/own-work-per-wake` (D3, D7).
 #### Scenario: The operating system expires a running task
 
 - **WHEN** the OS fires a running task's `expirationHandler`
-- **THEN** Swift forwards the expiry with the delivered identifier and calls nothing else, the core stops the
-  running work at its next boundary, and the task is completed through the completion the core holds — once
+- **THEN** Swift forwards the expiry with the delivered identifier and calls nothing else; the core requests the
+  tail's stop and completes the task at once through the completion the core holds — once — and the unit in
+  flight starts nothing after it
 
 #### Scenario: A registration block is copied for a new task
 

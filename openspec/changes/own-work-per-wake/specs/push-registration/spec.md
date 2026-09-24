@@ -1,5 +1,47 @@
 ## MODIFIED Requirements
 
+### Requirement: APNs token acquisition seam
+
+The system SHALL define a `PushTokenSource` (`:domain` `ports/`, `commonMain`) that yields the device's
+current APNs push token together with its APNs environment (`sandbox` | `production`) — the latest token as
+a `StateFlow` — and, beside it, **every** OS delivery as a flow (`deliveries`): one emission per answer the OS
+gives, an unchanged token included, with the latest one replayed to a subscriber that arrives after it. The
+app asks the OS for the token at every app entry (see "Registration timing — launch, join, and rotation"), so
+the OS answers with the same token many times per process, and each answer SHALL reach the registration: it
+is the trigger to compare against what the backend last accepted, and a publish that failed at one entry is
+re-sent at the next with the **same** token. A `StateFlow` alone conflates an equal value away, which would
+silently turn "re-sent at the next entry" into "never re-sent". Because the token is **OS-push-delivered, not
+pulled**, the source is a settable holder — it exposes a `deliver(hexToken)` method that both the app-shell
+wiring and tests call, so it is its own test fake (no separate implementation is needed) and the registration
+logic is exercised on both the JVM and `iosSimulatorArm64`. The environment SHALL be an **injected
+compile-time** value (sourced from the build's `aps-environment`, e.g. the `apnsEnv` value baked into the
+bundled `Deployment.plist`), not detected at runtime — mirroring how the upload host base is injected. The real
+APNs acquisition is **app-shell wiring** in `:app:ios`, not a core type: the Kotlin root asks
+(`registerForRemoteNotifications`, from its `onLaunch` entry and its `didBecomeActive` observer — capability
+`ios-app-shell`), and the token arrives through the Swift `AppDelegate` → `SnapSyncRoot.onPushToken(hex)` →
+`deliver`. Decision record: `changes/own-work-per-wake` (D12).
+
+#### Scenario: The seam yields a token and its environment
+
+- **WHEN** the OS has delivered an APNs device token
+- **THEN** `PushTokenSource` exposes that token string and its injected `env`
+
+#### Scenario: A test fake drives the seam
+
+- **WHEN** a test sets the fake `PushTokenSource` to a token/env
+- **THEN** the registration logic runs against that value with no platform or network call
+
+#### Scenario: A repeated delivery of the same token still reaches the registration
+
+- **WHEN** the OS delivers the same token at two app entries
+- **THEN** `deliveries` emits both, so a registration whose first publish failed compares — and publishes —
+  again at the second
+
+#### Scenario: A late subscriber sees the latest delivery
+
+- **WHEN** the registration subscription is installed after the OS has already delivered a token
+- **THEN** it receives that delivery, and compares it like any other
+
 ### Requirement: Silent-push receive seam
 
 `:domain`'s `ports/` SHALL define the `PushReceiver` seam invoked when the app receives a silent
@@ -22,8 +64,10 @@ Importing the staged downloads is **not** the push's own work: it is the first u
 tail (capability `ios-app-shell`), which runs after the handler is released.
 
 The `flow/SilentPush` trigger (`:domain` `flow/`, built in `compose/`; it absorbed the former
-`FanOutPushReceiver`) SHALL run the push's own work and **only** that: the download arm's receiver. The
-upload arm SHALL NOT be a receiver of the push, and no upload cycle SHALL run as push work. A push is still
+`FanOutPushReceiver`) SHALL run the push's own work and **only** that: the download arm's receiver, its one
+receiver. The upload arm SHALL NOT be a receiver of the push, and no upload cycle SHALL run as push work. A
+download receiver that fails SHALL be logged and SHALL NOT rob the wake of its tail: the imports it would drain
+are staged already, and a failed union read has nothing to say about them. A push is still
 news to the upload arm — another member's upload completing is when this device most likely has photos of
 its own to contribute (capability `upload-completion-notify`) — but the upload work reaches the push's wake
 through the **tail** that follows the released handler: the upload top-up (re-create retry-spent failures,
@@ -39,8 +83,11 @@ The upload arm's two push guards SHALL be carried into the tail rather than drop
   a locally-left event included — or with no event configured, or while the membership is unreadable,
   SHALL cause no upload work. This preserves exactly what the upload receiver refused. The tail itself
   SHALL take no `eventId`: every unit acts on the device's active membership read fresh from the config
-  seam, so no push can name the event the tail works on. The decision SHALL live in tested `:domain` code,
-  never in the shell.
+  seam, so no push can name the event the tail works on. The decision SHALL live in tested `:domain` code
+  (`PushTailGuard`, `feature/upload`), never in the shell, and SHALL be asked by the inbound port's
+  implementation **after** the flow has returned — not by the flow (spec `module-architecture`, "A trigger
+  flow never outlives its own run"). An unreadable membership SHALL be logged as its own answer, distinct from
+  "no event", because only it is a reason to look at the device's lock state.
 - **the limited-grant read-discipline guard.** It SHALL be enforced by the tail's upload units themselves
   — the mechanism — and not at the push (capability `limited-photo-access`, "The read discipline is
   enforced at the mechanism, not at the trigger fan-out"): the discovery walk SHALL run only under a
@@ -119,6 +166,19 @@ Asking SHALL NOT imply registering. The app SHALL persist the **last-registered 
 delivered at an app entry SHALL be published only when that triple differs from the persisted value: a
 rotated token, a changed environment, a changed device identity (a device reset), or no successful
 registration yet. A failed publish SHALL NOT update the persisted value, so the next entry sends it again.
+
+The persisted value SHALL be held behind a need-named port (`PushRegistrationRecord`: load the last accepted
+registration, save one), contracted in `:test:contracts` over its real binding and the in-memory double. On iOS
+it is a file in the App-Group container, so it **dies with the install**: a reinstall publishes at its first
+entry. Its value is opaque to the port — which facts make up a registration, and how they are joined, is the
+push feature's. The two unreadable cases SHALL each fail in the safe direction:
+
+- an **unreadable device identity** SHALL publish nothing at a delivery — the publisher could not address the
+  device either — and the next entry's delivery asks again (the two unconditional triggers still publish, but
+  record nothing);
+- an **unreadable record** SHALL read as "nothing registered yet", and so publish: one redundant idempotent
+  `PUT`, never a wrong belief that a registration exists. A record that cannot be written degrades to writing
+  nothing, which costs one publish at the next entry.
 The publish SHALL happen from **whichever wake** learns of the change — a background cold start included, which
 installs the registration subscription like a foreground launch does (capability `ios-app-shell`, "Push
 registration is started by the shared composition") — never deferred to the next foreground.
@@ -184,6 +244,21 @@ as a healing net was declined for its cost (decision record: `changes/own-work-p
 - **WHEN** the app is cold-started in the background and the OS delivers a token whose (`token`, `env`,
   `deviceId`) triple differs from the persisted value
 - **THEN** `PushRegistration` publishes it from that wake, without waiting for a foreground launch
+
+#### Scenario: An unreadable device identity defers the publish
+
+- **WHEN** the OS delivers a token at an app entry while the device identity cannot be read
+- **THEN** nothing is published or recorded, and the next entry's delivery compares again
+
+#### Scenario: An unreadable record publishes
+
+- **WHEN** the OS delivers a token and the last-registered record cannot be read
+- **THEN** `PushRegistration` publishes it, as for a device with no registration yet
+
+#### Scenario: A reinstall publishes at its first entry
+
+- **WHEN** the app is reinstalled and the OS delivers its token at the first app entry
+- **THEN** no last-registered value survived the install, and `PushRegistration` publishes the token
 
 #### Scenario: A failed publish is re-sent at the next entry
 

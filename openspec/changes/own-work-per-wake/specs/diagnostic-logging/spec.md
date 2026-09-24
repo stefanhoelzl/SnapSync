@@ -1,105 +1,53 @@
 ## RENAMED Requirements
 
 - FROM: `### Requirement: Deadline expiry is logged`
-- TO: `### Requirement: Operating-system expiry is logged`
+- TO: `### Requirement: Operating-system expiry is logged
 
-## MODIFIED Requirements
-
-### Requirement: Uniform platform-invocation logging
-
-Every platform invocation, app entry point, and background trigger SHALL be logged with a uniform
-enter/exit convention recording the entry-point name, its parameters, its result, and its elapsed
-duration. This SHALL cover the upload-platform methods, the extension `process()` cycle, the
-opportunistic tail's steps and its operating-system stop, the schedulers, the app entry points, the download controller, and the
-app-driven upload controller.
-
-The **enter line SHALL precede any decision** the entry point makes, and SHALL record the raw
-inputs the platform supplied — including the fields a filter is about to test. An entry point that
-declines to act SHALL still name its outcome on exit (spec `module-architecture`, "Absence is never
-silent"). Recording only successful paths is what made a reported defect undiagnosable: an event
-link that never reached the join gate was indistinguishable from one iOS never delivered, because
-the filter that discarded it wrote nothing.
-
-An entry point is a declaration the **platform** calls, and the set is identified by these rules rather
-than by a maintained list:
-
-1. every member of a composition-root object invoked from outside that root's own file — which
-   covers both Swift→Kotlin doors (the app delegate and scene delegate, and the Compose entry the
-   Swift view calls);
-2. every overridden member of a class conforming to a platform callback protocol;
-3. every observer body registered with a platform notification or change-observer centre.
-
-A declaration reached only from our own Kotlin is **not** an entry point; what distinguishes one is
-that the platform is on the other side of the call. Read-model members that presentation polls are
-therefore excluded, while the platform's request for the root view is not.
-
-**This obligation is maintained by review, not by a build gate.** The guard that derived the entry-point
-set and asserted each was marked and logged has been retired (capability `architecture-guards`): it
-enforced diagnosability rather than behaviour, and an unlogged entry point ships correct behaviour. The
-consequence is stated rather than left implicit — a new entry point that decides and returns without
-logging will not fail any build, and a defect of the shape described above will again be undiagnosable
-from a device log.
-
-Where a composition root reaches its process's **inbound port** by delegation (`module-architecture`,
-"OS entry points cross an inbound port"), the port's implementation in `compose/` SHALL write that entry's
-enter and exit lines, so the obligation sits in code that is covered rather than in the shell; the
-`@PlatformEntry` marker SHALL sit on the port's members. The marker is documentation of this obligation,
-checked by review; no guard derives or checks its population.
-
-**User taps SHALL be instrumented as entry points too**, decorated where the command bundle is
-built (spec `module-architecture`, "Commands cross one door": instances are decorated only in
-`compose/`), so that every line in the device log traces to a named trigger.
-
-#### Scenario: An entry point declines to act
-- **WHEN** a platform entry point receives a delivery and a filter discards it
-- **THEN** the log carries both the enter line with the raw platform inputs and an exit line naming the
-  outcome, so "discarded" is distinguishable from "never delivered"
-
-#### Scenario: A new Swift-to-Kotlin door is added
-- **WHEN** a new delegate method forwards to a new composition-root member
-- **THEN** that member is instrumented with the enter/exit convention as part of the change, and its
-  absence is caught in review rather than by a build failure
-
-#### Scenario: A delegated entry is logged by the core
-
-- **WHEN** the OS invokes an inbound-port member on a composition root
-- **THEN** the enter line, with the raw inputs, and the exit line naming the outcome come from the port's
-  implementation in `compose/`, and the root contributes no logging body of its own
-
-
-### Requirement: Operating-system expiry is logged
-
-The app SHALL log one line every time the operating system signals that a wake's time is up — a `BGTask`'s
+The app SHALL log every time the operating system signals that a wake's time is up — a `BGTask`'s
 `expirationHandler`, or the expiration handler of a background task begun through the background-time port
-(capability `ios-app-shell`, "Time is up is learned only from the operating system") — naming:
+(capability `ios-app-shell`, "Time is up is learned only from the operating system") — in **two lines**, because
+the expiry is answered at once while the unit in flight runs on (capability `ios-app-shell`, "Expiry stops work
+cooperatively at the next boundary"), so the stop and the tail's end are two different moments:
 
-- **which signal** fired, and the **entry point** whose wake it ended (the push, the transfer channel, or the
-  background task's identifier);
-- **what was running** when it fired — the wake's own work or the tail, and the unit in flight (for example the
-  tail step and the asset being imported, or the walk) — and whether that unit **completed or was abandoned**
-  by the stop (a walk is abandoned; an import completes);
-- **what was left**: the work the stop left for a later wake — at least the staged downloads not yet imported,
-  whether the top-up ran, and whether the walk ran.
+1. **At the stop**, written by the expiration handler's path before it returns: **which signal** fired and the
+   wake it ended (the push, the transfer channel, the background task's identifier, or the foreground entry),
+   and **what was running** — the tail's unit in flight and what becomes of it (a walk is abandoned; any other
+   unit completes, and nothing further starts) — or that no tail was running.
+2. **When the stopped tail ends**: whether the unit that was running **completed or was abandoned**, which units
+   the stop kept from running (a pass joiners had requested included), and **what was left** for a later wake —
+   at least the count of staged downloads not yet imported. This line may be written only when the process next
+   runs, since the process can be suspended before the unit in flight reaches its end.
 
-The line SHALL report the operating system's signal, never a deadline of ours; there is none (capability
+Where the expiry releases an OS completion handler whose own work had not finished, the handler-carrying type
+SHALL log that release too, naming the entry point and the signal — the only evidence that a wake's own work did
+not fit inside the time the operating system gave it.
+
+The lines SHALL report the operating system's signal, never a deadline of ours; there is none (capability
 `ios-app-shell`). A stop that fires silently is indistinguishable from work that completed, so the mechanism that
-ends a wake cleanly would be invisible in exactly the dumps that exist to explain it — and this line is also how
-the change that removed the app's own deadlines is measured in the field, since its benefit could not be
+ends a wake cleanly would be invisible in exactly the dumps that exist to explain it — and these lines are also
+how the change that removed the app's own deadlines is measured in the field, since its benefit could not be
 reproduced on the test device.
 
 Decision record: `changes/own-work-per-wake` (D3, D4; the measurement risk).
 
 #### Scenario: An expiry is attributable
 
-- **WHEN** the operating system signals expiry for a wake
-- **THEN** the log records the signal, the entry point it belongs to, the unit that was running and whether it
-  completed, and what was left for a later wake
+- **WHEN** the operating system signals expiry for a wake while its tail runs
+- **THEN** the log records, at the stop, the signal, the wake it belongs to and the unit that was running; and,
+  when the tail has stopped, whether that unit completed, what did not run, and how many staged downloads were
+  left unimported
 
 #### Scenario: An expiry during the walk says so
 
 - **WHEN** the operating system signals expiry while the tail's discovery walk is in flight
-- **THEN** the line names the walk as abandoned, so a dump distinguishes "no new photos" from "the walk never
+- **THEN** both lines name the walk as abandoned, so a dump distinguishes "no new photos" from "the walk never
   finished"
+
+#### Scenario: An expiry before the own work finished is visible
+
+- **WHEN** the operating system's expiry releases a silent push's or a transfer wake's handler before its own
+  work has finished
+- **THEN** a line names the entry point and the signal, stating that its own work had not finished
 
 #### Scenario: No deadline line exists
 

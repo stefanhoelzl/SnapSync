@@ -19,7 +19,9 @@ itself upload work — a selection change's snapshot-fed discovery → manifest 
 The heartbeat and foreground entry run no upload unit as their own work: they reach the engine only through the
 tail, and under a partial grant the tail runs no ③. The tail's other unit (① importing staged downloads) is the
 download arm's and is not gated here. Moving work into the tail SHALL NOT move the decision out of the mechanism:
-no wake and no tail unit SHALL pre-decide whether the upload engine is interested.
+no wake and no tail unit SHALL pre-decide whether the upload engine is interested. (A silent push's wake joins
+the tail only for the device's active event — capability `push-registration`. That guard asks which event a push
+is about, not whether the engine is interested, and the units it lets through still decide at the gate.)
 
 Deciding at the caller is an **invoker-gate**, and this capability has already ruled on that shape ("The arm's
 direction gate lives at the choke point, never at the invoker"): the enumeration of invokers is invalidated
@@ -34,11 +36,16 @@ transfers are cancelled or finish) otherwise keep driving work that can do nothi
 2026-09-16). This is the same admission the entry gate reads, applied before the top-up is requested rather than
 instead of the gate. Decision record: `changes/both-uploaders-active` (D7).
 
-Each trigger SHALL be a `suspend` function that returns when its work is done and SHALL NOT accept an OS
-completion handler. The handler is held by the entry point that received it: a push's or a background-session
-relaunch's handler only for that wake's own work, a `BGProcessingTask`'s until its tail ends or its expiration
-handler fires; "time is up" is learned only from Apple's signals, never from a deadline of the app's own
-(capability `ios-app-shell`, "Time is up is learned only from the operating system"). A declining unit still returns, so the handler is still released.
+No wake reaches the uploader through a trigger of its own any more: the uploader's units — the top-up and the
+walk → manifest — are `suspend` functions the tail runner calls, each returning when its work is done, and none
+SHALL accept an OS completion handler. The seam the membership transitions drive (see "Membership transitions
+reconcile the upload mechanisms in one tested place") is three verbs — **arm**, **disarm**, **cancelTransfers** —
+and nothing a wake triggers; its arm requests the tail **detached**, because a transition runs inside a flow or a
+tap and neither awaits the tail. The handler is held by the entry point that received it: a push's or a
+background-session relaunch's handler only for that wake's own work, a `BGProcessingTask`'s until its tail ends
+or, at once, when its expiration handler fires; "time is up" is learned only from Apple's signals, never from a
+deadline of the app's own (capability `ios-app-shell`, "Time is up is learned only from the operating system").
+A declining unit still returns, so the handler is still released.
 
 **Cold background wakes run real work.** A trigger reaching a process whose host was never assembled — a
 `BGProcessingTask` or a silent push that launched it in the background — SHALL drive the app engine's upload

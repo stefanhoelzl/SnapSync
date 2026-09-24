@@ -62,26 +62,33 @@ later (92 assets left staged on one day).
 The imports SHALL run as unit ① of the process's **tail** (capability `ios-app-shell`, "Each OS wake does its
 own work, then hands the rest to one opportunistic tail"; decision record `changes/own-work-per-wake`, design
 D1): after the wake's own work, one process-wide, single-flight tail imports every asset whose resources are all
-staged, before any upload work. A staging SHALL therefore request
-the tail — joining it when it is already running, starting it when not — rather than import in its own
-callback. The tail SHALL run under a background task the app begins for it, whose expiration handler is
-Apple's signal that background time is up (capability `ios-app-shell`, "Time is up is learned only from the
-operating system"); the imports SHALL NOT be bounded by any clock of the app's own.
-The drain SHALL be awaited by the tail and tracked by the download-job owner, not dispatched and forgotten by
-the composition, so the background task ends only when the drain has — reporting the work done while the
-imports it caused are merely queued is what leaves an asset staged-but-unimported at suspension.
+staged, before any upload work. A staging SHALL therefore request the tail's **import alone** — ① with no
+top-up and no walk, since a staged photo changes nothing either would see — joining the tail when it is already
+running, starting it when not, without awaiting it (a staging holds no OS handler of its own; the wake that
+delivered it requests, and holds, its own tail after its drain), rather than import in its own callback. The
+tail SHALL run under the background time of the wake that requested it — a `BGTask`'s own grant for the upload
+heartbeat — whose expiry is Apple's signal that time is up (capability `ios-app-shell`, "Time is up is learned
+only from the operating system"); the imports SHALL NOT be bounded by any clock of the app's own.
+The drain SHALL be awaited by the tail — each import it starts is awaited until it reports, unless a stop or a
+joining request makes that wait give way (below) — not dispatched and forgotten by the composition, so the
+background time ends only when the drain has, unless Apple's expiry ends it first. Reporting the work done while
+the imports it caused are merely queued is what leaves an asset staged-but-unimported at suspension.
 
 **On Apple's expiry signal the drain SHALL stop cooperatively** (capability `ios-app-shell`, "Expiry stops work
-cooperatively at the next boundary"; design D4, D5): the import whose change block is running completes its
-change block, no further import is started, and the background task is then ended.
+cooperatively at the next boundary"; design D4, D5): the background time is ended at once, the stop is checked
+before each import is claimed so no further import is started, and the import whose change block is running is
+left to complete its change block if the process runs long enough.
 The stop SHALL NOT cancel an import already claimed — its transaction may still commit, and the claim is
 retained exactly as for a cancelled importing coroutine (see "The import lock covers the decision, and a claim
 provides the exclusion"). Every import left unstarted is a safe retry: its staged bytes and store row are
 untouched.
 
-An import that never reports is the one case awaiting cannot resolve, and it SHALL NOT hold the background
-task past Apple's expiry signal: the stop starts nothing new and ends the task, leaving that import claimed and
-running. Nothing bounds a single import in time. A wall-clock bound on one import expires against transactions
+An import that never reports is the one case awaiting cannot resolve, and it SHALL NOT hold the tail hostage:
+each import runs as its own job, and the tail's wait for it SHALL give way — leaving the import claimed and
+running — when Apple's stop arrives, or when another request joins the tail (every later request would
+otherwise wait behind it). After a join interrupts the wait, the drain moves on to the next importable asset,
+which the claim keeps from being the stalled one; after a stop it starts nothing further. No clock decides
+either: the tail stops waiting only because something else is due. Nothing bounds a single import in time. A wall-clock bound on one import expires against transactions
 that are alive — the process is suspended for arbitrary spans between a change block and its completion — and
 every expiry manufactures an unconfirmed row for the adjudication guard to reason about. The stalled import
 blocks no other work, because it does not hold the download controller's lock and its ref is claimed rather
@@ -91,7 +98,10 @@ than serialised.
 unit ① of **any** later wake's tail — a silent push, a download or upload session relaunch, the upload
 heartbeat, a selection change, and foreground entry, whose tail runs through the same runner. ① is the **only**
 drain a wake runs: no wake's own work — the download reconcile included, at foreground as at a push — imports
-staged assets itself. The backstop `BGProcessingTask`
+staged assets itself. The one import outside the tail is the **once-per-process interrupted-import sweep** at
+host assembly (see "An interrupted import is adjudicated, never repeated blindly"), which settles the rows a dead
+process left unconfirmed and then drains what is importable; it imports under the same per-asset claims as ①,
+so running beside a tail it can never import an asset twice. The backstop `BGProcessingTask`
 found work in 0 of 108 field runs; it is removed together with its `flow/DownloadBackstop` trigger and its task
 identifier (design D7). The drain's coordination is the tail's: the wake's shared prelude — the trigger-time
 membership re-read (`reloadConfig` — see `ios-app-shell`, *Background triggers re-read the membership and fail
@@ -127,15 +137,27 @@ Decision record: `changes/own-work-per-wake` (design D1, D4, D5, D7).
 
 #### Scenario: Apple's expiry stops the drain at the next import
 
-- **WHEN** the tail's background task receives its expiration signal while importable assets remain
-- **THEN** the import whose change block is running completes that block, no further import starts, the
-  background task ends, and the remaining assets stay staged for a later wake
+- **WHEN** the tail's background time receives its expiration signal while importable assets remain
+- **THEN** the background time ends at once, the import whose change block is running is not cancelled, no
+  further import starts, and the remaining assets stay staged for a later wake
 
 #### Scenario: An import that never reports does not hold the task past expiry
 
 - **WHEN** an import the tail started never receives its completion, and the expiration signal arrives
-- **THEN** the background task ends, the import is left claimed and running rather than cancelled, and no other
+- **THEN** the background time ends, the import is left claimed and running rather than cancelled, and no other
   reconcile, import, leave or switch is blocked by it
+
+#### Scenario: A join does not wait behind a stalled import
+
+- **WHEN** an import the tail is awaiting never reports, and another wake requests the tail
+- **THEN** the tail stops waiting for that import, leaving it claimed and running, drains the other importable
+  assets, and makes the pass the joiner requested
+
+#### Scenario: A staging requests the import alone
+
+- **WHEN** a download finishes staging in a process that is already running
+- **THEN** the controller records it staged and the tail's ① imports it; no upload top-up or walk is requested
+  by that staging
 
 #### Scenario: Leftover staged imports drain at a later wake
 
@@ -285,7 +307,7 @@ informed.
 
 - **WHEN** a reconcile runs at foreground entry, at a push, or at a provision, and assets are importable
 - **THEN** the reconcile plans and enqueues only; the importable assets are imported by the tail's unit ①,
-  and no import runs outside the tail
+  and no wake's own work imports them
 
 #### Scenario: Last-good state survives the failure
 
@@ -296,7 +318,10 @@ informed.
 
 The download session's `handleEventsForBackgroundURLSession` handler SHALL be held for the wake's **own work**
 only — staging the delivered transfers — and SHALL be released when the session reports its events drained
-(`urlSessionDidFinishEvents(forBackgroundURLSession:)`), on the main thread (capability `ios-app-shell`). It
+(`urlSessionDidFinishEvents(forBackgroundURLSession:)`) **and** every staging the delivered events started has
+been recorded, on the main thread (capability `ios-app-shell`). The session's report says only that it delivered
+its events, not that the store writes they caused are done, so the download-job owner tracks each staging it
+starts and the release waits for them. It
 SHALL NOT be stored in a field and invoked when the imports happen to finish, and it SHALL NOT be held for the
 imports: those run afterwards as the tail's unit ① under the app's own background task (see "Import without
 foreground; staged by the wake, imported by the tail"). Apple documents no budget for a background-session

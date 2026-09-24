@@ -75,17 +75,33 @@ walk), then joins the running tail. Order ① → ② → ③: staged bytes are 
 is the costly unbounded step.
 
 - **Joining** a running tail means the runner makes exactly one more pass covering what the joiners need — the
-  pump's "no request is lost" rule carried over; never a second runner, never a queue.
+  **union** of their scopes (a staged download needs ① alone, a freed slot ② alone; together ① and ②, never a
+  walk) — the pump's "no request is lost" rule carried over; never a second runner, never a queue. A unit that
+  throws fails the whole tail and every waiter; the ③ → ② loop runs ② once more, never ③ again.
+- **A staging in a running process** (no relaunch delivered it) requests ① alone, detached: a staged photo changes
+  nothing ② or ③ would see, and a burst stages one resource at a time. It re-arms nothing.
+- **The membership transitions' arm** requests the full tail **detached**: a transition runs inside a flow (a
+  join's `Provision`) or a tap, neither of which may await the tail, and no OS handler waits on it.
 - **Foreground goes through the runner too:** its own work is the prelude + reconcile (union/plan/enqueue), the
   stored-upload settle, the staged-byte reclaim, and status and membership refresh; import, top-up and walk are the tail. `DownloadController.reconcile` stops draining
-  imports itself — the drain is ① in every wake.
+  imports itself — the drain is ① in every wake. The one import left outside the tail is the once-per-process
+  interrupted-import sweep at host assembly (it settles rows a dead process left unconfirmed, then drains); it
+  imports under the same per-asset claims as ①, so it can never import an asset twice. Foreground also holds the
+  process's background time across its own work and its tail (D5), so a tail the member leaves running by
+  switching away stops on Apple's signal rather than being frozen mid-unit.
+- **The push's upload arm is no longer a receiver.** `flow/SilentPush` runs the download receiver alone; whether the
+  wake joins the tail — only for the active event — is a tested guard (`PushTailGuard`) the inbound port's
+  implementation asks after the flow returns (a flow answers nothing).
 - **The heartbeat BGTask has no own work** beyond the prelude: it is the tail, under its BGTask (its purpose,
   catching new captures, is ③).
 - **Under a limited grant** the tail runs ① and ② only, never ③; ② resolves from the in-memory snapshot and reads no
   library. A silent push therefore now reaches ② under a limited grant (accepted: uploads already-selected rows
   sooner, no read).
 - **A tail cut short by Apple's expiry counts as work remaining (`PROCESSING`)** for the heartbeat re-arm policy, so
-  a relaunch chain still re-arms.
+  a relaunch chain still re-arms. The outcome is computed over the latest pass that ran an upload unit (an
+  import-only pass keeps the previous one's): the latest unit's `SKIPPED` wins, then a cut or any unit's
+  remaining work is `PROCESSING`, then any `FAILED`, else `COMPLETED`. A download-session relaunch re-arms like an
+  upload-session relaunch — only when work remains.
 - Accepted consequences: ① is not direction-gated (as `importReady` is not today — an upload-only membership simply
   has nothing staged); a tail may run ③ twice when a joiner needs it (the memo makes the second cheap); a cold
   background wake under a limited grant tops up nothing, because its snapshot is unread until a foreground launch
@@ -109,21 +125,42 @@ drain signal that never arrives, now that no deadline releases the handler — i
 *Alternative:* keep measured constants as a backstop — rejected: the XS evidence shows our constant is what cut the
 imports.
 
-### D4 — Cooperative stop at the next boundary
-On expiry the current unit (a PhotoKit change block, a ledger write, a store transaction) completes, no new unit
-starts, then the background task ends and the handler is released — replacing "release, let the work run on".
-Every unit is already a safe retry (staged bytes + store; ledger idempotent upserts).
+### D4 — Cooperative stop at the next boundary, answered at once
+*(Amended at apply, by the user's decision: the first wording waited for the unit in flight before ending the task.)*
+On expiry the handler requests the tail's stop **and**, in the same call, releases any OS handler the wake still
+holds and ends the background task (a `BGTask` is completed through the core's completion) — **at once**, never
+waiting for the unit in flight. That unit (a PhotoKit change block, a ledger write, a store transaction) is not
+cancelled: it runs on until it completes or iOS suspends the process. No new unit starts: the stop is checked
+between units and between two items of an iterating unit (two imports, two job creations); an import the tail is
+merely awaiting stops being awaited, and keeps its claim. This replaces "release, let the work run on". Every unit
+is already a safe retry (staged bytes + store; ledger idempotent upserts; a stalled import keeps its claim).
+Ending at once is Apple's/DTS's recipe (end the task inside the expiration handler), and it leaves nothing for a
+watchdog to decide; waiting for the unit, as first written, risked exactly the watchdog termination the expiry
+exists to prevent. A stop while no tail runs is a no-op, so a wake whose time is already up — a refused
+`beginBackgroundTask` included, which the port reports as an immediate expiry — requests no tail. Because the
+stopped tail reaches its end only when the unit in flight does, its re-arm and the second half of the expiry log
+may land only when the process next runs.
 *Alternatives:* hard cancel (an in-flight PhotoKit transaction cannot be recalled anyway); keep running (Apple:
-"cancel or defer the work").
+"cancel or defer the work"); end only after the unit completes (the first wording — a watchdog risk for no gain,
+since the unit is a safe retry either way).
 
 ### D5 — Release the OS handler after own work; the tail runs under `beginBackgroundTask`
 Push and URLSession handlers are released as soon as own work is done (the URLSession one after staging, at
 `urlSessionDidFinishEvents`, on the main thread). Background time is per app, so a background task costs nothing
-and adds the expiry signal. A BGTask holds `setTaskCompleted` until its tail finishes or its expiration handler
-fires (the BGTask is what grants the minutes).
+and adds the expiry signal; it is begun no later than the handover and held across own work, release and tail —
+and foreground entry takes one too. A BGTask holds `setTaskCompleted` until its tail finishes or its expiration
+handler fires — then completes it at once (D4) (the BGTask is what grants the minutes). The handlers are held by
+one `ports/` type, `OsCompletions`, with two release paths — after the own work (`releaseAfter`), or at once on
+the OS's expiry — each handler released exactly once; an expiry release runs on the signal's own thread, which for
+the background-time expiry is main (UIKit calls `beginBackgroundTask`'s expiration handler there), satisfying the
+URLSession handler's main-thread rule. The upload mechanism holds no handler: its transport reports completions
+and the drain to the core (`AppUploadEvents`), which owns the upload session's `OsCompletions`.
 
 ### D6 — The discovery walk is atomic under a stop
-A stop abandons an in-flight walk; its decide stage writes nothing durable, so the next wake retries. A partial walk
+A stop abandons an in-flight walk; its decide stage writes nothing durable, so the next wake retries. The walk
+unit records what it found and publishes, but creates no job: it hands the resources it read to the one top-up
+that follows it. The upload cycle serialises its own units (a selection change's own work walks outside the
+runner), so the decide-here-act-there split keeps one writer at a time. A partial walk
 is never authoritative (it would retract photos it did not see). With stage 1 the walk is ~0.3 s darwinbg on the
 SE2's event window, so chunking is not worth it.
 
@@ -165,11 +202,18 @@ foregrounded; foreground entry re-reads anyway.
 
 ### D12 — Change-driven push registration
 Ask the OS for the token at every app entry (cold start in either state + each foreground entry — cheap per Apple,
-and the only way the app learns a rotation); PUT only when (token, env, deviceId) differs from the persisted
-last-registered value, plus on join and on a fresh credential. Accepted: a registration the backend loses for an
+and the only way the app learns a rotation; the ask moved from Swift to the Kotlin root's `onLaunch` and its
+`didBecomeActive` observer); PUT only when (token, env, deviceId) differs from the persisted
+last-registered value, plus on join and on a fresh credential. Every OS answer reaches the comparison — the token
+source carries a `deliveries` flow beside its `StateFlow`, which would conflate an unchanged re-delivery away and
+so never re-send a failed publish. The record is an App-Group file behind a `PushRegistrationRecord` port (dies
+with the install, so a reinstall publishes at its first entry); an unreadable record publishes (the safe
+direction), an unreadable device identity publishes nothing and waits for the next entry. Accepted: a registration the backend loses for an
 unknown reason heals only at the next join, rotation or credential.
 The registration subscription is installed on **every** cold start, foreground or background (today only on host
-assembly), so a rotation or renewal learned in a background wake is published from that wake.
+assembly) — by the shared host composition as it composes the graph, once per process, never by the root or by
+host assembly — so a rotation or renewal learned in a background wake is published from that wake. Host assembly
+itself becomes foreground-only: no background entry (push, transfer, task, token) assembles the host.
 A fresh credential includes periodic token renewals (`DeviceAttestation.tokenChanged` fires on both), so those
 re-PUT too — cheap and rare.
 *Alternatives:* PUT on every foreground cold start as a healing net (declined — the known loss paths are already
@@ -191,8 +235,8 @@ this change rewrites the same path: the change path gets the same generation che
 - [Handler released before the tail's work] → the tail holds its own background task; background time is per app
   (DTS), so nothing is lost; and the expiry handler stops it cleanly instead of a watchdog kill.
 - [`beginBackgroundTask` expiry arrives "shortly before" with no number; handler must return in <~1 s on the main
-  thread] → the handler only flips the stop flag and waits for the current unit; units are short (a change block,
-  a transaction).
+  thread] → the handler flips the stop flag, releases what the wake holds and ends the task, and returns — it never
+  waits for the current unit, which runs on until suspension as a safe retry (D4).
 - [Deleting the backstop leaves a device that gets no push and is not opened with staged-but-unimported photos] →
   0 / 108 field runs found such work; any later wake's ① or foreground drains it.
 - [The expiry gain is not reproducible on the SE2] → field-evidenced (XS) and Apple-contract-driven; measure after
