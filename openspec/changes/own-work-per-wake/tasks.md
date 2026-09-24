@@ -59,10 +59,10 @@
 
 ## 9. Guards, diagrams, docs
 
-- [ ] 9.1 Update architecture guards per the architecture-guards delta: runtime-identity pin drops the backstop id and asserts `BGTaskSchedulerPermittedIdentifiers` equals the pinned set; the handler-holding guard follows the type replacing `OsReceipt`/`BackgroundEventsReceipts`
-- [ ] 9.2 `./gradlew architectureDiagrams` (flows change: DownloadBackstop gone, SilentPush/Foreground/Background changed) and commit
-- [ ] 9.3 CLAUDE.md: module list mentions (`DownloadBackstop`, pump, receipts) updated
-- [ ] 9.4 Detekt tiers: fit new code to the ceilings; no ceiling raised without a stated forcing proof
+- [x] 9.1 Update architecture guards per the architecture-guards delta: runtime-identity pin drops the backstop id and asserts `BGTaskSchedulerPermittedIdentifiers` equals the pinned set; the handler-holding guard follows the type replacing `OsReceipt`/`BackgroundEventsReceipts`
+- [x] 9.2 `./gradlew architectureDiagrams` (flows change: DownloadBackstop gone, SilentPush/Foreground/Background changed) and commit
+- [x] 9.3 CLAUDE.md: module list mentions (`DownloadBackstop`, pump, receipts) updated
+- [x] 9.4 Detekt tiers: fit new code to the ceilings; no ceiling raised without a stated forcing proof
 
 ## 10. Verification
 
