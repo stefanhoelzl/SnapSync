@@ -6,6 +6,7 @@ import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
+import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PhotoLibraryImporter
@@ -27,6 +28,10 @@ fun inMemoryUploadDiscovery(
     library: StateFlow<List<RawAsset>>,
     grant: () -> PermissionStatus = { PermissionStatus.GRANTED },
 ): UploadDiscovery = InMemoryUploadDiscovery(source, library, grant)
+
+/** The library's change token over the caller's own [library] cell: any change to the cell moves it. */
+fun inMemoryLibraryChangeTokenRead(library: StateFlow<List<RawAsset>>): LibraryChangeTokenRead =
+    InMemoryLibraryChangeTokenRead(library)
 
 /**
  * Albums over the caller's own [library] cell. [userAlbums] is also the caller's: the albums other apps made,

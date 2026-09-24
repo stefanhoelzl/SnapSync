@@ -19,6 +19,9 @@ import app.snapsync.contracts.ImportedAssetPresenceContract
 import app.snapsync.contracts.ImportedAssetPresenceState
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
+import app.snapsync.contracts.LibraryChange
+import app.snapsync.contracts.LibraryChangeTokenContract
+import app.snapsync.contracts.LibraryChangeTokenState
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
@@ -42,6 +45,7 @@ import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.ios.discovery.IosDiscovery
+import app.snapsync.ios.discovery.PhotoKitLibraryChangeTokenRead
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
@@ -95,6 +99,7 @@ import platform.Photos.PHPhotoLibrary
 fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(CandidateSourceContract, SimAppCandidateSourceBinding(), ::refusal),
     simulatorAppContract(UploadDiscoveryContract, SimAppUploadDiscoveryBinding(), ::refusal),
+    simulatorAppContract(LibraryChangeTokenContract, SimAppLibraryChangeTokenBinding(), ::refusal),
     simulatorAppContract(ImportedAssetPresenceContract, SimAppAssetPresenceBinding(), ::refusal),
     simulatorAppContract(PhotoAccessContract, SimAppPhotoAccessBinding(), ::refusal),
     simulatorAppContract(AlbumManagerContract, SimAppAlbumManagerBinding(), ::refusal),
@@ -178,6 +183,22 @@ class SimAppUploadDiscoveryBinding : Binding<UploadDiscoveryState, SeededLibrary
         if (state == UploadDiscoveryState.NO_GRANT) return Entered.Unreachable(UNREACHABLE_NO_GRANT)
         val seeded = seedPhotos(PhotoLibrary.window(UploadDiscoveryContract.name, clauseId).seedDate)
         return Entered.Ready(SeededLibrary(IosDiscovery(Logger.withTag("contract"), PhotoKitCandidateSource()), seeded))
+    }
+}
+
+/**
+ * The library's change token under the full grant — the only grant the walk memo reads one under. The change a
+ * clause makes is one photo created through PhotoKit in its own capture window, which is a change made by this
+ * process: the external-change case (a Camera photo) is the device check no host here can reach.
+ */
+class SimAppLibraryChangeTokenBinding : Binding<LibraryChangeTokenState, LibraryChange> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(LibraryChangeTokenState.GRANTED)
+
+    override fun create(state: LibraryChangeTokenState, clauseId: String): Entered<LibraryChange> {
+        val seedDate = PhotoLibrary.window(LibraryChangeTokenContract.name, clauseId).seedDate
+        return Entered.Ready(LibraryChange(PhotoKitLibraryChangeTokenRead()) { seedPhotos(seedDate) })
     }
 }
 

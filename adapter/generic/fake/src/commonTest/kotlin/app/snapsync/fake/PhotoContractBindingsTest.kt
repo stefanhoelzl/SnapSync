@@ -12,6 +12,9 @@ import app.snapsync.contracts.Entered
 import app.snapsync.contracts.ImportedAssetPresenceContract
 import app.snapsync.contracts.ImportedAssetPresenceState
 import app.snapsync.contracts.ImportedLibrary
+import app.snapsync.contracts.LibraryChange
+import app.snapsync.contracts.LibraryChangeTokenContract
+import app.snapsync.contracts.LibraryChangeTokenState
 import app.snapsync.contracts.MarkerState
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
@@ -193,6 +196,22 @@ class PhotoContractBindingsTest {
         }
     }
 
+    private val changeToken = object : Binding<LibraryChangeTokenState, LibraryChange> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val reaches = setOf(LibraryChangeTokenState.GRANTED)
+
+        override fun create(state: LibraryChangeTokenState, clauseId: String): Entered<LibraryChange> {
+            val library = seededLibrary(LibraryChangeTokenContract.name, clauseId)
+            val added = RawAsset(
+                assetId = "contract-$clauseId-change",
+                creationDate = PhotoLibrary.window(LibraryChangeTokenContract.name, clauseId).seedDate,
+                rawResources = listOf(RawResource(ResourceRole.PRIMARY, "image/jpeg", "IMG_0009.JPG", Unit)),
+            )
+            return Entered.Ready(LibraryChange(inMemoryLibraryChangeTokenRead(library)) { library.value += added })
+        }
+    }
+
     @Test
     fun `the in-memory candidate source satisfies the CandidateSource contract`() =
         verify(CandidateSourceContract, candidateSource)
@@ -216,4 +235,8 @@ class PhotoContractBindingsTest {
     @Test
     fun `the in-memory importer satisfies the PhotoLibraryImporter contract`() =
         verify(PhotoLibraryImporterContract, importer)
+
+    @Test
+    fun `the in-memory change token satisfies the LibraryChangeToken contract`() =
+        verify(LibraryChangeTokenContract, changeToken)
 }
