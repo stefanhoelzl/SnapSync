@@ -37,7 +37,7 @@ class PushRecordWorldTest {
     }
 
     /**
-     * The composed registration writes the delivered token; touching the host is what installs it.
+     * The composed registration writes the delivered token; composing the world installed it.
      *
      * Awaited on the world's count of LANDED registrations, never by polling the backend store: the mini-edge writes
      * that store from its engine's thread, and a read racing that write on an unsynchronized map throws on
@@ -45,7 +45,6 @@ class PushRecordWorldTest {
      * is done, and the store is read once.
      */
     private suspend fun registerToken(w: World, token: String) {
-        w.statusHost
         w.pushTokens.deliver(token)
         withTimeout(5_000) { while (w.registerPushCount < 1) yield() }
         assertTrue((w.neutral.deviceConfigOf(w.ownDeviceId) as Answer.Available).value?.contains(token) == true)

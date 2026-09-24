@@ -14,9 +14,12 @@ import kotlinx.coroutines.CoroutineScope
  * The composed app: the core, and the status host over it (spec `module-architecture`, "One shared
  * composition").
  *
- * [host] is `by lazy`, and touching it is **host assembly**: it installs the permission and push-registration
- * subscriptions, then builds the host. That is the iOS shell's timing, and it is load-bearing — a cold background
- * wake that merely touches [core] must install no collector and run no launch reconcile.
+ * [host] is `by lazy`, and touching it is **host assembly**: it installs the permission-grant subscriptions, then
+ * builds the host. That is the iOS shell's timing, and it is load-bearing — a cold background wake that merely
+ * touches [core] must install no permission collector and run no launch reconcile.
+ *
+ * The push-registration subscription is the one exception, and it is installed by [snapSyncHost] itself, as the
+ * graph is composed — so on every cold start, a background wake's included (see [AppCore.installPushRegistration]).
  */
 class ComposedApp internal constructor(
     val core: AppCore,
@@ -29,7 +32,7 @@ class ComposedApp internal constructor(
 
     /**
      * Every read-model [host] observes — for the one host not assembled here: the desktop world harness, which
-     * installs no subscription (its operator plays the OS) and decorates its command bundle for the inspector,
+     * installs no host-assembly subscription (its operator plays the OS) and decorates its command bundle for the inspector,
      * but observes exactly what the phone's host observes. [pending] is that harness's seam.
      */
     fun statusSources(pending: MutablePendingJoinSource = MutablePendingJoinSource()): StatusSources =
@@ -37,8 +40,15 @@ class ComposedApp internal constructor(
 }
 
 /**
- * Compose the app over [ports]: the core from [snapSyncApp], and — on first touch of [ComposedApp.host] — the
- * host-assembly subscriptions and the status host, observing every read-model the core exposes.
+ * Compose the app over [ports]: the core from [snapSyncApp] with its push registration installed, and — on first
+ * touch of [ComposedApp.host] — the host-assembly subscriptions and the status host, observing every read-model the
+ * core exposes.
+ *
+ * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its
+ * graph on every cold start — the first operating-system entry that reaches the core does it, foreground or
+ * background — while it assembles its host only on a foreground launch. A rotated APNs token or a renewed credential
+ * learned in a background wake is therefore published from that wake (capability `ios-app-shell`, "Push registration
+ * is started by the shared composition"). The installer is idempotent, so nothing re-installs it.
  *
  * A root supplies ports and nothing else. It builds no host, installs no subscription and passes no read-model:
  * a source added to the host is wired here once, and every root's host observes it. That is the drift this
@@ -47,11 +57,11 @@ class ComposedApp internal constructor(
  */
 fun snapSyncHost(scope: CoroutineScope, ports: AppPorts): ComposedApp {
     val core = snapSyncApp(scope, ports)
+    core.installPushRegistration()
     val formatter = CutoffFormatter(now = ports.displayClock::now, zone = ports.timeZone.current())
     return ComposedApp(core, ports, formatter) {
-        // Host assembly: the two collectors install ONLY from here (see [ComposedApp]).
+        // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
-        core.installPushRegistration()
         StatusContainerHost(
             statusSourcesOf(core, ports),
             scope = scope,

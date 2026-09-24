@@ -8,6 +8,7 @@ import app.snapsync.model.SCENE_GENERATION_INITIAL
 import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.PushPorts
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.composition.ComposedApp
 import app.snapsync.composition.snapSyncHost
@@ -30,6 +31,7 @@ import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.push.HttpPushTokenPublisher
+import app.snapsync.push.IosPushRegistrationRecord
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
@@ -100,6 +102,7 @@ import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationWillResignActiveNotification
+import platform.UIKit.registerForRemoteNotifications
 
 /**
  * The iOS composition root (D7): a single app-lifetime singleton that assembles the real live
@@ -450,10 +453,13 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // on an unreadable read (the pure `configAfterReload` rule).
                 configRefresh = config,
                 backstopScheduler = backstopScheduler,
-                // The push registration's port and token source (capability `push-registration`): `compose/`
-                // builds the registration, its launch/rotation collector and the on-join re-PUT.
-                pushTokenPublisher = HttpPushTokenPublisher(http, backendHost, deviceId = { deviceIdentity.deviceId() }),
-                pushTokens = pushTokenSource,
+                // The push registration's ports and token source (capability `push-registration`): `compose/`
+                // builds the registration, its delivery/credential collector and the on-join re-PUT.
+                push = PushPorts(
+                    publisher = HttpPushTokenPublisher(http, backendHost, deviceId = { deviceIdentity.deviceId() }),
+                    tokens = pushTokenSource,
+                    record = IosPushRegistrationRecord(),
+                ),
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
                 log = log,
@@ -523,7 +529,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // --- Push notifications (capability `push-registration`) ---
     // The compile-time APNs environment (the generated Deployment.plist's `apnsEnv`): `sandbox` for
     // dev/sideloaded builds, `production` for TestFlight/App Store. The token itself is OS-delivered
-    // (the Swift AppDelegate forwards it via [onPushToken]); a rotation re-registers. Read through the
+    // (the Swift AppDelegate forwards it via [onPushToken], in answer to the ask [onLaunch] makes at every app
+    // entry); the registration publishes it only when it differs from the last one the backend accepted. Read through the
     // adapter, not inline: what an absent key becomes is a decision, and this shell holds none.
     internal val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
 
@@ -651,15 +658,28 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      * `willResignActive` ↔ leaving it (including the transient `.inactive` cases — app switcher,
      * incoming call — which the old split also routed to background). Process-lifetime observers,
      * never removed; a background launch installs them too and simply never sees `didBecomeActive`.
+     *
+     * It also **asks the OS for the APNs token** — here, at every cold start in either state, and in the
+     * `didBecomeActive` observer, at every foreground entry (capability `push-registration`, "Registration timing —
+     * launch, join, and rotation"). Asking is the only way the app learns a rotated token, and Apple describes it as
+     * cheap; whether the answer is then published is the push feature's comparison against the last registration
+     * the backend accepted, never this shell's. The ask is a plain platform statement, deciding nothing — the token
+     * arrives through the AppDelegate's `didRegisterForRemoteNotificationsWithDeviceToken` → [onPushToken].
      */
     @PlatformEntry
     fun onLaunch() = log.invocation("onLaunch") {
+        UIApplication.sharedApplication.registerForRemoteNotifications()
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(
             name = UIApplicationDidBecomeActiveNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue,
-            usingBlock = { objcBoundary(log, "didBecomeActive") { onForeground() } },
+            usingBlock = {
+                objcBoundary(log, "didBecomeActive") {
+                    onForeground()
+                    UIApplication.sharedApplication.registerForRemoteNotifications()
+                }
+            },
         )
         center.addObserverForName(
             name = UIApplicationWillResignActiveNotification,

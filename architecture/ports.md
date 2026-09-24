@@ -38,7 +38,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
-| `DeviceIdentity` | `:domain:ports` | `:adapter:ios:ext-safe` KeychainDeviceIdentity | no |
+| `DeviceIdentity` | `:domain:ports` | `:adapter:ios:ext-safe` KeychainDeviceIdentity; `:domain:feature` FakeIdentity | yes |
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:adapter:ios:ext-safe` IosDeviceLogSource | yes |
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:adapter:ios:ext-safe` IosDeviceManifestStore; `:domain:feature` FakeStore | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
@@ -83,6 +83,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ProcessMetricSource` | `:domain:ports` | `:adapter:ios:app-only` MetricKitProcessMetricSource | no |
 | `ProtectedStorage` | `:domain:ports` | `:adapter:generic:fake` InMemoryProtectedStorage; `:adapter:ios:app-only` IosProtectedStorage | yes |
 | `PushReceiver` | `:domain:ports` | `:domain:feature` DownloadPushReceiver, UploadPushReceiver | no |
+| `PushRegistrationRecord` | `:domain:ports` | `:adapter:generic:fake` InMemoryPushRegistrationRecord; `:adapter:ios:app-only` IosPushRegistrationRecord; `:domain:feature` FakeRecord | yes |
 | `PushTokenPublisher` | `:domain:ports` | `:adapter:generic:app` HttpPushTokenPublisher; `:domain:feature` FakePushTokenPublisher | yes |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable | no |
 | `RenameOutcome` | `:domain:ports` | `:domain:ports` InvalidName, Renamed, Transient | no |

@@ -96,8 +96,9 @@ internal class AppEntries(
         log.invocation(ports.logScope, "onOpenUrl", params = "url=$url") { hooks.openUrl(url) }
 
     override fun onPushToken(hex: String) =
+        // No host assembly: the registration collector is installed as the graph is composed — which reaching
+        // `ports` above has done — so a token delivered in a background wake installs no permission collector.
         log.invocation(ports.logScope, "onPushToken", params = "hex=${hex.take(TOKEN_PREFIX)}…") {
-            hooks.assembleHost()
             hooks.deliverPushToken(hex)
         }
 
