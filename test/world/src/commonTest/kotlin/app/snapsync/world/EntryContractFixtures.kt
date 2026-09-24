@@ -14,6 +14,7 @@ import app.snapsync.contracts.PlatformEntriesSubject
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.presentation.Layer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,7 +37,6 @@ internal object EntryContractFixtures {
 
     /** Stand-ins for the operating system's identifiers; the real ones are the iOS adapters' constants. */
     private val identifiers = EntryIdentifiers(
-        downloadBackstopTask = "world.download.backstop",
         uploadHeartbeatTask = "world.upload.heartbeat",
         uploadTransferChannel = "world.upload.session",
         downloadTransferChannel = "world.download.session",
@@ -52,18 +52,18 @@ internal object EntryContractFixtures {
                 w.addForeignDevice("DEV-F", JOINED_EVENT, listOf(World.foreignAsset("FQ")))
             }
         }
-        // The status host the world's composition assembles — the one the iOS root builds over its ports.
-        val host = w.statusHost
+        // The status host the world composition assembles, touched only through the hooks — as on the phone, a
+        // background wake assembles none, so no permission-grant subscription (and no launch arm) runs behind a clause.
+        val host = { w.statusHost }
         var active = false
         val tokens = mutableListOf<String>()
         val entries = platformEntries(
             core = { w.core },
             hooks = EntryHooks(
                 markActive = { active = true },
-                openUrl = host::onOpenUrl,
-                assembleHost = {},
+                openUrl = { url -> host().onOpenUrl(url) },
+                assembleHost = { host() },
                 deliverPushToken = { tokens += it },
-                downloadBackstopTaskId = identifiers.downloadBackstopTask,
                 uploadHeartbeatTaskId = identifiers.uploadHeartbeatTask,
                 uploadTransferChannel = identifiers.uploadTransferChannel,
             ),
@@ -73,15 +73,23 @@ internal object EntryContractFixtures {
             override val inviteUrl = encodeEventUrl(EventLinkPayload(INVITED_EVENT))
             override val invitedEventId = INVITED_EVENT
             override val joinedEventId = JOINED_EVENT
-            override fun joinGateEventId() = (host.container.stateFlow.value.layer as? Layer.JoiningEvent)?.eventId
-            override fun transientError() = (host.container.stateFlow.value.layer as? Layer.CreateEvent)?.error
+            override fun joinGateEventId() = (host().container.stateFlow.value.layer as? Layer.JoiningEvent)?.eventId
+            override fun transientError() = (host().container.stateFlow.value.layer as? Layer.CreateEvent)?.error
             override fun becameActive() = active
             override fun plannedForeignDownloads() = w.downloadStore.enqueueRequests.size
-            override fun backstopsScheduled() = w.backstopsScheduled
+            override fun heartbeatsScheduled() = w.heartbeatsScheduled
             override fun deliveredPushTokens() = tokens.toList()
-            override fun appUploaderBackgroundTasks() = w.operatorEngine.backgroundTasks
+            override fun appUploaderTopUps() = w.operatorEngine.topUps
+            override fun appUploaderWalks() = w.operatorEngine.walks
             override fun appUploaderTransferHandbacks() = w.operatorEngine.transferHandbacks
             override fun downloadSessionRealized() = w.downloadTransport != null
+            override fun backgroundTimeHolds() = w.backgroundTimeHolds.value.size
+            override fun expireBackgroundTime() = w.expireBackgroundTime()
+            override fun parkNextUploadUnit(): () -> Unit {
+                val gate = CompletableDeferred<Unit>()
+                w.operatorEngine.nextUnitGate = gate
+                return { gate.complete(Unit) }
+            }
         }
         return Entered.Ready(PlatformEntriesSubject(entries, observe)) { scope.cancel() }
     }

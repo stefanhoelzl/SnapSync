@@ -31,8 +31,9 @@ actual val transferSessionBinding: String = "default"
  * Say what this process got, and what will therefore happen, **before** it happens (law "Absence is never
  * silent").
  *
- * Without this line the first symptom is an `OsReceipt` expiry 20 s after a `handleEventsForBackgroundURLSession`
- * wake — a line that collapses two causes with different consequences: *the imports genuinely overran*, which
+ * Without this line the first symptom is an `OsCompletions` expiry line, on the background time's expiry after a
+ * `handleEventsForBackgroundURLSession` wake — a line that collapses two causes with different consequences: *the
+ * session genuinely never reported*, which
  * is a real concern on a device, and *this host has no daemon to signal drain*, which is not a concern at
  * all. The expiry line cannot tell them apart, so this one is written ahead of it.
  *

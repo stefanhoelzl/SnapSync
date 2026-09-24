@@ -46,7 +46,7 @@ class RelaunchWorldTest {
         val adopted = assertNotNull(w.downloadTransport, "the relaunched app realized a transport").inFlight().map { it.description }
         assertEquals(session, adopted, "the relaunched app's transport holds the dead process's transfers")
         session.forEach { assertNotNull(w.downloadTransport).finish(it) }
-        w.core.downloadJobs.awaitOutstandingImports()
+        w.core.downloadJobs.awaitOutstandingStagings()
         assertTrue(w.downloadStore.pendingDownloads().isEmpty(), "the relaunched app received the session's transfers")
     }
 

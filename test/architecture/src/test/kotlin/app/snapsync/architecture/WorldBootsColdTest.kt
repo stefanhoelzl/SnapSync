@@ -93,7 +93,7 @@ class WorldBootsColdTest {
                 init {
                     core.downloadController
                 }
-                fun stage() { core.downloadJobs.awaitOutstandingImports() }
+                fun stage() { core.downloadJobs.awaitOutstandingStagings() }
             }
         """.trimIndent()
         val found = eagerCoreAccesses(sample)

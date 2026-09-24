@@ -8,7 +8,6 @@ import app.snapsync.ios.UploaderPinSource
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.logging.IosDeviceLogSource
 import app.snapsync.logging.documentsDirectory
-import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.rig.RigCommand
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
@@ -180,8 +179,8 @@ private fun writeTextFile(path: String?, text: String) {
 }
 
 /**
- * WIRED entry points. Deadlines come from [ReceiptDeadlines] rather than literals, so the number the rig
- * reports is the number the receipt actually enforces.
+ * WIRED entry points. No deadline is reported beside a receipted trigger: no clock of the app's own releases a
+ * handler (capability `ios-app-shell`), so the measured hold is the only number there is.
  */
 private fun triggers(): Map<String, RigTrigger> = mapOf(
     // ── The platform hands these no completion handler: it does not wait, so neither do we ──────────
@@ -195,21 +194,21 @@ private fun triggers(): Map<String, RigTrigger> = mapOf(
         SnapSyncRoot.onSceneContinueActivity(browsingWebActivity(arg.orEmpty()))
     },
 
-    // ── The platform hands these an OS completion handler, already wrapped in `OsReceipt`. The rig
+    // ── The platform hands these an OS completion handler, held in `OsCompletions`. The rig
     //    supplies that handler, so it RECEIVES completion on the same channel the OS does. ───────────
-    "onSilentPush" to RigTrigger.Receipted(ReceiptDeadlines.SILENT_PUSH.inWholeMilliseconds) { arg, done ->
+    "onSilentPush" to RigTrigger.Receipted { arg, done ->
         SnapSyncRoot.onSilentPush(mapOf("eventId" to arg), done)
     },
-    // The BGTask identifier is the argument, exactly as the OS delivers it: `app.snapsync.download.backstop`
-    // runs the import-tail backstop, `app.snapsync.upload.heartbeat` the app uploader's heartbeat.
+    // The BGTask identifier is the argument, exactly as the OS delivers it: `app.snapsync.upload.heartbeat`
+    // runs the app uploader's heartbeat (the tail); any other is answered at once, as unknown.
     "onBackgroundTask" to
-        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { arg, done ->
+        RigTrigger.Receipted { arg, done ->
             SnapSyncRoot.onBackgroundTask(arg.orEmpty(), done)
         },
     // The transfer channel is the argument: the app uploader's session identifier, or any other for the downloads.
     // The routing itself is the core's and contract-covered; on device this drives the real session adoption.
     "onBackgroundTransfers" to
-        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_EVENTS.inWholeMilliseconds) { arg, done ->
+        RigTrigger.Receipted { arg, done ->
             SnapSyncRoot.onBackgroundTransfers(arg.orEmpty(), done)
         },
 )

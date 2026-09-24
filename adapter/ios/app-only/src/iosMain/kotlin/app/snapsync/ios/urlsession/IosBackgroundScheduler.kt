@@ -26,8 +26,8 @@ class IosBackgroundScheduler internal constructor(
     private val log: Logger,
     private val taskIdentifier: String,
     /**
-     * Whether the wake needs the network. The upload heartbeat does; the download backstop does not — it
-     * imports bytes that are already staged, and requiring a network would only defer it.
+     * Whether the wake needs the network. The upload heartbeat — the one task left, since the download
+     * backstop that did not was deleted (`changes/own-work-per-wake`, D7) — does.
      */
     private val requiresNetwork: Boolean,
     // A small delay so a burst of re-arms coalesces into roughly one wake; the OS treats it as a

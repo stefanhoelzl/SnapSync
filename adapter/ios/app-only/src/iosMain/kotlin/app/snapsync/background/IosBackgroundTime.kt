@@ -48,13 +48,12 @@ internal object SystemBackgroundTimeApi : BackgroundTimeApi {
  *
  * **The expiration handler only requests the stop.** Apple calls it *"shortly before the app's remaining background
  * time reaches 0"*, on the main thread, and expects it back promptly; so it invokes the core's `onExpiry` — which
- * requests a cooperative stop and returns — and returns itself. It does **not** end the task: the core ends it
- * through [BackgroundTimeHold.end] once the unit in flight has completed (capability `ios-app-shell`, "Expiry stops
- * work cooperatively at the next boundary"). ⚠️ Apple's own recipe ends the task inside the handler, and a task not
- * ended *"before time expires"* gets the app killed: the stop's next boundary must therefore arrive within the
- * grace between the handler and the end of the app's time, which Apple does not quantify. The units it waits for
- * are one PhotoKit change block, one ledger write or one store transaction, each well under a second as measured;
- * a unit that could outlast the grace is the exposure this accepts.
+ * requests a cooperative stop and returns — and returns itself. The adapter does not end the task; the core does,
+ * through [BackgroundTimeHold.end], and it does so **at once, from inside that same `onExpiry`**: it requests the
+ * tail's stop, releases the OS handler it guards and ends the hold without waiting for the unit in flight, which runs
+ * on until iOS suspends the process (every unit is a safe retry). That is Apple's own recipe — end the task inside
+ * the handler — and it leaves nothing for the watchdog to decide: a task not ended *"before time expires"* gets the
+ * app killed (decision record `changes/own-work-per-wake`, D4 as amended at apply).
  *
  * **A refusal is an immediate expiry.** `beginBackgroundTask` answers `UIBackgroundTaskInvalid` when the app may
  * not run in the background — its time is already up. That is reported through `onExpiry`, before [begin] returns,

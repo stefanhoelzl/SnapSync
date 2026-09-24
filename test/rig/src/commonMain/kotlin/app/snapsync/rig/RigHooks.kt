@@ -199,7 +199,7 @@ class RigHooks(
      * reports nothing; a host with no `URLSession` at all (the JVM host's `"world"`) earns none. That entry is the one
      * whose receipt is released by the session reporting its events drained — a callback a default session
      * never sends (`ios-url-session-upload`, "The transport binding is fixed by the compilation target") —
-     * so on that binding the hold is *always* the deadline and the expiry says nothing about the app. The
+     * so on that binding the hold always ends on the background time's expiry, which says nothing about the app. The
      * other receipted entries answer their own handlers and are unaffected.
      *
      * This is a labelling obligation, not decoration. `fix-download-session-lifecycle` D5 refused a
@@ -213,8 +213,8 @@ class RigHooks(
         } else {
             ". NOTE transferBinding=default (iosSimulatorArm64): this exercised adopt + session-identifier " +
                 "routing ONLY. The OS delivered no events and relaunched nothing, and no transfer outlived " +
-                "the process. The hold is the deadline because this binding's session never reports its " +
-                "events drained — that is the host, not a fault. Suspension survival and OS relaunch are " +
+                "the process. The hold ends on the background time's expiry because this binding's session never " +
+                "reports its events drained — that is the host, not a fault. Suspension survival and OS relaunch are " +
                 "device-only and are NOT evidenced by this result"
         }
 }
@@ -264,18 +264,18 @@ sealed interface RigTrigger {
     class Fire(val run: (arg: String?) -> Unit) : RigTrigger
 
     /**
-     * The platform hands this entry an OS completion handler, and the app already wraps it in `OsReceipt`.
-     * The rig supplies [run]'s `done` lambda, so it does not *detect* completion — it **receives** it, on
-     * the same channel the OS does. [deadlineMs] is the receipt's own bound, reported alongside the
-     * measured hold so the caller has both numbers.
+     * The platform hands this entry an OS completion handler, and the app holds it in `OsCompletions` across
+     * the wake's own work. The rig supplies [run]'s `done` lambda, so it does not *detect* completion — it
+     * **receives** it, on the same channel the OS does, and reports the measured hold.
      *
-     * The rig classifies nothing. `OsReceipt.release` carries no outcome — both the completion path and
-     * the expiry path call it with no argument — so `settled` versus `deadline-expired` is not recoverable
-     * here, and inferring it from `heldMs ≈ deadlineMs` would be a guess in an ambiguous band. The
-     * authoritative answer is production's own: `OsReceipt` logs its expiry line on the expiry path and no
-     * other, readable through `/logs` after the `[rig]` marker.
+     * There is no deadline to report beside it: no clock of the app's own releases a handler any more
+     * (capability `ios-app-shell`, "Time is up is learned only from the operating system"). The rig classifies
+     * nothing either — the release carries no outcome, so "released after its own work" versus "released on
+     * the operating system's expiry" is not recoverable here. The authoritative answer is production's own:
+     * `OsCompletions` logs its expiry line on the expiry path and no other, readable through `/logs` after the
+     * `[rig]` marker.
      */
-    class Receipted(val deadlineMs: Long, val run: (arg: String?, done: () -> Unit) -> Unit) : RigTrigger
+    class Receipted(val run: (arg: String?, done: () -> Unit) -> Unit) : RigTrigger
 
     /**
      * The platform **waits for this entry's return value and acts on it** — the third shape, and neither of

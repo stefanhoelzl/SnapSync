@@ -59,9 +59,8 @@ import app.snapsync.downloadstore.iosDownloadStore
 import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
-import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.background.IosBackgroundTime
 import app.snapsync.ports.DeviceIdentity
-import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
@@ -129,7 +128,7 @@ import platform.UIKit.registerForRemoteNotifications
  *
  * **The OS entries are the core's.** This root is the *driving adapter* of the app's inbound port
  * [PlatformEntries] (spec `module-architecture`, "OS entry points cross an inbound port"): it implements the port
- * by delegation to the core's `platformEntries`, so which flow an entry runs, which receipt holds its completion
+ * by delegation to the core's `platformEntries`, so which own work an entry runs, how its completion is held, when the tail runs
  * and how a background task or transfer channel is routed are written once, in `compose/`, and covered by the
  * port's contract. What stays here is what only a root can do — the hooks the core cannot name ([rootEntries]),
  * and the entries that are not the port's (`onLaunch`, the activity filter's doors, the log-only scene callbacks).
@@ -274,10 +273,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
      */
     internal val osExtensionRegistryThunk: () -> UploadExtensionRegistry? =
         if (osSupportsOsDrivenUpload) ({ extensionRegistry }) else ({ null })
-
-    /** BGTaskScheduler identifier for the download import-tail backstop — MUST match the Swift host's
-     * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
-    const val DOWNLOAD_BACKSTOP_TASK_ID: String = "app.snapsync.download.backstop"
 
     // The event config seam/store (one file-backed adapter is both — the App-Group file of record,
     // migration step 11a; the Keychain write-through ended at the finale), hoisted so a
@@ -452,7 +447,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // never notify this process's StateFlow, and the reload retains the last good value
                 // on an unreadable read (the pure `configAfterReload` rule).
                 configRefresh = config,
-                backstopScheduler = backstopScheduler,
+                // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across
+                // its own work and its tail, and the only "time is up" those wakes get (capability `ios-app-shell`).
+                backgroundTime = IosBackgroundTime(log),
                 // The push registration's ports and token source (capability `push-registration`): `compose/`
                 // builds the registration, its delivery/credential collector and the on-join re-PUT.
                 push = PushPorts(
@@ -535,10 +532,8 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     internal val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
 
 
-    // The silent-push cross-arm fan-out (a push means "the event changed": foreign photos to pull, and —
-    // since the event is live — a good moment to contribute our own) is now the `flow/SilentPush` trigger.
-    // This root supplies its arms: the download arm's receiver is composed in the app graph, and the upload
-    // arm's rides the `uploadSilentPush` thunk in [AppPorts] (app-driven tier only; null on iOS ≥26.1).
+    // A silent push's own work (the download arm) and the tail its wake joins are both composed in the app graph
+    // (`flow/SilentPush`, the tail runner); this root supplies no arm of its own.
 
     /**
      * The status host, assembled by the shared host composition on first touch: that assembly installs the
@@ -865,17 +860,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     }
 
     /**
-     * Queues the `BGProcessingTask` request so the OS runs [runDownloadBackstop] at a future idle moment.
-     *
-     * The same adapter the upload heartbeat uses, so a refused submit is reported with the platform's error
-     * rather than lost: the hand-written submit this replaced wrapped a call that returns `false` instead of
-     * throwing in `runCatching`, so a refusal — which ends the backstop chain — left no trace.
-     */
-    private val backstopScheduler: BackgroundScheduler by lazy {
-        IosBackgroundScheduler(log, DOWNLOAD_BACKSTOP_TASK_ID, requiresNetwork = false, earliestBeginSeconds = 0.0)
-    }
-
-    /**
      * APNs registration **failed** (capability `push-registration`), forwarded from the Swift
      * AppDelegate's `didFailToRegisterForRemoteNotificationsWithError` with the error already
      * rendered to a string (an encoding, not a decision).
@@ -965,8 +949,6 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
             // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
             // exactly the class of bug that once shipped the app-driven tier without a direction gate.
             albumManager = albumManager,
-            // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
-            onCycleComplete = { app.ledgerCounts.refresh() },
             // Event album (capability `event-album`): the composed coordinator; the cycle applies the
             // membership's opt-in (which arrived with its gate) and `uploadCore` owns the shared
             // `assetId` denormalization.
@@ -977,12 +959,10 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 photoAccess = permission,
                 selectionScope = { app.selectionScope() },
                 admission = { app.appUploadAdmission() },
-                appMayCreate = { app.appMayCreate() },
             ),
-            // Where this session's OS completion handler is released — the main lane, because UIKit
-            // owns that handler and requires it (capability `ios-app-shell`). Named here, in the one
-            // app-process file the lane gate permits to name it.
-            uiLane = Dispatchers.Main,
+            // The transport's completions and drain reports, each one call into the composed core's tail. The
+            // handlers they release are the core's, released on the main lane `AppPorts.uiLane` names.
+            events = { app.tail.uploadEvents },
         )
     }
 
@@ -1048,7 +1028,6 @@ private fun rootEntries(): PlatformEntries = platformEntries(
         openUrl = { url -> SnapSyncRoot.host.onOpenUrl(url) },
         assembleHost = { SnapSyncRoot.host },
         deliverPushToken = { hex -> SnapSyncRoot.pushTokenSource.deliver(hex) },
-        downloadBackstopTaskId = SnapSyncRoot.DOWNLOAD_BACKSTOP_TASK_ID,
         uploadHeartbeatTaskId = UrlSessionUploadController.HEARTBEAT_TASK_IDENTIFIER,
         uploadTransferChannel = UrlSessionUploadController.SESSION_IDENTIFIER,
     ),

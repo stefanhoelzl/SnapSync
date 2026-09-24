@@ -36,44 +36,38 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * **The foreground status refresh is not sequenced behind the upload pump** (capability `sync-status`).
+ * **The foreground status refresh is not sequenced behind anything slow** (capability `sync-status`, "Foreground
+ * status refresh is not sequenced behind the upload tail").
  *
- * The flow transcriber pins the *shape* — `architecture/flows/Foreground.md` now shows
- * `pumpUploads()` inside the `par concurrent` block, and a stale diagram fails the build — but it
- * cannot see whether the refresh actually *runs* while the pump is stuck. That is the property members
- * felt: the app-driven pump awaits a whole upload cycle, and a cycle's discovery walk stays outstanding
- * for as long as the app was suspended (774 s, measured on device — `SNAPSYNC-16`). While the pump was
- * awaited *before* the fan-out, a visit shorter than that unwinding reached none of the work below it,
- * so no count was ever read and the joined screen answered from its seeds.
- *
- * The test therefore blocks the pump forever and asserts the rest of the flow still happens.
+ * The upload tail — the import drain, the top-up and the walk, whose walk stays outstanding for as long as the app
+ * was suspended (774 s, measured on device — `SNAPSYNC-16`) — is not a child of this flow at all any more: the inbound
+ * port's implementation requests it after the flow returns (decision record `changes/own-work-per-wake`). What is
+ * left to pin is the flow's own fan-out: its children are foreground entry's own work, a slow one holds up none of
+ * the others, a throwing one cancels none of them, and `run()` still returns only once every child is done.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ForegroundOrderingTest {
 
     @Test
-    fun `a pump that never returns does not hold up the status refresh or the poll`() = runTest {
-        val pumpEntered = CompletableDeferred<Unit>()
+    fun `a child that never returns does not hold up the status refresh or the poll`() = runTest {
+        val settleEntered = CompletableDeferred<Unit>()
         val neverReturns = CompletableDeferred<Unit>()
         var refreshed = false
-        var settled = false
         var runReturned = false
 
-        // On `backgroundScope`, and read with `runCurrent()` below rather than `advanceUntilIdle()`:
-        // the poller is a `while (true) { delay(cadence) }` loop, so advancing virtual time to idle
-        // never terminates. `runCurrent()` drains what is pending without moving the clock, which is
-        // precisely the question here — what ran WITHOUT waiting for anything.
+        // On `backgroundScope`, and read with `runCurrent()` below rather than `advanceUntilIdle()`: the poller is a
+        // `while (true) { delay(cadence) }` loop, so advancing virtual time to idle never terminates.
         val counts = MutableLedgerCountsSource()
         val poller = StatusCountsPoller(backgroundScope, { counts.refresh() })
 
         val flow = foreground(
             statusPoller = poller,
-            pumpForeground = {
-                pumpEntered.complete(Unit)
-                neverReturns.await() // the suspended-walk cycle, in miniature
-            },
             refreshStatus = { refreshed = true },
-            settleStoredUploads = { settled = true },
+            // The stored-upload settle is a backend listing fetch — slow on a bad network, in miniature here.
+            settleStoredUploads = {
+                settleEntered.complete(Unit)
+                neverReturns.await()
+            },
         )
 
         val run = launch {
@@ -82,41 +76,36 @@ class ForegroundOrderingTest {
         }
         runCurrent()
 
-        assertTrue(pumpEntered.isCompleted, "the pump must still be invoked — it is a child, not a step removed")
-        assertTrue(refreshed, "the status refresh must not wait on the pump")
-        assertTrue(settled, "nor must the settle of uploads the backend already stores — it corrects that status")
+        assertTrue(settleEntered.isCompleted, "the settle must still be invoked — it is a child, not a step removed")
+        assertTrue(refreshed, "the status refresh must not wait on it")
         assertFalse(runReturned, "run() must still await every child — the OS is told the truth")
 
-        // Releasing the pump lets the flow finish, confirming it really was awaiting it all along.
         neverReturns.complete(Unit)
         runCurrent()
-        assertTrue(runReturned, "run() returns once its children — the pump included — are done")
+        assertTrue(runReturned, "run() returns once its children are done")
 
         run.cancel()
         poller.stop()
     }
 
     /**
-     * B4: a pump that THROWS — `BackgroundUploadPump.drive` rethrows whatever its cycle threw — used to cancel its
-     * siblings, because the flow fanned out with a bare `coroutineScope`: the status refresh and the settle never
-     * ran, and `run()` itself threw at the shell. The `sync-status` spec: a failure in one refresh SHALL NOT
-     * cancel its siblings.
+     * B4: a child that THROWS used to cancel its siblings, because the flow fanned out with a bare `coroutineScope`:
+     * the status refresh never ran, and `run()` itself threw at the shell. The `sync-status` spec: a failure in one
+     * refresh SHALL NOT cancel its siblings.
      */
     @Test
-    fun `a pump that throws cancels none of its siblings and run still returns`() = runTest {
+    fun `a child that throws cancels none of its siblings and run still returns`() = runTest {
         val counts = MutableLedgerCountsSource()
         val poller = StatusCountsPoller(backgroundScope, { counts.refresh() })
         val gate = CompletableDeferred<Unit>()
         var refreshed = false
-        var settled = false
 
         val flow = foreground(
             statusPoller = poller,
             // Throws only once its siblings have started, so a cancellation — not a head start — is what the
-            // assertions below would catch.
-            pumpForeground = { gate.await(); throw IllegalStateException("the cycle threw") },
+            // assertion below would catch.
+            settleStoredUploads = { gate.await(); throw IllegalStateException("the listing threw") },
             refreshStatus = { gate.await(); refreshed = true },
-            settleStoredUploads = { gate.await(); settled = true },
         )
 
         val run = async { flow.run() }
@@ -124,8 +113,7 @@ class ForegroundOrderingTest {
         gate.complete(Unit)
         run.await() // must not throw
 
-        assertTrue(refreshed, "the status refresh ran to completion despite the pump's failure")
-        assertTrue(settled, "and so did the settle")
+        assertTrue(refreshed, "the status refresh ran to completion despite its sibling's failure")
         poller.stop()
     }
 
@@ -133,7 +121,6 @@ class ForegroundOrderingTest {
 
     private fun CoroutineScope.foreground(
         statusPoller: StatusCountsPoller,
-        pumpForeground: suspend () -> Unit,
         refreshStatus: suspend () -> Unit,
         settleStoredUploads: suspend () -> Unit = {},
         onReclaim: () -> Unit = {},
@@ -165,9 +152,9 @@ class ForegroundOrderingTest {
             ),
             statusPoller = statusPoller,
             reloadConfig = {},
-            uploads = ForegroundUploads(pump = pumpForeground, settleStored = settleStoredUploads),
+            settleStored = settleStoredUploads,
             refreshStatus = refreshStatus,
-            // No membership: the reconcile and the membership refresh short-circuit, leaving the pump,
+            // No membership: the reconcile and the membership refresh short-circuit, leaving the settle,
             // the status refresh and the unconditional reclaim as the flow's children — which is exactly
             // the set this test is about.
             activeEventId = { null },

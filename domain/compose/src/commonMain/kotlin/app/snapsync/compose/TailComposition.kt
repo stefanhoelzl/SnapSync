@@ -1,0 +1,139 @@
+@file:OptIn(ExperimentalAtomicApi::class)
+
+package app.snapsync.compose
+
+import app.snapsync.feature.download.DownloadController
+import app.snapsync.feature.upload.AppUploadEngine
+import app.snapsync.feature.upload.AppUploadEvents
+import app.snapsync.feature.upload.AppUploadMechanism
+import app.snapsync.feature.upload.TailRunner
+import app.snapsync.feature.upload.TailTrigger
+import app.snapsync.model.PermissionStatus
+import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.ports.OsCompletions
+import app.snapsync.ports.invocation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+
+/**
+ * The app process's **opportunistic tail** as composed, and everything that reaches it without an OS handler of its
+ * own (capability `ios-app-shell`, "Each OS wake does its own work, then hands the rest to one opportunistic tail";
+ * decision record `changes/own-work-per-wake`, D1, D2 and D11).
+ *
+ * One [runner] per process, over the three units: ① the download arm's staged-import drain, ② and ③ the app
+ * uploader's top-up and walk. The inbound port's implementation ([AppEntries]) requests it after each wake's own work;
+ * this class holds the requests that come from elsewhere — a membership transition's arm, an upload completion, a
+ * staged download, a selection change — and the one fact only the entries know, whether the app is foregrounded.
+ *
+ * A separate class rather than `AppCore` members for the reason the `compose` tier's `LargeClass` and
+ * `TooManyFunctions` ceilings exist: `AppCore` is already the graph, and this is one coherent piece of it.
+ */
+class AppTail internal constructor(
+    private val scope: CoroutineScope,
+    private val ports: AppPorts,
+    private val downloads: () -> DownloadController,
+    /** The app's admission as a Boolean — whether a completion may request the top-up. */
+    private val mayCreate: () -> Boolean,
+    /** The in-process ledger-counts re-read, run after a tail unit only while foregrounded. */
+    private val refreshCounts: suspend () -> Unit,
+) {
+    private val foreground = AtomicBoolean(false)
+
+    /** The app uploader, resolved at first use — it owns a process-lifetime background session on a device. */
+    private val mechanism: AppUploadMechanism get() = ports.appDrivenUpload()
+
+    /** The heartbeat the runner re-arms, forwarded to the mechanism's own at every call. */
+    private val heartbeat = object : BackgroundScheduler {
+        override fun scheduleNext() = mechanism.heartbeat.scheduleNext()
+        override fun cancel() = mechanism.heartbeat.cancel()
+    }
+
+    /** The one tail runner of this process. */
+    val runner: TailRunner by lazy {
+        TailRunner(
+            // Each import runs as its own job the drain awaits — unless the tail's time is up or another request is
+            // due, when the wait gives way and the import runs on, claimed (capability `photo-download`, "A stalled
+            // import blocks no other work"). An import that throws surfaces at the await that sees it — held as a
+            // `Result`, so a throw nobody awaits any more cannot fail the composition scope it runs in.
+            importStaged = { signal ->
+                downloads().importReady(signal::stopRequested) { import ->
+                    val job = scope.async { runCatchingCancellable { import() } }
+                    if (signal.awaitUnlessInterrupted(job)) job.await().getOrThrow()
+                }
+            },
+            topUp = { stop -> mechanism.topUp(stop) },
+            walkAndPublish = { stop -> mechanism.walkAndPublish(stop) },
+            // Exactly a full grant: under a partial one the tail reads no library (capability `limited-photo-access`).
+            walkPermitted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
+            mayCreate = mayCreate,
+            foregrounded = { foreground.load() },
+            refreshStatus = refreshCounts,
+            scheduler = heartbeat,
+            leftover = { "staged downloads not yet imported: ${ports.downloadStore.importableAssets().size}" },
+            log = ports.log,
+            logScope = ports.logScope,
+        )
+    }
+
+    /**
+     * Record whether the app is foregrounded — written by the foreground and background entries, read by the runner
+     * after each unit: counts are refreshed in-process only while something renders them (capability `sync-status`).
+     */
+    internal fun foregrounded(value: Boolean) = foreground.store(value)
+
+    /**
+     * Request [trigger]'s tail without awaiting it, for a caller that holds no OS handler and must not wait on the
+     * tail: a transition, a completion, a staging. A failed tail is logged here — nobody else awaits it.
+     */
+    fun requestDetached(trigger: TailTrigger) {
+        scope.launch {
+            runCatchingCancellable { runner.request(trigger) }
+                .onFailure { ports.log.w(it) { "the tail requested by $trigger failed" } }
+        }
+    }
+
+    /**
+     * The seam the membership transitions drive (capability `upload-lifecycle`): an arm requests the tail — detached,
+     * because a transition runs inside a flow or a tap, and a flow never awaits the tail (spec `module-architecture`,
+     * "A trigger flow never outlives its own run"); a disarm cancels the heartbeat; a leave cancels the transfers.
+     */
+    val appEngine: AppUploadEngine = object : AppUploadEngine {
+        override suspend fun arm() = requestDetached(TailTrigger.ARM)
+        override suspend fun disarm() = mechanism.heartbeat.cancel()
+        override suspend fun cancelTransfers() = mechanism.cancelTransfers()
+    }
+
+    /**
+     * The upload session's OS completion handlers (`handleEventsForBackgroundURLSession`), held from the handover to
+     * the session's drain report — the relaunch's own work, recording the terminals, is done by then — and released
+     * on the main lane UIKit requires (capability `ios-app-shell`).
+     */
+    val uploadCompletions: OsCompletions =
+        OsCompletions("url-session.onBackgroundSessionEvents", ports.uiLane, ports.log)
+
+    /** What the upload transport tells the core — see [AppUploadEvents]. */
+    val uploadEvents: AppUploadEvents = object : AppUploadEvents {
+        // The completion was recorded by the transport already; the runner requests the top-up only on `Admit`.
+        override fun uploadCompleted() = requestDetached(TailTrigger.UPLOAD_COMPLETED)
+
+        override fun eventsDrained() {
+            scope.launch { uploadCompletions.releaseAfter { } }
+        }
+    }
+
+    /**
+     * A selection change under a partial grant (capability `limited-photo-access`): its **own work** is the
+     * snapshot-fed discovery → manifest publish — the uploader's walk unit, whose discovery binding is the selection
+     * snapshot there — then the tail (① import, ② top-up from the snapshot; never ③ under a partial grant).
+     */
+    internal suspend fun onSelectionChanged() = ports.log.invocation(ports.logScope, "onSelectionChanged") {
+        runCatchingCancellable { mechanism.walkAndPublish { false } }
+            .onFailure { ports.log.w(it) { "the selection change's discovery failed; its tail still runs" } }
+        runner.request(TailTrigger.SELECTION_CHANGE)
+        Unit
+    }
+}

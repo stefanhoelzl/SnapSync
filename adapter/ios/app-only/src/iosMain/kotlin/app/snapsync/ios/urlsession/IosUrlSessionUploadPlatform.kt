@@ -82,7 +82,7 @@ class IosUrlSessionUploadPlatform(
     // reasons, and the second is the load-bearing one. It is set exactly once, by the one root that
     // builds this platform, so nothing needed the mutability. And the `var` form — a mutable field of
     // type `(() -> Unit)?` — is the shape a `:test:architecture` guard now confines to
-    // `BackgroundEventsReceipts`, because that is the shape a stored OS completion handler takes. This
+    // `OsCompletions`, because that is the shape a stored OS completion handler takes. This
     // slot is NOT an OS handler, merely identical in type; allowlisting it would have put a non-handler
     // in a handler guard's exemption list and invited the next one. Cheaper to not be that shape.
     private val onEventsFinished: () -> Unit,
@@ -258,10 +258,9 @@ class IosUrlSessionUploadPlatform(
      * before the ledger caught up. ⏰ Re-check the once-only premise at the next iOS major.
      *
      * Synchronous, not scheduled. Once this returns the process's continued runtime is not ours to
-     * assume — the app is reliably running *inside* the callback, and a held background-session receipt
-     * is released on its own deadline whether or not the work it was waiting for happened (SNAPSYNC-16
-     * shows one doing exactly that; `BackgroundEventsReceipts` emits the line, and this file deliberately
-     * does not reproduce it — that clause is pinned to its emitters).
+     * assume — the app is reliably running *inside* the callback, and a held background-session handler
+     * is released at the session's drain report, or on the operating system's expiry, whether or not
+     * anything scheduled after this callback has run (SNAPSYNC-16 showed a release racing such work).
      * [TransferRecord.markTerminal] is non-suspending for this reason.
      *
      * The staged file goes at the same moment: the transfer is over, so it can never be uploaded from

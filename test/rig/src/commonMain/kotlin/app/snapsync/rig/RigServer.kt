@@ -85,9 +85,9 @@ private val json = Json { encodeDefaults = true; prettyPrint = true }
  * on [RigHooks.mainLane], because that is the thread Swift calls them from.
  *
  * ## No request timeout
- * Nothing here bounds a request below the receipts' own deadlines (the download backstop's is 120 s), or
- * a transport timeout would become indistinguishable from a receipt that expired — the same
- * absence-collapse this design guards against everywhere else, reintroduced where nobody would look.
+ * Nothing here bounds a request: a handler is held until the wake's own work is done or the operating
+ * system's expiry releases it, and a transport timeout would become indistinguishable from an expiry — the
+ * same absence-collapse this design guards against everywhere else, reintroduced where nobody would look.
  */
 class RigServer(
     private val core: () -> AppCore,
@@ -463,18 +463,18 @@ class RigServer(
                 val released = CompletableDeferred<Unit>()
                 val mark = TimeSource.Monotonic.markNow()
                 // `complete` is safe from any thread and is idempotent, so the OS handler's
-                // at-most-once guarantee (`OsReceipt.releaseOnce`) needs no help here — and a second
+                // exactly-once guarantee (`OsCompletions.Handover`) needs no help here — and a second
                 // call is tolerated rather than thrown, since throwing inside an OS handler lambda has
                 // no good owner.
                 withContext(group.lane) { trigger.run(arg) { released.complete(Unit) } }
                 released.await()
                 val held = mark.elapsedNow().inWholeMilliseconds
                 respondText(
-                    "{\"trigger\":\"$root/$name\",\"heldMs\":$held,\"deadlineMs\":${trigger.deadlineMs}," +
+                    "{\"trigger\":\"$root/$name\",\"heldMs\":$held," +
                         "\"transferBinding\":\"${hooks.transferBindingFact}\"," +
-                        "\"note\":\"heldMs and deadlineMs are measured facts; whether the receipt was " +
-                        "released on completion or on its deadline is answered by the OsReceipt expiry " +
-                        "line in /logs after this request's [rig] marker" +
+                        "\"note\":\"heldMs is a measured fact; whether the handler was released after the " +
+                        "wake's own work or on the operating system's expiry is answered by the OsCompletions " +
+                        "expiry line in /logs after this request's [rig] marker" +
                         hooks.bindingCaveat(name) + "\"}\n",
                 )
             }

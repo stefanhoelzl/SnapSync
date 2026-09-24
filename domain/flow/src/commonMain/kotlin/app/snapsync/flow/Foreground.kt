@@ -10,33 +10,33 @@ import app.snapsync.feature.status.StatusCountsPoller
  * The **foreground** OS-callback trigger flow (spec `module-architecture`, "Rules in features, order
  * in flows"; capability `sync-status` liveness). The scene returned to the foreground: re-read the
  * persisted membership (below), renew a stale attestation token, start the foreground status poll,
- * then — each on its own launch, so a slow one never blocks the others — pump the app-driven upload
- * tier (a no-op on the OS-driven tier), settle in-flight uploads whose bytes the backend already
- * stores, re-read the status sources, reconcile foreign downloads, reclaim the staged bytes of
- * already-imported downloads, and refresh the event title.
+ * then — each on its own launch, so a slow one never blocks the others — settle in-flight uploads whose
+ * bytes the backend already stores, re-read the status sources, reconcile foreign downloads, reclaim the
+ * staged bytes of already-imported downloads, and refresh the event title. That is foreground entry's
+ * **own work**, and all of it (decision record `changes/own-work-per-wake`, D1).
  *
- * **The pump is one of those launches, and that placement is load-bearing** (capability `sync-status`).
- * It used to be awaited before them, which meant every step below it inherited the pump's latency —
- * and the pump awaits a whole upload cycle whose discovery walk stays outstanding for as long as the
- * app was suspended (774 s, measured; `SNAPSYNC-16`). A member whose visit was shorter than that
- * unwinding read no counts at all, and the joined screen answered from its seeds: a check mark reading
- * "In sync" over a device that had counted nothing. `run()` still awaits every child, so what the OS
- * is told is unchanged; only what the pump can hold up is.
+ * **The imports, the upload top-up and the walk are not this flow's** (capability `sync-status`,
+ * "Foreground status refresh is not sequenced behind the upload tail"). They are the process's one
+ * opportunistic tail, which the inbound port's implementation requests **after** this flow returns (law
+ * "A trigger flow never outlives its own run"): a foreground entry arriving while another wake's tail is
+ * still walking — outstanding for as long as the app was suspended, 774 s measured (`SNAPSYNC-16`) —
+ * joins that tail rather than running a second upload path beside it, and nothing here waits on it, so
+ * the status refresh never inherits the walk's latency. `run()` awaits every child it has.
  *
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
- * stack-assembly touch and the entry-point log wrap stay in the shell (platform surfaces `flow/`
- * cannot reach); every step that touches a port ([reloadConfig] the membership re-read,
- * [uploads] the tier pump and the stored-upload settle, [refreshStatus] the read-model refreshes,
- * [fetchEventDetails] the directory fetch, [activeEventId] the config read, [refreshAttestation] the
- * token wake) arrives as a `model`-typed effect lambda built in `compose/`.
+ * stack-assembly touch and the entry-point log wrap stay with the inbound port's implementation; every
+ * step that touches a port ([reloadConfig] the membership re-read, [settleStored] the stored-upload
+ * settle, [refreshStatus] the read-model refreshes, [fetchEventDetails] the directory fetch,
+ * [activeEventId] the config read, [refreshAttestation] the token wake) arrives as a `model`-typed effect
+ * lambda built in `compose/`.
  *
  * The membership refresh coordinates fetch-then-fold: what a fetched result *means* is
  * [MembershipRefresh]'s rule (`feature/membership`), including the one destructive consequence — when the
  * event is definitively gone AND past the membership's own stored deadline, the rule tears the membership
  * down, returning the device to the unjoined resting state.
  *
- * That teardown is reachable from THIS trigger and no background one, deliberately. `SilentPush` and
- * `DownloadBackstop` promise that nothing mints, clears, or leaves, because a background wake can land
+ * That teardown is reachable from THIS trigger and no background one, deliberately. `SilentPush`
+ * promises that nothing mints, clears, or leaves, because a background wake can land
  * before the first unlock and read an unreadable config as *absent* — destroying a healthy membership.
  * Foreground entry re-reads the membership from an unlocked device first ([reloadConfig], below), which
  * is the only context where acting on absence is safe.
@@ -66,8 +66,9 @@ class Foreground(
     private val statusPoller: StatusCountsPoller,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
     private val reloadConfig: suspend () -> Unit,
-    /** What the upload side contributes to a foreground entry: two independent steps, see [ForegroundUploads]. */
-    private val uploads: ForegroundUploads,
+    /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
+     *  `upload-state-reconciliation`) — the listing fetch and the guarded write. The upload side's only own work. */
+    private val settleStored: suspend () -> Unit,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
     /** The active event id, or `null` when unjoined — the config read, injected (a port touch). */
@@ -81,8 +82,8 @@ class Foreground(
     private val refreshAttestation: suspend () -> Unit,
 ) {
     suspend fun run() {
-        // Membership first: every reader below (the pump's arm guards, reconcile, the title refresh)
-        // acts on the StateFlow this repairs.
+        // Membership first: every reader below (reconcile, the title refresh) acts on the StateFlow this
+        // repairs.
         reloadConfig()
         // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
         // BEFORE the network-bearing work below, not after it: this used to be a fire-and-forget launch
@@ -91,47 +92,30 @@ class Foreground(
         // fresh token, so the sequencing costs nothing in the common case.
         refreshAttestation()
         // Keep the ledger counts live while the screen is visible (the first tick waits one cadence;
-        // the refreshStatus launch below covers "now" — which is true again now that the refresh is no
-        // longer queued behind the pump). Non-blocking: the poller owns its own scope.
+        // the refreshStatus launch below covers "now"). Non-blocking: the poller owns its own scope.
         statusPoller.start()
         // Concurrent AND awaited, so `run()` returns when they are done rather than when they are
         // queued (law "A trigger flow never outlives its own run"). Each still labels its own log
         // lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
-        // former `scope.launch` bodies did.
+        // former `scope.launch` bodies did. A child that THROWS cancels none of its siblings.
         fanOut("Foreground") {
-            // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle. No-op on
-            // ≥26.1.
-            //
-            // A CHILD, not a step before the others. It used to be awaited above them, and that single
-            // line of ordering is why a member could see a settled screen over counts nobody took: this
-            // pump awaits a whole upload cycle, and a cycle's discovery walk stays outstanding for as
-            // long as the app was suspended — 774 seconds, measured on device (`SNAPSYNC-16`, build
-            // 0.3(605), iOS 18.7.9). A visit shorter than that unwinding reached NONE of the work below,
-            // so no count was ever read, and the status projection had only its seeds to answer from.
-            //
-            // Moving it here changes nothing about when `run()` returns — `fanOut` still awaits it — so
-            // the shell's completion report to the OS stays truthful. And a pump that THROWS cancels none of
-            // the children below, which a bare `coroutineScope` did. It changes only what the
-            // pump is allowed to hold up: itself (capability `sync-status`).
-            child("pump") { uploads.pump() }
-            // Beside the pump, NOT behind it (capability `upload-state-reconciliation`, "Foreground settles
-            // in-flight rows the backend already stores"): bytes can land long before the OS acknowledges their
-            // job, and the pump can await one cycle for many minutes — while this exists to correct the status
-            // the member is looking at now. Its one write is the guarded terminal write the platform's callbacks
-            // already make beside a running cycle, so it needs no ordering with it.
-            child("settleStored") { uploads.settleStored() }
+            // Not behind anything (capability `upload-state-reconciliation`, "Foreground settles in-flight rows
+            // the backend already stores"): bytes can land long before the OS acknowledges their job, and this
+            // exists to correct the status the member is looking at now. Its one write is the guarded terminal
+            // write the platform's callbacks already make beside a running tail, so it needs no ordering with it.
+            child("settleStored") { settleStored() }
             child("refreshStatus") { refreshStatus() }
-            // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
+            // Foreground discovery (capability `photo-download`): pick up foreign photos, plan and enqueue. It
+            // imports nothing — the staged imports are the tail's first unit, requested after this flow returns.
             child("reconcile") { activeEventId()?.let { downloadController.reconcile(it) } }
             // The staged-byte backlog reclaim (capability `download-store`): free the files of assets
             // whose import is confirmed but whose resource rows predate per-asset release, so a received
             // photo is not stored twice — as a library asset and as a staged file — forever.
             //
-            // HERE and not on `DownloadBackstop`, which is the thematically closer trigger (it already
-            // owns the import tail). The reclaim is a ONE-SHOT backlog whose whole value is that it
-            // eventually runs on every affected install; the backstop is a `BGProcessingTask` the OS may
-            // defer indefinitely and, on a device that never charges while idle, may never schedule at
-            // all. Foreground entry is the one trigger a user reaching the app cannot avoid. It is
+            // HERE, on foreground entry: the reclaim is a ONE-SHOT backlog whose whole value is that it
+            // eventually runs on every affected install, and foreground entry is the one trigger a user
+            // reaching the app cannot avoid — a background task the OS may defer indefinitely (the retired
+            // download backstop was one) may never run at all. It is
             // self-extinguishing — releasing drops the very rows that made the work findable — so the
             // cost from the second foreground onward is one store query that returns nothing, with no
             // flag, no migration marker and no run-once bookkeeping to get wrong.
@@ -156,20 +140,3 @@ class Foreground(
         }
     }
 }
-
-/**
- * What the upload side contributes to a [Foreground] entry: two steps the flow launches as **independent
- * children**, neither sequenced behind the other.
- *
- * One parameter rather than two because the flow tier's constructor ceiling is a ratchet
- * (`config/detekt/flow.yml`), and both are the upload side's; the flow still orders each on its own, and each
- * still arrives as a `compose/`-built effect (flow-no-ports).
- */
-class ForegroundUploads(
-    /** The tier pump — a no-op wherever the resolved mechanism declines (on iOS >=26.1 under a full grant the OS
-     *  owns the scheduling). It awaits a whole upload cycle, which can take many minutes after a long suspension. */
-    val pump: suspend () -> Unit,
-    /** Settle the `REQUESTED` rows whose bytes the backend's per-device listing already stores (capability
-     *  `upload-state-reconciliation`) — the listing fetch and the guarded write. */
-    val settleStored: suspend () -> Unit,
-)

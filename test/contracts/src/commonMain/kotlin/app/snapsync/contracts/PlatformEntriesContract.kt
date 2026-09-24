@@ -21,16 +21,22 @@ enum class PlatformEntriesState {
 
     /**
      * Joined to [PlatformEntriesObservations.joinedEventId], whose backend holds a photo another device took and
-     * this device has not downloaded yet. Nothing has run: no download is planned, no backstop queued.
+     * this device has not downloaded yet, with full photo access. Nothing has run: no download is planned, no tail
+     * has run, and no host is assembled — the process is as a cold background start finds it.
      */
     JOINED_WITH_FOREIGN_PHOTO,
 }
 
 /**
  * What a clause reads to see an entry's **outcome** in the app behind the port (capability `port-contracts`: an
- * inbound port declares no reads, so a binding supplies these over the system it built). Every member is a
- * snapshot of that system's state — never a record of which collaborator the implementation called, because a
- * call transcript restates the wiring and is passed by anything that mirrors it.
+ * inbound port declares no reads, so a binding supplies these over the system it built). Every read is a snapshot of
+ * that system's state — never a record of which collaborator the implementation called, because a call transcript
+ * restates the wiring and is passed by anything that mirrors it.
+ *
+ * Two members are the **operating system's levers** rather than reads, because an inbound port's promises about
+ * Apple's expiry and about a unit in flight cannot be exercised otherwise: [expireBackgroundTime] is what the
+ * operating system does when background time is up, and [parkNextUploadUnit] holds the app uploader's next unit in
+ * flight, as a slow photo-library or network call would.
  */
 interface PlatformEntriesObservations {
     /** The identifiers the operating system delivers, as the implementation under test was configured with them. */
@@ -57,25 +63,36 @@ interface PlatformEntriesObservations {
     /** How many foreign photos are planned for download. */
     fun plannedForeignDownloads(): Int
 
-    /** How many times the download backstop has been queued with the operating system. */
-    fun backstopsScheduled(): Int
+    /** How many times the app uploader's heartbeat has been scheduled with the operating system. */
+    fun heartbeatsScheduled(): Int
 
     /** The push tokens that reached the registration source, in order. */
     fun deliveredPushTokens(): List<String>
 
-    /** How many background-task wakes reached the app's uploader. */
-    fun appUploaderBackgroundTasks(): Int
+    /** How many upload top-ups (the tail's ②) the app's uploader has run. */
+    fun appUploaderTopUps(): Int
 
-    /** How many background-transfer handbacks reached the app's uploader. */
+    /** How many walks → manifest publishes (the tail's ③) the app's uploader has run. */
+    fun appUploaderWalks(): Int
+
+    /** How many background-transfer handbacks reached the app uploader's session. */
     fun appUploaderTransferHandbacks(): Int
 
     /** Whether the download session has been brought up to receive handed-back transfers. */
     fun downloadSessionRealized(): Boolean
+
+    /** How many holds on the process's background time are outstanding. */
+    fun backgroundTimeHolds(): Int
+
+    /** The operating system's lever: every outstanding background-time hold's time is up. */
+    fun expireBackgroundTime()
+
+    /** The operating system's lever: hold the app uploader's next unit in flight; the answer lets it finish. */
+    fun parkNextUploadUnit(): () -> Unit
 }
 
 /** The operating system's identifiers for the entries that route by one. */
 class EntryIdentifiers(
-    val downloadBackstopTask: String,
     val uploadHeartbeatTask: String,
     val uploadTransferChannel: String,
     /** Any transfer channel that is not [uploadTransferChannel] — the downloads'. */
@@ -91,9 +108,10 @@ class PlatformEntriesSubject(val entries: PlatformEntries, val observe: Platform
  *
  * Each clause fires one operating-system entry and asserts what happened in the app behind it. That is what makes
  * a crossed wire visible: an entry routed to the wrong flow produces the wrong outcome, whichever names the code
- * used. It is also why an entry that takes a completion is held to **"released exactly once, after the work"** —
- * the completion is part of the port's own signature, and releasing it early or twice is the operating system's
- * business (capability `ios-app-shell`, "OS completion handlers are released only after their work completes").
+ * used. An entry that takes a completion is held to **"released exactly once, after the wake's own work, and before
+ * the tail"** — the completion is part of the port's own signature (capability `ios-app-shell`, "OS completion
+ * handlers are released only after their work completes"; decision record `changes/own-work-per-wake`) — and, where
+ * the operating system's expiry arrives, to **"released at once, the tail stopped, the background time ended"**.
  *
  * **One implementation, no double.** The core's `platformEntries` is the only implementation; its bindings run it
  * on the JVM and in the simulator's test executable over the world. No `Fake` binding exists because nothing
@@ -118,16 +136,20 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             assertNull(observe.joinGateEventId(), "and opens no gate")
         }
 
-        clause("FOREGROUND_MARKS_ACTIVE_AND_RECONCILES_DOWNLOADS", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+        clause("FOREGROUND_RECONCILES_THEN_RUNS_THE_TAIL", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
             entries.onForeground()
             assertTrue(eventually { observe.becameActive() }, "the app records that it became active")
             assertTrue(eventually { observe.plannedForeignDownloads() > 0 }, "the foreground reconcile plans the photo")
+            assertTrue(eventually { observe.appUploaderTopUps() > 0 }, "and the tail tops up after the own work")
+            assertTrue(eventually { observe.heartbeatsScheduled() > 0 }, "foreground entry re-arms the heartbeat")
+            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "its hold ends with its tail")
         }
 
-        clause("BACKGROUND_QUEUES_THE_BACKSTOP", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) { (entries, observe) ->
+        clause("BACKGROUND_ARMS_NOTHING", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) { (entries, observe) ->
             entries.onBackground()
-            assertTrue(eventually { observe.backstopsScheduled() == 1 }, "leaving the foreground arms the backstop")
+            settle()
+            assertEquals(0, observe.heartbeatsScheduled(), "leaving the foreground queues no background task")
             assertTrue(!observe.becameActive(), "and is not an activation")
         }
 
@@ -136,11 +158,23 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             assertEquals(listOf(TOKEN), observe.deliveredPushTokens())
         }
 
-        clause("SILENT_PUSH_RECONCILES_DOWNLOADS_THEN_RELEASES", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+        clause("SILENT_PUSH_RELEASES_AFTER_ITS_OWN_WORK_THEN_RUNS_THE_TAIL", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
-            val completion = Completion { observe.plannedForeignDownloads() > 0 }
+            val completion = Completion { observe.plannedForeignDownloads() > 0 && observe.appUploaderTopUps() == 0 }
             entries.onSilentPush(mapOf<Any?, Any?>("eventId" to observe.joinedEventId), completion::release)
             completion.assertReleasedOnceAfterTheWork()
+            assertTrue(eventually { observe.appUploaderTopUps() > 0 }, "the tail runs after the release")
+            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "and the push's hold ends with it")
+        }
+
+        clause("SILENT_PUSH_FOR_ANOTHER_EVENT_JOINS_NO_TAIL", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+            (entries, observe) ->
+            val completion = Completion { true }
+            entries.onSilentPush(mapOf<Any?, Any?>("eventId" to "not-the-joined-event"), completion::release)
+            completion.assertReleasedOnceAfterTheWork()
+            assertEquals(0, observe.plannedForeignDownloads(), "the download arm's guard refuses it")
+            assertEquals(0, observe.appUploaderTopUps(), "and no tail runs for it")
+            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "its hold ends at once")
         }
 
         clause("SILENT_PUSH_WITHOUT_AN_EVENT_STILL_RELEASES", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
@@ -149,22 +183,30 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             entries.onSilentPush(emptyMap<Any?, Any?>(), completion::release)
             completion.assertReleasedOnceAfterTheWork()
             assertEquals(0, observe.plannedForeignDownloads(), "a push naming no event reaches no arm")
+            assertEquals(0, observe.appUploaderTopUps(), "and joins no tail")
         }
 
-        clause("BACKSTOP_TASK_RUNS_AND_REQUEUES", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) { (entries, observe) ->
-            val completion = Completion { true }
-            entries.onBackgroundTask(observe.identifiers.downloadBackstopTask, completion::release)
-            completion.assertReleasedOnceAfterTheWork()
-            assertTrue(eventually { observe.backstopsScheduled() == 1 }, "the backstop re-queues itself however it ends")
-            assertEquals(0, observe.appUploaderBackgroundTasks(), "and is not the upload heartbeat")
-        }
-
-        clause("HEARTBEAT_TASK_REACHES_THE_APP_UPLOADER", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+        clause("BACKGROUND_TIME_EXPIRY_STOPS_THE_TAIL_AND_ENDS_THE_HOLD_AT_ONCE", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
-            val completion = Completion { observe.appUploaderBackgroundTasks() == 1 }
+            val finishUnit = observe.parkNextUploadUnit()
+            val completion = Completion { observe.plannedForeignDownloads() > 0 }
+            entries.onSilentPush(mapOf<Any?, Any?>("eventId" to observe.joinedEventId), completion::release)
+            completion.assertReleasedOnceAfterTheWork()
+            assertTrue(eventually { observe.appUploaderTopUps() == 1 }, "the tail's top-up is in flight")
+            observe.expireBackgroundTime()
+            // At once — while the unit is still in flight: Apple's recipe, never the watchdog's.
+            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "the hold is ended without awaiting the unit")
+            finishUnit()
+            settle()
+            assertEquals(0, observe.appUploaderWalks(), "the unit in flight completed, and no further unit started")
+        }
+
+        clause("HEARTBEAT_TASK_RUNS_THE_TAIL_THEN_COMPLETES", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+            (entries, observe) ->
+            val completion = Completion { observe.appUploaderTopUps() > 0 && observe.appUploaderWalks() > 0 }
             entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
             completion.assertReleasedOnceAfterTheWork()
-            assertEquals(0, observe.backstopsScheduled(), "the heartbeat is not the download backstop")
+            assertEquals(1, observe.heartbeatsScheduled(), "the heartbeat re-submits itself after its tail")
         }
 
         clause("UNKNOWN_TASK_IS_RELEASED_WITHOUT_WORK", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
@@ -172,24 +214,30 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             val completion = Completion { true }
             entries.onBackgroundTask("app.example.not-registered", completion::release)
             completion.assertReleasedOnceAfterTheWork()
-            assertEquals(0, observe.appUploaderBackgroundTasks(), "no uploader wake")
-            assertEquals(0, observe.backstopsScheduled(), "no backstop")
+            assertEquals(0, observe.appUploaderTopUps(), "no tail")
+            assertEquals(0, observe.heartbeatsScheduled(), "and nothing re-armed")
         }
 
-        clause("TIME_UP_RELEASES_THE_RUNNING_TASK_ONCE", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+        clause("TIME_UP_COMPLETES_THE_RUNNING_TASK_AT_ONCE", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
-            val completion = Completion { true }
+            val finishUnit = observe.parkNextUploadUnit()
+            val completion = Completion { observe.appUploaderTopUps() == 1 }
             entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
+            assertTrue(eventually { observe.appUploaderTopUps() == 1 }, "the heartbeat's tail is in flight")
             entries.onBackgroundTaskTimeUp(observe.identifiers.uploadHeartbeatTask)
-            // Whichever of the work and the expiry comes first releases it; the other must not release it again —
-            // the shell completing the task in its own expiration handler, and the core completing it again after
-            // the work, is the double completion this entry replaces.
+            // Completed while the unit is still in flight, exactly once — the shell completing it in its own expiration
+            // handler and the core completing it again after the work is the double completion this entry replaces.
+            completion.assertReleasedOnce()
+            finishUnit()
+            settle()
+            assertEquals(0, observe.appUploaderWalks(), "no unit starts after the stop")
+            assertTrue(eventually { observe.heartbeatsScheduled() == 1 }, "a tail cut short still re-arms")
             completion.assertReleasedOnce()
         }
 
         clause("TIME_UP_AFTER_THE_TASK_ENDED_RELEASES_NOTHING", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
-            val completion = Completion { observe.appUploaderBackgroundTasks() == 1 }
+            val completion = Completion { observe.appUploaderTopUps() > 0 }
             entries.onBackgroundTask(observe.identifiers.uploadHeartbeatTask, completion::release)
             completion.assertReleasedOnceAfterTheWork()
             entries.onBackgroundTaskTimeUp(observe.identifiers.uploadHeartbeatTask)
@@ -200,15 +248,17 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             (entries, observe) ->
             entries.onBackgroundTaskTimeUp("app.example.not-registered")
             settle()
-            assertEquals(0, observe.appUploaderBackgroundTasks(), "an expiry starts no work")
-            assertEquals(0, observe.backstopsScheduled(), "and queues nothing")
+            assertEquals(0, observe.appUploaderTopUps(), "an expiry starts no work")
+            assertEquals(0, observe.heartbeatsScheduled(), "and queues nothing")
         }
 
-        clause("UPLOAD_TRANSFERS_REACH_THE_APP_UPLOADER", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+        clause("UPLOAD_TRANSFERS_RELEASE_AT_THE_DRAIN_THEN_RUN_THE_TAIL", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
             (entries, observe) ->
-            val completion = Completion { observe.appUploaderTransferHandbacks() == 1 }
+            val completion = Completion { observe.appUploaderTransferHandbacks() == 1 && observe.appUploaderTopUps() == 0 }
             entries.onBackgroundTransfers(observe.identifiers.uploadTransferChannel, completion::release)
             completion.assertReleasedOnceAfterTheWork()
+            assertTrue(eventually { observe.appUploaderTopUps() > 0 }, "the tail tops up after the release")
+            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "and the wake's hold ends with it")
         }
 
         clause("OTHER_TRANSFERS_ARE_ADOPTED_BY_THE_DOWNLOADS", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
@@ -216,6 +266,20 @@ object PlatformEntriesContract : Contract<PlatformEntriesState, PlatformEntriesS
             entries.onBackgroundTransfers(observe.identifiers.downloadTransferChannel) {}
             assertTrue(eventually { observe.downloadSessionRealized() }, "the download session is brought up")
             assertEquals(0, observe.appUploaderTransferHandbacks(), "and the app uploader is not handed them")
+        }
+
+        clause("A_DRAIN_REPORT_THAT_NEVER_COMES_RELEASES_ON_EXPIRY", PlatformEntriesState.JOINED_WITH_FOREIGN_PHOTO) {
+            (entries, observe) ->
+            val completion = Completion { true }
+            entries.onBackgroundTransfers(observe.identifiers.downloadTransferChannel, completion::release)
+            assertTrue(eventually { observe.downloadSessionRealized() }, "the download session is brought up")
+            settle()
+            completion.assertNotReleased("no clock of the app's own releases it")
+            observe.expireBackgroundTime()
+            completion.assertReleasedOnce()
+            assertTrue(eventually { observe.backgroundTimeHolds() == 0 }, "and the hold ends")
+            settle()
+            assertEquals(0, observe.appUploaderTopUps(), "a wake whose time is up requests no tail")
         }
     }
 
@@ -239,6 +303,8 @@ private class Completion(private val workDone: () -> Boolean) {
         releases++
     }
 
+    fun assertNotReleased(message: String) = assertEquals(0, releases, message)
+
     /** Released, and exactly once — whether after the work or on the operating system's expiry. */
     suspend fun assertReleasedOnce() {
         assertTrue(eventually { releases > 0 }, "the completion is released")
@@ -251,7 +317,7 @@ private class Completion(private val workDone: () -> Boolean) {
         // Give a second release the chance to happen before asserting there was none.
         settle()
         assertEquals(1, releases, "the completion is released exactly once")
-        assertEquals(true, doneAtRelease, "the completion is released after the work, not before it")
+        assertEquals(true, doneAtRelease, "the completion is released after the wake's own work, and before its tail")
     }
 }
 
