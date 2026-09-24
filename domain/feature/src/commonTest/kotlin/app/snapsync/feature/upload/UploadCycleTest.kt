@@ -40,7 +40,9 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.loggerConfigInit
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -1395,6 +1397,23 @@ class UploadCycleTest {
         val result = cycleWithHooks(backend, platform, order, publishThrows = true).run()
 
         assertEquals(CycleResult.COMPLETED, result) // best-effort: the failure is absorbed
+        assertEquals(listOf("manifest"), order)
+    }
+
+    @Test
+    fun a_slow_publish_is_not_cut_short_by_a_timeout_of_the_cycle() = runTest {
+        // The cycle used to bound the publish with a self-chosen 12 s timeout on both tiers; it holds no clock
+        // of its own now (capabilities `ios-app-shell` / `ios-photokit-upload`; `changes/own-work-per-wake`,
+        // D3/D8) — only the per-request HTTP timeout, which lives in the client, bounds a request.
+        val backend = InMemoryLedgerStore()
+        backend.inFlight("a-primary.jpg", assetId = "a")
+        val platform = FakePlatform(succeeded = listOf("a-primary.jpg"), ledger = backend)
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order, atPublish = { delay(30.seconds) }).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(30.seconds.inWholeMilliseconds, testScheduler.currentTime, "the publish ran to its end")
         assertEquals(listOf("manifest"), order)
     }
 

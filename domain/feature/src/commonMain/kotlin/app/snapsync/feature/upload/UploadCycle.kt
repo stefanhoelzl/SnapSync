@@ -24,8 +24,6 @@ import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
@@ -76,10 +74,9 @@ class UploadCycle(
     // itself (capability `upload-state-reconciliation`, "A join loads the ledger from the per-device
     // listing"), so this cycle reads the ledger it is given and never fetches the listing.
     // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
-    // manifest is built from THIS (no second PhotoKit enumeration). Bounded and `runCatching`ed HERE, so a
-    // hung host can never stall a cycle and no root has to remember to bound it (both used to, with the
-    // same two constants — one copied from the other, along with a justification that only applied to the
-    // tier it was copied FROM).
+    // manifest is built from THIS (no second PhotoKit enumeration). `runCatching`ed HERE, so a failed
+    // publish never fails a cycle and no root has to remember to catch it. Deliberately NOT bounded by a
+    // timeout of the cycle's choosing (see [writeDeviceManifest]).
     //
     // Required, with **no default**: a no-op means this device's photos never enter the event union — they
     // upload, and nobody can see them. That is the invisible failure, and `{}` states it silently.
@@ -104,12 +101,6 @@ class UploadCycle(
     // (`saveToAlbum`), which arrives with the gate, so the opt-in check is no longer each root's to remember.
     private val placeInAlbum: suspend (eventId: String, assetIds: Set<String>) -> Unit,
     private val log: Logger = Logger.withTag("UploadCycle"),
-    // The best-effort hooks' budgets. Defaulted, because unlike the ports above there IS a safe value: a
-    // hook that overruns is retried next cycle, and both tiers want the same protection from a hung host.
-    // The extension's is a hard constraint (a ~3-minute OS runtime cap; a `runBlocking` network call that
-    // overruns gets the worker force-killed with error 50001); the app tier's is prudence. Same number,
-    // different reasons — and now stated once instead of copied.
-    private val deviceManifestTimeoutMs: Long = 12_000L,
 ) {
     /**
      * One cycle, in four stages: **settle** establishes what is true, **decide** reads, **update**
@@ -770,23 +761,25 @@ class UploadCycle(
         policy: SelectionPolicy,
         manifestVersion: Long,
     ): Boolean {
-        // Best-effort and bounded here, so a hung host can never stall a cycle and no root has to
-        // remember to bound it (both used to, with the same two constants — one copied from the other,
-        // along with a justification that only applied to the tier it was copied FROM).
+        // Best-effort: a failed publish is logged and never fails the cycle; the next cycle republishes.
+        //
+        // NOT bounded by a timeout of ours, on either tier (capabilities `ios-app-shell`, "Time is up is
+        // learned only from the operating system", and `ios-photokit-upload`; decision record
+        // `changes/own-work-per-wake`, D3/D8). It used to be (a 12 s `deviceManifestTimeoutMs`), justified by
+        // a "~3-minute OS runtime cap" (error 50001) on the extension that measurement has replaced. Measured
+        // (SE2, iOS 26.6): the extension's only end is assetsd's own 60.0 s timer from the `process()` call's
+        // start, a SIGKILL with no signal first, against 0.6–1.4 s of work per call — and a killed publish is
+        // retried by the next invocation. In the app process a wake's end is the OS's expiry signal, not a
+        // clock of ours. What still bounds the publish is the per-request HTTP timeout on each request it
+        // makes: a property of one request, not a deadline on the work.
         //
         // The answer is what gates the notify (capability `upload-completion-notify`): `false` covers
-        // "the projection was unchanged, so nothing was PUT" and "the write failed or timed out" alike,
-        // and both mean the same thing to a recipient — the union does not list anything it did not list
-        // before, so waking anyone would be a wasted background launch.
-        // `withTimeoutOrNull`, not a caught `withTimeout`: a timeout is an answer here, and catching the
-        // `TimeoutCancellationException` would also have caught this cycle's own cancellation.
-        val published = runCatchingCancellable {
-            withTimeoutOrNull(deviceManifestTimeoutMs) { onDiscovery(eventId, policy, manifestVersion) }
-        }
+        // "the projection was unchanged, so nothing was PUT" and "the write failed" alike, and both mean
+        // the same thing to a recipient — the union does not list anything it did not list before, so
+        // waking anyone would be a wasted background launch.
+        return runCatchingCancellable { onDiscovery(eventId, policy, manifestVersion) }
             .onFailure { log.w(it) { "device.json production failed this cycle" } }
             .getOrDefault(false)
-        if (published == null) log.w { "device.json production timed out this cycle" }
-        return published ?: false
     }
 
     /**
