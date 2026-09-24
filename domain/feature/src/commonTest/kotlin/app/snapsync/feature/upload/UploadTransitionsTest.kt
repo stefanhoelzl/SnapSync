@@ -50,11 +50,6 @@ class UploadTransitionsTest {
         override suspend fun arm() { log += "arm" }
         override suspend fun disarm() { log += "disarm" }
         override suspend fun cancelTransfers() { log += "cancel" }
-        override suspend fun onForeground() = Unit
-        override suspend fun onSilentPush(eventId: String) = Unit
-        override suspend fun onBackgroundTask() = Unit
-        override suspend fun onSelectionChanged() = Unit
-        override fun onBackgroundTransfers(completion: () -> Unit) = completion()
     }
 
     private class World(

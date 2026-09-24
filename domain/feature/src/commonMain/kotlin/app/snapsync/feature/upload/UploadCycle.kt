@@ -24,6 +24,11 @@ import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/** A whole [UploadCycle.run] has no stop: the extension's only end is a kill, and it has no signal to stop on. */
+private val NEVER_STOP: () -> Boolean = { false }
 
 /**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
@@ -103,6 +108,20 @@ class UploadCycle(
     private val log: Logger = Logger.withTag("UploadCycle"),
 ) {
     /**
+     * Serialises this cycle's units — a whole [run], a [topUp], a [walkAndPublish]. The decide-here-act-there split
+     * below is licensed by there being one writer at a time, and in the app process two entries reach the units: the
+     * tail runner, and a selection change's own work, which runs outside that runner by design (capability
+     * `ios-app-shell`). So the exclusion is the cycle's own rather than a caller's convention.
+     */
+    private val units = Mutex()
+
+    /**
+     * What the latest [walkAndPublish] read, when it recorded new rows — handed to the [topUp] the tail runs right
+     * after it, and consumed there. Guarded by [units].
+     */
+    private var walked: Map<String, Resource> = emptyMap()
+
+    /**
      * One cycle, in four stages: **settle** establishes what is true, **decide** reads, **update**
      * writes what is ours, **publish** writes what the event can see.
      *
@@ -112,11 +131,62 @@ class UploadCycle(
      * device whose outstanding work exceeds the platform's job limit, one of those two returns is taken on
      * every cycle, forever, with no error and no log line (capability `upload-lifecycle`).
      */
-    suspend fun run(): CycleResult {
+    suspend fun run(): CycleResult = units.withLock {
         val settled = settle()
         val decided = settled.decide()
-        val outcome = decided.update()
-        return outcome.publish()
+        val outcome = decided.update(enqueue = NEVER_STOP)
+        outcome.publish()
+    }
+
+    /**
+     * The tail's **top-up** (②; capability `ios-url-session-upload`, "The producer tops up from the ledger, not from the
+     * walk's output"): the entry gate and the platform settle — re-creating retry-spent failures — then job creation
+     * from the ledger's rows that need one, until the platform refuses or [stopRequested] answers `true` between two
+     * creations (the creation in flight completes). No library walk and no publish: a freed slot changes nothing the
+     * walk or the manifest would see (decision record `changes/own-work-per-wake`, D2).
+     *
+     * `PROCESSING` when work remains — the platform refused, or a stop left rows uncreated — `SKIPPED` when the gate
+     * declined, `COMPLETED` otherwise.
+     */
+    suspend fun topUp(stopRequested: () -> Boolean): CycleResult = units.withLock {
+        // The walk that immediately preceded this top-up in the same tail hands over what it read, once.
+        val handedOver = walked
+        walked = emptyMap()
+        when (val settled = settle()) {
+            is Settled.Short -> settled.outcome.result
+            is Settled.Proceeding -> {
+                val enqueued = enqueue(settled.ready, handedOver, stopRequested)
+                if (settled.ready.capHit || enqueued.truncated) CycleResult.PROCESSING else CycleResult.COMPLETED
+            }
+        }
+    }
+
+    /**
+     * The tail's **walk → manifest publish** (③): the entry gate, the full-enumeration walk and its decide stage, then
+     * — unless [stopRequested] answered `true` meanwhile — the record of what it found and the device-manifest
+     * publish. It creates **no** job: the rows it recorded are the next top-up's work, and [WalkOutcome.Walked]'s
+     * `addedRows` tells the tail to run that top-up at once (decision record `changes/own-work-per-wake`, D1).
+     *
+     * **Atomic under a stop** (capability `ios-app-shell`, "The discovery walk is atomic under a stop"): a stop that
+     * arrives while the walk enumerates abandons it after its decide stage, which writes nothing — so nothing it saw
+     * is recorded, nothing it missed is retracted, and no manifest is published from it.
+     *
+     * Also the **own work of a selection change** under a partial grant, where the discovery binding resolves from
+     * the selection snapshot and the walk reads no library (capability `limited-photo-access`).
+     */
+    suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome = units.withLock {
+        walked = emptyMap()
+        val decided = settle().decide()
+        if (decided is Decided.Planned && stopRequested()) {
+            log.i { "walk abandoned — the operating system's time is up; nothing it saw is recorded" }
+            return@withLock WalkOutcome.Abandoned
+        }
+        val outcome = decided.update(enqueue = null)
+        val added = outcome.addedRows()
+        // Handed to the top-up this walk makes the tail run next, so a row it just read is created from the handle in
+        // hand rather than resolved again (capability `ios-url-session-upload`). Only when that top-up follows.
+        if (added && decided is Decided.Planned) walked = decided.plan.liveResources.associateBy { it.filename }
+        WalkOutcome.Walked(outcome.publish(), addedRows = added)
     }
 
     // --- stage 1: settle -------------------------------------------------------------------------
@@ -223,8 +293,8 @@ class UploadCycle(
      * durable state.
      *
      * **What licenses this split from [update]:** a decision taken here is still valid there, because
-     * `LedgerWriter` is the ledger's only writer, this cycle is its only entry, and the pump is
-     * single-flight — and the platform's own delegate reaches storage only through the guarded
+     * `LedgerWriter` is the ledger's only writer, this cycle is its only entry, and its units are
+     * serialised by [units] — and the platform's own delegate reaches storage only through the guarded
      * `markTerminal`, never through a read-then-write. If either property stops holding, deciding here and
      * acting there becomes a duplicate-upload path, and nothing in the compiler will say so.
      */
@@ -335,7 +405,7 @@ class UploadCycle(
      * Write what is ours: the walk's deletions, the jobs the platform will accept, and the manifest detail
      * of rows the walk can fill. Nothing here is visible to the event.
      */
-    private suspend fun Decided.update(): CycleOutcome = when (this) {
+    private suspend fun Decided.update(enqueue: (() -> Boolean)?): CycleOutcome = when (this) {
         is Decided.Short -> outcome
         is Decided.Planned -> {
             val engine = ready.engine
@@ -389,8 +459,10 @@ class UploadCycle(
             ledger.recordDiscovered(newWork)
 
             // The resources this walk already read, by key: a row it just recorded is created from the handle in
-            // hand rather than resolved a second time (see [createOne]).
-            val enqueued = enqueue(ready, walked = plan.liveResources.associateBy { it.filename })
+            // hand rather than resolved a second time (see [createOne]). A walk run as the tail's ③ creates nothing
+            // ([enqueue] is `null`): the top-up the tail runs next does, from the same handles.
+            val enqueued = enqueue?.let { stop -> enqueue(ready, plan.liveResources.associateBy { it.filename }, stop) }
+                ?: Enqueued(created = 0, truncated = false)
             // Truncated by either half: the settle pass could not re-create a retry, or this pass could
             // not create everything the ledger holds. Both mean the same thing to the pump — work remains.
             val truncated = ready.capHit || enqueued.truncated
@@ -404,6 +476,13 @@ class UploadCycle(
             )
             if (truncated) CycleOutcome.Truncated(ready, audit) else CycleOutcome.Drained(ready, audit)
         }
+    }
+
+    /** Whether this outcome's walk recorded new `DISCOVERED` rows — what makes the tail run its top-up again. */
+    private fun CycleOutcome.addedRows(): Boolean = when (this) {
+        is CycleOutcome.Truncated -> audit.newWork > 0
+        is CycleOutcome.Drained -> audit.newWork > 0
+        CycleOutcome.Unreadable, CycleOutcome.NotJoined, CycleOutcome.Withheld, is CycleOutcome.Declined -> false
     }
 
     /** What one enqueue pass did, for the outcome that reports it. */
@@ -438,7 +517,11 @@ class UploadCycle(
      * app-driven tier that same limit bounds staged temp-file disk, so asking for more than it will accept
      * costs nothing: the pass stops at the refusal, before the next resolve.
      */
-    private suspend fun enqueue(ready: Ready, walked: Map<String, Resource>): Enqueued {
+    private suspend fun enqueue(
+        ready: Ready,
+        walked: Map<String, Resource>,
+        stopRequested: () -> Boolean,
+    ): Enqueued {
         val needJob = ledger.rowsNeedingJob()
         if (needJob.isEmpty()) return Enqueued(created = 0, truncated = false)
 
@@ -458,6 +541,10 @@ class UploadCycle(
         // saved a few hundred ms per hundred photos, which did not pay for the chunk. Decision record: `changes/selection-is-the-walk` (D5).
         var created = 0
         for (row in eligible) {
+            // The operating system's time is up (capability `ios-app-shell`, "Expiry stops work cooperatively at the
+            // next boundary"): the creation in flight has completed, and no further one starts. The rows not reached
+            // still need a job, so the pass reports truncated.
+            if (stopRequested()) return Enqueued(created, truncated = true)
             when (createOne(ready, row, walked)) {
                 CreateResult.CREATED -> created++
                 // Backpressure, not failure — and the only signal that work remains. The row stays as it was
