@@ -53,6 +53,12 @@ class Journeys {
     fun a_member_creates_shares_and_a_second_member_receives() = runBlocking {
         RigClient(appA).use { a ->
             RigClient(appB).use { b ->
+                // Never drive an app baked for another backend: that is the shared production one, and these journeys
+                // create events and upload photos.
+                listOf(a, b).forEach { app ->
+                    val base = app.state().build["uploadBase"]
+                    assertTrue(base == backend, "an app under journey is baked for '$base', not the local backend $backend")
+                }
                 HttpClient(CIO).use { http ->
                     val event = createAndJoin(a)
                     val shared = shareOwnPhotos(a, http, event)
