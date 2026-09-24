@@ -326,6 +326,26 @@ class QueuedPhotoDownloadJobsTest {
     }
 
     /**
+     * A re-enqueued key that is still waiting for a slot keeps its place in line but takes the newer entry:
+     * a re-plan may have re-presigned its url, and the older one may have expired by the time a slot frees.
+     */
+    @Test
+    fun re_enqueuing_a_queued_resource_keeps_its_place_and_takes_the_fresher_url() = runTest {
+        val h = Harness(this)
+        h.jobs.enqueue((1..MAX_IN_FLIGHT).map { pending("A$it", "k-$it") })
+        h.jobs.enqueue(listOf(pending("Q1", "q", url = "https://cdn.example/stale"), pending("Q2", "q")))
+        advanceUntilIdle()
+        h.jobs.enqueue(listOf(pending("Q2", "q"), pending("Q1", "q", url = "https://cdn.example/fresh")))
+        advanceUntilIdle()
+
+        h.transport.started.take(2).forEach { h.transport.finish(it.description) }
+        advanceUntilIdle()
+
+        val drawn = h.transport.started.drop(MAX_IN_FLIGHT)
+        assertEquals(listOf("https://cdn.example/fresh", "https://cdn.example/Q2/q"), drawn.map { it.url })
+    }
+
+    /**
      * Every reconcile hands the jobs its WHOLE pending snapshot, so a second reconcile while a backlog is
      * still queued re-enqueues resources that are queued (not yet started) or running. Neither may transfer
      * twice: the second copy of a queued key used to start after the first finished, re-downloading a

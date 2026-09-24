@@ -149,8 +149,7 @@ class QueuedPhotoDownloadJobs(
 
     /**
      * The not-yet-started transfers, keyed by transfer description like [inFlight] — so a key is queued at
-     * most once, and a key is never both queued and in flight (capability `photo-download`: enqueue is
-     * idempotent).
+     * most once, and a key is never both queued and in flight ([PhotoDownloadJobs.enqueue] is idempotent).
      *
      * This was an `ArrayDeque`, and [enqueue] appended every download it was handed. Every reconcile hands
      * over its WHOLE pending snapshot, so a second reconcile while a backlog was still queued doubled it: the
