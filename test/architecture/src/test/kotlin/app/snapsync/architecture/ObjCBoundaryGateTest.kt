@@ -37,7 +37,7 @@ class ObjCBoundaryGateTest {
     private val blockApis = listOf(
         "dispatch_async", "addObserverForName", "performChanges", "performChangesAndWait",
         "requestAuthorizationForAccessLevel", "getAllTasksWithCompletionHandler", "generateKeyWithCompletionHandler",
-        "attestKey", "generateAssertion", "writeDataForAssetResource",
+        "attestKey", "generateAssertion", "writeDataForAssetResource", "beginBackgroundTaskWithName",
     )
 
     /**

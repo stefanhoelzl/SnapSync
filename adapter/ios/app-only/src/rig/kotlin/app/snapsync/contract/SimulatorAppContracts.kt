@@ -3,9 +3,12 @@
 package app.snapsync.contract
 
 import app.snapsync.album.IosAlbumManager
+import app.snapsync.background.IosBackgroundTime
 import app.snapsync.compose.PermissionAwareAssetPresence
 import app.snapsync.compose.PermissionAwareCandidateSource
 import app.snapsync.contracts.AlbumManagerContract
+import app.snapsync.contracts.BackgroundTimeContract
+import app.snapsync.contracts.BackgroundTimeState
 import app.snapsync.contracts.BackgroundTransferContract
 import app.snapsync.contracts.AlbumManagerState
 import app.snapsync.contracts.Binding
@@ -53,6 +56,7 @@ import app.snapsync.model.denormalizeAssetId
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AssetRef
+import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.ProtectedStorage
@@ -109,6 +113,7 @@ fun simulatorAppContracts(): List<InAppContract> = listOf(
     simulatorAppContract(SharePresenterContract, SimAppSharePresenterBinding(), ::hostRefusal),
     simulatorAppContract(BackgroundTransferContract, SimAppBackgroundTransferBinding(), ::refusal),
     simulatorAppContract(DownloadTransportContract, SimAppDownloadTransportBinding(), ::hostRefusal),
+    simulatorAppContract(BackgroundTimeContract, SimAppBackgroundTimeBinding(), ::hostRefusal),
 )
 
 /** Why this process is not the simulator app, or `null` when it is — for bindings that need no photo grant. */
@@ -305,4 +310,18 @@ class SimAppProtectedStorageBinding : Binding<ProtectedStorageState, ProtectedSt
 
     override fun create(state: ProtectedStorageState, clauseId: String): Entered<ProtectedStorage> =
         Entered.Ready(IosProtectedStorage())
+}
+
+/**
+ * The real [IosBackgroundTime] in the simulator app — the one CI host with a `UIApplication` (a test executable has
+ * none). The rig drives the app in the foreground, so its time is not up and every hold is granted; "time is up" is
+ * a state no host presents to a binding, which is why `BackgroundTimeContract` has no expiry clause.
+ */
+class SimAppBackgroundTimeBinding : Binding<BackgroundTimeState, BackgroundTime> {
+    override val host = Host.IOS_SIM_APP
+    override val kind = BindingKind.Live
+    override val reaches = setOf(BackgroundTimeState.TIME_REMAINS)
+
+    override fun create(state: BackgroundTimeState, clauseId: String): Entered<BackgroundTime> =
+        Entered.Ready(IosBackgroundTime(Logger.withTag("contract")))
 }
