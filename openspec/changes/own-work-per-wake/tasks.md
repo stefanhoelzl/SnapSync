@@ -35,7 +35,7 @@
 
 - [ ] 5.1 Upload completions request ② only, and only when the app's admission is `Admit` (always recorded)
 - [ ] 5.2 Upload-session relaunch's own work is recording terminals; heartbeat BGTask is the tail; re-arm per the carried-over table
-- [ ] 5.3 Remove the shared cycle's `deviceManifestTimeoutMs` (both tiers) and correct the stale "~3-minute cap" comment to the measured 60 s extension kill
+- [x] 5.3 Remove the shared cycle's `deviceManifestTimeoutMs` (both tiers) and correct the stale "~3-minute cap" comment to the measured 60 s extension kill
 - [ ] 5.4 Upload extension: no cooperative stop; confirm `ExtensionCore`/`UploadExtensionRoot` hold nothing across `process()` calls (32 MB limit)
 
 ## 6. Silent push and push registration
@@ -55,7 +55,7 @@
 ## 8. Status and limited grant
 
 - [ ] 8.1 Ledger counts refresh after tail units only while foregrounded; foreground entry re-reads
-- [ ] 8.2 Close the grant-flip gap: the selection lane's change path gets the baseline path's generation check; invert `SelectionSnapshotLaneTest.a_fold_stops_at_an_ended_observation_and_still_ends_it`
+- [x] 8.2 Close the grant-flip gap: the selection lane's change path gets the baseline path's generation check; invert `SelectionSnapshotLaneTest.a_fold_stops_at_an_ended_observation_and_still_ends_it`
 
 ## 9. Guards, diagrams, docs
 
