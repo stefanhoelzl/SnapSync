@@ -18,7 +18,8 @@ import io.ktor.client.plugins.HttpTimeout
  * the two modes are different events: one RTT while awake, or nothing at all while frozen.
  *
  * 5 s therefore sits ~3× above the slowest real answer and far below any suspension artifact, and it
- * bounds the network portion of a receipt-held span. A fast failure costs a retry and never
+ * bounds the network portion of a wake's own work — now that no handler deadline exists, it is what stops a
+ * stalled request from holding an OS handler until the OS's own expiry. A fast failure costs a retry and never
  * correctness — `DownloadController.reconcile` keeps last-good state on a union failure by contract.
  *
  * Corollary kept deliberately: with this ceiling in place, a request still reported as minutes long

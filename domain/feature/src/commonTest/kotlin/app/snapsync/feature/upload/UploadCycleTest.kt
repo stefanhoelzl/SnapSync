@@ -1287,7 +1287,7 @@ class UploadCycleTest {
 
         val result = cycleOver(backend, platform).run()
 
-        // Still PROCESSING: the re-created retry never got a job, so work remains and the pump must
+        // Still PROCESSING: the re-created retry never got a job, so work remains and the tail must
         // re-arm. What changed is everything else the cycle used to withhold on the way out.
         assertEquals(CycleResult.PROCESSING, result)
         // It WALKS. This cycle is the one whose remaining backlog most needs accounting for, and an

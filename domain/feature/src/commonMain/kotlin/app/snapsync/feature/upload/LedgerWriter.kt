@@ -34,7 +34,7 @@ class LedgerWriter(
      * `DISCOVERED` would orphan.
      *
      * The read-then-write is safe here where it would not be on a terminal transition: this cycle is the
-     * ledger's only writer of non-terminal states and the pump is single-flight, and the one writer that
+     * ledger's only writer of non-terminal states and the tail runner is single-flight, and the one writer that
      * does not take that lock — the platform's delegate, through `markTerminal` — is guarded on
      * `REQUESTED`, so it cannot touch a key that has no row.
      */

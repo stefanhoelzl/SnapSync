@@ -147,7 +147,7 @@ class FileBackedConfigStore(
     /**
      * Re-read the file into [config]: cross-process writers do not notify this process's
      * [StateFlow], and a pre-first-unlock construction seeded `null`. Since migration step 12 the
-     * trigger flows call this at **every** OS entry (foreground, silent push, backstop — replacing
+     * trigger flows call this at **every** OS entry (foreground, silent push, background session, heartbeat — replacing
      * the deleted unlock-hook repair), so an **unreadable** read retains the last good value
      * (`configAfterReload`, pure and tested): at this cadence a transient failure would otherwise
      * clear a good membership mid-session and flip the screen to the setup gate.

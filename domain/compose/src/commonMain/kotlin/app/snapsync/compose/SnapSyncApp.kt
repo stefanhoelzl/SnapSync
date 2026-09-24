@@ -938,8 +938,8 @@ class AppCore internal constructor(
      *
      * The `invocation` wrap sits INSIDE the launch deliberately: wrapping the launcher instead would
      * time the hand-off rather than the work, which is how `← tap.create (1ms)` came to be logged
-     * against a multi-second backend mint — the same false duration `hold-os-receipts-until-work-completes`
-     * removed from the OS-callback side.
+     * against a multi-second backend mint — the same false duration the OS-callback side stopped reporting when its
+     * handlers began to be held for their work (`hold-os-receipts-until-work-completes`, now `own-work-per-wake`).
      */
     private fun detachedOnCoreLane(name: String, params: String = "", block: suspend () -> Unit) {
         scope.launch(coreLane) { tapLog.invocation(ports.logScope, name, params) { block() } }

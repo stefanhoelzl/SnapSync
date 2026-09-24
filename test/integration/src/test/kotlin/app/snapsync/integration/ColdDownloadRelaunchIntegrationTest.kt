@@ -42,7 +42,8 @@ class ColdDownloadRelaunchIntegrationTest {
         coroutineScope {
             val wake = async { os("app", "onBackgroundTransfers", DOWNLOAD_SESSION) }
             eventually(read = { stage(); libraryTotal() }) { it == before + 1 } // the staged asset was imported
-            // The world's session never reports its events drained, so the receipt would be held to its deadline;
+            // The world's session never reports its events drained, so its handler would be held until the
+            // background time's expiry;
             // the OS's side of the wake is not what this test is about.
             wake.cancel()
         }

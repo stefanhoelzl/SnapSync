@@ -72,11 +72,12 @@ class IosUrlSessionUploadPlatform(
     // other ledger state.
     private val ledger: TransferRecord,
     private val cap: Int = 4,
-    // Fired after each task reaches a terminal state — the composition root wires this to the pump's
-    // `onUploadCompleted` (a slot just freed → top up).
+    // Fired after each task reaches a terminal state — the composition root wires this to
+    // `AppUploadEvents.uploadCompleted` (a slot just freed → the tail's top-up).
     private val onTerminal: () -> Unit,
     // Fired when the session reports every enqueued event delivered (the background-session relaunch
-    // delegate callback) — the composition root wires this to the receipts' `drained()`.
+    // delegate callback) — the composition root wires this to
+    // `AppUploadEvents.eventsDrained`, which releases the wake's handler held by `OsCompletions`.
     //
     // A constructor `val`, like `onTerminal` beside it, not the settable `var` it used to be. Two
     // reasons, and the second is the load-bearing one. It is set exactly once, by the one root that
