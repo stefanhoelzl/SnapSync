@@ -72,11 +72,6 @@ class ProducerExclusivityTest {
         override suspend fun arm() { calls += "arm" }
         override suspend fun disarm() { calls += "disarm" }
         override suspend fun cancelTransfers() { calls += "cancel" }
-        override suspend fun onForeground() = Unit
-        override suspend fun onSilentPush(eventId: String) = Unit
-        override suspend fun onBackgroundTask() = Unit
-        override suspend fun onSelectionChanged() = Unit
-        override fun onBackgroundTransfers(completion: () -> Unit) = completion()
     }
 
     /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */

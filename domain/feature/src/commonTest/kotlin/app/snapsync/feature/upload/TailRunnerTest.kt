@@ -74,7 +74,7 @@ class TailRunnerTest {
             while (units.imported < units.staged) {
                 units.importGate?.await()
                 units.imported++
-                if (stop()) break
+                if (stop.stopRequested()) break
             }
             units.leave()
         },
@@ -99,6 +99,7 @@ class TailRunnerTest {
         foregrounded = { units.foreground },
         refreshStatus = { units.refreshes++ },
         scheduler = scheduler,
+        leftover = { "" },
     )
 
     // ---- the units and their order ----------------------------------------------------------------------
@@ -388,6 +389,7 @@ class TailRunnerTest {
             foregrounded = { false },
             refreshStatus = {},
             scheduler = Scheduler(),
+            leftover = { "" },
         )
         val failure = withTimeout(5.seconds) { assertFailsWith<IllegalStateException> { tail.request(TailTrigger.HEARTBEAT) } }
         assertTrue("wait on itself" in failure.message.orEmpty())
@@ -419,6 +421,7 @@ class TailRunnerTest {
             foregrounded = { true },
             refreshStatus = { error("counts unreadable") },
             scheduler = scheduler,
+            leftover = { "" },
         )
         val outcome = tail.request(TailTrigger.FOREGROUND)
         assertEquals(listOf("import", "topUp", "walk"), units.ran)
@@ -437,6 +440,197 @@ class TailRunnerTest {
         requests.forEach { it.join() }
         assertEquals(1, units.maxActive, "one unit at a time, across every trigger at once")
         assertEquals(2, units.ran.count { it == "import" }, "the first pass and exactly one more")
+    }
+
+    // ---- the import-only request (a download staged in a running process) -----------------------------------
+
+    @Test
+    fun `a staged download imports and neither tops up nor walks nor re-arms`() = runTest {
+        val units = Units()
+        val scheduler = Scheduler()
+        val outcome = runner(units, scheduler).request(TailTrigger.DOWNLOAD_STAGED)
+        assertEquals(listOf("import"), units.ran)
+        assertEquals(TailOutcome(CycleResult.COMPLETED, cut = false), outcome)
+        assertEquals(0, scheduler.scheduled)
+    }
+
+    @Test
+    fun `a staging and a completion joining together need the import and the top-up but no walk`() = runTest {
+        val units = Units().apply { topUpGate = CompletableDeferred() }
+        val tail = runner(units)
+        val first = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
+        runCurrent()
+        val staged = async { tail.request(TailTrigger.DOWNLOAD_STAGED) }
+        val completed = async { tail.request(TailTrigger.UPLOAD_COMPLETED) }
+        runCurrent()
+        units.topUpGate!!.complete(Unit)
+        units.topUpGate = null
+        listOf(first, staged, completed).forEach { it.await() }
+        assertEquals(listOf("topUp", "import", "topUp"), units.ran, "one more pass covering both joiners, and no walk")
+        assertEquals(TailScope.IMPORT_AND_TOP_UP, TailScope.IMPORT + TailScope.TOP_UP)
+        assertEquals(TailScope.FULL, TailScope.IMPORT + TailScope.FULL)
+    }
+
+    @Test
+    fun `an import-only last pass keeps the upload outcome a joiner re-arms on`() = runTest {
+        val units = Units().apply { topUp = { CycleResult.PROCESSING }; walkGate = CompletableDeferred() }
+        val scheduler = Scheduler()
+        val tail = runner(units, scheduler)
+        val relaunch = async { tail.request(TailTrigger.UPLOAD_SESSION_EVENTS) }
+        runCurrent()
+        val staged = async { tail.request(TailTrigger.DOWNLOAD_STAGED) }
+        runCurrent()
+        units.walkGate!!.complete(Unit)
+        units.walkGate = null
+        assertEquals(CycleResult.PROCESSING, relaunch.await()?.result, "the import pass says nothing about uploads")
+        staged.await()
+        assertEquals(1, scheduler.scheduled, "so the relaunch still re-arms on the work its top-up left")
+    }
+
+    // ---- the operating-system expiry line (capability `diagnostic-logging`) ---------------------------------
+
+    @Test
+    fun `an expiry during the walk is logged with the signal and the abandoned walk and what was left`() = runTest {
+        val lines = mutableListOf<String>()
+        val recorder = object : co.touchlab.kermit.LogWriter() {
+            override fun log(severity: co.touchlab.kermit.Severity, message: String, tag: String, throwable: Throwable?) {
+                lines += message
+            }
+        }
+        val units = Units().apply { walkGate = CompletableDeferred() }
+        val tail = TailRunner(
+            importStaged = { units.ran += "import" },
+            topUp = { units.ran += "topUp"; CycleResult.COMPLETED },
+            walkAndPublish = { stop ->
+                units.walkGate!!.await()
+                if (stop()) WalkOutcome.Abandoned else WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = true)
+            },
+            walkPermitted = { true },
+            mayCreate = { true },
+            foregrounded = { false },
+            refreshStatus = {},
+            scheduler = Scheduler(),
+            leftover = { "staged downloads not yet imported: 2" },
+            log = co.touchlab.kermit.Logger(co.touchlab.kermit.loggerConfigInit(recorder), "TailRunnerTest"),
+        )
+        val push = async { tail.request(TailTrigger.SILENT_PUSH) }
+        runCurrent()
+        tail.stop("background time for onSilentPush is up")
+        units.walkGate!!.complete(Unit)
+        push.await()
+
+        val signal = lines.single { it.startsWith("OS expiry") }
+        assertTrue("background time for onSilentPush is up" in signal, "which signal: $signal")
+        assertTrue("③ walk" in signal && "abandoned" in signal, "what was running, and its fate: $signal")
+        val end = lines.single { it.startsWith("tail stopped") }
+        assertTrue("the walk was abandoned" in end, "a dump tells an abandoned walk from no new photos: $end")
+        assertTrue("staged downloads not yet imported: 2" in end, "what was left: $end")
+    }
+
+    // ---- an import that never reports holds no one hostage (capability `photo-download`) -----------------------
+
+    private fun hungImportRunner(units: Units, scheduler: Scheduler = Scheduler()): Pair<TailRunner, CompletableDeferred<Unit>> {
+        val never = CompletableDeferred<Unit>()
+        val tail = TailRunner(
+            importStaged = { signal ->
+                units.ran += "import"
+                // First pass: an import that never reports; later passes find it claimed and import nothing.
+                if (units.imported++ == 0 && !signal.awaitUnlessInterrupted(never)) units.ran += "gave up waiting"
+            },
+            topUp = { units.ran += "topUp"; CycleResult.COMPLETED },
+            walkAndPublish = { units.ran += "walk"; WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false) },
+            walkPermitted = { true },
+            mayCreate = { true },
+            foregrounded = { false },
+            refreshStatus = {},
+            scheduler = scheduler,
+            leftover = { "" },
+        )
+        return tail to never
+    }
+
+    @Test
+    fun `a request joining a tail stuck on an import unsticks it`() = runTest {
+        val units = Units()
+        val (tail, _) = hungImportRunner(units)
+        val staged = async { tail.request(TailTrigger.DOWNLOAD_STAGED) }
+        runCurrent()
+        assertFalse(staged.isCompleted, "the tail is waiting on the import")
+
+        withTimeout(5.seconds) { tail.request(TailTrigger.HEARTBEAT) }
+        staged.await()
+        assertEquals(listOf("import", "gave up waiting", "import", "topUp", "walk"), units.ran)
+    }
+
+    @Test
+    fun `a stop gives up waiting on an import and starts nothing further`() = runTest {
+        val units = Units()
+        val (tail, _) = hungImportRunner(units)
+        val heartbeat = async { tail.request(TailTrigger.HEARTBEAT) }
+        runCurrent()
+        tail.stop("test expiry")
+        assertEquals(TailOutcome(CycleResult.PROCESSING, cut = true), withTimeout(5.seconds) { heartbeat.await() })
+        assertEquals(listOf("import", "gave up waiting"), units.ran)
+    }
+
+    @Test
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    fun `a signal returns at once for a finished import and for a stopped tail`() = runTest {
+        var stopped = false
+        val signal = TailSignal({ stopped }, kotlin.concurrent.atomics.AtomicReference(CompletableDeferred()))
+        assertTrue(signal.awaitUnlessInterrupted(CompletableDeferred(Unit)), "a finished import is simply finished")
+        stopped = true
+        assertTrue(signal.stopRequested())
+        assertFalse(signal.awaitUnlessInterrupted(CompletableDeferred<Unit>()), "a stopped tail waits for nothing")
+    }
+
+    @Test
+    fun `an unreadable leftover still ends the expiry line`() = runTest {
+        val lines = mutableListOf<String>()
+        val recorder = object : co.touchlab.kermit.LogWriter() {
+            override fun log(severity: co.touchlab.kermit.Severity, message: String, tag: String, throwable: Throwable?) {
+                lines += message
+            }
+        }
+        val gate = CompletableDeferred<Unit>()
+        val tail = TailRunner(
+            importStaged = { gate.await() },
+            topUp = { CycleResult.COMPLETED },
+            walkAndPublish = { WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false) },
+            walkPermitted = { true },
+            mayCreate = { true },
+            foregrounded = { false },
+            refreshStatus = {},
+            scheduler = Scheduler(),
+            leftover = { error("store unreadable") },
+            log = co.touchlab.kermit.Logger(co.touchlab.kermit.loggerConfigInit(recorder), "TailRunnerTest"),
+        )
+        val heartbeat = async { tail.request(TailTrigger.HEARTBEAT) }
+        runCurrent()
+        tail.stop("test expiry")
+        gate.complete(Unit)
+        heartbeat.await()
+        val end = lines.single { it.startsWith("tail stopped") }
+        assertTrue("① import completed" in end && "② top-up" in end && "unreadable" in end, end)
+    }
+
+    // ---- cancellation (carried over from the pump) -----------------------------------------------------------
+
+    @Test
+    fun `a cancelled tail does not wedge the next request`() = runTest {
+        // A starter whose coroutine dies mid-unit must leave no running state behind: a joiner of a deferred nothing
+        // can complete would otherwise block every later trigger — foreground, push, heartbeat alike.
+        val units = Units().apply { topUpGate = CompletableDeferred() }
+        val scheduler = Scheduler()
+        val tail = runner(units, scheduler)
+        val first = launch { tail.request(TailTrigger.FOREGROUND) }
+        runCurrent()
+        first.cancel()
+        runCurrent()
+        units.topUpGate = null
+        withTimeout(10.seconds) { tail.request(TailTrigger.HEARTBEAT) }
+        assertEquals(2, units.ran.count { it == "import" }, "the later request ran its own tail")
+        assertEquals(1, scheduler.scheduled, "and kept its own re-arm")
     }
 
     private fun TestScope.launchRequest(tail: TailRunner, trigger: TailTrigger) = launch { tail.request(trigger) }

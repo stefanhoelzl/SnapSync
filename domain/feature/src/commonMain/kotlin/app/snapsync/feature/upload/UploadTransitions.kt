@@ -10,49 +10,24 @@ import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 
 /**
- * How the app-driven engine is **kicked** (capability `upload-lifecycle`, "Triggers are delivered to the mechanism
- * and declined explicitly").
- *
- * Every trigger is delivered **unconditionally**: the engine's cycle decides at its entry gate, withholding when
- * this process may not create (no usable access, or the rig's switch). The caller does not ask whether
- * the engine is interested, because a caller that asks is an *invoker-gate* — the shape this capability ruled
- * against ("The arm's direction gate lives at the choke point, never at the invoker"). Delivering to a held
- * mechanism instead is what used to strand every cold background wake on an idle stand-in: nothing but a
- * UI-launch transition ever moved it, so the heartbeat's re-submission never ran.
- *
- * **No trigger takes an OS completion handler.** Each is a `suspend` function that returns when its work is
- * done; the entry point that received the handler holds an `OsReceipt` across the call, so a declining cycle
- * still returns and the handler is still released.
- */
-interface UploadTriggers {
-    /** The app came to the foreground. */
-    suspend fun onForeground()
-
-    /** A `content-available` push named [eventId]. */
-    suspend fun onSilentPush(eventId: String)
-
-    /** A background-task heartbeat fired. */
-    suspend fun onBackgroundTask()
-
-    /** The user's photo selection changed under a partial grant. */
-    suspend fun onSelectionChanged()
-}
-
-/**
- * The app-driven engine (capability `ios-url-session-upload`): its triggers, plus the three verbs the membership
- * transitions call.
+ * What the membership transitions do to the app's uploader (capability `upload-lifecycle`, "Membership transitions
+ * reconcile the upload mechanisms in one tested place") — the three verbs, and nothing a wake triggers.
  *
  * | verb | what it does |
  * |---|---|
- * | [arm] | drain, and arm the first `BGProcessingTask` |
+ * | [arm] | request the tail, which arms the first `BGProcessingTask` |
  * | [disarm] | cancel the scheduled `BGProcessingTask` — nothing else; in-flight transfers finish and record |
  * | [cancelTransfers] | cancel the in-flight transfers and delete their staged files — a **leave** only |
+ *
+ * The OS wakes do not reach the uploader through this seam: each wake does its own work and hands the rest to the
+ * process's tail runner, whose upload units are the [AppUploadMechanism]'s (decision record
+ * `changes/own-work-per-wake`, D1). The composition implements this over that runner and that mechanism.
  *
  * None of them clears the ledger or repairs a row: nothing a transition does orphans a `REQUESTED` row, because
  * no transition but a leave stops in-flight work and the leave clears the ledger (decision record
  * `changes/both-uploaders-active`, D6).
  */
-interface AppUploadEngine : UploadTriggers {
+interface AppUploadEngine {
     /** Begin or resume uploading for the configured membership. Idempotent. */
     suspend fun arm()
 
@@ -61,13 +36,6 @@ interface AppUploadEngine : UploadTriggers {
 
     /** Cancel every in-flight transfer (a leave). Idempotent, and touches no ledger row. */
     suspend fun cancelTransfers()
-
-    /**
-     * The operating system is handing back this engine's finished background transfers. [completion] is the
-     * operating system's handler: the engine holds it until it has absorbed them, or their deadline expires
-     * (capability `ios-app-shell`, "OS completion handlers are released only after their work completes").
-     */
-    fun onBackgroundTransfers(completion: () -> Unit)
 }
 
 /**
