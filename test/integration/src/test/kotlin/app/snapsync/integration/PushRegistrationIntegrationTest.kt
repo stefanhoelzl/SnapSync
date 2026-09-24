@@ -51,10 +51,10 @@ class PushRegistrationIntegrationTest {
      * **The credential arm of `AppCore.installPushRegistration` is wired** (capabilities
      * `push-registration`, `device-attestation`).
      *
-     * THE JOIN THIS PINS. The app writes its push registration ONCE per APNs token the OS delivers. A
-     * registration refused because the backend rejected the credential is therefore never re-sent on its
-     * own, and the device goes silently unregistered — no silent pushes, no download wakes, and none of the
-     * wake-driven attestation renewals that depend on them. What saves it is that obtaining a NEW
+     * THE JOIN THIS PINS. The app publishes a delivered APNs token only when it differs from the last
+     * registration the backend accepted. A registration refused because the backend rejected the credential
+     * would therefore wait for the next app entry to be re-sent, and a device that receives no silent pushes
+     * gets few — no download wakes, and none of the wake-driven attestation renewals that depend on them. What saves it is that obtaining a NEW
      * credential re-runs the registration, and that is a join between two features that are blind to each
      * other: the trust feature announces the new token, the push feature consumes the announcement.
      *

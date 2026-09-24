@@ -79,13 +79,16 @@ class DeviceAttestation(
     private val _attested = MutableStateFlow(true)
 
     /**
-     * Emits whenever a NEW token is obtained (minted or renewed).
+     * Emits whenever a NEW token is obtained — a first mint, a re-attestation and every periodic renewal alike;
+     * a consumer cannot tell them apart, and the one that matters must not.
      *
      * Anything that had to be *sent* with the old credential and was refused must be re-sent — most
-     * importantly the APNs registration, which is `PUT` exactly once per OS-delivered token. If its `PUT`
-     * is refused (a fresh install races attestation, or the token is rejected), the OS never delivers that
-     * token again, so without this the device would go **permanently unregistered**: no silent pushes, no
-     * download wakes, and none of the wake-driven renewals this capability depends on.
+     * importantly the APNs registration, which the app publishes only when its (token, env, deviceId) differs
+     * from the last registration the backend accepted (capability `push-registration`). A `PUT` refused here
+     * (a fresh install races attestation, or the token is rejected) leaves that record unwritten, so the next
+     * app entry would re-send it — but a device that receives no silent pushes gets few entries, and none of the
+     * wake-driven renewals this capability depends on. So the registration re-publishes on every emission,
+     * unconditionally: a renewal costs one redundant `PUT`, and the healing path stays unconditional.
      */
     val tokenChanged: Flow<Unit> = _tokenChanged
 
