@@ -7,39 +7,31 @@ import BackgroundTasks
 // migration step 12): every OS callback forwards its raw, ObjC-visible input WHOLE to Kotlin, which
 // holds every decision in tested code. No `if`/`guard`/`switch` lives in this file — the pin table in
 // SwiftShellGuardTest holds that at zero. The hooks:
-//   1. `didFinishLaunchingWithOptions` — registers the two BGTask handlers, each forwarding its task and its
-//      expiration handler by the identifier the OS delivered (Apple requires
-//      registration before launch finishes; the identifiers MUST be in Info.plist
+//   1. `didFinishLaunchingWithOptions` — registers the one BGTask handler (the upload heartbeat),
+//      forwarding the task and its expiration handler by the identifier the OS delivered (Apple requires
+//      registration before launch finishes; the identifier MUST be in Info.plist
 //      BGTaskSchedulerPermittedIdentifiers), and calls SnapSyncRoot.onLaunch, which asks for an APNs
 //      token (at every cold start, and again at every foreground entry from its didBecomeActive observer —
 //      capability `push-registration`) and installs the Kotlin-side NSNotificationCenter lifecycle observers
 //      (didBecomeActive/willResignActive — the scenePhase `if` that used to live in the App body is
 //      a decision, so it moved to Kotlin with the OS notifications as its input).
 //   2. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
-//      downloads; SnapSyncRoot adopts the session, stages + imports, and invokes the handler.
+//      downloads; SnapSyncRoot adopts the session, stages, and releases the handler — the imports follow
+//      in the core's tail, under the app's own background time.
 //   3. remote notifications — the OS-delivered APNs token is forwarded as hex (an encoding, not a
 //      decision); an incoming silent push forwards its `userInfo` dictionary WHOLE — the `eventId`
 //      extraction is Kotlin's tested payload codec (capability `push-registration`).
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    // The app-driven upload heartbeat — the one background task: the grant of time whose work is the core's tail
+    // (import staged downloads, top up the background URLSession queue, walk for new captures). The registration
+    // forwards the OS's own `task.identifier`, never its literal: Kotlin routes it, so a copied block cannot hand one
+    // task to another's handler. The OS's "time is up" is FORWARDED, never answered here: Kotlin holds the task's
+    // completion and is the only one that completes it — at once, stopping the tail as it does (capability
+    // `ios-app-shell`).
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: "app.snapsync.download.backstop",
-            using: nil
-        ) { task in
-            // The OS's "time is up" is FORWARDED, never answered here: Kotlin holds the task's completion and is the
-            // only one that completes it (capability `ios-app-shell`) — completing it here too raced that release.
-            task.expirationHandler = { SnapSyncRoot.shared.onBackgroundTaskTimeUp(identifier: task.identifier) }
-            SnapSyncRoot.shared.onBackgroundTask(identifier: task.identifier) {
-                task.setTaskCompleted(success: true)
-            }
-        }
-        // The app-driven (iOS 18–26.0) upload heartbeat: tops up the background URLSession queue and
-        // catches new captures while the app is closed. No-op on ≥26.1 (the PhotoKit extension runs).
-        // Both registrations forward the OS's own `task.identifier`, never their literal: Kotlin routes it, so a
-        // copied block cannot hand one task to the other's handler (capability `ios-app-shell`).
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.snapsync.upload.heartbeat",
             using: nil

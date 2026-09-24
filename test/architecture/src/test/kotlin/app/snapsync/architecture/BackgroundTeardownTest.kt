@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  *   adapters surface that as *absent* — acting on absence there would destroy a perfectly healthy
  *   membership, and `EventConfig` is the ONLY record of the join (the invite QR is derived from its
  *   `eventId`, so there is nothing in the app to surface either back);
- * - `SilentPush` and `DownloadBackstop` both state the invariant in prose — *"nothing mints, clears, or
+ * - `SilentPush` states the invariant in prose — *"nothing mints, clears, or
  *   leaves"* — and prose is not enforcement.
  *
  * The guard is therefore **textual and blunt on purpose**: a background flow may not name the teardown
@@ -31,7 +31,7 @@ import kotlin.test.assertTrue
 class BackgroundTeardownTest {
 
     /** The OS-callback trigger flows that run on a **background** wake, with no user and no guaranteed unlock. */
-    private val backgroundFlows = listOf("SilentPush.kt", "DownloadBackstop.kt", "Background.kt")
+    private val backgroundFlows = listOf("SilentPush.kt", "Background.kt")
 
     /** Symbols that can end a membership. Naming either from a background flow is the violation. */
     private val teardownSymbols = listOf("LeaveEvent", "MembershipRefresh")
