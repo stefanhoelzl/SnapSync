@@ -4,8 +4,6 @@ import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.EventConfig
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
-import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
@@ -154,14 +152,3 @@ fun inMemoryStagedBytes(
 /** [readable] is the caller's own cell: a device unlocked since boot by default. */
 fun inMemoryProtectedStorage(readable: MutableStateFlow<Boolean> = MutableStateFlow(true)): ProtectedStorage =
     InMemoryProtectedStorage(readable)
-
-/** [armed] is the caller's own cell: whether the system holds a pending wake for the scheduler's identifier. */
-fun inMemoryBackgroundScheduler(armed: MutableStateFlow<Boolean> = MutableStateFlow(false)): BackgroundScheduler =
-    InMemoryBackgroundScheduler(armed)
-
-/**
- * [held] is the caller's own cell: the holds the system has granted and not yet seen ended, each with the expiry
- * the caller may fire as the operating system would.
- */
-fun inMemoryBackgroundTime(held: MutableStateFlow<List<HeldBackgroundTime>> = MutableStateFlow(emptyList())): BackgroundTime =
-    InMemoryBackgroundTime(held)
