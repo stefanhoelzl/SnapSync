@@ -4,23 +4,22 @@ import app.snapsync.feature.status.StatusCountsPoller
 
 /**
  * The **background** OS-callback trigger flow (spec `module-architecture`, "Rules in features, order
- * in flows"). On backgrounding: stop the foreground status poll (a suspended app cannot act on
- * fresher counts; the next foreground entry's refresh is the backstop) and queue the download
- * import-tail backstop so any staged-but-unimported foreign assets get imported at the next
- * idle/charging window even if no further download wakes the app (capability `photo-download`, 5.4).
+ * in flows"). On backgrounding: stop the foreground status poll — a suspended app cannot act on
+ * fresher counts, and the next foreground entry's refresh re-reads them.
  *
- * Ordering of one feature stop and one platform effect: [statusPoller] is `feature/status`'s poll
- * (its cadence is the feature's rule; this flow only orders its lifecycle against the OS callback),
- * [scheduleBackstop] is irreducibly the shell's (a `BGTaskScheduler` submit), arriving as a
- * `compose/`-built effect lambda. The forge guard, the entry-point log wrap, and the "entering
- * background" banner stay in the shell.
+ * It arms nothing. It used to queue the download import-tail backstop `BGTask` here; that task found
+ * work in 0 of 108 field runs and is deleted — imports left staged are drained by the first unit of any
+ * later wake's tail, and by foreground (capability `photo-download`; decision record
+ * `changes/own-work-per-wake`, D7).
+ *
+ * [statusPoller] is `feature/status`'s poll: its cadence is the feature's rule, and this flow only
+ * orders its lifecycle against the OS callback. The entry-point log wrap and the "entering background"
+ * banner stay with the inbound port's implementation.
  */
 class Background(
     private val statusPoller: StatusCountsPoller,
-    private val scheduleBackstop: suspend () -> Unit,
 ) {
     suspend fun run() {
         statusPoller.stop()
-        scheduleBackstop()
     }
 }

@@ -92,7 +92,7 @@ class CompositionSeamTest {
                 "only because the transport takes the host queue that does not exist until the feature " +
                 "is constructed",
             "appDrivenUpload" to
-                "a factory for the app's uploader (an AppUploadEngine, whose platform touches are its own " +
+                "a factory for the app's uploader mechanism (an AppUploadMechanism, whose platform touches are its own " +
                 "adapter's). A thunk so the engine is constructed at first use rather than while the graph " +
                 "is being assembled",
             "extensionRegistration" to
@@ -154,7 +154,7 @@ class CompositionSeamTest {
             "the status container's link intent (host.onOpenUrl): decodes the link and opens the join gate — " +
             "presentation's own reduction",
         "EntryHooks.assembleHost" to
-            "touches the root's lazily assembled host so its collectors run before a background wake's work lands — " +
+            "touches the root's lazily assembled host so its collectors run before a FOREGROUND entry's work lands — " +
             "in-process assembly, no platform read",
         "EntryHooks.deliverPushToken" to
             "hands the OS-delivered token to the in-memory PushTokenSource the registration collector observes; the " +
@@ -176,8 +176,8 @@ class CompositionSeamTest {
             "builds the DownloadTransport PORT around the jobs' own host queue — the object-graph cycle " +
             "AppPorts.newDownloadTransport breaks",
         "QueuedPhotoDownloadJobs.onStaged" to
-            "delivers a staged resource to the sibling DownloadController, resolving its lazy when INVOKED so a " +
-            "download-only relaunch reaches it too (capability `photo-download`)",
+            "records a staged resource in the sibling DownloadController, then requests the tail's import on this " +
+            "core's own runner — resolving both when INVOKED, so a download-only relaunch reaches them (capability `photo-download`)",
         "JoinEvent.provision" to
             "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
             "gather start) — core machinery the join use-case may not name",
@@ -220,11 +220,8 @@ class CompositionSeamTest {
         "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
         "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
         "StatusRefresh.policyFor" to "the membership's ONE selection-policy derivation, built in compose/",
-        "BackgroundUploadPump.runCycle" to "the tier's own UploadCycle.run — core machinery",
-        "BackgroundUploadPump.onCycleComplete" to "the sibling ledger-counts refresh — feature-blindness",
-        "BackgroundUploadPump.mayCreate" to "this core's own app admission, read fresh at each completion",
         // The tail runner's units are injected so the runner knows their order and their stop, never their
-        // internals; none is bound in production until the entry points move onto it (`own-work-per-wake`, 3.x).
+        // internals (`own-work-per-wake`, D1); `AppTail` binds them.
         "TailRunner.importStaged" to
             "the sibling download arm's staged-import drain (its PhotoKit touches are the importer PORT's) — " +
             "feature-blindness",
@@ -235,6 +232,20 @@ class CompositionSeamTest {
         "TailRunner.mayCreate" to "this core's own app admission, read fresh at each completion",
         "TailRunner.foregrounded" to "this core's own lifecycle fact (whether the app is active), held in memory",
         "TailRunner.refreshStatus" to "the sibling ledger-counts refresh — feature-blindness",
+        "TailRunner.leftover" to
+            "a one-line summary of what a stop left, read from the core's own DownloadStore PORT (the staged imports " +
+            "not yet made) for the operating-system expiry line — a read the runner may not name (feature-blindness)",
+        "TailSignal.stop" to
+            "the running tail's own stop flag (set by TailRunner.stop, Apple's expiry forwarded) — built only by the " +
+            "runner itself (internal constructor), an in-memory read",
+        "AppTail.downloads" to
+            "the composed DownloadController, resolved when the tail's ① runs rather than when the tail is built — " +
+            "deferred construction: a cold background wake builds no more of the graph than it reaches",
+        "AppTail.mayCreate" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
+        "AppTail.refreshCounts" to "this core's own ledger-counts refresh (AppCore.ledgerCounts.refresh)",
+        "Open.onExpiry" to
+            "a running background task's expiry action, built by the inbound port's implementation: it stops this " +
+            "core's tail and releases the OsCompletions handover it holds — core machinery answering the OS's signal",
         "SelectionScopedDiscovery.selectionScope" to "UploadPorts.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCore's own entry-gate translation over the ports (readGate in UploadCore.kt)",
@@ -246,7 +257,7 @@ class CompositionSeamTest {
             "the sibling AlbumCoordinator.place (its PhotoKit touches are the AlbumManager port's)",
         "UploadTransitions.extensionRegistrable" to
             "model/'s pure registrability fact over the OS fact, the grant and the rig pin",
-        "UploadTransitions.appEngine" to "AppPorts.appDrivenUpload, forwarded — a factory for the app's uploader",
+        "UploadTransitions.appEngine" to "AppTail.appEngine — this core's tail runner and the uploader mechanism behind it",
     )
 
     // ---- scanning ---------------------------------------------------------------------------------

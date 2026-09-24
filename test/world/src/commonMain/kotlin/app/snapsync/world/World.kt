@@ -37,6 +37,9 @@ import app.snapsync.fake.inMemoryDownloadStore
 import app.snapsync.fake.inMemoryLedgerStore
 import app.snapsync.fake.inMemoryPhotoSelectionChangeSource
 import app.snapsync.fake.inMemoryStagedBytes
+import app.snapsync.fake.inMemoryBackgroundTime
+import app.snapsync.fake.HeldBackgroundTime
+import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.download.DownloadController
@@ -286,10 +289,21 @@ class World(
     var registerPushCount: Int = 0
         private set
 
-    /** Counts the download backstop queued by the real flows — the Background flow arms it, and the backstop entry
-     *  re-queues it however it ends — so a test can tell those entries apart (capability `photo-download`). Read
-     *  off the world's backstop scheduler port, which the composition now reaches the platform through. */
-    val backstopsScheduled: Int get() = backstopScheduler.scheduled
+    /** How many times the tail runner re-armed the app uploader's heartbeat — counted, never run. */
+    val heartbeatsScheduled: Int get() = operatorEngine.heartbeat.scheduled
+
+    /**
+     * The operating system's table of outstanding background-time holds (spec `module-architecture`, "Background
+     * time is an outbound port named for the need") — the operator's cell, read to see which wakes still hold time
+     * and expired through [expireBackgroundTime]. Durable across [relaunch] only in the sense a real table is not:
+     * a relaunch is a new process, so the operator clears nothing and the dead process's holds simply never end.
+     */
+    val backgroundTimeHolds: MutableStateFlow<List<HeldBackgroundTime>> = MutableStateFlow(emptyList())
+
+    /** Operator lever: the operating system says every outstanding background-time hold's time is up. */
+    fun expireBackgroundTime() {
+        backgroundTimeHolds.value.forEach { it.expire() }
+    }
 
     /** The OS-delivered APNs token, as the world's shell delivers it (none until a test delivers one). */
     val pushTokens: PushTokenSource = PushTokenSource("sandbox")
@@ -519,17 +533,12 @@ class World(
      */
     var nowMillis: Long = 0L
 
-    /** One engine for the process, as on a device (it owns a process-lifetime session there). */
-    /** The app-driven uploader the world stands in with — inert, and counting the OS wakes that reach it. */
-    val operatorEngine: OperatorUploadEngine = OperatorUploadEngine()
-
     /**
-     * The REAL app graph (spec `module-architecture`, "One shared composition"): the same
-     * [snapSyncApp] the iOS shell calls, over the world's ports. Features, flows, and the user-tap
-     * command bundle all live on this — the world adds only operator levers and inspection around it.
+     * The app-driven uploader the world stands in with — one for the process, as on a device (it owns a
+     * process-lifetime session there): inert, and counting the tail units the composed runner asks of it. Its
+     * session's drain report reaches the core of the launch that is current.
      */
-    /** The download backstop's scheduler — counted, never run (the operator plays the OS). */
-    val backstopScheduler: CountingBackstopScheduler = CountingBackstopScheduler()
+    val operatorEngine: OperatorUploadEngine = OperatorUploadEngine { core.tail.uploadEvents }
 
     /**
      * The job the composed app runs under — a child of the caller's [scope], so the caller still owns its
@@ -573,7 +582,8 @@ class World(
         configSource = configSource,
         // The world's membership lives in-process in the config cell, so there is nothing to re-read.
         configRefresh = {},
-        backstopScheduler = backstopScheduler,
+        // The operator's table of holds: a wake's hold is visible there until it ends, and the operator expires it.
+        backgroundTime = inMemoryBackgroundTime(backgroundTimeHolds),
         // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
         extensionRegistration = { null },
         uploaderPin = { null },
@@ -581,11 +591,9 @@ class World(
         photoAccess = permission,
         photoAccessRequester = requester,
         selectionChanges = inMemoryPhotoSelectionChangeSource(selectionChangesCell),
-        // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N; the
-        // operator then invokes the cycle by hand, exactly like every other world trigger. That used
-        // to be an inert `pumpSelectionChanged = {}` port here; it is now the world mechanism's own
-        // stated answer to the trigger (`OperatorUploadEngine`), which is where a mechanism's
-        // response to a kick belongs.
+        // The operator plays the OS: nothing uploads on its own. A selection change updates the cell + N and
+        // reaches the world uploader's inert units (`OperatorUploadEngine`), counted; the operator invokes the
+        // cycle by hand, exactly like every other world trigger.
         candidateSource = enumerator,
         // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
         // load seeds it from (capability `upload-state-reconciliation`).
@@ -1143,9 +1151,12 @@ class World(
     suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownloadTransport.HEALTHY) {
         val transport = downloadTransport ?: return
         transport.inFlight().forEach { transport.finish(it.description, outcome) }
-        // Await the imports the jobs launched so this action is complete on return — the operator drives
-        // the world synchronously, and a racy stage would make every download assertion flaky.
-        core.downloadJobs.awaitOutstandingImports()
+        // Await the stagings the jobs launched, then the import the tail runs for them, so this action is complete
+        // on return — the operator drives the world synchronously, and a racy stage would make every download
+        // assertion flaky. The import is the tail's first unit (capability `photo-download`), requested as a staged
+        // download does; it joins the tail those stagings already requested.
+        core.downloadJobs.awaitOutstandingStagings()
+        core.tail.runner.request(TailTrigger.DOWNLOAD_STAGED)
     }
 
     companion object {

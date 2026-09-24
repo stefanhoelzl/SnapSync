@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 class FlowLifetimeTest {
 
     @Test
-    fun `SilentPush run returns only after the fan out finishes`() = runTest {
+    fun `SilentPush run returns only after its own work finishes`() = runTest {
         val gate = CompletableDeferred<Unit>()
         var armFinished = false
         var returned = false
@@ -35,7 +35,7 @@ class FlowLifetimeTest {
         val flow = SilentPush(
             reloadConfig = {},
             refreshAttestation = {},
-            receivers = listOf { _ ->
+            downloadReceiver = { _ ->
                 gate.await()
                 armFinished = true
             },
@@ -55,14 +55,14 @@ class FlowLifetimeTest {
     }
 
     @Test
-    fun `SilentPush awaits the attestation refresh before fanning out`() = runTest {
+    fun `SilentPush awaits the attestation refresh before its receiver`() = runTest {
         // The fan-out's requests carry the token this renews. Firing them concurrently is how a request
         // went out holding the very credential the refresh was replacing.
         val order = mutableListOf<String>()
         SilentPush(
             reloadConfig = { order += "reload" },
             refreshAttestation = { order += "attest" },
-            receivers = listOf { _ -> order += "fanout" },
+            downloadReceiver = { _ -> order += "fanout" },
         ).run(mapOf<Any?, Any?>("eventId" to "E"))
 
         assertTrue(order == listOf("reload", "attest", "fanout"), "unexpected order: $order")

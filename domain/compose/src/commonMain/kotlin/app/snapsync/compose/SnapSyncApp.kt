@@ -35,7 +35,9 @@ import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.version.AppVersionGate
-import app.snapsync.feature.upload.AppUploadEngine
+import app.snapsync.feature.upload.AppUploadMechanism
+import app.snapsync.feature.upload.PushTailGuard
+import app.snapsync.feature.upload.TailTrigger
 import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
@@ -43,7 +45,6 @@ import app.snapsync.feature.upload.appAdmission
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.flow.Background
-import app.snapsync.flow.DownloadBackstop
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
@@ -61,7 +62,7 @@ import app.snapsync.model.JoinCommit
 import app.snapsync.model.UserCommands
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
-import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.Clock
@@ -224,10 +225,15 @@ class AppPorts(
      * refusal with no way out, and a default would make that omission silent.
      */
     val appStoreUrl: String?,
-    /** The **app-driven** upload engine — always composed, on every OS version; a thunk so it resolves lazily.
-     *  Every app-side trigger reaches it, and its cycle's entry gate withholds when this process may not
-     *  create (`upload-lifecycle`). */
-    val appDrivenUpload: () -> AppUploadEngine,
+    /** The **app-driven** uploader's mechanism — always composed, on every OS version; a thunk so it resolves
+     *  lazily. Its two units are the process tail's ② and ③, and its cycle's entry gate withholds when this
+     *  process may not create (`upload-lifecycle`). */
+    val appDrivenUpload: () -> AppUploadMechanism,
+    /** The process's background time (spec `module-architecture`, "Background time is an outbound port named for
+     *  the need"): what a push or a transfer wake holds across its own work and its tail, and the only "time is up"
+     *  those wakes get. Required: a composition without it would hold nothing, and no expiry would ever stop a
+     *  tail. */
+    val backgroundTime: BackgroundTime,
     /** The **OS-driven** registration where this OS carries its selector (iOS ≥26.1) — `null` elsewhere,
      *  keeping it entirely unconstructed where the selector does not exist. */
     val extensionRegistration: () -> ExtensionRegistration?,
@@ -273,10 +279,6 @@ class AppPorts(
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
      *  this process's StateFlow). A port: on iOS it is an App-Group file read. */
     val configRefresh: ConfigRefresh,
-
-    /** Queues the download import-tail backstop wake (`photo-download` 5.4). A port: on iOS a
-     *  `BGTaskScheduler` submit, whose refusal the adapter reports. */
-    val backstopScheduler: BackgroundScheduler,
 
     /** Selection snapshots under a partial grant (capability `limited-photo-access`); the inert default
      *  serves every composition that never sees one (world by default, desktop harnesses). */
@@ -436,7 +438,12 @@ class AppCore internal constructor(
             // callback must reach the controller on those paths too (capability `photo-download`, "A staged
             // resource reaches the controller on every entry point"). No launch here: the jobs own it, so
             // they can join the imports before the session's OS handler is released.
-            onStaged = { ref, key, path -> downloadController.onResourceStaged(ref, key, path) },
+            // Staging is recorded here and the import is the tail's: requested detached — a staging holds no OS
+            // handler of its own, and a wake that delivered it requests (and holds) its own tail after its drain.
+            onStaged = { ref, key, path ->
+                downloadController.onResourceStaged(ref, key, path)
+                tail.requestDetached(TailTrigger.DOWNLOAD_STAGED)
+            },
             // UIKit owns this session's completion handler and requires the main thread for it
             // (capability `ios-app-shell`); the harness binds its own lane.
             uiLane = ports.uiLane,
@@ -517,7 +524,7 @@ class AppCore internal constructor(
             photoAccess = ports.photoAccess,
             extensionRegistrable = extensionRegistrableNow,
             registration = ports.extensionRegistration(),
-            appEngine = ports.appDrivenUpload,
+            appEngine = { tail.appEngine },
             log = ports.log,
             logScope = ports.logScope,
         )
@@ -796,8 +803,8 @@ class AppCore internal constructor(
             membershipRefresh = membershipRefresh,
             statusPoller = statusCountsPoller,
             reloadConfig = { ports.configRefresh.refresh() },
-            // The tier pump and the stored-upload settle, built in `foregroundUploadsFor`.
-            uploads = foregroundUploadsFor(ports),
+            // The upload side's own work at a foreground entry; its top-up and walk are the tail's.
+            settleStored = storedUploadSettleFor(ports)::settle,
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
@@ -806,33 +813,34 @@ class AppCore internal constructor(
     }
 
     val backgroundFlow: Background by lazy {
-        Background(statusPoller = statusCountsPoller, scheduleBackstop = { ports.backstopScheduler.scheduleNext() })
+        Background(statusPoller = statusCountsPoller)
     }
 
     val silentPushFlow: SilentPush by lazy {
         SilentPush(
             reloadConfig = { ports.configRefresh.refresh() },
             refreshAttestation = { attestation.refresh() },
-            // Download arm first, then the upload arm on the app-driven tier (order preserved from the
-            // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
-            // lazily; on iOS ≥26.1 it is null and only the download arm is woken.
-            // The upload receiver is no longer conditional here. It used to be a nullable thunk wrapped in
-            // a `GRANTED`-exactly check, which made this fan-out an **invoker-gate** — sound only while it
-            // enumerated everyone who might read, an enumeration a new mechanism or trigger invalidates in
-            // silence (`upload-lifecycle`, "…never at the invoker"). Both guards now live in the tested
-            // `UploadPushReceiver`, and a mechanism with nothing to do declines for its own stated reason.
-            receivers = listOf(
-                downloadPushReceiver::onSilentPush,
-                { eventId -> ports.appDrivenUpload().onSilentPush(eventId) },
-            ),
+            // The push's own work: the download arm, with its own active-event and direction guards.
+            // The upload arm is not a receiver any more: its work is the tail's, which the push's wake joins only for
+            // the active event — [pushTailGuard], asked by the inbound port's implementation after this flow returns.
+            downloadReceiver = downloadPushReceiver::onSilentPush,
         )
     }
 
-    val downloadBackstopFlow: DownloadBackstop by lazy {
-        DownloadBackstop(
-            downloadController = downloadController,
-            reloadConfig = { ports.configRefresh.refresh() },
-            refreshAttestation = { attestation.refresh() },
+    /**
+     * Whether a push's wake joins the tail — the upload arm's active-event guard (capability `push-registration`).
+     * The limited-grant read discipline is the tail's own (its walk runs only under a full grant).
+     */
+    val pushTailGuard: PushTailGuard by lazy { PushTailGuard(ports.configSource, ports.log) }
+
+    /** The process's opportunistic tail and what reaches it without an OS handler — see [AppTail]. */
+    val tail: AppTail by lazy {
+        AppTail(
+            scope = scope,
+            ports = ports,
+            downloads = { downloadController },
+            mayCreate = appMayCreate,
+            refreshCounts = { ledgerCounts.refresh() },
         )
     }
 
@@ -1111,7 +1119,8 @@ class AppCore internal constructor(
             ports.selectionChanges.snapshots.collect { snapshot ->
                 latestSelectionSnapshot.value = snapshot
                 ports.configSource.config.value?.let { cfg -> gallery.refresh(selectionPolicyForMembership(cfg)) }
-                ports.appDrivenUpload().onSelectionChanged()
+                // Its own work — the snapshot-fed discovery → manifest — then the tail (① and ② from the snapshot).
+                tail.onSelectionChanged()
             }
         }
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.

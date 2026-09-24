@@ -6,13 +6,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The silent-push flow: the cross-arm fan-out absorbed from the former `FanOutPushReceiver`, and —
- * since migration step 12 — the whole-payload entry ([SilentPush.run] takes the raw `userInfo`; the
- * field extraction that used to be an untestable Swift `guard` is the tested `model/` codec). A push
- * wakes **every** arm's receiver, in order, and one throwing arm never robs the others of the scarce,
- * short-budgeted wake (losing the whole wake to one arm's bad day is how a member stops receiving
- * photos). The per-arm active-event and direction guards are the receivers' own, tested in
- * `feature/upload` and `feature/download`.
+ * The silent-push flow: the push's own work — the download arm — and nothing else (capability `push-registration`,
+ * "Silent-push receive seam"). The upload arm is not a receiver any more: its work is the tail's, which the inbound
+ * port's implementation requests after this flow returns, for the active event only. [SilentPush.run] takes the raw
+ * `userInfo` (the field extraction is the tested `model/` codec).
  */
 class SilentPushTest {
 
@@ -22,62 +19,38 @@ class SilentPushTest {
         var attestations = 0
     }
 
-    private fun flow(
-        recorder: Recorder,
-        receivers: List<suspend (String) -> Unit>,
-    ) = SilentPush(
-        reloadConfig = { recorder.reloads++ },
-        refreshAttestation = { recorder.attestations++ },
-        receivers = receivers,
-    )
+    private fun flow(recorder: Recorder, download: suspend (String) -> Unit = { recorder.seen += "down:$it" }) =
+        SilentPush(
+            reloadConfig = { recorder.reloads++ },
+            refreshAttestation = { recorder.attestations++ },
+            downloadReceiver = download,
+        )
 
     @Test
-    fun `the fan out wakes every arm`() = runTest {
+    fun `a payload with an eventId reloads config then runs the download arm`() = runTest {
         val r = Recorder()
-        flow(
-            r,
-            listOf(
-                { eventId -> r.seen += "up:$eventId" },
-                { eventId -> r.seen += "down:$eventId" },
-            ),
-        ).fanOut("E")
+        flow(r).run(mapOf<Any?, Any?>("eventId" to "E7"))
 
-        assertEquals(listOf("up:E", "down:E"), r.seen)
-    }
-
-    @Test
-    fun `one failing arm never robs the others of the wake`() = runTest {
-        // A push is a scarce, short-budgeted wake. If the upload arm throws, the DOWNLOAD arm must still
-        // reconcile — losing the whole wake to one arm's bad day is how a member stops receiving photos.
-        val r = Recorder()
-        flow(
-            r,
-            listOf(
-                { _ -> error("this arm blew up") },
-                { eventId -> r.seen += "down:$eventId" },
-            ),
-        ).fanOut("E") // must not throw
-
-        assertTrue("down:E" in r.seen, "the surviving arm still got its wake")
-    }
-
-    @Test
-    fun `a payload with an eventId reloads config and fans out`() = runTest {
-        val r = Recorder()
-        flow(r, listOf({ eventId -> r.seen += "arm:$eventId" }))
-            .run(mapOf<Any?, Any?>("eventId" to "E7"))
-
-        assertEquals(listOf("arm:E7"), r.seen)
-        assertEquals(1, r.reloads, "the membership is re-read before the receivers' guards read it")
+        assertEquals(listOf("down:E7"), r.seen)
+        assertEquals(1, r.reloads, "the membership is re-read before the guards read it")
         assertEquals(1, r.attestations, "a background wake is a token-renewal chance")
     }
 
     @Test
-    fun `a payload without an eventId fans out to no arm`() = runTest {
+    fun `a failing download arm is contained`() = runTest {
+        // The push's handler must still be released, and its tail still joined: the imports it drains are staged
+        // already, and a union read that threw has nothing to say about them.
         val r = Recorder()
-        flow(r, listOf({ eventId -> r.seen += "arm:$eventId" }))
-            .run(mapOf<Any?, Any?>("aps" to "alert"))
+        flow(r, download = { error("the union read blew up") }).run(mapOf<Any?, Any?>("eventId" to "E")) // must not throw
+        assertEquals(1, r.reloads)
+    }
+
+    @Test
+    fun `a payload without an eventId runs no receiver`() = runTest {
+        val r = Recorder()
+        flow(r).run(mapOf<Any?, Any?>("aps" to "alert"))
 
         assertTrue(r.seen.isEmpty(), "no receiver runs for a push with no usable eventId")
+        assertEquals(0, r.reloads)
     }
 }

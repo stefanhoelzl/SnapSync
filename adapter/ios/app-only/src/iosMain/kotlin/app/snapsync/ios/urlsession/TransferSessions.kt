@@ -65,7 +65,7 @@ import platform.Foundation.NSURLSessionConfiguration
  *
  * Consequence a reader will meet as a symptom: a default session never sends
  * `URLSessionDidFinishEventsForBackgroundURLSession`, so a `handleEventsForBackgroundURLSession` wake holds
- * its `BackgroundEventsReceipts` receipt to the deadline and expires. The simulator actual says so at
+ * its handler until the background time taken at the handover expires. The simulator actual says so at
  * construction, before it happens — the expiry is this host, not a fault. Nothing synthesises the drain: a
  * transport reporting events drained the OS never delivered would make a simulator run indistinguishable
  * from a device one, which is the false confidence D5 refused.

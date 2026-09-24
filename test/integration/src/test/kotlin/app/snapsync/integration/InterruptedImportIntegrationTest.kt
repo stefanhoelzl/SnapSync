@@ -77,7 +77,7 @@ class InterruptedImportIntegrationTest {
         assertTrue(staged.isNotEmpty(), "the transfer staged bytes")
         // A full trigger cycle against the unconfirmed row leaves them where they are.
         reconcile()
-        os("app", "onBackgroundTask", DOWNLOAD_BACKSTOP)
+        os("app", "onBackgroundTask", HEARTBEAT)
         assertEquals(staged, stagedFiles(), "unconfirmed → the bytes stay; the retry needs them")
 
         relaunchAndAssemble() // the startup sweep adjudicates → present → settles the row
@@ -94,12 +94,12 @@ class InterruptedImportIntegrationTest {
         device("import/fail-next")
         downloadAll()
 
-        assertTrue(stagedFiles().isNotEmpty(), "a failed import must not take its bytes with it")
-        assertUnsettled(downloadProgress(), "the failed import is not settled")
-        assertEquals(before, libraryTotal(), "and nothing was created")
-
-        // The retry — the download backstop's import pass — now succeeds off those same bytes.
-        os("app", "onBackgroundTask", DOWNLOAD_BACKSTOP)
+        // The first import fails. Whether its retry has already run is a race between the tail pass the staging
+        // requested and the one a later request joins (each pass's ① retries what is importable), so the state right
+        // after the failure is not asserted here. What the bytes are for is: every retry — here the next wake's tail,
+        // whose first unit is the import drain — imports off those same bytes, and would fail had the failure taken
+        // them (DownloadControllerTest pins the failure keeping them, step by step).
+        os("app", "onBackgroundTask", HEARTBEAT)
         eventually(read = { libraryTotal() }) { it == before + 1 } // the photo still arrives
         awaitDownloadSettled()
     }
@@ -163,7 +163,7 @@ class InterruptedImportIntegrationTest {
         // A full cycle of triggers against the live transaction. None may block, and none may act on the
         // library's honest "absent" about it.
         reconcile()
-        os("app", "onBackgroundTask", DOWNLOAD_BACKSTOP)
+        os("app", "onBackgroundTask", HEARTBEAT)
 
         assertEquals(
             galleryBefore, libraryTotal(),
@@ -197,7 +197,7 @@ class InterruptedImportIntegrationTest {
         // Exactly what a killed process leaves: an asset in the library, a row that does not know it. No
         // trigger will settle this — that is the point.
         reconcile()
-        os("app", "onBackgroundTask", DOWNLOAD_BACKSTOP)
+        os("app", "onBackgroundTask", HEARTBEAT)
         assertUnsettled(
             downloadProgress(),
             "a full trigger cycle leaves it alone — triggers do not adjudicate any more",
@@ -308,6 +308,7 @@ class InterruptedImportIntegrationTest {
     }
 
     private companion object {
-        const val DOWNLOAD_BACKSTOP = "app.snapsync.download.backstop"
+        /** Any wake runs the tail, whose first unit is the import drain; the heartbeat is the one a test can force. */
+        const val HEARTBEAT = "app.snapsync.upload.heartbeat"
     }
 }

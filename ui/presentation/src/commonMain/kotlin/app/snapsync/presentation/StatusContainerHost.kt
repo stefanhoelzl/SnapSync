@@ -771,7 +771,7 @@ class StatusContainerHost(
             // `toJoinLoad` is pure, so the bound lambda cannot throw — but `loadJoinDetails` is an injected
             // `suspend (String) -> JoinLoad` and nothing here can know that. It stays because the invariant
             // is one adapter change away from being false, and the cost of it being false is a screen no
-            // one can leave. Unlike `BackgroundUploadPump`'s comparable wrapper, this one IS covered: the
+            // one can leave. Unlike the retired upload pump's comparable wrapper, this one IS covered: the
             // seam is a constructor parameter, so a test injects a throwing loader directly.
             if (pending.state.value?.eventId == eventId) {
                 pending.state.value?.let { pending.set(it.copy(phase = JoinPhase.LoadFailed)) }

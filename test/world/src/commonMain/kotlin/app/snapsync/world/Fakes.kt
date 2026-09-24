@@ -10,7 +10,12 @@ import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.feature.upload.AppUploadEngine
+import app.snapsync.feature.upload.AppUploadEvents
+import app.snapsync.feature.upload.AppUploadMechanism
+import app.snapsync.feature.upload.WalkOutcome
+import app.snapsync.ports.BackgroundScheduler
+import app.snapsync.ports.CycleResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.fake.inMemoryPhotoAccess
 import app.snapsync.ports.PhotoAccessRequester
@@ -120,44 +125,71 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
     }
 }
 
-/**
- * The world's app-driven [AppUploadEngine]: inert, because **the operator is the engine** — nothing auto-runs in
- * the world (spec `full-stack-harness`), and a cycle happens only when the operator invokes it. The composed
- * `UploadTransitions` still drive the real arm/disarm decisions against this on join/leave/grant.
- */
-class OperatorUploadEngine : AppUploadEngine {
-    override suspend fun arm() {}
-    override suspend fun disarm() {}
-    override suspend fun cancelTransfers() {}
 
-    /** How many background-task wakes reached this engine — the inbound-port contract reads it. */
-    var backgroundTasks: Int = 0
+/**
+ * The world's app-driven [AppUploadMechanism]: its units are inert, because **the operator is the engine** — nothing
+ * uploads on its own in the world (spec `full-stack-harness`), and a cycle happens only when the operator invokes it.
+ * The composed tail runner still drives these units from every wake the world's OS entries deliver, so what is counted
+ * here is what the runner asked of the uploader: a test reads which units a wake reached, in the real order.
+ *
+ * [events] is the core the world composed, resolved per call: the world's transfer session has nothing in flight, so a
+ * [reattach] reports its events drained at once, which is what releases the handler the wake handed over.
+ */
+class OperatorUploadEngine(private val events: () -> AppUploadEvents) : AppUploadMechanism {
+    /** How many top-ups (②) the tail asked for. */
+    var topUps: Int = 0
         private set
 
-    /** How many background-transfer handbacks reached this engine — the inbound-port contract reads it. */
+    /** How many walks (③) — including a selection change's own work — the tail asked for. */
+    var walks: Int = 0
+        private set
+
+    /** How many background-transfer handbacks reached this uploader's session. */
     var transferHandbacks: Int = 0
         private set
 
-    // The operator IS the trigger in the world harness: cycles happen when invoked by hand from the
-    // inspector, never off an OS callback, so every trigger answer here is "nothing" — counted, so a test can
-    // tell that an OS entry reached this engine rather than another.
-    override suspend fun onForeground() {}
-    override suspend fun onSilentPush(eventId: String) {}
-    override suspend fun onBackgroundTask() { backgroundTasks++ }
-    override suspend fun onSelectionChanged() {}
+    /** What each top-up answers — the operator's lever for a truncated or declining pass. */
+    var topUpResult: CycleResult = CycleResult.COMPLETED
 
-    // Nothing is in flight in the world, so there is nothing to absorb: the handler is released at once.
-    override fun onBackgroundTransfers(completion: () -> Unit) {
+    /**
+     * Operator lever: park the next unit until the gate completes — how a test holds a tail in flight to deliver an
+     * expiry, or a join, while it runs. Consumed by the unit it parks.
+     */
+    @kotlin.concurrent.Volatile
+    var nextUnitGate: CompletableDeferred<Unit>? = null
+
+    /** The heartbeat the tail re-arms — counted, never run (the operator plays the OS). */
+    override val heartbeat: CountingScheduler = CountingScheduler()
+
+    override suspend fun topUp(stopRequested: () -> Boolean): CycleResult {
+        topUps++
+        park()
+        return topUpResult
+    }
+
+    override suspend fun walkAndPublish(stopRequested: () -> Boolean): WalkOutcome {
+        walks++
+        park()
+        return if (stopRequested()) WalkOutcome.Abandoned else WalkOutcome.Walked(CycleResult.COMPLETED, addedRows = false)
+    }
+
+    override suspend fun cancelTransfers() = Unit
+
+    override fun reattach() {
         transferHandbacks++
-        completion()
+        // Nothing is in flight in the world, so the session has nothing to deliver: its drain report comes at once.
+        events().eventsDrained()
+    }
+
+    private suspend fun park() {
+        val gate = nextUnitGate ?: return
+        nextUnitGate = null
+        gate.await()
     }
 }
 
-/**
- * The world's download-backstop scheduler: the operator plays the OS, so a scheduled wake is only counted —
- * nothing runs until the operator invokes the backstop. Counting it lets a test assert the re-arm happened.
- */
-class CountingBackstopScheduler : app.snapsync.ports.BackgroundScheduler {
+/** A background task scheduler that only counts: the operator plays the OS, so a scheduled wake never runs itself. */
+class CountingScheduler : BackgroundScheduler {
     var scheduled: Int = 0
         private set
     var cancelled: Int = 0

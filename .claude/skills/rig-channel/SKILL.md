@@ -76,10 +76,11 @@ B=http://127.0.0.1:18099
 curl -sS --max-time 180 "$B/health"
 ```
 
-⏱️ **Use a uniform `--max-time` above 120 s.** A receipted trigger legitimately blocks until the app
-releases the OS completion handler, and the download backstop's receipt deadline is **120 s**. A
-shorter curl timeout makes a transport failure indistinguishable from a receipt that expired — the
-same absence-collapse this repo keeps paying for, reintroduced where nobody looks for it.
+⏱️ **Use a uniform, generous `--max-time` (180 s).** A receipted trigger legitimately blocks until the app
+releases the OS completion handler — after the wake's own work, or (heartbeat) after its whole tail, or on
+the operating system's expiry. No clock of the app's own bounds it any more (`changes/own-work-per-wake`),
+so a short curl timeout makes a transport failure indistinguishable from a slow wake — the same
+absence-collapse this repo keeps paying for, reintroduced where nobody looks for it.
 
 🔢 **Port 18099 is a DEVICE-ONLY default.** One app instance runs per device, so a fixed port needs no
 discovery. All simulators on a host **share the host's loopback**, so a simulator must override it —
@@ -377,16 +378,19 @@ leaving behind. There is no coordinator imposing that order now that each comman
 The platform hands it no completion handler, so neither does the rig. **Poll `/device/state`.**
 
 The three entries the OS *does* wait on — `onSilentPush`, `onBackgroundTask`, `onBackgroundTransfers` —
-block until the app releases the handler and return `heldMs` and `deadlineMs`. The last two take the
-identifier the OS would deliver as `arg`: `onBackgroundTask?arg=app.snapsync.download.backstop` (the
-import-tail backstop) or `?arg=app.snapsync.upload.heartbeat` (the app uploader's heartbeat), and
+block until the app releases the handler and return `heldMs`. A push and a transfer wake release after
+their **own work** (the push's union read and enqueue; the session's staging and drain report) and run the
+rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
+`/device/state` for its effects. The heartbeat releases after its tail. The last two take the identifier
+the OS would deliver as `arg`: `onBackgroundTask?arg=app.snapsync.upload.heartbeat` (the app uploader's
+heartbeat — the only background task; the download backstop is deleted), and
 `onBackgroundTransfers?arg=app.snapsync.upload.session` for the app uploader's session (any other channel
 routes to the downloads). An unknown task identifier is completed at once and logged.
 
-🧭 **The rig classifies nothing.** `OsReceipt.release` carries no outcome, so "released because the work
-finished" vs "released on the deadline" is **not** derivable from `heldMs`. The authoritative answer is
-the expiry line `… OS handler released on its <deadline> deadline …`, which `OsReceipt` emits on the
-expiry path and no other — read it via `/device/logs` after this request's `[rig] → /os/…` marker. Every
+🧭 **The rig classifies nothing.** A release carries no outcome, so "released after the own work" vs
+"released on the operating system's expiry" is **not** derivable from `heldMs`. The authoritative answer is
+the expiry line `… OS handler released on the operating system's expiry …`, which `OsCompletions` emits on
+the expiry path and no other — read it via `/device/logs` after this request's `[rig] → /os/…` marker. Every
 request writes that marker, so it doubles as the log cursor.
 
 Excluded members answer with **the reason they are excluded**, not a bare 404 — `onLaunch` re-registers

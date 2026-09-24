@@ -4,6 +4,7 @@ import app.snapsync.ports.TransferOutcome
 import app.snapsync.model.normalizeAssetId
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** Foreign asset flows union → stage → import → suppression; the own cycle then skips the imported asset. */
@@ -65,10 +66,11 @@ class DownloadEchoTest {
         w.failNextImport()
 
         w.downloadController.reconcile("E")
-        w.stageAllDownloads() // import fails (non-terminal)
-        assertTrue(w.importer.imported.isEmpty())
-
-        w.downloadController.importReady() // retries → succeeds
-        assertTrue(w.importer.imported.isNotEmpty())
+        assertTrue(w.importer.imported.isEmpty(), "a reconcile imports nothing — the drain is the tail's")
+        // The tail's import fails once (non-terminal); the pass a later request makes — here the joined one the
+        // staging's own request adds, or the drain below — retries it off the same staged bytes.
+        w.stageAllDownloads()
+        w.downloadController.importReady()
+        assertEquals(1, w.importer.imported.size, "the failure was retried and the photo imported, once")
     }
 }

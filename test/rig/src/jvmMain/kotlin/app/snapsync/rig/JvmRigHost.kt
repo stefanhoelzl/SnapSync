@@ -4,7 +4,6 @@ import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.extensionEntries
 import app.snapsync.compose.platformEntries
 import app.snapsync.ports.DeviceLogSource
-import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.world.DenoBackend
 import app.snapsync.world.MiniEdgeBackend
 import app.snapsync.world.World
@@ -130,7 +129,6 @@ class JvmRigHost private constructor(
                     assembleHost = {},
                     deliverPushToken = { hex -> world.pushTokens.deliver(hex) },
                     // The iOS identifiers, so a test passes the same argument to either host.
-                    downloadBackstopTaskId = DOWNLOAD_BACKSTOP_TASK,
                     uploadHeartbeatTaskId = UPLOAD_HEARTBEAT_TASK,
                     uploadTransferChannel = UPLOAD_TRANSFER_CHANNEL,
                 ),
@@ -184,15 +182,15 @@ class JvmRigHost private constructor(
             // The app host's warm universal link; its destination is the inbound port's open-URL entry, which is
             // what the iOS shell reaches after decoding the activity. Same argument: the link.
             "onSceneContinueActivity" to RigTrigger.Fire { arg -> entries.onOpenUrl(arg.orEmpty()) },
-            "onSilentPush" to RigTrigger.Receipted(ReceiptDeadlines.SILENT_PUSH.inWholeMilliseconds) { arg, done ->
+            "onSilentPush" to RigTrigger.Receipted { arg, done ->
                 entries.onSilentPush(mapOf("eventId" to arg), done)
             },
             "onBackgroundTask" to
-                RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { arg, done ->
+                RigTrigger.Receipted { arg, done ->
                     entries.onBackgroundTask(arg.orEmpty(), done)
                 },
             "onBackgroundTransfers" to
-                RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_EVENTS.inWholeMilliseconds) { arg, done ->
+                RigTrigger.Receipted { arg, done ->
                     entries.onBackgroundTransfers(arg.orEmpty(), done)
                 },
         )
@@ -205,7 +203,6 @@ class JvmRigHost private constructor(
             }
         }
 
-        const val DOWNLOAD_BACKSTOP_TASK = "app.snapsync.download.backstop"
         const val UPLOAD_HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"
         const val UPLOAD_TRANSFER_CHANNEL = "app.snapsync.upload.session"
     }
