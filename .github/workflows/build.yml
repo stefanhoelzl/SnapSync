@@ -38,8 +38,9 @@ jobs:
 
       # The build-property-gated trees, which `build` above compiles NONE of — that is the point of
       # compile-time containment, and it is also a blind spot: source no build compiles is source that
-      # rots silently. It already did. `:test:rig`'s hook referenced a `ReceiptDeadlines` constant that
-      # does not exist, from the commit that introduced it until this one, and nothing noticed because
+      # rots silently. It already did. `:test:rig`'s hook referenced a completion-handler deadline constant
+      # that did not exist (the deadlines themselves are gone since: the OS's expiry is now the only
+      # "time is up"), from the commit that introduced it until this one, and nothing noticed because
       # nothing ever compiled it.
       #
       # IT THEN DID IT AGAIN, BESIDE THIS STEP. `compileIosMainKotlinMetadata` compiles the MAIN half of a
