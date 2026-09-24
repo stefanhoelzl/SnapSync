@@ -182,7 +182,8 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope),
         log = ports.log,
         // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
-        // library enumeration. Bounding is the cycle's.
+        // library enumeration. Catching a failed publish is the cycle's; nothing bounds it but the
+        // per-request HTTP timeout (no timeout of ours — capability `ios-app-shell`).
         // The manifest DECLARES what this device will provide: every non-absent ledger row, whatever its
         // upload state. This hook therefore needs no discovery of its own — the cycle has already
         // recorded every admitted resource and backfilled the bare ones by the time it fires, and the
