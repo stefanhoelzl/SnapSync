@@ -147,8 +147,21 @@ class QueuedPhotoDownloadJobs(
      */
     private val outstandingImports = MutableStateFlow<List<Job>>(emptyList())
 
+    /**
+     * The not-yet-started transfers, keyed by transfer description like [inFlight] — so a key is queued at
+     * most once, and a key is never both queued and in flight (capability `photo-download`: enqueue is
+     * idempotent).
+     *
+     * This was an `ArrayDeque`, and [enqueue] appended every download it was handed. Every reconcile hands
+     * over its WHOLE pending snapshot, so a second reconcile while a backlog was still queued doubled it: the
+     * second copy of a queued key started after the first had finished, re-downloading a resource whose asset
+     * was already imported, and a key running at the time went back in the queue behind it. Measured on the
+     * SE2 (S2 bench, 2026-09-24): 136 transfers for 100 resources — and the stale copies then held the window,
+     * so the next reconcile's new photos sat in this in-memory queue with no transfer behind them, and a
+     * SIGKILL lost them while the OS finished only the stale copies (a cold relaunch staged 24, imported 0).
+     */
     @ConfinedTo("composition")
-    private val queued = ArrayDeque<PendingDownload>()
+    private val queued = LinkedHashMap<String, PendingDownload>()
 
     /** The bounded window, keyed by transfer description — which also makes a re-enqueue idempotent. */
     @ConfinedTo("composition")
@@ -243,7 +256,13 @@ class QueuedPhotoDownloadJobs(
     private fun transport(): DownloadTransport = transport ?: newTransport(host).also { transport = it }
 
     override suspend fun enqueue(downloads: List<PendingDownload>) {
-        downloads.forEach { queued.addLast(it) }
+        downloads.forEach {
+            val tag = encodeTag(it.ref, it.resource.resourceKey)
+            // Running already: its bytes are on the way; a second transfer would only fetch them twice.
+            if (inFlight.containsKey(tag)) return@forEach
+            // Queued already: keep its place, take the fresher entry (a re-plan may have re-presigned the url).
+            queued[tag] = it
+        }
         pump()
     }
 
@@ -281,9 +300,8 @@ class QueuedPhotoDownloadJobs(
 
     private fun pump() {
         while (inFlight.size < MAX_IN_FLIGHT) {
-            val next = queued.removeFirstOrNull() ?: break
-            val tag = encodeTag(next.ref, next.resource.resourceKey)
-            if (inFlight.containsKey(tag)) continue // already transferring this resource — idempotent
+            val tag = queued.keys.firstOrNull() ?: break
+            val next = queued.remove(tag) ?: break
             if (!isFetchableUrl(next.resource.url)) {
                 // Pending, not failed: a later reconcile re-presigns the url (`photo-download`), and a
                 // permanently-bad one is skipped again rather than aborting the process.
