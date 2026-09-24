@@ -16,8 +16,6 @@ sequenceDiagram
   participant Trigger
   participant Background
   participant statusPoller
-  participant effects
   Trigger->>Background: run(…)
   Background->>statusPoller: stop()
-  Background->>effects: scheduleBackstop()
 ```

@@ -20,18 +20,5 @@ sequenceDiagram
   Note over SilentPush: guard — only when pushEventId(…) resolves eventId
   SilentPush->>effects: reloadConfig()
   SilentPush->>effects: refreshAttestation()
-  SilentPush->>SilentPush: fanOut(…)
-```
-
-## `fanOut` — helper
-
-```mermaid
-sequenceDiagram
-  participant Trigger
-  participant SilentPush
-  participant effects
-  Trigger->>SilentPush: fanOut(…)
-  loop each of receivers
-    SilentPush->>effects: receiver(…) [best-effort]
-  end
+  SilentPush->>effects: downloadReceiver(…) [best-effort]
 ```
