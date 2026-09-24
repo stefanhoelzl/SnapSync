@@ -169,7 +169,7 @@ data class TailOutcome(val result: CycleResult, val cut: Boolean)
  *
  * **Single-flight, and joining keeps its obligations.** At most one tail runs; the ledger's writer family would
  * double-write otherwise. A request arriving while one runs **joins** it: the running tail makes exactly one more
- * pass, at the largest scope any joiner needs, however many joined — no request is lost, no second tail starts,
+ * pass, covering the union of the scopes the joiners need, however many joined — no request is lost, no second tail starts,
  * nothing is queued. The joiner awaits that tail, **including** the pass it requested, and then applies **its own**
  * trigger's re-arm to the tail's outcome (a caller that returned at once could not be what a `BGTask` is held for,
  * and would skip its one-shot re-submission — both measured in the field under the pump). The decision to end and

@@ -29,9 +29,10 @@ interface BackgroundTime {
      * rather than as an error, because it means the same thing to the caller. It SHALL only request a stop and
      * return: the operating system expects the handler back promptly, so it must not wait for the work it stops.
      *
-     * An expiry does **not** end the hold: the caller ends it with [BackgroundTimeHold.end] once the work it
-     * stopped has reached its next boundary (capability `ios-app-shell`, "Expiry stops work cooperatively at the
-     * next boundary"). A hold that is never ended is, per Apple, a termination.
+     * An expiry does **not** end the hold by itself: the caller ends it with [BackgroundTimeHold.end] — at once,
+     * from inside [onExpiry], after requesting the stop, and without waiting for the unit in flight (capability
+     * `ios-app-shell`, "Expiry stops work cooperatively at the next boundary"). A hold that is never ended is, per
+     * Apple, a termination.
      */
     fun begin(label: String, onExpiry: () -> Unit): BackgroundTimeHold
 }
