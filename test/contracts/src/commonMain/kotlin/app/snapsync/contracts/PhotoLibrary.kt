@@ -79,6 +79,8 @@ object PhotoLibrary {
             PhotoLibraryImporterContract,
             // Last, so every window allocated before it stays where it was: its clauses seed the photos they upload.
             BackgroundTransferContract,
+            // After it, for the same reason: its change clause seeds one photo to move the library's token.
+            LibraryChangeTokenContract,
         )
     }
 
