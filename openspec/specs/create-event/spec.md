@@ -95,7 +95,8 @@ leave the host in no event; the unused event is removed with its lifetime (capab
 When an event cannot be created, the create screen SHALL return and SHALL show the failure as a message
 above the Create action (never by marking the name field as wrong), keeping that message until the next
 attempt. It SHALL tell a rejected name apart from the server being
-unreachable. A failed create SHALL NOT join the device to anything.
+unreachable. The name and date range the host entered SHALL still be there, so a retry is one tap. A
+failed create SHALL NOT join the device to anything.
 
 #### Scenario: Offline create reports the server as unreachable
 - **WHEN** the host taps Create while the device is offline
@@ -104,6 +105,10 @@ unreachable. A failed create SHALL NOT join the device to anything.
 #### Scenario: A rejected name is reported as such
 - **WHEN** the server refuses the event's name
 - **THEN** a message above Create says the name was not accepted and suggests trying a different one
+
+#### Scenario: A failed create keeps what the host entered
+- **WHEN** a create fails
+- **THEN** the create screen shows the name and date range the host had entered, and tapping Create again retries with them
 
 #### Scenario: The failure message stays until the next attempt
 - **WHEN** a create has failed and the host types a name without tapping Create
