@@ -18,6 +18,8 @@ Runbooks are skills. Load the skill before doing what it covers:
 
 Main decision record: `changes/archive/2026-08-27-establish-testing-architecture`.
 
+Testing is moving with the thin-ports re-cut. The direction is §11.
+
 ---
 
 ## 1. The checks
@@ -696,3 +698,34 @@ fixture. Instead:
 - What an Apple API *declares* (enum cases, nullability) is read from the Kotlin/Native platform klibs
   and pinned by `PlatformVocabularyPinTest`. Do not use a copy of the constants. See CLAUDE.md, "Reading
   the Apple SDK from Linux".
+
+---
+
+## 11. Direction: the thin-ports re-cut (in progress)
+
+This section describes where testing is **heading** as the ports are re-cut (`docs/architecture.md` §11). It does
+not describe what runs today. Each phase moves its part into the sections above.
+
+- **Contracts are the executable specification of the real system and the licence for its mocks.**
+  - Only ports have contracts. Every clause runs against a real implementation somewhere, and a do-nothing
+    implementation must fail.
+  - Every measurement becomes a clause with a host and a committed recording. External OS stimuli are allowed
+    (`simctl openurl/push/launch/terminate`, a BGTask simulation triggered by the rig, an XCUITest host).
+  - Each port has a clause → host table. Anything unproven gets a probe first.
+  - Behaviour of today's inbound ports is pinned by service tests over mocks.
+- **Fewer, thinner contracts.** For example, the ten backend contracts become one Backend contract.
+- **Recordings.** When a phase converts a port whose device results are recorded, it re-records them in a device
+  session: 11b (SecureStore, AttestStore), 11c (AttestKey), 11e (LinkOpener), 11f (BackgroundScheduler,
+  BackgroundTransfer on the extension, and UploadExtensionRegistry GRANTED + LIMITED, where an operator toggles
+  the grant).
+- **PlatformDeviceId has no contract until an Android host exists.** Its only implementation is a constant null.
+- **Mocks, one per port.** Each lives in `:adapter:generic:mock` (renamed from `:adapter:generic:fake` in 11g)
+  with durable state, a per-process face, and a separate operator-face type.
+- **`:test:world` goes away** (11g). `:app:jvm` takes its place as a support module: it takes the adapter
+  factory and offers `relaunch()`.
+- **The rig becomes an adapter set.** It is chosen at build time, decorates the platform Ui
+  (`RigUi(inner)`), implements the per-platform drivers declared in `:test:contracts`, and reaches the app only
+  through ports.
+- **A launch-time mock mix** (11h) will let a simulator or device run with some systems mocked and others
+  real, for interactive investigation.
+- **The forge and its marketing screenshots** are replaced by screenshots of the rig running on a simulator (12).
