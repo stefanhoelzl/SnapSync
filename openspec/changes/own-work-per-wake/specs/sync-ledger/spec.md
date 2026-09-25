@@ -35,22 +35,23 @@ Measured (SE2, iOS 26.6.2): reading and comparing the change token costs about *
 (darwinbg) role, against **1.3–2.0 s** for a walk of 4.5k–6.3k assets. The token held steady across idle
 periods and relaunches, moved on every asset creation and album add the app made, and was never equal
 across a library change; after any write it kept moving for 1–9 s of trailing changes, which costs only
-extra walks. Not yet measured: whether a change made **outside** the process — a Camera photo, an iCloud
-sync — always moves it. The memo's soundness rests on that, so it SHALL be verified on a device, with the
-result recorded here, before the memo is relied on (a task of `changes/own-work-per-wake`). ⏰ Re-measure at
-the next iOS major.
+extra walks. A change made **outside** the process — the case the memo's soundness rests on — was verified
+before the memo was relied on: on the SE2 (iOS 26.6.2, 2026-09-25) one photo taken with the Camera app moved the
+token (the next walk was a memo miss and found the new photo; the token moved once more shortly after, which
+costs one more walk), and on the iOS 26.5 simulator 15/15 external changes (adds via another process, favourites
+and deletes in the Photos app, with the app foregrounded or suspended) moved it. iCloud sync remains unmeasured.
+⏰ Re-measure at the next iOS major.
 
-**Until that result is recorded the memo SHALL run in shadow.** In shadow every walk enumerates the library,
-exactly as without a memo; a matching entry is only **compared** with the fresh walk's answer, and a disagreement
-— the token did not move, yet the walk found other candidates or another `fullEnumeration` report — SHALL be
-logged at `Error`, which reaches crash reporting, so the field gathers the evidence the device check lacks at the
-cost of the token read. Serving SHALL be switched on by a build constant in the same change that records the
-device result here — never by a runtime or rig switch, because what it gates is a deletion authority, and a build
-either relies on the token or it does not. The token is read behind a need-named port with a contract bound to a
-real implementation; where it cannot be read, the walk runs bare and nothing is memoised.
+**The memo serves.** It SHALL be switched between serving and **shadow** only by a build constant, never by a
+runtime or rig switch, because what it gates is a deletion authority and a build either relies on the token or
+it does not. In shadow every walk enumerates the library, exactly as without a memo; a matching entry is only
+**compared** with the fresh walk's answer, and a disagreement — the token did not move, yet the walk found other
+candidates or another `fullEnumeration` report — SHALL be logged at `Error`, which reaches crash reporting. Shadow
+is the revert, should the field ever show a stale answer. The token is read behind a need-named port with a
+contract bound to a real implementation; where it cannot be read, the walk runs bare and nothing is memoised.
 
 #### Scenario: An unchanged library is not enumerated again
-- **WHEN** serving is enabled, and the app process walks the library under a full grant and walks again with
+- **WHEN** the app process walks the library under a full grant and walks again with
   the same selection policy while the library's change token is unchanged
 - **THEN** the second walk is answered from the memo without enumerating the library, and returns the same
   candidates and the same `fullEnumeration` report the first did

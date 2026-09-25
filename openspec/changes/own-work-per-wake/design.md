@@ -187,8 +187,9 @@ becomes "every walk's answer is a full enumeration"). The grant is part of the k
 non-authoritative result (`IosDiscovery` is authoritative only under a full grant). **Not in the extension**: its
 32 MB limit leaves ~12 MB headroom and it holds nothing across `process()` calls.
 *Task:* verify that a change made outside the process (a Camera photo) moves the token — the only case the probe
-could not produce headlessly. Until then the memo runs in **shadow**: it walks every time, compares the answer it would
-have served, and logs a mismatch at Error (field evidence via Bugsink); serving is switched on with the result.
+could not produce headlessly — measured at apply: a Camera photo on the SE2 moved it (15/15 external changes on the
+simulator), so the memo **serves**; shadow (walk every time, log a would-be-stale answer at Error) remains the
+one-line revert.
 
 ### D10 — No event-album collection cache (considered, measured, declined at apply)
 A cache of the event album's `PHAssetCollection`, dropped only by the library change observer, was proposed to
@@ -272,9 +273,8 @@ Rollback = revert; the store schema is unchanged.
 
 - ~~PhotoKit's behaviour on a change request against a deleted collection~~ — measured (sim 26.5, n=6): request non-nil,
   commit succeeds, asset created, file consumed, album add silently dropped; D10's cache is safe. Device check pending.
-- Whether an external (Camera/iCloud) change always moves `currentChangeToken` (verifies D9) — simulator: 15/15
-  external changes (add, favourite, delete; app foreground or suspended) moved it, and it held across relaunches;
-  a device Camera capture and iCloud remain.
+- ~~Whether an external change moves `currentChangeToken`~~ — measured: yes (SE2 Camera photo; simulator 15/15);
+  iCloud remains unmeasured.
 - ~~Whether `beginBackgroundTask`'s expiry fires in the simulator's relaunch setting~~ — measured: yes, 27.4–28.5 s
   after entering the background, never in the foreground (sim 26.5, n=5).
 - The XS/iOS 18 darwinbg ratio (field 10–25× vs SE2 ~9×) — informational.
