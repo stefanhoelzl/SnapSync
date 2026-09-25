@@ -256,3 +256,53 @@ Nothing is deployed besides the internal TestFlight build every merge produces. 
 - **11f's upload `CreateOutcome`.** Ports' event-creation `CreateOutcome` now lives in `model/`. The upload create
   result that 11f introduces must not take that simple name there (the design of record already calls it
   `UploadCreateOutcome`).
+
+## Archive: delta completeness
+
+Every module the diff touched, resolved to its capability, with its delta or the reason none is needed:
+
+| Module(s) | Capability | Delta / reason |
+|---|---|---|
+| `domain/presentation` (was `ui/presentation`), `domain/host` (was `app/composition`), `domain/model`, `domain/ports`, `domain/feature`, `settings.gradle.kts`, `build-logic/`, `ui/screens`, `ui/components` (plugin only) | `module-architecture` | delta: the module set, the zones, allowed targets and the plugin, pure port data in `model/`, read-model packages, and the module paths in the remaining four requirements |
+| `test/architecture` (`ModuleSetTest`, `ZoneGateSupport`, `ReadModelImportsTest`), root `build.gradle.kts` (`appShellSources`, tier map) | `architecture-guards` | delta: "The zone gates", "The shell gates" |
+| `architecture/` (regenerated) | `architecture-diagrams` | delta: the module-path example; the regeneration itself is the requirement working |
+| `domain/model` tests (`UiStateSerializationTest` moved in and extended), root kover edge rename, presentation's kover rule names | `coverage-bounds` | delta: the instrumented-module path. The test move changes no bound and adds no crediting edge (design D7) |
+| `.github/workflows/build.yml` (forge test task path) | `testing-architecture` | delta: the forge test source set's path |
+| `domain/compose`, `domain/flow` | `module-architecture` (compose/flow zones) | no delta: import paths only, behaviour-preserving |
+| `adapter/generic/app`, `adapter/generic/fake`, `adapter/ios/ext-safe`, `adapter/ios/app-only` (incl. the `DownloadStore.sq` import) | `port-contracts` and each port's capability | no delta: import paths of the moved types only; no signature, behaviour or stored name changes (SQLDelight stores enum names) |
+| `test/contracts` | `port-contracts` | no delta: import paths only |
+| `test/world`, `test/rig`, `test/control`, `test/integration` | `harness-world-model`, `testing-architecture` | no delta: dependency declarations and import paths only; the wire discriminator prefix change is recorded in Risks |
+| `app/ios`, `app/ios/extension`, `app/ios/forge` | `ios-app-shell` | delta for the host path ("iOS live composition root"); otherwise import paths only |
+| `app/desktop` | `full-stack-harness`, `desktop-test-harness` | no delta: import paths only; exempt from the read-model gate until 11g |
+| `config/detekt/{core,_base}.yml` | `complexity-budgets` | no delta: comments only, no ceiling changed |
+| `.github/workflows/ios.yml` | — | comment only |
+| `CLAUDE.md` | — | docs: the module map |
+
+Gates run at archive: placeholder Purpose, none; dead types, one removed (`AppVersionGate.Refusal`, now
+`VersionRefusal`), named by no spec.
+
+## At merge: the laws moved to `docs/`, not to the specs
+
+While this change waited to merge, `main` took in `spec-diet` (`changes/archive/2026-09-25-spec-diet`,
+commit `c19b6c4b`): specs now define only what a user can observe, and the engineering laws moved to
+`docs/architecture.md` and `docs/testing.md`. Seven of the eight capabilities this change carried deltas for
+were retired (module-architecture, architecture-guards, architecture-diagrams, coverage-bounds,
+gallery-status, ios-app-shell, testing-architecture), and `sync-status` was rewritten so that the
+requirement this change modified no longer exists.
+
+So the delta specs were never applied, and were removed from this record: this change has nothing a user can
+observe, and under the new rule it earns no spec delta at all. What the deltas said was carried into the docs
+instead:
+
+- `docs/architecture.md`, the module set: `:domain:presentation` and `:domain:host` among the withholding
+  modules; the host as the one module seeing both `compose/` and presentation; the integration surface's
+  read-model rule (explicit dependencies plus `ReadModelImportsTest`).
+- `docs/architecture.md`, the core and its zones: six zones and the host, their edges, pure port data in
+  `model/`, read-model packages, and the allowed targets with the `snapsync.targets` plugin.
+- `docs/architecture.md`, the laws: the read-model rule and its gate; the commands-door law now gated rather
+  than review-only; the host among the shells; pure port data and the target list as review-held laws.
+- `docs/architecture.md`, coverage, and `docs/testing.md`: the module paths.
+- `ModuleSetTest` now holds the module set itself (`spec-diet` moved it there); its lists name the two new
+  modules.
+
+"Ports never call ports" stays out of the docs for the reason D4 gives: it is still not true of this tree.

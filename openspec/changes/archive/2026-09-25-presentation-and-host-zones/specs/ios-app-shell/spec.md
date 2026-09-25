@@ -13,7 +13,9 @@ supplied as an inline lambda SHALL be a port instead: the share sheet (`SharePre
 limited-library picker (`PhotoAccessRequester.choosePhotos`), the download-staging root
 (`StagedBytes.stagingRoot`), the wall clock (`Clock`), the backend leave (`LeaveNotifier`), the
 trigger-time membership re-read (a refresh on the config port, bound to the file-backed adapter), the
-download-backstop scheduling (a `BackgroundScheduler` for the backstop task), the device identity
+process's background time (the need-named background-time port — "keep this process running, and tell me
+when time is up" — bound to `:adapter:ios:app-only`'s `beginBackgroundTask` adapter; spec
+`module-architecture`), the device identity
 (`DeviceIdentity`, bound to the Keychain identity), and the album-exclusion read (the `AlbumManager` port the
 bundle already carries) — a lambda in any of those places is an adapter written in the composition root
 (spec `module-architecture`, "Ports are the I/O boundary named for the need"). The build's marketing
@@ -26,8 +28,10 @@ be a single call into a core entry point that `compose/` exposes for that purpos
 source — see `sync-status`), the **foreground-gated status-counts poll** (`StatusCountsPoller`,
 started/stopped by the Foreground/Background flows — see `sync-status`), the attestation,
 upload-arm, join/leave/create use-cases, the download
-controller and jobs, the album coordinator, the `flow/` trigger instances (Foreground · Background
-· SilentPush · DownloadBackstop · Provision), and the **user-tap command bundle**
+controller and jobs, the album coordinator, the process-wide opportunistic **tail runner** (see "Each OS
+wake does its own work, then hands the rest to one opportunistic tail"), the `flow/` trigger instances
+(Foreground · Background · SilentPush · Provision — the download backstop flow is deleted with its task),
+and the **user-tap command bundle**
 (`model/`'s `UserCommands`: leave · create · commitJoin · share · requestAccess · openSettings —
 seated in `model/` since migration step 9, because the presentation zone has no edge to
 `flow/`; live instances are still built and decorated only in
@@ -55,7 +59,8 @@ Two processes holding a writer is not a violation: the ledger's invariant is whi
 which write, each write guarded and one transaction (`sync-ledger`), not how many processes hold a writer.
 The app additionally performs the reset family at membership transitions (see "The app resets the upload
 ledger at membership transitions on every tier") — the extension holds no reconciliation of its own.
-Decision record: `changes/both-uploaders-active`.
+Decision record: `changes/both-uploaders-active`; the tail runner, the background-time port and the deleted
+download backstop: `changes/archive/2026-09-25-own-work-per-wake` (D1, D5, D7).
 
 The root SHALL **supply the inputs to the upload transitions and decide no upload behaviour itself.** It
 supplies the app's uploader, the OS-driven registration where this OS carries its selector, the plain fact
@@ -65,18 +70,21 @@ registration on/off). Whether the extension may be registered (`extensionRegistr
 **and** the grant is `GRANTED`), and whether each uploader may create, are `upload-lifecycle`'s, re-read at
 every transition, and this spec SHALL NOT restate those rules. The root SHALL construct the OS-driven
 registration **only** where its selector exists, so a lower system cannot reach a trapping call. Every OS
-entry point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilentPush` /
-`runUploadHeartbeat` / `runDownloadBackstop` / `handleBackgroundUrlSession`) SHALL be a thin
-delegator to a single live shell delegate, re-checking no tier and deciding nothing.
+entry point — the members of the inbound port (`onForeground` / `onBackground` / `onOpenUrl` /
+`onPushToken` / `onSilentPush` / `onBackgroundTask`, with its expiry forwarding / `onBackgroundTransfers`;
+spec `module-architecture`, "OS entry points cross an inbound port") — SHALL be reached by Kotlin
+delegation to the core's implementation, re-checking no tier and deciding nothing.
 
 The permission-grant subscriptions (the upload permission-change transition; sole-creator album ensure —
 see `event-album`) SHALL be installed by an explicit `AppCore.installPermissionSubscriptions()`
 (`compose/`) invoked **only from the root's host-assembly path**, which SHALL also run the upload
 **launch reconcile** explicitly (`upload-lifecycle`, "Launch reconciles by comparison; only a join forces
 the repair"). The upload subscription SHALL NOT treat the permission StateFlow's replayed value as a
-transition. A cold background wake (the download backstop, the upload heartbeat, a silent push, or a
+transition. A cold background wake (the upload heartbeat, a silent push, or a
 background-`URLSession` relaunch) that merely touches the composed graph SHALL NOT install them and SHALL
-run no launch reconcile.
+run no launch reconcile. The host-assembly path SHALL be reached from the **foreground entry only**: no
+background entry — a silent push, a background transfer, a background task, a delivered push token — assembles
+the host, because everything a background wake's own work and its tail need is built by the composed graph.
 
 The root SHALL observe the app's foreground/background lifecycle **from Kotlin**: a plain
 `onLaunch()` entry — called by the Swift `AppDelegate` from `didFinishLaunchingWithOptions`, a
@@ -85,8 +93,8 @@ statement with no decision — installs process-lifetime `NSNotificationCenter` 
 `UIApplicationWillResignActiveNotification` (→ `onBackground`), replacing the SwiftUI
 `scenePhase` split (a Swift decision the transcriber law forbids). The foreground entry drives the
 Foreground flow (which re-reads the membership, refreshes status, and **starts** the
-foreground-gated poll); the background entry drives the Background flow (which **stops** the poll
-and arms the backstop). A background launch installs the observers and simply never receives
+foreground-gated poll); the background entry drives the Background flow (which **stops** the poll;
+it arms no download backstop — that task is deleted). A background launch installs the observers and simply never receives
 `didBecomeActive`. The scope SHALL outlive Compose
 recomposition so the source collector and container are not torn down with the view.
 `MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
@@ -193,7 +201,7 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 
 #### Scenario: A cold background wake installs no grant subscription
 
-- **WHEN** the process is launched in the background by the download backstop or a
+- **WHEN** the process is launched in the background by the upload heartbeat, a silent push or a
   background-`URLSession` relaunch, without the host-assembly path running
 - **THEN** touching the composed graph installs no permission-grant collector and runs no launch
   reconcile, so no registration is written and no engine is armed
