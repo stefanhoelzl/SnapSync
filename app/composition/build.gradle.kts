@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The allowed targets, declared once (spec `module-architecture`, "Zones inside the core").
+    id("snapsync.targets")
 }
 
 // The SHARED HOST COMPOSITION (`docs/architecture.md`, "One shared composition"): `snapSyncHost` composes
@@ -14,10 +16,6 @@ plugins {
 // Wiring only: no conditional (it is scanned as an app shell), and no test source set — it is exercised end to
 // end by every protocol-driven test, which is where "One shared composition" says the wiring graph is tested.
 kotlin {
-    jvmToolchain(libs.versions.jdk.get().toInt())
-    jvm()
-    iosArm64()
-    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             api(project(":domain:compose"))

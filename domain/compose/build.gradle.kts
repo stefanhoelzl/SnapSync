@@ -3,6 +3,8 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTes
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The allowed targets, declared once (spec `module-architecture`, "Zones inside the core").
+    id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -23,10 +25,6 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
 // NO iosMain source directory, ever — the targets exist so iosMain elsewhere can compile against this.
 
 kotlin {
-    jvmToolchain(libs.versions.jdk.get().toInt())
-    jvm()
-    iosArm64()
-    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:model"))
