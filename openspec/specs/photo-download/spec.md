@@ -29,9 +29,9 @@ remaining inert on the simulator is a known, accepted limitation", while leaving
 recovery sweep rather than every trigger's first act, why an import the library cannot perform settles
 terminally and is reported at `Error`, and the measured ingest-time move semantics both rest on).
 Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+Decision record for downloads staged by the wake and imported by the tail, and the session handler released after staging: `changes/archive/2026-09-25-own-work-per-wake`.
 
 ## Requirements
-
 ### Requirement: Foreign-asset selection by device identity
 
 The download client SHALL consume the event-wide union read (`GET /events/<eventId>/files`) for the
@@ -174,6 +174,7 @@ covered by `commonTest` rather than in the platform edge, which is the platform 
 - **WHEN** a transfer is rejected and a previously staged, valid file already exists at that resource's
   staging path
 - **THEN** the existing file is left intact, because a rejected transfer's bytes are never moved into staging
+
 ### Requirement: Expired presigned download URLs self-heal on rediscovery
 
 A presigned download `url` that expires before its background transfer runs SHALL be **superseded by
@@ -275,75 +276,6 @@ to no album. The album add SHALL be best-effort — it SHALL never fail or defer
 
 - **WHEN** an import runs for a `saveToAlbum` membership before the event album has been created
 - **THEN** the asset is imported into the camera roll and no album add is attempted for it
-
-### Requirement: Import without foreground; relaunch and backstop
-
-Import SHALL run without the app being foregrounded: a download completing while the app is
-backgrounded SHALL trigger import in the background-execution window, and a download completing while
-the app is terminated SHALL relaunch the app via `handleEventsForBackgroundURLSession` to finish.
-The imports that a background-session wake triggers SHALL be **awaited** by that wake — the staged-resource
-callback SHALL be awaitable and its outstanding work tracked by the download-job owner, rather than
-dispatched and forgotten by the composition — so the wake reports itself finished only when its work is.
-Reporting the session's events drained while the imports they caused are merely queued is what leaves an
-asset staged-but-unimported at suspension.
-
-An import that never reports is the one case that awaiting cannot resolve, and it is bounded at the **wake**
-rather than at the import: the OS completion handler is released on its own per-entry-point deadline and the
-import is left running (capability `ios-app-shell`). Nothing bounds a single import in time. A wall-clock
-bound on one import expires against transactions that are alive — the process is suspended for arbitrary
-spans between a change block and its completion — and every expiry manufactures an unconfirmed row for the
-adjudication guard to reason about. The stalled import blocks no other work, because it does not hold the
-download controller's lock and its ref is claimed rather than serialised.
-
-Because no further download event wakes the app once transfers are exhausted, the client SHALL also
-drain pending imports via an OS-scheduled background task (e.g. `BGProcessingTask`) so an import that
-overran its wake window still completes without a foreground visit. Staged bytes + the store make any
-deferred import a safe retry. The backstop's coordination — the trigger-time membership re-read
-(`reloadConfig` — see `ios-app-shell`, *Background triggers re-read the membership and fail cleanly
-before first unlock*), the attestation wake, then the import drain — SHALL be the
-`flow/DownloadBackstop` trigger (`:domain` `flow/`, built in `compose/` with the re-read and wake
-injected as **suspend** effect lambdas, per the law *A trigger flow never outlives its own run*); the
-untested app shell keeps only the entry-point log wrap, the re-arm, and the OS task-completion handler.
-A backstop wake landing before the first unlock since boot fails cleanly and converges at the next wake
-(the import's reads are caught; the adapters distinguish unreadable from absent; nothing mints, clears,
-or leaves).
-
-That last property is **conditional, and the transfer check is its condition**. A deferred import is a safe
-retry only because staged bytes were accounted for at transfer time. Absent that check, a permanently
-invalid body — an error document staged under a photo's path — makes the retry a trap rather than a
-safeguard: the import fails on every reconcile, and the transfer is never re-run, because a resource
-recorded as staged is never re-planned. The asset is then permanently unimportable and permanently retried,
-and the photo never arrives. Retrying a failed import is correct for a transient failure and poison for
-invalid bytes; only rejecting bad bytes before staging keeps the two apart.
-
-#### Scenario: Background import on download completion
-
-- **WHEN** a download completes while the app is backgrounded (not foreground)
-- **THEN** the asset whose set is now complete is imported in the background
-
-#### Scenario: A wake awaits the imports it triggered
-
-- **WHEN** a background-session wake delivers several staged resources
-- **THEN** the imports they trigger are awaited, so the wake does not report itself finished while they are
-  merely queued
-
-#### Scenario: A wake whose import never reports still answers the OS
-
-- **WHEN** an import a wake triggered never receives its completion
-- **THEN** the OS completion handler is released on that entry point's deadline, the import is left
-  running rather than cancelled, and no other reconcile, import, leave or switch is blocked by it
-
-#### Scenario: Import tail is drained without foreground
-
-- **WHEN** an asset's resources are all staged but its import did not complete in a download-wake
-  window and no further download is pending
-- **THEN** a scheduled background task completes the import without requiring the user to open the app
-
-#### Scenario: An invalid body never reaches the importer
-
-- **WHEN** a transfer's bytes are rejected on status or length
-- **THEN** they are never staged, so no import is ever attempted against them and no asset becomes
-  permanently unimportable
 
 ### Requirement: An interrupted import is adjudicated, never repeated blindly
 
@@ -691,12 +623,19 @@ background regardless of foreground state. Because push delivery is best-effort 
 coalesced), foreground entry remains the standing backstop, so no asset is lost — only, at worst,
 delayed to the next foreground visit.
 
+A silent push's **own work** SHALL be the download reconcile — the union read, planning, and enqueueing the
+new resources' transfers. Importing already-staged assets is not the push's own work: it is unit ① of the tail
+that runs after it (see "Import without foreground; staged by the wake, imported by the tail"), so a push
+whose union read is slow or fails still imports what is staged, and a push is never kept waiting behind an
+import burst. Decision record: `changes/archive/2026-09-25-own-work-per-wake` (design D1).
+
 #### Scenario: A push for the active event triggers background discovery
 
 - **WHEN** another contributor adds photos and a silent push for this device's active event arrives
   while the app is not foregrounded
-- **THEN** the client reconciles in the background — reading the union, enqueueing the new foreign
-  resources' downloads, and importing any already-staged asset — without a foreground visit
+- **THEN** the client reconciles in the background — reading the union and enqueueing the new foreign
+  resources' downloads as the push's own work — and the tail that follows imports any already-staged asset,
+  without a foreground visit
 
 #### Scenario: Later-added foreign photos still appear on next foreground
 
@@ -736,13 +675,19 @@ let a caller omit the posture entirely. A three-valued read collapsed into a per
 allowed an upload producer to be enabled for an event that did not exist (capability `upload-lifecycle`); the
 same collapse here would run a reconcile with no membership to reconcile against.
 
-Because the download total is populated **only** by this reconcile (`store.plan` is reached only past this
-gate), an `UploadOnly` membership's download total is `0`, and its download arrow is hidden by the ordinary
-completeness rule with no masking in the status projection (capability `sync-status-screen`).
+Because the download total is populated **only** by this reconcile — its planning is reached only past this
+gate, as one batch: a single `settledAmong` read of which of the union's foreign assets are already settled,
+then a single `planAll` transaction recording the rest, then a single `markAllEnqueued` transaction for the
+resources sent to the OS (capability `download-store`) — an `UploadOnly` membership's download total is `0`,
+and its download arrow is hidden by the ordinary completeness rule with no masking in the status projection
+(capability `sync-status-screen`). Planning a backlog one asset at a time cost a store read and a durable
+commit per asset (measured on an iPhone XS in a background wake: ~11.5 s for 101 assets); the batch is a
+wording sync of a behaviour-preserving change (decision record `changes/archive/2026-09-25-own-work-per-wake`, design D13).
 
 #### Scenario: Upload-only skips reconcile on foreground
 - **WHEN** the app foregrounds while joined with direction `UploadOnly`
-- **THEN** no union read, download enqueue, or import occurs (reconcile is a no-op)
+- **THEN** no union read or download enqueue occurs (reconcile is a no-op), so nothing new is staged for the
+  tail's unit ① to import
 
 #### Scenario: Upload-only skips reconcile on a push for the active event
 - **WHEN** a silent push arrives for the active event on an `UploadOnly` membership
@@ -755,7 +700,8 @@ completeness rule with no masking in the status projection (capability `sync-sta
 
 #### Scenario: Both and download-only run reconcile unchanged
 - **WHEN** any download trigger fires while joined with direction `Both` or `DownloadOnly`
-- **THEN** reconcile runs exactly as before — selecting foreign complete assets, enqueuing downloads, and importing staged assets
+- **THEN** reconcile runs exactly as before — selecting foreign complete assets and enqueuing downloads — and
+  the staged assets are imported by the tail's unit ① that follows
 
 #### Scenario: An absent membership enables nothing
 - **WHEN** the direction gate is read with no membership configured
@@ -765,6 +711,11 @@ completeness rule with no masking in the status projection (capability `sync-sta
 - **WHEN** the membership is `UploadOnly` and the status projection reads the download total
 - **THEN** the total is `0` because nothing was ever planned, so the download arrow is hidden by the
   completeness rule rather than by a direction mask
+
+#### Scenario: A backlog is planned in one transaction
+- **WHEN** a reconcile's union lists many foreign assets that are not yet settled
+- **THEN** their settled-ness is read once for the whole union, every unsettled asset is planned in one
+  transaction, and the resources sent to the OS are marked enqueued in one transaction
 
 ### Requirement: Transfer cancellation is task-level; the background session is never invalidated
 
@@ -851,13 +802,18 @@ implementation that carries this logic.
 
 ### Requirement: A failed union fetch still drains the staged imports
 
-A reconcile whose union fetch fails SHALL still drain the assets whose resources are already staged,
-rather than returning. Discovery and import are independent: the drain reads only the download store and
-bytes already on disk, so a network failure has nothing to say about whether they can be imported.
+A reconcile whose union fetch fails SHALL NOT prevent the drain of the assets whose resources are already
+staged in that same wake. Discovery and import are independent: the drain reads only the download store and
+bytes already on disk, so a network failure has nothing to say about whether they can be imported. The drain
+is unit ① of the tail that follows the wake's own work (see "Import without foreground; staged by the wake,
+imported by the tail"), in **every** wake, foreground entry included, so it runs whatever the union fetch
+answered. The reconcile itself (`DownloadController.reconcile`) SHALL NOT drain staged imports, on success or
+on a union failure: a reconcile that drained would be a second import path beside the tail's ①, running
+concurrently with it at foreground — which the single-flight tail exists to rule out.
 
 This was inert while a failing fetch consumed the whole wake. Once the client carries an explicit request
-timeout (capability `ios-app-shell`) a failure returns in seconds with most of the wake budget unspent,
-and skipping the drain strands importable assets until some later wake for no reason.
+timeout (capability `ios-app-shell`) a failure returns in seconds with the wake's background time largely
+unspent, and skipping the drain strands importable assets until some later wake for no reason.
 
 Planning and enqueueing SHALL still be skipped, since those are exactly what the missing union would have
 informed.
@@ -865,50 +821,20 @@ informed.
 #### Scenario: A fast union failure still imports what is staged
 
 - **WHEN** the union fetch fails and assets in the store already have all their resources staged
-- **THEN** those assets are imported in that same wake, and no new downloads are planned or enqueued
+- **THEN** those assets are imported in that same wake, by its tail's unit ①, and no new downloads are planned
+  or enqueued
+
+#### Scenario: A reconcile never imports
+
+- **WHEN** a reconcile runs at foreground entry, at a push, or at a provision, and assets are importable
+- **THEN** the reconcile plans and enqueues only; the importable assets are imported by the tail's unit ①,
+  and no wake's own work imports them
 
 #### Scenario: Last-good state survives the failure
 
 - **WHEN** the union fetch fails
 - **THEN** no planned or staged rows are dropped
 
-### Requirement: The download session's OS handler is bounded, and its adoption is visible
-
-The download session's `handleEventsForBackgroundURLSession` handler SHALL be carried by the same bounded
-receipt every other OS handler uses (capability `ios-app-shell`), rather than stored in a field and
-invoked when the imports happen to finish. Awaiting the imports is correct and SHALL continue; awaiting
-them **without a bound** is not, because an import that never reports leaves the handler unanswered
-forever, and an unanswered handler costs the app its future background wakes — including the download
-wakes this capability depends on.
-
-The bound SHALL run from the handover, and its expiry SHALL release the handler and leave the imports
-running, never cancel them. It is the **only** bound in this capability: a single import is deliberately
-not bounded in time, because a wall-clock bound expires against transactions that are alive and because
-an import no longer holds the download controller's lock while it runs. So this bound governs how long
-the OS is kept waiting, and nothing governs how long one import may take.
-
-Adopting the handler SHALL be logged as an invocation, like every other platform-triggered entry
-(capability `diagnostic-logging`; law *Absence is never silent*). Without it a diagnostic dump cannot
-distinguish a handler that was released from one that never was — the download side's behaviour was
-unreadable in the field for exactly this reason, while the upload side's was measurable.
-
-#### Scenario: The handler is released after the imports, within the bound
-
-- **WHEN** a background-session wake delivers staged resources and the imports they trigger finish inside
-  the bound
-- **THEN** the OS completion handler is released after those imports, on the main thread
-
-#### Scenario: A stalled import does not strand the handler
-
-- **WHEN** an import started by a background-session wake has not reported when the bound expires
-- **THEN** the OS completion handler is released, the expiry is logged, and the import continues rather
-  than being cancelled
-
-#### Scenario: The adoption is readable in a dump
-
-- **WHEN** the OS relaunches the app to deliver download-session events
-- **THEN** the adoption is logged with its entry point, so a later dump shows the wake arrived and what
-  became of its handler
 ### Requirement: The import lock covers the decision, and a claim provides the exclusion
 
 The download controller's lock SHALL cover the **decision** — import selection, the claim below, the read of
@@ -1067,21 +993,195 @@ on its *shape* has not. Measured 2026-08-26 (iOS 26.2): a resource whose bytes w
 ### Requirement: A staged resource reaches the controller on every entry point
 
 A resource the download transport finishes staging SHALL reach the download controller — which records it
-staged and runs its import — whichever entry point brought the process up, including a cold background
-relaunch that only delivers download-session events and builds nothing else. The jobs' staging callback
-SHALL be supplied at construction (capability `module-architecture`, "Callbacks are bound at construction")
-and SHALL resolve the controller when invoked. A staging report that nevertheless cannot be delivered SHALL
-be logged with the resource it concerns; it SHALL NOT be dropped silently.
+staged and requests the tail that imports it — whichever entry point brought the process up, including a cold
+background relaunch that only delivers download-session events and builds nothing else. The jobs' staging
+callback SHALL be supplied at construction (capability `module-architecture`, "Callbacks are bound at
+construction") and SHALL resolve the controller when invoked. A staging report that nevertheless cannot be
+delivered SHALL be logged with the resource it concerns; it SHALL NOT be dropped silently.
 
 #### Scenario: The OS relaunches the app only to deliver download completions
 
 - **WHEN** iOS relaunches the process in the background for the download session, and the transport
   reports a staged resource before anything else in the core has been built
-- **THEN** the controller records it staged and imports it, and the OS handler is released only after
-  that import settles
+- **THEN** the controller records it staged, the OS handler is released once the session's events are
+  drained, and the asset is imported by the tail that follows under the app's own background task
 
 #### Scenario: A staging report cannot be delivered
 
 - **WHEN** a staging report arrives and the controller cannot be obtained
 - **THEN** the device log records the resource and the reason, and the staged bytes are left for the
   interrupted-import sweep
+
+### Requirement: Import without foreground; staged by the wake, imported by the tail
+
+Import SHALL run without the app being foregrounded: a download completing while the app is
+backgrounded SHALL trigger import in the background-execution window, and a download completing while
+the app is terminated SHALL relaunch the app via `handleEventsForBackgroundURLSession` to finish.
+
+A background-session wake's **own work** SHALL be **staging** the delivered files: the transport moves each
+accepted transfer's bytes into durable staging and the download controller records it staged (see "A staged
+resource reaches the controller on every entry point"). The OS completion handler SHALL be released once that
+own work is done — at the session's report that its events are drained — and SHALL NOT be held for the imports
+the staging made possible (capability `ios-app-shell`). Holding the handler across imports is what the field
+evidence condemned: a download wake delivers ~24 transfers, which is 20–40 s of serial imports on an iPhone XS,
+and a handler held for them was released by our own deadline mid-batch with iOS suspending the app ≤ 0.4 s
+later (92 assets left staged on one day).
+
+The imports SHALL run as unit ① of the process's **tail** (capability `ios-app-shell`, "Each OS wake does its
+own work, then hands the rest to one opportunistic tail"; decision record `changes/archive/2026-09-25-own-work-per-wake`, design
+D1): after the wake's own work, one process-wide, single-flight tail imports every asset whose resources are all
+staged, before any upload work. A staging SHALL therefore request the tail's **import alone** — ① with no
+top-up and no walk, since a staged photo changes nothing either would see — joining the tail when it is already
+running, starting it when not, without awaiting it (a staging holds no OS handler of its own; the wake that
+delivered it requests, and holds, its own tail after its drain), rather than import in its own callback. The
+tail SHALL run under the background time of the wake that requested it — a `BGTask`'s own grant for the upload
+heartbeat — whose expiry is Apple's signal that time is up (capability `ios-app-shell`, "Time is up is learned
+only from the operating system"); the imports SHALL NOT be bounded by any clock of the app's own.
+The drain SHALL be awaited by the tail — each import it starts is awaited until it reports, unless a stop or a
+joining request makes that wait give way (below) — not dispatched and forgotten by the composition, so the
+background time ends only when the drain has, unless Apple's expiry ends it first. Reporting the work done while
+the imports it caused are merely queued is what leaves an asset staged-but-unimported at suspension.
+
+**On Apple's expiry signal the drain SHALL stop cooperatively** (capability `ios-app-shell`, "Expiry stops work
+cooperatively at the next boundary"; design D4, D5): the background time is ended at once, the stop is checked
+before each import is claimed so no further import is started, and the import whose change block is running is
+left to complete its change block if the process runs long enough.
+The stop SHALL NOT cancel an import already claimed — its transaction may still commit, and the claim is
+retained exactly as for a cancelled importing coroutine (see "The import lock covers the decision, and a claim
+provides the exclusion"). Every import left unstarted is a safe retry: its staged bytes and store row are
+untouched.
+
+An import that never reports is the one case awaiting cannot resolve, and it SHALL NOT hold the tail hostage:
+each import runs as its own job, and the tail's wait for it SHALL give way — leaving the import claimed and
+running — when Apple's stop arrives, or when another request joins the tail (every later request would
+otherwise wait behind it). After a join interrupts the wait, the drain moves on to the next importable asset,
+which the claim keeps from being the stalled one; after a stop it starts nothing further. No clock decides
+either: the tail stops waiting only because something else is due. Nothing bounds a single import in time. A wall-clock bound on one import expires against transactions
+that are alive — the process is suspended for arbitrary spans between a change block and its completion — and
+every expiry manufactures an unconfirmed row for the adjudication guard to reason about. The stalled import
+blocks no other work, because it does not hold the download controller's lock and its ref is claimed rather
+than serialised.
+
+**There is no download backstop background task.** Imports left staged when a tail stopped SHALL be drained by
+unit ① of **any** later wake's tail — a silent push, a download or upload session relaunch, the upload
+heartbeat, a selection change, and foreground entry, whose tail runs through the same runner. ① is the **only**
+drain a wake runs: no wake's own work — the download reconcile included, at foreground as at a push — imports
+staged assets itself. The one import outside the tail is the **once-per-process interrupted-import sweep** at
+host assembly (see "An interrupted import is adjudicated, never repeated blindly"), which settles the rows a dead
+process left unconfirmed and then drains what is importable; it imports under the same per-asset claims as ①,
+so running beside a tail it can never import an asset twice. The backstop `BGProcessingTask`
+found work in 0 of 108 field runs; it is removed together with its `flow/DownloadBackstop` trigger and its task
+identifier (design D7). The drain's coordination is the tail's: the wake's shared prelude — the trigger-time
+membership re-read (`reloadConfig` — see `ios-app-shell`, *Background triggers re-read the membership and fail
+cleanly before first unlock*) and the attestation wake — runs before the wake's own work, and the tail's ① then
+drains. A tail whose ① runs before the first unlock since boot fails cleanly and converges at a later wake (the
+import's reads are caught; the adapters distinguish unreadable from absent; nothing mints, clears, or leaves).
+
+Staged bytes + the store make any deferred import a safe retry. That property is **conditional, and the
+transfer check is its condition**. A deferred import is a safe retry only because staged bytes were accounted
+for at transfer time. Absent that check, a permanently invalid body — an error document staged under a photo's
+path — makes the retry a trap rather than a safeguard: the import fails on every drain, and the transfer is
+never re-run, because a resource recorded as staged is never re-planned. The asset is then permanently
+unimportable and permanently retried, and the photo never arrives. Retrying a failed import is correct for a
+transient failure and poison for invalid bytes; only rejecting bad bytes before staging keeps the two apart.
+
+Decision record: `changes/archive/2026-09-25-own-work-per-wake` (design D1, D4, D5, D7).
+
+#### Scenario: Background import on download completion
+
+- **WHEN** a download completes while the app is backgrounded (not foreground)
+- **THEN** the asset whose set is now complete is imported in the background, by the tail's unit ①
+
+#### Scenario: A download wake releases its handler after staging
+
+- **WHEN** a background-session wake delivers several finished transfers
+- **THEN** their bytes are staged and recorded, the OS completion handler is released once the session reports
+  its events drained, and the imports run afterwards in the tail under the app's own background task
+
+#### Scenario: The tail awaits the imports it drains
+
+- **WHEN** the tail's unit ① drains several importable assets
+- **THEN** the imports are awaited, so the tail's background task does not end while they are merely queued
+
+#### Scenario: Apple's expiry stops the drain at the next import
+
+- **WHEN** the tail's background time receives its expiration signal while importable assets remain
+- **THEN** the background time ends at once, the import whose change block is running is not cancelled, no
+  further import starts, and the remaining assets stay staged for a later wake
+
+#### Scenario: An import that never reports does not hold the task past expiry
+
+- **WHEN** an import the tail started never receives its completion, and the expiration signal arrives
+- **THEN** the background time ends, the import is left claimed and running rather than cancelled, and no other
+  reconcile, import, leave or switch is blocked by it
+
+#### Scenario: A join does not wait behind a stalled import
+
+- **WHEN** an import the tail is awaiting never reports, and another wake requests the tail
+- **THEN** the tail stops waiting for that import, leaving it claimed and running, drains the other importable
+  assets, and makes the pass the joiner requested
+
+#### Scenario: A staging requests the import alone
+
+- **WHEN** a download finishes staging in a process that is already running
+- **THEN** the controller records it staged and the tail's ① imports it; no upload top-up or walk is requested
+  by that staging
+
+#### Scenario: Leftover staged imports drain at a later wake
+
+- **WHEN** an asset's resources are all staged but its import did not run before a tail stopped, and no
+  further download is pending
+- **THEN** the next wake of any kind — or the next foreground entry — imports it in its tail's unit ①, with no
+  dedicated background task scheduled for it
+
+#### Scenario: An invalid body never reaches the importer
+
+- **WHEN** a transfer's bytes are rejected on status or length
+- **THEN** they are never staged, so no import is ever attempted against them and no asset becomes
+  permanently unimportable
+
+### Requirement: The download session's OS handler is released after staging, and its adoption is visible
+
+The download session's `handleEventsForBackgroundURLSession` handler SHALL be held for the wake's **own work**
+only — staging the delivered transfers — and SHALL be released when the session reports its events drained
+(`urlSessionDidFinishEvents(forBackgroundURLSession:)`) **and** every staging the delivered events started has
+been recorded, on the main thread (capability `ios-app-shell`). The session's report says only that it delivered
+its events, not that the store writes they caused are done, so the download-job owner tracks each staging it
+starts and the release waits for them. It
+SHALL NOT be stored in a field and invoked when the imports happen to finish, and it SHALL NOT be held for the
+imports: those run afterwards as the tail's unit ① under the app's own background task (see "Import without
+foreground; staged by the wake, imported by the tail"). Apple documents no budget for a background-session
+relaunch and treats a held handler as a watchdog-backed assertion — an overrun is a kill without warning — so
+the handler covers the least work that satisfies the wake.
+
+No deadline of the app's own SHALL bound the handler. Where the drain report does not arrive, the handler is
+released on Apple's expiry signal for the wake (capability `ios-app-shell`, "Time is up is learned only from the
+operating system"), never on a constant; the former
+per-entry-point deadline (`ReceiptDeadlines`) is deleted, because the field evidence showed that constant
+releasing on 45 % of download wakes and cutting imports off. Nothing bounds a single import in time either: a
+wall-clock bound expires against transactions that are alive, and an import no longer holds the download
+controller's lock while it runs. Decision record: `changes/archive/2026-09-25-own-work-per-wake` (design D3, D5).
+
+Adopting the handler SHALL be logged as an invocation, like every other platform-triggered entry
+(capability `diagnostic-logging`; law *Absence is never silent*). Without it a diagnostic dump cannot
+distinguish a handler that was released from one that never was — the download side's behaviour was
+unreadable in the field for exactly this reason, while the upload side's was measurable.
+
+#### Scenario: The handler is released after staging, before the imports
+
+- **WHEN** a background-session wake delivers finished transfers and the session reports its events drained
+- **THEN** the OS completion handler is released on the main thread once those transfers are staged and
+  recorded, without waiting for the imports they make possible
+
+#### Scenario: A drain report that never arrives is released on Apple's signal
+
+- **WHEN** a background-session wake's session never reports its events drained
+- **THEN** the OS completion handler is released on Apple's expiry signal for the wake, the expiry is logged,
+  and no constant of the app's own decided the moment
+
+#### Scenario: The adoption is readable in a dump
+
+- **WHEN** the OS relaunches the app to deliver download-session events
+- **THEN** the adoption is logged with its entry point, so a later dump shows the wake arrived and what
+  became of its handler
+

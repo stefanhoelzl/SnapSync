@@ -31,6 +31,7 @@ Decision record for its seam, failure, state and concurrency rules: `changes/arc
 Decision record for the control protocol's client and the real backend as support modules: `changes/archive/2026-09-23-add-rig-jvm-host`.
 
 Decision record for the protocol-driven integration surface, the shared host composition and the journeys: `changes/archive/2026-09-24-integration-over-control`.
+Decision record for the background-time port, the trigger flow that never outlives its run, and the composition's dispatcher lanes: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: The module set withholds; packages organize
 The system SHALL consist of exactly the modules enumerated below, and **every** module the build
@@ -366,6 +367,26 @@ Both doors matter. Removing the scope alone is insufficient: a non-suspend `() -
 can only detach, so whatever the composition places behind it escapes the flow's lifetime while the
 zone gate stays green.
 
+The process-wide **opportunistic tail** (capability `ios-app-shell`, "Each OS wake does its own work, then
+hands the rest to one opportunistic tail") does not weaken this law, because it is **not a flow's child**. A
+flow orders a wake's **own work**, and its entry point returns only when that own work has finished — which is
+exactly what the handler's release waits for. An OS wake's hand-off to the tail SHALL be made by the inbound
+port's implementation in `compose/` **after** the flow has returned, never from inside a flow: a flow that
+requested the tail would be handing work to something that outlives it, which is the detachment this law
+forbids. That includes the decision **whether** a wake joins the tail — a silent push's active-event guard
+(capability `push-registration`) is asked by the inbound port's implementation after the `SilentPush` flow
+returns, not by the flow, whose entry point answers nothing.
+
+One request reaches the tail from a flow's call path, and it is not the flow's: a **membership transition's
+arm** (capability `upload-lifecycle`), which a join reaches from inside the `Provision` flow, requests the tail
+**detached** through the uploader seam the composition builds. The flow neither holds the runner nor awaits the
+tail; the join's own work is complete when the flow returns, no OS handler waits on it (a join is a tap), and
+the tail the arm starts is the process's — joined, if one is running, like any other request. A `flow/` class
+SHALL NOT itself take the tail runner or a tail request as a collaborator.
+
+The tail's lifetime is bounded by the process's background time and the operating system's expiry signal, not by
+any flow's run. Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D1, D5).
+
 #### Scenario: A flow declares a scope
 
 - **WHEN** a `flow/` class gains a `CoroutineScope` constructor parameter
@@ -389,10 +410,22 @@ zone gate stays green.
 
 #### Scenario: One child throws
 
-- **WHEN** the foreground flow's upload pump throws while the status refresh, the download reconcile and
-  the stored-upload settle are still running
+- **WHEN** one of the foreground flow's concurrent children throws while its sibling children are still
+  running
 - **THEN** the failure is logged, the siblings run to completion, and the entry point returns once they
   have
+
+#### Scenario: A flow hands work to the tail
+
+- **WHEN** a `flow/` class gains the tail runner, or a lambda that requests the tail, as a collaborator
+- **THEN** the law is violated — an OS wake's tail is requested by the inbound port's implementation after the
+  flow returns, so the flow's entry point still returns only when the work it coordinates has finished
+
+#### Scenario: A push's tail decision is taken after its flow
+
+- **WHEN** a silent push's own work has run
+- **THEN** the inbound port's implementation, not the `SilentPush` flow, asks whether the pushed event is the
+  active one and requests the tail only then
 
 #### Scenario: A flow fans out with a bare coroutineScope
 
@@ -591,6 +624,27 @@ Three lanes SHALL exist, each with a stated purpose:
 - the **composition lane** carries the live core's scope: blocking platform calls, network, and
   durable stores. It SHALL be a dispatcher of the composition's own, not a slice of the CPU lane,
   so that a blocked platform call cannot consume the pool that presentation-state reduction runs on.
+  Its thread SHALL be pinned to `QOS_CLASS_USER_INITIATED` by the lane's first task, before any other
+  work can run on it, and the pin SHALL be logged once with the class it replaced.
+
+The pin is forced by a measurement, not a preference: the blocking platform calls this lane carries
+(PhotoKit commits and fetches, the Keychain, SQLite on the App Group) are XPC round-trips, and the calling
+thread's QoS **propagates** over them — measured on an SE2, PhotoKit commits issued at
+`QOS_CLASS_BACKGROUND` took ~400 ms against ~60 ms at a foreground class (6–7×). The pin decides only the
+class requested *within* the process; it does not lift the kernel's `darwinbg` clamp on a process the
+operating system runs in the background, and SHALL NOT be described as doing so. Its energy cost in the
+background is unmeasured and accepted.
+
+One **adapter-owned hop lane** SHALL exist beside the three: the **PhotoKit read lane** — a single thread,
+pinned to `QOS_CLASS_USER_INITIATED` the same way, owned by `:adapter:ios:ext-safe` and used by the PhotoKit
+reads (the discovery walk and the candidate source) in whichever process links them. Its meaning is
+**throughput**, as for any adapter hop below: a synchronous `assetsd` round-trip does not hold the serial
+composition lane. It is one thread deliberately — each caller's reads are already sequential, so two
+callers' reads queue rather than overlap (PhotoKit's daemon is where they would meet anyway), and a wedged
+`assetsd` parks that thread rather than a worker of the pool presentation-state reduction runs on. It SHALL
+be a dedicated thread rather than a pin applied inside a shared pool's worker, because a pooled thread left
+at `USER_INITIATED` would carry that class into unrelated work and `UNSPECIFIED` cannot be restored.
+Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D13, the stage-1 sync).
 
 The live core's composition scope SHALL NOT be UI-bound, in any binary that composes it — device
 shell or harness alike. It SHALL be **serial**: the main thread it replaces is single-threaded, and
@@ -648,6 +702,18 @@ coroutines release that publishes it.
 - **THEN** the justification cites a rule this requirement withdrew, and is corrected or the hop is
   removed — a comment claiming this spec's authority for the withdrawn rule is the worst form,
   because a reader who follows the citation finds a document that contradicts it
+
+#### Scenario: A PhotoKit read runs at a foreground class
+
+- **WHEN** the discovery walk or the candidate source issues a PhotoKit read, in the app or the extension
+- **THEN** it runs on the PhotoKit read lane's single thread at `QOS_CLASS_USER_INITIATED`, off the
+  composition lane, whatever class the calling process was launched at
+
+#### Scenario: The composition lane's class is recorded
+
+- **WHEN** the live composition lane starts
+- **THEN** its first task pins the thread to `QOS_CLASS_USER_INITIATED` and logs the class it replaced, and
+  no other work has run on that thread before it
 
 #### Scenario: A second platform inherits the lane reasoning
 - **WHEN** a platform is added whose background work runs in the app's own process
@@ -767,7 +833,8 @@ because the file reading it is absent from a production build.
 Each process that the operating system calls into SHALL declare its OS entry surface as one **inbound port** in
 `ports/`: an interface the **core implements** and the shell drives, as opposed to the outbound ports the core
 calls. The app process's is `PlatformEntries` (foreground, background, an opened URL, a push token, a silent push,
-a background task by identifier, handed-back background transfers by channel); the upload extension's is
+a background task by identifier, that background task's expiry by the same identifier, handed-back background
+transfers by channel); the upload extension's is
 `ExtensionEntries` (`process(): CycleResult`, terminate). They are separate because the two processes' entry sets
 are disjoint.
 
@@ -777,10 +844,24 @@ platform-independent values (a string identifier, a raw payload map, a completio
 type. A platform entry whose input is a platform type (a user activity) SHALL NOT be a member; its filter runs in a
 tested zone and calls the port.
 
+Where the operating system offers an **expiry signal** for an entry — a `BGTask`'s `expirationHandler` — the
+inbound port SHALL carry it into the core, shaped for the need ("this background task's time is up") and keyed
+by the identifier the operating system delivered, so the core that holds the task's completion is the one that
+stops the work and releases it — at once, without waiting for the unit in flight (capability `ios-app-shell`,
+"Expiry stops work cooperatively at the next boundary"). The shell SHALL forward the signal and decide nothing, and SHALL NOT answer it
+itself (capability `ios-app-shell`). Where the operating system offers no expiry signal on the entry itself — a
+silent push, a background-`URLSession` wake — the core SHALL obtain one through the outbound background-time port
+(see "Background time is an outbound port named for the need"), not through the inbound port. The upload
+extension's inbound port SHALL carry no expiry signal, because the extension has none: measured, its only end is
+a hard kill (capability `ios-photokit-upload`). Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D3, D8).
+
 The implementation SHALL live in `compose/`, beside the shared composition it drives (see "One shared
-composition"), and SHALL hold what the shell once held: the entry → flow command transcription, the construction
-and holding of each wake's `OsReceipt`, the entry-point logging, and the routing of a background task or transfer
-channel to its handler. That routing SHALL be a comparison against identifiers the shell supplies **as data**, so
+composition"), and SHALL hold what the shell once held: the entry → flow command transcription, the holding of
+each wake's OS completion handler across that wake's own work, the hand-off of the rest to the opportunistic tail,
+the forwarding of the operating system's expiry signals into the running work, the entry-point logging, and the
+routing of a background task (and its expiry) or transfer channel to its handler. It also holds what the shell
+never held: the process's background time for each push, transfer and foreground wake (see "Background time is
+an outbound port named for the need"), and whether a wake's own work is followed by a tail at all. That routing SHALL be a comparison against identifiers the shell supplies **as data**, so
 no platform constant enters `model/`, `ports/` or `feature/`. What the implementation cannot name because it lives
 outside `:domain` (the presentation container, the root's token-source adapter) SHALL reach it as in-process
 hooks the root supplies when it obtains the implementation; a hook calls back into the process and never reaches
@@ -799,6 +880,13 @@ A composition root SHALL implement its process's inbound port by **Kotlin delega
 - **WHEN** an inbound-port member is proposed whose name or parameter type describes an Apple mechanism (a
   `URLSession` identifier, a processing-result raw value)
 - **THEN** it is renamed for the need, and the platform's encoding is applied in the shell or an adapter
+
+#### Scenario: A background task's expiry reaches the core
+
+- **WHEN** the operating system fires a `BGTask`'s expiration handler
+- **THEN** the shell forwards it through the inbound port (`onBackgroundTaskTimeUp`) with the delivered
+  identifier, and the port's implementation in `compose/` requests the running tail's stop and releases the
+  completion it holds at once — the shell completes nothing itself
 
 #### Scenario: The routing needs a platform constant
 
@@ -941,10 +1029,11 @@ and SHALL emit nothing after observation has ended.
 
 #### Scenario: A download is staged while the handler drains
 
-- **WHEN** a staged resource's import is registered on the delegate queue while the background-events
-  receipt drains the outstanding imports on the scope
-- **THEN** the drain either awaits that import or the import is registered after the drain, and it is
-  never lost between the two
+- **WHEN** a delivered resource's staging is registered on the delegate queue while the background-events
+  handler's drain awaits the outstanding staging on the scope
+- **THEN** the drain either awaits that staging or the staging is registered after the drain, and it is
+  never lost between the two — the photo-library import that follows it is the opportunistic tail's, and
+  finds the staged bytes in the store either way
 
 ### Requirement: Reads that can be unknown say so
 
@@ -965,4 +1054,64 @@ usable access, not for a grant.
 
 - **WHEN** a collaborator is bound to "full or limited access"
 - **THEN** its name says usable access, and no caller compares it against a full grant
+
+### Requirement: Background time is an outbound port named for the need
+
+The app process's background time SHALL be reached through one outbound port in `ports/`, named for the need —
+"keep this process running while I finish, and tell me when time is up" — never for the platform API that serves
+it. Its surface SHALL be platform-free: beginning a hold takes a label for the diagnostic line and an expiry
+callback, and returns a handle whose only operation is ending that hold. It SHALL carry no duration, no
+remaining-time read and no estimate, because the operating system's signal is the only notion of "time is up" the
+app acts on (capability `ios-app-shell`, "Time is up is learned only from the operating system"). It SHALL be a
+required `AppPorts` field (`backgroundTime`), with no default: a composition without it would hold nothing, and no
+expiry would ever stop a tail.
+
+The expiry callback SHALL be invoked **at most once**, on a thread the port does not choose (the main thread on
+iOS), and possibly **before the begin call returns**: a process whose time is already up is refused a hold, and
+that refusal SHALL be reported as an immediate expiry rather than as an error, because it means the same thing to
+the caller. An expiry SHALL NOT end the hold by itself — the core ends it, and it does so **at once, from inside
+its expiry callback**, after requesting the tail's stop and releasing any OS handler the wake still holds (capability
+`ios-app-shell`, "Expiry stops work cooperatively at the next boundary"). Ending SHALL be idempotent: the first call
+ends the hold with the operating system and every later call does nothing, so a core that ends on more than one path
+can neither end a hold twice nor end another hold that reuses the platform's identifier. A hold that is never ended
+is, per Apple, a termination.
+
+The iOS adapter SHALL be `UIApplication.beginBackgroundTask(withName:expirationHandler:)` /
+`endBackgroundTask(_:)` — a refusal is `UIBackgroundTaskInvalid` — and SHALL live in `:adapter:ios:app-only`:
+`UIApplication` is unavailable to app extensions, and the upload extension has no such signal to offer (capability
+`ios-photokit-upload`), so this port SHALL NOT be linked into, bound in, or faked for the extension's composition.
+The honest in-memory double in `:adapter:generic:fake` SHALL let the world harness and tests fire the expiry. The
+port SHALL be covered by a contract both bindings extend, whose clauses are the ones a real host can present: a hold
+is granted while time remains, holds do not refuse each other, and ending is safe to repeat. The contract carries
+**no** expiry clause — no host lets a binding enter "time is up", and a clause only the double could reach may not
+exist (capability `port-contracts`) — so the adapter's expiry behaviour is tested over its own operating-system seam,
+and the core's reaction to an expiry over the double.
+
+Because background time is **per app**, not additive per hold, a hold taken while another is active costs no time;
+the core MAY therefore take one for each wake without accounting between them.
+
+Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D3, D4, D5).
+
+#### Scenario: A push wake takes background time for its tail
+
+- **WHEN** a silent push is handed over
+- **THEN** the core begins a hold through the background-time port no later than the handover, and ends it when
+  the tail it handed to has finished, or at once on the hold's expiry
+
+#### Scenario: The operating system says time is up
+
+- **WHEN** the operating system fires the background task's expiration handler
+- **THEN** the adapter invokes the core's expiry callback and returns; inside it the core requests the tail's
+  stop, releases the handler it guards and ends the hold — exactly once — without waiting for the unit in flight
+
+#### Scenario: A refused hold is an immediate expiry
+
+- **WHEN** the operating system refuses a background task because the app's time is already up
+- **THEN** the port reports it as an expiry before the begin call returns, and the wake that asked requests no
+  tail
+
+#### Scenario: The extension cannot reach the port
+
+- **WHEN** the extension's composition is built
+- **THEN** it binds no background-time adapter, and `:adapter:ios:ext-safe` names no `UIApplication` API
 

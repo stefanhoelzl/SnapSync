@@ -35,6 +35,8 @@ Decision record for the control protocol and its two hosts: `changes/archive/202
 Decision record for the protocol-driven integration surface, the shared host composition and the journeys: `changes/archive/2026-09-24-integration-over-control`.
 
 Decision record for running the journeys on one simulator, with the second member played over the backend's public surface, and for `ios-contracts`' build-first order and photo-library readiness stage: `changes/archive/2026-09-25-one-simulator-journeys`.
+
+Decision record for the wiring-only shells under the wake/tail split: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: A test lives with the code it tests
 
@@ -154,8 +156,10 @@ remains uncovered, and SHALL be stated wherever shell correctness is relied upon
 forwarding in Swift** — the right entry called with a wrong but same-typed argument — and the shell's
 hand-written entry points outside the inbound port (`onLaunch`, the event-link activity filter's call site,
 and the log-only callbacks). A Swift call that crosses two entries is a compile error wherever their
-signatures differ, and the one same-shaped pair (the background tasks) forwards the OS's own identifier to a
-single entry.
+signatures differ. The background-task registration — one task since the download backstop's was deleted
+(decision record `changes/archive/2026-09-25-own-work-per-wake`, D7) — forwards the OS's own identifier to a single entry, and its
+expiration handler forwards the same identifier to a single expiry entry, so a registration block copied for a
+new task cannot route that task, or its expiry, to an existing task's handler.
 
 #### Scenario: A test file is added under a shell module
 

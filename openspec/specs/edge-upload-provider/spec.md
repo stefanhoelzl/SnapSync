@@ -125,9 +125,14 @@ The fallback to `resource.contentType` is load-bearing rather than defensive: th
 the job's stored request — so the fallback is the seam through which a retried upload keeps its original
 type instead of acquiring a default.
 
-The token SHALL be re-read on **every** call to `provide`, never captured once at construction: the
-engine re-mints the request from this provider on each retry, and that is precisely what allows an
-upload that failed on an expired token to succeed once the app has renewed, with no special-casing
+The token SHALL be read from its injected source on **every** call to `provide`, never captured once at
+construction. That source MAY serve the process's in-memory copy of the token between the re-reads capability
+`device-attestation` bounds ("The device token is minted by the app process and shared with the extension"):
+the app re-reads at every wake, the extension at every invocation, and both on a credential rejection. A
+**retry** SHALL NOT be minted from that copy: the engine re-mints a failed upload's request through
+`provideForRetry` (see "A retry's request carries the credential from its store of record"), which reads the
+token from its store of record. That is precisely what allows an upload that failed on an expired token to
+succeed once the app has renewed — whichever process renewed, and however recently — with no special-casing
 anywhere in the upload path.
 
 When no token is available, `provide` SHALL still return a request (omitting the header) rather than
@@ -166,11 +171,12 @@ strand the resource instead.
 
 - **WHEN** an upload fails with `401` on an expired token, the app then renews, and the engine re-mints
   the request for that resource
-- **THEN** the rebuilt request carries the **new** token, and the URL is byte-identical to the original
+- **THEN** the rebuilt request carries the **new** token, and the URL is byte-identical to the original —
+  also when the process that re-mints still holds the expired token in memory
 
 #### Scenario: A missing token still yields a request
 
-- **WHEN** `provide` is called and no token is present in the shared Keychain
+- **WHEN** `provide` is called and no token is available to it
 - **THEN** a request is returned with `Content-Type` and the app-version header but no `Authorization`
   header, and the upload is allowed to fail and be retried rather than being abandoned
 
@@ -198,3 +204,37 @@ re-derived much later re-PUTs the exact same destination (nothing to re-mint or 
 #### Scenario: Rebuild is byte-identical
 - **WHEN** `provide` is called twice for the same resource with the same configuration
 - **THEN** both calls produce byte-identical URLs and headers
+
+### Requirement: A retry's request carries the credential from its store of record
+
+The provider SHALL offer `provideForRetry(resource)` beside `provide(resource)` (the `UploadRequestProvider`
+seam, capability `sync-engine`). It SHALL return a request with the same URL and the same headers `provide`
+composes for that resource, except that its `Authorization` token SHALL be read from the token's **store of
+record** (the shared Keychain item), bypassing any in-process copy. A retry is exactly when a copy is most
+likely stale: the failure may have been the `401` of a token the other process has since renewed, or cleared
+after a rejection. So a retry pays one uncached credential read, and every first request is spared one.
+
+The provider SHALL take the two reads as two injected sources — the token, and the fresh token — each required,
+so a composition with no credential states `{ null }` for both rather than inheriting a default. Reading the
+fresh token remains the provider's only side effect. The provider still mints nothing, calls no platform API
+itself, and builds no signature. When the fresh read finds no token, `provideForRetry` SHALL still return a
+request without the header, exactly as `provide` does.
+
+Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D13).
+
+#### Scenario: A retry reads past a stale in-memory copy
+
+- **WHEN** the process's in-memory copy holds token T1, the shared item now holds T2, and
+  `provideForRetry` is called for a resource
+- **THEN** the request carries `Authorization: Bearer T2`
+
+#### Scenario: A retry addresses the same destination
+
+- **WHEN** `provide` and `provideForRetry` are called for the same resource with the same configuration
+- **THEN** the URLs are byte-identical, and the headers differ at most in the token they carry
+
+#### Scenario: A first request does not pay the uncached read
+
+- **WHEN** `provide` is called
+- **THEN** it reads the token source only, and the fresh-token source is not read
+

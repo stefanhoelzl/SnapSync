@@ -32,6 +32,7 @@ pins and the pending zone gates: `changes/archive/2026-07-17-pin-runtime-identit
 Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 Decision record for the control channel's loopback guard: `changes/archive/2026-09-23-add-rig-jvm-host`.
+Decision record for the one holder of OS completion handlers and the app-only walk memo: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: Architecture guards are executable and gate the build
 
@@ -541,10 +542,22 @@ is a spec change to this requirement, deliberately):
   abandons it in the container. A device-global accumulator file is deliberately **not** in this
   inventory — there is none; pinning one would fail the exactly-once assertion forever, and a stale
   `accumulator.json` an older build left in the container is inert.
-- **BGTask identifiers** `app.snapsync.upload.heartbeat`, `app.snapsync.download.backstop` —
-  once in Kotlin AND once in `Info.plist`'s `BGTaskSchedulerPermittedIdentifiers`; the guard
-  SHALL assert the Kotlin value and the plist value agree, because drift between them silently
-  kills that background tier (the OS rejects an unpermitted submit; nothing raises).
+- **BGTask identifier** `app.snapsync.upload.heartbeat` — once in Kotlin AND once in `Info.plist`'s
+  `BGTaskSchedulerPermittedIdentifiers`; the guard SHALL assert the Kotlin value and the plist value
+  agree, because drift between them silently kills that background tier (the OS rejects an unpermitted
+  submit; nothing raises). The download backstop's identifier `app.snapsync.download.backstop` was
+  **retired from this inventory** with its task (capability `ios-app-shell`; decision record
+  `changes/archive/2026-09-25-own-work-per-wake`, D7): it appears in production Kotlin nowhere, which an exactly-once pin
+  cannot express. The guard SHALL instead assert that `BGTaskSchedulerPermittedIdentifiers` lists
+  **exactly** the pinned BGTask set — in the app's `Info.plist`, which SHALL declare the key, and in every other
+  bundle's plist that declares it at all — with no duplicate, and with the plist's XML comments stripped first so
+  an explanation that names a retired identifier is not a listing. A retired identifier left in a plist
+  therefore fails the build: listing an identifier no registration serves is an operating-system error, and
+  nothing else would notice it. The guard SHALL likewise assert that the Swift shell's
+  `register(forTaskWithIdentifier:)` calls register **exactly** the pinned set, once each — a listed identifier
+  nothing registers is the same silent error — and SHALL prove, in the same run, that both parsers still
+  recognise a listing and a registration, so a parser that stops matching cannot turn either check into a
+  pass.
 - **Background `URLSession` identifiers** `app.snapsync.upload.session`,
   `app.snapsync.download.bg` — the OS reattaches in-flight transfers by these across relaunch.
 - **Framework `baseName`s** `SnapSyncKit`, `SnapSyncUploadKit` — once each, in
@@ -617,6 +630,18 @@ files.
 - **WHEN** the literal at the orphaned-key removal site no longer equals `rejoin.joinedEventId`, or a second
   production occurrence of it appears
 - **THEN** the guard fails, because a drifted removal would silently leave the key in place on every device
+
+#### Scenario: A retired BGTask id stays listed
+
+- **WHEN** `Info.plist`'s `BGTaskSchedulerPermittedIdentifiers` still lists `app.snapsync.download.backstop`,
+  or any identifier outside the pinned set
+- **THEN** the pin guard fails, naming the unpinned identifier
+
+#### Scenario: A registration the plist does not pin
+
+- **WHEN** the Swift shell registers a BGTask identifier outside the pinned set, or stops registering a
+  pinned one
+- **THEN** the pin guard fails, listing the pinned and the registered sets
 
 #### Scenario: A BGTask id diverges between Kotlin and Info.plist
 
@@ -968,17 +993,23 @@ failure mode these gates exist to remove.
 
 ### Requirement: OS completion handlers are held in one type
 
-Holding an OS-supplied completion handler SHALL be confined to the single `:domain` `ports/` type that
-bounds the hold and releases every outstanding handler (`BackgroundEventsReceipts`, capability
-`ios-app-shell`). No other production source SHALL declare a **mutable** property whose type is a
+Holding an OS-supplied completion handler SHALL be confined to the single `:domain` `ports/` type
+**`OsCompletions`**, which carries it across the wake's own work and releases every outstanding handler —
+after that work, or at once on the operating system's expiry signal (capability `ios-app-shell`, "OS
+completion handlers are released only after their work completes"). It replaces `OsReceipt` and
+`BackgroundEventsReceipts`, which bounded the hold with a deadline of the app's own and are deleted with
+`ReceiptDeadlines` (decision record `changes/archive/2026-09-25-own-work-per-wake`, D3); the confinement is unchanged, only its
+home is re-aimed. The guard SHALL fail when its licensed owner no longer declares `OsCompletions` — an exemption
+for a moved or renamed owner exempts nothing, and the handler's real home would then be judged by the rule it is
+licensed to break. No other production source SHALL declare a **mutable** property whose type is a
 nullary `Unit`-returning function — `var x: (() -> Unit)?`, `var x: () -> Unit`, or the `lateinit`
 form — whether by import or by fully-qualified reference.
 
 The rule **confines rather than forbids**, because storing the handler is the platform's own documented
 recipe (*"You should then store that completion handler before creating a background configuration
-object"*). What is unsafe is not the storing but the shape a bare field forces: a single slot has no
-deadline, and a second handover silently overwrites the first, which costs the app its future background
-wakes. Naming one home makes both properties provable in one tested place, in the same shape Keychain
+object"*). What is unsafe is not the storing but the shape a bare field forces: a single slot is released by
+nothing when the work never finishes — no expiry reaches it — and a second handover silently overwrites
+the first, which costs the app its future background wakes. Naming one home makes both properties provable in one tested place, in the same shape Keychain
 access is confined to one module. Any exempt declaration SHALL state, at the exemption, why it is
 exempt.
 
@@ -1020,8 +1051,8 @@ rather than an exception added.
 
 #### Scenario: A constructor parameter is not a stored handler
 
-- **WHEN** a type takes its release action as a `val` constructor parameter, as the OS receipt does
-- **THEN** the guard passes, because an immutable parameter can be neither overwritten nor left unbounded
+- **WHEN** a type takes its release action as a `val` constructor parameter, as the handler-carrying type does
+- **THEN** the guard passes, because an immutable parameter can be neither overwritten nor left unreleased
 
 #### Scenario: A handler stored in the Swift shell is caught
 
@@ -1545,4 +1576,32 @@ vacuously: finding no server construction in a non-empty tree is a failure, nami
 
 - **WHEN** the guard scans the channel's tree and finds no server construction
 - **THEN** it fails, naming the tree, rather than passing
+
+### Requirement: The walk memo is composed in the app process only
+
+The walk memo (capability `sync-ledger`, "An unchanged library is answered from the walk memo") SHALL be
+reachable from the app process's composition only, and a `:test:architecture` guard (`WalkMemoContainmentTest`)
+SHALL pin the two steps that keep it there, exact in both directions: a `WalkMemo` SHALL be constructed in
+production source in **one** place — the app composition's `appUploadDiscovery`, in `:domain` `compose/` — and
+`appUploadDiscovery` SHALL be called in production source from **one** file, the app's uploader
+(`UrlSessionUploadController`), never from the extension's root or from the shared `uploadCore` the extension
+also calls. Declarations and comments do not count as uses.
+
+The module graph cannot say this: both processes link `:domain`, where the memo type lives. And the extension
+must not hold one: its memory limit is 32 MB, whose overrun is a jetsam kill and a relaunch loop rather than an
+error, and it holds nothing across `process()` calls, so it walks afresh every time (capability
+`ios-photokit-upload`, "In-extension discovery by full enumeration"). The iOS change-token read is kept out of
+the extension by linkage besides — it lives in `:adapter:ios:app-only`. Decision record:
+`changes/archive/2026-09-25-own-work-per-wake` (D9).
+
+#### Scenario: A memo built in a shared composition
+
+- **WHEN** production source constructs a `WalkMemo` anywhere but `appUploadDiscovery`
+- **THEN** the guard fails, because that composition may be one the upload extension runs
+
+#### Scenario: The extension binds the memoised discovery
+
+- **WHEN** `appUploadDiscovery` is called from any production file other than the app's uploader — the
+  extension's root or `uploadCore` included
+- **THEN** the guard fails
 

@@ -29,6 +29,7 @@ extension log's move to the App Group, and the measured Bugsink limits behind th
 required written description, the sheet that collects it, grouping by description (which **reverses**
 that record's constant-message decision), the tag-carried redaction exemption, and the full-height
 sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`; the per-report process-metric line: `changes/archive/2026-09-14-add-os-exit-attribution`; the thread-scoped claim and the measured overlap that retired serial delivery as the prefix's justification: `changes/archive/2026-09-14-thread-scoped-log-prefix`; the byte budget as one row of a whole-event sum, and why an over-cap dump blocks the queue rather than being lost: `changes/archive/2026-09-23-bound-diagnostic-event-size`.
+Decision record for the operating-system expiry lines that replaced the deadline line: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: Per-process un-redacted device log
 
@@ -540,20 +541,6 @@ a distinction that had to be reconstructed by deduction from durations rather th
 - **WHEN** two log lines are emitted within the same second, on the same or different threads
 - **THEN** their timestamps distinguish which was written first
 
-### Requirement: Deadline expiry is logged
-
-Every bounded wait that reaches its deadline SHALL be logged, naming what expired and what was still
-outstanding. That wait is an OS completion handler released on its deadline (capability `ios-app-shell`).
-A bound that fires silently
-is indistinguishable from work that completed, so the mechanism that protects the app would be invisible
-in exactly the dumps that exist to explain it.
-
-#### Scenario: A released-on-deadline handler is attributable
-
-- **WHEN** an OS completion handler is released because its deadline expired rather than because its
-  work finished
-- **THEN** the log records the expiry and the entry point it belongs to
-
 ### Requirement: Photo-library change blocks and completions are traced
 
 The photo-library asset-creation change block and its completion callback SHALL each be logged — block
@@ -577,9 +564,10 @@ Each per-asset photo-library import SHALL be traced with the uniform enter/exit 
 the asset and reporting the duration on exit — so an import that entered and never exited is visible in a
 pulled log and in a diagnostic dump, and is distinguishable from one that was never attempted.
 
-This is the only route by which a never-reporting import becomes visible. Nothing bounds such an import in
-time (capability `photo-download`), so no expiry line will ever name it, and the OS-handler receipt's own
-expiry line reports that *something* outran the wake without saying what.
+This is the primary route by which a never-reporting import becomes visible. Nothing bounds such an import in
+time (capability `photo-download`), and no deadline of ours exists to fire on it; the operating-system expiry
+line names the unit in flight only if the operating system's signal arrives while it runs, and a process
+suspended or killed without one leaves only this entry line.
 
 #### Scenario: A stuck import is identifiable from the log
 
@@ -644,4 +632,57 @@ process woken briefly in the background may be killed before deferred work runs.
 - **WHEN** a report is delivered to a process woken in the background that is killed moments later
 - **THEN** the line has already been written, because it was written before the delivering call
   returned
+
+### Requirement: Operating-system expiry is logged
+
+The app SHALL log every time the operating system signals that a wake's time is up — a `BGTask`'s
+`expirationHandler`, or the expiration handler of a background task begun through the background-time port
+(capability `ios-app-shell`, "Time is up is learned only from the operating system") — in **two lines**, because
+the expiry is answered at once while the unit in flight runs on (capability `ios-app-shell`, "Expiry stops work
+cooperatively at the next boundary"), so the stop and the tail's end are two different moments:
+
+1. **At the stop**, written by the expiration handler's path before it returns: **which signal** fired and the
+   wake it ended (the push, the transfer channel, the background task's identifier, or the foreground entry),
+   and **what was running** — the tail's unit in flight and what becomes of it (a walk is abandoned; any other
+   unit completes, and nothing further starts) — or that no tail was running.
+2. **When the stopped tail ends**: whether the unit that was running **completed or was abandoned**, which units
+   the stop kept from running (a pass joiners had requested included), and **what was left** for a later wake —
+   at least the count of staged downloads not yet imported. This line may be written only when the process next
+   runs, since the process can be suspended before the unit in flight reaches its end.
+
+Where the expiry releases an OS completion handler whose own work had not finished, the handler-carrying type
+SHALL log that release too, naming the entry point and the signal — the only evidence that a wake's own work did
+not fit inside the time the operating system gave it.
+
+The lines SHALL report the operating system's signal, never a deadline of ours; there is none (capability
+`ios-app-shell`). A stop that fires silently is indistinguishable from work that completed, so the mechanism that
+ends a wake cleanly would be invisible in exactly the dumps that exist to explain it — and these lines are also
+how the change that removed the app's own deadlines is measured in the field, since its benefit could not be
+reproduced on the test device.
+
+Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D3, D4; the measurement risk).
+
+#### Scenario: An expiry is attributable
+
+- **WHEN** the operating system signals expiry for a wake while its tail runs
+- **THEN** the log records, at the stop, the signal, the wake it belongs to and the unit that was running; and,
+  when the tail has stopped, whether that unit completed, what did not run, and how many staged downloads were
+  left unimported
+
+#### Scenario: An expiry during the walk says so
+
+- **WHEN** the operating system signals expiry while the tail's discovery walk is in flight
+- **THEN** both lines name the walk as abandoned, so a dump distinguishes "no new photos" from "the walk never
+  finished"
+
+#### Scenario: An expiry before the own work finished is visible
+
+- **WHEN** the operating system's expiry releases a silent push's or a transfer wake's handler before its own
+  work has finished
+- **THEN** a line names the entry point and the signal, stating that its own work had not finished
+
+#### Scenario: No deadline line exists
+
+- **WHEN** a wake's own work or tail takes longer than any former receipt deadline
+- **THEN** no line reports a deadline of ours, because no such deadline releases anything
 
