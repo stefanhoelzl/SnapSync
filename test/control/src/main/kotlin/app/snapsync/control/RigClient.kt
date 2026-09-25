@@ -65,6 +65,10 @@ class RigClient(
         // (the download backstop's is 120 s), and a transport timeout below that would be indistinguishable from
         // a receipt that expired.
         install(HttpTimeout)
+        // The CIO engine carries its OWN request timeout, 15 s by default, which `HttpTimeout` left unset does not
+        // lift (measured: a 4-photo seed on a freshly booted simulator died at 15 s as a request timeout). 0 disables
+        // it, so every bound is the caller's.
+        engine { requestTimeout = 0 }
     },
 ) : AutoCloseable {
 
