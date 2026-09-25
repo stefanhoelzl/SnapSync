@@ -16,7 +16,7 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 

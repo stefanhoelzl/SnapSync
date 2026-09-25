@@ -6,6 +6,9 @@ import app.snapsync.ports.EventRename
 import app.snapsync.model.RenameOutcome
 
 import co.touchlab.kermit.Logger
+import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameFailureReason
+import app.snapsync.feature.membership.readmodel.RenameStatus
 
 /**
  * The **rename** use-case (capability `manage-membership`): change the event's name for **every** member,

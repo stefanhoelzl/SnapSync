@@ -41,21 +41,21 @@
 
 ## 4. Read-model packages (commit 4)
 
-- [ ] 4.1 Move the read-model set in design D2 into `feature/<feature>/readmodel/`. Split files where a file mixes
+- [x] 4.1 Move the read-model set in design D2 into `feature/<feature>/readmodel/`. Split files where a file mixes
       read-models with commands (`RenameStatus.kt` keeps `EventRenamer`/`ResetRename` and their no-ops in
       `feature/membership`).
-- [ ] 4.2 Extract `AppVersionGate.Refusal` → top-level `VersionRefusal` in `feature/version/readmodel` and update
+- [x] 4.2 Extract `AppVersionGate.Refusal` → top-level `VersionRefusal` in `feature/version/readmodel` and update
       `AppVersionGate`.
-- [ ] 4.3 Move `EventCreator`/`NoOpEventCreator` to `model/` beside `UserCommands`.
-- [ ] 4.4 Update importers in presentation (main, test, forge, forgeTest), `:ui:screens`, the host, `:domain:compose`,
+- [x] 4.3 Move `EventCreator`/`NoOpEventCreator` to `model/` beside `UserCommands`.
+- [x] 4.4 Update importers in presentation (main, test, forge, forgeTest), `:ui:screens`, the host, `:domain:compose`,
       `:app:desktop`, `:test:world` and `:test:rig`.
 
 ## 5. Rewire consumers (same commit as 2–4 as needed to stay compiling)
 
-- [ ] 5.1 `:ui:screens`: explicit `implementation` deps on presentation, model, feature, Orbit, datetime.
-- [ ] 5.2 `:test:control`: explicit deps on presentation, model, feature, for the integration surface too.
+- [x] 5.1 `:ui:screens`: explicit `implementation` deps on presentation, model, feature, Orbit, datetime.
+- [x] 5.2 `:test:control`: explicit deps on presentation, model, feature, for the integration surface too.
       `:test:integration` (incl. `journeys`): declare what it names explicitly.
-- [ ] 5.3 `:test:world` becomes the host; `:test:rig`, `:app:desktop`, `:app:ios` and `:app:ios:forge` get the new
+- [x] 5.3 `:test:world` becomes the host; `:test:rig`, `:app:desktop`, `:app:ios` and `:app:ios:forge` get the new
       module paths and any dependency previously received transitively.
 - [ ] 5.4 Verify: `./gradlew build`; `./gradlew compileIosMainKotlinMetadata`;
       `./gradlew :domain:presentation:jvmTest -Psnapsync.forge=true`; a `-Psnapsync.rig=true` compile of the rig

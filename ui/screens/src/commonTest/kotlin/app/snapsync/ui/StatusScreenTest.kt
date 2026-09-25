@@ -51,8 +51,8 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.JoinPhase
 import app.snapsync.model.PendingSwitch
-import app.snapsync.feature.membership.RenameFailureReason
-import app.snapsync.feature.membership.RenameStatus
+import app.snapsync.feature.membership.readmodel.RenameFailureReason
+import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.model.SyncHealth
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

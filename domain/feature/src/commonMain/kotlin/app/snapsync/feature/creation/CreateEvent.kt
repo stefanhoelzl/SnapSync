@@ -4,6 +4,10 @@ import app.snapsync.model.CreateOutcome
 import app.snapsync.ports.EventCreation
 
 import co.touchlab.kermit.Logger
+import app.snapsync.model.EventCreator
+import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
 
 /**
  * The create-event use-case: mint an event, then route it into the **same** join gate a scanned QR

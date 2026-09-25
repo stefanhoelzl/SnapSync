@@ -5,6 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
 
 /**
  * The settable [DownloadStatusSource] the harness and the inert default wiring stand on.

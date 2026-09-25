@@ -19,8 +19,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
-import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.feature.version.AppVersionGate
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
@@ -59,6 +58,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.datetime.TimeZone
+import app.snapsync.feature.version.readmodel.VersionRefusal
 
 /** The event the joined tests are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -108,7 +108,7 @@ class HostStatusActionsTest {
     private class Rig(
         config: EventConfig? = null,
         permission: PermissionStatus = PermissionStatus.GRANTED,
-        refusal: AppVersionGate.Refusal? = null,
+        refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         private val details: suspend (String) -> JoinLoad = { OTHER_EVENT },
     ) {
@@ -197,7 +197,7 @@ class HostStatusActionsTest {
     private fun rig(
         config: EventConfig? = null,
         permission: PermissionStatus = PermissionStatus.GRANTED,
-        refusal: AppVersionGate.Refusal? = null,
+        refusal: VersionRefusal? = null,
         diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
     ) = Rig(config, permission, refusal, diagnostics, details)
@@ -212,7 +212,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `the store button opens the store link through the container`() =
-        rigTest(rig(refusal = AppVersionGate.Refusal("0.4"))) { rig ->
+        rigTest(rig(refusal = VersionRefusal("0.4"))) { rig ->
             awaitState(rig) { it.layer is Layer.UpdateRequired }
             onNodeWithText("Open the App Store").performClick()
             awaitFired(rig, "openLink:$STORE_URL")

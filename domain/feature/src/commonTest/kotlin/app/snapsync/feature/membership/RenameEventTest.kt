@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameFailureReason
+import app.snapsync.feature.membership.readmodel.RenameStatus
 
 private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
 

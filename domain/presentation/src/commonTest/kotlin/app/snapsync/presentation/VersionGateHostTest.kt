@@ -1,7 +1,6 @@
 package app.snapsync.presentation
 
-import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.feature.version.AppVersionGate
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SyncStatus
@@ -21,6 +20,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import app.snapsync.model.Layer
+import app.snapsync.feature.version.readmodel.VersionRefusal
 
 /**
  * The version gate on the SCREEN (capability `app-update-required`): a backend refusal of this build
@@ -39,11 +39,11 @@ class VersionGateHostTest {
 
     @Test
     fun `a refused build reaches the update screen carrying the minimum and the remedy`() = runTest {
-        val refusal = MutableStateFlow<AppVersionGate.Refusal?>(null)
+        val refusal = MutableStateFlow<VersionRefusal?>(null)
         gateHost(backgroundScope, refusal).test(this) {
             runOnCreate() // the initial state is the ordinary create layer
 
-            refusal.value = AppVersionGate.Refusal("0.4")
+            refusal.value = VersionRefusal("0.4")
 
             val layer = awaitState().layer
             assertIs<Layer.UpdateRequired>(layer)
@@ -59,14 +59,14 @@ class VersionGateHostTest {
         // would render a healthy-looking event that is doing nothing at all — the exact appearance this
         // state exists to replace. And it must CLEAR: a refusal that outlived the update would strand
         // the member on an update screen after they had already updated.
-        val refusal = MutableStateFlow<AppVersionGate.Refusal?>(null)
+        val refusal = MutableStateFlow<VersionRefusal?>(null)
         gateHost(
             backgroundScope, refusal,
             config = EventConfig(GATE_EVENT_ID, "Anna's Birthday", GATE_CUTOFF, maxPhotoDate = GATE_CEILING),
         ).test(this) {
             runOnCreate() // the initial state is the joined layer
 
-            refusal.value = AppVersionGate.Refusal("0.4")
+            refusal.value = VersionRefusal("0.4")
             assertIs<Layer.UpdateRequired>(awaitState().layer)
 
             refusal.value = null
@@ -77,10 +77,10 @@ class VersionGateHostTest {
 
     @Test
     fun `a refusal that named no version still shows the screen and names nothing`() = runTest {
-        val refusal = MutableStateFlow<AppVersionGate.Refusal?>(null)
+        val refusal = MutableStateFlow<VersionRefusal?>(null)
         gateHost(backgroundScope, refusal).test(this) {
             runOnCreate()
-            refusal.value = AppVersionGate.Refusal(null)
+            refusal.value = VersionRefusal(null)
             val layer = awaitState().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertNull(layer.minimumVersion, "no version was sent, so none is claimed")
@@ -93,7 +93,7 @@ class VersionGateHostTest {
         val opened = mutableListOf<String>()
         val host = gateHost(
             backgroundScope,
-            MutableStateFlow(AppVersionGate.Refusal("0.4")),
+            MutableStateFlow(VersionRefusal("0.4")),
             openLink = { opened += it },
         )
         assertIs<Layer.UpdateRequired>(host.container.stateFlow.value.layer)
@@ -111,7 +111,7 @@ class VersionGateHostTest {
         val opened = mutableListOf<String>()
         val host = gateHost(
             backgroundScope,
-            MutableStateFlow(AppVersionGate.Refusal("0.4")),
+            MutableStateFlow(VersionRefusal("0.4")),
             appStoreUrl = null,
             openLink = { opened += it },
         )
@@ -137,7 +137,7 @@ private val GATE_CEILING = captureCeiling("2026-07-13T14:32:11Z")
  */
 private fun gateHost(
     scope: CoroutineScope,
-    refusal: MutableStateFlow<AppVersionGate.Refusal?> = MutableStateFlow(null),
+    refusal: MutableStateFlow<VersionRefusal?> = MutableStateFlow(null),
     appStoreUrl: String? = STORE_URL,
     config: EventConfig? = null,
     openLink: (String) -> Unit = {},

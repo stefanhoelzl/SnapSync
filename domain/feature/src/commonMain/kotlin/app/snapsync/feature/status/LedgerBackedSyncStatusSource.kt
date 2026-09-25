@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 
 /**
  * The real [SyncStatusSource]. Own-device completeness **and** in-flight activity are read from the

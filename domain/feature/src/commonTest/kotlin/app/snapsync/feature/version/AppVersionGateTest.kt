@@ -7,6 +7,7 @@ import co.touchlab.kermit.loggerConfigInit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import app.snapsync.feature.version.readmodel.VersionRefusal
 
 /**
  * The read-model that owns "the backend is refusing this build" (capability `app-update-required`).
@@ -35,7 +36,7 @@ class AppVersionGateTest {
     fun a_refusal_carries_the_version_the_backend_named() {
         val gate = AppVersionGate()
         gate.refused("0.4")
-        assertEquals(AppVersionGate.Refusal("0.4"), gate.refusal.value)
+        assertEquals(VersionRefusal("0.4"), gate.refusal.value)
     }
 
     @Test
@@ -45,7 +46,7 @@ class AppVersionGateTest {
         // with no screen explaining why.
         val gate = AppVersionGate()
         gate.refused(null)
-        assertEquals(AppVersionGate.Refusal(null), gate.refusal.value)
+        assertEquals(VersionRefusal(null), gate.refusal.value)
     }
 
     @Test
@@ -77,7 +78,7 @@ class AppVersionGateTest {
         gate.refused("0.4")
         gate.refused("0.5") // the backend raised its floor while this build sat there
         assertEquals(2, recorder.errors())
-        assertEquals(AppVersionGate.Refusal("0.5"), gate.refusal.value)
+        assertEquals(VersionRefusal("0.5"), gate.refusal.value)
     }
 
     @Test

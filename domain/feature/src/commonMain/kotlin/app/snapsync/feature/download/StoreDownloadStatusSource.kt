@@ -5,6 +5,8 @@ import app.snapsync.ports.DownloadStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
 
 /**
  * The real [DownloadStatusSource] over the [DownloadStore]: `downloaded` = imported foreign assets,
