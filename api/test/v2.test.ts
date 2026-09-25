@@ -9,6 +9,7 @@ import { assert, assertEquals } from "@std/assert";
 import {
   apnsConfig,
   apnsRecorder,
+  as,
   CONFIG,
   createApp,
   D,
@@ -298,7 +299,10 @@ Deno.test("join → a missing event is 404, a full event is 409 — told apart, 
   const db = await storeWithEvent({ capacity: 1 });
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
   await app.request(JOIN_PATH, { method: "PUT" });
-  const second = await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT" });
+  const second = await app.request(`/api/v2/events/${E}/devices/${D2}`, {
+    method: "PUT",
+    headers: await as(D2),
+  });
   assertEquals(second.status, 409);
   db.close();
 });
@@ -601,7 +605,7 @@ async function withRecipient(db: Awaited<ReturnType<typeof storeWithEvent>>, sta
   const { pushed, headers, fetchImpl } = apnsRecorder(status);
   const app = v2({ config: await apnsConfig(), db, fetch: fetchImpl });
   await app.request(JOIN_PATH, { method: "PUT" });
-  await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT" });
+  await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT", headers: await as(D2) });
   // Seeded directly, not through `PUT /devices/:id`: that route is an UPDATE on a row ATTESTATION
   // creates, so a device that has never attested is refused `401` and would register no token — leaving
   // every assertion below vacuously green.
@@ -736,7 +740,7 @@ Deno.test("manifest → a failed fan-out does not fail the publish", async () =>
   // push fails inside `notifyMembers`.
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
   await app.request(JOIN_PATH, { method: "PUT" });
-  await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT" });
+  await app.request(`/api/v2/events/${E}/devices/${D2}`, { method: "PUT", headers: await as(D2) });
   await enrolDevice(db, D2);
   await db.execute(
     `UPDATE devices SET push_kind = 'apns', push_token = 't', push_env = 'sandbox',

@@ -680,3 +680,155 @@ Deno.test("leave: the departing device's record + attestation are RETAINED (no l
   assert(!calls.some((c) => (c.init.method ?? "GET") === "DELETE"));
   db.close();
 });
+
+// ── A token acts only for its own device (capability `privacy-security`) ─────────────────────────────
+//
+// "A genuine app SHALL act only for its own device." The token proves a genuine install, and it names the
+// device it was minted for; every route naming a device in its path must refuse any other. Device ids are
+// NOT secret — the ungated union lists every member's — so without this binding any genuine install could
+// publish, upload, list, leave or re-register a push token as another member.
+
+/** Another genuine install: a valid token, minted for a device that is not {@link D}. */
+const INTRUDER = "99999999-0000-4000-8000-000000000009";
+
+/** Every route that names a device in its path, under both served versions — v1 is not exempt. */
+const DEVICE_ROUTES: [string, RequestInit][] = [
+  // v1 (frozen shapes, same binding)
+  [`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: JSON.stringify({ assets: [] }) }],
+  [`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" }],
+  [`/api/v1/files/devices/${D}`, {}],
+  [`/api/v1/files/devices/${D}/IMG_0001-photo.jpg`, { method: "PUT", body: "bytes" }],
+  [`/api/v1/devices/${D}`, { method: "PUT", body: JSON.stringify({ pushToken: null }) }],
+  // v2
+  [`/api/v2/events/${E}/devices/${D}`, { method: "PUT", headers: V2 }],
+  [`/api/v2/events/${E}/devices/${D}`, { method: "DELETE", headers: V2 }],
+  [
+    `/api/v2/events/${E}/devices/${D}/manifest`,
+    { method: "PUT", body: JSON.stringify({ assets: [] }), headers: V2 },
+  ],
+  [`/api/v2/files/devices/${D}`, { headers: V2 }],
+  [
+    `/api/v2/files/devices/${D}/ASSET1/primary?filename=IMG_0001.HEIC`,
+    { method: "PUT", body: "bytes", headers: V2 },
+  ],
+  [
+    `/api/v2/devices/${D}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ pushToken: { kind: "apns", token: "hijack", env: "sandbox" } }),
+      headers: V2,
+    },
+  ],
+];
+
+/** A store in which {@link D} is an enrolled, active member with a push token and one shared asset. */
+async function victimStore() {
+  const db = await emptyStore();
+  await insertEvent(db, {
+    eventId: E,
+    name: "x",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    startsAt: "2026-07-01T00:00:00Z",
+    endsAt: "2026-07-31T00:00:00Z",
+    capacity: 10,
+    lifetimeSeconds: 30 * 24 * 60 * 60,
+  });
+  await enrolDevice(db, D);
+  await db.execute(
+    `UPDATE devices SET push_kind = 'apns', push_token = 'victim', push_env = 'sandbox',
+                        push_updated_at = 'x' WHERE device_id = ?`,
+    [D],
+  );
+  await db.execute(
+    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'active', 'x')`,
+    [E, D],
+  );
+  await db.execute(
+    `INSERT INTO event_assets (event_id, device_id, asset_id, creation_date, roles)
+     VALUES (?, ?, 'ASSET1', '2026-07-02T00:00:00Z', '["primary"]')`,
+    [E, D],
+  );
+  return db;
+}
+
+/** Every row the device routes can write, so "nothing changed" is one comparison. */
+async function snapshot(db: Db) {
+  const all = async (sql: string) => (await db.execute(sql)).rows;
+  return {
+    events: await all(`SELECT * FROM events ORDER BY id`),
+    memberships: await all(`SELECT * FROM memberships ORDER BY event_id, device_id`),
+    assets: await all(`SELECT * FROM event_assets ORDER BY event_id, device_id, asset_id`),
+    resources: await all(`SELECT * FROM resources ORDER BY device_id, asset_id, role`),
+    devices: await all(`SELECT * FROM devices ORDER BY device_id`),
+  };
+}
+
+Deno.test("binding: EVERY route naming a device refuses another device's token 403, writing nothing", async () => {
+  const intruder = { authorization: `Bearer ${await mintToken(CONFIG, INTRUDER, NOW)}` };
+  for (const [path, init] of DEVICE_ROUTES) {
+    const db = await victimStore();
+    const before = await snapshot(db);
+    const { calls, app: a } = app({}, db);
+    const res = await a.request(path, { ...init, headers: { ...init.headers, ...intruder } });
+    const what = `${init.method ?? "GET"} ${path}`;
+    assertEquals(res.status, 403, `${what} let another device's token act for ${D}`);
+    assertEquals(calls.length, 0, `${what} reached storage for another device`);
+    assertEquals(await snapshot(db), before, `${what} wrote for another device`);
+    db.close();
+  }
+});
+
+Deno.test("binding: 403, never the 401 that makes the client drop a valid token and re-attest", async () => {
+  // The intruder's credential is genuine; re-attesting would mint the same answer forever.
+  const db = await victimStore();
+  const { app: a } = app({}, db);
+  const res = await a.request(`/api/v2/files/devices/${D}`, {
+    headers: { ...V2, authorization: `Bearer ${await mintToken(CONFIG, INTRUDER, NOW)}` },
+  });
+  assertEquals(res.status, 403);
+  db.close();
+});
+
+Deno.test("binding: the device's OWN token passes every one of those routes", async () => {
+  for (const [path, init] of DEVICE_ROUTES) {
+    const db = await victimStore();
+    const { app: a } = app({}, db);
+    const res = await a.request(path, { ...init, headers: { ...init.headers, ...bearer } });
+    assert(res.status !== 403, `${init.method ?? "GET"} ${path} refused the device's own token`);
+    assert(res.status < 400, `${init.method ?? "GET"} ${path} → ${res.status} for its own device`);
+    db.close();
+  }
+});
+
+Deno.test("binding: a percent-encoded device id is bound as the router decodes it", async () => {
+  // The route acts on the DECODED id, so the binding must judge that one: a raw-path matcher would see
+  // `%31…`, find no device to bind, and let the router decode it into the victim's id.
+  const encoded = `%31${D.slice(1)}`;
+  const db = await victimStore();
+  const before = await snapshot(db);
+  const { app: a } = app({}, db);
+  const hijack = await a.request(`/api/v2/devices/${encoded}`, {
+    method: "PUT",
+    body: JSON.stringify({ pushToken: { kind: "apns", token: "hijack", env: "sandbox" } }),
+    headers: { ...V2, authorization: `Bearer ${await mintToken(CONFIG, INTRUDER, NOW)}` },
+  });
+  assertEquals(hijack.status, 403);
+  assertEquals(await snapshot(db), before);
+  db.close();
+});
+
+Deno.test("binding: a route naming no device is unaffected — any member may read the union or rename", async () => {
+  const db = await victimStore();
+  const { app: a } = app({}, db);
+  const intruder = { authorization: `Bearer ${await mintToken(CONFIG, INTRUDER, NOW)}` };
+  assertEquals(
+    (await a.request(`/api/v2/events/${E}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "renamed" }),
+      headers: { ...V2, ...intruder },
+    })).status,
+    200,
+  );
+  assertEquals((await a.request(`/api/v2/events/${E}/files`, { headers: V2 })).status, 200);
+  db.close();
+});

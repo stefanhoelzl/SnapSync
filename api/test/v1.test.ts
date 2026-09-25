@@ -27,6 +27,7 @@ import type { Db } from "../src/db.ts";
 import {
   apnsConfig,
   apnsRecorder,
+  as,
   assertPresigned,
   CONFIG,
   createApp,
@@ -408,7 +409,11 @@ Deno.test("manifest publish → non-UUID event or device → 400", async () => {
 Deno.test("capacity → a NEW device at capacity → 409, nothing written", async () => {
   const db = await storeWithEvent({ capacity: 1 });
   const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
-  await app.request(`/api/v1/events/${E}/devices/${D2}`, { method: "PUT", body: manifest([]) });
+  await app.request(`/api/v1/events/${E}/devices/${D2}`, {
+    method: "PUT",
+    body: manifest([]),
+    headers: await as(D2),
+  });
   const res = await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) });
   assertEquals(res.status, 409);
   assertEquals((await rows(db, `SELECT * FROM memberships WHERE device_id=?`, [D])).length, 0);
@@ -436,7 +441,11 @@ Deno.test("capacity → leaving frees NO slot, and a rejoin reuses the departed 
   await app.request(MANIFEST_PATH, { method: "DELETE" });
   // A different, never-seen device is still refused …
   assertEquals(
-    (await app.request(`/api/v1/events/${E}/devices/${D2}`, { method: "PUT", body: manifest([]) }))
+    (await app.request(`/api/v1/events/${E}/devices/${D2}`, {
+      method: "PUT",
+      body: manifest([]),
+      headers: await as(D2),
+    }))
       .status,
     409,
   );
@@ -461,7 +470,13 @@ Deno.test("capacity → concurrent first enrollments do NOT overshoot", async ()
   );
   const results = await Promise.all(
     devices.map((d) =>
-      app.request(`/api/v1/events/${E}/devices/${d}`, { method: "PUT", body: manifest([]) })
+      as(d).then((headers) =>
+        app.request(`/api/v1/events/${E}/devices/${d}`, {
+          method: "PUT",
+          body: manifest([]),
+          headers,
+        })
+      )
     ),
   );
   assertEquals(results.filter((r) => r.status === 201).length, 3);
@@ -772,6 +787,7 @@ async function publish(
   const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
   const res = await app.request(`/api/v1/events/${E}/devices/${deviceId}`, {
     method: "PUT",
+    headers: await as(deviceId),
     body: JSON.stringify({
       deviceId,
       assets: assets.map((a) => ({
@@ -1046,7 +1062,7 @@ Deno.test("notify → 202, and a departed member is not pushed", async () => {
   await publish(db, D2, []);
   await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
     `/api/v1/events/${E}/devices/${D2}`,
-    { method: "DELETE" },
+    { method: "DELETE", headers: await as(D2) },
   );
   await registerToken(db, D, "token-active");
   await registerToken(db, D2, "token-departed");

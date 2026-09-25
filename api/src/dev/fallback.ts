@@ -37,3 +37,25 @@ export function enrolmentTarget(method: string, path: string): string | null {
   if (method.toUpperCase() !== "PUT") return null;
   return CONFIG_ROUTE.exec(path)?.[1] ?? null;
 }
+
+// Any device-naming path of the device API, under any version: `/events/<e>/devices/<d>[/…]`,
+// `/files/devices/<d>[/…]` and `/devices/<d>` all carry the id as the segment after `devices`.
+const DEVICE_SEGMENT = /^\/api\/v\d+\/(?:.*?\/)?devices\/([^/]+)/;
+
+/**
+ * The device a request's path acts for, or `null` when it names none — whose token the fallback bearer
+ * mints. The backend refuses a token on any other device's route (capability `privacy-security`), so a
+ * single fixed dev token would 403 every device route a simulator or a contract binding calls.
+ *
+ * Decoded, because the router decodes the parameter it binds against: a percent-encoded id must get the
+ * token for the id the route will see. An undecodable segment is returned raw, and the route 400s it.
+ */
+export function deviceNamedBy(path: string): string | null {
+  const raw = DEVICE_SEGMENT.exec(path)?.[1];
+  if (raw === undefined) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}

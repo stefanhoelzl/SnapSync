@@ -17,8 +17,9 @@
 //     validating locally would pin our guess rather than their behavior.
 //
 //  2. FALLBACK BEARER. The attestation gate stays fully ON. A request that arrives with NO
-//     `authorization` header gets a fixed dev token attached — the same trick `test/app.test.ts` uses to
-//     avoid threading a header through ~100 call sites — so a bare `curl` works. A request carrying its
+//     `authorization` header gets a dev token attached (minted for the device its path names, since a
+//     token acts only for its own device) — the same trick `test/app.test.ts` uses to avoid threading a
+//     header through ~100 call sites — so a bare `curl` works. A request carrying its
 //     OWN token is untouched, including an expired or foreign one: it 401s exactly as deployed, and
 //     `DeviceAttestation.rejected()` on the device then drops it and re-attests, so crossing backends
 //     heals the credential with no operator action. `/attest/*` is ungated either way, so the device's
@@ -36,7 +37,7 @@
 import { createApp } from "../app.ts";
 import { mintToken } from "../attest.ts";
 import { putAttestation } from "../db.ts";
-import { DEV_ATTEST_TTL_MS, enrolmentTarget } from "./fallback.ts";
+import { DEV_ATTEST_TTL_MS, deviceNamedBy, enrolmentTarget } from "./fallback.ts";
 import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
 import { sqliteDb } from "./db-sqlite.ts";
 import { replay } from "./replay.ts";
@@ -114,9 +115,15 @@ await replay(db);
 
 const app = createApp({ config, db, fetch: storage });
 
-// One long-lived token for unauthenticated callers. `verifyToken` does not bind a token to the route's
-// device id, so this single token authorizes a curl against any device's partition.
+// Unauthenticated callers get a token minted for the device the PATH names, because the app refuses a
+// token on any other device's route (`actsFor`, 403) — so a curl, a simulator (no App Attest) and the
+// live contract bindings can still act as any device, one request at a time. A path naming no device gets
+// the fixed dev id's token, minted once.
 const devToken = await mintToken(config, DEV_TOKEN_DEVICE_ID, Date.now());
+const devTokenFor = async (path: string) => {
+  const named = deviceNamedBy(path);
+  return named === null ? devToken : await mintToken(config, named, Date.now());
+};
 
 const presignPrefix = `/${config.zone}/`;
 
@@ -146,7 +153,7 @@ async function handler(request: Request): Promise<Response> {
       );
     }
     const headers = new Headers(request.headers);
-    headers.set("authorization", `Bearer ${devToken}`);
+    headers.set("authorization", `Bearer ${await devTokenFor(path)}`);
     request = new Request(request, { headers });
   }
   return await app.fetch(request);
