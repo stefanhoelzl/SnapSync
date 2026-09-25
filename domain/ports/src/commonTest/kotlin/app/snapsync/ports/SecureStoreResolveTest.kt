@@ -120,6 +120,17 @@ class SecureStoreResolveTest {
     }
 
     @Test
+    fun `readExisting returns a correctly protected item verbatim and never rewrites it`() {
+        val store = FakeSecureStore(found("payload"))
+        var outcome: SecureStoreResolution? = null
+
+        assertEquals("payload", readExisting(store, onResolution = { outcome = it }))
+        assertEquals(0, store.migrations, "an already-correct item must not be rewritten")
+        assertTrue(store.writes.isEmpty())
+        assertEquals(SecureStoreResolution.Found(StoredProtection.BACKGROUND_READABLE, migrated = false), outcome)
+    }
+
+    @Test
     fun `readExisting migrates a legacy item it can read`() {
         val store = FakeSecureStore(found("payload", StoredProtection.RESTRICTED))
 

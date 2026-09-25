@@ -101,7 +101,7 @@ The whole change is a structural refactor. The shipped app's behaviour, every po
   | `Handoff.kt` | `Handoff` |
   | `DownloadTransport.kt` | `TransferOutcome` |
   | `BackgroundTransfer.kt` | `CycleResult` (unchanged), `CreateResult` |
-  | `DownloadStore.kt` | `DownloadState`, `DownloadCounts`, `AssetRef`, `PlannedResource`, `StagedResource`, `PendingDownload`, `ImportableAsset`, `UnconfirmedImport` |
+  | `DownloadStore.kt` | `DownloadState`, `DownloadCounts`, `AssetRef`, `PlannedResource`, `StagedResource`, `PendingDownload`, `ImportableAsset`, `UnconfirmedImport`, `PlannedAsset` (added on `main` by `own-work-per-wake` while this change was in flight, and moved by the same rule at the rebase) |
   | `EventDirectory.kt` | `EventDetails`, **renamed `EventLookup`** |
   | `EventCreation.kt` | `CreateOutcome` |
   | `EventRename.kt` | `RenameOutcome` |
@@ -214,6 +214,10 @@ The whole change is a structural refactor. The shipped app's behaviour, every po
   switch, a failed rename or `NotStarted`/`Syncing` health, all of which the control channel serves. It now does, along
   with each `RangeForm` field and each overlay off its default one at a time, and the `details`/`step`/`joinPhase`
   helpers. Model measures 90.7% of instructions and 81.6% of branches. Presentation's bounds still hold.
+- **Ports, after rebasing onto `own-work-per-wake`.** The moved types took 4 covered branches (and no missed ones) out of
+  ports, leaving it at 64.4% of branches against its 65% floor. Nothing became less tested; the scope shrank. Still no
+  bound was lowered: `readExisting` had never been tested on an already-correctly-protected item (only its
+  `resolveOrMint` twin had), and that test now exists. Ports measures 65.25% of branches.
 
 ## Risks / Trade-offs
 
