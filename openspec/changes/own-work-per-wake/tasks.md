@@ -68,7 +68,7 @@
 
 - [x] 10.1 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green; iOS simulator tests and contracts green on CI
 - [x] 10.2 Verify in the simulator app whether `beginBackgroundTask`'s expiry fires in the relaunch setting (open question in design)
-- [ ] 10.3 SE2 benchmark after stage 2 with the uncommitted harness (re-applied), on a build that includes the download-enqueue dedupe fix; per-wake duplicate check before using any S2 number; record results beside baseline and stage 1
+- [x] 10.3 SE2 benchmark after stage 2 with the uncommitted harness (re-applied), on a build that includes the download-enqueue dedupe fix; per-wake duplicate check before using any S2 number; record results beside baseline and stage 1
 - [ ] 10.4 After release: watch Bugsink dumps for the OS expiry line and imports left staged (the field evidence this change rests on)
 
 ## 11. Sync and archive
