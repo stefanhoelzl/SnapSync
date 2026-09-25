@@ -465,3 +465,15 @@ subprojects {
         .matching { !it.name.endsWith("KotlinMetadata") }
         .configureEach { compilerOptions.allWarningsAsErrors.set(true) }
 }
+
+// ---- Kotlin/Native backend threads -----------------------------------------------------------
+//
+// KGP runs every Kotlin/Native link with 4 backend threads by default, and on a host with fewer cores
+// the compiler warns on every link (`The number of threads 4 is more than the number of processors 3`
+// — GitHub's macos-26 runner has 3). So the count is min(cores, 4): the default's cap, never more
+// threads than the host has. KGP reads `kotlin.native.parallelThreads` from each project's extra
+// properties; an explicit `-Pkotlin.native.parallelThreads=` still wins.
+val nativeParallelThreads = minOf(Runtime.getRuntime().availableProcessors(), 4)
+if (!providers.gradleProperty("kotlin.native.parallelThreads").isPresent) {
+    allprojects { extra["kotlin.native.parallelThreads"] = nativeParallelThreads.toString() }
+}

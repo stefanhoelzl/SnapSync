@@ -71,6 +71,9 @@ if ! command -v applesimutils >/dev/null; then
     export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
     brew tap wix/brew >/dev/null || fail "could not tap wix/brew"
     git -C "$(brew --repo wix/brew)" checkout -q "$APPLESIMUTILS_TAP_COMMIT" || fail "could not pin wix/brew"
+    # The tap also carries casks we never install, and Homebrew loads them anyway: its detox-instruments
+    # cask uses a deprecated `depends_on macos:` form, which surfaced as a warning annotation on every run.
+    rm -rf "$(brew --repo wix/brew)/Casks"
     brew install wix/brew/applesimutils >/dev/null || fail "could not install applesimutils"
 fi
 
