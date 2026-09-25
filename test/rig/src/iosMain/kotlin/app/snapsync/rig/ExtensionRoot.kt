@@ -78,7 +78,7 @@ fun extensionTriggerGroup(
  * Kermit's writer list is process-global and BOTH composition roots set it in their `init`, so touching the
  * extension root redirects the app's own log into `ext-debug.log` and would silence
  * `/device/logs?process=app` for the rest of the process. Snapshot and restore around the call. The
- * cycle's own lines still land in `ext-debug.log`, which is where they belong — `IosDeviceLogSource`
+ * cycle's own lines still land in `ext-debug.log`, which is where they belong — `LogTailService`
  * already serves that file as the extension process's log.
  */
 private suspend fun invokeExtensionCycle(

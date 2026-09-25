@@ -16,8 +16,12 @@ import app.snapsync.logging.IosLogScope
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.PlatformEntry
 import app.snapsync.album.IosAlbumManager
-import app.snapsync.album.IosAlbumMapStore
-import app.snapsync.config.FileBackedConfigStore
+import app.snapsync.album.legacyAlbumMapKeychain
+import app.snapsync.preferences.IosPreferences
+import app.snapsync.services.album.AlbumMapService
+import app.snapsync.files.IosFiles
+import app.snapsync.ports.Files
+import app.snapsync.services.config.ConfigService
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
@@ -33,7 +37,7 @@ import app.snapsync.ports.processingResultRawValue
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.services.ledger.LedgerService
-import app.snapsync.gallery.IosDeviceManifestStore
+import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
@@ -59,7 +63,7 @@ import kotlinx.coroutines.runBlocking
  * principal class calls [process] from its `process()` callback.
  *
  * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
- * App-Group config file ([FileBackedConfigStore] — writes are file-only since the migration
+ * App-Group config file ([ConfigService] over [IosFiles] — writes are file-only since the migration
  * finale ended the 11a Keychain write-through; the read keeps the legacy-Keychain migration
  * fallback until the post-ship Stage-2 change, so this extension can be the process that migrates
  * a pre-file device on the OS's first post-update invocation) combined with the compile-time upload host
@@ -131,14 +135,15 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // never the full DownloadStore surface. It never creates or migrates the store — the app does — so an
     // extension that runs before the updated app has pauses its cycle instead (`SuppressionService`).
     private val suppression: SuppressionSource by lazy { SuppressionService(databases) }
-    private val configSource: FileBackedConfigStore by lazy { FileBackedConfigStore() }
+    private val files: Files by lazy { IosFiles() }
+    private val configSource: ConfigService by lazy { ConfigService(files) }
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
     // PhotoKit album manager. The extension only ever ADDS completed uploads (the app is the sole creator).
     // The manager is hoisted because the selection policy also reads it (denylisted-album membership).
     private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
     private val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, IosAlbumMapStore())
+        AlbumCoordinator(albumManager, AlbumMapService(IosPreferences(), legacyAlbumMapKeychain()))
     }
 
     // The stable per-install device id (shared Keychain access group, addressed by name): the
@@ -251,7 +256,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 // The per-event device manifest (capability `photo-sharing`): the extension is its
                 // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpManifestPublisher`
                 // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).
-                manifestStore = IosDeviceManifestStore(),
+                manifestStore = DeviceManifestService(files),
                 manifestPublisher = HttpManifestPublisher(httpClient, bakedUploadBase()),
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-sharing`): this tier's

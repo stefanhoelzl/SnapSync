@@ -1,4 +1,4 @@
-package app.snapsync.config
+package app.snapsync.files
 
 import platform.Foundation.NSCocoaErrorDomain
 import platform.Foundation.NSFileNoSuchFileError
@@ -18,13 +18,13 @@ import kotlin.test.assertTrue
  * against integer literals and could not fail — a JVM run has no `NSCocoaErrorDomain` to disagree
  * with. Here they name Apple's own constants, so the suite fails if a value ever moves under us.
  */
-class ConfigFileAbsenceTest {
+class FileAbsenceTest {
 
     @Test
     fun `not-found errors are the only absence`() {
-        assertTrue(isConfigFileAbsence(NSCocoaErrorDomain, NSFileReadNoSuchFileError))
-        assertTrue(isConfigFileAbsence(NSCocoaErrorDomain, NSFileNoSuchFileError)) // the delete path
-        assertTrue(isConfigFileAbsence(NSPOSIXErrorDomain, 2L)) // ENOENT — Foundation exposes no constant
+        assertTrue(isFileAbsence(NSCocoaErrorDomain, NSFileReadNoSuchFileError))
+        assertTrue(isFileAbsence(NSCocoaErrorDomain, NSFileNoSuchFileError)) // the delete path
+        assertTrue(isFileAbsence(NSPOSIXErrorDomain, 2L)) // ENOENT — Foundation exposes no constant
     }
 
     @Test
@@ -41,14 +41,23 @@ class ConfigFileAbsenceTest {
         // Apple's data-protection contract: a protected file read before first unlock fails
         // permission-class, never not-found — mapping it to absence would turn every locked
         // background wake into a false leave.
-        assertFalse(isConfigFileAbsence(NSCocoaErrorDomain, NSFileReadNoPermissionError))
-        assertFalse(isConfigFileAbsence(NSPOSIXErrorDomain, 1L)) // EPERM
+        assertFalse(isFileAbsence(NSCocoaErrorDomain, NSFileReadNoPermissionError))
+        assertFalse(isFileAbsence(NSPOSIXErrorDomain, 1L)) // EPERM
     }
 
     @Test
     fun `any unknown error stays on the unreadable side`() {
-        assertFalse(isConfigFileAbsence(NSCocoaErrorDomain, NSFileReadUnknownError))
-        assertFalse(isConfigFileAbsence("SomeOtherDomain", NSFileReadNoSuchFileError)) // code alone is not enough
-        assertFalse(isConfigFileAbsence(null, 2L))
+        assertFalse(isFileAbsence(NSCocoaErrorDomain, NSFileReadUnknownError))
+        assertFalse(isFileAbsence("SomeOtherDomain", NSFileReadNoSuchFileError)) // code alone is not enough
+        assertFalse(isFileAbsence(null, 2L))
+    }
+
+    @Test
+    fun `the permission class is denied and denied is never absent`() {
+        assertTrue(isFileDenied(NSCocoaErrorDomain, NSFileReadNoPermissionError))
+        assertTrue(isFileDenied(NSPOSIXErrorDomain, 1L)) // EPERM
+        assertTrue(isFileDenied(NSPOSIXErrorDomain, 13L)) // EACCES
+        assertFalse(isFileDenied(NSCocoaErrorDomain, NSFileReadNoSuchFileError))
+        assertFalse(isFileDenied(NSCocoaErrorDomain, NSFileReadUnknownError))
     }
 }

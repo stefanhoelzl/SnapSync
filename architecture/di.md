@@ -18,12 +18,14 @@ Roots found:
 | Constructed type | SnapSyncRoot | UploadExtensionRoot |
 |---|---|---|
 | `AlbumCoordinator` | | x |
+| `AlbumMapService` | x | x |
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
 | `CachedAttestStore` | | x |
+| `ConfigService` | x | x |
+| `DeviceManifestService` | x | x |
 | `DownloadService` | x | |
 | `EntryHooks` | x | |
-| `FileBackedConfigStore` | x | x |
 | `FileLogWriter` | x | x |
 | `HttpAttestClient` | x | |
 | `HttpDeviceFilesSource` | x | |
@@ -36,23 +38,22 @@ Roots found:
 | `HttpManifestPublisher` | | x |
 | `HttpPushTokenPublisher` | x | |
 | `IosAlbumManager` | x | x |
-| `IosAlbumMapStore` | x | x |
 | `IosAttestKey` | x | |
 | `IosBackgroundTime` | x | |
 | `IosDatabases` | x | x |
-| `IosDeviceLogSource` | x | |
-| `IosDeviceManifestStore` | x | x |
 | `IosDiscovery` | | x |
 | `IosDownloadTransport` | x | |
+| `IosFiles` | x | x |
 | `IosLinkOpener` | x | |
 | `IosPhotoLibraryImporter` | x | |
+| `IosPreferences` | x | x |
 | `IosProtectedStorage` | x | |
 | `IosPushRegistrationRecord` | x | |
 | `IosShareSheet` | x | |
-| `IosStagedBytes` | x | |
 | `KeychainAttestStore` | x | x |
 | `KeychainDeviceIdentity` | x | x |
 | `LedgerService` | x | x |
+| `LogTailService` | x | |
 | `MetricKitProcessMetricSource` | x | |
 | `OsDrivenRegistration` | x | |
 | `PhotoKitAssetPresence` | x | |
@@ -66,6 +67,7 @@ Roots found:
 | `PushTokenSource` | x | |
 | `RigSwitches` | x | |
 | `SentryDiagnosticsReporter` | x | x |
+| `StagingService` | x | |
 | `SuppressionService` | | x |
 | `UploadPorts` | | x |
 | `UploadRecordPorts` | x | |

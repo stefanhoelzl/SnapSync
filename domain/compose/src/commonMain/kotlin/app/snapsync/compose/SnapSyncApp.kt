@@ -423,11 +423,11 @@ class AppCore internal constructor(
     // Background byte transfers → durable staging. The queue, bounded window, and cancellation
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
     val downloadJobs: QueuedPhotoDownloadJobs by lazy {
-        // The staging root is read from the port that also releases those bytes, at first use rather
-        // than at composition — on iOS it is an App-Group container lookup (capability `receiving-photos`).
+        // Staging is the port that also releases those bytes, so the two never name different directories
+        // (capability `receiving-photos`); the jobs record relative paths and locate them only for the transport.
         QueuedPhotoDownloadJobs(
             scope = scope,
-            stagingRoot = ports.stagedBytes.stagingRoot(),
+            staging = ports.stagedBytes,
             newTransport = ports.newDownloadTransport,
             // Deliver each staged resource back to the controller — an adapter outbound callback satisfied
             // by a compose-built lambda whose body is one call (law "Commands cross one door"). It reads the

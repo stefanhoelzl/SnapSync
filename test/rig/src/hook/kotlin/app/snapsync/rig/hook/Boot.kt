@@ -7,7 +7,8 @@ import app.snapsync.ios.SnapSyncRoot
 import app.snapsync.ios.UploaderPinSource
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.ios.urlsession.transferSessionBinding
-import app.snapsync.logging.IosDeviceLogSource
+import app.snapsync.files.IosFiles
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.logging.documentsDirectory
 import app.snapsync.rig.RigCommand
 import app.snapsync.rig.RigHooks
@@ -134,7 +135,7 @@ private fun iosHooks() = RigHooks(
     // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
     // would not be the call the OS makes, which is the whole reason triggers are entry points.
     mainLane = Dispatchers.Main,
-    deviceLog = IosDeviceLogSource(),
+    deviceLog = LogTailService(IosFiles()),
     // Grouped by composition root: the `/os/<root>/<member>` segment names whose entry point a caller
     // invokes. `app` is `SnapSyncRoot`'s. A second group joins it when the channel reaches a second root.
     triggerGroups = mapOf(

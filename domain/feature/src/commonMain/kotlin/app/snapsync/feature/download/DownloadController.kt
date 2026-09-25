@@ -439,7 +439,9 @@ class DownloadController(
         val next = store.importableAssets()
             .firstOrNull { it.ref !in attempted && it.ref !in importing } ?: return null
         importing += next.ref
-        return ClaimedImport(next.ref, next.creationDate, store.stagedResources(next.ref))
+        // The store holds staged paths relative to the shared area; the library is handed the platform path.
+        val resources = store.stagedResources(next.ref).map { it.copy(stagedPath = stagedBytes.locate(it.stagedPath)) }
+        return ClaimedImport(next.ref, next.creationDate, resources)
     }
 
     /**

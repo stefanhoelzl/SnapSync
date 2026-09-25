@@ -1179,6 +1179,7 @@ class DownloadControllerTest {
     ) : StagedBytes {
         val released = mutableListOf<String>()
         override fun stagingRoot(): String = "staged:/"
+        override fun locate(path: String): String = path
         override suspend fun release(paths: List<String>) {
             failWith?.invoke()
             released += paths

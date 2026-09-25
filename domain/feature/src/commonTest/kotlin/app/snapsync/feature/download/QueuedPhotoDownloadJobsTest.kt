@@ -2,6 +2,7 @@ package app.snapsync.feature.download
 
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
+import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.model.TransferOutcome
 
@@ -53,7 +54,7 @@ class QueuedPhotoDownloadJobsTest {
      * Objective-C `NSException` which aborts the process. A test that trips this `check` is reproducing
      * the production crash.
      */
-    private class FakeDownloadTransport(private val host: DownloadTransportHost) : DownloadTransport {
+    private class FakeDownloadTransport(val host: DownloadTransportHost) : DownloadTransport {
 
         class Started(val url: String, val description: String) {
             var cancelled = false
@@ -115,7 +116,7 @@ class QueuedPhotoDownloadJobsTest {
 
         val jobs = QueuedPhotoDownloadJobs(
             scope = scope,
-            stagingRoot = "/root",
+            staging = RootedStaging,
             newTransport = { events -> FakeDownloadTransport(events).also { transports += it } },
             onStaged = { ref, key, path -> deliver(ref, key, path) },
         )
@@ -457,7 +458,7 @@ class QueuedPhotoDownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "/root/DEVICE-A/a-primary.heic")),
+            listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "root/DEVICE-A/a-primary.heic")),
             h.staged,
         )
     }
@@ -534,7 +535,7 @@ class QueuedPhotoDownloadJobsTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "/root/DEVICE-A/a-primary.heic")),
+            listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "root/DEVICE-A/a-primary.heic")),
             h.staged,
             "a completion from a previous process must still find its staging path",
         )
@@ -542,8 +543,8 @@ class QueuedPhotoDownloadJobsTest {
 
     @Test
     fun staging_path_sanitizes_slashes_in_the_device_id_and_key() {
-        val path = stagingPath("/root", AssetRef("DEV/ICE", "A"), "a/b.heic")
-        assertEquals("/root/DEV_ICE/a_b.heic", path)
+        val path = stagingPath("root", AssetRef("DEV/ICE", "A"), "a/b.heic")
+        assertEquals("root/DEV_ICE/a_b.heic", path)
     }
 
     // ---- URL guard ---------------------------------------------------------------------------------
@@ -602,5 +603,26 @@ class QueuedPhotoDownloadJobsTest {
         assertTrue(h.transports[0].destroyed)
         assertFalse(h.transports[1].destroyed)
         assertEquals(1, h.transports[1].started.size, "the transfer runs on the fresh transport")
+    }
+
+    /** A staging area rooted at the relative `root`, located under `/abs/` — so a test sees which of the two it got. */
+    private object RootedStaging : StagedBytes {
+        override fun stagingRoot() = "root"
+        override fun locate(path: String) = "/abs/$path"
+        override suspend fun release(paths: List<String>) = Unit
+        override suspend fun allPresent(paths: List<String>) = true
+    }
+
+    @Test
+    fun `the transport is handed the located path and the store is told the relative one`() = runTest {
+        val h = Harness(backgroundScope)
+        h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+        runCurrent()
+        val description = h.transport.started.single().description
+
+        assertEquals("/abs/root/DEVICE-A/a-primary.heic", h.transport.host.destinationFor(description))
+        h.transport.finish(description)
+        runCurrent()
+        assertEquals("root/DEVICE-A/a-primary.heic", h.staged.single().third, "no platform path reaches the store")
     }
 }

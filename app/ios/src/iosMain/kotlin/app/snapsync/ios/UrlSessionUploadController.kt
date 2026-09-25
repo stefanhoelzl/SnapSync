@@ -9,12 +9,12 @@ import app.snapsync.ports.AlbumManager
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.compose.appUploadDiscovery
-import app.snapsync.config.FileBackedConfigStore
+import app.snapsync.ports.ConfigReader
+import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.LedgerStore
-import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.PhotoKitLibraryChangeTokenRead
@@ -53,7 +53,9 @@ import kotlinx.coroutines.CoroutineScope
 class UrlSessionUploadController(
     private val scope: CoroutineScope,
     private val ledgerStore: LedgerStore,
-    private val configSource: FileBackedConfigStore,
+    private val configSource: ConfigReader,
+    // The device manifest's skip record — the same file-backed service the app graph's manifest producer reads.
+    private val manifestStore: DeviceManifestStore,
     // Resolved PER CYCLE, not held as a `String`. A held id cannot express "unreadable this cycle": an
     // unresolvable Keychain read then throws out of whatever first touches it instead of skipping
     // cleanly, and this tier is relaunched cold by the OS to deliver background-session events — a path
@@ -156,7 +158,7 @@ class UrlSessionUploadController(
                 selectionScope = graph.selectionScope,
                 // The device manifest PUT goes through the generic `HttpManifestPublisher` (the former
                 // app-local `IosEnrollment` copy is dead — one uploader serves all).
-                manifestStore = IosDeviceManifestStore(),
+                manifestStore = manifestStore,
                 manifestPublisher = HttpManifestPublisher(httpClient, host),
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-sharing`), scoped by the

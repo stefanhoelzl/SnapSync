@@ -41,6 +41,7 @@ flowchart LR
   adapter_generic_fake --> domain_flow
   adapter_generic_fake --> domain_model
   adapter_generic_fake --> domain_ports
+  adapter_generic_fake --> domain_services
   adapter_generic_fake --> test_contracts
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain_compose

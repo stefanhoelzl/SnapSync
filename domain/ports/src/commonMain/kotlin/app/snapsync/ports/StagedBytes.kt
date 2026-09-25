@@ -24,24 +24,24 @@ package app.snapsync.ports
 interface StagedBytes {
 
     /**
-     * The durable directory staged bytes live under — the other end of [release], and the reason this
-     * member is here rather than on a port of its own: one owner decides where staging lives *and* what
-     * may be reclaimed from it, so the two can never name different directories.
+     * The directory staged bytes live under — **relative to the shared area**, like every path this port takes
+     * (`docs/architecture.md`, "Paths are area-relative"). A staged path is stored in the download store as it is
+     * built from this root, so a device whose container moved (a restore) still finds its staged files.
      *
-     * This was `AppPorts.downloadStagingRoot: () -> String`, a function-typed field the shell filled with
-     * an inline App-Group container lookup — a platform read handed straight to the core past the port
-     * boundary (`docs/architecture.md`, "Ports are the I/O boundary named for the need"). Its type
-     * said nothing: `() -> String` is exactly the type of `deviceId`, which returns a value the
-     * composition already holds. Only a port makes the difference legible.
-     *
-     * Resolved lazily, at first download rather than at composition, because on iOS it is a container
-     * lookup that a locked background launch must not be forced into early. It is NOT suspend: the
-     * lookup is a path resolve, not I/O, and making it suspend would push `AppCore`'s download-jobs
-     * assembly out of the lazy web whose construction timing is load-bearing.
+     * One owner decides where staging lives *and* what may be reclaimed from it, so the two can never name
+     * different directories. Not suspend, and no I/O: it names a directory, it does not look one up.
      */
     fun stagingRoot(): String
 
-    /** Delete the files at [paths]. Missing files are not an error; the operation is idempotent. */
+    /**
+     * The platform path of the staged file at [path] — for the one platform API that must be handed a file (the
+     * download transport's destination, the photo-library import). Nothing is created or read. **Throws** when
+     * the shared area cannot be reached, for the reason [None]'s [stagingRoot] does: a file staged, or imported,
+     * from a directory nobody chose is a photo lost without a trace.
+     */
+    fun locate(path: String): String
+
+    /** Delete the files at [paths] (relative). Missing files are not an error; the operation is idempotent. */
     suspend fun release(paths: List<String>)
 
     /**
@@ -89,6 +89,13 @@ interface StagedBytes {
         val None: StagedBytes = object : StagedBytes {
             override fun stagingRoot(): String =
                 error("StagedBytes.None stages nothing — a composition that downloads must supply a real StagedBytes")
+
+            /**
+             * [path] itself: a composition that stages nothing has no area to resolve against, so the path it was
+             * handed is the only name there is (what a test that plans rows by hand staged). Unlike [stagingRoot]
+             * this names no NEW directory — nothing is ever written through it.
+             */
+            override fun locate(path: String): String = path
 
             override suspend fun release(paths: List<String>) = Unit
 

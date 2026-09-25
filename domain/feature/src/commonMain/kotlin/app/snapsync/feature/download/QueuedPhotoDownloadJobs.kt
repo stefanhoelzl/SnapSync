@@ -6,10 +6,12 @@ import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.PhotoDownloadJobs
+import app.snapsync.ports.StagedBytes
 import app.snapsync.model.TransferOutcome
 
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.LogScope
+import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.PendingDownload
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
@@ -42,7 +44,7 @@ internal fun decodeTag(description: String): TaskTag? {
     return TaskTag(AssetRef(parts[0], parts[1]), parts[2])
 }
 
-/** Where a resource's bytes land in durable App-Group staging. `/` is not legal in a path segment. */
+/** Where a resource's bytes land in durable staging, relative to the shared area. `/` is not legal in a path segment. */
 internal fun stagingPath(root: String, ref: AssetRef, resourceKey: String): String =
     "$root/${ref.sourceDeviceId.replace('/', '_')}/${resourceKey.replace('/', '_')}"
 
@@ -92,7 +94,12 @@ internal fun isFetchableUrl(url: String): Boolean {
  */
 class QueuedPhotoDownloadJobs(
     private val scope: CoroutineScope,
-    private val stagingRoot: String,
+    /**
+     * Where staged bytes live: a relative root and the one lookup that turns a relative path into the platform
+     * path the transport writes to. The staged path this class reports is the RELATIVE one, so the download store
+     * never holds an absolute container path (a restored device's container may move).
+     */
+    private val staging: StagedBytes,
     private val newTransport: (DownloadTransportHost) -> DownloadTransport,
     /**
      * Deliver a staged resource. Required, and bound at construction (law "Callbacks are bound at
@@ -199,7 +206,11 @@ class QueuedPhotoDownloadJobs(
          */
         override fun destinationFor(description: String): String? {
             val tag = decodeTag(description) ?: return null
-            return stagingPath(stagingRoot, tag.ref, tag.resourceKey)
+            // An unreachable shared area names no destination: the bytes are not staged, and the resource is
+            // downloaded again by a later reconcile — never staged somewhere the release side cannot find.
+            return runCatchingCancellable { staging.locate(relativePath(tag)) }
+                .onFailure { log.w(it) { "no staging destination for $description — not staged" } }
+                .getOrNull()
         }
 
         override fun onStaged(description: String, stagedPath: String) {
@@ -207,11 +218,14 @@ class QueuedPhotoDownloadJobs(
                 log.w { "staged bytes carry an undecodable transfer description — not imported: $description" }
                 return
             }
+            // What is recorded is the RELATIVE path the destination was located from — the same function of the
+            // description — never the platform path the transport reports.
+            val relative = relativePath(tag)
             // Launched here, and REMEMBERED: this fires on the transport's delegate queue, which must
             // not be blocked by a store write, but the job has to remain reachable so the wake's OS handler
             // can wait for it. Pruning completed jobs keeps the list from growing across a long session.
-            val staging = scope.launch { onStaged(tag.ref, tag.resourceKey, stagedPath) }
-            outstandingStagings.update { held -> held.filterNot { it.isCompleted } + staging }
+            val recording = scope.launch { onStaged(tag.ref, tag.resourceKey, relative) }
+            outstandingStagings.update { held -> held.filterNot { it.isCompleted } + recording }
         }
 
         override fun onCompleted(description: String, error: String?) {
@@ -258,6 +272,9 @@ class QueuedPhotoDownloadJobs(
     }
 
     private fun transport(): DownloadTransport = transport ?: newTransport(host).also { transport = it }
+
+    /** The relative staged path of the resource [tag] names — the one place it is derived. */
+    private fun relativePath(tag: TaskTag): String = stagingPath(staging.stagingRoot(), tag.ref, tag.resourceKey)
 
     override suspend fun enqueue(downloads: List<PendingDownload>) {
         downloads.forEach {

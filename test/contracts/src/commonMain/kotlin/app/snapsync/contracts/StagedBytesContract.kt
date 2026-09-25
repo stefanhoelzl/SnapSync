@@ -6,7 +6,7 @@ import kotlin.test.assertFails
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The states a [StagedBytes] can be found in, as far as a clause cares. */
+/** The states a [StagedBytes] can be found in, as far as a clause cares. Every path a clause names is relative. */
 enum class StagedBytesState {
     /** There is nowhere durable to stage — on iOS, a process without the App-Group container. */
     UNAVAILABLE,
@@ -21,8 +21,8 @@ enum class StagedBytesState {
 /**
  * What staged downloaded bytes promise (`docs/architecture.md`; the port's KDoc carries why).
  *
- * The obligations are the ones a lost photo would turn on: an unavailable root **refuses** rather than
- * naming a directory the release side cannot find; release is idempotent and tolerates missing files; and
+ * The obligations are the ones a lost photo would turn on: an unavailable area **refuses** to locate a file rather
+ * than naming a directory the release side cannot find; release is idempotent and tolerates missing files; and
  * [StagedBytes.allPresent] reports the fact of existence — any missing member answers `false`, an empty
  * list answers `true`.
  *
@@ -38,10 +38,16 @@ object StagedBytesContract : Contract<StagedBytesState, StagedBytes>("StagedByte
 
     override val clauses = clauses {
 
-        clause("UNAVAILABLE_STAGING_ROOT_REFUSES", StagedBytesState.UNAVAILABLE) { bytes ->
+        clause("UNAVAILABLE_LOCATE_REFUSES", StagedBytesState.UNAVAILABLE) { bytes ->
             assertFails("staging into a directory nobody chose loses every photo written there") {
-                bytes.stagingRoot()
+                bytes.locate("${bytes.stagingRoot()}/UNAVAILABLE_LOCATE_REFUSES.bin")
             }
+        }
+
+        clause("EMPTY_LOCATE_NAMES_A_FILE_UNDER_THE_ROOT_AND_CREATES_NOTHING", StagedBytesState.EMPTY) { bytes ->
+            val path = "${bytes.stagingRoot()}/EMPTY_LOCATE_NAMES_A_FILE_UNDER_THE_ROOT_AND_CREATES_NOTHING.bin"
+            assertEquals(bytes.locate(path), bytes.locate(path), "a platform path is a function of the staged path")
+            assertFalse(bytes.allPresent(listOf(path)))
         }
 
         clause("EMPTY_STAGING_ROOT_IS_STABLE", StagedBytesState.EMPTY) { bytes ->

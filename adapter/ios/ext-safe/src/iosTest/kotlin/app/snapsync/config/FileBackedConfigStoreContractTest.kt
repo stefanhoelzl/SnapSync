@@ -10,6 +10,8 @@ import app.snapsync.contracts.ConfigStoreState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
+import app.snapsync.files.IosFiles
+import app.snapsync.services.config.ConfigService
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.writeTextFile
@@ -41,7 +43,7 @@ class FileBackedConfigStoreContractTest {
         )
 
         override fun create(state: ConfigStoreState, clauseId: String): Entered<ConfigPorts> {
-            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ports(FileBackedConfigStore()))
+            if (state == ConfigStoreState.INACCESSIBLE) return Entered.Ready(ports(ConfigService(IosFiles())))
             val dir = newTempDirectory()
             val file = "$dir/$FILE"
             when (state) {
@@ -58,14 +60,14 @@ class FileBackedConfigStoreContractTest {
                 }
                 ConfigStoreState.ABSENT, ConfigStoreState.INACCESSIBLE -> Unit
             }
-            return Entered.Ready(ports(FileBackedConfigStore(containerPath = dir))) {
+            return Entered.Ready(ports(ConfigService(IosFiles(sharedRoot = dir, privateRoot = null)))) {
                 chmod(file, OWNER_READ_WRITE)
                 removeDirectory(dir)
             }
         }
     }
 
-    private fun ports(store: FileBackedConfigStore) = ConfigPorts(source = store, store = store, reader = store)
+    private fun ports(store: ConfigService) = ConfigPorts(source = store, store = store, reader = store)
 
     @Test
     fun `the App-Group config file satisfies the ConfigStore contract`() = verify(ConfigStoreContract, binding)

@@ -7,6 +7,8 @@ import app.snapsync.contracts.DeviceLogSourceState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
+import app.snapsync.files.IosFiles
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceLogSource.Process
 import app.snapsync.testsupport.newTempDirectory
@@ -33,8 +35,10 @@ class IosDeviceLogSourceContractTest {
         )
 
         override fun create(state: DeviceLogSourceState, clauseId: String): Entered<DeviceLogSource> {
-            val dir = newTempDirectory()
-            val paths = mapOf(Process.APP to "$dir/debug.log", Process.EXTENSION to "$dir/ext-debug.log")
+            // Two directories, as on a device: the app's log in its own private area, the extension's in the shared one.
+            val shared = newTempDirectory()
+            val private = newTempDirectory()
+            val paths = mapOf(Process.APP to "$private/debug.log", Process.EXTENSION to "$shared/ext-debug.log")
             paths.forEach { (process, path) ->
                 when (state) {
                     DeviceLogSourceState.NO_LOG -> Unit
@@ -44,8 +48,9 @@ class IosDeviceLogSourceContractTest {
                         writeTextFile("$path.1", DeviceLogSourceContract.seedLog(process, clauseId))
                 }
             }
-            return Entered.Ready(IosDeviceLogSource(paths.getValue(Process.APP), paths.getValue(Process.EXTENSION))) {
-                removeDirectory(dir)
+            return Entered.Ready(LogTailService(IosFiles(sharedRoot = shared, privateRoot = private))) {
+                removeDirectory(shared)
+                removeDirectory(private)
             }
         }
     }

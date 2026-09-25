@@ -1,4 +1,4 @@
-package app.snapsync.feature.album
+package app.snapsync.services.album
 
 import app.snapsync.model.SecureStoreRead
 

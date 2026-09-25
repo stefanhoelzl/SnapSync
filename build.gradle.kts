@@ -86,9 +86,10 @@ subprojects {
 listOf(
     ":domain:model" to ":adapter:generic:fake",
     ":domain:ports" to ":adapter:generic:fake",
-    // The storage services' SQLite behaviour is measured beside the JVM `Databases` adapter (a `:domain:*` build
-    // file names no module), and their composition through the world.
+    // The storage services' SQLite and file behaviour is measured beside the JVM adapters (a `:domain:*` build
+    // file names no module), their fake-driven tests beside the mocks, and their composition through the world.
     ":domain:services" to ":adapter:generic:app",
+    ":domain:services" to ":adapter:generic:fake",
     ":domain:services" to ":test:world",
     ":domain:feature" to ":adapter:generic:fake",
     ":domain:flow" to ":adapter:generic:fake",

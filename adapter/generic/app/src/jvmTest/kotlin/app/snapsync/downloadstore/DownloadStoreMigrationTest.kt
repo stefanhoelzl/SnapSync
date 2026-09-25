@@ -60,4 +60,43 @@ class DownloadStoreMigrationTest {
         assertEquals(1, store.counts().imported)
         assertEquals(true, store.isSettled(AssetRef("DEV-A", "OLD")))
     }
+
+    /**
+     * v3 → v4 rewrites every staged path relative to the shared area (capability `receiving-photos`): a row that
+     * kept the absolute container path would point at nothing once the container moved, and its bytes would read
+     * as consumed. A path outside the staging directory is left as it was.
+     */
+    @Test
+    fun `v3 to v4 makes staged paths relative and keeps everything else`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        DownloadDatabase.Schema.create(driver)
+        driver.execute(null, "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, createdLocalId, creationDate) " +
+            "VALUES ('DEV-A', 'A', 'PLANNED', NULL, '2026-08-08T12:00:00Z')", 0)
+        val container = "/private/var/mobile/Containers/Shared/AppGroup/0B1C2D3E"
+        listOf(
+            "a-primary.heic" to "$container/download-staging/DEV-A/a-primary.heic",
+            "a-live.mov" to null,
+            "a-odd.jpg" to "/somewhere/else/a-odd.jpg",
+        ).forEach { (key, path) ->
+            driver.execute(null, "INSERT INTO downloadResource (sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, " +
+                "originalFilename, stagedPath) VALUES ('DEV-A', 'A', '$key', 'https://x.invalid', 'primary', 'image/heic', '$key', " +
+                (path?.let { "'$it'" } ?: "NULL") + ")", 0)
+        }
+
+        DownloadDatabase.Schema.migrate(driver, 3L, 4L).await()
+
+        val paths = driver.executeQuery(null, "SELECT resourceKey, stagedPath FROM downloadResource", { c ->
+            val out = mutableMapOf<String, String?>()
+            while (c.next().value) out[c.getString(0)!!] = c.getString(1)
+            app.cash.sqldelight.db.QueryResult.Value(out)
+        }, 0).value
+        assertEquals(
+            mapOf(
+                "a-primary.heic" to "download-staging/DEV-A/a-primary.heic",
+                "a-live.mov" to null,
+                "a-odd.jpg" to "/somewhere/else/a-odd.jpg",
+            ),
+            paths,
+        )
+    }
 }
