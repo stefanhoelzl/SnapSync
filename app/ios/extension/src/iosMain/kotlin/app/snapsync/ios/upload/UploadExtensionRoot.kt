@@ -41,6 +41,7 @@ import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +72,8 @@ import kotlinx.coroutines.runBlocking
 object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 
     init {
+        // First, before anything logs: a log line must never park a thread on an undrained stdout/stderr (see the KDoc).
+        neverBlockOnStdio()
         // Route kermit through a public NSLog writer AND a file writer. NSLog turns out to be
         // redacted as `<private>` on current iOS (dynamic format strings are private), so the file
         // writer is the reliable channel for reading the extension's logs on device.
