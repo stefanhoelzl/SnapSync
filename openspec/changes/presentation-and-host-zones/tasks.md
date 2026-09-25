@@ -57,7 +57,7 @@
       `:test:integration` (incl. `journeys`): declare what it names explicitly.
 - [x] 5.3 `:test:world` becomes the host; `:test:rig`, `:app:desktop`, `:app:ios` and `:app:ios:forge` get the new
       module paths and any dependency previously received transitively.
-- [ ] 5.4 Verify: `./gradlew build`; `./gradlew compileIosMainKotlinMetadata`;
+- [x] 5.4 Verify: `./gradlew build`; `./gradlew compileIosMainKotlinMetadata`;
       `./gradlew :domain:presentation:jvmTest -Psnapsync.forge=true`; a `-Psnapsync.rig=true` compile of the rig
       source sets (`compileKotlinIosSimulatorArm64` on `:app:ios`, `:adapter:ios:*` and `:test:rig`).
 

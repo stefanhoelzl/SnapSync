@@ -201,6 +201,20 @@ The whole change is a structural refactor. The shipped app's behaviour, every po
 - **Generated and docs.** `architecture/` is regenerated: the zone graph now walks `domain/host`, which `app/` never
   was. The CLAUDE.md module map is updated.
 
+### D7 — Model's coverage bound follows the code it now holds
+
+- **What the move did.** `UiState` and `RangeForm` arrived in `model/` without their tests. Model's aggregate fell from
+  above its floor to 59.6% of instructions (56.2% of branches). Those two files alone were 2,883 missed instructions.
+- **Rejected: a crediting edge from presentation to model.** coverage-bounds "Coverage is measured over unit tests
+  only" forbids crediting incidental coverage, and presentation's reduction tests are written for the reduction, not
+  for `UiState`'s serializer.
+- **Rejected: lowering model's floor.** No forcing proof exists: the missing coverage could be tested, and was.
+- **Done instead.** `UiStateSerializationTest`, the one test written for these types, moved with them to model's
+  `commonTest`. It had never round-tripped a `ResolvedRange`, a `ShareCount`, the reconfigure surface, a pending
+  switch, a failed rename or `NotStarted`/`Syncing` health, all of which the control channel serves. It now does, along
+  with each `RangeForm` field and each overlay off its default one at a time, and the `details`/`step`/`joinPhase`
+  helpers. Model measures 90.7% of instructions and 81.6% of branches. Presentation's bounds still hold.
+
 ## Risks / Trade-offs
 
 - **[KGP loaded twice through `build-logic`]** → `compileOnly` KGP in `build-logic`. The first full `./gradlew build`
