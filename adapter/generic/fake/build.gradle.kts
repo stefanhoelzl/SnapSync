@@ -42,6 +42,8 @@ kotlin {
             // The photo-library contracts bind the grant-aware composition production calls, over the fake
             // just as over the platform read (`docs/architecture.md`).
             implementation(project(":domain:compose"))
+            // The storage services' fake-driven tests: the services over the storage mocks (`docs/testing.md`).
+            implementation(project(":domain:services"))
         }
     }
 }

@@ -7,7 +7,11 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.AlbumMapStore
+import app.snapsync.ports.SecureStore
+import app.snapsync.preferences.IosPreferences
+import app.snapsync.services.album.AlbumMapService
 import platform.Foundation.NSUserDefaults
 import kotlin.test.Test
 
@@ -36,16 +40,26 @@ class IosAlbumMapStoreContractTest {
             NSUserDefaults(suiteName = suite).removePersistentDomainForName(suite)
             when (state) {
                 AlbumMapStoreState.EMPTY -> Unit
-                AlbumMapStoreState.HOLDING -> IosAlbumMapStore(suiteName = suite).put(
+                AlbumMapStoreState.HOLDING -> service(suite).put(
                     AlbumMapStoreContract.seedEvent(clauseId),
                     AlbumMapStoreContract.seedAlbum(clauseId),
                 )
                 AlbumMapStoreState.CORRUPT -> NSUserDefaults(suiteName = suite).setObject("{not json", forKey = MAP_KEY)
             }
-            return Entered.Ready(IosAlbumMapStore(suiteName = suite)) {
+            return Entered.Ready(service(suite)) {
                 NSUserDefaults(suiteName = suite).removePersistentDomainForName(suite)
             }
         }
+    }
+
+    /** The service over the real suite, with no legacy Keychain map — the migration is the service's own test. */
+    private fun service(suite: String) = AlbumMapService(IosPreferences(suite), NoLegacyMap)
+
+    private object NoLegacyMap : SecureStore {
+        override fun read(): SecureStoreRead = SecureStoreRead.Absent
+        override fun write(value: String) = error("the contract never writes a legacy map")
+        override fun migrateProtection() = Unit
+        override fun delete() = Unit
     }
 
     @Test

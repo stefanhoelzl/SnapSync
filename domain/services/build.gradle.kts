@@ -40,10 +40,13 @@ kotlin {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
             // The per-zone library allowlist (`docs/architecture.md`): coroutines (the stores' `Flow` shapes),
-            // the SQLDelight runtime (the generated databases below), kermit (the stores' own diagnostics).
+            // the SQLDelight runtime (the generated databases below), kermit (the stores' own diagnostics),
+            // serialization-json.
             api(libs.coroutines.core)
             implementation(libs.sqldelight.runtime)
             implementation(libs.kermit)
+            // The event-album map's JSON encoding (no generated serializers: the map's builtins only).
+            implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -124,8 +127,9 @@ kover {
                         minValue = 98
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
+                    // 86 -> 89 when the file-backed services joined (measured 89.7%).
                     bound {
-                        minValue = 86
+                        minValue = 89
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }

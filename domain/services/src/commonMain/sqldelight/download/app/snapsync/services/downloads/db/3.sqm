@@ -1,0 +1,14 @@
+-- v3 -> v4: staged paths become RELATIVE to the shared area (`download-staging/<device>/<key>`), no longer
+-- the absolute App-Group container path — a restored or migrated device may place the container elsewhere,
+-- and a row that kept the old path would point at nothing while its bytes sat on disk.
+--
+-- Data only: the schema is unchanged, so the migration-verify task cannot see it; `DownloadStoreMigrationTest`
+-- asserts it. Every staged file ever written lives under `<container>/download-staging/`, and the container
+-- path (`…/Shared/AppGroup/<uuid>`) never contains that segment, so cutting after its first `/` keeps exactly
+-- the relative path. A path without the segment (none is expected) is left as it was rather than guessed at.
+--
+-- Rollback is forward-only: an older build reads a relative path as absolute, finds no file there, and would
+-- take that as evidence the import happened. A revert must ship as a new build that keeps this schema.
+UPDATE downloadResource
+SET stagedPath = substr(stagedPath, instr(stagedPath, '/download-staging/') + 1)
+WHERE stagedPath IS NOT NULL AND instr(stagedPath, '/download-staging/') > 0;

@@ -188,7 +188,12 @@ Where bindings live: beside their implementations.
   `jvmTest`. The storage services live in `:domain:services`, but their contracts (`LedgerStore`, `DownloadStore`)
   are bound **through** the service over each platform's real `Databases` adapter, beside that adapter: a
   `:domain:*` build file names no module, and the contract is a claim about the service over the real database.
-- The iOS `Databases` adapter, and the storage services through it on Kotlin/Native: `:adapter:ios:ext-safe` tests.
+- The JVM `Files` adapter, and the file-backed services' contracts (config, manifest, staging, log tail) through the
+  services over it: `:adapter:generic:app` `jvmTest` — so every `build` runs them, not only CI's simulator job.
+- The iOS `Databases`, `Files` and `Preferences` adapters, and the storage services through them on Kotlin/Native:
+  `:adapter:ios:ext-safe` tests.
+- The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:fake`
+  `commonTest`, over the storage mocks.
 - The mini-edge and the world's transfer doubles: `:test:world` `commonTest`.
 - Keychain and App-Group stores: `:adapter:ios:ext-safe` tests.
 - Simulator-app PhotoKit and URLSession: `:adapter:ios:app-only` `src/rig`.

@@ -13,7 +13,9 @@ import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
-import app.snapsync.config.FileBackedConfigStore
+import app.snapsync.files.IosFiles
+import app.snapsync.ports.Files
+import app.snapsync.services.config.ConfigService
 import app.snapsync.config.bakedApnsEnv
 import app.snapsync.config.bakedAppStoreUrl
 import app.snapsync.eventcreation.HttpEventCreation
@@ -23,7 +25,7 @@ import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.join.HttpEventJoin
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.gallery.IosDeviceManifestStore
+import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.registry.uploadExtensionRegistry
 import app.snapsync.ports.UploadExtensionRegistry
@@ -44,9 +46,12 @@ import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
 import app.snapsync.album.IosAlbumManager
-import app.snapsync.album.IosAlbumMapStore
+import app.snapsync.album.legacyAlbumMapKeychain
+import app.snapsync.ports.AlbumMapStore
+import app.snapsync.preferences.IosPreferences
+import app.snapsync.services.album.AlbumMapService
 import app.snapsync.download.IosPhotoLibraryImporter
-import app.snapsync.download.IosStagedBytes
+import app.snapsync.services.staging.StagingService
 import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.link.IosLinkOpener
 import app.snapsync.ports.PlatformHandoff
@@ -68,7 +73,7 @@ import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.services.ledger.LedgerService
-import app.snapsync.engine.removeOrphanedJoinMarker
+import app.snapsync.services.preferences.removeOrphanedJoinMarker
 import app.snapsync.model.EventLinkDelivery
 import app.snapsync.model.PlatformEntry
 import app.snapsync.link.isWebLinkActivity
@@ -76,7 +81,7 @@ import app.snapsync.model.forwardEventLink
 import app.snapsync.model.userActivityParams
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appLogDestination
-import app.snapsync.logging.IosDeviceLogSource
+import app.snapsync.services.logs.LogTailService
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
@@ -162,8 +167,9 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
         // names the cause immediately. Diagnostic only: no behaviour, no state, no extra I/O.
         Logger.withTag("SnapSyncRoot").i { "[boot] upload base = ${bakedUploadBase()}" }
         // The retired join marker's orphaned App-Group key goes on every start — it is what keeps a revert
-        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping.
-        removeOrphanedJoinMarker()
+        // of `join-loads-leave-clears` clean (see [removeOrphanedJoinMarker]). Idempotent, no bookkeeping. Its
+        // own adapter instance: the properties below are not initialised yet in this block.
+        removeOrphanedJoinMarker(IosPreferences())
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
@@ -293,10 +299,16 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     internal val osExtensionRegistryThunk: () -> UploadExtensionRegistry? =
         if (osSupportsOsDrivenUpload) ({ extensionRegistry }) else ({ null })
 
-    // The event config seam/store (one file-backed adapter is both — the App-Group file of record,
-    // migration step 11a; the Keychain write-through ended at the finale), hoisted so a
+    // This process's files, by area: the App-Group container and its own Documents. One instance; the file-backed
+    // services below are built over it (`docs/architecture.md`).
+    private val files: Files by lazy { IosFiles() }
+
+    // The device manifest's skip record: one instance for the app graph's producer and the app's uploader.
+    private val manifestStore: DeviceManifestService by lazy { DeviceManifestService(files) }
+
+    // The event config (one service is all three config ports — the App-Group file of record), hoisted so a
     // (re)provision can read the current event id and the leave use-case can clear it.
-    private val config: FileBackedConfigStore by lazy { FileBackedConfigStore() }
+    private val config: ConfigService by lazy { ConfigService(files) }
 
     /**
      * The one cutoff formatter every surface shares (capability `photo-sharing`) — the status host's
@@ -308,7 +320,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
     // Hoisted: the selection policy also reads the manager directly (denylisted-album membership), and
     // the atomic import-time album lookup reads the map (capability `photo-sharing`).
-    private val albumMapStore: IosAlbumMapStore by lazy { IosAlbumMapStore() }
+    private val albumMapStore: AlbumMapStore by lazy { AlbumMapService(IosPreferences(), legacyAlbumMapKeychain()) }
     private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
 
 
@@ -372,7 +384,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The diagnostic dump's two device-side inputs (capability `privacy-security`):
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
-                deviceLogSource = IosDeviceLogSource(),
+                deviceLogSource = LogTailService(files),
                 // Which uploaders this OS carries — a constant of the build. What each may do right now is
                 // runtime-varying, and the dump's state section reports it from the composition's own answers.
                 diagnosticEnvironment = deviceDiagnosticEnvironment(uploadersCarried(osSupportsOsDrivenUpload)),
@@ -406,7 +418,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 assetPresence = PhotoKitAssetPresence(),
                 // Names the App-Group staging directory and frees the files of settled rows
                 // (capability `receiving-photos`) — one port owns both halves.
-                stagedBytes = IosStagedBytes(),
+                stagedBytes = StagingService(files),
                 // The importer writes createdLocalId synchronously from inside a PhotoKit change
                 // block (concrete store, not the port) and borrows the atomic album-add lookup.
                 importer = IosPhotoLibraryImporter(
@@ -435,7 +447,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 // The App-Group file, so the record this app process invalidates at enroll is the same one
                 // the ≥26.1 tier's producer reads in the EXTENSION process. A per-process record would
                 // leave the extension believing the server still holds a projection the app just replaced.
-                manifestStore = IosDeviceManifestStore(),
+                manifestStore = manifestStore,
                 eventCreation = HttpEventCreation(http, backendHost),
                 eventRename = HttpEventRename(http, backendHost),
                 attestKey = IosAttestKey(),
@@ -961,7 +973,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // drain, which may adopt an old upload session whichever mechanism is live.
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
-            scope, ledgerStore, config,
+            scope, ledgerStore, config, manifestStore,
             // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
             // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
             // success, so this is one read per process, as before.

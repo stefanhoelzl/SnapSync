@@ -22,6 +22,13 @@ internal class InMemoryStagedBytes(
 
     override fun stagingRoot(): String = root
 
+    /**
+     * [path] itself: the in-memory disk has no platform root, so a staged path names its own file. The core's
+     * relative/located split is measured against the real staging service (`StagedBytesContract` over `Files`),
+     * and against a stub that tells the two apart in the download jobs' own test.
+     */
+    override fun locate(path: String): String = path
+
     override suspend fun release(paths: List<String>) {
         files.removeAll(paths.toSet())
     }

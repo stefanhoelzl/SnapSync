@@ -1,16 +1,23 @@
-package app.snapsync.config
+package app.snapsync.files
 
 import platform.Foundation.NSCocoaErrorDomain
 import platform.Foundation.NSFileNoSuchFileError
+import platform.Foundation.NSFileReadNoPermissionError
 import platform.Foundation.NSFileReadNoSuchFileError
+import platform.Foundation.NSFileWriteNoPermissionError
 import platform.Foundation.NSPOSIXErrorDomain
 
 /** POSIX `ENOENT`, as `NSPOSIXErrorDomain` reports it. Foundation exposes no constant for it. */
 private const val POSIX_ENOENT: Long = 2L
 
+/** POSIX `EPERM` and `EACCES`: the permission class a protected file answers before first unlock. */
+private const val POSIX_EPERM: Long = 1L
+private const val POSIX_EACCES: Long = 13L
+
 /**
- * Whether a file-read error means the file is **genuinely absent** — the only error class that may
- * read as "no config" (settle-list ⑥, decision record: `changes/archive/…-migrate-config-to-app-group-file`).
+ * Whether a file error means the file is **genuinely absent** — the only error class `IosFiles` answers as
+ * `FileResult.NotFound`, and so the only one that may read as "no config" (settle-list ⑥, decision record:
+ * `changes/archive/…-migrate-config-to-app-group-file`).
  *
  * ⚠️ **This is now solely load-bearing for the leave decision, and it did not used to be.** Until
  * the Stage-2 change deleted the read-only legacy-Keychain fallback
@@ -45,11 +52,22 @@ private const val POSIX_ENOENT: Long = 2L
  * could only assert integer literals against themselves; here the test can name
  * `NSFileReadNoSuchFileError` and fail if Apple ever moves it.
  *
- * The neutral fact this reports into is [app.snapsync.model.ConfigFileRead], and the rule that turns
- * a `Missing` into a leave stays in `configReadViaFile` — nothing about the *decision* moved.
+ * The neutral fact this reports into is `FileResult.NotFound`; the config service turns it into
+ * [app.snapsync.model.ConfigFileRead.Missing], and the rule that turns a `Missing` into a leave stays in
+ * `configReadViaFile` — nothing about the *decision* moved.
  */
-fun isConfigFileAbsence(domain: String?, code: Long): Boolean = when (domain) {
+fun isFileAbsence(domain: String?, code: Long): Boolean = when (domain) {
     NSCocoaErrorDomain -> code == NSFileReadNoSuchFileError || code == NSFileNoSuchFileError
     NSPOSIXErrorDomain -> code == POSIX_ENOENT
+    else -> false
+}
+
+/**
+ * Whether a file error is the **permission** class — a present file this process may not read or write now
+ * (before first unlock, or a permission): `FileResult.Denied`, never absent.
+ */
+fun isFileDenied(domain: String?, code: Long): Boolean = when (domain) {
+    NSCocoaErrorDomain -> code == NSFileReadNoPermissionError || code == NSFileWriteNoPermissionError
+    NSPOSIXErrorDomain -> code == POSIX_EPERM || code == POSIX_EACCES
     else -> false
 }

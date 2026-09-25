@@ -55,7 +55,7 @@ interface AlbumManager {
  * The persisted `eventId → albumLocalId` map (capability `event-album`). It lives in a **shared** store
  * (App-Group / shared Keychain) readable and writable by both the app and the upload extension, and it
  * **survives `LeaveEvent.leave()`** (unlike the event config) so a re-join reuses the same album. The
- * iOS impl is `IosAlbumMapStore`; a fake/in-memory impl backs the tests.
+ * iOS impl is `AlbumMapService` over the App-Group preferences; a fake/in-memory impl backs the tests.
  */
 interface AlbumMapStore {
     /**

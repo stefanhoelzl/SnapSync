@@ -142,7 +142,9 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | law | enforced by |
 |---|---|
 | Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
-| A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
+| A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, write, delete, exists, locate within an area; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
+| Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
+| `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — a config file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
 | Building a composition opens no database: a storage service opens through `Databases` on first use and keeps only a successful open, so a locked launch's failure is retried on the next use | `CompositionOpensNoDatabaseTest` (`:test:world`) + `LedgerServiceOpenTest` |
 | The download store has one writer and one migrator, the app. The upload extension opens it read-only: no store suppresses nothing; an older schema **pauses** the cycle (`CycleResult.Paused`, answered to iOS as *processing*) and never runs it without suppression; an unopenable one skips it. The pause is asked only after the extension's admission, so a partial grant never pauses | `SuppressionServiceTest`, `ExtensionSuppressionWorldTest`, `DatabasesContract` |
 | A platform's magic values, ABI integers and error tables stay in adapters, never in `model/`/`ports/`/`feature/` | `PhotoKitAbiContainmentTest` (PhotoKit media ABI). The JVM target rejects Apple types. Otherwise **review** |
@@ -717,16 +719,16 @@ class (readable after first unlock; see `DataProtectionEntitlementTest`):
 
 | path / key | what | owner |
 |---|---|---|
-| `eventconfig.json` | the membership (config file of record). A missing file **is** "left the event", so renaming it is a false leave on every device | `FileBackedConfigStore` |
+| `eventconfig.json` | the membership (config file of record). A missing file **is** "left the event", so renaming it is a false leave on every device | `ConfigService` over `IosFiles` |
 | `ledger.db` | the upload ledger (SQLDelight): the membership's share set + manifest version. Either process opens it read-write and migrates it | `LedgerService` over `IosDatabases` |
 | `downloads.db` | the download store. The app writes and migrates it; the extension opens it read-only | `DownloadService` / `SuppressionService` over `IosDatabases` |
-| `device-manifest/last-uploaded.json` | the manifest skip record (event id, version, snapshot) | manifest store |
+| `device-manifest/last-uploaded.json` | the manifest skip record (event id, version, snapshot) | `DeviceManifestService` |
 | `upload-staging/` | bytes staged for the app's background `URLSession` uploads | `IosUrlSessionUploadPlatform` |
-| `download-staging/` | downloaded bytes awaiting import | `IosStagedBytes` |
+| `download-staging/` | downloaded bytes awaiting import. The download store keeps each path **relative** to the container (schema 4 rewrote the absolute ones) | `StagingService` over `IosFiles` |
 | `push-registration/last-registered.txt` | the last push registration the backend accepted (token, env, device id); dies with the install, so a reinstall publishes | `IosPushRegistrationRecord` |
-| `ext-debug.log` (+ `.1`) | the extension's verbatim log (the app's is `Documents/debug.log` in its own container) | log writers |
-| defaults `app.snapsync.album.map` | event album map | album map store |
-| defaults `rejoin.joinedEventId` | **retired**: pinned only at its start-up removal site | app shell |
+| `ext-debug.log` (+ `.1`) | the extension's verbatim log (the app's is `Documents/debug.log` in its own container) | log writers; read by `LogTailService` |
+| defaults `app.snapsync.album.map` | event album map | `AlbumMapService` over `IosPreferences` |
+| defaults `rejoin.joinedEventId` | **retired**: pinned only at its start-up removal site | `removeOrphanedJoinMarker`, called by the app shell |
 
 Keychain (only in `:adapter:ios:ext-safe`; every item is readable after first unlock):
 

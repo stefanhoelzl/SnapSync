@@ -38,6 +38,7 @@ edge :adapter:generic:fake :domain:feature
 edge :adapter:generic:fake :domain:flow
 edge :adapter:generic:fake :domain:model
 edge :adapter:generic:fake :domain:ports
+edge :adapter:generic:fake :domain:services
 edge :adapter:generic:fake :test:contracts
 edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain:compose

@@ -1,5 +1,7 @@
 package app.snapsync.logging
 
+import app.snapsync.model.APP_LOG_FILE_NAME
+import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,6 +1,8 @@
 package app.snapsync.logging
 
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.model.APP_LOG_FILE_NAME
+import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.objc.checkedObjC
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDocumentDirectory
@@ -8,7 +10,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 
-/**
+/*
  * Where each process writes its device log (capability `privacy-security`).
  *
  * The **app** writes its own `Documents/`[APP_LOG_FILE_NAME], exactly as it always has — a process can
@@ -18,17 +20,11 @@ import platform.Foundation.NSUserDomainMask
  * The **extension** writes [EXTENSION_LOG_FILE_NAME] into the **shared App Group** container. That is
  * the one read the old placement made impossible: the two processes have separate sandboxes, so the
  * app cannot read the extension's `Documents/`, and the app is the process that assembles a
- * diagnostic dump. The App Group container is not USB-pullable, so the extension's log reaches a
- * cable via the `SNAPSYNC_EXPORT_LOGS` launch trigger (capability `sync-status`), which copies it
- * into the app's `Documents/`.
+ * diagnostic dump. The file names are `model/`'s, shared with the log-tail service that reads them.
  *
  * Resolution — including the fallback and the sentence that announces it — lives here rather than in
  * the composition roots, which hold no decisions (`docs/architecture.md`, "Shells are wiring only").
  */
-const val APP_LOG_FILE_NAME: String = "debug.log"
-
-/** The extension's log file name, inside the App Group container. See [APP_LOG_FILE_NAME]. */
-const val EXTENSION_LOG_FILE_NAME: String = "ext-debug.log"
 
 /**
  * A resolved log-file location: the [path] a writer should append to (`null` when nothing writable

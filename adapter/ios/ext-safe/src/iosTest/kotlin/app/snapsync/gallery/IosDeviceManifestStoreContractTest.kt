@@ -7,6 +7,8 @@ import app.snapsync.contracts.DeviceManifestStoreState
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
+import app.snapsync.files.IosFiles
+import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.testsupport.newTempDirectory
 import app.snapsync.testsupport.removeDirectory
@@ -30,12 +32,12 @@ class IosDeviceManifestStoreContractTest {
         )
 
         override fun create(state: DeviceManifestStoreState, clauseId: String): Entered<DeviceManifestStore> {
-            if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(IosDeviceManifestStore())
+            if (state == DeviceManifestStoreState.UNAVAILABLE) return Entered.Ready(DeviceManifestService(IosFiles()))
             val dir = newTempDirectory()
             if (state == DeviceManifestStoreState.HOLDING) {
-                IosDeviceManifestStore(dir).saveLastUploaded(DeviceManifestStoreContract.seedJson(clauseId))
+                DeviceManifestService(IosFiles(dir, null)).saveLastUploaded(DeviceManifestStoreContract.seedJson(clauseId))
             }
-            return Entered.Ready(IosDeviceManifestStore(dir)) { removeDirectory(dir) }
+            return Entered.Ready(DeviceManifestService(IosFiles(dir, null))) { removeDirectory(dir) }
         }
     }
 
