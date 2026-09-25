@@ -1,4 +1,4 @@
-// The build's convention plugins (capability `module-architecture`, "Zones inside the core": the allowed targets are
+// The build's convention plugins (`docs/architecture.md`, "Zones inside the core": the allowed targets are
 // declared once, here, and applied by every core and `:ui:*` module).
 plugins {
     // Provisions a JDK for the plugin's compile: the machine's default Java may be a runtime with no compiler.
