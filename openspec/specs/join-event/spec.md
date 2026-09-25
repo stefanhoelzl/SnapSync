@@ -71,8 +71,9 @@ user who installs the app from there SHALL reach the event by opening the origin
 
 ### Requirement: A damaged invite is reported and changes nothing
 An invite link that is malformed or truncated SHALL still open the app rather than dead-ending in a
-browser, and SHALL NOT change the device's membership. On the create screen the app SHALL show a short
-message that the QR code was not valid, which clears by itself after a few seconds.
+browser, and SHALL NOT change the device's membership. Whatever screen the user is on — the create
+screen, the joined screen or an open join screen — the app SHALL show a short message that the QR code
+was not valid, which clears by itself after a few seconds.
 
 #### Scenario: A truncated link shows a passing error
 - **WHEN** a user in no event opens an invite link whose payload has been cut off
@@ -80,7 +81,11 @@ message that the QR code was not valid, which clears by itself after a few secon
 
 #### Scenario: A damaged link never touches a membership
 - **WHEN** a user who is in an event opens a malformed invite link
-- **THEN** the user stays in their event with every setting unchanged
+- **THEN** the user stays in their event with every setting unchanged, and the joined screen shows that the QR code was not valid until the message clears by itself
+
+#### Scenario: A damaged link while a join screen is open
+- **WHEN** a join screen is open and the user opens a malformed invite link
+- **THEN** the join screen stays as it was and shows that the QR code was not valid until the message clears by itself
 
 ### Requirement: The join screen verifies the event before offering to join
 The join screen SHALL open at once and load the event's details, offering Join only once they have
@@ -226,12 +231,17 @@ access SHALL NOT see the explanation (capability `photo-access`).
 - **THEN** the join choices are shown directly and no dialog is raised
 
 ### Requirement: Joining happens only on confirmation and needs a connection
-Nothing SHALL be shared, received, or joined before the user taps Join. On Join the screen SHALL show
+Nothing SHALL be shared, received, or joined before the user taps Join. No invite link, however it is
+crafted, SHALL join, switch or start sharing without the user confirming on the join screen. On Join the screen SHALL show
 that it is joining; on success the user SHALL see the joined screen and become a member at once, before
 any photo has been shared. Joining SHALL NOT require photo access; without it the joined screen asks for
 access (capability `photo-access`). If joining fails the user SHALL stay on the join screen with a Retry
 that keeps their choices, and SHALL NOT be left half-joined; if the membership was in fact established,
 the user SHALL see the joined screen.
+
+#### Scenario: A crafted link cannot skip the confirmation
+- **WHEN** a user opens an invite link crafted to join without asking
+- **THEN** the join screen is shown as for any invite, and nothing is joined, left or shared until they tap Join
 
 #### Scenario: Confirming joins
 - **WHEN** the user taps Join and the event accepts the device
