@@ -637,9 +637,12 @@ jobs:
     # in-app port contracts on a simulator on every push"). Parallel to ios-build and ios-test, with no
     # `needs:` edge, for the reason those two carry none: a red gate must never skip another's required check.
     #
-    # WHAT IT RUNS: the port contracts whose bindings live in the APP, then the all-real journeys against two
-    # simulator apps and the real backend served locally (capability `testing-architecture`, "All-real journeys are
-    # the contracts' safety net"). First, the port contracts whose bindings live in the APP — the simulator app is the only
+    # WHAT IT RUNS: the port contracts whose bindings live in the APP, then the all-real journeys against the same
+    # ONE simulator app and the real backend served locally, the second member played by the journey itself over the
+    # backend's public HTTP surface (capability `testing-architecture`, "All-real journeys are the contracts' safety
+    # net"). One simulator, because a second fresh one's first-boot work swamped this 3-vCPU runner (the
+    # `one-simulator-journeys` change); the stage timestamps, resource samples and crash reports it keeps are in the
+    # evidence artifact below. First, the port contracts whose bindings live in the APP — the simulator app is the only
     # simulator process `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real
     # full grant (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). The
     # registry is whatever `GET /contract` lists for this host; `scripts/sim-contracts` runs every entry and

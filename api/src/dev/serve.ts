@@ -152,7 +152,27 @@ async function handler(request: Request): Promise<Response> {
   return await app.fetch(request);
 }
 
-serveRequest = handler;
+// One line per request served (method, path, status, duration), so a client-side timeout can be placed on one side
+// of the wire: `ios-contracts` keeps this output as evidence. Not in ephemeral mode, whose stdout belongs to the test
+// JVM that launched it and is read only up to the readiness line, so every further line would fill a pipe no one
+// drains.
+async function logged(request: Request): Promise<Response> {
+  const started = performance.now();
+  const { pathname } = new URL(request.url);
+  let status = 0;
+  try {
+    const response = await handler(request);
+    status = response.status;
+    return response;
+  } finally {
+    const ms = Math.round(performance.now() - started);
+    console.log(
+      `${new Date().toISOString()} ${request.method} ${pathname} ${status || "threw"} ${ms}ms`,
+    );
+  }
+}
+
+serveRequest = options.ephemeral ? handler : logged;
 
 if (options.ephemeral) {
   // NO host file: `.localdev/host` is how a developer's running rig publishes its origin, and a test run
