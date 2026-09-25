@@ -20,5 +20,28 @@ for rt in /Library/Developer/CoreSimulator/Volumes/*/Library/Developer/CoreSimul
         best_version="$v"; best_build="$b"
     fi
 done
-[ -n "$best_build" ] || { echo "sim-warm-key: no iOS simulator runtime found on disk" >&2; exit 1; }
+if [ -z "$best_build" ]; then
+    # Not mounted yet (the runtime images mount on demand). Diagnostics, then the MobileAsset catalog, then simctl.
+    { echo "--- /Library/Developer/CoreSimulator:"; ls -la /Library/Developer/CoreSimulator /Library/Developer/CoreSimulator/Volumes 2>&1
+      echo "--- mounts:"; mount | grep -i -e simulator -e cryptex
+      echo "--- assets:"; ls /System/Library/AssetsV2/ 2>&1 | grep -i sim; } >&2
+    for info in /System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/*.asset/Info.plist; do
+        [ -f "$info" ] || continue
+        v="$(/usr/libexec/PlistBuddy -c 'Print MobileAssetProperties:SimulatorVersion' "$info" 2>/dev/null)" || continue
+        b="$(/usr/libexec/PlistBuddy -c 'Print MobileAssetProperties:Build' "$info" 2>/dev/null)" || continue
+        echo "runtime asset: iOS $v ($b)" >&2
+        if [ -z "$best_version" ] || [ "$(printf '%s\n%s\n' "$best_version" "$v" | sort -V | tail -1)" = "$v" ]; then
+            best_version="$v"; best_build="$b"
+        fi
+    done
+fi
+if [ -z "$best_build" ]; then
+    echo "sim-warm-key: FALLBACK to simctl — CoreSimulatorService is now running before the restore" >&2
+    best_build="$(xcrun simctl list runtimes -j | python3 -c '
+import json, sys
+rs = [r for r in json.load(sys.stdin)["runtimes"] if r.get("platform") == "iOS" and r.get("isAvailable")]
+rs.sort(key=lambda r: [int(x) for x in r["version"].split(".")])
+print(rs[-1]["buildversion"])')"
+fi
+[ -n "$best_build" ] || { echo "sim-warm-key: no iOS simulator runtime found" >&2; exit 1; }
 echo "warm-sim-$xcode-$best_build-iPhone16-$SUFFIX"
