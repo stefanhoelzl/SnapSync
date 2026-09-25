@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import app.snapsync.feature.version.readmodel.VersionRefusal
 
 /**
  * Whether the backend is refusing this build as too old, and the version it named (capability
@@ -22,19 +23,17 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * `null` means *not currently refused* — which covers both "served normally" and "has not called yet".
  * Those are the same thing to every consumer: there is no update screen to show. A refusal carrying no
- * version is [Refusal] with a null [Refusal.minimumVersion], which is NOT the same as no refusal at all
- * and must not be flattened into it — the screen still has to appear, just without a version to name.
+ * version is [VersionRefusal] with a null [VersionRefusal.minimumVersion], which is NOT the same as no
+ * refusal at all and must not be flattened into it — the screen still has to appear, just without a version
+ * to name.
  */
 class AppVersionGate(
     private val log: Logger = Logger.withTag("AppVersionGate"),
 ) {
-    /** A backend refusal of this build. */
-    data class Refusal(val minimumVersion: String?)
-
-    private val state = MutableStateFlow<Refusal?>(null)
+    private val state = MutableStateFlow<VersionRefusal?>(null)
 
     /** The current refusal, or `null` while this build is being served. */
-    val refusal: StateFlow<Refusal?> = state.asStateFlow()
+    val refusal: StateFlow<VersionRefusal?> = state.asStateFlow()
 
     /**
      * The backend refused this build (`426`), naming [minimumVersion] when it carried one.
@@ -47,7 +46,7 @@ class AppVersionGate(
      * one report per request.
      */
     fun refused(minimumVersion: String?) {
-        val refusal = Refusal(minimumVersion)
+        val refusal = VersionRefusal(minimumVersion)
         if (state.value == refusal) return
         state.value = refusal
         log.e { "backend refuses this build; minimum version = ${minimumVersion ?: "unstated"}" }

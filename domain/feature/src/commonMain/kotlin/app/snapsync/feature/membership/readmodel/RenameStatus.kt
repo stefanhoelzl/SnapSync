@@ -1,4 +1,4 @@
-package app.snapsync.feature.membership
+package app.snapsync.feature.membership.readmodel
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,25 +50,6 @@ enum class RenameFailureReason {
     SERVER,
 }
 
-/**
- * The command port for renaming the joined event: fire-and-forget, like `EventCreator`. It MUST NOT
- * return a value and MUST NOT suspend; the outcome arrives exclusively via [RenameStatusSource].
- *
- * [name] is passed as typed; the use-case trims it (the same split `EventCreator`/`CreateEvent` use).
- */
-interface EventRenamer {
-    suspend fun rename(eventId: String, name: String)
-}
-
-/**
- * The command that returns [RenameStatusSource] to [RenameStatus.Idle] — the latch-clearing half of
- * [RenameStatus.Succeeded]. Fired by the screen after it consumes a terminal status, so a second rename
- * starts from a clean sequence rather than re-reading the previous one's outcome.
- */
-interface ResetRename {
-    fun reset()
-}
-
 /** Read face of the rename status — what the presentation layer consumes. */
 interface RenameStatusSource {
     val renameStatus: StateFlow<RenameStatus>
@@ -82,14 +63,4 @@ class MutableRenameStatusSource(initial: RenameStatus = RenameStatus.Idle) : Ren
     fun set(value: RenameStatus) {
         _status.value = value
     }
-}
-
-/** A no-op [EventRenamer] for hosts/tests that forge [RenameStatus] directly (e.g. the harness). */
-object NoOpEventRenamer : EventRenamer {
-    override suspend fun rename(eventId: String, name: String) = Unit
-}
-
-/** A no-op [ResetRename], the twin of [NoOpEventRenamer]. */
-object NoOpResetRename : ResetRename {
-    override fun reset() = Unit
 }

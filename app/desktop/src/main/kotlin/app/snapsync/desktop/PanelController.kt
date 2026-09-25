@@ -25,16 +25,16 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.PendingJoin
 import app.snapsync.model.EventConfig
-import app.snapsync.feature.creation.CreationFailureReason
-import app.snapsync.feature.creation.CreationStatus
-import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.feature.creation.EventCreator
-import app.snapsync.feature.creation.NoOpEventCreator
-import app.snapsync.feature.download.DownloadProgress
-import app.snapsync.feature.download.InMemoryDownloadStatusSource
+import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.creation.readmodel.CreationStatusSource
+import app.snapsync.model.EventCreator
+import app.snapsync.model.NoOpEventCreator
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 

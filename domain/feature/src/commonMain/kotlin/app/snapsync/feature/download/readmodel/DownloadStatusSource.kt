@@ -1,4 +1,4 @@
-package app.snapsync.feature.download
+package app.snapsync.feature.download.readmodel
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

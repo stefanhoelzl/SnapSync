@@ -1,18 +1,18 @@
 package app.snapsync.presentation
 
-import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.feature.creation.MutableCreationStatusSource
-import app.snapsync.feature.download.DownloadProgress
-import app.snapsync.feature.download.DownloadStatusSource
-import app.snapsync.feature.download.InMemoryDownloadStatusSource
-import app.snapsync.feature.membership.MutableRenameStatusSource
-import app.snapsync.feature.membership.RenameStatusSource
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.creation.readmodel.CreationStatusSource
+import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
+import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
+import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
-import app.snapsync.feature.version.AppVersionGate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import app.snapsync.feature.version.readmodel.VersionRefusal
 
 /**
  * Every read-model [StatusContainerHost] reduces over, in one bundle.
@@ -85,7 +85,7 @@ class StatusSources(
      * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —
      * the forge, and every test that does not exercise it — constructs unchanged.
      */
-    val versionRefusal: StateFlow<AppVersionGate.Refusal?> = MutableStateFlow(null),
+    val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
     /**
      * This build's App Store page, or `null` when it carries none. A build constant supplied by the
      * composition root, not a source — it is here because the ONE screen that needs it is the refusal

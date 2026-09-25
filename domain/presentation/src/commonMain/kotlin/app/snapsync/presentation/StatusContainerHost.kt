@@ -12,7 +12,6 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.Arrow
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.Direction
-import app.snapsync.feature.version.AppVersionGate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.FromChoice
@@ -25,22 +24,22 @@ import app.snapsync.model.UserQueries
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.feature.creation.CreationFailureReason
-import app.snapsync.feature.creation.CreationStatus
-import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.feature.creation.MutableCreationStatusSource
-import app.snapsync.feature.membership.MutableRenameStatusSource
-import app.snapsync.feature.membership.RenameFailureReason
-import app.snapsync.feature.membership.RenameStatus
-import app.snapsync.feature.membership.RenameStatusSource
+import app.snapsync.feature.creation.readmodel.CreationFailureReason
+import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.feature.creation.readmodel.CreationStatusSource
+import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
+import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameFailureReason
+import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.feature.membership.readmodel.RenameStatusSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.feature.download.DownloadProgress
-import app.snapsync.feature.download.DownloadStatusSource
-import app.snapsync.feature.download.InMemoryDownloadStatusSource
+import app.snapsync.feature.download.readmodel.DownloadProgress
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
+import app.snapsync.feature.download.readmodel.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -79,6 +78,7 @@ import app.snapsync.model.SyncHealth
 import app.snapsync.model.UiState
 import app.snapsync.model.details
 import app.snapsync.model.step
+import app.snapsync.feature.version.readmodel.VersionRefusal
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -321,7 +321,7 @@ class StatusContainerHost(
                         values[9] as String?,
                         values[11] as RangeForm,
                         values[12] as Owned<SettingsSurface>,
-                        updateLayerFor(values[13] as AppVersionGate.Refusal?, appStoreUrl),
+                        updateLayerFor(values[13] as VersionRefusal?, appStoreUrl),
                         ::resolveRange,
                     ).let { layer -> UiState(layer, (values[10] as Overlays).maskedFor(layer)) }
                 }
@@ -1022,7 +1022,7 @@ private fun JoinPhase.name(): String? = details?.name
  * keeps [reduceFrom] under the tier's parameter ceiling, which may only fall (`docs/architecture.md`) — a
  * budget respected by grouping what belongs together rather than by raising a number.
  */
-private fun updateLayerFor(refusal: AppVersionGate.Refusal?, appStoreUrl: String?): Layer.UpdateRequired? =
+private fun updateLayerFor(refusal: VersionRefusal?, appStoreUrl: String?): Layer.UpdateRequired? =
     refusal?.let { Layer.UpdateRequired(minimumVersion = it.minimumVersion, storeUrl = appStoreUrl) }
 
 /**

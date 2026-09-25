@@ -4,12 +4,12 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
-import app.snapsync.feature.creation.EventCreator
-import app.snapsync.feature.creation.MutableCreationStatusSource
+import app.snapsync.model.EventCreator
+import app.snapsync.feature.creation.readmodel.MutableCreationStatusSource
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
-import app.snapsync.feature.download.DownloadStatusSource
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.feature.download.QueuedPhotoDownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.MembershipRefresh
@@ -21,7 +21,7 @@ import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.MembershipEntry
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.membership.ManifestDeviceEnroller
-import app.snapsync.feature.membership.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
 import app.snapsync.feature.membership.ReconfigureEvent
 import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
@@ -32,7 +32,7 @@ import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.StatusRefresh
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.version.AppVersionGate
 import app.snapsync.feature.upload.AppUploadMechanism

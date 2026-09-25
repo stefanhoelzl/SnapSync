@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
-import app.snapsync.feature.membership.MutableRenameStatusSource
-import app.snapsync.feature.membership.RenameStatus
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.membership.readmodel.MutableRenameStatusSource
+import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad

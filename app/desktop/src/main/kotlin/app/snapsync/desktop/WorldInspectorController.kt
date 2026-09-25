@@ -20,9 +20,9 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.TransferOutcome
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.model.UploadError
-import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.feature.membership.RenameStatusSource
-import app.snapsync.feature.creation.EventCreator
+import app.snapsync.feature.creation.readmodel.CreationStatusSource
+import app.snapsync.feature.membership.readmodel.RenameStatusSource
+import app.snapsync.model.EventCreator
 import app.snapsync.model.EventLookup
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.ports.PhotoAccessRequester
@@ -39,8 +39,8 @@ import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.noContribution
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.captureCutoff
-import app.snapsync.feature.download.DownloadStatusSource
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.download.readmodel.DownloadStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.world.World
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch

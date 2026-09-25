@@ -1,4 +1,4 @@
-package app.snapsync.feature.status
+package app.snapsync.feature.status.readmodel
 
 import app.snapsync.model.SyncStatus
 

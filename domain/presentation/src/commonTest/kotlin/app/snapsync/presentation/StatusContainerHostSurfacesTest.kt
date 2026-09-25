@@ -20,7 +20,7 @@ import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
-import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.feature.status.readmodel.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
