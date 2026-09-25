@@ -271,7 +271,9 @@ class JoinGateIntegrationTest {
         // every photo the guest had ever taken would upload into a stranger's event.
         //
         // The clamp lives in `JoinEvent`, which every entry path funnels through — including this headless
-        // one, which has no surface on which a user could notice anything was wrong.
+        // one, which has no surface on which a user could notice anything was wrong. (A production build no
+        // longer honours `autoJoin` at all — `InviteLinkHints`, proven by `InviteLinkHintsWorldTest`; this
+        // rig-composed host does, and the clamp still defends it.)
         val event = registerEvent(name = "Anna's Wedding")
 
         openLink(inviteLink(event, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"))

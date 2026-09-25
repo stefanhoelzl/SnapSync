@@ -126,7 +126,7 @@ class MiniEdgeTest {
         val store = BackendStore()
         for (bad in listOf("2026-07-14T18:00:00.000Z", "2026-07-14T18:00:00+02:00", "", "yesterday")) {
             val outcome = HttpEventCreation(miniEdgeClient(store), host).create("Party", bad, null)
-            assertEquals(CreateOutcome.InvalidName, outcome, "startsAt=$bad must be rejected (400)")
+            assertEquals(CreateOutcome.InvalidWindow, outcome, "startsAt=$bad must be rejected (400) as a date refusal")
         }
     }
 

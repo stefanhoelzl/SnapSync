@@ -92,6 +92,20 @@ class CreateEventTest {
     }
 
     @Test
+    fun `a refused date range fails with the invalid-window reason and does not provision`() = runTest {
+        val status = MutableCreationStatusSource()
+        var provisioned: String? = null
+        val useCase = CreateEvent(
+            FakeClient(CreateOutcome.InvalidWindow), status, onMinted = { eventId -> provisioned = eventId },
+        )
+
+        useCase.create("x", startsAt, endsAt)
+
+        assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW), status.creationStatus.value)
+        assertNull(provisioned)
+    }
+
+    @Test
     fun `a transient failure fails with the server reason and does not provision`() = runTest {
         val status = MutableCreationStatusSource()
         var provisioned: String? = null

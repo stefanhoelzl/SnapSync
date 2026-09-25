@@ -18,6 +18,7 @@ import app.snapsync.model.JoinCommit
 import app.snapsync.model.FromChoice
 import app.snapsync.model.UntilChoice
 import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
@@ -94,6 +95,12 @@ class StatusContainerHost(
     private val queries: UserQueries,
     // The two out-channels (see [StatusDiagnostics]): the dev-path log and the intent-error seam.
     diagnostics: StatusDiagnostics,
+    // Whether an invite link's dev/test hints (`autoJoin` + its overrides) are acted on (capability
+    // `join-event`, "Joining happens only on confirmation"). The link can never authorize its own headless
+    // join, since the decoder accepts those keys from ANY link; the composition root does, and only a rig
+    // build's root answers `Honoured`. Defaulted to the shipped answer so a host that forgets it is safe
+    // rather than exploitable.
+    private val inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
 ) : ContainerHost<UiState, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
@@ -335,14 +342,15 @@ class StatusContainerHost(
 
     /**
      * Flash the transient invalid-link error (capability `join-event`): a link arrived that the decoder
-     * rejected, so the create layer shows a self-clearing message on its ONE inline error line without
-     * touching persisted state.
+     * rejected, so whichever layer is showing — create, join or joined — shows a self-clearing message
+     * without touching persisted state.
      *
-     * The value is an INPUT to the reduction — it reaches the screen inside `Layer.CreateEvent.error`,
-     * coalesced with a sticky create failure — but the set-then-clear choreography lives HERE, in
-     * presentation (`docs/architecture.md`, "Commands cross one door": multi-step interactions are
-     * presentation-owned, and interaction state dies with the UI). It replaced a one-shot side-effect
-     * channel at the migration finale, whose single consumer was the untested iOS shell.
+     * The value is an INPUT to the reduction — it reaches the screen inside `Layer.CreateEvent.error`
+     * (coalesced with a sticky create failure), `Layer.JoiningEvent.notice` or `Layer.Joined.notice` — but
+     * the set-then-clear choreography lives HERE, in presentation (`docs/architecture.md`, "Commands cross
+     * one door": multi-step interactions are presentation-owned, and interaction state dies with the UI).
+     * It replaced a one-shot side-effect channel at the migration finale, whose single consumer was the
+     * untested iOS shell.
      *
      * A rejected link while the message is already showing re-arms the full window (the timer restarts)
      * — the deliberate reading of "self-clearing a few seconds after it LAST appeared".
@@ -561,9 +569,10 @@ class StatusContainerHost(
     /**
      * An event link arrived (forwarded raw from the platform). Decode it with the shared codec; an
      * invalid link flashes the transient error without touching state. A valid link opens the **join
-     * gate** (capability `join-event`): `autoJoin` auto-confirms headlessly, otherwise a first join
-     * opens the full-screen confirmation and a different event while joined opens a switch
-     * confirmation. Re-scanning the already-joined event is a no-op (never re-enrolls).
+     * gate** (capability `join-event`): `autoJoin` auto-confirms headlessly — **only** when the root
+     * honours invite-link hints, which only a rig build's does — otherwise a first join opens the
+     * full-screen confirmation and a different event while joined opens a switch confirmation, the
+     * link's overrides discarded. Re-scanning the already-joined event is a no-op (never re-enrolls).
      */
     fun onOpenUrl(raw: String) = intent {
         when (val result = decodeEventUrl(raw)) {
@@ -577,7 +586,9 @@ class StatusContainerHost(
                     // therefore auto-provision once per delivery.
                     pending.state.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
                     current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
-                    result.payload.autoJoin ->
+                    // A crafted link must not join, switch or start sharing without a tap, so the link's
+                    // own `autoJoin` is never the authority — the root's [inviteLinkHints] is.
+                    result.payload.autoJoin && inviteLinkHints == InviteLinkHints.Honoured ->
                         autoConfirm(
                             eventId,
                             result.payload.minPhotoDate?.let(::captureCutoff),
@@ -587,8 +598,12 @@ class StatusContainerHost(
                         )
                     // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch.
                     // One rung now: the rung that told them apart was `current.eventId != eventId`, and the
-                    // same-event case is the duplicate rung above.
-                    else -> startPending(eventId)
+                    // same-event case is the duplicate rung above. An `autoJoin` link lands here too when
+                    // hints are ignored — an ordinary invite — and says so in the log.
+                    else -> {
+                        if (result.payload.autoJoin) log("join gate: ignoring the invite-link hints of $eventId")
+                        startPending(eventId)
+                    }
                 }
             }
         }
@@ -1022,6 +1037,9 @@ private fun unjoinedLayer(
             // Resolved only where there IS a window: the three detail-less phases render no range row,
             // so an absent resolution is the honest answer rather than one invented from `now`.
             range = event?.let { resolveAgainst(form, it.startsAt, it.endsAt, null, it.deletesAt) },
+            // The same transient cell the create and joined layers read: a rejected link is rejected
+            // wherever it arrives, including over an open join surface, and it touches the join not at all.
+            notice = transient,
         )
     }
     // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
@@ -1219,6 +1237,9 @@ private fun CreationFailureReason.message(): String = when (this) {
     // is non-empty) and over-length (the field caps at 100). So a returned 400 is a rule this client can't
     // name; the copy says what to try rather than asserting a constraint it doesn't know.
     CreationFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a different one."
+    // Unreachable from this build's picker, which cannot exceed the window it was built with — so it
+    // arrives only when the backend's limit has since shrunk. Say it is the dates, not the name.
+    CreationFailureReason.INVALID_WINDOW -> "Those dates weren't accepted. Try a shorter range."
     CreationFailureReason.SERVER -> "Couldn't reach the server."
 }
 

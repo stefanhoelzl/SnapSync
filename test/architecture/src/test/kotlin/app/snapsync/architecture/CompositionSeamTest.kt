@@ -100,11 +100,6 @@ class CompositionSeamTest {
                 "nullability IS that OS answer, and it must be a call rather than a value the bundle " +
                 "carries so the registration is never constructed where its selector does not exist. " +
                 "What it returns reaches the platform only through the UploadExtensionRegistry port",
-            "uploaderPin" to
-                "reads the rig's per-uploader switch, re-read at every use so it can change without " +
-                "rebuilding the graph. `null` in a production build not by convention but by " +
-                "CONSTRUCTION: the only writer of the root source behind it is the control channel's boot " +
-                "hook, whose source is absent from a build made without the channel's build property",
             "onEventMinted" to
                 "hands a minted event id back to the shell's link entry, which forwards it into THIS " +
                 "core's join gate — a U-turn through the entry surface so create and a scanned QR take " +
@@ -159,6 +154,11 @@ class CompositionSeamTest {
         "EntryHooks.deliverPushToken" to
             "hands the OS-delivered token to the in-memory PushTokenSource the registration collector observes; the " +
             "network write is PushRegistration's, over the PushTokenPublisher port",
+        "RigSwitches.uploaderPin" to
+            "reads the rig's per-uploader switch, re-read at every use so it can change without " +
+            "rebuilding the graph. `null` in a production build not by convention but by " +
+            "CONSTRUCTION: the only writer of the root source behind it is the control channel's boot " +
+            "hook, whose source is absent from a build made without the channel's build property",
         "App.admission" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant is a PhotoGrantRead PORT",

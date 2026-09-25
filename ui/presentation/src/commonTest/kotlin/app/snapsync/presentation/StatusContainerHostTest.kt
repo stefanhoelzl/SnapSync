@@ -18,6 +18,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinCommit
 import app.snapsync.feature.membership.RenameStatus
 import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.CreationFailureReason
@@ -266,6 +267,9 @@ private fun host(
     leave: suspend () -> Unit = {},
     attested: MutableStateFlow<Boolean> = MutableStateFlow(true),
     onIntentError: (Throwable) -> Unit = {},
+    // The shipped answer by default, as a production root composes; the autoJoin tests pass `Honoured`,
+    // which only a rig build's root does.
+    inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
 ) = StatusContainerHost(
     StatusSources(source, permission.permission, configFake.config, attested = attested),
     scope,
@@ -276,6 +280,7 @@ private fun host(
     ),
     cutoffFormatter = fixedCutoffFormatter(),
     diagnostics = testDiagnostics(onIntentError = onIntentError),
+    inviteLinkHints = inviteLinkHints,
 )
 
 /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
@@ -549,11 +554,14 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `config absent with an invalid-name failure shows the input with the name error`() = runTest {
-        val host = createHost(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), scope = backgroundScope)
-        assertEquals(
-            screen(Layer.CreateEvent(error = "That name wasn't accepted. Try a different one.")),
-            host.container.stateFlow.value,)
+    fun `config absent with a refused create shows the input naming what was refused — name or dates`() = runTest {
+        for ((reason, copy) in listOf(
+            CreationFailureReason.INVALID_NAME to "That name wasn't accepted. Try a different one.",
+            CreationFailureReason.INVALID_WINDOW to "Those dates weren't accepted. Try a shorter range.",
+        )) {
+            val host = createHost(CreationStatus.Failed(reason), scope = backgroundScope)
+            assertEquals(screen(Layer.CreateEvent(error = copy)), host.container.stateFlow.value)
+        }
     }
 
     @Test
@@ -870,6 +878,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, cutoff, _, _, _ ->
                 committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); JoinCommit.Committed
@@ -896,6 +905,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, startsAt, _, _, cutoff, _, _, _ ->
                 seenStartsAt = startsAt
@@ -924,6 +934,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-06T14:32:11Z"), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, cutoff, _, _, _ ->
                 committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); JoinCommit.Committed
@@ -1143,6 +1154,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, _, _, _, _ ->
                 joins++
@@ -1289,6 +1301,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); JoinCommit.Committed },
         ).test(this) {
@@ -1316,6 +1329,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             diagnostics = testDiagnostics(log = { logged.trySend(it) }),
             commands = testCommands(),
+            inviteLinkHints = InviteLinkHints.Honoured,
         )
         containerHost.test(this) {
             runOnCreate()
@@ -1385,6 +1399,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _, _, _, _, _, _, _, direction, _ ->
                 committedDirection = direction
@@ -1409,6 +1424,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            inviteLinkHints = InviteLinkHints.Honoured,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _, _, _, _, _, _, _, direction, _ ->
                 committedDirection = direction
@@ -1876,6 +1892,36 @@ class StatusContainerHostTest {
  * fixtures — the split is by SUBJECT (what a scanned link does) rather than by an arbitrary line count.
  */
 class StatusContainerHostJoinGateTest {
+
+    @Test
+    fun `an invalid deeplink over an open join surface shows its notice there and leaves the join untouched`() = runTest {
+        // Capability `join-event`: the message shows on WHATEVER screen the user is on — the open join
+        // screen included — and a damaged link changes nothing, so the pending join stays exactly as it was.
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-04T18:00:00Z"), ENDS_AT, DELETES_AT) },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID))).join()
+            runCurrent()
+            val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "Anna's Birthday", eventStart("2026-07-04T18:00:00Z"), ENDS_AT, DELETES_AT)
+            assertJoining(containerHost.container.stateFlow.value, EVENT_ID, ready)
+
+            containerHost.onOpenUrl("not a config link").join()
+            runCurrent()
+            val flashed = containerHost.container.stateFlow.value
+            assertJoining(flashed, EVENT_ID, ready)
+            assertEquals("That QR code wasn't valid.", (flashed.layer as Layer.JoiningEvent).notice)
+
+            advanceTimeBy(5_000)
+            runCurrent()
+            val cleared = containerHost.container.stateFlow.value
+            assertJoining(cleared, EVENT_ID, ready)
+            assertEquals(null, (cleared.layer as Layer.JoiningEvent).notice)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
 
     // ── the gate never rests in a phase with no action (spec `join-event`) ───────────────────────
 

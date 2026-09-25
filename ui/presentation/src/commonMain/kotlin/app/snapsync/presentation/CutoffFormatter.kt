@@ -2,7 +2,9 @@ package app.snapsync.presentation
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CaptureDate
+import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.localToCutoff
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -46,6 +48,22 @@ class CutoffFormatter(
      * fail, for a comparison that needs neither.
      */
     fun nowCutoff(): CaptureDate = toCutoff(nowLocal())
+
+    /**
+     * The latest end an event starting at [from] may have (capability `create-event`): [from] plus the
+     * backend's event window ([EVENT_WINDOW_MAX_SECONDS], generated from the same deployment value
+     * `POST /events` validates against).
+     *
+     * Measured in INSTANTS, not wall-clock days, because the backend measures `endsAt - startsAt` in seconds
+     * between the two UTC values this formatter's [toCutoff] produces: across a daylight-saving change, "30
+     * local days later" is an hour more or less than the limit, and the hour more is a refusal.
+     */
+    fun latestEnd(from: LocalDateTime): LocalDateTime =
+        (from.toInstant(zone) + EVENT_WINDOW_MAX_SECONDS.seconds).toLocalDateTime(zone)
+
+    /** Whether `[from, until]` is no longer than the backend's event window — see [latestEnd]. */
+    fun fitsEventWindow(from: LocalDateTime, until: LocalDateTime): Boolean =
+        until.toInstant(zone) - from.toInstant(zone) <= EVENT_WINDOW_MAX_SECONDS.seconds
 
     /**
      * A **humanized** duration between [from] and [until] for the create screen's live hint, e.g.

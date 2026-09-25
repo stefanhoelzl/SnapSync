@@ -8,12 +8,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
+import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
+import kotlin.time.Duration.Companion.seconds
 import app.snapsync.presentation.Layer
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.UiState
@@ -22,20 +22,19 @@ import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppIdentityHeader
 import app.snapsync.ui.components.AppEventDateRangeSection
-import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.plus
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppTextField
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 // Event creation (capability `create-event`): the name/date form, its in-flight state, and the
 // rename failure vocabulary the heading dialog reports.
+
+/** The longest event window, in whole days, as the create screen states it. */
+private val EVENT_WINDOW_MAX_DAYS: Long = EVENT_WINDOW_MAX_SECONDS.seconds.inWholeDays
 
 /**
  * The create-event landing layer (create-event) — the app's front door for a HOST, brought to the
@@ -48,34 +47,25 @@ import androidx.compose.runtime.setValue
  * and the transient "creating …" state that replaces it ([CreatingEventScreen]) — stay anchored in the
  * same place, so the surface never jumps between the two.
  *
- * The name and the date range live in local Compose state (only the submitted values cross the container);
- * Create is disabled until the trimmed name is non-empty AND the range satisfies `start < end`, and the
- * field caps at 100 characters — so a returned failure is a *submission* failure (the server was
- * unreachable or rejected it), not the current name being malformed. It is therefore stated in an
- * [AppErrorBanner] above the action, never as a red field, which would falsely blame the host's typing.
+ * The name and the date range live in the [draft] (only the submitted values cross the container);
+ * Create is disabled until the trimmed name is non-empty AND the range satisfies `start < end` AND it is
+ * no longer than the backend's event window — which the picker already cannot produce, so the last guard
+ * only restates it — and the field caps at 100 characters. A returned failure is therefore a *submission*
+ * failure (the server was unreachable or rejected it), not the current input being malformed. It is
+ * stated in an [AppErrorBanner] above the action, never as a red field, which would falsely blame the
+ * host's typing.
  *
- * The range defaults to **`[now, now + 1 day]`, frozen at first composition** (`remember { … }`, not
- * re-derived at submit). The label is the screen's whole statement about what will be sent, so a value that
- * silently drifted between being displayed and being posted would make the screen lie. A slow typer
- * therefore sets a start a few minutes in the past — harmless, since they are at their own event.
+ * The range defaults to **`[now, now + 1 day]`, frozen at first composition** (see [rememberCreateDraft]).
+ * A slow typer therefore sets a start a few minutes in the past — harmless, since they are at their own
+ * event.
  */
 @Composable
 internal fun CreateEventScreen(
     state: Layer.CreateEvent,
+    draft: CreateDraft,
     onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     cutoff: CutoffFormatter,
 ) {
-    var name by remember { mutableStateOf("") }
-    // The default window `[now, now + 1 day]`, FROZEN at first composition (not re-derived at submit): the
-    // label is the screen's whole statement of what will be sent, so a value that drifted between display
-    // and post would make it lie.
-    val initialFrom = remember { cutoff.nowLocal() }
-    val initialUntil = remember(initialFrom) {
-        val next = initialFrom.date.plus(1, DateTimeUnit.DAY)
-        LocalDateTime(next.year, next.month.ordinal + 1, next.day, initialFrom.hour, initialFrom.minute)
-    }
-    var from by remember { mutableStateOf(initialFrom) }
-    var until by remember { mutableStateOf(initialUntil) }
     // A returned failure — a scanned-invalid-link (transient) or a creation failure reduced into
     // `state.error` — is a submission-level condition, not a live field error, so it is banished to a
     // banner above the action rather than reddening the name field.
@@ -105,22 +95,25 @@ internal fun CreateEventScreen(
             ) {
                 AppQuestionHeading("What's it called?")
                 AppTextField(
-                    value = name,
-                    onValueChange = { name = it },
+                    value = draft.name,
+                    onValueChange = { draft.name = it },
                     placeholder = "Event name",
                     maxLength = EVENT_NAME_MAX_LENGTH,
                 )
             }
             AppEventDateRangeSection(
-                from = from,
-                until = until,
+                from = draft.from,
+                until = draft.until,
                 rangeLabel = { f, u -> appRangeLabel(f, u) },
                 // The live humanized duration hint (capability `create-event`), e.g. "Event lasts 5 days".
                 durationLabel = { f, u -> "Event lasts ${cutoff.humanizedDuration(f, u)}" },
                 // The truthfulness line: this window is the event's capture-date bound
-                // (capability `photo-sharing`) — stated once, where it is set.
-                note = "Only photos taken during this window are shared — the range every guest starts from.",
-                onRangeChange = { f, u -> from = f; until = u },
+                // (capability `photo-sharing`) — stated once, where it is set — and the one limit on it, so
+                // a picker that will not reach further is explained rather than merely stubborn.
+                note = "Only photos taken during this window are shared — the range every guest starts " +
+                    "from. An event can last up to $EVENT_WINDOW_MAX_DAYS days.",
+                latestUntil = cutoff::latestEnd,
+                onRangeChange = { f, u -> draft.from = f; draft.until = u },
             )
         }
         // Action pinned to the bottom.
@@ -133,9 +126,11 @@ internal fun CreateEventScreen(
             }
             PrimaryButton(
                 label = "Create event",
-                onClick = { onCreateEvent(name, from, until) },
-                // Disabled while the name is blank OR the range is not `start < end`.
-                enabled = name.isNotBlank() && from < until,
+                onClick = { onCreateEvent(draft.name, draft.from, draft.until) },
+                // Disabled while the name is blank OR the range is not `start < end` OR it is longer
+                // than the event window.
+                enabled = draft.name.isNotBlank() && draft.from < draft.until &&
+                    cutoff.fitsEventWindow(draft.from, draft.until),
             )
             StatusHint("Or scan a QR code in the Camera app to join one.")
         }

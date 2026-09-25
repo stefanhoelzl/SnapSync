@@ -34,7 +34,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ConfigRefresh` | `:domain:ports` | `:adapter:ios:ext-safe` FileBackedConfigStore | no |
 | `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigSource | yes |
 | `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigStore | yes |
-| `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, Transient | no |
+| `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, InvalidWindow, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Run, Skip, Withheld | no |

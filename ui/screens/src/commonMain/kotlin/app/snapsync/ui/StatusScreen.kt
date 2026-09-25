@@ -335,7 +335,7 @@ private fun JoinedBottomActions(actions: StatusActions) {
 private fun ColumnScope.CurrentLayer(
     state: UiState,
     chrome: StatusChrome,
-    // Still needed by the CREATE form (its own local name/date state, which this change does not lift)
+    // Still needed by the CREATE form (its own name/date draft, held by `CreateFlow`)
     // and by the joined layer's clock line. The RANGE form no longer needs it: its bounds arrive
     // resolved (capability `sync-status`).
     cutoff: CutoffFormatter,
@@ -353,10 +353,10 @@ private fun ColumnScope.CurrentLayer(
     } else when (val layer = state.layer) {
         is Layer.UpdateRequired ->
             UpdateRequiredScreen(layer, actions.onOpenLink)
-        is Layer.CreateEvent ->
-            CreateEventScreen(layer, actions.onCreateEvent, cutoff)
-        Layer.CreatingEvent ->
-            CreatingEventScreen()
+        // ONE branch for both create layers, so the form's draft survives a failed create's round trip
+        // through the in-flight screen (capability `create-event`) — see [CreateFlow].
+        is Layer.CreateEvent, Layer.CreatingEvent ->
+            CreateFlow(layer, actions.onCreateEvent, cutoff)
         is Layer.JoiningEvent ->
             JoiningEventScreen(
                 layer = layer,

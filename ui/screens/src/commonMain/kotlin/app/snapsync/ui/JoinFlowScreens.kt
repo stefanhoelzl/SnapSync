@@ -1,6 +1,7 @@
 package app.snapsync.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +17,7 @@ import app.snapsync.presentation.EventDetails
 import app.snapsync.presentation.Layer
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.ui.components.AppAccessPoint
+import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppInvitationHeaderLoading
 import app.snapsync.ui.components.AppJoinProgress
 import app.snapsync.ui.components.AppNoticeCard
@@ -62,46 +64,54 @@ internal fun JoiningEventScreen(
     actions: JoinActions,
 ) {
     val phase = layer.phase
-    // Two levels, and the nesting IS the type: the three phases that carry no event, then the loaded
-    // one dispatched on its step. Both `when`s are exhaustive, so a new phase or a new step fails the
-    // compile rather than falling through — and no branch reaches for details a phase might not have.
-    when (phase) {
-        JoinPhase.Loading -> LoadingPhase()
-        JoinPhase.NotFound -> NotFoundPhase(onCancel = actions.onCancel)
-        JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
-        is JoinPhase.Detailed -> when (phase.step) {
-            // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
-            // owns its whole layout instead of the scaffold every other step opts into.
-            JoinPhase.Detailed.Step.Ready -> ReadyLayout(
-                state = readyState(phase.event, layer),
-                actions = ReadyActions(
-                    participation = actions.participation,
-                    onJoin = actions.onConfirm,
-                    onCancel = actions.onCancel,
-                ),
-            )
-            JoinPhase.Detailed.Step.ExplainAccess -> ExplainAccessPhase(
-                name = phase.event.name,
-                onAcknowledge = actions.onAcknowledgeAccess,
-                onCancel = actions.onCancel,
-            )
-            JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
-            // The two ways a commit can end badly, on ONE surface distinguished by its copy and by
-            // whether a Retry is offered at all — see [CommitBlockedPhase].
-            JoinPhase.Detailed.Step.CommitFailed -> CommitBlockedPhase(
-                name = phase.event.name,
-                title = "Couldn't join",
-                body = "Something went wrong. Try again.",
-                onRetry = actions.onRetryJoin,
-                onCancel = actions.onCancel,
-            )
-            JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
-                name = phase.event.name,
-                title = "This event is full",
-                body = "It has reached the number of devices it can hold, so there is no room to join.",
-                onRetry = null,
-                onCancel = actions.onCancel,
-            )
+    Column(modifier = Modifier.fillMaxSize()) {
+        // A rejected event link that arrived while this surface is open (capability `join-event`: the
+        // self-clearing "not valid" message shows on whatever screen the user is on). Above the phase for the
+        // joined layer's reason — it is about what the user JUST DID — and it changes nothing below.
+        layer.notice?.let { AppErrorBanner(it) }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Two levels, and the nesting IS the type: the three phases that carry no event, then the loaded
+            // one dispatched on its step. Both `when`s are exhaustive, so a new phase or a new step fails the
+            // compile rather than falling through — and no branch reaches for details a phase might not have.
+            when (phase) {
+                JoinPhase.Loading -> LoadingPhase()
+                JoinPhase.NotFound -> NotFoundPhase(onCancel = actions.onCancel)
+                JoinPhase.LoadFailed -> LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
+                is JoinPhase.Detailed -> when (phase.step) {
+                    // The one step that is a *decision surface* rather than a status-plus-actions surface, so it
+                    // owns its whole layout instead of the scaffold every other step opts into.
+                    JoinPhase.Detailed.Step.Ready -> ReadyLayout(
+                        state = readyState(phase.event, layer),
+                        actions = ReadyActions(
+                            participation = actions.participation,
+                            onJoin = actions.onConfirm,
+                            onCancel = actions.onCancel,
+                        ),
+                    )
+                    JoinPhase.Detailed.Step.ExplainAccess -> ExplainAccessPhase(
+                        name = phase.event.name,
+                        onAcknowledge = actions.onAcknowledgeAccess,
+                        onCancel = actions.onCancel,
+                    )
+                    JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = phase.event.name)
+                    // The two ways a commit can end badly, on ONE surface distinguished by its copy and by
+                    // whether a Retry is offered at all — see [CommitBlockedPhase].
+                    JoinPhase.Detailed.Step.CommitFailed -> CommitBlockedPhase(
+                        name = phase.event.name,
+                        title = "Couldn't join",
+                        body = "Something went wrong. Try again.",
+                        onRetry = actions.onRetryJoin,
+                        onCancel = actions.onCancel,
+                    )
+                    JoinPhase.Detailed.Step.EventFull -> CommitBlockedPhase(
+                        name = phase.event.name,
+                        title = "This event is full",
+                        body = "It has reached the number of devices it can hold, so there is no room to join.",
+                        onRetry = null,
+                        onCancel = actions.onCancel,
+                    )
+                }
+            }
         }
     }
 }

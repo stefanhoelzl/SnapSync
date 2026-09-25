@@ -9,6 +9,7 @@ import app.snapsync.model.sceneGenerationAfter
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.PushPorts
+import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.composition.ComposedApp
 import app.snapsync.composition.snapSyncHost
@@ -60,6 +61,7 @@ import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
 import app.snapsync.background.IosBackgroundTime
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.LedgerStore
@@ -257,6 +259,18 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     internal var uploaderPinSource: UploaderPinSource = UploaderPinSource { null }
 
     /**
+     * Whether the join gate acts on an invite link's dev/test hints — `autoJoin` and its overrides (capability
+     * `join-event`, "Joining happens only on confirmation").
+     *
+     * **A shipped build is always [InviteLinkHints.Ignored], structurally**, exactly as for [uploaderPinSource]:
+     * the only writer is the control channel's boot hook, whose source is not compiled into a build made
+     * without `-Psnapsync.rig=true`. So a crafted QR carrying `autoJoin=true` opens the ordinary join screen on
+     * a production binary; the link cannot authorize its own headless join. Read once, when the graph is
+     * composed; the hook's `@EagerInitialization` assignment runs at image load, before any entry point.
+     */
+    internal var inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored
+
+    /**
      * The OS-driven registration, composed **only where its API exists**.
      *
      * The one remaining switch, and it earns its place: `setUploadJobExtensionEnabled` does not exist
@@ -440,7 +454,12 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
                 // Read through the field at every use, not captured here: the field is the rig's seam, and a
                 // capture would freeze whatever it held when the graph was first forced.
-                uploaderPin = { uploaderPinSource.pinned() },
+                rigSwitches = RigSwitches(
+                    uploaderPin = { uploaderPinSource.pinned() },
+                    // The field's value when the graph is first forced — after the rig's eager boot hook, the
+                    // one writer, has run at image load.
+                    inviteLinkHints = inviteLinkHints,
+                ),
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 leaveNotifier = leaveNotifier,

@@ -56,6 +56,10 @@ class CreateEvent(
                 log.i { "create rejected: invalid name" }
                 status.set(CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
             }
+            CreateOutcome.InvalidWindow -> {
+                log.i { "create rejected: invalid date range" }
+                status.set(CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW))
+            }
             CreateOutcome.Transient -> {
                 log.i { "create failed: transient/server error" }
                 status.set(CreationStatus.Failed(CreationFailureReason.SERVER))

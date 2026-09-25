@@ -61,6 +61,7 @@ Roots found:
 | `PublicNSLogWriter` | x | x |
 | `PushPorts` | x | |
 | `PushTokenSource` | x | |
+| `RigSwitches` | x | |
 | `SentryDiagnosticsReporter` | x | x |
 | `UploadPorts` | | x |
 | `UploadRecordPorts` | x | |

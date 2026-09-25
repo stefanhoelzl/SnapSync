@@ -42,7 +42,6 @@ import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
-import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.flow.Background
 import app.snapsync.flow.Foreground
@@ -241,10 +240,9 @@ class AppPorts(
      *  fact rather than derived from [extensionRegistration] so asking never has the side effect of
      *  constructing a registration it is only asking about. */
     val osSupportsOsDrivenUpload: Boolean = false,
-    /** The rig's per-uploader switch, read fresh at every use. **Always `null` in a production build**: its
-     *  source exists only in a build made with the rig, so what a shipped process uploads with is still a
-     *  function of the device and its grant (decision record `changes/both-uploaders-active`, D8). */
-    val uploaderPin: () -> UploaderPin?,
+    /** The runtime inputs only a rig build can set — the per-uploader pin and the invite-link hints. Both are
+     *  inert in a production build (see [RigSwitches]); required, so every root states them. */
+    val rigSwitches: RigSwitches,
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     /** Tells the shared event this device is leaving (capability `manage-membership`). This was
@@ -497,7 +495,7 @@ class AppCore internal constructor(
         extensionRegistrable(
             osSupportsOsDrivenUpload = ports.osSupportsOsDrivenUpload,
             permission = ports.photoAccess.permission.value,
-            pin = ports.uploaderPin(),
+            pin = ports.rigSwitches.uploaderPin(),
         )
     }
 
@@ -508,7 +506,7 @@ class AppCore internal constructor(
     val appUploadAdmission: () -> UploadAdmission = {
         // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
         // the same derivation discovery reads through `selectionScope()`.
-        appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.uploaderPin())
+        appAdmission(ports.photoAccess.permission.value, selectionScope(), ports.rigSwitches.uploaderPin())
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads (capability

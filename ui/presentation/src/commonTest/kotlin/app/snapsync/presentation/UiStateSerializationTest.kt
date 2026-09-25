@@ -78,6 +78,7 @@ class UiStateSerializationTest {
         for (phase in listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed)) {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = phase)))
         }
+        roundTrip(UiState(Layer.JoiningEvent(eventId = "E", phase = JoinPhase.Loading, notice = "That QR code wasn't valid.")))
     }
 
     @Test
