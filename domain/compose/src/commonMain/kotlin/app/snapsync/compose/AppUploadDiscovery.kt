@@ -11,17 +11,17 @@ import co.touchlab.kermit.Logger
  * Whether the app process's walk memo **serves** walks, or only shadows them (capability `sync-ledger`, "An
  * unchanged library is answered from the walk memo").
  *
- * [WalkMemoUse.SHADOW] until the external-change device check of `changes/own-work-per-wake` (task 7.4) is
- * recorded in that requirement: the memo's soundness rests on a change made outside the process — a Camera photo,
- * an iCloud sync — always moving the change token, which no probe has yet shown. Until then every walk enumerates,
- * and the memo only compares what it would have served with what the walk returned, logging a disagreement at
- * `Error` (crash reporting sees it) — the same evidence, from the field.
+ * [WalkMemoUse.SERVE]: the memo's soundness rests on a change made outside the process always moving the change
+ * token, and that is now measured (`changes/own-work-per-wake`, task 7.4, recorded in that requirement): on the
+ * SE2 (iOS 26.6.2) a photo taken with the Camera app moved the token (the next walk was a memo miss and found the
+ * new photo), and on the simulator 15/15 external adds, favourites and deletes did, with the app foregrounded or
+ * suspended. Before that the memo shipped in [WalkMemoUse.SHADOW] and compared instead of serving.
  *
- * **Flipping it** to [WalkMemoUse.SERVE] is a one-line change here, made in the same change that records the
- * device result in the `sync-ledger` spec. It is a constant rather than a rig or runtime switch on purpose: what it
- * gates is a deletion authority, and a build either relies on the token or it does not.
+ * It is a constant rather than a rig or runtime switch on purpose: what it gates is a deletion authority, and a
+ * build either relies on the token or it does not. Going back to SHADOW is the one-line revert, should field
+ * evidence ever show a stale answer.
  */
-val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SHADOW
+val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SERVE
 
 /**
  * The app process's upload discovery binding: [walk] behind the walk memo (decision record

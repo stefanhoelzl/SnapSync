@@ -41,8 +41,9 @@ it can spend.
   next wake; a partial walk is never authoritative.
 - **Walk memo (app process only):** an in-memory memo keyed on `PHPhotoLibrary.currentChangeToken` + the
   membership's selection policy + the grant reuses the last walk while the library is unchanged (measured ~2 ms vs
-  1.3–2.0 s darwinbg walk); still authoritative for deletion. It ships in **shadow** (walks every time, logs a
-  would-be-wrong answer at Error) until a device check shows an external change always moves the token. The upload
+  1.3–2.0 s darwinbg walk); still authoritative for deletion. It **serves**: the device check that an external
+  change moves the token passed (a Camera photo on the SE2; 15/15 external changes on the simulator); shadow mode
+  (walk every time, log a would-be-wrong answer at Error) is the one-line revert. The upload
   extension (32 MB memory limit) keeps a fresh walk.
 - **Ledger counts** refresh after tail units only while foregrounded.
 - **The limited-grant snapshot source closes its grant-flip gap:** a selection change queued before the grant
