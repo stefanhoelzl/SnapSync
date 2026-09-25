@@ -139,8 +139,8 @@ const shots = await Promise.all(
           </div>
           <h3>Your photos flow in</h3>
           <p>
-            Only pictures taken after you join go to the event. Screenshots and saved memes stay
-            out.
+            Only pictures taken during the event's dates go to it — or a narrower range you pick.
+            Screenshots, screen recordings and pictures saved from chats stay out.
           </p>
         </div>
         <div class="step">
@@ -238,7 +238,7 @@ const shots = await Promise.all(
               y2="6"></line></svg
           >
           <h3>Event-scoped</h3>
-          <p>Photos are shared to that one event and reach only the people in it.</p>
+          <p>Photos are shared to that one event and reach only people who have its invite.</p>
         </div>
         <div class="card">
           <svg
@@ -268,7 +268,7 @@ const shots = await Promise.all(
       <p class="eyebrow">Legal</p>
       <h2>Privacy Policy</h2>
       <p class="meta">
-        Last updated 21 July 2026 · Contact: <a
+        Last updated 25 September 2026 · Contact: <a
           href="mailto:stefanh+snapsync@posteo.de"
           target="_blank"
           rel="noopener noreferrer"
@@ -293,10 +293,14 @@ const shots = await Promise.all(
       <h3>What we process, and why</h3>
       <ul>
         <li>
-          <strong>Photos you share.</strong> When you join an event, photos you take afterwards are uploaded
-          so the other people in that event can receive them. They are stored to make sharing work, and
-          are removed when the event ends. Legal basis: performance of the service you asked for (GDPR
-          Art. 6(1)(b)).
+          <strong>Photos you share.</strong> When you join an event with sharing on, the photos in your
+          library that were taken within the event's dates (or the narrower range you choose when joining)
+          are uploaded so the other people in that event can receive them. Screenshots, screen recordings,
+          low-resolution images and videos (such as pictures saved from chats), and photos in messaging-app
+          albums are never uploaded. Anyone who holds the event's invite link or QR code can join it or
+          download its photos in a browser, so share the invite only with people you want to have them.
+          Photos are stored to make sharing work and are deleted with the event (see below). Legal basis:
+          performance of the service you asked for (GDPR Art. 6(1)(b)).
         </li>
         <li>
           <strong>A random device ID.</strong> Each install generates a random identifier so the service
@@ -304,8 +308,10 @@ const shots = await Promise.all(
           it to contact you.
         </li>
         <li>
-          <strong>A push token.</strong> If you allow notifications, Apple gives the app a token so we
-          can tell your device when new photos are ready. It is used only for that.
+          <strong>A push token.</strong> Each time the app starts, Apple gives it a token for silent wake-ups
+          — the app never shows notifications and never asks to. We use the token only to wake your device
+          when new photos are ready in your event. Legal basis: performance of the service you asked for
+          (GDPR Art. 6(1)(b)).
         </li>
         <li>
           <strong>An app-integrity check.</strong> The app proves to our server that it is a genuine,
@@ -314,13 +320,32 @@ const shots = await Promise.all(
           of the service (GDPR Art. 6(1)(f)).
         </li>
         <li>
-          <strong>Crash and error reports.</strong> When the app crashes or hits an error, a technical
-          report (what went wrong, device model, iOS version, app version) is sent to our error-monitoring
-          service so we can find and fix the problem. Before anything is sent, the app removes identifiers
-          from the report — event and device identifiers never leave your phone. Each report carries a
-          random per-install identifier so we can tell how many devices an error affects; it is generated
-          by the app, not linked to your identity, and not linked to the device identifier above. Legal
-          basis: our legitimate interest in keeping the app working (GDPR Art. 6(1)(f)).
+          <strong>Automatic crash and error reports.</strong> In versions from the App Store or TestFlight,
+          when the app crashes or hits an error, a technical report (what went wrong, the app's recent
+          activity leading up to it, device model, iOS version, app version, and how its previous runs
+          ended) is sent to our error-monitoring service so we can find and fix the problem. Before a
+          report is sent, the app removes every event, device and membership identifier from it. Each
+          report carries one random per-install identifier so we can tell how many devices an error affects;
+          it is created by the reporting itself, not linked to your identity, and not linked to the device
+          identifier above. Legal basis: our legitimate interest in keeping the app working (GDPR Art.
+          6(1)(f)).
+        </li>
+        <li>
+          <strong>Bug reports you send.</strong> Double-tapping the app's name opens a sheet that says
+          what will be sent and asks you to describe the problem. Nothing is sent unless you write a description
+          and tap Send. A bug report contains your description, the app's and its background uploader's
+          recent activity logs, and the app's sync state and photo counts — with event, device and photo
+          identifiers left in, so we can find the event and photos affected. It goes to the same error-monitoring
+          service. Apart from bug reports and the stripped-down activity attached to automatic reports,
+          the app's activity logs never leave your phone. Legal basis: your consent (GDPR Art. 6(1)(a)),
+          given by sending the report.
+        </li>
+        <li>
+          <strong>The event page.</strong> Opening an invite link in a browser loads the event's name
+          and photo list from our service and, if you download, the photos from our storage. The part
+          of the link that names the event is never sent when the page itself loads, the event is looked
+          up only on our own service, and the page sets no cookies, runs no tracking, and does not make
+          you a member of the event.
         </li>
       </ul>
       <p>
@@ -335,20 +360,21 @@ const shots = await Promise.all(
           <strong>Bunny.net</strong> — hosting, storage, and content delivery for the photos and the service.
         </li>
         <li>
-          <strong>Apple</strong> — push notifications, the app-integrity check, and app distribution.
+          <strong>Apple</strong> — silent push wake-ups, the app-integrity check, and app distribution.
         </li>
         <li>
-          <strong>Bugsink</strong> — error monitoring: receives the crash and error reports described
-          above (with identifiers already removed).
+          <strong>Bugsink</strong> — error monitoring: receives the automatic crash and error reports
+          (with identifiers already removed) and the bug reports you choose to send.
         </li>
       </ul>
 
       <h3>How long we keep photos</h3>
       <p>
-        Photos are stored only to enable sharing within an event. They are deleted within 30 days of
-        the day the event starts — always, without exception. Often they go sooner: once every
-        member has left an event, its photos are removed in the next nightly cleanup. If you want
-        data associated with your device removed sooner still, email us at the address above.
+        Photos are stored only to enable sharing within an event. Each event, with the photos shared
+        to it, is deleted 30 days after it was created or after its start date, whichever is later —
+        at the latest about a day after that. A photo you also shared to another event stays until
+        that event is deleted too. Photos already received into someone's photo library stay there.
+        If you want data associated with your device removed sooner, email us at the address above.
       </p>
 
       <h3>Your rights</h3>
