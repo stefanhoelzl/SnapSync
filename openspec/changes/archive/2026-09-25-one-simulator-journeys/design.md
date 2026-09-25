@@ -157,6 +157,53 @@ The request log lives in `api/src/dev/serve.ts`, the dev-only entry point. The d
 A journey failure is read first as a missing contract clause. A retry would absorb exactly the slowness this
 change sets out to remove, and it would hide a repeat. If flakes remain, the new evidence decides the next step.
 
+### D8. The rig client really has no request timeout
+
+A re-run of the D4/D5 shape failed in journey 2: `/device/gallery/seed?n=4&kind=policy` raised
+`HttpRequestTimeoutException` after 15 s, while the app was still seeding four 2048×1536 images on a freshly
+booted simulator. `RigClient` documents that it has no request timeout, and it installs `HttpTimeout` unset to
+say so. But Ktor's CIO engine carries its own `requestTimeout`, 15 000 ms by default (read from
+`CIOEngineConfig` in Ktor 3.2.0), which the plugin left unset does not lift. The client now sets
+`engine { requestTimeout = 0 }`, so every bound is the caller's, as its comment always claimed. This had been
+latent since the client was written: every rig verb slower than 15 s would have failed the same way.
+
+## Measured
+
+`ios-contracts` on this change's final shape (D4, D5 and D8), stage timestamps from `build/sim-contracts/stages`:
+
+| run | job | xcodebuild | boot | install + grant | launch | photo library ready | contracts | journeys |
+|---|---|---|---|---|---|---|---|---|
+| 36160981548 #1 | 20.5 min | 4:31 | 2:16 | 2:16 | 0:58 | 7:41 | 0:14 | 0:40 |
+| 36160981548 #2 | 19.9 min | 5:20 | 1:59 | 1:24 | 1:37 | 5:33 | 0:12 | 1:30 |
+| 36160981548 #3 | 13.3 min | 4:26 | 2:19 | 1:39 | 0:16 | 0:02 | 0:14 | 2:32 |
+
+All three passed. Against the baseline in Context, the median fell from ~35 to ~20 min. There was no flake in the
+final shape; the one failure on the way was D8.
+
+The earlier shapes, for the record:
+- First shape (boot overlapped the build, `addmedia` warm-up, background journey compile): 23.1 min, green.
+  xcodebuild 13.6 min; `CandidateSource` still waited 304 s.
+- D4/D5 shape without D8: 19.3 min green, then one journey failure (D8).
+
+What remains is almost entirely the fresh simulator's first boot:
+- Boot, install and grant, launch and readiness together took 4:53 to 13:11. Readiness alone varies from 2 s to
+  7:41, depending on when `assetsd`'s background migrations run.
+- Load average reached 400–490 during the boot, on 3 vCPUs.
+- The contracts take ~13 s once the library is ready.
+
+The next lever is a simulator that has already booted and migrated, restored from the Actions cache. It is being
+measured separately; it is not part of this change.
+
+## Delta accounting
+
+- `test/integration` (the journeys, `Member`, their resource and build script): `testing-architecture`, delta.
+- `test/control` (`RigClient`): `testing-architecture`, no delta. D8 makes the client do what its contract already
+  said (no request timeout).
+- `scripts/sim-contracts`, `.github/workflows/ios.yml`: `ios-ci`, delta.
+- `api/src/dev/serve.ts` (the request log): `ios-ci`, the only spec that names the dev server, through its evidence
+  clause. Delta.
+- `CLAUDE.md`, `.claude/skills/ios-simulator`: documentation, no capability.
+
 ## Risks / Trade-offs
 
 - [The member's calls diverge from what the app's uploader really sends] → They are built from `model/`'s wire
@@ -180,4 +227,4 @@ This changes test infrastructure only: a revert of the change's PR restores the 
 
 ## Open Questions
 
-- How long the first-write wait is on a quiet machine (measured by the readiness stage on this change's runs).
+- Whether a cached, already-booted simulator removes the first-boot cost. It is being measured outside this change.

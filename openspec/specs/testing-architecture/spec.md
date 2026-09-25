@@ -33,6 +33,8 @@ Decision record for the live backend in the canonical check: `changes/archive/20
 Decision record for the control protocol and its two hosts: `changes/archive/2026-09-23-add-rig-jvm-host`.
 
 Decision record for the protocol-driven integration surface, the shared host composition and the journeys: `changes/archive/2026-09-24-integration-over-control`.
+
+Decision record for running the journeys on one simulator, with the second member played over the backend's public surface, and for `ios-contracts`' build-first order and photo-library readiness stage: `changes/archive/2026-09-25-one-simulator-journeys`.
 ## Requirements
 ### Requirement: A test lives with the code it tests
 
@@ -543,14 +545,19 @@ file records.
 ### Requirement: All-real journeys are the contracts' safety net
 
 A small set of **journeys** SHALL run end to end with every system real:
-- the rig build of the iOS app, on simulators;
+- the rig build of the iOS app, on **one** simulator;
 - the real backend, served locally;
 - the real photo library.
 
 They SHALL be written against the typed client only, as the integration surface is. They SHALL cover:
 - creating an event and joining it;
 - a member's own photos landing in the backend and the event union;
-- a second member receiving those photos into their library.
+- that member receiving another member's photos into their library.
+
+The **other member** SHALL be played by the journey itself, over the backend's public HTTP surface only. It joins
+the app's event and uploads and publishes photos exactly as a device would address them, with **real JPEG bytes**,
+so the app's download ends in a real photo-library import. It SHALL NOT be a world lever or any route outside
+the backend's public surface, because a member the backend could tell apart from a device is not a member.
 
 A journey failure SHALL be read first as a **missing contract clause**: a behaviour the mocks do not hold,
 fixed by a new clause, after which the mocked suite covers it.
@@ -568,4 +575,10 @@ fail, never skip, when a host or the backend they are pointed at is absent.
 
 - **WHEN** the journey task runs with no simulator app or backend address given
 - **THEN** it fails naming the missing address, rather than passing with nothing run
+
+#### Scenario: The app receives a member it cannot tell from a device
+
+- **WHEN** the journey's member joins the app's event and publishes photos with real JPEG bytes
+- **THEN** the app downloads them and its photo-library census grows by their count, with the member having
+  used nothing but the backend's public HTTP surface
 

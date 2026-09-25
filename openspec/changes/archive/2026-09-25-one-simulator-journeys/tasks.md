@@ -32,5 +32,6 @@
 ## 6. Verify
 
 - [x] 6.1 `./gradlew :test:integration:compileJourneysKotlin` and `./gradlew build` pass locally
-- [ ] 6.2 Push and read the PR's `ios-contracts` runs: all green, and stage timestamps recorded. At least three runs, re-running the job if needed
-- [ ] 6.3 Record the measured stages in design.md under a "Measured" heading: the build, the readiness wait, `CandidateSource`'s time, the journeys' Gradle time, the job total, and the `resources.log` peak. Settle D4's open question (boot during the build or after) from them, and move the boot if the numbers say so
+- [x] 6.2 Push and read the PR's `ios-contracts` runs: all green, and stage timestamps recorded. At least three runs, re-running the job if needed
+- [x] 6.3 Record the measured stages in design.md under a "Measured" heading: the build, the readiness wait, `CandidateSource`'s time, the journeys' Gradle time, the job total, and the `resources.log` peak. Settle D4's open question (boot during the build or after) from them, and move the boot if the numbers say so
+- [x] 6.4 Lift the CIO engine's default 15 s request timeout in `RigClient` (design D8), found by a journey run
