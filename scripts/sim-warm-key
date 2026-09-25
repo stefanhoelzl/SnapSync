@@ -21,19 +21,10 @@ for rt in /Library/Developer/CoreSimulator/Volumes/*/Library/Developer/CoreSimul
     fi
 done
 if [ -z "$best_build" ]; then
-    # Not mounted yet (the runtime images mount on demand). Diagnostics, then the MobileAsset catalog, then simctl.
-    { echo "--- /Library/Developer/CoreSimulator:"; ls -la /Library/Developer/CoreSimulator /Library/Developer/CoreSimulator/Volumes 2>&1
-      echo "--- mounts:"; mount | grep -i -e simulator -e cryptex
-      echo "--- assets:"; ls /System/Library/AssetsV2/ 2>&1 | grep -i sim; } >&2
-    for info in /System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/*.asset/Info.plist; do
-        [ -f "$info" ] || continue
-        v="$(/usr/libexec/PlistBuddy -c 'Print MobileAssetProperties:SimulatorVersion' "$info" 2>/dev/null)" || continue
-        b="$(/usr/libexec/PlistBuddy -c 'Print MobileAssetProperties:Build' "$info" 2>/dev/null)" || continue
-        echo "runtime asset: iOS $v ($b)" >&2
-        if [ -z "$best_version" ] || [ "$(printf '%s\n%s\n' "$best_version" "$v" | sort -V | tail -1)" = "$v" ]; then
-            best_version="$v"; best_build="$b"
-        fi
-    done
+    # Not mounted yet (measured on macos-26: the images mount on demand), but each runtime's mount point is already
+    # there, named after its build: /Library/Developer/CoreSimulator/Volumes/iOS_<build>. The newest build wins.
+    ls /Library/Developer/CoreSimulator/Volumes >&2 || true
+    best_build="$(ls /Library/Developer/CoreSimulator/Volumes 2>/dev/null | sed -n 's/^iOS_//p' | sort -V | tail -1)"
 fi
 if [ -z "$best_build" ]; then
     echo "sim-warm-key: FALLBACK to simctl — CoreSimulatorService is now running before the restore" >&2
