@@ -3,6 +3,8 @@ import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The allowed targets, declared once (spec `module-architecture`, "Zones inside the core").
+    id("snapsync.targets")
     // `UiState` is `@Serializable` so the dev/test control channel can serve the REAL reduced state
     // rather than a hand-written mirror of it (`:test:rig`). Annotations only — the encoder is
     // compiler-generated, so there is no projection that could drift from what the screen renders,
@@ -39,10 +41,6 @@ kover {
 val forgeEnabled = providers.gradleProperty("snapsync.forge").map(String::toBoolean).getOrElse(false)
 
 kotlin {
-    jvmToolchain(libs.versions.jdk.get().toInt())
-    jvm()
-    iosArm64()
-    iosSimulatorArm64()
     sourceSets {
         if (forgeEnabled) {
             commonMain { kotlin.srcDir("src/forge/kotlin") }

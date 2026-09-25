@@ -1,4 +1,6 @@
 pluginManagement {
+    // The convention plugins (`snapsync.targets`: the allowed targets, spec `module-architecture`).
+    includeBuild("build-logic")
     repositories {
         gradlePluginPortal()
         mavenCentral()

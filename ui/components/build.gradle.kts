@@ -3,6 +3,8 @@ import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    // The allowed targets, declared once (spec `module-architecture`, "Zones inside the core").
+    id("snapsync.targets")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
     // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
@@ -27,7 +29,6 @@ kover {
 }
 
 kotlin {
-    jvmToolchain(libs.versions.jdk.get().toInt())
     jvm {
         testRuns["test"].executionTask.configure {
             // Skiko loads native libs via a restricted method; future JDKs block it by default.
@@ -37,8 +38,6 @@ kotlin {
             jvmArgs("-Djava.awt.headless=true")
         }
     }
-    iosArm64()
-    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             // Shared sync vocabulary in App* signatures (`model/`'s Arrow — the step-9 Arrow/ArrowLevel
