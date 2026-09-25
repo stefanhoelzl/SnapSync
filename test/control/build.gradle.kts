@@ -11,10 +11,12 @@ plugins {
 //
 // THE COMPILE BOUNDARY IS THE READ-MODEL RULE. The wire types stay in `:test:rig`'s `commonMain` — the device
 // build needs them without a client — and the rig declares its own module dependencies `implementation()`, so
-// nothing it depends on reaches here. `RigState` embeds the real `UiState`, so this module declares
-// `:ui:presentation` itself, which exports `model/` and `feature/`; nothing on this compile path exports
-// `ports/`, `flow/` or `compose/`, so a client or test naming one fails to compile. That is the whole rule — no
-// text gate stands behind it.
+// nothing it depends on reaches here. `RigState` embeds the real `UiState` (in `model/`), so this module declares
+// `:domain:model`, `:domain:presentation` and `:domain:feature` itself — each explicitly, since the core's zones
+// export nothing transitively. Nothing on this compile path exports `ports/`, `flow/`, `compose/` or the host, so a
+// client or test naming one fails to compile. Within `feature/`, the read-model import gate (capability
+// `architecture-guards`, "The zone gates") confines this module's references to the `readmodel` packages. The
+// compile boundary and that gate together are the whole rule.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }
@@ -22,8 +24,10 @@ kotlin {
 dependencies {
     // The wire types (and, for the tests, the JVM host they start).
     api(project(":test:rig"))
-    // `RigState.ui` is the real `UiState`, decoded by its compiler-generated serializer.
-    api(project(":ui:presentation"))
+    // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
+    api(project(":domain:model"))
+    api(project(":domain:presentation"))
+    api(project(":domain:feature"))
     api(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
     implementation(libs.kotlinx.serialization.json)

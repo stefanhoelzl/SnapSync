@@ -14,8 +14,8 @@ import app.snapsync.compose.PushPorts
 import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
-import app.snapsync.composition.ComposedApp
-import app.snapsync.composition.snapSyncHost
+import app.snapsync.host.ComposedApp
+import app.snapsync.host.snapSyncHost
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.ports.PlannedResource
 import app.snapsync.time.SystemClock

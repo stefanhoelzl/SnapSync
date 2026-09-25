@@ -18,10 +18,10 @@ plugins {
 // `SnapSyncRoot`, no live graph, no App Attest, no ledger and no backend client. A forge process cannot
 // boot the live stack because there is nothing in it to boot.
 //
-// Built ONLY under `-Psnapsync.forge=true`. Without it, `ForgeStatusHost.kt` is not on `:ui:presentation`'s
+// Built ONLY under `-Psnapsync.forge=true`. Without it, `ForgeStatusHost.kt` is not on `:domain:presentation`'s
 // compile path either, so the preset table stops shipping too.
 // Gated exactly like its source. Without the property this module compiles NOTHING — the source directory
-// is not added, so there is no forge entry point anywhere and `:ui:presentation` does not carry the preset
+// is not added, so there is no forge entry point anywhere and `:domain:presentation` does not carry the preset
 // table either. The module is still in `settings.gradle.kts` unconditionally, so the module set has one
 // answer rather than a property-dependent one (`ModuleSetTest`).
 val forgeEnabled = providers.gradleProperty("snapsync.forge").map(String::toBoolean).getOrElse(false)
@@ -46,7 +46,7 @@ kotlin {
             // reach a port implementation, so it cannot touch the network, the Keychain, or the ledger.
             api(project(":domain:model"))
             implementation(project(":ui:screens"))
-            implementation(project(":ui:presentation"))
+            implementation(project(":domain:presentation"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(compose.runtime)

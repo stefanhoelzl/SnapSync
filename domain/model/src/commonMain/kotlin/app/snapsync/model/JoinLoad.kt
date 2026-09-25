@@ -3,7 +3,7 @@ package app.snapsync.model
 /**
  * The outcome of fetching an event's details for the join gate — the gate-facing mirror of the
  * `EventDirectory` port's `EventDetails` (adapted by `feature/membership`'s `toJoinLoad`). Seated in
- * `model/` (migration step 9): the gate lives in `:ui:presentation`, which may reference only the
+ * `model/` (migration step 9): the gate lives in `:domain:presentation`, which may reference only the
  * command bundle, feature read-model types, and `model/` — never `ports/` — so the vocabulary the
  * injected `loadJoinDetails` read returns must be nameable from here. The gate MUST tell a
  * **missing** event (block) from a **transient** failure (retry).

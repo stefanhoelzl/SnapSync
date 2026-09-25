@@ -5,7 +5,7 @@ package app.snapsync.model
  * status container invokes as a function rather than observes as a state flow.
  *
  * Seated beside [UserCommands] for the same reason — `model/` is the zone both `compose/` (which builds and
- * decorates the live instance) and `:ui:presentation` (which receives it by constructor) may name. It exists
+ * decorates the live instance) and `:domain:presentation` (which receives it by constructor) may name. It exists
  * because these reads touch ports: the shareable count reads the download store and the photo library, the
  * join details cross the network. Built outside `compose/`, a query ran on whatever thread invoked it — for the
  * count, a composable effect on the main thread — and no gate saw it, because the lane gate covered only the

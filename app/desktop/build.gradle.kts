@@ -23,9 +23,9 @@ dependencies {
     api(project(":domain:model"))
     api(project(":domain:ports"))
     api(project(":domain:feature"))
-    // The forge `PanelController` constructs its stand-in cells from `:ui:presentation`'s forge
+    // The forge `PanelController` constructs its stand-in cells from `:domain:presentation`'s forge
     // seams (MutableAttestedSource, MutablePendingJoinSource); `StatusPane` names the host.
-    implementation(project(":ui:presentation"))
+    implementation(project(":domain:presentation"))
     implementation(project(":ui:screens"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
     // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.

@@ -70,9 +70,9 @@ kotlin {
             api(project(":domain:feature"))
             api(project(":domain:compose"))
             // The shared host composition: the core and the status host over it (`snapSyncHost`).
-            implementation(project(":app:composition"))
+            implementation(project(":domain:host"))
             implementation(project(":ui:screens"))
-            implementation(project(":ui:presentation"))
+            implementation(project(":domain:presentation"))
             // The technology adapters, placed by linkage (migration step 4): the Ktor/SQLDelight
             // impls (:adapter:generic:app), the extension-safe iOS adapters (:adapter:ios:ext-safe —
             // Keychain stores, ledger/download drivers, discovery walk, log writers), and the

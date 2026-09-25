@@ -18,8 +18,8 @@ import kotlin.test.fail
  *
  * SCOPE ASSUMPTION (design D6, named here so a deviation is a conscious edit): the `:domain` module
  * roots at `domain/` with `src/` beside the legacy submodule directories until they empty — zones
- * live at `domain/<zone>/src/commonMain/kotlin/…/<zone>/` — and `:ui:presentation` at
- * `ui/presentation/src`. If migration step 3a/9 picks a different root, these gates go
+ * live at `domain/<zone>/src/commonMain/kotlin/…/<zone>/` — and `:domain:presentation` at
+ * `domain/presentation/src`. If migration step 3a/9 picks a different root, these gates go
  * pending-forever (the PENDING line names the absent scope); that step's diff must then edit these
  * paths, reviewed against D6.
  */

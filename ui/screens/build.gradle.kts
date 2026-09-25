@@ -26,7 +26,12 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:feature"))
-            api(project(":ui:presentation"))
+            api(project(":domain:presentation"))
+            // Declared here rather than received: presentation's edges are `implementation()` only, so it
+            // exports neither. `LocalDateTime` appears in the join/create screens' signatures; the container
+            // host is an Orbit `ContainerHost`.
+            api(libs.kotlinx.datetime)
+            implementation(libs.orbit.core)
             implementation(project(":ui:components"))
             implementation(compose.runtime)
             implementation(compose.foundation)

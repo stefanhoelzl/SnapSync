@@ -5,7 +5,7 @@ package app.snapsync.model
  * commands the status screen can fire, so every user tap crosses the same door the OS-callback
  * triggers do. Seated in `model/` (migration step 9): the bundle is pure vocabulary — a record of
  * command callables with inert defaults — and `model/` is the one zone both `compose/` (which
- * builds the live instance) and `:ui:presentation` (which receives it by constructor) may name;
+ * builds the live instance) and `:domain:presentation` (which receives it by constructor) may name;
  * the armed presentation gate forbids presentation referencing `flow/`, and `flow/` itself may
  * keep importing `model/`. Live instances are still **built and decorated only in `compose/`**
  * (`AppCore.userCommands`) — presentation never references a feature command (or a flow callable)

@@ -44,8 +44,8 @@ jobs:
       # nothing ever compiled it.
       #
       # IT THEN DID IT AGAIN, BESIDE THIS STEP. `compileIosMainKotlinMetadata` compiles the MAIN half of a
-      # gated tree and nothing else, so `ui/presentation`'s forge TEST source set — gated with the presets
-      # it asserts — stopped compiling when the presentation state changed shape (93e8eb4f, 2026-08-28)
+      # gated tree and nothing else, so presentation's forge TEST source set (then at `ui/presentation`) —
+      # gated with the presets it asserts — stopped compiling when the presentation state changed shape (93e8eb4f, 2026-08-28)
       # and stayed broken for weeks with this step green beside it. `screenshots.yml` did not catch it
       # either: it builds the `SnapSyncForge` Xcode scheme, which is forge main, not JVM tests.
       #
@@ -60,7 +60,7 @@ jobs:
       # and its point is to catch a reference that stopped resolving, not to produce an artifact. Neither
       # property may reach a shipped build, and neither does — a release archive is built without them.
       - run: >
-          ./gradlew compileIosMainKotlinMetadata :ui:presentation:jvmTest
+          ./gradlew compileIosMainKotlinMetadata :domain:presentation:jvmTest
           -Psnapsync.rig=true -Psnapsync.forge=true
 
   spec-validate:

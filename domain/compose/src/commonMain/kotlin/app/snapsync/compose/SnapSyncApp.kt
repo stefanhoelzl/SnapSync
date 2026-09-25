@@ -875,7 +875,7 @@ class AppCore internal constructor(
      * Wrap a user tap as a **platform entry point** (spec `privacy-security`; spec
      * `docs/architecture.md`, "Absence is never silent"). `compose/` is where this must live: it is
      * where the door law already says command instances are decorated, and it is the only place that
-     * *can* — `:ui:presentation` may not reference `ports/`, so it cannot reach a `LogScope`.
+     * *can* — `:domain:presentation` may not reference `ports/`, so it cannot reach a `LogScope`.
      *
      * The `tap.` namespace is load-bearing, not cosmetic. Without it a device log cannot say whether
      * work was started by the platform or by the person holding the phone: on Bugsink `SNAPSYNC-3`,

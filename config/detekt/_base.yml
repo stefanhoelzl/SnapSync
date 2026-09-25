@@ -42,7 +42,7 @@ naming:
     #
     # A reading and not a ceiling, by the test at the top of this file: if a PascalCase composable has
     # satisfied this rule in `:ui:screens`, it has satisfied it in `:app:desktop` and in
-    # `:ui:presentation`'s forge source too, all of which declare composables.
+    # `:domain:presentation`'s forge source too, all of which declare composables.
     ignoreAnnotated: ['Composable']
 
     # detekt's default excludes every `**/test/**` path from this rule. In THIS repo `test/` is a MODULE
