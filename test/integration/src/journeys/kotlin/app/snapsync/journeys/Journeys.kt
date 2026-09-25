@@ -3,6 +3,8 @@ package app.snapsync.journeys
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.model.APP_VERSION_HEADER
+import app.snapsync.model.ConfigDecodeResult
+import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.normalizeAssetId
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.Layer
@@ -33,37 +35,36 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * The all-real journeys (capability `testing-architecture`, "All-real journeys are the contracts' safety net"): the
- * rig build of the iOS app on two simulators — members A and B — and the real backend served locally, driven
- * through the same typed client every integration test speaks.
+ * rig build of the iOS app on ONE simulator — member A — and the real backend served locally, driven through the
+ * same typed client every integration test speaks. The second member is played by this test itself, over the
+ * backend's public HTTP surface only, with real JPEG bytes ([Member]): to the backend it is a device, to A a foreign
+ * member whose photos take the real download and PhotoKit import path. One simulator, because a second freshly
+ * created one's first-boot work swamped the hosted runner (decision record: the `one-simulator-journeys` change).
  *
  * They exist because the integration surface runs on mocks the port contracts license, so a real run tests the
  * CONTRACTS: a failure here that the mocked suite does not show is read first as a clause nobody wrote, and fixed by
  * writing it.
  *
- * ONE test, three journeys in order, because each stands on the last and the simulators are shared: A creates and
- * joins; A's photos land in the backend and the event's union; B joins A's event download-only and receives them.
+ * ONE test, three journeys in order, because each stands on the last and the simulator is shared: A creates and
+ * joins; A's photos land in the backend and the event's union; a member joins A's event through the id in A's invite
+ * link, shares photos, and they arrive in A's library.
  */
 class Journeys {
 
     private val appA = address("appA")
-    private val appB = address("appB")
     private val backend = address("backend").trimEnd('/')
 
     @Test
-    fun a_member_creates_shares_and_a_second_member_receives() = runBlocking {
+    fun a_member_creates_shares_and_receives_another_members_photos() = runBlocking {
         RigClient(appA).use { a ->
-            RigClient(appB).use { b ->
-                // Never drive an app baked for another backend: that is the shared production one, and these journeys
-                // create events and upload photos.
-                listOf(a, b).forEach { app ->
-                    val base = app.state().build["uploadBase"]
-                    assertTrue(base == backend, "an app under journey is baked for '$base', not the local backend $backend")
-                }
-                HttpClient(CIO).use { http ->
-                    val event = createAndJoin(a)
-                    val shared = shareOwnPhotos(a, http, event)
-                    receive(a, b, shared)
-                }
+            // Never drive an app baked for another backend: that is the shared production one, and these journeys
+            // create events and upload photos.
+            val base = a.state().build["uploadBase"]
+            assertTrue(base == backend, "the app under journey is baked for '$base', not the local backend $backend")
+            HttpClient(CIO).use { http ->
+                val event = createAndJoin(a)
+                shareOwnPhotos(a, http, event)
+                receive(a, Member(http, backend))
             }
         }
     }
@@ -89,9 +90,9 @@ class Journeys {
 
     /**
      * Journey 2 — A's own photos land: seeded photos, half above the resolution floor, uploaded by the app's own
-     * uploader on the foreground entry, and served by the event's union. Answers the asset ids that must arrive.
+     * uploader on the foreground entry, and served by the event's union.
      */
-    private suspend fun shareOwnPhotos(a: RigClient, http: HttpClient, event: String): Set<String> {
+    private suspend fun shareOwnPhotos(a: RigClient, http: HttpClient, event: String) {
         a.deviceVerb("gallery/seed", mapOf("n" to "4", "kind" to "policy")).done()
         val cutoff = a.state().ready.minPhotoDate ?: fail("A's membership carries no cutoff")
         val admitted = a.gallery(cutoff = cutoff).policy?.assets.orEmpty()
@@ -102,24 +103,34 @@ class Journeys {
         eventually(UPLOAD, "A's photos in the event union") {
             unionAssetIds(http, event).containsAll(admitted)
         }
-        return admitted
     }
 
-    /** Journey 3 — B joins A's event download-only through A's invite link, and A's photos arrive in B's library. */
-    private suspend fun receive(a: RigClient, b: RigClient, shared: Set<String>) {
-        b.deviceVerb("reset").done()
-        val before = b.gallery(cutoff = WHOLE_LIBRARY).census.total
+    /**
+     * Journey 3 — a member joins A's event through the id A's invite link carries, and shares real photos; they
+     * arrive in A's library through the real download and PhotoKit import.
+     */
+    private suspend fun receive(a: RigClient, member: Member) {
         val invite = a.state().inviteUrl ?: fail("A's joined screen carries no invite link")
-        b.os("app", "onSceneContinueActivity", arg = invite).done()
-        b.awaitState(JOIN) { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
-        b.user("confirmJoin", mapOf("direction" to "download", "saveToAlbum" to "false")).done()
-        b.awaitState(JOIN) { it.ready.configResolved }
+        val event = when (val link = decodeEventUrl(invite)) {
+            is ConfigDecodeResult.Success -> link.payload.eventId
+            is ConfigDecodeResult.Failure -> fail("A's invite link does not decode (${link.reason}): $invite")
+        }
+        member.join(event)
+        // Captured today at noon: inside the event's window, as a member's photo of the event would be.
+        val today = Clock.System.todayIn(TimeZone.UTC)
+        val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")
 
-        b.os("app", "onForeground").done()
-        val received = b.awaitState(DOWNLOAD) { it.download.total >= shared.size && it.download.downloaded == it.download.total }
-        assertTrue(received.download.downloaded >= shared.size, "B downloaded A's photos: ${received.download}")
-        eventually(DOWNLOAD, "A's photos in B's library") {
-            b.gallery(cutoff = WHOLE_LIBRARY).census.total >= before + shared.size
+        val before = a.gallery(cutoff = WHOLE_LIBRARY).census.total
+        a.os("app", "onForeground").done()
+        val received = a.awaitState(DOWNLOAD) {
+            it.download.total >= shared.size && it.download.downloaded == it.download.total
+        }
+        assertTrue(
+            received.download.downloaded >= shared.size,
+            "A downloaded the member's photos: ${received.download}",
+        )
+        eventually(DOWNLOAD, "the member's photos in A's library") {
+            a.gallery(cutoff = WHOLE_LIBRARY).census.total >= before + shared.size
         }
     }
 
@@ -149,6 +160,7 @@ class Journeys {
         val POLL = 1.seconds
         const val SERVED_VERSION = "99.0"
         const val WHOLE_LIBRARY = "1970-01-01T00:00:00Z"
+        const val MEMBER_PHOTOS = 2
 
         fun address(name: String): String = System.getProperty("snapsync.journey.$name")
             ?: fail("snapsync.journey.$name is not set — the journeys run only against the addresses ios-contracts passes")

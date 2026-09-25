@@ -232,11 +232,17 @@ confirmation that needs a finger. See `rig-channel` for the verb.
 
 The same script then runs the **all-real journeys** (capability `testing-architecture`): it serves `api/` with
 `deno task dev:local` on `127.0.0.1:8080` — the address the `local` deployment bakes into the build, so it is
-started before the xcodebuild and warmed with one request (a cold deno exceeds the app's 5 s timeout) — boots a
-**second** fresh simulator on its own rig port, reads each app's `GET /device` once (an unclassified vocabulary
-entry fails the job), and runs `./gradlew :test:integration:journeys -Psnapsync.journey.appA=… appB=… backend=…`:
-A creates and joins, A's photos reach the event union, B joins download-only through A's invite link and
-receives them. The backend's output and both apps' `debug.log` land in `build/sim-contracts/`.
+started before the xcodebuild and warmed with one request (a cold deno exceeds the app's 5 s timeout) — reads the
+app's `GET /device` once (an unclassified vocabulary entry fails the job), and runs
+`./gradlew :test:integration:journeys -Psnapsync.journey.appA=… -Psnapsync.journey.backend=…` on the SAME
+simulator: A creates and joins, A's photos reach the event union, then the journey itself plays a second member
+over the backend's public HTTP surface (joining through the id in A's invite link, uploading real JPEGs) and A
+receives them. It uses **one** simulator on purpose: a second fresh one's first-boot work swamped the hosted runner
+and made the job slow and flaky (the `one-simulator-journeys` change). Right after the boot it warms the photo
+library with `simctl addmedia scripts/sim-warmup.jpg` (EXIF-dated 1975, outside every capture window), and the
+contracts wait on a `photo library: ready` stage. Everything lands in `build/sim-contracts/`: `stages`,
+`resources.log` (load and memory every 10 s), the backend's output with a line per request, the app's `debug.log`,
+and `crash/`.
 
 ## ⚠️ Photo permission: use `applesimutils`, NOT `simctl privacy`
 

@@ -5,9 +5,16 @@
 #   scripts/sim-contracts            # on macOS, from the repo root, with snapsync.rig=true in ~/.gradle
 #
 # It builds the rig app for the simulator, ad-hoc signs it (an unsigned build has no App Group), installs it on
-# a FRESH simulator, grants photo access with applesimutils BEFORE the first launch (`simctl privacy grant
+# ONE fresh simulator, grants photo access with applesimutils BEFORE the first launch (`simctl privacy grant
 # photos` writes a TCC row PhotoKit never consults), launches it, and runs every contract `GET /contract` lists
 # for this host. The contracts seed photos and never delete them, which is why the simulator is fresh.
+#
+# ONE simulator, never two: a second freshly created simulator's first-boot work swamped the hosted runner (3 vCPU,
+# 7 GB). Measured, it tripled the job and made the journeys flaky (decision record: the `one-simulator-journeys`
+# change). The simulator boots while the app builds, and a photo-library WARM-UP (`simctl addmedia` of
+# scripts/sim-warmup.jpg, EXIF-dated 1975 so it falls outside every capture window) runs right after the boot: a
+# fresh library's first write otherwise waits minutes inside whichever contract touches it first. The contracts
+# start only after the `photo library: ready` stage, so that wait is attributed to the platform.
 #
 # It FAILS on: any outcome that fails a run — `Failed(`, `Diverged(`, `NotWithin(` (capability `port-contracts`,
 # "Outcomes are explicit and none is silent") — any refusal (409: the process is not the simulator app, or it does not
@@ -16,11 +23,16 @@
 # and log, because a pending system alert is visible only in a screenshot.
 #
 # Then the ALL-REAL JOURNEYS (capability `testing-architecture`, "All-real journeys are the contracts' safety net"):
-# a second fresh simulator, the real backend served locally on the address the `local` deployment bakes into the
-# build (127.0.0.1:8080), and `:test:integration:journeys` driving both apps through the typed client. Before any
-# of that, each app's `GET /device` is read once: a vocabulary entry either host leaves unclassified fails the run.
-# It FAILS on a backend that never answers, an incomplete advertisement, and any journey failure; the backend's
-# output and both apps' logs go to build/sim-contracts/ with the rest.
+# the same app, the real backend served locally on the address the `local` deployment bakes into the build
+# (127.0.0.1:8080), and `:test:integration:journeys` driving the app through the typed client while playing the
+# second member itself over the backend's public HTTP surface. The journeys compile in the background once the
+# xcodebuild is done, on a Gradle daemon the run then reuses. Before any of that, the app's `GET /device` is read
+# once: a vocabulary entry the host leaves unclassified fails the run. It FAILS on a backend that never answers, an
+# incomplete advertisement, and any journey failure, printing the failing assertion.
+#
+# EVIDENCE, all in build/sim-contracts/: the stage timestamps (`stages`), load and memory sampled every 10 s
+# (`resources.log`), the backend's output with a line per request, the app's log, and the host's and the
+# simulator's crash reports from this run (`crash/`).
 #
 # Dev infrastructure: loads nothing on Linux. Runbook: the `ios-simulator` skill.
 set -u
@@ -30,6 +42,22 @@ mkdir -p "$OUT"
 fail() { echo "sim-contracts: FAILED — $*" | tee -a "$OUT/result"; exit 1; }
 # A timestamped marker per stage, kept with the evidence, so the job's wall-clock can be attributed.
 stage() { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$OUT/stages"; }
+# Crash reports newer than this marker are this run's.
+touch "$OUT/.start"
+
+# Load and memory, every 10 s for the whole run: a stall is then attributable to CPU or memory from the evidence.
+(
+    while :; do
+        echo "=== $(date -u +%H:%M:%S) load $(sysctl -n vm.loadavg)"
+        memory_pressure -Q 2>/dev/null | tail -1
+        echo "swap $(sysctl -n vm.swapusage)"
+        vm_stat | grep -E 'Pages free|Pageouts|Swapouts'
+        sleep 10
+    done
+) > "$OUT/resources.log" 2>&1 &
+SAMPLER_PID=$!
+# Until the simulator exists and `cleanup` takes over, an early failure still stops the sampler.
+trap 'kill "$SAMPLER_PID" 2>/dev/null' EXIT
 
 grep -q '^snapsync.rig=true' "$HOME/.gradle/gradle.properties" 2>/dev/null \
     || fail "snapsync.rig=true is not in ~/.gradle/gradle.properties (never put it in the repo's)"
@@ -63,28 +91,38 @@ stage "backend: starting"
 BACKEND_PID=$!
 BACKEND="http://127.0.0.1:8080/api/v2"
 
-# Both simulators are created and their boots STARTED before the build, so the boots overlap it rather than
-# following it. A (the contracts, then journey member A) and B (journey member B).
+# The simulator is created and its boot STARTED before the build, so the boot overlaps it rather than following it.
 DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 16')" || fail "could not create a simulator"
-DEVICE_B="$(xcrun simctl create "journeys-b-$$" 'iPhone 16')" || fail "could not create the second simulator"
 cleanup() {
-    kill "${FIXTURE_PID:-}" "${BACKEND_PID:-}" "${BOOT_PID:-}" "${BOOT_PID_B:-}" 2>/dev/null
-    for d in "$DEVICE" "$DEVICE_B"; do
-        xcrun simctl shutdown "$d" >/dev/null 2>&1; xcrun simctl delete "$d" >/dev/null 2>&1
-    done
+    kill "${SAMPLER_PID:-}" "${FIXTURE_PID:-}" "${BACKEND_PID:-}" "${WARM_PID:-}" "${COMPILE_PID:-}" 2>/dev/null
+    [ -n "${COMPILE_PID:-}" ] && ./gradlew -q --stop >/dev/null 2>&1
+    # This run's crash reports, host and simulator, before the simulator is deleted: a jetsam kill or a crash then
+    # reads apart from a freeze.
+    mkdir -p "$OUT/crash/host"
+    find "$HOME/Library/Logs/DiagnosticReports" -type f -newer "$OUT/.start" -exec cp {} "$OUT/crash/host/" \; 2>/dev/null
+    cp -R "$HOME/Library/Logs/CoreSimulator/$DEVICE" "$OUT/crash/simulator" 2>/dev/null
+    xcrun simctl shutdown "$DEVICE" >/dev/null 2>&1; xcrun simctl delete "$DEVICE" >/dev/null 2>&1
 }
 trap cleanup EXIT
-stage "simulators: booting"
-xcrun simctl boot "$DEVICE" > "$OUT/boot-a.log" 2>&1 &
-BOOT_PID=$!
-xcrun simctl boot "$DEVICE_B" > "$OUT/boot-b.log" 2>&1 &
-BOOT_PID_B=$!
+stage "simulator: booting"
+# Boot, then warm the photo library at once: `addmedia` returns only once the system has imported the image, so its
+# completion is the readiness signal the contracts wait on.
+(
+    xcrun simctl boot "$DEVICE" && xcrun simctl bootstatus "$DEVICE" -b >/dev/null && stage "simulator: booted" \
+        && xcrun simctl addmedia "$DEVICE" scripts/sim-warmup.jpg && stage "photo library: warmed"
+) > "$OUT/boot.log" 2>&1 &
+WARM_PID=$!
 
 stage "xcodebuild: starting"
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build \
     > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
 stage "xcodebuild: done"
+# The journeys compile now, in the background and on a daemon the journeys run reuses, while install, grant, launch
+# and the warm-up only wait. Never alongside the xcodebuild: its own Gradle holds the project's locks.
+stage "journeys compile: starting"
+./gradlew -q :test:integration:journeysClasses > "$OUT/journeys-compile.log" 2>&1 &
+COMPILE_PID=$!
 APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
 [ -n "$APP" ] || fail "no simulator .app was built"
 scripts/sim-sign "$APP" || fail "sim-sign"
@@ -99,17 +137,10 @@ stage "backend: answering"
 # instance on the default 18099 fails to bind while a curl reaches the FIRST one and answers plausibly.
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
 RIG_PORT="$(free_port)"
-RIG_PORT_B="$(free_port)"
-wait "$BOOT_PID" || { cat "$OUT/boot-a.log"; fail "the simulator did not boot"; }
-wait "$BOOT_PID_B" || { cat "$OUT/boot-b.log"; fail "the second simulator did not boot"; }
-xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
-xcrun simctl bootstatus "$DEVICE_B" -b >/dev/null || fail "the second simulator did not finish booting"
-stage "simulators: booted"
-for d in "$DEVICE" "$DEVICE_B"; do
-    xcrun simctl install "$d" "$APP" || fail "install on $d"
-    applesimutils --byId "$d" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
-        || fail "could not grant photo access on $d"
-done
+xcrun simctl bootstatus "$DEVICE" -b >/dev/null || { cat "$OUT/boot.log"; fail "the simulator did not boot"; }
+xcrun simctl install "$DEVICE" "$APP" || fail "install on $DEVICE"
+applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
+    || fail "could not grant photo access on $DEVICE"
 # The loopback peer the transfer contracts exchange bytes with (scripts/transfer-fixture.py). Started BEFORE the app, and
 # asked to answer, so a fixture that is not up fails here by name rather than as every transport clause's transfer error.
 FIXTURE_PORT="$(free_port)"
@@ -134,34 +165,33 @@ launch() {
     fi
     [ "$(cat "$data/Documents/rig.port")" = "$2" ] || fail "the app on $1 bound $(cat "$data/Documents/rig.port"), not $2"
 }
-stage "apps: installed and granted"
+stage "app: installed and granted"
 launch "$DEVICE" "$RIG_PORT"
-launch "$DEVICE_B" "$RIG_PORT_B"
-stage "apps: launched"
+stage "app: launched"
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
-DATA_B="$(xcrun simctl get_app_container "$DEVICE_B" app.snapsync data)"
 PORT="$RIG_PORT"
 
-# Both apps must be baked for the LOCAL backend. This is checked before anything drives them: a build pointed at the
+# The app must be baked for the LOCAL backend. This is checked before anything drives it: a build pointed at the
 # shared production backend would carry the journeys' traffic to real users' data.
-for p in "$RIG_PORT" "$RIG_PORT_B"; do
-    base="$(curl -sS "http://127.0.0.1:$p/device/state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"].get("uploadBase",""))')"
-    [ "$base" = "$BACKEND" ] || fail "the app on $p is baked for '$base', not the local backend $BACKEND — refusing to run"
-done
+base="$(curl -sS "http://127.0.0.1:$PORT/device/state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"].get("uploadBase",""))')"
+[ "$base" = "$BACKEND" ] || fail "the app is baked for '$base', not the local backend $BACKEND — refusing to run"
 
-# Each app host's classification of the control vocabulary, read once: nothing else checks the app host's
+# The app host's classification of the control vocabulary, read once: nothing else checks the app host's
 # advertisement for completeness, and an unclassified entry answers 500 only when someone asks.
-for p in "$RIG_PORT" "$RIG_PORT_B"; do
-    code="$(curl -sS -o "$OUT/device-$p.json" -w '%{http_code}' "http://127.0.0.1:$p/device")"
-    [ "$code" = 200 ] || { cat "$OUT/device-$p.json"; fail "GET /device on $p answered $code"; }
-    python3 - "$OUT/device-$p.json" <<'PY' || fail "the app host on $p leaves vocabulary entries unaccounted"
+code="$(curl -sS -o "$OUT/device.json" -w '%{http_code}' "http://127.0.0.1:$PORT/device")"
+[ "$code" = 200 ] || { cat "$OUT/device.json"; fail "GET /device answered $code"; }
+python3 - "$OUT/device.json" <<'PY' || fail "the app host leaves vocabulary entries unaccounted"
 import json, sys
 ad = json.load(open(sys.argv[1]))
 gaps = ad.get("unclassified", []) + ad.get("outsideVocabulary", [])
 print("advertisement:", ad.get("host"), len(ad.get("honoured", [])), "honoured,", len(ad.get("refused", {})), "refused")
 sys.exit(1 if gaps else 0)
 PY
-done
+
+# The photo library's first-use wait, as its own stage (see the header).
+wait "$WARM_PID" || { cat "$OUT/boot.log"; fail "the photo-library warm-up failed"; }
+WARM_PID=
+stage "photo library: ready"
 
 stage "contracts: starting"
 curl -sS --max-time 30 "http://127.0.0.1:$PORT/contract" > "$OUT/registry" || fail "GET /contract"
@@ -181,16 +211,29 @@ done
 [ $status -eq 0 ] || { cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null; fail "see the outcome tables above"; }
 echo "sim-contracts: every registered contract passed" | tee "$OUT/result"
 
+wait "$COMPILE_PID" || { cat "$OUT/journeys-compile.log"; fail "the journeys did not compile"; }
+stage "journeys compile: done"
 stage "journeys: starting"
-# The journeys, against both apps and the backend. A failure is read first as a contract clause nobody wrote.
-./gradlew --no-daemon -q :test:integration:journeys \
+# The journeys, against the app and the backend, on the compile's warm daemon. A failure is read first as a contract
+# clause nobody wrote.
+./gradlew -q :test:integration:journeys \
     -Psnapsync.journey.appA="http://127.0.0.1:$RIG_PORT" \
-    -Psnapsync.journey.appB="http://127.0.0.1:$RIG_PORT_B" \
     -Psnapsync.journey.backend="$BACKEND" > "$OUT/journeys.log" 2>&1
 journeys=$?
 stage "journeys: done"
 cp -R test/integration/build/test-results/journeys "$OUT/journeys-results" 2>/dev/null
 cp "$DATA/Documents/debug.log" "$OUT/debug.log" 2>/dev/null
-cp "$DATA_B/Documents/debug.log" "$OUT/debug-b.log" 2>/dev/null
-[ $journeys -eq 0 ] || { tail -60 "$OUT/journeys.log"; fail "a journey failed (log in $OUT)"; }
+if [ $journeys -ne 0 ]; then
+    # The assertion itself, not only Gradle's summary: the message lives in the JUnit XML.
+    python3 - "$OUT/journeys-results" <<'PY'
+import glob, sys, xml.etree.ElementTree as ET
+for f in glob.glob(sys.argv[1] + "/*.xml"):
+    for case in ET.parse(f).getroot().iter("testcase"):
+        for bad in list(case.findall("failure")) + list(case.findall("error")):
+            print(f"=== journey failed: {case.get('name')}")
+            print(bad.get("message") or (bad.text or "").splitlines()[0])
+PY
+    tail -20 "$OUT/journeys.log"
+    fail "a journey failed (log in $OUT)"
+fi
 echo "sim-contracts: every registered contract passed, and the journeys passed" | tee "$OUT/result"
