@@ -51,7 +51,7 @@ object LibraryChangeTokenContract : Contract<LibraryChangeTokenState, LibraryCha
             // Trailing changes keep moving the token for 1–9 s after any write (measured), and this library is
             // shared with every clause before this one — so wait, on the real clock, for one quiet gap.
             withinRealTime(QUIET_WITHIN_MILLIS) {
-                while (!quietGap(library.port)) Unit
+                while (!quietGap(library.port)) { /* quietGap suspends for its own sampling window */ }
             }
             val token = assertNotNull(library.port.current())
             assertTrue(token.sameLibraryAs(token), "a token compares equal to itself")

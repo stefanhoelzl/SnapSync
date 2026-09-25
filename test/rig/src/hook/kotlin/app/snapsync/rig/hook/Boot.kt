@@ -97,7 +97,7 @@ private val uploaderSwitch: Unit = run {
  * file, so its `SnapSyncRoot.inviteLinkHints` stays `Ignored` and no crafted link can join without a tap.
  */
 @EagerInitialization
-@Suppress("unused")
+@Suppress("unused", "DEPRECATION") // see `uploaderSwitch` above
 private val inviteLinkHints: Unit = run {
     SnapSyncRoot.inviteLinkHints = InviteLinkHints.Honoured
 }
