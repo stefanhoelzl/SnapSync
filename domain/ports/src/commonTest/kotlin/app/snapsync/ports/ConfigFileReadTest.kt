@@ -11,6 +11,8 @@ import app.snapsync.model.encodeConfigFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import app.snapsync.model.ConfigFileRead
+import app.snapsync.model.ConfigRead
 
 /**
  * The file-backed three-state read (capability `join-event`; migration step 11a made the App-Group

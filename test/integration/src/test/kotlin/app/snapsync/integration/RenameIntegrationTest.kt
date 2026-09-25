@@ -1,6 +1,6 @@
 package app.snapsync.integration
 
-import app.snapsync.presentation.RenameState
+import app.snapsync.model.RenameState
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test

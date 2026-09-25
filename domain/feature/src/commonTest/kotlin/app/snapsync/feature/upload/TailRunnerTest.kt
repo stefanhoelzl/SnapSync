@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch

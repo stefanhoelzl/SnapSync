@@ -13,9 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Direction
-import app.snapsync.presentation.EventDetails
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.JoinPhase
+import app.snapsync.model.EventDetails
+import app.snapsync.model.Layer
+import app.snapsync.model.JoinPhase
 import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppInvitationHeaderLoading

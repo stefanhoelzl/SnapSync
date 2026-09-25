@@ -5,9 +5,9 @@ import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.SyncHealth
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.SyncHealth
 import app.snapsync.rig.AssetView
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost

@@ -14,9 +14,9 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import kotlin.time.Duration.Companion.seconds
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.UiState
+import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.appRangeLabel
 import app.snapsync.ui.components.AppEventHeaderHost

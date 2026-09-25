@@ -1,6 +1,7 @@
 package app.snapsync.ports
 
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.CycleResult
 
 /**
  * The app process's **inbound** port: what the operating system tells the app (`docs/architecture.md`, "OS

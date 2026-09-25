@@ -10,6 +10,13 @@ import app.snapsync.model.deletesAt
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import app.snapsync.model.EventDetails
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.UiState
+import app.snapsync.model.joinPhase
 
 /**
  * `UiState` round-trips through JSON — every layer, not just the easy ones.

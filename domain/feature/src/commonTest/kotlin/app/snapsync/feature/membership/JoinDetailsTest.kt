@@ -4,12 +4,12 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.deletesAt
 import app.snapsync.model.eventEnd
 import app.snapsync.model.eventStart
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The `EventDetails` → [JoinLoad] mapping. Three arms, and the one that matters is the pair it must keep
+ * The `EventLookup` → [JoinLoad] mapping. Three arms, and the one that matters is the pair it must keep
  * apart: **`NotFound` (definitively gone) and `Failed` (could not tell) are different answers**, and that
  * difference is the only thing separating a real deletion from a transient fault.
  *
@@ -26,7 +26,7 @@ class JoinDetailsTest {
 
     @Test
     fun `Found carries the name and all three dates through unchanged`() {
-        val details = EventDetails.Found(
+        val details = EventLookup.Found(
             name = "Anna's Birthday",
             startsAt = eventStart("2026-07-14T18:00:00Z"),
             endsAt = eventEnd("2026-07-21T18:00:00Z"),
@@ -47,7 +47,7 @@ class JoinDetailsTest {
     @Test
     fun `a definitive absence and a failed read stay different answers`() {
         // The teardown fires on the first and must not fire on the second.
-        assertEquals(JoinLoad.NotFound, EventDetails.NotFound.toJoinLoad())
-        assertEquals(JoinLoad.Failed, EventDetails.Failed.toJoinLoad())
+        assertEquals(JoinLoad.NotFound, EventLookup.NotFound.toJoinLoad())
+        assertEquals(JoinLoad.Failed, EventLookup.Failed.toJoinLoad())
     }
 }

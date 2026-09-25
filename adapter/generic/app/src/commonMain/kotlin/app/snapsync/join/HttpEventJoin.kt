@@ -2,7 +2,7 @@ package app.snapsync.join
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventJoin
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 import io.ktor.client.HttpClient
 import io.ktor.client.request.put
 import io.ktor.http.HttpStatusCode

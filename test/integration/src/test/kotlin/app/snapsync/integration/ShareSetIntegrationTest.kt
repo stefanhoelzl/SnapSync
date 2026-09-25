@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
-import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.step
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.step
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

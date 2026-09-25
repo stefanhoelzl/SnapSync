@@ -5,7 +5,7 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.DeviceListingShapeException
-import app.snapsync.ports.StoredResource
+import app.snapsync.model.StoredResource
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity

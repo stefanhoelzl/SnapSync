@@ -41,12 +41,12 @@ import app.snapsync.model.UserCommands
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.JoinedSurface
-import app.snapsync.presentation.Layer
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusSources
-import app.snapsync.presentation.UiState
+import app.snapsync.model.UiState
 import app.snapsync.ui.components.LocalReduceMotion
 import kotlin.test.Test
 import kotlin.test.assertEquals

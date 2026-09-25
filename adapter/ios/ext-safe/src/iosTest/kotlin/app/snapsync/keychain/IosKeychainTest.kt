@@ -1,6 +1,6 @@
 package app.snapsync.keychain
 
-import app.snapsync.ports.SecureStoreRead
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.readExisting
 import app.snapsync.ports.resolveOrMint

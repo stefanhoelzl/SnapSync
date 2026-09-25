@@ -10,7 +10,7 @@ import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi

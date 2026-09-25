@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.model.Handoff
+
 /**
  * Hands a URL to the platform to open **outside this app** (`UIApplication.openURL` on iOS; a second
  * platform would offer its own).

@@ -18,9 +18,9 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.EventDetails
-import app.snapsync.presentation.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.EventDetails
+import app.snapsync.model.JoinPhase
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.PendingJoin

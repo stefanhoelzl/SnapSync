@@ -8,7 +8,7 @@ import app.snapsync.model.eventStart
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.EventRename
-import app.snapsync.ports.RenameOutcome
+import app.snapsync.model.RenameOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

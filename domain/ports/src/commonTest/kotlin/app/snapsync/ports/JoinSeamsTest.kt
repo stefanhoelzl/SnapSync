@@ -5,6 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import app.snapsync.model.JoinResult
+import app.snapsync.model.Handoff
 
 /**
  * The vocabulary the join split introduced, and the inert defaults the off-device compositions stand on.

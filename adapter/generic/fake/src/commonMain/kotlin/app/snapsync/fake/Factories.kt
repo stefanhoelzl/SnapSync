@@ -23,8 +23,8 @@ import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.ProtectedStorage
 import app.snapsync.ports.PushRegistrationRecord
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.SecureStoreRead
-import app.snapsync.ports.StoredProtection
+import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.StoredProtection
 import app.snapsync.ports.StagedBytes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow

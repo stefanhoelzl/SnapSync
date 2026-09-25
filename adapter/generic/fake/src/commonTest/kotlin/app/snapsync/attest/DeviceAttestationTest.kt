@@ -6,7 +6,7 @@ import app.snapsync.feature.trust.tokenExpirySeconds
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
-import app.snapsync.ports.TokenOutcome
+import app.snapsync.model.TokenOutcome
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

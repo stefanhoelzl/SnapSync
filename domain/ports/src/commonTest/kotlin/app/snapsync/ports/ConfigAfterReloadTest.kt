@@ -10,6 +10,8 @@ import app.snapsync.model.EventConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import app.snapsync.model.ConfigRead
+import app.snapsync.model.MembershipRead
 
 /**
  * The trigger-time reload's merge rule (migration step 12): a conclusive read replaces the config

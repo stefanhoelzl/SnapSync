@@ -17,13 +17,13 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
 import app.snapsync.model.JoinCommit
 import app.snapsync.model.EventConfig
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.model.UploadError
 import app.snapsync.feature.creation.CreationStatusSource
 import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.feature.creation.EventCreator
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus

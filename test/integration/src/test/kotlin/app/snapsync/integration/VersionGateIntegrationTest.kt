@@ -1,6 +1,6 @@
 package app.snapsync.integration
 
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

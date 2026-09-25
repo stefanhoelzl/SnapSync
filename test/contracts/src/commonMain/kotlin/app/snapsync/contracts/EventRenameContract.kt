@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.EventRename
-import app.snapsync.ports.RenameOutcome
+import app.snapsync.model.RenameOutcome
 import kotlin.test.assertEquals
 import kotlin.test.assertIsNot
 

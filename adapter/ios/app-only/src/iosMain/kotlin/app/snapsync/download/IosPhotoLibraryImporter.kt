@@ -4,10 +4,10 @@ import app.snapsync.gallery.Iso8601
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.model.importFilename
 import app.snapsync.objc.objcBoundary
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.ImportResult
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoLibraryImporter
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

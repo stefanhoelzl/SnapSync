@@ -3,8 +3,8 @@ package app.snapsync.world
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.UiState
+import app.snapsync.model.Layer
+import app.snapsync.model.UiState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test

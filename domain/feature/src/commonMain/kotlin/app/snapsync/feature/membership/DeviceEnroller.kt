@@ -1,7 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.ports.EventJoin
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 
 /**
  * Enrolls this device into an event (capability `join-event`) by making its manifest object exist

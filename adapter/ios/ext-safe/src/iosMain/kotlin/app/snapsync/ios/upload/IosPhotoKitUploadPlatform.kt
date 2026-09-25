@@ -2,7 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadRequest
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.TransferRecord

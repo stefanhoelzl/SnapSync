@@ -91,7 +91,7 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
-import app.snapsync.ports.Handoff
+import app.snapsync.model.Handoff
 import app.snapsync.ports.PlatformHandoff
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PhotoLibraryImporter

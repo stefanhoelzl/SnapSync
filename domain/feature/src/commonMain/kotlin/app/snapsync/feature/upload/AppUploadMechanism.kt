@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 
 /**
  * The app's uploader as the shell supplies it: the transport-bound half of the app-driven tier (capability

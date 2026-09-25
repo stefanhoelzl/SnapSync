@@ -55,13 +55,13 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.ProtectedStorage
 import app.snapsync.protection.IosProtectedStorage
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.StagedResource
 import app.snapsync.ports.UploadDiscovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi

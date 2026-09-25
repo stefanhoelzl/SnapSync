@@ -2,9 +2,9 @@
 
 package app.snapsync.ui
 
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.Overlays
-import app.snapsync.presentation.PendingSwitch
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.PendingSwitch
 
 import app.snapsync.model.eventEnd
 
@@ -28,9 +28,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.SyncHealth
-import app.snapsync.presentation.UiState
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.UiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.datetime.TimeZone

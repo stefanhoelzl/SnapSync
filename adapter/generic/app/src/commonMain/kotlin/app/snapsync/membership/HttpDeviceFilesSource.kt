@@ -5,7 +5,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.DeviceListingShapeException
-import app.snapsync.ports.StoredResource
+import app.snapsync.model.StoredResource
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText

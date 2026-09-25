@@ -2,20 +2,20 @@ package app.snapsync.feature.download
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventUnionSource
-import app.snapsync.ports.ImportResult
+import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.PhotoLibraryImporter
 
 import app.snapsync.model.AssetPresence
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.PlannedAsset
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.PlannedAsset
+import app.snapsync.model.PlannedResource
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.StagedBytes
-import app.snapsync.ports.StagedResource
-import app.snapsync.ports.UnconfirmedImport
+import app.snapsync.model.StagedResource
+import app.snapsync.model.UnconfirmedImport
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex

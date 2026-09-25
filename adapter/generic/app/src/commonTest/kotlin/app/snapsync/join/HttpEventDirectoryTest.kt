@@ -3,7 +3,7 @@ package app.snapsync.join
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
 import app.snapsync.model.deletesAt
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -41,7 +41,7 @@ class HttpEventDirectoryTest {
         assertEquals("https://edge.example/events/$eventId", requested)
         // `startsAt`/`endsAt` are the facts the gate needs — `createdAt` (millisecond-bearing) is ignored.
         assertEquals(
-            EventDetails.Found(
+            EventLookup.Found(
                 "Anna's Birthday",
                 eventStart("2026-07-14T18:00:00Z"),
                 eventEnd("2026-07-21T18:00:00Z"),
@@ -69,7 +69,7 @@ class HttpEventDirectoryTest {
         // Truncated toward the EARLIER instant — the inclusive direction, so a photo taken within the
         // cutoff's own second is admitted rather than lost.
         assertEquals(
-            EventDetails.Found("Legacy", eventStart("2026-06-27T10:00:00Z"), eventEnd("2026-07-27T10:00:00Z"), deletesAt("2026-07-27T10:00:00Z")),
+            EventLookup.Found("Legacy", eventStart("2026-06-27T10:00:00Z"), eventEnd("2026-07-27T10:00:00Z"), deletesAt("2026-07-27T10:00:00Z")),
             source(engine).fetch(eventId),
         )
     }
@@ -77,13 +77,13 @@ class HttpEventDirectoryTest {
     @Test
     fun `404 yields NotFound`() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.NotFound) }
-        assertEquals(EventDetails.NotFound, source(engine).fetch(eventId))
+        assertEquals(EventLookup.NotFound, source(engine).fetch(eventId))
     }
 
     @Test
     fun `a 5xx yields Failed`() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.BadGateway) }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 
     @Test
@@ -91,7 +91,7 @@ class HttpEventDirectoryTest {
         val engine = MockEngine {
             respond("not json", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 
     @Test
@@ -104,7 +104,7 @@ class HttpEventDirectoryTest {
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 
     @Test
@@ -125,7 +125,7 @@ class HttpEventDirectoryTest {
                     headers = headersOf(HttpHeaders.ContentType, "application/json"),
                 )
             }
-            assertEquals(EventDetails.Failed, source(engine).fetch(eventId), "name=$nameLiteral")
+            assertEquals(EventLookup.Failed, source(engine).fetch(eventId), "name=$nameLiteral")
         }
     }
 
@@ -142,7 +142,7 @@ class HttpEventDirectoryTest {
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 
     @Test
@@ -158,7 +158,7 @@ class HttpEventDirectoryTest {
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 
     @Test
@@ -175,7 +175,7 @@ class HttpEventDirectoryTest {
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 
     @Test
@@ -188,6 +188,6 @@ class HttpEventDirectoryTest {
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
-        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+        assertEquals(EventLookup.Failed, source(engine).fetch(eventId))
     }
 }

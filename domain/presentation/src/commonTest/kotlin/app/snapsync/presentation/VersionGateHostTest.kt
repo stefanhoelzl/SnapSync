@@ -20,6 +20,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import app.snapsync.model.Layer
 
 /**
  * The version gate on the SCREEN (capability `app-update-required`): a backend refusal of this build

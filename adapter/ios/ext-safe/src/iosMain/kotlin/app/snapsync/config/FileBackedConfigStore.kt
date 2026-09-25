@@ -8,13 +8,13 @@ import app.snapsync.model.encodeConfigFile
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
-import app.snapsync.ports.ConfigFileRead
-import app.snapsync.ports.ConfigRead
+import app.snapsync.model.ConfigFileRead
+import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigRefresh
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.MembershipRead
+import app.snapsync.model.MembershipRead
 import app.snapsync.ports.configAfterReload
 import app.snapsync.ports.configReadViaFile
 import app.snapsync.ports.membershipAfterReload

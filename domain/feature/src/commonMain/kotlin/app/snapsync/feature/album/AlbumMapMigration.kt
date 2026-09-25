@@ -1,6 +1,6 @@
 package app.snapsync.feature.album
 
-import app.snapsync.ports.SecureStoreRead
+import app.snapsync.model.SecureStoreRead
 
 /**
  * Where the `eventId → albumLocalId` map should be read from, and whether the legacy Keychain item

@@ -1,9 +1,9 @@
 package app.snapsync.download
 
 import app.snapsync.feature.download.StoreDownloadStatusSource
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.fake.InMemoryDownloadStore
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.PlannedResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest

@@ -7,7 +7,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.MembershipRead
+import app.snapsync.model.MembershipRead
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable

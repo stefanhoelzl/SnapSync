@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.ShareCount
+import app.snapsync.model.Layer
+import app.snapsync.model.ShareCount
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.fail

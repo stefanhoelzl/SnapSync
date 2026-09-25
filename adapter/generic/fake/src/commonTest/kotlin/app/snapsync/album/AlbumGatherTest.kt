@@ -14,12 +14,12 @@ import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.LogScope
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.PlannedResource
 import app.snapsync.ports.UnionAsset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

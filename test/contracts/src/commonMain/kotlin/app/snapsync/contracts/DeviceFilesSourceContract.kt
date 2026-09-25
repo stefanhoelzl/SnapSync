@@ -2,7 +2,7 @@ package app.snapsync.contracts
 
 import app.snapsync.model.ResourceRole
 import app.snapsync.ports.DeviceFilesSource
-import app.snapsync.ports.StoredResource
+import app.snapsync.model.StoredResource
 import kotlin.test.assertEquals
 
 /** The backend states a [DeviceFilesSource] clause needs. */

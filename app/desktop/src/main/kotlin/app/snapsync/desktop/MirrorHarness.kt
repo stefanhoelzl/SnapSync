@@ -23,8 +23,8 @@ import app.snapsync.model.FromChoice
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.UntilChoice
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.RangeForm
+import app.snapsync.model.Layer
+import app.snapsync.model.RangeForm
 import app.snapsync.rig.DeviceAdvertisement
 import app.snapsync.rig.RigState
 import app.snapsync.ui.AccessActions

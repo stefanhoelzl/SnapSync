@@ -10,8 +10,8 @@ import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
 import app.snapsync.model.FromChoice
 import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.presentation.RangeForm
-import app.snapsync.presentation.ResolvedRange
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ResolvedRange
 import app.snapsync.ui.components.RangeWindow
 import app.snapsync.ui.components.RangeChoices
 import app.snapsync.model.UntilChoice

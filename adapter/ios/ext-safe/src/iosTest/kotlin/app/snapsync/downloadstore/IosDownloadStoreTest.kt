@@ -1,7 +1,7 @@
 package app.snapsync.downloadstore
 
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.AssetRef
+import app.snapsync.model.PlannedResource
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
 

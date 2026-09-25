@@ -13,7 +13,7 @@ import app.snapsync.contracts.PlatformEntriesState
 import app.snapsync.contracts.PlatformEntriesSubject
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

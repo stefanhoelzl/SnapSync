@@ -3,7 +3,7 @@ package app.snapsync.rig
 import app.snapsync.model.Direction
 import app.snapsync.model.FromChoice
 import app.snapsync.model.UntilChoice
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 import app.snapsync.presentation.StatusContainerHost
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone

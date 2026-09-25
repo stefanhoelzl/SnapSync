@@ -11,7 +11,7 @@ import app.snapsync.model.destinationPathOf
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.TransferRecord
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.logging.invocation

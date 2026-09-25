@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.AttestClient
-import app.snapsync.ports.TokenOutcome
+import app.snapsync.model.TokenOutcome
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue

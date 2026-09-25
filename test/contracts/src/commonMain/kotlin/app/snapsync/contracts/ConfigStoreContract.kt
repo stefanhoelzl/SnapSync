@@ -5,7 +5,7 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.encodeConfigFile
-import app.snapsync.ports.ConfigRead
+import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore

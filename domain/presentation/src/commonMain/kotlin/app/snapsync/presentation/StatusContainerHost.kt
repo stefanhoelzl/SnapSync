@@ -65,6 +65,20 @@ import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.Container
 import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
+import app.snapsync.model.EventDetails
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.PendingSwitch
+import app.snapsync.model.RangeForm
+import app.snapsync.model.RenameState
+import app.snapsync.model.ResolvedRange
+import app.snapsync.model.ShareCount
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.UiState
+import app.snapsync.model.details
+import app.snapsync.model.step
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -782,7 +796,7 @@ class StatusContainerHost(
             // on the same retryable surface.
             //
             // ⚠️ Defence in depth: UNREACHABLE through the production binding today, and knowingly kept.
-            // `HttpEventDirectory.fetch` is `runCatchingCancellable { … }.getOrDefault(EventDetails.Failed)` and
+            // `HttpEventDirectory.fetch` is `runCatchingCancellable { … }.getOrDefault(EventLookup.Failed)` and
             // `toJoinLoad` is pure, so the bound lambda cannot throw — but `loadJoinDetails` is an injected
             // `suspend (String) -> JoinLoad` and nothing here can know that. It stays because the invariant
             // is one adapter change away from being false, and the cost of it being false is a screen no

@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.MembershipRead
+import app.snapsync.model.MembershipRead
 import co.touchlab.kermit.Logger
 
 /**

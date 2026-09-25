@@ -3,7 +3,7 @@ package app.snapsync.feature.membership
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.EventRename
-import app.snapsync.ports.RenameOutcome
+import app.snapsync.model.RenameOutcome
 
 import co.touchlab.kermit.Logger
 

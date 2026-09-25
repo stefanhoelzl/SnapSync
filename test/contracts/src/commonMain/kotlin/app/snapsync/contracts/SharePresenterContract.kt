@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.Handoff
+import app.snapsync.model.Handoff
 import app.snapsync.ports.SharePresenter
 import kotlin.test.assertEquals
 

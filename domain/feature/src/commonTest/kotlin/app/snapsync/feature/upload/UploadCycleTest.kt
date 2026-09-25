@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.ports.CreateResult
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CreateResult
+import app.snapsync.model.CycleResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.LedgerStore

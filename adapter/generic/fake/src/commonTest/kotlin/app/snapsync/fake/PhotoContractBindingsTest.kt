@@ -35,10 +35,10 @@ import app.snapsync.model.RawResource
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.StagedResource
 import app.snapsync.ports.UploadDiscovery
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

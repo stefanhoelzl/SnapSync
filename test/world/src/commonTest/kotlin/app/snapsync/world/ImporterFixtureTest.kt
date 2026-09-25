@@ -1,8 +1,8 @@
 package app.snapsync.world
 
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.ImportResult
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ImportResult
+import app.snapsync.model.StagedResource
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue

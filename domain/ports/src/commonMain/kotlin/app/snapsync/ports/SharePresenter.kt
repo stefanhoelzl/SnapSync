@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.model.Handoff
+
 /**
  * Hands a piece of text — in practice the event's invite URL (capability `join-event`) — to the
  * platform's share surface, so the user can pass it to whoever they are inviting through whatever

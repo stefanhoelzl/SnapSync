@@ -1,7 +1,7 @@
 package app.snapsync.eventcreation
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.CreateOutcome
+import app.snapsync.model.CreateOutcome
 import app.snapsync.ports.EventCreation
 
 import io.ktor.client.HttpClient

@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.CreateOutcome
+import app.snapsync.model.CreateOutcome
 import app.snapsync.ports.EventCreation
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
