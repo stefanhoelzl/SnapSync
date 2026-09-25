@@ -3,7 +3,7 @@ import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The allowed targets, declared once (spec `module-architecture`, "Zones inside the core").
+    // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)

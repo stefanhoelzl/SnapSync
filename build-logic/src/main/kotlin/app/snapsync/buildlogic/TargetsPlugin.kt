@@ -6,7 +6,7 @@ import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 /**
- * The allowed targets, declared once (spec `module-architecture`, "Zones inside the core"): every core zone and
+ * The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core"): every core zone and
  * every `:ui:*` module compiles for exactly `jvm`, `iosArm64` and `iosSimulatorArm64`, and declares no target list
  * of its own. A module MAY still configure a target this plugin declared (its test runtime, say).
  *

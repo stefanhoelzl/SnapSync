@@ -1,10 +1,10 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The allowed targets, declared once (spec `module-architecture`, "Zones inside the core").
+    // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
 }
 
-// The core's host zone (spec `module-architecture`, "Zones inside the core"; "One shared composition"):
+// The core's host zone (`docs/architecture.md`, "Zones inside the core"; "One shared composition"):
 // `snapSyncHost` composes the core (`snapSyncApp`) AND the status host over it, with the host-assembly
 // subscriptions. Every root that runs the live app calls it — the iOS shell, and the world (so the control
 // channel's JVM host, the inbound-port contract fixtures and every test driving them) — so the host a test drives

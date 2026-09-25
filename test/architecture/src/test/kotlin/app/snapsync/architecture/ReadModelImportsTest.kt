@@ -5,8 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **Outside `feature/`, a consumer references only read-models** (capability `architecture-guards`, "The zone
- * gates"; law: `module-architecture`, "Zones inside the core").
+ * **Outside `feature/`, a consumer references only read-models** (`docs/architecture.md`, "The zone
+ * gates"; law: `docs/architecture.md`, "Zones inside the core").
  *
  * A read-model is whatever a feature declares in its `feature/<feature>/readmodel/` package — the package IS the
  * definition, so the rule is mechanical. The presentation zone, the host, every `:ui:*` module and the control

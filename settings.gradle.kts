@@ -1,5 +1,5 @@
 pluginManagement {
-    // The convention plugins (`snapsync.targets`: the allowed targets, spec `module-architecture`).
+    // The convention plugins (`snapsync.targets`: the allowed targets, `docs/architecture.md`).
     includeBuild("build-logic")
     repositories {
         gradlePluginPortal()
