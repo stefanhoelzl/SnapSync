@@ -14,6 +14,8 @@ knows it can hold it.
 Main decision record: `changes/archive/2026-07-17-establish-target-architecture`. Seam, failure, state
 and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
+The structure is being re-cut into thin ports. The direction is §11.
+
 ---
 
 ## 1. Overview
@@ -822,3 +824,49 @@ store of record.
 timer (SIGKILL), `notifyTermination` follows only normal returns, `performExpiringActivity` never fires, and its
 memory limit is 32 MB (an overrun is a jetsam kill loop). A `process()` measured 0.6–1.4 s, and every unit is a
 safe retry. It walks afresh every call and holds no memo.
+
+---
+
+## 11. Direction: the thin-ports re-cut (in progress)
+
+This section describes where the structure is **heading**, not what the gates enforce today. Each phase that
+lands moves its part into the sections above and trims this one.
+
+**Goal.** The app should be honest to test against mocks, and an Android build should need only new adapters.
+Both follow from one rule: **a port is what the core uses of ONE external system**, thin and platform-neutral.
+Every decision lives in `:domain:services` (shared capabilities) or `:domain:feature` (product behaviour that
+cannot see other features). Ports never call ports, and only services compose them.
+
+**Target zones.** Every edge between zones is `implementation()` only, pinned by ModuleSetTest:
+
+```
+model ← ports ← services ← feature ← flow ← compose
+                              ▲                  ▲
+                              └── presentation ──┴── host   (host = compose + presentation + ports; never services)
+```
+
+**Ports:**
+- Backend: typed, one HTTP client per composition.
+- Gallery and GalleryReader.
+- Upload, ExtensionRegistry, Download and Wake.
+- Files, Databases, Preferences, SecureStore and PlatformDeviceId.
+- DeviceIntegrity, CrashReporter, ProcessMetrics, SystemUi, Clock, ProcessInfo, LogSink and EntryContext.
+- PushNotifications, Links, Lifecycle, ExtensionHost, Ui and DevControls.
+
+Event ports extend `Listenable<H> { fun listen(handlers: H) }`. Each composition calls `listen` once per
+adapter. It only registers the handlers: the core and the status host stay lazy. Once-only deliveries are
+persisted inline on the delivering thread.
+
+**Rules that land with the phases:**
+- Pure port data lives in `model/`. This is true since 11a.
+- The inbound `PlatformEntries`/`ExtensionEntries` ports become Listenable ports (11g).
+- A root holds no `if`, and the rig becomes an adapter set chosen at build time (`platformAdapters()`, prod or
+  rig variant). `rigBoot` goes away (11g).
+- An adapter constructor takes no function-typed parameter. The gate lands in 11g.
+- `ports/` holds interfaces only (11g).
+- `SelectionCalibration` is a value passed in at composition, not a platform branch.
+
+**Phases.** 11a structure (shipped) → 11b storage and `:domain:services` → 11c backend and integrity, 11d gallery
+and 11e process ports, in parallel → 11f transfer → 11g entry surface. 11i (raw asset ids) follows 11c, 11d and
+11f, then comes 11h (the mock mix chosen at launch). Phases 11d–11g are being designed again against §10's wake
+model.
