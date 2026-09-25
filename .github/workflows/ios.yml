@@ -672,16 +672,42 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      # EXPERIMENT (cached-booted-simulator): a warm, photo-library-migrated simulator from the Actions cache. The
+      # key is read from disk without any simctl call, and the restore lands before sim-contracts' first one.
+      - name: Resolve the warm-simulator key
+        id: warmkey
+        run: |
+          key="$(scripts/sim-warm-key v1)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "runtime=$(echo "$key" | cut -d- -f4)" >> "$GITHUB_OUTPUT"
+          echo "$key"
+      - name: Restore the warm simulator
+        id: warm
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/sim-warm
+          key: ${{ steps.warmkey.outputs.key }}
       - name: Run the simulator app's port contracts and the journeys
         # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed
         # `snapsync.rig=true` would link the control channel into every shipped build.
+        env:
+          SIM_WARM_HIT: ${{ steps.warm.outputs.cache-hit }}
+          SIM_RUNTIME_BUILD: ${{ steps.warmkey.outputs.runtime }}
         run: |
+          export SIM_WARM_DIR="$HOME/sim-warm"
           mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
           scripts/sim-contracts
+      - name: Save the warm simulator
+        if: always() && steps.warm.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ~/sim-warm
+          key: ${{ steps.warmkey.outputs.key }}
       - name: Keep the evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: ios-contracts-evidence
+          name: ios-contracts-evidence-${{ github.run_attempt }}
           path: build/sim-contracts/
           if-no-files-found: ignore

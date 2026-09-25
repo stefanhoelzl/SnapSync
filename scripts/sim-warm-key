@@ -1,0 +1,24 @@
+#!/bin/sh
+# EXPERIMENT (cached-booted-simulator): print the cache key of a warm simulator snapshot, WITHOUT any `simctl` call —
+# the restore must land before CoreSimulatorService first scans its device set. The key is the Xcode build plus
+# the build of the newest iOS simulator runtime on disk (the one `simctl create` picks by default; sim-contracts
+# re-checks that against the device it actually gets), plus a manual suffix.
+#
+#   scripts/sim-warm-key [suffix]      # -> warm-sim-<xcode build>-<runtime build>-iPhone16-<suffix>
+set -eu
+SUFFIX="${1:-v1}"
+xcode="$(/usr/libexec/PlistBuddy -c 'Print ProductBuildVersion' "$(xcode-select -p)/../version.plist")"
+best_version=""; best_build=""
+for rt in /Library/Developer/CoreSimulator/Volumes/*/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS*.simruntime \
+          /Library/Developer/CoreSimulator/Profiles/Runtimes/iOS*.simruntime; do
+    sv="$rt/Contents/Resources/RuntimeRoot/System/Library/CoreServices/SystemVersion.plist"
+    [ -f "$sv" ] || continue
+    v="$(/usr/libexec/PlistBuddy -c 'Print ProductVersion' "$sv")"
+    b="$(/usr/libexec/PlistBuddy -c 'Print ProductBuildVersion' "$sv")"
+    echo "runtime on disk: iOS $v ($b) at $rt" >&2
+    if [ -z "$best_version" ] || [ "$(printf '%s\n%s\n' "$best_version" "$v" | sort -V | tail -1)" = "$v" ]; then
+        best_version="$v"; best_build="$b"
+    fi
+done
+[ -n "$best_build" ] || { echo "sim-warm-key: no iOS simulator runtime found on disk" >&2; exit 1; }
+echo "warm-sim-$xcode-$best_build-iPhone16-$SUFFIX"

@@ -92,7 +92,59 @@ stage "backend: starting"
 BACKEND_PID=$!
 BACKEND="http://127.0.0.1:8080/api/v2"
 
-DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 16')" || fail "could not create a simulator"
+# EXPERIMENT (cached-booted-simulator): a WARM simulator snapshot, restored by the workflow from the Actions cache
+# into $SIM_WARM_DIR (`<udid>/` + `udid` + `assets.txt`) when $SIM_WARM_HIT is true. It is moved into the device set
+# BEFORE the first simctl call, so CoreSimulatorService finds it on its first scan. On a miss, the fresh simulator is
+# warmed (booted, its photo library written once through the app, the app removed) and snapshotted into
+# $SIM_WARM_DIR, which the workflow then saves. Without SIM_WARM_DIR, nothing changes.
+WARM="${SIM_WARM_DIR:-}"
+SIM_DEVICES="$HOME/Library/Developer/CoreSimulator/Devices"
+# The photo library's assets, `uuid|date` per line, read from a COPY (closing sqlite on the original checkpoints its WAL).
+library_manifest() {
+    tmp="$(mktemp -d)"
+    cp "$1"/data/Media/PhotoData/Photos.sqlite* "$tmp/" 2>/dev/null || { rm -rf "$tmp"; return 1; }
+    sqlite3 "$tmp/Photos.sqlite" 'SELECT ZUUID, ZDATECREATED FROM ZASSET ORDER BY ZUUID;'; rc=$?
+    rm -rf "$tmp"; return $rc
+}
+echo "CoreSimulatorService before the first simctl call: $(pgrep -lf CoreSimulatorService || echo 'not running')" \
+    | tee -a "$OUT/warm.log"
+WARM_HIT=false
+if [ -n "$WARM" ] && [ "${SIM_WARM_HIT:-}" = true ] && [ -f "$WARM/udid" ]; then
+    WARM_HIT=true
+    DEVICE="$(cat "$WARM/udid")"
+    stage "warm simulator: restoring $DEVICE"
+    mkdir -p "$SIM_DEVICES"
+    mv "$WARM/$DEVICE" "$SIM_DEVICES/" || fail "could not move the warm simulator into the device set"
+    if ! xcrun simctl list devices | grep -q "$DEVICE"; then
+        echo "the device set did not pick up $DEVICE; restarting CoreSimulatorService" | tee -a "$OUT/warm.log"
+        killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null; sleep 3
+        xcrun simctl list devices | grep -q "$DEVICE" || fail "the restored simulator $DEVICE is not in the device set"
+    fi
+    xcrun simctl list devices | grep "$DEVICE" | tee -a "$OUT/warm.log"
+    # The contracts need a library holding no contract photo. The snapshot is taken before any contract runs; this
+    # asserts the library is exactly the one recorded then.
+    if library_manifest "$SIM_DEVICES/$DEVICE" > "$OUT/warm-assets.txt"; then
+        cmp -s "$OUT/warm-assets.txt" "$WARM/assets.txt" \
+            || { diff "$WARM/assets.txt" "$OUT/warm-assets.txt"; fail "the warm library differs from its snapshot"; }
+        echo "warm library: $(wc -l < "$OUT/warm-assets.txt") assets, identical to the snapshot" | tee -a "$OUT/warm.log"
+    else
+        fail "could not read the warm simulator's photo library"
+    fi
+    stage "warm simulator: restored"
+else
+    DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 16')" || fail "could not create a simulator"
+fi
+# The runtime the device really runs, against the one the cache key named.
+RUNTIME_BUILD="$(xcrun simctl list -j | python3 -c '
+import json, sys
+d = json.load(sys.stdin); udid = sys.argv[1]
+rt = next(r for r, devs in d["devices"].items() for x in devs if x["udid"] == udid)
+print(next(r["buildversion"] for r in d["runtimes"] if r["identifier"] == rt))' "$DEVICE")"
+echo "device $DEVICE runs runtime $RUNTIME_BUILD (key named ${SIM_RUNTIME_BUILD:-none})" | tee -a "$OUT/warm.log"
+if [ -n "$WARM" ] && [ "$WARM_HIT" = false ] && [ "$RUNTIME_BUILD" != "${SIM_RUNTIME_BUILD:-}" ]; then
+    echo "::warning::the device runs $RUNTIME_BUILD, the key named ${SIM_RUNTIME_BUILD:-none}: no snapshot this run"
+    WARM=""
+fi
 cleanup() {
     kill "${SAMPLER_PID:-}" "${FIXTURE_PID:-}" "${BACKEND_PID:-}" 2>/dev/null
     ./gradlew -q --stop >/dev/null 2>&1
@@ -131,13 +183,20 @@ stage "backend: answering"
 # instance on the default 18099 fails to bind while a curl reaches the FIRST one and answers plausibly.
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
 RIG_PORT="$(free_port)"
-stage "simulator: booting"
-xcrun simctl boot "$DEVICE" || fail "the simulator did not boot"
-xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
-stage "simulator: booted"
-xcrun simctl install "$DEVICE" "$APP" || fail "install on $DEVICE"
-applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
-    || fail "could not grant photo access on $DEVICE"
+boot_device() {
+    echo "host simulator caches at boot: $(du -sh "$HOME/Library/Developer/CoreSimulator/Caches" 2>/dev/null)" >> "$OUT/warm.log"
+    stage "simulator: booting$1"
+    xcrun simctl boot "$DEVICE" || fail "the simulator did not boot"
+    xcrun simctl bootstatus "$DEVICE" -b >/dev/null || fail "the simulator did not finish booting"
+    stage "simulator: booted$1"
+}
+install_and_grant() {
+    xcrun simctl install "$DEVICE" "$APP" || fail "install on $DEVICE"
+    stage "app: installed$1"
+    applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES" >/dev/null \
+        || fail "could not grant photo access on $DEVICE"
+    stage "app: granted$1"
+}
 # The loopback peer the transfer contracts exchange bytes with (scripts/transfer-fixture.py). Started BEFORE the app, and
 # asked to answer, so a fixture that is not up fails here by name rather than as every transport clause's transfer error.
 FIXTURE_PORT="$(free_port)"
@@ -162,7 +221,42 @@ launch() {
     fi
     [ "$(cat "$data/Documents/rig.port")" = "$2" ] || fail "the app on $1 bound $(cat "$data/Documents/rig.port"), not $2"
 }
-stage "app: installed and granted"
+first_write() {
+    code="$(curl -sS -o "$OUT/readiness$1.json" -w '%{http_code}' -X POST "http://127.0.0.1:$RIG_PORT/device/gallery/seed?n=1&kind=bulk")"
+    [ "$code" = 200 ] || { cat "$OUT/readiness$1.json"; fail "the photo library never took its first write (HTTP $code)"; }
+}
+
+if [ -n "$WARM" ] && [ "$WARM_HIT" = false ]; then
+    # EXPERIMENT, cache miss: warm this simulator, snapshot it, and boot it again for the run proper.
+    boot_device " (warm-up)"
+    install_and_grant " (warm-up)"
+    launch "$DEVICE" "$RIG_PORT"
+    stage "app: launched (warm-up)"
+    first_write "-warmup"
+    stage "photo library: ready (warm-up)"
+    # Leave no app state behind: the app, its keychain items, then (below, shut down) its App-Group container.
+    xcrun simctl terminate "$DEVICE" app.snapsync >/dev/null 2>&1
+    xcrun simctl uninstall "$DEVICE" app.snapsync || fail "uninstall from the warm-up"
+    xcrun simctl keychain "$DEVICE" reset || fail "keychain reset in the warm-up"
+    xcrun simctl shutdown "$DEVICE" || fail "shutdown after the warm-up"
+    for meta in "$SIM_DEVICES/$DEVICE"/data/Containers/Shared/AppGroup/*/.com.apple.mobile_container_manager.metadata.plist; do
+        [ -f "$meta" ] || continue
+        case "$(/usr/libexec/PlistBuddy -c 'Print MCMMetadataIdentifier' "$meta" 2>/dev/null)" in
+            *app.snapsync*) echo "removing $(dirname "$meta")" >> "$OUT/warm.log"; rm -rf "$(dirname "$meta")" ;;
+        esac
+    done
+    stage "warm simulator: shut down"
+    rm -rf "$WARM"; mkdir -p "$WARM"
+    library_manifest "$SIM_DEVICES/$DEVICE" > "$WARM/assets.txt" || fail "could not read the warm-up's photo library"
+    cp "$WARM/assets.txt" "$OUT/warm-assets.txt"
+    cp -cR "$SIM_DEVICES/$DEVICE" "$WARM/" || fail "could not snapshot the warm simulator"
+    echo "$DEVICE" > "$WARM/udid"
+    echo "snapshot: $(du -sh "$WARM" | cut -f1), $(wc -l < "$WARM/assets.txt") assets" | tee -a "$OUT/warm.log"
+    du -sh "$WARM/$DEVICE"/data/* 2>/dev/null | sort -h | tail -8 >> "$OUT/warm.log"
+    stage "warm simulator: snapshot taken"
+fi
+boot_device ""
+install_and_grant ""
 launch "$DEVICE" "$RIG_PORT"
 stage "app: launched"
 DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)"
@@ -186,8 +280,7 @@ sys.exit(1 if gaps else 0)
 PY
 
 # The photo library's first-use wait, as its own stage (see the header): the app's first write.
-code="$(curl -sS -o "$OUT/readiness.json" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/device/gallery/seed?n=1&kind=bulk")"
-[ "$code" = 200 ] || { cat "$OUT/readiness.json"; fail "the photo library never took its first write (HTTP $code)"; }
+first_write ""
 stage "photo library: ready"
 
 stage "contracts: starting"
