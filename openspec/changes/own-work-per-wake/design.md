@@ -232,6 +232,16 @@ full, but the selection lane checks the grant generation only on the baseline pa
 is still enumerated and emitted (an existing test asserts it). Pre-existing (not from stage 1); fixed here because
 this change rewrites the same path: the change path gets the same generation check, and the test is inverted.
 
+### D15 — Standard output can never block the process (found during verification, pre-existing)
+A process started by DVT/Xcode (every device harness here) has stdout/stderr on a pipe the device's `DTServiceHub`
+drains; `NSLog` copies each line to stderr with one `writev` under a CoreFoundation-wide lock. When the reader
+stops, the ~8 KB pipe fills and every logging thread wedges behind that write — the "every thread silent, rig
+dead" hangs seen during the benchmarks (each after 7.76–7.99 KB of output; reproduced on the simulator with a
+stopped reader, 2/2). Not caused by this change or stage 1 (the baseline build hung the same way); a SpringBoard
+launch has `/dev/null` there. Fixed here because it wedged this change's device verification: both process roots
+set `O_NONBLOCK` on fds 1 and 2 first, so a full pipe drops the stderr copy (`debug.log` and the unified log are
+unaffected).
+
 ## Risks / Trade-offs
 
 - [Handler released before the tail's work] → the tail holds its own background task; background time is per app
