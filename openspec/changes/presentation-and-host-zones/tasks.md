@@ -63,19 +63,19 @@
 
 ## 6. Gates (commit 5)
 
-- [ ] 6.1 ModuleSetTest `permitted`: add `presentation` → {model, feature} and `host` → {model, ports, feature,
+- [x] 6.1 ModuleSetTest `permitted`: add `presentation` → {model, feature} and `host` → {model, ports, feature,
       compose, presentation}.
-- [ ] 6.2 ZoneGateSupport: add `presentation` and `host` to `zoneTokens`, and rewrite the KDoc's `ui/presentation`
+- [x] 6.2 ZoneGateSupport: add `presentation` and `host` to `zoneTokens`, and rewrite the KDoc's `ui/presentation`
       scope note.
-- [ ] 6.3 Add `ReadModelImportsTest`:
+- [x] 6.3 Add `ReadModelImportsTest`:
       - it scans main and test sources of `domain/presentation`, `domain/host`, `ui/screens`, `ui/components` and
         `test/control`;
       - it strips comments and fails on an `app.snapsync.feature.` reference without a `.readmodel.` segment;
       - it names the `:app:desktop` exemption with its 11g end;
       - a non-vacuity twin requires at least one `readmodel` reference.
-- [ ] 6.4 Prove the gate fires: temporarily add a non-read-model feature import to a presentation file, see it fail,
+- [x] 6.4 Prove the gate fires: temporarily add a non-read-model feature import to a presentation file, see it fail,
       then revert.
-- [ ] 6.5 Run the whole `:test:architecture` suite. Fix any path-bound test that fires, and do not edit the ones that
+- [x] 6.5 Run the whole `:test:architecture` suite. Fix any path-bound test that fires, and do not edit the ones that
       pass.
 
 ## 7. Specs, diagrams, docs (commit 6)

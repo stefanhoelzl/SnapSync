@@ -24,8 +24,8 @@ import kotlin.test.fail
  * - **Withholding** — each exists because it withholds a dependency from its consumers by compile
  *   error: usually a third-party or platform one, or another zone of the core, where a module boundary
  *   is the only construction that makes the zone edge unresolvable rather than merely forbidden.
- *   `:ui:components` is the only module that may depend on Material 3; `:app:composition` is the one
- *   module that sees both the core's composition zone and presentation, so neither gains the other.
+ *   `:ui:components` is the only module that may depend on Material 3; the host, `:domain:host`, is the one
+ *   zone that sees both the core's composition zone and presentation, so neither gains the other.
  * - **Contained** — each exists so that something is ABSENT from a production build, linked only under
  *   a build property (a build-time-only module is contained by compilation, not by a runtime check):
  *   `:app:ios:forge` under `-Psnapsync.forge`; `:test:rig` and `:test:contracts` under `-Psnapsync.rig`
@@ -138,6 +138,13 @@ class ModuleSetTest {
             "feature" to setOf(":domain:model", ":domain:ports"),
             "flow" to setOf(":domain:model", ":domain:feature"),
             "compose" to setOf(":domain:model", ":domain:ports", ":domain:feature", ":domain:flow"),
+            // The UI-state reduction: of the zones, only the vocabulary and the features (and of the features,
+            // only their `readmodel` packages — a line inside one module, held by `ReadModelImportsTest`).
+            "presentation" to setOf(":domain:model", ":domain:feature"),
+            // The shared host composition: the one zone that sees both the composition zone and presentation.
+            "host" to setOf(
+                ":domain:model", ":domain:ports", ":domain:feature", ":domain:compose", ":domain:presentation",
+            ),
         )
         val problems = permitted.flatMap { (zone, allowed) ->
             val build = File(repoRoot, "domain/$zone/build.gradle.kts")
@@ -165,11 +172,12 @@ class ModuleSetTest {
     private companion object {
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
-            ":domain:model", ":domain:ports", ":domain:feature", ":domain:flow", ":domain:compose",
-            ":ui:presentation", ":ui:screens", ":ui:components",
+            // The core's six zones and the host (`docs/architecture.md`, "Zones inside the core").
+            ":domain:model", ":domain:ports", ":domain:feature", ":domain:flow", ":domain:presentation",
+            ":domain:compose", ":domain:host",
+            ":ui:screens", ":ui:components",
             ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:generic:app", ":adapter:generic:fake",
             ":app:ios", ":app:ios:extension", ":app:desktop",
-            ":app:composition",
         )
 
         /** Each exists so something is absent from a production build; linked only under a build property. */
