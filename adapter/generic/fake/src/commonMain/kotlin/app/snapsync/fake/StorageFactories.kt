@@ -1,7 +1,10 @@
 package app.snapsync.fake
 
 import app.snapsync.model.FileArea
+import app.snapsync.model.SecureSlot
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.Files
+import app.snapsync.ports.SecureStore
 import app.snapsync.ports.Preferences
 
 // The thin storage ports' mocks: port-typed factories over `internal` classes, as every fake here
@@ -19,3 +22,12 @@ fun inMemoryFiles(
 
 /** [values] is the caller's own cell. */
 fun inMemoryPreferences(values: MutableMap<String, String> = mutableMapOf()): Preferences = InMemoryPreferences(values)
+
+/**
+ * [items] is the caller's own cell (slot → value and protection); [unavailable] is a store that cannot be read at
+ * all (a device not unlocked since boot).
+ */
+fun inMemorySecureStore(
+    items: MutableMap<SecureSlot, SecureStoreRead.Found> = mutableMapOf(),
+    unavailable: Boolean = false,
+): SecureStore = InMemorySecureStore(items, unavailable)

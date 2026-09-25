@@ -22,7 +22,6 @@ import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
-import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.join.HttpEventJoin
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.services.manifest.DeviceManifestService
@@ -46,7 +45,6 @@ import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
 import app.snapsync.album.IosAlbumManager
-import app.snapsync.album.legacyAlbumMapKeychain
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
@@ -88,8 +86,12 @@ import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.neverBlockOnStdio
-import app.snapsync.keychain.DeviceIdentityRole
-import app.snapsync.keychain.KeychainDeviceIdentity
+import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.keychain.platformSecureStore
+import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.ports.SecureStore
+import app.snapsync.services.identity.AttestState
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -320,7 +322,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
     // Hoisted: the selection policy also reads the manager directly (denylisted-album membership), and
     // the atomic import-time album lookup reads the map (capability `photo-sharing`).
-    private val albumMapStore: AlbumMapStore by lazy { AlbumMapService(IosPreferences(), legacyAlbumMapKeychain()) }
+    private val albumMapStore: AlbumMapStore by lazy { AlbumMapService(IosPreferences(), secureStore) }
     private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
 
 
@@ -339,15 +341,20 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // shared group is empty but an id exists in a group an older build wrote to, that value is taken
     // over verbatim rather than re-minted — a second identity would orphan this device's byte
     // partition and make its own uploads read as another member's.
-    // The resolve is the adapter's, behind the `DeviceIdentity` port (`docs/architecture.md`):
-    // it caches its first success and never a failure — Kotlin's SynchronizedLazyImpl assigns its value
-    // only on success — so a resolve that throws on a LOCKED device (`SecureStoreUnavailable`) is retried
-    // on the next call rather than fixed for the process. `DeviceIdentityRetryTest` pins that property.
+    // The resolve is the identity service's (`PersistedDeviceIdentity`, `docs/architecture.md`): it keeps its
+    // first success and never a failure, so a resolve that fails on a LOCKED device is retried on the next call
+    // rather than fixed for the process.
     //
-    // The store itself is chosen by COMPILATION TARGET (`deviceIdPrimaryStore`, capability
-    // `photo-sharing`): the addressed Keychain on `iosArm64`, an App-Group file on `iosSimulatorArm64`
-    // where that group cannot exist. Nothing here decides which — that is the point.
-    private val deviceIdentity: DeviceIdentity by lazy { KeychainDeviceIdentity(DeviceIdentityRole.MINTING) }
+    // The store is chosen by COMPILATION TARGET (`platformSecureStore`, capability `photo-sharing`): the Keychain
+    // on `iosArm64`, the device-id slot in an App-Group file on `iosSimulatorArm64` where the shared group cannot
+    // exist. Nothing here decides which — that is the point.
+    private val deviceIdentity: DeviceIdentity by lazy {
+        PersistedDeviceIdentity(DeviceIdentityRole.MINTING, secureStore, NoPlatformDeviceId())
+    }
+
+    // This process's protected small-value store: the device id, the attestation token and key id, and the legacy
+    // album map's last seat — one instance, every item addressed by its slot.
+    private val secureStore: SecureStore by lazy { platformSecureStore() }
 
     /**
      * The composed app graph (`docs/architecture.md`, "One shared composition"): this root
@@ -452,7 +459,7 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
                 eventRename = HttpEventRename(http, backendHost),
                 attestKey = IosAttestKey(),
                 attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
-                attestStore = KeychainAttestStore(),
+                attestStore = AttestState(secureStore),
                 deviceIdentity = deviceIdentity,
                 clock = SystemClock,
                 // The screen reads the same clock the core does; only the world separates the two.

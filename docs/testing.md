@@ -192,6 +192,9 @@ Where bindings live: beside their implementations.
   services over it: `:adapter:generic:app` `jvmTest` — so every `build` runs them, not only CI's simulator job.
 - The iOS `Databases`, `Files` and `Preferences` adapters, and the storage services through them on Kotlin/Native:
   `:adapter:ios:ext-safe` tests.
+- `PlatformDeviceId` has **no contract**, on purpose: its only implementation answers a constant `null`, and a
+  clause must run against a real implementation somewhere (`ContractCoverageTest`). The identity service's test covers
+  "`null` ⇒ random" with a stub. The contract lands with the first adapter that answers an id (Android).
 - The storage services' fake-driven tests (their answers to what no contract state enters): `:adapter:generic:fake`
   `commonTest`, over the storage mocks.
 - The mini-edge and the world's transfer doubles: `:test:world` `commonTest`.

@@ -16,7 +16,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AppUploadMechanism` | `:domain:feature` | `:app:ios` UrlSessionUploadController; `:test:world` OperatorUploadEngine | yes |
 | `AttestClient` | `:domain:ports` | `:adapter:generic:app` HttpAttestClient; `:adapter:generic:fake` FakeClient, InMemoryAttestClient | yes |
 | `AttestKey` | `:domain:ports` | `:adapter:generic:fake` FakeKey, InMemoryAttestKey; `:adapter:ios:ext-safe` IosAttestKey | yes |
-| `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:adapter:ios:ext-safe` KeychainAttestStore; `:domain:feature` CachedAttestStore, SharedItem | yes |
+| `AttestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryAttestStore; `:domain:feature` CachedAttestStore, SharedItem; `:domain:services` AttestState | yes |
 | `BackendVerdicts` | `:domain:ports` | — | no |
 | `BackgroundScheduler` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundScheduler; `:adapter:ios:app-only` IosBackgroundScheduler; `:domain:feature` Scheduler; `:test:world` CountingScheduler | yes |
 | `BackgroundTime` | `:domain:ports` | `:adapter:generic:fake` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime | yes |
@@ -45,7 +45,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Decided` | `:domain:feature` | `:domain:feature` Planned, Short | no |
 | `DeviceEnroller` | `:domain:feature` | `:domain:feature` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:domain:ports` | `:adapter:generic:app` HttpDeviceFilesSource; `:domain:feature` FakeFiles | yes |
-| `DeviceIdentity` | `:domain:ports` | `:adapter:ios:ext-safe` KeychainDeviceIdentity; `:domain:feature` FakeIdentity | yes |
+| `DeviceIdResult` | `:domain:model` | `:domain:model` AbsentNotMintable, Id, Unavailable | no |
+| `DeviceIdentity` | `:domain:ports` | `:domain:feature` FakeIdentity; `:domain:services` PersistedDeviceIdentity | yes |
 | `DeviceLogSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceLogSource; `:domain:services` LogTailService | yes |
 | `DeviceManifestStore` | `:domain:ports` | `:adapter:generic:fake` InMemoryDeviceManifestStore; `:domain:feature` FakeStore; `:domain:services` DeviceManifestService | yes |
 | `DiagnosticsReporter` | `:domain:ports` | `:adapter:generic:fake` InMemoryDiagnosticsReporter; `:adapter:ios:ext-safe` SentryDiagnosticsReporter | yes |
@@ -92,6 +93,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PhotoGrantRead` | `:domain:ports` | `:adapter:ios:ext-safe` PhotoKitGrantRead | no |
 | `PhotoLibraryImporter` | `:domain:ports` | `:adapter:generic:fake` FakeImporter, InMemoryPhotoLibraryImporter, NoopImporter; `:adapter:ios:app-only` IosPhotoLibraryImporter; `:test:world` FakePhotoLibraryImporter | yes |
 | `PhotoSelectionChangeSource` | `:domain:ports` | `:adapter:generic:app` SelectionSnapshotLane; `:adapter:generic:fake` InMemoryPhotoSelectionChangeSource; `:adapter:ios:app-only` PhotoSelectionSnapshotSource | yes |
+| `PlatformDeviceId` | `:domain:ports` | `:adapter:generic:app` NoPlatformDeviceId | no |
 | `PlatformEntries` | `:domain:ports` | `:app:ios` SnapSyncRoot; `:domain:compose` AppEntries | no |
 | `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:generic:fake` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences | yes |
@@ -107,7 +109,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenameStatusSource` | `:domain:feature` | `:domain:feature` MutableRenameStatusSource | no |
 | `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
 | `SceneMode` | `:domain:model` | `:domain:model` Deferred, Live | no |
-| `SecureStore` | `:domain:ports` | `:adapter:generic:fake` InMemorySecureStore, Legacy; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosKeychain, NoLegacyMap, NoSuchStore, StubSecureStore; `:domain:ports` FakeSecureStore | yes |
+| `SecureStore` | `:domain:ports` | `:adapter:generic:fake` InMemorySecureStore, Legacy, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, NoLegacyMap, Recording, SimulatorSecureStore | yes |
 | `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
 | `SecureStoreResolution` | `:domain:model` | `:domain:model` Adopted, Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |

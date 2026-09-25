@@ -30,7 +30,7 @@ import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSISO8601DateFormatter
 
 /**
- * The real [app.snapsync.keychain.IosKeychain] in the entitled app, recording every `SecItem*` call and
+ * The real [app.snapsync.keychain.IosSecureStore] in the entitled app, recording every `SecItem*` call and
  * iOS's answer (`docs/architecture.md`). Recorded on a device, over the rig; replayed on every CI
  * build by `IosKeychainReplayContractTest`, which reuses [keychainInState] so both make the same calls.
  */
@@ -70,7 +70,8 @@ internal class DeviceAttestKeyBinding(private val recorder: Recorder) : Binding<
 }
 
 /**
- * The real [app.snapsync.attest.KeychainAttestStore] in the entitled app, over the recorded Keychain seam.
+ * The real attestation store ([app.snapsync.services.identity.AttestState] over the Keychain) in the entitled
+ * app, over the recorded Keychain seam.
  * Replayed on every CI build by `AttestReplayContractTest`, which reuses [attestStoreInState].
  */
 internal class DeviceAttestStoreBinding(private val recorder: Recorder) : Binding<AttestStoreState, AttestStore> {

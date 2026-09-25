@@ -2,10 +2,11 @@
 
 package app.snapsync.keychain
 
-import app.snapsync.ports.SecureStore
+import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
+import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureStore
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -97,22 +98,47 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
  *
  * Decision record: `changes/archive/2026-07-20-fix-split-device-identity`.
  */
-class IosKeychain internal constructor(
-    private val service: String,
-    private val account: String,
-    private val accessGroup: String?,
+class IosSecureStore internal constructor(
     /** Where the four `SecItem*` calls go: the real Keychain, or — in a contract run — a recording. */
     private val keychain: KeychainApi,
 ) : SecureStore {
 
-    constructor(service: String, account: String, accessGroup: String? = null) :
-        this(service, account, accessGroup, SystemKeychainApi)
+    /** Production: the real Keychain (a secondary constructor, not a default — `docs/architecture.md`). */
+    constructor() : this(SystemKeychainApi)
+
+    /**
+     * The item a slot addresses: a shared slot names [SHARED_KEYCHAIN_ACCESS_GROUP] on every operation, an
+     * unshared one names no group (a pinned inventory — `RuntimeIdentityTest`).
+     */
+    internal fun item(slot: SecureSlot): KeychainItem =
+        KeychainItem(slot.service, slot.account, if (slot.shared) SHARED_KEYCHAIN_ACCESS_GROUP else null, keychain)
+
+    override fun read(slot: SecureSlot): SecureStoreRead = item(slot).read()
+
+    override fun write(slot: SecureSlot, value: String): WriteOutcome = item(slot).write(value)
+
+    override fun migrateProtection(slot: SecureSlot): WriteOutcome = item(slot).migrateProtection()
+
+    override fun delete(slot: SecureSlot): WriteOutcome = item(slot).delete()
+}
+
+/**
+ * One Keychain item, fully addressed: the calls [IosSecureStore] makes for one slot. Every operation carries the
+ * same (class, service, account[, group]) address — a partially scoped item would be written to one group and
+ * searched for in another.
+ */
+internal class KeychainItem(
+    private val service: String,
+    private val account: String,
+    private val accessGroup: String?,
+    private val keychain: KeychainApi,
+) {
 
     /**
      * One query returns **both** the value and its accessibility class, so detecting a legacy item
      * costs nothing: an already-correct item is read, compared, and left alone (no write).
      */
-    override fun read(): SecureStoreRead = memScoped {
+    fun read(): SecureStoreRead = memScoped {
         val query = baseQuery()
         CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
         CFDictionaryAddValue(query, kSecReturnAttributes, kCFBooleanTrue)
@@ -202,8 +228,9 @@ class IosKeychain internal constructor(
         }
     }
 
-    override fun write(value: String) {
-        // Replace-by-delete-then-add keeps the write idempotent regardless of prior presence.
+    fun write(value: String): WriteOutcome {
+        // Replace-by-delete-then-add keeps the write idempotent regardless of prior presence — and is why, after a
+        // refused add, the old value may be gone.
         delete()
         val addQuery = baseQuery()
         val cfData = CFBridgingRetain(value.encodeToByteArray().toNSData())
@@ -212,7 +239,7 @@ class IosKeychain internal constructor(
         val status = keychain.add(addQuery)
         CFRelease(addQuery)
         CFBridgingRelease(cfData)
-        if (status != errSecSuccess) throw SecureStoreUnavailable(diagnostic(status))
+        return if (status == errSecSuccess) WriteOutcome.Ok else WriteOutcome.Failed(diagnostic(status))
     }
 
     /**
@@ -220,7 +247,7 @@ class IosKeychain internal constructor(
      * supplied, so it cannot be altered. This is what lets an already-provisioned device heal without
      * its device id changing (a new id would orphan its byte partition and its ledger).
      */
-    override fun migrateProtection() {
+    fun migrateProtection(): WriteOutcome {
         val query = baseQuery()
         val attributes = newDictionary()
         applyWrittenAttributes(attributes)
@@ -231,13 +258,20 @@ class IosKeychain internal constructor(
         // on the next read. Failing the read here would turn a healthy legacy device into a broken one.
         if (status != errSecSuccess) {
             log.w { "keychain accessibility migration failed for $service/$account: status=$status" }
+            return WriteOutcome.Failed(diagnostic(status))
         }
+        return WriteOutcome.Ok
     }
 
-    override fun delete() {
+    fun delete(): WriteOutcome {
         val deleteQuery = baseQuery()
-        keychain.delete(deleteQuery)
+        val status = keychain.delete(deleteQuery)
         CFRelease(deleteQuery)
+        return if (status == errSecSuccess || status == errSecItemNotFound) {
+            WriteOutcome.Ok
+        } else {
+            WriteOutcome.Failed(diagnostic(status))
+        }
     }
 
     /**

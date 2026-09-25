@@ -3,10 +3,12 @@
 package app.snapsync.keychain
 
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.ports.SecureStore
+import app.snapsync.model.SecureSlot
+import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.model.StoredProtection
+import app.snapsync.model.WriteOutcome
+import app.snapsync.ports.SecureStore
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -26,140 +28,94 @@ import platform.Foundation.dataUsingEncoding
 import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 
-/**
- * The simulator target's device-id file, in the App-Group container beside the ledger.
- *
- * Deliberately **not** in `RuntimeIdentityTest`'s pinned inventory. That inventory pins literals the
- * OS or the **installed base** holds on its side, so that re-valuing one strands real devices. No
- * installed base holds this: it exists only in a binary that cannot run on a device, and re-valuing
- * it costs one disposable simulator its id. The `.simulator.` infix is there so anyone finding the
- * file in a container can see its scope without reading this.
- */
-private const val DEVICE_ID_FILE_NAME: String = "deviceid.simulator.json"
+/** The simulator: the device-id slot in an App-Group file, its legacy slot absent, the rest the Keychain. */
+actual fun platformSecureStore(): SecureStore = SimulatorSecureStore(
+    keychain = IosSecureStore(),
+    files = AppGroupFileSecureStore(
+        NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path,
+    ),
+)
 
-/**
- * The simulator target's binding: the device id in an App-Group **file**, because the addressed
- * Keychain group cannot exist here. Rationale and the measurement are on the `expect` declaration.
- *
- * The App Group is reachable on a simulator **only under an ad-hoc signature** carrying
- * `iosApp/Configuration/simulator.entitlements`; an unsigned build throws from
- * `containerURLForSecurityApplicationGroupIdentifier`. `scripts/sim-sign` applies it. That is the
- * same container the ledger, the download store and the config file already live in, so this
- * introduces no new provisioning requirement — and, being shared with the appex by construction,
- * it is what lets the app and the extension observe one id on this target too.
- */
-internal actual fun deviceIdPrimaryStore(): SecureStore = AppGroupFileSecureStore(DEVICE_ID_FILE_NAME)
+/** Routes [SecureSlots.DEVICE_ID] to [files], answers [SecureSlots.DEVICE_ID_LEGACY] as absent, and the rest to [keychain]. */
+internal class SimulatorSecureStore(private val keychain: SecureStore, private val files: SecureStore) : SecureStore {
 
-/**
- * The App-Group container's path, or `null` when this process cannot reach it — which an unsigned
- * build cannot, and an `xctest` host cannot either. Nullable rather than throwing, because the store
- * above turns it into an `Unavailable` read: "I could not look" is not "there is no id", and that
- * distinction is the whole point of the port's three-state read.
- */
-private fun appGroupContainerPath(): String? =
-    NSFileManager.defaultManager
-        .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)
-        ?.path
+    private fun storeFor(slot: SecureSlot): SecureStore? = when (slot) {
+        SecureSlots.DEVICE_ID -> files
+        // No older build ever wrote a device id on a simulator. `Absent` states the truth; a store that failed
+        // here would block minting forever (unavailability outranks absence in the resolution).
+        SecureSlots.DEVICE_ID_LEGACY -> null
+        else -> keychain
+    }
 
-/**
- * No adoption source on this target: nothing here ever wrote an id anywhere else, so there is
- * nothing an older build could have misplaced.
- *
- * It answers `Absent` rather than being omitted, because `resolveOrMint` distinguishes "nothing is
- * there" from "could not look" on the legacy read too, and treats the latter as disqualifying. Saying
- * `Absent` states the truth; a store that failed here would silently block minting forever.
- */
-internal actual fun deviceIdLegacyStore(): SecureStore = NoSuchStore
+    override fun read(slot: SecureSlot): SecureStoreRead = storeFor(slot)?.read(slot) ?: SecureStoreRead.Absent
 
-/** The always-empty store [deviceIdLegacyStore] returns. Writes are refused rather than swallowed. */
-private object NoSuchStore : SecureStore {
-    override fun read(): SecureStoreRead = SecureStoreRead.Absent
-    override fun write(value: String) = error("the simulator target has no legacy device-id store to write")
-    override fun migrateProtection() = Unit
-    override fun delete() = Unit
+    override fun write(slot: SecureSlot, value: String): WriteOutcome =
+        storeFor(slot)?.write(slot, value) ?: WriteOutcome.Failed("the simulator target has no legacy device-id store to write")
+
+    override fun migrateProtection(slot: SecureSlot): WriteOutcome = storeFor(slot)?.migrateProtection(slot) ?: WriteOutcome.Ok
+
+    override fun delete(slot: SecureSlot): WriteOutcome = storeFor(slot)?.delete(slot) ?: WriteOutcome.Ok
 }
 
 /**
- * A [SecureStore] over one file in the App-Group container — the simulator target's stand-in for a
- * Keychain item, and **test equipment**: it is confidential only to the extent the container is, and
- * it dies with the install rather than surviving it.
+ * A [SecureStore] over files in [directory] (the App-Group container; `null` when this process has none — every
+ * read then answers `Unavailable` and every write `Failed`, never absence). One file per slot; the device id keeps
+ * the file name simulator builds have always used.
  *
- * Both departures from the port's stated purpose are acceptable *here* and nowhere else. Nothing on a
- * simulator needs protecting from anyone, and reinstall-stability exists so a real device does not
- * orphan its byte partition — a disposable simulator that acquires a fresh id simply enrolls again.
- *
- * The file is written `CompleteUntilFirstUserAuthentication`, matching every other App-Group file, so
- * [StoredProtection.BACKGROUND_READABLE] is the honest answer to a read and no migration is ever
- * requested. Raising it to `Complete` would make the file unreadable while locked, which the
- * entitlements guard forbids for exactly this container.
+ * The directory is a value resolved once, not a lookup the store calls: no adapter constructor takes a function.
  */
-internal class AppGroupFileSecureStore(
-    private val fileName: String,
-    /**
-     * The directory the file lives in: the App-Group container in production; injectable so tests can
-     * point it at a temp directory — the same shape `IosDatabases(basePath)` already uses,
-     * and necessary because an `xctest` host carries no App-Group entitlement and would otherwise
-     * only ever exercise the unavailable branch.
-     */
-    private val directory: () -> String?,
-) : SecureStore {
+internal class AppGroupFileSecureStore(private val directory: String?) : SecureStore {
 
-    /** Production: the App-Group container. */
-    constructor(fileName: String) : this(fileName, ::appGroupContainerPath)
+    private fun fileName(slot: SecureSlot) =
+        if (slot == SecureSlots.DEVICE_ID) DEVICE_ID_FILE_NAME else "${slot.service}.${slot.account}.simulator.json"
 
-    override fun read(): SecureStoreRead = memScoped {
-        val path = filePath()
-            ?: return SecureStoreRead.Unavailable(
-                "App Group container '$LEDGER_APP_GROUP' unavailable — is the build ad-hoc signed " +
-                    "with iosApp/Configuration/simulator.entitlements? (scripts/sim-sign)",
-            )
-        // Existence is asked before reading rather than inferred from the read's error, so "no id yet"
-        // and "the container is unreadable" stay distinct without this store having to classify an
-        // NSError domain. The port keeps those apart deliberately: absence may mint, failure may not.
+    private fun path(slot: SecureSlot): String? = directory?.let { "$it/${fileName(slot)}" }
+
+    private val unavailable = "App Group container '$LEDGER_APP_GROUP' unavailable — is the build ad-hoc signed " +
+        "with iosApp/Configuration/simulator.entitlements? (scripts/sim-sign)"
+
+    override fun read(slot: SecureSlot): SecureStoreRead = memScoped {
+        val path = path(slot) ?: return SecureStoreRead.Unavailable(unavailable)
+        // Existence is asked before reading rather than inferred from the read's error, so "no id yet" and "the
+        // container is unreadable" stay distinct: absence may mint, failure may not.
         if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return SecureStoreRead.Absent
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val data = NSData.dataWithContentsOfFile(path, options = 0u, error = errorVar.ptr)
-            ?: return SecureStoreRead.Unavailable(
-                errorVar.value?.localizedDescription ?: "read returned no data and no error",
-            )
+            ?: return SecureStoreRead.Unavailable(errorVar.value?.localizedDescription ?: "read returned no data and no error")
         val text = NSString.create(data, NSUTF8StringEncoding)?.toString()
-            ?: return SecureStoreRead.Unavailable("device-id file is not UTF-8")
-        // A file that exists but holds nothing is NOT an absence to mint over: something wrote it and
-        // produced this, and minting would hand the process a second identity. Unreadable, so the
-        // caller defers and a human looks.
-        if (text.isBlank()) return SecureStoreRead.Unavailable("device-id file is present but empty")
+            ?: return SecureStoreRead.Unavailable("secure file is not UTF-8")
+        // A file that exists but holds nothing is NOT an absence to mint over: something wrote it and produced this,
+        // and minting would hand the process a second identity. Unreadable, so the caller defers and a human looks.
+        if (text.isBlank()) return SecureStoreRead.Unavailable("secure file is present but empty")
         SecureStoreRead.Found(text, StoredProtection.BACKGROUND_READABLE)
     }
 
-    /**
-     * A store that cannot persist says so the way the port does — [SecureStoreUnavailable], which the
-     * composition roots catch and defer on — never with a bare `IllegalStateException` that nothing
-     * catches. Found by `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`), the first run it had.
-     */
-    override fun write(value: String): Unit = memScoped {
-        val path = filePath()
-            ?: throw SecureStoreUnavailable("App Group container '$LEDGER_APP_GROUP' unavailable — cannot persist the device id")
+    override fun write(slot: SecureSlot, value: String): WriteOutcome = memScoped {
+        val path = path(slot) ?: return WriteOutcome.Failed(unavailable)
         val data = NSString.create(string = value).dataUsingEncoding(NSUTF8StringEncoding)
-            ?: error("device id did not encode as UTF-8")
+            ?: return WriteOutcome.Failed("value did not encode as UTF-8")
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val ok = data.writeToFile(
             path,
             options = NSDataWritingAtomic or NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication,
             error = errorVar.ptr,
         )
-        if (!ok) throw SecureStoreUnavailable("device-id file write failed: ${errorVar.value?.localizedDescription}")
+        if (ok) WriteOutcome.Ok else WriteOutcome.Failed("secure file write failed: ${errorVar.value?.localizedDescription}")
     }
 
     /** Nothing to migrate: [read] reports the protection this store always writes. */
-    override fun migrateProtection() = Unit
+    override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
 
-    override fun delete(): Unit = memScoped {
-        val path = filePath() ?: return
-        if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return
+    override fun delete(slot: SecureSlot): WriteOutcome = memScoped {
+        val path = path(slot) ?: return WriteOutcome.Failed(unavailable)
+        if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return WriteOutcome.Ok
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val ok = NSFileManager.defaultManager.removeItemAtPath(path, error = errorVar.ptr)
-        if (!ok) error("device-id file delete failed: ${errorVar.value?.localizedDescription}")
+        if (ok) WriteOutcome.Ok else WriteOutcome.Failed("secure file delete failed: ${errorVar.value?.localizedDescription}")
     }
 
-    private fun filePath(): String? = directory()?.let { "$it/$fileName" }
+    private companion object {
+        /** The device-id file every simulator build has used. */
+        const val DEVICE_ID_FILE_NAME: String = "deviceid.simulator.json"
+    }
 }

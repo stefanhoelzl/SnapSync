@@ -147,6 +147,9 @@ class RuntimeIdentityTest {
      * Keychain seats that legitimately search **without** naming an access group, pinned as an exact
      * inventory.
      *
+     * Seats are `SecureSlot(service = …, account = …, shared = …)` constructions; `shared = false` is unscoped.
+     * The device id's legacy slot is its shared slot's `copy(shared = false)`, so the pair stays single-sited.
+     *
      * Unscoped search is not forbidden — it is *bounded*. The attest pair and album map are left
      * unscoped deliberately: the attest token demonstrably works cross-process today, and the album
      * map is a self-healing cache. What must not happen is a *new* unscoped seat appearing by
@@ -352,8 +355,9 @@ class RuntimeIdentityTest {
         val sources = productionKotlin()
         assertTrue(sources.isNotEmpty(), "production Kotlin scan resolved zero files — the walk is broken")
 
-        // Construction sites only — not the `class IosKeychain(` declaration itself.
-        val site = Regex("""(?<!class )IosKeychain\(([^)]*)\)""")
+        // Slot constructions only — not the `data class SecureSlot(` declaration itself. Every Keychain item is
+        // addressed by a `SecureSlot` since the storage-ports re-cut; `shared = true` names the access group.
+        val site = Regex("""(?<!class )SecureSlot\(([^)]*)\)""")
         val unscoped = mutableSetOf<Pair<String, String>>()
         val scoped = mutableSetOf<Pair<String, String>>()
         for (file in sources) {
@@ -363,10 +367,16 @@ class RuntimeIdentityTest {
                 val account = Regex("""account\s*=\s*"([^"]+)"""").find(args)?.groupValues?.get(1)
                 assertTrue(
                     service != null && account != null,
-                    "an IosKeychain construction in ${file.toRelativeString(repoRoot)} does not name its " +
+                    "a SecureSlot construction in ${file.toRelativeString(repoRoot)} does not name its " +
                         "service/account inline; this guard cannot classify it — keep the pinned form",
                 )
-                if ("accessGroup" in args) scoped += service to account else unscoped += service to account
+                val shared = Regex("""shared\s*=\s*(true|false)""").find(args)?.groupValues?.get(1)
+                assertTrue(
+                    shared != null,
+                    "a SecureSlot construction in ${file.toRelativeString(repoRoot)} does not state `shared =` " +
+                        "inline; whether an item names its group is exactly what this guard classifies",
+                )
+                if (shared == "true") scoped += service to account else unscoped += service to account
             }
         }
 

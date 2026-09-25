@@ -5,7 +5,7 @@ package app.snapsync.keychain.contract
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.SecureStoreContract
 import app.snapsync.contracts.SecureStoreState
-import app.snapsync.keychain.IosKeychain
+import app.snapsync.keychain.IosSecureStore
 import app.snapsync.keychain.KeychainApi
 import app.snapsync.keychain.SHARED_KEYCHAIN_ACCESS_GROUP
 import app.snapsync.ports.SecureStore
@@ -45,7 +45,7 @@ internal const val DEVICE_UNREACHABLE_INACCESSIBLE =
 private const val SERVICE = "app.snapsync.contract"
 
 /**
- * A fresh [IosKeychain] over [keychain] in [state]. Starts with a delete — a clause is never allowed to see
+ * A fresh [IosSecureStore] over [keychain] in [state]. Starts with a delete — a clause is never allowed to see
  * an item a previous, interrupted run left behind — and deletes again on dispose. [afterDispose] runs last
  * (the replay binding checks the recording was exhausted there).
  */
@@ -56,11 +56,15 @@ internal fun keychainInState(
     afterDispose: () -> Unit = {},
 ): Entered<SecureStore> {
     if (state == SecureStoreState.INACCESSIBLE) return Entered.Unreachable(DEVICE_UNREACHABLE_INACCESSIBLE)
-    val store = IosKeychain(SERVICE, clauseId, SHARED_KEYCHAIN_ACCESS_GROUP, keychain)
-    store.delete()
+    // The clause's slot is the contract's, and names this file's [SERVICE] in the shared group: the address every
+    // committed recording was taken at.
+    val slot = SecureStoreContract.slot(clauseId)
+    check(slot.service == SERVICE && slot.shared) { "the contract's slot moved off the recorded address: $slot" }
+    val store = IosSecureStore(keychain)
+    store.delete(slot)
     val seed = SecureStoreContract.seedValue(clauseId)
     when (state) {
-        SecureStoreState.HOLDING_BACKGROUND_READABLE -> store.write(seed)
+        SecureStoreState.HOLDING_BACKGROUND_READABLE -> store.write(slot, seed)
         SecureStoreState.HOLDING_RESTRICTED -> legacyItem(clauseId, seed).let { item ->
             keychain.add(item)
             CFRelease(item)
@@ -68,7 +72,7 @@ internal fun keychainInState(
         else -> Unit
     }
     return Entered.Ready(store) {
-        store.delete()
+        store.delete(slot)
         afterDispose()
     }
 }
@@ -76,7 +80,7 @@ internal fun keychainInState(
 /**
  * An item as a build before the locked-device fix filed it: `kSecAttrAccessibleWhenUnlocked`, the iOS
  * default — the class that made every background read fail while locked, and that the upgrade exists to
- * move items off. Same address [IosKeychain] uses.
+ * move items off. Same address [IosSecureStore] uses.
  */
 private fun legacyItem(account: String, value: String): CFDictionaryRef {
     val attributes = mapOf(

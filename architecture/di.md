@@ -21,6 +21,7 @@ Roots found:
 | `AlbumMapService` | x | x |
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
+| `AttestState` | x | x |
 | `CachedAttestStore` | | x |
 | `ConfigService` | x | x |
 | `DeviceManifestService` | x | x |
@@ -50,12 +51,12 @@ Roots found:
 | `IosProtectedStorage` | x | |
 | `IosPushRegistrationRecord` | x | |
 | `IosShareSheet` | x | |
-| `KeychainAttestStore` | x | x |
-| `KeychainDeviceIdentity` | x | x |
 | `LedgerService` | x | x |
 | `LogTailService` | x | |
 | `MetricKitProcessMetricSource` | x | |
+| `NoPlatformDeviceId` | x | x |
 | `OsDrivenRegistration` | x | |
+| `PersistedDeviceIdentity` | x | x |
 | `PhotoKitAssetPresence` | x | |
 | `PhotoKitCandidateSource` | x | x |
 | `PhotoLibraryPermission` | x | |

@@ -11,15 +11,15 @@ import app.snapsync.ports.SecureStore
 import kotlin.test.Test
 
 /**
- * The real [IosKeychain], live, in the simulator's Kotlin/Native test executable (capability
+ * The real [IosSecureStore], live, in the simulator's Kotlin/Native test executable (capability
  * `docs/architecture.md`). That host is unentitled: `securityd` refuses it every `SecItem*` call with
  * `-25291` (`errSecNotAvailable`), so the only state it can present is [SecureStoreState.INACCESSIBLE] —
  * which is also the state the build-297 crash lived in, run here against the real API on every build.
  *
  * Every other state is reached on the entitled device, recorded there and replayed in CI
- * (`IosKeychainReplayContractTest`).
+ * (`IosSecureStoreReplayContractTest`).
  */
-class IosKeychainContractTest {
+class IosSecureStoreContractTest {
 
     private val binding = object : Binding<SecureStoreState, SecureStore> {
         override val host = Host.IOS_SIM_KEXE
@@ -28,7 +28,7 @@ class IosKeychainContractTest {
 
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> =
             if (state == SecureStoreState.INACCESSIBLE) {
-                Entered.Ready(IosKeychain(service = "app.snapsync.contract", account = clauseId))
+                Entered.Ready(IosSecureStore())
             } else {
                 Entered.Unreachable("unentitled test executable: securityd refuses every Keychain call (-25291)")
             }

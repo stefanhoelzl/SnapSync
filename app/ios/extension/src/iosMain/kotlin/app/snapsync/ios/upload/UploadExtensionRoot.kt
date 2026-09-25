@@ -7,7 +7,6 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.gallery.PhotoKitGrantRead
 import app.snapsync.feature.trust.CachedAttestStore
-import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.compose.extensionEntries
@@ -16,15 +15,18 @@ import app.snapsync.logging.IosLogScope
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.PlatformEntry
 import app.snapsync.album.IosAlbumManager
-import app.snapsync.album.legacyAlbumMapKeychain
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.files.IosFiles
 import app.snapsync.ports.Files
 import app.snapsync.services.config.ConfigService
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.keychain.DeviceIdentityRole
-import app.snapsync.keychain.KeychainDeviceIdentity
+import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.keychain.platformSecureStore
+import app.snapsync.model.DeviceIdentityRole
+import app.snapsync.ports.SecureStore
+import app.snapsync.services.identity.AttestState
+import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.databases.IosDatabases
 import app.snapsync.ports.Databases
@@ -143,7 +145,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // The manager is hoisted because the selection policy also reads it (denylisted-album membership).
     private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
     private val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, AlbumMapService(IosPreferences(), legacyAlbumMapKeychain()))
+        AlbumCoordinator(albumManager, AlbumMapService(IosPreferences(), secureStore))
     }
 
     // The stable per-install device id (shared Keychain access group, addressed by name): the
@@ -155,7 +157,12 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // this device two identities: the extension uploaded under one while the app reconciled under the
     // other, so the app re-imported every photo the device itself had uploaded. Absence raises
     // `DeviceIdentityAbsent` and the cycle gate skips, exactly as it does for an unreadable Keychain.
-    private val deviceIdentity: DeviceIdentity by lazy { KeychainDeviceIdentity(DeviceIdentityRole.READ_ONLY) }
+    private val deviceIdentity: DeviceIdentity by lazy {
+        PersistedDeviceIdentity(DeviceIdentityRole.READ_ONLY, secureStore, NoPlatformDeviceId())
+    }
+
+    // This process's protected small-value store, every item addressed by its slot (chosen by compilation target).
+    private val secureStore: SecureStore by lazy { platformSecureStore() }
 
     // One shared Darwin (NSURLSession) HTTP client for both in-cycle network calls (the reconcile
     // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed
@@ -194,7 +201,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
      * reads it, and a Keychain read each time was a measurable cost. Re-read at every `process()` invocation
      * (the app renews into the shared item) and on every rejection (the compare-and-clear reads the Keychain).
      */
-    internal val attestStore: CachedAttestStore by lazy { CachedAttestStore(KeychainAttestStore()) }
+    internal val attestStore: CachedAttestStore by lazy { CachedAttestStore(AttestState(secureStore)) }
 
     private fun attestToken(): String? = runCatchingCancellable { attestStore.token() }
         .onFailure { log.w(it) { "attest token unreadable — proceeding unauthenticated (expect 401)" } }

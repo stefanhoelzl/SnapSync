@@ -7,7 +7,9 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
+import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.SecureStore
 import app.snapsync.preferences.IosPreferences
@@ -56,10 +58,10 @@ class IosAlbumMapStoreContractTest {
     private fun service(suite: String) = AlbumMapService(IosPreferences(suite), NoLegacyMap)
 
     private object NoLegacyMap : SecureStore {
-        override fun read(): SecureStoreRead = SecureStoreRead.Absent
-        override fun write(value: String) = error("the contract never writes a legacy map")
-        override fun migrateProtection() = Unit
-        override fun delete() = Unit
+        override fun read(slot: SecureSlot): SecureStoreRead = SecureStoreRead.Absent
+        override fun write(slot: SecureSlot, value: String): WriteOutcome = error("the contract never writes a legacy map")
+        override fun migrateProtection(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
+        override fun delete(slot: SecureSlot): WriteOutcome = WriteOutcome.Ok
     }
 
     @Test

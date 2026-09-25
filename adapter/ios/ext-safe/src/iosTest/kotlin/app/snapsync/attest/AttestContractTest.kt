@@ -9,12 +9,14 @@ import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.verify
+import app.snapsync.keychain.IosSecureStore
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
+import app.snapsync.services.identity.AttestState
 import kotlin.test.Test
 
 /**
- * App Attest and the attestation store, LIVE in the simulator's Kotlin/Native test executable (capability
+ * App Attest and the attestation store (`AttestState` over the Keychain), LIVE in the simulator's Kotlin/Native test executable (capability
  * `docs/architecture.md`), each built with its production defaults.
  *
  * This host presents exactly one state of each: `DCAppAttestService.isSupported` is false on a simulator, and
@@ -48,7 +50,7 @@ class AttestContractTest {
 
         override fun create(state: AttestStoreState, clauseId: String): Entered<AttestStore> =
             if (state == AttestStoreState.INACCESSIBLE) {
-                Entered.Ready(KeychainAttestStore())
+                Entered.Ready(AttestState(IosSecureStore()))
             } else {
                 Entered.Unreachable("unentitled test executable: securityd refuses every Keychain call (-25291)")
             }
