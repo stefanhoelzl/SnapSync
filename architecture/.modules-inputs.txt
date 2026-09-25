@@ -108,6 +108,7 @@ edge :test:architecture :domain:ports
 edge :test:contracts :domain:feature
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports
+edge :test:contracts :domain:services
 edge :test:control :domain:feature
 edge :test:control :domain:model
 edge :test:control :domain:presentation

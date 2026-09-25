@@ -12,7 +12,7 @@ import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
 
 /**
- * **The operating-system boundary of [IosKeychain]**: the four `SecItem*` calls it makes, and nothing else
+ * **The operating-system boundary of [IosSecureStore]**: the four `SecItem*` calls it makes, and nothing else
  * (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and
  * replayed on every build").
  *

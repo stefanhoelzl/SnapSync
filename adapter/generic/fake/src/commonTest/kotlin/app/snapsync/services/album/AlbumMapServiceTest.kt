@@ -2,6 +2,8 @@ package app.snapsync.services.album
 
 import app.snapsync.fake.inMemoryPreferences
 import app.snapsync.model.PrefRead
+import app.snapsync.model.SecureSlot
+import app.snapsync.model.SecureSlots
 import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
 import app.snapsync.model.WriteOutcome
@@ -19,14 +21,17 @@ import kotlin.test.assertTrue
  */
 class AlbumMapServiceTest {
 
+    /** The secure store holding only the legacy map's slot; any other slot is a test failure. */
     private class Legacy(var read: SecureStoreRead) : SecureStore {
         var deleted = false
-        override fun read() = read
-        override fun write(value: String) = error("the service never writes the legacy item")
-        override fun migrateProtection() = Unit
-        override fun delete() {
+        override fun read(slot: SecureSlot) = read.also { check(slot == SecureSlots.ALBUM_MAP_LEGACY) }
+        override fun write(slot: SecureSlot, value: String) = error("the service never writes the legacy item")
+        override fun migrateProtection(slot: SecureSlot) = WriteOutcome.Ok
+        override fun delete(slot: SecureSlot): WriteOutcome {
+            check(slot == SecureSlots.ALBUM_MAP_LEGACY)
             deleted = true
             read = SecureStoreRead.Absent
+            return WriteOutcome.Ok
         }
     }
 

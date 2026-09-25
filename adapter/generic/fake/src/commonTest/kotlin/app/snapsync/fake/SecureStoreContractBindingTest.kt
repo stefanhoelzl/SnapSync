@@ -8,6 +8,7 @@ import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
 import app.snapsync.ports.SecureStore
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.model.StoredProtection
 import kotlin.test.Test
 
@@ -25,13 +26,16 @@ class SecureStoreContractBindingTest {
         )
 
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
+            val slot = SecureStoreContract.slot(clauseId)
             val seed = SecureStoreContract.seedValue(clauseId)
             return Entered.Ready(
                 when (state) {
                     SecureStoreState.INACCESSIBLE -> inMemorySecureStore(unavailable = true)
                     SecureStoreState.EMPTY -> inMemorySecureStore()
-                    SecureStoreState.HOLDING_BACKGROUND_READABLE -> inMemorySecureStore(seed)
-                    SecureStoreState.HOLDING_RESTRICTED -> inMemorySecureStore(seed, StoredProtection.RESTRICTED)
+                    SecureStoreState.HOLDING_BACKGROUND_READABLE ->
+                        inMemorySecureStore(mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.BACKGROUND_READABLE)))
+                    SecureStoreState.HOLDING_RESTRICTED ->
+                        inMemorySecureStore(mutableMapOf(slot to SecureStoreRead.Found(seed, StoredProtection.RESTRICTED)))
                 },
             )
         }

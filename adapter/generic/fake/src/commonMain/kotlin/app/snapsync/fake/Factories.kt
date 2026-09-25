@@ -22,9 +22,6 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.ProtectedStorage
 import app.snapsync.ports.PushRegistrationRecord
-import app.snapsync.ports.SecureStore
-import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.StoredProtection
 import app.snapsync.ports.StagedBytes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,15 +49,6 @@ fun inMemoryLedgerStore(): LedgerStore = InMemoryLedgerStore()
 
 fun inMemoryDownloadStore(): DownloadStore = InMemoryDownloadStore()
 
-/**
- * An empty store, one already holding [value] under [protection], or — [unavailable] — one that cannot
- * be read at all (a device not unlocked since boot).
- */
-fun inMemorySecureStore(
-    value: String? = null,
-    protection: StoredProtection = StoredProtection.BACKGROUND_READABLE,
-    unavailable: Boolean = false,
-): SecureStore = InMemorySecureStore(value?.let { SecureStoreRead.Found(it, protection) }, unavailable)
 
 /*
  * The config ports: ONE honest double behind three port-typed factories. Each returns a view over the same

@@ -1,9 +1,11 @@
 package app.snapsync.keychain
 
+import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.SecureStoreUnavailable
-import app.snapsync.ports.readExisting
-import app.snapsync.ports.resolveOrMint
+import app.snapsync.services.secure.readExisting
+import app.snapsync.services.secure.resolveOrMint
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,8 +23,8 @@ import kotlin.test.assertTrue
  * executable can LIVE-exercise the happy path — store an item, read its accessibility class back, migrate
  * a legacy item; only the entitled app on a device can. That path is now covered anyway: the app runs
  * `SecureStoreContract` on a device over the rig, recording every `SecItem*` call and iOS's answer, and
- * `IosKeychainReplayContractTest` replays the recording against this adapter on every build (capability
- * `docs/architecture.md`). This was discovered the hard way — the first version of this file assumed a working
+ * `IosSecureStoreReplayContractTest` replays the recording against this adapter on every build
+ * (`docs/architecture.md`). This was discovered the hard way — the first version of this file assumed a working
  * Keychain and failed 9 of its 19 assertions.
  *
  * What remains is not nothing. It is, in fact, **the bug itself**: an inaccessible Keychain is exactly
@@ -31,20 +33,21 @@ import kotlin.test.assertTrue
  * the read had, and aborted the process. So this file proves, against the real API, the invariant whose
  * absence caused that:
  *
- * > when the Keychain cannot be read, the adapter reports `Unavailable` — never `Absent` — and mints
- * > nothing, writes nothing, and changes no identity.
+ * > when the Keychain cannot be read, the adapter reports `Unavailable` — never `Absent` — a write answers
+ * > `Failed` rather than throwing, and a resolution mints nothing, writes nothing, and changes no identity.
  *
  * Plus the one structural fact that needs no `securityd`: every item the adapter writes carries
  * `kSecAttrAccessibleAfterFirstUnlock`.
  */
-class IosKeychainTest {
+class IosSecureStoreTest {
 
-    private val keychain = IosKeychain(service = "app.snapsync.test.keychain", account = "testitem")
+    private val store = IosSecureStore()
+    private val slot = SecureSlot(service = "app.snapsync.test", account = "testitem", shared = false)
 
     /**
      * The half of `docs/architecture.md`'s argument that containment cannot supply: Konsist
      * proves all Keychain code lives in this module; this proves this module always writes items a
-     * locked device can read. [IosKeychain.writtenAttributes] is the single source that both `write` and
+     * locked device can read. [KeychainItem.writtenAttributes] is the single source that both `write` and
      * `migrateProtection` build their dictionaries from, so it cannot drift from what is applied.
      */
     @Test
@@ -56,7 +59,7 @@ class IosKeychainTest {
         )
         assertEquals(
             mapOf("pdmn" to ACCESSIBLE_AFTER_FIRST_UNLOCK), // "pdmn" is kSecAttrAccessible's raw key
-            keychain.writtenAttributes(),
+            store.item(slot).writtenAttributes(),
             "every Keychain item must be readable by background work on a locked device",
         )
     }
@@ -70,7 +73,7 @@ class IosKeychainTest {
      */
     @Test
     fun `an inaccessible keychain reads as Unavailable and never as Absent`() {
-        val read = keychain.read()
+        val read = store.read(slot)
 
         assertIs<SecureStoreRead.Unavailable>(
             read,
@@ -83,13 +86,23 @@ class IosKeychainTest {
         )
     }
 
+    /** A refused write answers so — the old adapter threw — and carries the adapter's diagnostic. */
+    @Test
+    fun `a write to an inaccessible keychain answers Failed`() {
+        val written = store.write(slot, "a-value")
+
+        assertIs<WriteOutcome.Failed>(written, "a refused write is an answer, never an exception")
+        assertTrue(written.detail.isNotBlank())
+        assertIs<SecureStoreRead.Unavailable>(store.read(slot), "a refused write changes nothing")
+    }
+
     /** The never-mint invariant, end to end, through the real adapter. */
     @Test
     fun `resolving against an inaccessible keychain mints nothing and writes nothing`() {
         var generated = false
 
         val failure = assertFailsWith<SecureStoreUnavailable> {
-            resolveOrMint(keychain) {
+            resolveOrMint(store, slot) {
                 generated = true
                 "a-brand-new-identity"
             }
@@ -100,40 +113,40 @@ class IosKeychainTest {
             "minting here is what orphans a device's byte partition and ledger, and re-uploads its library",
         )
         assertTrue(failure.detail.isNotBlank())
-        assertIs<SecureStoreRead.Unavailable>(keychain.read(), "the failed resolve must leave nothing behind")
+        assertIs<SecureStoreRead.Unavailable>(store.read(slot), "the failed resolve must leave nothing behind")
     }
 
-    /** `readExisting` (the config path) must draw the same line: unreadable is not absent. */
+    /** `readExisting` (the attestation path) must draw the same line: unreadable is not absent. */
     @Test
     fun `readExisting on an inaccessible keychain raises rather than reporting no value`() {
-        assertFailsWith<SecureStoreUnavailable> { readExisting(keychain) }
+        assertFailsWith<SecureStoreUnavailable> { readExisting(store, slot) }
     }
 
     /**
      * The other structural fact `securityd` is not needed for: the **address** every operation
      * carries. It is asserted against the raw attribute names Security itself uses, derived from the
      * platform constants rather than from a copy of them — so this fails if Apple ever re-bridges
-     * them, instead of silently comparing our spelling to our spelling.
+     * them, instead of silently comparing our spelling to our spelling. A shared slot names the shared group.
      */
     @Test
     fun `the address keys are the raw attribute names Security uses`() {
-        val address = IosKeychain(service = "svc", account = "acct-name", accessGroup = "grp").itemAddress()
+        val address = store.item(SecureSlot(service = "svc", account = "acct-name", shared = true)).itemAddress()
 
         assertEquals(setOf("svce", "acct", "agrp"), address.keys, "the CF attribute keys moved")
         assertEquals("svc", address["svce"])
         assertEquals("acct-name", address["acct"])
-        assertEquals("grp", address["agrp"])
+        assertEquals(SHARED_KEYCHAIN_ACCESS_GROUP, address["agrp"])
     }
 
     /**
-     * An unscoped item reports `null` rather than dropping the entry. The distinction is the whole
+     * An unshared slot reports `null` rather than dropping the entry. The distinction is the whole
      * subject of the unscoped-seat inventory (`docs/architecture.md`): "search wherever
      * this process is entitled to look" is a real, inventoried choice, and a map that simply omitted
      * it would read identically to one that had never been asked.
      */
     @Test
-    fun `an unscoped item reports a null access group rather than omitting it`() {
-        val address = IosKeychain(service = "svc", account = "acct-name").itemAddress()
+    fun `an unshared slot reports a null access group rather than omitting it`() {
+        val address = store.item(SecureSlot(service = "svc", account = "acct-name", shared = false)).itemAddress()
 
         assertTrue("agrp" in address, "the access group must be reported even when there is none")
         assertEquals(null, address["agrp"])

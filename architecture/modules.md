@@ -116,6 +116,7 @@ flowchart LR
   test_contracts --> domain_feature
   test_contracts --> domain_model
   test_contracts --> domain_ports
+  test_contracts --> domain_services
   test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation

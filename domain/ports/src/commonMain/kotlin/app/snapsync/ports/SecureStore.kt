@@ -1,122 +1,59 @@
 package app.snapsync.ports
 
+import app.snapsync.model.SecureSlot
 import app.snapsync.model.SecureStoreRead
-import app.snapsync.model.SecureStoreResolution
-import app.snapsync.model.StoredProtection
+import app.snapsync.model.WriteOutcome
 
 /**
- * **One addressed place to keep one small value**, so that it is confidential at rest, **outlives the
- * app install**, and stays readable while the device is locked. Four things in this app need exactly
- * that and nothing more: the device id, the attestation token, its `keyId`, and — for one last
- * migration — the legacy event-album map.
+ * **The platform's protected small-value store** — one external system (on iOS the Keychain), and nothing decided
+ * here. Each call addresses one [SecureSlot]; which items exist, and what their absence means, are the services'
+ * (`PersistedDeviceIdentity`, `AttestState`, the album-map migration in `:domain:services`).
  *
- * An instance addresses **one** value, not a keyspace: a store is constructed per item, the way
- * `ConfigStore` is constructed for one config. Which item an instance addresses, and how a value is
- * protected there, are the adapter's business and never cross this seam.
+ * It keeps a value confidential at rest, **outlives the app install**, and stays readable while the device is
+ * locked after its first unlock. On iOS it is the only module permitted to touch `SecItem*` (`docs/architecture.md`).
  *
- * It is named for that need rather than for the technology satisfying it (law `docs/architecture.md`,
- * "Ports are the I/O boundary named for the need"). On iOS the implementation is the Keychain, which
- * is the only module in the repo permitted to touch `SecItem*` (`docs/architecture.md`);
- * that is a binding note, not this contract. Decision record:
- * `changes/…/reshape-keychain-port` (D2).
+ * Synchronous: the Keychain is, and so is every platform this port is meant for.
  *
  * ## The three-state read is the point of the seam
  *
- * A protected store answers a read with a *failure*, and the fatal historical mistake was mapping
- * every failure to "no value stored":
+ * A protected store answers a read with a *failure*, and the fatal historical mistake was mapping every failure to
+ * "no value stored": the device id then **minted a new UUID** on a locked device (the build-297 crash; had the
+ * write succeeded, a *new identity*, orphaning the device's byte partition and its ledger). So "absent" and "I could
+ * not look" are different answers, and [SecureStoreRead] refuses to conflate them (`docs/architecture.md`,
+ * "Absence is never silent").
  *
- * - the device id then **minted a new UUID** on a locked device and tried to persist it — which fails
- *   for the same reason the read did, so the write threw and the process aborted (the build-297
- *   crash). Had the write instead succeeded, the device would have silently acquired a *new identity*,
- *   orphaning its byte-store partition and its ledger.
- * - the event config then read as "no event joined", which the upload extension's reconciliation takes
- *   to mean **the device left the event** — clearing its join marker on every locked wake.
- *
- * So "absent" and "I could not look" are different answers, and [SecureStoreRead] refuses to conflate
- * them (law `docs/architecture.md`, "Absence is never silent"). Decision record:
- * `changes/archive/…-fix-locked-device-keychain-access`.
+ * Writes answer a [WriteOutcome] instead of throwing: a service decides what a refused write means (the device id
+ * is then unavailable and never used unsaved; an attestation token is not accepted). A [write] may **replace by
+ * delete-then-add**, so after a refused write the old value may be gone.
  */
 interface SecureStore {
 
     /** Read the item: its value and how it is currently protected. */
-    fun read(): SecureStoreRead
+    fun read(slot: SecureSlot): SecureStoreRead
 
     /** Persist [value], replacing any existing item, under the protection this store requires. */
-    fun write(value: String)
+    fun write(slot: SecureSlot, value: String): WriteOutcome
 
     /**
-     * Upgrade the *existing* item to the required protection in place, **preserving its value byte
-     * for byte**. Never deletes-and-re-adds and never mints: a changed device id would orphan this
-     * device's `/files/devices/<deviceId>/` partition and its ledger.
+     * Upgrade the *existing* item to the required protection in place, **preserving its value byte for byte**.
+     * Never deletes-and-re-adds and never mints: a changed device id would orphan this device's partition.
      *
-     * Best-effort by contract: a store that cannot be upgraded right now keeps the item it has and is
-     * retried on the next read. Failing the read instead would turn a healthy legacy device into a
-     * broken one.
+     * Best-effort by contract: a store that cannot upgrade right now keeps the item it has, answers the failure,
+     * and the upgrade is retried on the next read. Failing the read instead would turn a healthy legacy device into
+     * a broken one.
      */
-    fun migrateProtection()
+    fun migrateProtection(slot: SecureSlot): WriteOutcome
 
-    /** Delete the item. Deleting an absent item is a no-op, not an error. */
-    fun delete()
+    /** Delete the item. Deleting an absent item is [WriteOutcome.Ok]. */
+    fun delete(slot: SecureSlot): WriteOutcome
 }
-
-/** The store could not be read. Caught at the composition roots; never mistaken for absence. */
-class SecureStoreUnavailable(val detail: String) :
-    IllegalStateException("secure store unavailable ($detail): protected data is not accessible")
 
 /**
- * The mint-once-then-read core, shared by every [SecureStore]-backed store and tested in `commonTest`
- * (so it runs on JVM **and** `iosSimulatorArm64`). Pure: the platform supplies the effects.
- *
- * The order below is normative, and each step exists because the one above it was once skipped:
- *
- * - [SecureStoreRead.Found] → return the stored value verbatim, upgrading its protection first if it
- *   is not what the store requires ([needsMigration]). The value is never rewritten.
- * - [SecureStoreRead.Absent] → consult [legacy] **before** minting. A value found there is adopted
- *   verbatim ([SecureStoreResolution.Adopted]); only a second absence mints. Callers that pass no
- *   [legacy] store mint straight away, which is correct for items with no legacy placement.
- * - [SecureStoreRead.Unavailable] → throw [SecureStoreUnavailable]. Never mints, never writes.
- *
- * Unavailability outranks both absence and adoption, on **either** read. "I could not look" is not
- * "there is nothing there", and conflating them is what mints a duplicate identity on a locked
- * device — the failure this ordering is built against.
+ * The store could not be read, or the write that had to persist a value was refused. Thrown by the identity and
+ * attestation services where the old throwing port threw; never mistaken for absence.
  */
-fun resolveOrMint(
-    store: SecureStore,
-    onResolution: (SecureStoreResolution) -> Unit = {},
-    /** Where an older build may have placed the value; `null` for an item with no legacy placement. It is a
-     *  store rather than a read-lambda so the one thing it is — another secure store — is stated by its type. */
-    legacy: SecureStore? = null,
-    generate: () -> String,
-): String = when (val read = store.read()) {
-    is SecureStoreRead.Found -> {
-        val migrated = needsMigration(read.protection)
-        if (migrated) store.migrateProtection()
-        onResolution(SecureStoreResolution.Found(read.protection, migrated))
-        read.value
-    }
-
-    // Absence in the addressed item is NOT yet permission to mint: an older build may have written
-    // the value somewhere this query does not reach (see [SecureStoreResolution] for how that
-    // happens). Consult [legacy] first and adopt whatever it finds, verbatim.
-    SecureStoreRead.Absent -> when (val legacy = legacy?.read() ?: SecureStoreRead.Absent) {
-        is SecureStoreRead.Found -> legacy.value.also {
-            store.write(it)
-            onResolution(SecureStoreResolution.Adopted)
-        }
-
-        SecureStoreRead.Absent -> generate().also {
-            store.write(it)
-            onResolution(SecureStoreResolution.Minted)
-        }
-
-        // "I could not look" on the LEGACY read is as disqualifying as on the primary one: minting
-        // here would generate a second identity for a device that may already have one, which is the
-        // unrecoverable outcome this whole ordering exists to prevent. Defer instead.
-        is SecureStoreRead.Unavailable -> throw SecureStoreUnavailable(legacy.detail)
-    }
-
-    is SecureStoreRead.Unavailable -> throw SecureStoreUnavailable(read.detail)
-}
+class SecureStoreUnavailable(val detail: String) :
+    IllegalStateException("secure store unavailable ($detail): protected data is not accessible")
 
 /**
  * The addressed item holds no value and this caller may not mint one.
@@ -132,43 +69,3 @@ fun resolveOrMint(
  */
 class DeviceIdentityAbsent :
     IllegalStateException("device identity absent and this process may not mint one")
-
-/**
- * Read an existing value without ever minting: `null` when the item is genuinely
- * [SecureStoreRead.Absent], throwing [SecureStoreUnavailable] when it could not be read. Used by
- * stores (the attestation token) that have nothing to mint — they persist only what a backend or a
- * user action produced.
- *
- * Absence: null means **absent, and only absent**. This function is where that separation is
- * enforced for every [SecureStore]-backed store: an unreadable item throws rather than answering
- * empty, so no caller can mistake "the device is locked" for "this device never had a token". It is
- * the reference implementation of the rule, not an exception to it (`docs/architecture.md`,
- * "Absence is never silent").
- */
-fun readExisting(
-    store: SecureStore,
-    onResolution: (SecureStoreResolution) -> Unit = {},
-): String? =
-    when (val read = store.read()) {
-        is SecureStoreRead.Found -> {
-            val migrated = needsMigration(read.protection)
-            if (migrated) store.migrateProtection()
-            onResolution(SecureStoreResolution.Found(read.protection, migrated))
-            read.value
-        }
-        SecureStoreRead.Absent -> null
-        is SecureStoreRead.Unavailable -> throw SecureStoreUnavailable(read.detail)
-    }
-
-/**
- * Whether a stored item must be upgraded in place to the protection this store requires.
- *
- * Migration is not optional book-keeping, and the argument is a property of **this seam**, not of any
- * one platform: a [SecureStore] **outlives the app install** by contract (that is the
- * reinstall-stability capability `photo-sharing` depends on), and the device id is written exactly
- * once, at mint. Nothing in the device's remaining lifetime will therefore ever rewrite the item — no
- * reinstall, no app update, no later write of any kind — so an item a pre-fix build filed as
- * unreadable-in-background stays that way **forever** unless the read path upgrades it.
- */
-fun needsMigration(protection: StoredProtection): Boolean =
-    protection != StoredProtection.BACKGROUND_READABLE

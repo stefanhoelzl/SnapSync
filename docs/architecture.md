@@ -143,6 +143,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 |---|---|
 | Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
 | A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, write, delete, exists, locate within an area; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
+| `SecureStore` writes answer a `WriteOutcome`; the identity and attestation services throw where the old throwing store did, so a refused write fails the operation (the device id is unavailable and never used unsaved; a token is not accepted; a keyId is refused). A write may replace by delete-then-add, so after a refused one the old value may be gone | `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`) + `PersistedDeviceIdentityTest`, `AttestStateTest` |
 | Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
 | `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — a config file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
 | Building a composition opens no database: a storage service opens through `Databases` on first use and keeps only a successful open, so a locked launch's failure is retried on the next use | `CompositionOpensNoDatabaseTest` (`:test:world`) + `LedgerServiceOpenTest` |
@@ -730,7 +731,7 @@ class (readable after first unlock; see `DataProtectionEntitlementTest`):
 | defaults `app.snapsync.album.map` | event album map | `AlbumMapService` over `IosPreferences` |
 | defaults `rejoin.joinedEventId` | **retired**: pinned only at its start-up removal site | `removeOrphanedJoinMarker`, called by the app shell |
 
-Keychain (only in `:adapter:ios:ext-safe`; every item is readable after first unlock):
+Keychain (only in `:adapter:ios:ext-safe`, as `IosSecureStore`; every item is readable after first unlock). Every item is a `SecureSlot` in `model/SecureSlots`; `shared = true` names the access group, `false` searches unscoped:
 
 | (service, account) | what | access group |
 |---|---|---|

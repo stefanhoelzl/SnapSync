@@ -17,7 +17,7 @@ import app.snapsync.ports.SecureStore
 import kotlin.test.Test
 
 /**
- * The entitled device's Keychain, REPLAYED (`docs/architecture.md`): the CURRENT [IosKeychain] runs
+ * The entitled device's Keychain, REPLAYED (`docs/architecture.md`): the CURRENT [IosSecureStore] runs
  * against what iOS answered when `test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec` was recorded,
  * and the current clauses judge.
  *
@@ -26,7 +26,7 @@ import kotlin.test.Test
  * on the device (the `rig-channel` runbook). A recorded answer that violates a clause reads `Failed`, which
  * re-recording does not fix.
  */
-class IosKeychainReplayContractTest {
+class IosSecureStoreReplayContractTest {
 
     private val recording = RECORDINGS[RECORDING]?.let(Recording::parse)
 

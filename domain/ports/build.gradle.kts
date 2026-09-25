@@ -90,8 +90,13 @@ kover {
                         minValue = 83
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
+                    // LOWERED 65 -> 57 by the storage-ports re-cut. Forcing proof: the zone's
+                    // best-covered branchy code (`resolveOrMint`/`readExisting`, with its tests)
+                    // MOVED to `:domain:services`, where it is covered and bounded at 89. Nothing
+                    // here lost a test; the ratio fell because the covered code left. Raise it
+                    // again as the remaining port-adjacent helpers re-home or gain tests.
                     bound {
-                        minValue = 65
+                        minValue = 57
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }

@@ -14,9 +14,9 @@ import app.snapsync.testsupport.writeTextFile
 import kotlin.test.Test
 
 /**
- * The simulator target's file-backed [SecureStore], live (`docs/architecture.md`). The directory is
- * injected, so a clause gets a fresh one: present for the readable states, absent — the unavailable
- * container — for [SecureStoreState.INACCESSIBLE].
+ * The simulator target's file-backed [SecureStore], live (`docs/architecture.md`), addressed at the contract's
+ * slot. The directory is injected, so a clause gets a fresh one: present for the readable states, absent — the
+ * unavailable container — for [SecureStoreState.INACCESSIBLE].
  *
  * It cannot hold a legacy-protected item: the file is always written background-readable, and that is
  * what a read honestly reports.
@@ -34,23 +34,21 @@ class AppGroupFileSecureStoreContractTest {
 
         override fun create(state: SecureStoreState, clauseId: String): Entered<SecureStore> {
             if (state == SecureStoreState.INACCESSIBLE) {
-                return Entered.Ready(AppGroupFileSecureStore(FILE) { null })
+                return Entered.Ready(AppGroupFileSecureStore(directory = null))
             }
             if (state == SecureStoreState.HOLDING_RESTRICTED) {
                 return Entered.Unreachable("a file store is always written background-readable")
             }
             val dir = newTempDirectory()
             if (state == SecureStoreState.HOLDING_BACKGROUND_READABLE) {
-                writeTextFile("$dir/$FILE", SecureStoreContract.seedValue(clauseId))
+                // Seeded as a raw file, not through the store under test: one file per slot, named for it.
+                val slot = SecureStoreContract.slot(clauseId)
+                writeTextFile("$dir/${slot.service}.${slot.account}.simulator.json", SecureStoreContract.seedValue(clauseId))
             }
-            return Entered.Ready(AppGroupFileSecureStore(FILE) { dir }) { removeDirectory(dir) }
+            return Entered.Ready(AppGroupFileSecureStore(dir)) { removeDirectory(dir) }
         }
     }
 
     @Test
     fun `the App-Group file store satisfies the SecureStore contract`() = verify(SecureStoreContract, binding)
-
-    private companion object {
-        const val FILE = "deviceid.contract.json"
-    }
 }
