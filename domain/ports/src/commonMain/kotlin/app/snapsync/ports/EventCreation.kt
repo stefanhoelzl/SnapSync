@@ -11,6 +11,13 @@ sealed interface CreateOutcome {
     /** `400` — the server rejected the name. */
     data object InvalidName : CreateOutcome
 
+    /**
+     * `400` — the server rejected the date range: an end not after the start, or a window longer than the
+     * deployment's maximum. The create screen's picker cannot produce either, so this arrives only when the
+     * backend's limit moved after this build was made — and then it must not read as a refused name.
+     */
+    data object InvalidWindow : CreateOutcome
+
     /** Any other non-2xx, transport, or parse failure. */
     data object Transient : CreateOutcome
 }

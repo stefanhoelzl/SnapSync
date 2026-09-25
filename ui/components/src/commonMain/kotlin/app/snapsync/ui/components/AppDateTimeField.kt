@@ -30,6 +30,7 @@ import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 
@@ -137,6 +138,13 @@ internal fun DateTimePickerDialog(
  * the picker; the create surface passes **no** window, so any day/time is selectable and only `start < end`
  * is required (the caller enforces that). A day-grain calendar cannot forbid an out-of-window *hour* on a
  * boundary day, so the confirmed instants are additionally coerced into the window here.
+ *
+ * The optional [latestUntil] bounds the span's LENGTH rather than its position (capability `create-event`:
+ * no range longer than the backend's event window): given the chosen start, it answers the latest end the
+ * caller accepts. While the end is being picked, days past it are greyed and inert; and because the start's
+ * time can still move after the end day is tapped, the confirmed end is coerced to it as well — so a
+ * too-long range is unreachable, never merely refused. The caller owns the arithmetic (it knows the zone
+ * and the limit; this module knows neither).
  */
 @Composable
 internal fun DateTimeRangePickerDialog(
@@ -146,6 +154,7 @@ internal fun DateTimeRangePickerDialog(
     maximum: LocalDateTime?,
     onDismiss: () -> Unit,
     onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
+    latestUntil: ((from: LocalDateTime) -> LocalDateTime)? = null,
 ) {
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
 
@@ -172,22 +181,20 @@ internal fun DateTimeRangePickerDialog(
         }
     }
 
+    val spanEndDay = latestUntil?.takeIf { endDate == null }
+        ?.invoke(LocalDateTime(startDate, LocalTime(fromHour, fromMinute)))?.date
+
     PickerDialogShell(
         seedMonth = initialFrom.date,
         onDismiss = onDismiss,
         onConfirm = {
-            val eDate = endDate ?: startDate
-            var from = LocalDateTime(
-                startDate.year, startDate.month.ordinal.plus(1), startDate.day,
-                fromHour, fromMinute,
-            )
-            var until = LocalDateTime(
-                eDate.year, eDate.month.ordinal.plus(1), eDate.day,
-                untilHour, untilMinute,
-            )
+            var from = LocalDateTime(startDate, LocalTime(fromHour, fromMinute))
+            var until = LocalDateTime(endDate ?: startDate, LocalTime(untilHour, untilMinute))
             // Coerce each bound into the window (the calendar cannot forbid a boundary-day hour outside it).
             if (minimum != null && from < minimum) from = minimum
             if (maximum != null && until > maximum) until = maximum
+            // And the end into the longest span the caller accepts, measured from the start just confirmed.
+            latestUntil?.invoke(from)?.let { latest -> if (until > latest) until = latest }
             onConfirm(from, until)
         },
         calendar = { visibleMonth ->
@@ -195,7 +202,10 @@ internal fun DateTimeRangePickerDialog(
                 visibleMonth = visibleMonth,
                 rangeStart = startDate,
                 rangeEnd = endDate ?: startDate,
-                bounds = CalendarBounds(today, minimum?.date, maximum?.date),
+                // Mid-selection the END is being picked, so the span limit greys every day past the latest
+                // end the current start allows. With a complete range showing, the next tap starts afresh,
+                // so only the window applies.
+                bounds = CalendarBounds(today, minimum?.date, latestEndDay(maximum?.date, spanEndDay)),
                 onPick = { onPick(it) },
             )
         },
@@ -222,6 +232,13 @@ internal fun DateTimeRangePickerDialog(
             }
         },
     )
+}
+
+/** The earlier of two optional day ceilings — a null one is unbounded. */
+private fun latestEndDay(window: LocalDate?, span: LocalDate?): LocalDate? = when {
+    window == null -> span
+    span == null -> window
+    else -> minOf(window, span)
 }
 
 /**

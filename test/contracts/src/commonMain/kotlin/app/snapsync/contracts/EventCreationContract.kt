@@ -14,8 +14,8 @@ enum class EventCreationState {
 
 /**
  * What creating an event promises (`docs/architecture.md` — this list IS the specification of the port's
- * obligations). The client reads EVERY `400` as `InvalidName`, so each refusal clause asserts that the edge
- * refuses, spelt the only way the port can say it.
+ * obligations). The port tells a refused NAME from a refused DATE RANGE, so each refusal clause asserts both
+ * that the edge refuses and which of the two it said.
  */
 object EventCreationContract : Contract<EventCreationState, EdgeSubject<EventCreation>>("EventCreation") {
 
@@ -42,11 +42,11 @@ object EventCreationContract : Contract<EventCreationState, EdgeSubject<EventCre
         }
 
         clause("AN_END_BEFORE_THE_START_IS_REFUSED", EventCreationState.SERVING) { s ->
-            assertEquals(CreateOutcome.InvalidName, s.port.create("Backwards", SEEDED_ENDS_AT, SEEDED_STARTS_AT))
+            assertEquals(CreateOutcome.InvalidWindow, s.port.create("Backwards", SEEDED_ENDS_AT, SEEDED_STARTS_AT))
         }
 
         clause("A_WINDOW_LONGER_THAN_30_DAYS_IS_REFUSED", EventCreationState.SERVING) { s ->
-            assertEquals(CreateOutcome.InvalidName, s.port.create("Too long", SEEDED_STARTS_AT, "2030-02-15T00:00:00Z"))
+            assertEquals(CreateOutcome.InvalidWindow, s.port.create("Too long", SEEDED_STARTS_AT, "2030-02-15T00:00:00Z"))
         }
     }
 }

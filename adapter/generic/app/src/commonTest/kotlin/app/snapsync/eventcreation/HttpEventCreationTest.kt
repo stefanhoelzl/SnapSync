@@ -80,6 +80,28 @@ class HttpEventCreationTest {
     }
 
     @Test
+    fun `a 400 naming a date field maps to the invalid-window outcome and not a refused name`() = runTest {
+        // The edge's own bodies (api/src/app.ts): a refused range must not send the host renaming the event.
+        for (body in listOf("invalid endsAt", "invalid startsAt")) {
+            val engine = MockEngine { respond(body, HttpStatusCode.BadRequest) }
+            assertEquals(
+                CreateOutcome.InvalidWindow,
+                client(engine).create("x", "2026-07-14T18:00:00Z", "2026-09-21T18:00:00Z"),
+                "body=$body",
+            )
+        }
+    }
+
+    @Test
+    fun `a 400 naming the name stays the invalid-name outcome`() = runTest {
+        val engine = MockEngine { respond("invalid name", HttpStatusCode.BadRequest) }
+        assertEquals(
+            CreateOutcome.InvalidName,
+            client(engine).create("x", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z"),
+        )
+    }
+
+    @Test
     fun `502 maps to the transient outcome`() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.BadGateway) }
         assertEquals(

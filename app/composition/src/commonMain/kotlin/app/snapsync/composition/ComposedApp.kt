@@ -68,6 +68,8 @@ fun snapSyncHost(scope: CoroutineScope, ports: AppPorts): ComposedApp {
             cutoffFormatter = formatter,
             commands = core.userCommands,
             queries = core.userQueries,
+            // Whose word authorizes a headless join: the root's, never the link's (capability `join-event`).
+            inviteLinkHints = ports.rigSwitches.inviteLinkHints,
             diagnostics = StatusDiagnostics(
                 log = { message -> ports.log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a

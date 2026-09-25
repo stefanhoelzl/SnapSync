@@ -40,7 +40,9 @@ import androidx.compose.runtime.setValue
  * The range is **required** — an event always has a start and an end, so there is no unset state. The caller
  * owns the default (`[now, now + 1 day]`, frozen at first composition — see `create-event`); the
  * picker imposes **no** window (only `start < end`, which the create screen guards), so a host can set a
- * range arbitrarily far in the past or the future.
+ * range arbitrarily far in the past or the future. What it does bound is the range's LENGTH: [latestUntil]
+ * answers, for a chosen start, the latest end the caller accepts, and the picker cannot produce a later one
+ * (capability `create-event`: an event window is at most the backend's limit).
  *
  * Label + duration + affordance + note as one component keeps the arrangement — "the range is a
  * consequence, here is what it means" — a **convention** the design system owns, not a layout each screen
@@ -53,6 +55,7 @@ fun AppEventDateRangeSection(
     rangeLabel: (LocalDateTime, LocalDateTime) -> String,
     durationLabel: (LocalDateTime, LocalDateTime) -> String,
     note: String,
+    latestUntil: (from: LocalDateTime) -> LocalDateTime,
     onRangeChange: (from: LocalDateTime, until: LocalDateTime) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -103,7 +106,8 @@ fun AppEventDateRangeSection(
         DateTimeRangePickerDialog(
             initialFrom = from,
             initialUntil = until,
-            // The create surface imposes no window — a host may reach arbitrarily far in either direction.
+            // The create surface imposes no window — a host may reach arbitrarily far in either direction —
+            // but it does bound the span's length.
             minimum = null,
             maximum = null,
             onDismiss = { showPicker = false },
@@ -111,6 +115,7 @@ fun AppEventDateRangeSection(
                 showPicker = false
                 onRangeChange(f, u)
             },
+            latestUntil = latestUntil,
         )
     }
 }

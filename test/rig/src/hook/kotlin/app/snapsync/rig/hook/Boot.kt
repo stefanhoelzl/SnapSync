@@ -5,6 +5,7 @@ package app.snapsync.rig.hook
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.ios.SnapSyncRoot
 import app.snapsync.ios.UploaderPinSource
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.ios.urlsession.transferSessionBinding
 import app.snapsync.logging.IosDeviceLogSource
 import app.snapsync.logging.documentsDirectory
@@ -83,6 +84,18 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
 @Suppress("unused")
 private val uploaderSwitch: Unit = run {
     SnapSyncRoot.uploaderPinSource = UploaderPinSource(UploaderSwitch::pinned)
+}
+
+/**
+ * The invite-link hints' **only** `Honoured` writer anywhere (capability `join-event`): a rig build's join gate
+ * acts on `autoJoin` and its overrides, so the channel and the journeys can join headlessly. A bare assignment
+ * like [uploaderSwitch]'s, and for the same reason — a build without `-Psnapsync.rig=true` contains none of this
+ * file, so its `SnapSyncRoot.inviteLinkHints` stays `Ignored` and no crafted link can join without a tap.
+ */
+@EagerInitialization
+@Suppress("unused")
+private val inviteLinkHints: Unit = run {
+    SnapSyncRoot.inviteLinkHints = InviteLinkHints.Honoured
 }
 
 @EagerInitialization

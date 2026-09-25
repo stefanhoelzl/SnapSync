@@ -27,7 +27,8 @@ import kotlin.test.fail
  *
  * - the **create form** — the event name and date range a host types before an event exists. It is the
  *   one decision surface this change did not lift, and it is called out in `design.md` rather than left
- *   as an unexplained exemption.
+ *   as an unexplained exemption. It lives in `CreateDraft.kt`, held one level above the form so a failed
+ *   create's round trip through the in-flight screen keeps what the host typed (capability `create-event`).
  *
  * The share-count row's in-flight state was a second entry until the count moved into the reduction
  * (`harden-seam-bug-classes`): the container computes it over the lane-decorated query bundle and the row
@@ -49,7 +50,7 @@ class ScreenStateContainmentTest {
      * shown". Keyed by file name because the reason is a property of the surface, not of the line.
      */
     private val allowed = mapOf(
-        "CreateEventScreen.kt" to "the create form — the one decision surface this change did not lift",
+        "CreateDraft.kt" to "the create form — the one decision surface this change did not lift",
     )
 
     @Test

@@ -3,6 +3,7 @@ package app.snapsync.rig
 import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.extensionEntries
 import app.snapsync.compose.platformEntries
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.world.DenoBackend
 import app.snapsync.world.MiniEdgeBackend
@@ -106,7 +107,14 @@ class JvmRigHost private constructor(
         private fun compose(scope: CoroutineScope, backend: WorldBackend): World {
             // Attesting over the mini-edge, as a device attests; not over the real backend, whose local serve
             // attaches a dev fallback credential and models no attestation exchange.
-            val world = World(scope, backend = backend, attests = backend is MiniEdgeBackend)
+            // Invite-link hints honoured, as the rig's boot hook sets them on a device: this host IS the control
+            // channel, whose callers join headlessly with `autoJoin` (capability `join-event`).
+            val world = World(
+                scope,
+                backend = backend,
+                attests = backend is MiniEdgeBackend,
+                inviteLinkHints = InviteLinkHints.Honoured,
+            )
             // A minted event opens THIS host's join gate, as the iOS shell routes it — so `/user/create` is followed
             // by `/user/confirmJoin`, the same two steps a person and the app host take.
             world.onEventMinted = { eventId -> world.statusHost.onEventCreated(eventId) }

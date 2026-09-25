@@ -184,8 +184,11 @@ INVENTORY = [
         POLICY, not a deployment-varying fact: every deployment extends the same component. The only
         future paid-tier lever.
     """),
-    Key("eventWindowMaxSeconds", [JSON], doc="""
-        Largest permitted `endsAt - startsAt`, and the absent-`endsAt` fallback. DELIBERATELY DISTINCT
+    Key("eventWindowMaxSeconds", [JSON, PROPS], doc="""
+        Largest permitted `endsAt - startsAt`, and the absent-`endsAt` fallback. Reaches Gradle too, where
+        `:domain` generates the app's `EVENT_WINDOW_MAX_SECONDS` from it: the create screen's picker bounds
+        a range to it, so the limit the host is shown and the limit the backend enforces are ONE value
+        rather than a copy that could drift into a refusal the screen cannot explain. DELIBERATELY DISTINCT
         from the lifetime even while they hold the same number: they answer different questions ("how
         long may photos be TAKEN for?" vs "how long do we KEEP them?"), only the lifetime is stamped, and
         collapsing them would make a future divergence a silent behaviour change in two places.

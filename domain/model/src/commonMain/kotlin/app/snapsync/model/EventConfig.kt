@@ -10,7 +10,10 @@ import kotlinx.serialization.Serializable
  * the baked `uploadBase`, and the name is fetched by id after joining (see [EventConfig]).
  *
  * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
- * instead of waiting for a tap (capability `join-event`). [minPhotoDate] is likewise a **dev/test**
+ * instead of waiting for a tap (capability `join-event`) — **only in a rig build**. The decoder accepts it
+ * (and every override below) from ANY link, so the link is never the authority: the composition root's
+ * [InviteLinkHints] is, and a production root answers [InviteLinkHints.Ignored], under which such a link is an
+ * ordinary invite and its overrides are discarded. [minPhotoDate] is likewise a **dev/test**
  * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-sharing`) that,
  * on an auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering.
  * [maxPhotoDate] is likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z`

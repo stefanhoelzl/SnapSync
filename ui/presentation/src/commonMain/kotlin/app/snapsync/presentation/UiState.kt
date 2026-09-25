@@ -143,6 +143,12 @@ sealed interface Layer {
          * that render no range row.
          */
         val range: ResolvedRange? = null,
+        /**
+         * A transient, self-clearing notice over the join surface — the rejected-event-link message
+         * (capability `join-event`), the same cell [Joined.notice] and [CreateEvent.error] read: a bad
+         * link is rejected wherever it arrives, so the message reaches whichever layer is showing.
+         */
+        val notice: String? = null,
     ) : Layer
 
     /**

@@ -25,14 +25,17 @@ sealed interface CreationStatus {
 /**
  * Why a create attempt failed, so the screen shows the right copy.
  *
- * There is deliberately **no** reason for an invalid `startsAt`, even though the backend 400s one: the
- * app always sends a canonical value (it comes from a picker, converted through the one cutoff codec),
- * so a startsAt-shaped 400 is unreachable from this client. Inventing user-facing copy for a state no
- * user can reach would be dead surface — the single 400 → [INVALID_NAME] mapping stands.
+ * A refused date range has its own reason ([INVALID_WINDOW]) although the create screen cannot produce
+ * one: its picker is bounded by the same deployment value the backend validates against, but only as that
+ * value stood when THIS build was made. A later, shorter limit reaches an older build as a `400` on the
+ * range, and reporting it as a refused name would send the host renaming an event whose name was fine.
  */
 enum class CreationFailureReason {
-    /** The backend rejected the request (`400`). In practice: the name. */
+    /** The backend rejected the name (`400`). */
     INVALID_NAME,
+
+    /** The backend rejected the date range (`400` on `startsAt`/`endsAt`) — e.g. longer than it allows. */
+    INVALID_WINDOW,
 
     /** A transient/server failure (non-2xx other than 400, transport, or parse). */
     SERVER,

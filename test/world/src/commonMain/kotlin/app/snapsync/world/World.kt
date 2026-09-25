@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.InviteLinkHints
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
 import app.snapsync.push.HttpPushTokenPublisher
@@ -10,6 +11,7 @@ import app.snapsync.compose.AlbumLookupFailure
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.PushPorts
+import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
 import app.snapsync.compose.UploadPorts
 import app.snapsync.composition.ComposedApp
@@ -169,6 +171,13 @@ class World(
      * test that does not ask for this sees the behaviour it always saw.
      */
     val attests: Boolean = false,
+    /**
+     * Whether this world's join gate acts on an invite link's dev/test hints (`autoJoin` + its overrides,
+     * capability `join-event`). **[InviteLinkHints.Ignored] by default — the phone's shipped answer**, so a
+     * world composes exactly what a production root composes. The control channel's JVM host passes
+     * [InviteLinkHints.Honoured], as the rig's boot hook does on a device.
+     */
+    val inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
 ) {
 
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
@@ -586,7 +595,7 @@ class World(
         backgroundTime = inMemoryBackgroundTime(backgroundTimeHolds),
         // The world composes an OS without the OS-driven mechanism, and no rig switch: both stated.
         extensionRegistration = { null },
-        uploaderPin = { null },
+        rigSwitches = RigSwitches(uploaderPin = { null }, inviteLinkHints = inviteLinkHints),
         configStore = configStore,
         photoAccess = permission,
         photoAccessRequester = requester,
