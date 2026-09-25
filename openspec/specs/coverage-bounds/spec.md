@@ -13,7 +13,9 @@ silence. The first measurement of the tree found four classes in `:adapter:gener
 of their own, including `HttpAttestClient` at 0% — the client behind capability
 `device-attestation` — while its package-mate `HttpLeaveNotifier` has one; and it found that two of
 the five `flow/` trigger flows, `Background` and `DownloadBackstop`, are executed by no test in the
-repository on any tier. Nothing was going to report any of that.
+repository on any tier. Nothing was going to report any of that. (`DownloadBackstop` has since been removed, not covered: the
+`own-work-per-wake` change retired it when every OS wake came to hand its leftover work to one tail —
+`changes/archive/2026-09-25-own-work-per-wake`.)
 
 This capability is the same **kind** of thing as `complexity-budgets` and inherits its honesty about
 what it is: a ratchet carried by a written contract, not a proof. Nothing mechanically prevents a

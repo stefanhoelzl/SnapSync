@@ -21,7 +21,10 @@ emission, and none of them leak into the contract.
 
 Decision record: `changes/archive/2026-06-12-status-core` (the snapshot seam),
 `changes/archive/2026-07-05-notify-driven-status` (the ledger-sourced, notify-driven source),
-`changes/archive/2026-08-26-honest-sync-total` (read-ness in the inputs, and the foreground refresh off the pump's critical path).
+`changes/archive/2026-08-26-honest-sync-total` (read-ness in the inputs, and the foreground refresh off the upload's critical
+path — then the pump's, now the tail's),
+`changes/archive/2026-09-25-own-work-per-wake` (the retired pump became the tail runner; the in-process refresh follows
+the tail only while foregrounded).
 ## Requirements
 ### Requirement: SyncStatusSource seam
 The status domain SHALL define `SyncStatusSource` whose `status` is a `StateFlow<SyncStatus>` —
@@ -288,8 +291,12 @@ whose size is bounded by the in-window library, not by the ledger.
 
 **Liveness is trigger-driven, plus a foreground-gated poll.** The ledger counts SHALL be re-read on
 **foreground entry**, on each tick of the **foreground-gated poll** (see "Foreground-gated
-ledger-counts poll" — the replacement for the deleted extension liveness notification), and after **each
-in-process pump cycle** of the app's own uploader (see `ios-url-session-upload`). A re-read ledger
+ledger-counts poll" — the replacement for the deleted extension liveness notification), and after **each unit
+of the app process's tail** — its imports, its upload top-up, its discovery walk and publish — **while the app is
+foregrounded, and only then** (see `ios-url-session-upload`, "The tail refreshes status in-process only while
+foregrounded"). A backgrounded tail SHALL trigger no ledger-counts re-read: nothing renders the counts while the
+app is in the background, and foreground entry re-reads them before the screen is seen (decision record
+`changes/archive/2026-09-25-own-work-per-wake`, design D11). A re-read ledger
 answer SHALL be intersected with the admitted set the gallery source **last published**; a ledger re-read
 SHALL NOT re-derive the selection policy or re-enumerate the library to obtain a fresh set. A failed ledger
 read SHALL retain the last good counts rather than regress (so a transient read error never drops
@@ -346,6 +353,12 @@ read SHALL retain the last good counts rather than regress (so a transient read 
 - **THEN** the source retains its previous counts and does not throw, and does not regress `completed`
   to zero
 
+#### Scenario: A background tail re-reads nothing, and foreground entry catches up
+- **WHEN** the app's tail uploads and records completions while the app is backgrounded, and the user then
+  foregrounds the app
+- **THEN** no ledger-counts re-read ran during the background tail, and foreground entry re-reads the counts so
+  the screen shows the recorded completions
+
 ### Requirement: LedgerCountsSource seam
 
 The status feature SHALL define `LedgerCountsSource` in `:domain`'s `feature/status` zone
@@ -375,8 +388,9 @@ transport's guarded terminal write, the membership use cases' reset family — c
 "Reader and writer capability split"), and the status read is handed none of them. The ledger's `aggregates()` read
 is not the status read (it remains for its other callers, capability `sync-ledger`). The cross-process read
 is safe under the ledger driver's WAL mode (writes serialized — from either process — with concurrent readers). `refresh()`
-SHALL be invoked on **foreground entry**, on each **foreground-gated poll tick**, and after **each app
-pump cycle**. On any read failure the value SHALL retain its
+SHALL be invoked on **foreground entry**, on each **foreground-gated poll tick**, and after **each unit of the
+app process's tail while the app is foregrounded** — never after a unit that ran while the app was backgrounded
+(decision record `changes/archive/2026-09-25-own-work-per-wake`, design D11). On any read failure the value SHALL retain its
 last good `LedgerCounts` — which, before any successful read, is the **un-read** value, never a
 read empty answer. A settable fake SHALL exist for tests and the desktop harness.
 
@@ -410,10 +424,14 @@ read empty answer. A settable fake SHALL exist for tests and the desktop harness
 - **THEN** the value retains its last good `LedgerCounts` — the **un-read** value if never read — and no
   exception propagates to the status projection
 
-#### Scenario: Foreground, poll tick, and pump each trigger a refresh
-- **WHEN** the app enters the foreground, **or** the foreground-gated poll ticks, **or** an
-  app-driven pump cycle completes
+#### Scenario: Foreground, poll tick, and a foregrounded tail unit each trigger a refresh
+- **WHEN** the app enters the foreground, **or** the foreground-gated poll ticks, **or** a unit of the app
+  process's tail completes while the app is foregrounded
 - **THEN** `LedgerCountsSource.refresh()` is invoked
+
+#### Scenario: A backgrounded tail unit triggers no refresh
+- **WHEN** a unit of the app process's tail completes while the app is backgrounded
+- **THEN** `LedgerCountsSource.refresh()` is not invoked for it
 
 ### Requirement: The cheap local status reads are one bounded group
 
@@ -503,8 +521,9 @@ download reconcile, so it typically reads the download projection *before* disco
 first tick is therefore what **repairs** that entry read, and one cadence is enough for a union fetch to land; a
 slower fetch is caught by the tick after it.
 
-The poll is **tier-neutral**: where the app's uploader cycles it is redundant beside the pump's in-process
-refresh and harmless; a tier conditional here would re-introduce the enumerated-invokers failure class. This poll replaces the
+The poll is **tier-neutral**: where the app's uploader runs it is redundant beside the tail's in-process refresh
+(which, like the poll, runs only while foregrounded) and harmless; a tier conditional here would re-introduce the
+enumerated-invokers failure class. This poll replaces the
 extension's cross-process Darwin liveness notification (deleted — see `ios-photokit-upload`): the poll needs no
 cross-process channel and cannot miss a signal, because the read is the truth.
 
@@ -550,20 +569,26 @@ cross-process channel and cannot miss a signal, because the read is the truth.
 - **WHEN** a poll tick's read fails
 - **THEN** the counts retain their last good value and the poll continues
 
-### Requirement: Foreground status refresh is not sequenced behind the upload pump
+### Requirement: Foreground status refresh is not sequenced behind the upload tail
 
-The **foreground** trigger flow SHALL NOT await the upload pump before starting the foreground-gated
-poll or refreshing the status sources. The pump SHALL be one of the flow's concurrent children,
-alongside the status refresh, the download reconcile, the staged-byte reclaim and the membership
-refresh; the flow SHALL still return only when every child has finished, so its completion report to
-the OS remains truthful (`module-architecture`, "A trigger flow never outlives its own run").
+The **foreground** trigger flow SHALL NOT await the app process's opportunistic tail — the import drain, the
+upload top-up and the discovery walk (capability `ios-app-shell`, "Each OS wake does its own work, then hands the
+rest to one opportunistic tail") — before starting the foreground-gated poll or refreshing the status sources.
+The tail SHALL NOT be one of the flow's children at all: the flow runs foreground entry's **own work** — the
+status refresh, the download reconcile, the staged-byte reclaim, the stored-upload settle and the membership
+refresh, as concurrent children — and the tail is requested of the one tail runner by the inbound port's
+implementation **after** the flow has returned (`module-architecture`, "A trigger flow never outlives its own
+run"). The flow SHALL still return only when every one of its children has finished, so it reports only work it
+observed. Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D1).
 
-The app uploader's pump awaits a whole upload cycle, and a cycle's discovery walk can remain
-outstanding for as long as the app was suspended — 774 seconds, measured on device (`SNAPSYNC-16`,
-build 0.3(605), iOS 18.7.9). Sequencing the status refresh behind it means a member whose visit is
-shorter than that unwinding sees **no read value at all**, which is precisely the condition under
-which the un-read total must not be mistaken for a settled one. The ordering is therefore part of this
-capability's liveness guarantee, not an implementation detail of the flow.
+The tail's upload units include the discovery walk, and a walk can remain outstanding for as long as the app
+was suspended — 774 seconds, measured on device under the retired pump (`SNAPSYNC-16`, build 0.3(605), iOS
+18.7.9); a foreground entry arriving while another wake's tail is still running joins that tail, and inherits
+whatever it is still doing. Because foreground's own work runs **outside** the runner, the status refresh never
+waits on it. Sequencing the status refresh behind the tail would mean a member whose visit is shorter than that
+unwinding sees **no read value at all**, which is precisely the condition under which the un-read total must not
+be mistaken for a settled one. The ordering is therefore part of this capability's liveness guarantee, not an
+implementation detail of the flow.
 
 The refresh reads the cheap local status reads before the library enumeration; that ordering is the group's own
 property (see "The cheap local status reads are one bounded group") and is stated there rather than here.
@@ -575,17 +600,18 @@ sequencing the refresh behind its siblings is what this requirement forbids.
 
 A failure in any one refresh SHALL NOT cancel its siblings.
 
-#### Scenario: A blocked pump does not delay the status refresh
+#### Scenario: A running tail does not delay the status refresh
 
-- **WHEN** foreground entry occurs and the upload pump does not return (its cycle's discovery walk is
+- **WHEN** foreground entry occurs while a tail another wake started is still running (its discovery walk is
   still outstanding from a previous session)
-- **THEN** the foreground-gated poll has started and the status sources have been refreshed, and the
-  joined screen shows read counts
+- **THEN** the foreground-gated poll has started and the status sources have been refreshed, and the joined
+  screen shows read counts, without waiting for that tail; the foreground then joins the tail
 
-#### Scenario: The flow still completes only when its children do
+#### Scenario: The tail is not a child of the foreground flow
 
-- **WHEN** the foreground flow's children include a pump that takes `T` to return
-- **THEN** `run()` returns no earlier than `T`, so the shell reports completion to the OS truthfully
+- **WHEN** the foreground flow runs
+- **THEN** its children are foreground entry's own work only, `run()` returns once they have all finished, and
+  the tail is requested after it returns — never awaited inside it
 
 #### Scenario: The entry read is repaired by the poll, not by re-ordering
 

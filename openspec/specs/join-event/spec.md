@@ -28,6 +28,7 @@ names it.
 Decision record: `changes/archive/2026-07-06-add-event-join-confirmation` (the gate itself);
 `changes/archive/2026-08-05-configure-membership-on-switch` (dissolving the switch into leave-then-join, so
 the switching member configures the new membership on this surface).
+Decision record for the provision's clear-then-load of the upload ledger: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: Joining is gated by an explicit confirmation
 The system SHALL NOT provision an event directly from a decoded interactive event link. When the
@@ -992,8 +993,9 @@ idempotent overwrites of the same objects (the destination is `(deviceId, assetI
 event window. A transport failure SHALL be logged at `Warn`; an undecodable listing at `Error`, because it
 will not heal.
 
-**The order is load-bearing.** The load runs **before** the save, so no cycle — an app-driven pump running
-concurrently included — can ever see the **new** membership over the previous membership's ledger. A crash
+**The order is load-bearing.** The load runs **before** the save, so no cycle — the app process's
+opportunistic tail running concurrently included (capability `ios-app-shell`) — can ever see the **new**
+membership over the previous membership's ledger. A crash
 between the load and the save leaves either (first join) an unjoined device holding a loaded ledger, which
 the next join clears anyway, or (switch) the previous membership over a reloaded ledger, whose next walk
 simply re-records its work (`DISCOVERED` rows are re-found by the walk; stored bytes are already

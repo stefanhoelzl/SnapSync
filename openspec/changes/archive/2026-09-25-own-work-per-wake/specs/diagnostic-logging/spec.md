@@ -1,7 +1,11 @@
 ## RENAMED Requirements
 
 - FROM: `### Requirement: Deadline expiry is logged`
-- TO: `### Requirement: Operating-system expiry is logged
+- TO: `### Requirement: Operating-system expiry is logged`
+
+## MODIFIED Requirements
+
+### Requirement: Operating-system expiry is logged
 
 The app SHALL log every time the operating system signals that a wake's time is up — a `BGTask`'s
 `expirationHandler`, or the expiration handler of a background task begun through the background-time port

@@ -35,6 +35,7 @@ a v1-shaped job made unmappable, in `changes/archive/2026-09-22-retire-legacy-ke
 The measured record of how the OS invokes the extension, a retry-spent job re-created from the photo its key
 names (the OS answers it with no resource), and the loopback upload base, in
 `changes/archive/2026-09-23-contract-upload-job-tier`.
+Decision record for in-extension discovery and the measured record of how the OS invokes the extension: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: Background upload extension target
 
@@ -1082,6 +1083,15 @@ There SHALL be **no** persisted discovery cursor: no change token is archived, s
 and no `fetchPersistentChanges(since:)` walk is made. Every cycle's walk is complete in itself, so a
 short-lived wake needs nothing from the previous one.
 
+The extension SHALL walk **afresh** on every `process()` call and SHALL NOT use the app process's walk memo
+(capability `sync-ledger`, "Deletion is a presence diff over an authoritative walk"): it holds no walk, no
+candidate set and no library change token across `process()` calls, in memory or on disk. The memo buys
+its saving by holding the last walk's candidates in memory, and the extension's memory limit is **32 MB**
+(see "How the operating system invokes the extension is recorded as measured") — a cycle leaves about
+12 MB of headroom, and exceeding the limit is a jetsam kill the system answers with a relaunch loop, not
+an error. Its walk is also not the cost the memo removes: the extension's whole `process()` measured
+0.6–1.4 s (decision record: `changes/archive/2026-09-25-own-work-per-wake`, D9).
+
 The cursor was an efficiency optimization only, and its own contract said so: a cold start with no stored
 token re-enumerated the whole library, which the ledger made harmless. It cost a durable App-Group key, a
 port with its iOS store and fake, a clear effect threaded through every re-baselining caller, and an
@@ -1109,6 +1119,11 @@ unreadable library then costs an idle pass: nothing is recorded and nothing is d
 - **WHEN** `process()` runs
 - **THEN** the extension enumerates the library narrowed by the membership's policy, and reads no persisted
   change token
+
+#### Scenario: The extension does not reuse a previous walk
+- **WHEN** `process()` runs again while the photo library is unchanged since the previous call's walk
+- **THEN** the extension enumerates the library again, and no memoized walk, candidate set or change token
+  was held from the previous call
 
 #### Scenario: A restart needs no stored state from the previous walk
 - **WHEN** the extension process is torn down after a cycle and later re-invoked
@@ -1184,6 +1199,32 @@ inside a call — and every scheduling decision in this tier rests on it. Measur
   the acknowledge set with no error, a retry-spent one in the acknowledge set only, and acknowledging a job
   removes it from both.
 
+How a call **ends** was measured further on the same device (SE2, iOS 26.6, 2026-09-24; decision record
+`changes/archive/2026-09-25-own-work-per-wake`, D8):
+
+- the 60 s end is **assetsd's own timer**, **60.0 s** from the call's start, and it ends the process with
+  `SIGKILL`: no signal, callback or notice of any kind reaches the process first;
+- `notifyTermination` follows **only** normal returns — it never precedes or announces the kill;
+- `ProcessInfo.performExpiringActivity`'s expiry callback (`expired == true`) **never fires**: the activity's
+  assertion is created inactive, because assetsd's assertion, not the extension's, defines the process's
+  lifetime;
+- the extension's memory limit is **32 MB** (enforced by runningboardd); a cycle wrapped in extra machinery
+  exceeded it, was jetsam-killed, and the system relaunched it into a kill loop.
+
+The extension SHALL therefore build **no cooperative stop**: no expiry handler, no stop flag, and no
+self-chosen deadline, because no signal exists to drive one, and a budget measured by the extension's own
+clock is a clock of ours — the thing this capability's host app no longer keeps anywhere (capability
+`ios-app-shell`). The same holds for any of its work: the extension SHALL NOT bound a unit of its work with a
+timeout of its own choosing. That includes the device-manifest publish, whose former 12 s bound
+(`deviceManifestTimeoutMs`) lived in the **shared** `UploadCycle` and so bounded the app's uploader too; it is
+removed from the cycle, for **both** tiers (capability `ios-app-shell`, "Time is up is learned only from the
+operating system", which states the rule for the app process). The per-request HTTP timeout still bounds each
+request the publish makes — it is a property of one request, not a deadline on the work. What makes this safe is the
+shape of the work, not a stop: a `process()` call measured 0.6–1.4 s of work, far inside 60 s, every unit
+is a safe retry (ledger writes are idempotent upserts, a job not yet created is found in the ledger's
+`DISCOVERED` rows), and the next invocation continues where a killed one stopped. Nor SHALL any code or
+requirement rely on `notifyTermination` or `performExpiringActivity` as a warning of the end.
+
 #### Scenario: A cycle returns normally
 
 - **WHEN** `process()` returns and the system then calls `notifyTermination`
@@ -1194,4 +1235,23 @@ inside a call — and every scheduling decision in this tier rests on it. Measur
 - **WHEN** a `process()` call runs past about 60 s
 - **THEN** the process is killed with no notice, and the next call comes only after a backoff, so work that
   must finish in one call is sized well inside the budget
+
+#### Scenario: No warning precedes the kill
+
+- **WHEN** a `process()` call reaches assetsd's 60.0 s timer while an expiring activity is open
+- **THEN** the process receives `SIGKILL` with no `notifyTermination` and no `expired == true` callback
+  first, so no code path can run on the way out
+
+#### Scenario: The extension keeps no clock of its own
+
+- **WHEN** the extension's cycle publishes the device manifest or runs any other unit of its work
+- **THEN** the unit is not bounded by a timeout the extension or the shared cycle chose (only the
+  per-request HTTP timeout bounds each request); it ends when it completes, fails, or the process is
+  killed, and a killed unit is retried by the next invocation
+
+#### Scenario: Exceeding the memory limit kills the extension
+
+- **WHEN** the extension's resident memory exceeds 32 MB during a `process()` call
+- **THEN** the process is jetsam-killed, with no error returned to the call, and the system may relaunch it
+  repeatedly
 

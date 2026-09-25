@@ -19,6 +19,7 @@ widen their own contribution above the event's start, visibly and on purpose.
 Decision record: `changes/archive/2026-07-21-add-reconfigure-membership`,
 `changes/archive/2026-08-28-make-the-screen-a-function-of-state` (the settings surface reads reduced state).
 Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+Decision record for the arms Save re-drives, through the tail runner that replaced the upload pump: `changes/archive/2026-09-25-own-work-per-wake`.
 
 ## Requirements
 ### Requirement: A joined member changes participation settings in place, without leaving
@@ -148,9 +149,11 @@ so a change takes effect immediately rather than waiting for the OS's next sched
   `upload-lifecycle`), which SHALL **never touch the extension's registration** — the extension is
   registered from the join to the leave wherever the OS allows it, download-only memberships included, so
   a Save has nothing to register or deregister — and SHALL **arm the app's uploader** when photo access is
-  usable (`GRANTED` or `LIMITED`), which **schedules** the upload pump. That arm is a kick, not a decision:
-  whether the membership now contributes is the selection policy's, and a download-only policy makes the
-  kicked cycle decline. Decision record: `changes/both-uploaders-active`;
+  usable (`GRANTED` or `LIMITED`), which **requests** the app process's opportunistic tail — its top-up and,
+  under a full grant, its walk (capability `ios-app-shell`) — and schedules the heartbeat. That arm is a kick,
+  not a decision: whether the membership now contributes is the selection policy's, and a download-only policy
+  makes the kicked upload units decline. Decision records: `changes/both-uploaders-active`;
+  `changes/archive/2026-09-25-own-work-per-wake` (the tail runner, which replaced the upload pump);
 - when `direction` now **includes download**, it SHALL trigger a **download reconcile**.
 
 Save SHALL NOT wait for the gather. It is started detached, because its cost grows with the photos the
@@ -162,7 +165,7 @@ the shared composition (`compose/SnapSyncApp.kt`), over the existing album/uploa
 
 #### Scenario: Enabling share kicks an upload immediately
 - **WHEN** a `DownloadOnly` membership is reconfigured to include upload and photo access is granted
-- **THEN** the app's uploader is armed and its pump scheduled, so the newly-admitted photos start uploading
+- **THEN** the app's uploader is armed and the tail requested, so the newly-admitted photos start uploading
   without waiting for the OS cadence
 
 #### Scenario: A Save never touches the extension's registration
@@ -429,3 +432,4 @@ later steps remain best-effort once the save has landed.
 - **WHEN** the save succeeds and the album gather then fails
 - **THEN** the failure is logged, the download arm is still re-driven, and the reconfigure reports
   success
+

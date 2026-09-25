@@ -45,6 +45,7 @@ snapshot is authoritative, so de-selecting a photo withdraws it from the event (
 is not withdrawal"). A selection **not yet read** is its own scope (`Unread`), and the app's upload cycle is
 withheld on it. Verified on an SE2 (iOS 26.6, 2026-09-22).
 Decision record for its seam, failure, state and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+Decision record for the read discipline enforced at the mechanism rather than at the trigger fan-out: `changes/archive/2026-09-25-own-work-per-wake`.
 
 ## Requirements
 ### Requirement: A limited grant is a working membership whose scope is the selection
@@ -79,11 +80,16 @@ prompt the member out of it.
 
 ### Requirement: No autonomous library reads under a limited grant
 
-While permission is `LIMITED`, no autonomous trigger SHALL read the photo library: the foreground
-upload pump kick, the upload half of the silent-push fan-out, and the status refresh's gallery walk
-SHALL all skip their `PHAsset`-fetching work. Everything that does not touch `PHAsset` SHALL keep
-running on those same triggers — config reload, HTTP reconcile, download planning and imports,
-ledger-count polling, attestation refresh.
+While permission is `LIMITED`, no autonomous trigger SHALL read the photo library: the opportunistic tail's
+discovery walk (unit ③ — capability `ios-app-shell`, "Each OS wake does its own work, then hands the rest to
+one opportunistic tail"), whichever wake's tail it is — foreground entry's, a silent push's, the heartbeat's, a
+completion's or a session relaunch's — and the status refresh's gallery walk SHALL all skip their
+`PHAsset`-fetching work; under a partial grant the tail runs no ③ at all. The tail's **top-up** (②) SHALL still
+run on those triggers, a silent push's included, because it reads no library: it resolves its rows from the
+in-memory selection snapshot, and is withheld while that snapshot is unread (see "The read discipline is enforced
+at the mechanism, not at the trigger fan-out"). Everything else that does not touch `PHAsset` SHALL keep running
+on those same triggers — config reload, HTTP reconcile, download planning, the tail's imports (①), ledger-count
+polling, attestation refresh. Decision record for the tail: `changes/archive/2026-09-25-own-work-per-wake` (D1).
 
 **The justification is corrected, the behaviour is not.** This requirement was recorded as *the*
 load-bearing alert rule — the claim being that autonomous fetches queue the alert while in-flow reads
@@ -137,11 +143,13 @@ on iOS 26.6.2 (one probe, n = 1 out-of-scope change).
 
 #### Scenario: Foreground entry under limited does not walk the library
 - **WHEN** the app enters the foreground with permission `LIMITED` (not a cold launch)
-- **THEN** no `PHAsset` fetch occurs; the reconcile, ledger-count poll, and attestation refresh still run
+- **THEN** no `PHAsset` fetch occurs; the reconcile, ledger-count poll, and attestation refresh still run, and
+  the tail imports and tops up from the selection snapshot without walking
 
-#### Scenario: A silent push under limited wakes only the download arm
-- **WHEN** a silent push arrives while permission is `LIMITED`
-- **THEN** the download receiver runs; the upload receiver performs no library read
+#### Scenario: A silent push under limited reaches the top-up but reads no library
+- **WHEN** a silent push for the active event arrives while permission is `LIMITED`
+- **THEN** the download reconcile runs as the push's own work; the tail that follows imports staged downloads
+  and tops up, resolving rows from the selection snapshot; no discovery walk runs and no `PHAsset` fetch occurs
 
 #### Scenario: The cold-launch baseline catches offline selection changes
 - **WHEN** the selection was widened while the app was not running, and the app is then cold-launched
@@ -170,11 +178,18 @@ walks already cover every change, and the observer would add redundant reads.
 The port SHALL be fakeable: `:test:world` provides an operator-drivable fake so the world harness and
 `:test:integration` can emit selection changes on demand.
 
-#### Scenario: A selection change while limited triggers exactly one read
+#### Scenario: A selection change while limited triggers at most one read
 - **WHEN** permission is `LIMITED` and the user changes the selection (in-app picker, Settings edit, or
   iCloud sync)
-- **THEN** the change source emits, and exactly one library read follows (the next requirement's
-  consumption), with no other read triggered by the same change
+- **THEN** at most one enumeration of the selection follows (the next requirement's consumption), with no
+  other read triggered by the same change; a change that reaches the source while an earlier enumeration is
+  still running shares the one enumeration that follows it with every other change queued behind it
+
+#### Scenario: A burst of changes queued behind a running enumeration shares one
+- **WHEN** permission is `LIMITED`, an enumeration for one selection change is running, and three more
+  changes arrive before it finishes
+- **THEN** exactly one more enumeration follows, for the latest of the three, and the snapshot it emits
+  reflects all three changes
 
 #### Scenario: The observer is not registered under a full grant
 - **WHEN** permission is `GRANTED`
@@ -506,6 +521,16 @@ Relocating this gate SHALL preserve the behaviour it currently produces. It SHAL
 side effect of the move — if the relocated gate would admit a trigger the fan-out currently refuses, that
 widening is a separate decision requiring its own evidence.
 
+The app process's **opportunistic tail** (capability `ios-app-shell`, "Each OS wake does its own work, then hands
+the rest to one opportunistic tail") runs its discovery walk (③) only under a full grant. That omission is **not**
+this discipline's enforcement and SHALL NOT be relied on as such: it is a scheduling choice — under a partial grant
+discovery is the selection change's own work, so a walk in every tail would re-run it for nothing — and the
+mechanism's own gate and discovery still hold the discipline whatever reaches them, the selection change's own
+walk included. The one widening the tail made is its own decision, with its evidence: a silent push under a
+partial grant now reaches the tail's top-up (②), which reads no library, because it resolves its rows from the
+held snapshot and is withheld while that snapshot is unread (decision record `changes/archive/2026-09-25-own-work-per-wake`, D1:
+accepted — already-selected rows upload sooner, with no read).
+
 A selection snapshot that has been **read** SHALL be reported as a full enumeration: it is authoritative for
 deletion exactly as a full-library walk is under a full grant (capability `sync-ledger`, "Deletion is a
 presence diff over an authoritative walk"). Under a partial grant the selection is the gallery, from the
@@ -519,8 +544,9 @@ an empty selection anywhere on the upload path. Between a grant turning partial 
 one) and the first selection read, the app holds no selection. An authoritative empty snapshot would
 delete the rows of every photo, and an empty answer to a key resolution means "gone" to the enqueue, which
 also deletes. So the app's upload cycle SHALL be **Withheld** while the scope is `Unread` (capability
-`upload-lifecycle`, "The upload cycle owns its entry decision"). It settles narrowly, and reads, creates,
-deletes and publishes nothing. The observer's first emission then triggers the cycle that runs. The
+`upload-lifecycle`, "The upload cycle owns its entry decision") — each of its units, the tail's top-up
+included. It settles narrowly, and reads, creates, deletes and publishes nothing. The observer's first emission
+then triggers the selection change's own work and the tail that follows it. The
 selection-scoped discovery SHALL refuse to answer for an `Unread` scope, failing the call rather than
 returning an empty result, so that no caller that reaches it anyway can mistake "not read" for "nothing".
 
@@ -528,7 +554,8 @@ The status total already draws the same distinction, for its own reason: an unre
 the screen (see "One discovery serves both the status total and the enqueue"). Both SHALL read the one
 snapshot cell, so they cannot disagree about whether the selection has been read.
 
-Decision record: `changes/selection-is-the-walk` (D1). It reverses the earlier requirement that a
+Decision records: `changes/selection-is-the-walk` (D1); the tail's scheduling and its one widening:
+`changes/archive/2026-09-25-own-work-per-wake` (D1). It reverses the earlier requirement that a
 selection-scoped discovery never report a full enumeration because "deselection is not withdrawal and an
 upload is a publish". Its one real hazard, the un-read snapshot, is kept closed by the `Unread` scope
 rather than by making every snapshot non-authoritative.
@@ -578,6 +605,13 @@ rather than by making every snapshot non-authoritative.
   `Unread`
 - **THEN** the call fails, and no empty result is returned
 
+#### Scenario: The tail's skipped walk is not the only guard
+
+- **WHEN** an upload unit that would read the library is reached under a partial grant by any path — the tail,
+  or a selection change's own work
+- **THEN** the mechanism's gate and discovery decide, and read no library, whether or not the tail would have
+  scheduled that unit
+
 ### Requirement: Selection snapshots are emitted in change order
 
 The selection-change source SHALL emit its snapshots from one serial lane, in the order of the changes
@@ -585,6 +619,24 @@ they reflect, so the last snapshot a consumer holds always reflects the latest c
 nothing after observation has ended, and in particular SHALL NOT emit a snapshot built under a limited grant
 once the grant has become full. A change that arrives before the baseline read completes SHALL be applied
 after the baseline, not dropped.
+
+Changes queued behind a running enumeration SHALL be **folded**, not enumerated one by one. Each snapshot is
+the whole selection, so a snapshot for a change that a later one already supersedes is work whose result the
+conflating stream drops anyway. The lane SHALL apply the change in hand and every change already queued
+behind it to the held read, one at a time, through each change's own pushed result
+(`fetchResultAfterChanges` — never a library read), and SHALL then enumerate **once**, for the latest. At most
+one enumeration runs at a time. The last snapshot emitted SHALL be the one that emitting per change would have
+ended on. The fold SHALL stop at the first queued item that is not a change (an observation ending or
+restarting), and SHALL handle that item next, so nothing is reordered and no change is applied across the end
+of an observation. The baseline path is not folded. Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D13).
+
+The rule against emitting under a stale grant SHALL hold on the **change path** exactly as on the baseline path:
+both SHALL check, before emitting, that the grant generation the snapshot was built under is still the current
+one. A change that was queued — or whose enumeration was running — while the grant was limited SHALL NOT be
+emitted once the grant has become full, whether or not the end of observation that the flip causes has reached
+the lane yet. Without the check, the one enumeration a fold runs, or a change folded ahead of the end of
+observation, would emit a limited-scope snapshot after the flip, and a consumer holding it would treat the
+selection as the scope of a full grant.
 
 #### Scenario: Two changes in quick succession
 
@@ -601,3 +653,18 @@ after the baseline, not dropped.
 
 - **WHEN** a selection change arrives before the baseline read has completed
 - **THEN** a snapshot reflecting that change is emitted after the baseline one
+
+#### Scenario: A change queued before the grant becomes full is not emitted after it
+
+- **WHEN** a selection change, and then the end of observation that a limited → full grant change causes, are
+  queued behind a running enumeration under a limited grant
+- **THEN** the fold stops at the end, and no snapshot is emitted — neither for the running enumeration nor for
+  the queued change — because the grant is full by the time either would be emitted; the end is handled next,
+  and nothing is emitted after it
+
+#### Scenario: A change enumerated across the grant flip is dropped
+
+- **WHEN** a selection change's enumeration is running under a limited grant and the grant becomes full before
+  it finishes
+- **THEN** its snapshot is not emitted, exactly as a baseline read in flight across the flip is not
+

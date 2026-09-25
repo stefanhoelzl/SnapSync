@@ -55,6 +55,7 @@ Decision record: `changes/archive/2026-07-06-add-join-date-cutoff` (the cutoff);
 `changes/archive/2026-07-21-align-specs-with-mission` (the lower-bound-only decision — later reversed);
 `changes/archive/…-add-event-date-range` (the capture-date **range**: the upper bound, on a creator-chosen
 precise `endsAt`, reversing lower-bound-only).
+Decision record for the album lookup gated on a full grant: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: Per-device, per-membership capture-date cutoff
 
@@ -768,8 +769,15 @@ primary mechanism for excluding received media; the resolution floors are.
 **Under a limited grant the rule is inert.** A partial (`.limited`) grant exposes assets, not the album
 structure: the user-album walk returns no albums even when a selected asset is a member of one (measured
 on device with a real WhatsApp-album membership — the album was not surfaced and the lookup returned the
-empty set, without error). The album seam's decision-free contract already makes an empty album walk an
-empty exclusion set, so no code branches on permission — but the consequence SHALL be understood and not
+empty set, without error). Asking there could therefore only ever answer the empty set, at the cost of a
+platform round-trip per upload cycle and per status refresh. The lookup SHALL be asked **only under a full
+grant** (`GRANTED`); under every other grant the exclusion set SHALL be the empty set, with no platform call.
+That grant gate SHALL live in **one** place in tested `commonMain` that every consumer of the denylist goes
+through (both tiers' upload cycle, the own-device status total, and the join preview), so no consumer branches
+on permission itself and the platform seam stays decision-free. The empty set is the honest answer, not a
+fallback: the denylist is a subtraction, and the policy admits on doubt. The admitted set is unchanged by the
+gate, because a limited grant's lookup already answered the empty set (decision record:
+`changes/archive/2026-09-25-own-work-per-wake`, D13). The consequence SHALL be understood and not
 overclaimed: a hand-picked photo in a denylisted album **will upload** under `LIMITED`. This is accepted
 for the same reason the poor recall above is: the resolution floors — which read dimensions off the asset
 itself and work under any grant — remain the primary received-media exclusion, and a deliberately selected
@@ -789,9 +797,15 @@ photo is the strongest admit signal the policy ever sees.
 
 #### Scenario: Under a limited grant the denylist excludes nothing
 - **WHEN** a member with a `LIMITED` grant selects a photo that is a member of a denylisted album
-- **THEN** the album lookup returns no membership (the album structure is not readable), the photo is
-  admitted by this rule, and only the capture-date cutoff and the intrinsic origin rules (subtypes,
-  resolution floors) can still exclude it
+- **THEN** no album lookup is made (the album structure is not readable, so it could only answer no
+  membership), the photo is admitted by this rule, and only the capture-date cutoff and the intrinsic origin
+  rules (subtypes, resolution floors) can still exclude it
+
+#### Scenario: The lookup is asked only under a full grant
+- **WHEN** the denylisted-album exclusions are derived for an upload cycle, a status-total refresh or a join
+  preview
+- **THEN** the platform album lookup is asked exactly once when the grant is `GRANTED`, and not at all under
+  `LIMITED`, `NOT_DETERMINED` or `DENIED`, where the exclusion set is empty
 
 ### Requirement: Album membership is read through a decision-free platform seam
 

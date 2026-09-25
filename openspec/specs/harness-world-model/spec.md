@@ -32,6 +32,7 @@ Decision record for its seam, failure, state and concurrency rules: `changes/arc
 Decision record for the backend seam, the neutral inspection and minted event ids: `changes/archive/2026-09-23-add-rig-jvm-host`.
 
 Decision record for the protocol-driven integration surface, the shared host composition and the journeys: `changes/archive/2026-09-24-integration-over-control`.
+Decision record for the world's relaunch and download seams under each wake's own work and one tail: `changes/archive/2026-09-25-own-work-per-wake`.
 
 ## Requirements
 ### Requirement: Controllable in-memory world module
@@ -368,15 +369,17 @@ leak staging work between worlds, and be unjoinable. The world SHALL NOT offer a
 because two ways to drive downloads is a second one that can rot or lie.
 
 An operator action SHALL be complete when it returns. `onStaged` **is** a suspend seam: the delegate
-thread still must not be blocked by an import, so `QueuedPhotoDownloadJobs` owns the launch and tracks it,
-and the world SHALL await those tracked imports — via the feature's own `awaitOutstandingImports` — before
-the stage action returns. Otherwise every download assertion in the world becomes a race, which is the
-opposite of what an operator-driven harness is for.
+thread still must not be blocked by a store write, so `QueuedPhotoDownloadJobs` owns the launch and tracks it,
+and the world SHALL await those tracked stagings — via the feature's own `awaitOutstandingStagings` — and then
+the import the stagings made possible, which is the process tail's first unit (capability `photo-download`), by
+requesting that import of the **composed** tail runner the way a staged download does, before the stage action
+returns. Otherwise every download assertion in the world becomes a race, which is the opposite of what an
+operator-driven harness is for. Decision record: `changes/archive/2026-09-25-own-work-per-wake` (D1).
 
 The world SHALL NOT re-install `onStaged` to obtain that guarantee. It previously did, because the seam was
 non-suspend and the composition's fire-and-forget launch left the work unreachable — the same
-unreachability that let the app's background-session handler be released while its imports were only queued
-(capability `ios-app-shell`). Now that the feature tracks its own launches, the harness runs the production
+unreachability that let the app's background-session handler be released while the work it announced was only
+queued (capability `ios-app-shell`). Now that the feature tracks its own launches, the harness runs the production
 wiring unshadowed: one fewer place it can diverge from the app.
 
 `PhotoLibraryImporter.import` SHALL import the asset into the in-memory gallery (so it enters gallery
@@ -622,13 +625,24 @@ install a subscription, or wire the HTTP client's credential and version callbac
 
 **No second body for core machinery.** The world SHALL bind no `AppPorts` field to a body of its own that
 stands in for core machinery. The provision a join performs, the attestation refresh and the push
-registration are built by `snapSyncApp` and run for real in the world, exactly as on iOS.
+registration are built by `snapSyncApp` and run for real in the world, exactly as on iOS — the push
+registration's subscription installed as the shared host composition composes the graph, on every launch, as on
+the phone (capability `ios-app-shell`, "Push registration is started by the shared composition").
 
 **The operator surface** is the world's own levers **beside** the composed core (the operator `provision()`,
 `leave()`, `relaunch()`, the inject/fail levers), never a second body for a seam the core calls:
 - `onEventMinted` is a routing hook. Its default provisions the minted event through the composed Provision
   flow; the desktop inspector and the JVM host point it at the status host's pending-join gate.
-- The upload producer is inert: nothing auto-runs, and the operator plays the OS.
+- The app uploader's **units** are inert: nothing uploads on its own, and the operator plays the OS. They are
+  nevertheless driven by the **real** composed tail runner from every OS entry the world delivers, and they
+  count what the runner asked of them (top-ups, walks, transfer handbacks), so a test reads which units a wake
+  reached, in the real order; an operator lever parks the next unit, so a test can hold a tail in flight to
+  deliver an expiry or a join while it runs. The tail's import unit is the **real** download drain, so every OS
+  entry's tail imports what is staged. The heartbeat the runner re-arms is counted, never run.
+- The process's background time is an **operator-expirable table** of outstanding holds, over the honest
+  in-memory double of the background-time port: a wake's hold is visible there until it ends, and the operator
+  fires the operating system's "time is up" on every outstanding hold. Decision record:
+  `changes/archive/2026-09-25-own-work-per-wake` (D1, D3).
 
 The world's exposed download controller, status sources, status host, creation status, join use-case, and
 user-tap command bundle SHALL be the composition's instances — never world-local rebuilds — so a wiring
@@ -1139,13 +1153,16 @@ The world SHALL offer a `relaunch()` lever that models process death and a cold 
 
 The durable state is:
 - the ledger store and the download store;
-- the config and secure stores;
+- the config and secure stores, and the last-registered push record (an App-Group file on a device);
 - the staged files;
 - the gallery and the album map;
 - the backend;
 - the operating-system-held transfer sessions of both transfer doubles.
 
-Every other cell SHALL start fresh. The world SHALL classify each cell it holds as durable or process
+Every other cell SHALL start fresh. The relaunched app installs nothing but its push registration until its
+host is touched, as a background relaunch installs nothing else until a scene connects; that registration sees
+the token the operating system re-delivers and publishes it only if it differs from the last one the backend
+accepted (capability `push-registration`). The world SHALL classify each cell it holds as durable or process
 memory in one place, and a world test SHALL pin that classification.
 
 #### Scenario: A completion learned by a dead process
@@ -1159,6 +1176,12 @@ memory in one place, and a world test SHALL pin that classification.
 - **WHEN** the world relaunches while joined with photos
 - **THEN** the status host starts from the un-read state, as a cold-launched app does, until a trigger reads
   status
+
+#### Scenario: A relaunch with an unchanged push token publishes nothing
+
+- **WHEN** the world relaunches after a registration the backend accepted, and the operating system re-delivers
+  the same token
+- **THEN** no registration is published, because the last-registered record survived the relaunch
 
 ### Requirement: The mini-edge records the pushes it would send
 
@@ -1184,3 +1207,4 @@ coverage while its host no longer runs it.
 
 - **WHEN** the integration module declares no simulator target
 - **THEN** the inbound ports' simulator binding still runs, from `:test:world`'s simulator test source set
+

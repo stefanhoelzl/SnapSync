@@ -30,6 +30,7 @@ Decision records: `changes/archive/2026-06-27-add-rejoin-reconciliation` (the se
 `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` (both tiers), and
 `changes/archive/2026-09-21-join-loads-leave-clears` (the load moves to the join), and
 `changes/archive/2026-09-22-selection-is-the-walk` (the foreground settle of in-flight rows).
+Decision record for the foreground settle as the wake's own work: `changes/archive/2026-09-25-own-work-per-wake`.
 ## Requirements
 ### Requirement: Event file list seam
 
@@ -477,12 +478,15 @@ nothing: measured on an SE2 (iOS 26.6, 2026-09-22), four objects landed within ~
 knows, and the status the member looks at on foreground is what this corrects. A later acknowledgement then
 finds a settled row, and its guarded write applies to nothing.
 
-The settle SHALL run in the app process only, as a trigger step of its own. It SHALL NOT run inside the
-upload cycle (see "The upload cycle does not detect membership changes") and SHALL NOT be sequenced behind
-the upload pump, which can await a single cycle for many minutes after a long suspension. It needs no
-serialization with a cycle, because its one write is the guarded terminal write the platform's own
-callbacks already make beside a running cycle. It SHALL NOT run in the upload extension. Decision record:
-`changes/selection-is-the-walk` (D4).
+The settle SHALL run in the app process only, as a trigger step of its own — part of foreground entry's **own
+work** (capability `ios-app-shell`, "Each OS wake does its own work, then hands the rest to one opportunistic
+tail"). It SHALL NOT run inside the upload cycle or as a unit of the opportunistic tail (see "The upload cycle
+does not detect membership changes") and SHALL NOT be sequenced behind the tail, which can remain outstanding
+for many minutes after a long suspension: foreground's own work runs outside the tail runner, so a tail another
+wake started never holds it up. It needs no serialization with the tail's upload units, because its one write is
+the guarded terminal write the platform's own callbacks already make beside a running cycle. It SHALL NOT run in
+the upload extension. Decision records: `changes/selection-is-the-walk` (D4); `changes/archive/2026-09-25-own-work-per-wake` (D1),
+which replaced the upload pump this step used to run beside.
 
 #### Scenario: A stored in-flight upload settles at foreground
 - **WHEN** the app enters the foreground while the ledger holds a `REQUESTED` row whose key the per-device
