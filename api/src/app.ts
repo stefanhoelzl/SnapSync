@@ -33,6 +33,10 @@
 //     holds no attestation, and possession of the eventId IS the read capability. Every non-GET method on
 //     those paths stays gated.
 //
+// A TOKEN ACTS ONLY FOR ITS OWN DEVICE: every route naming a device id in its path refuses (403) any id
+// but the one the token was minted for (`actsFor`). Device ids are public — the union lists them — so a
+// genuine install could otherwise act as any member.
+//
 // VERIFYING A TOKEN TOUCHES NOTHING: one HMAC comparison, no read, no Apple call. That is load-bearing
 // rather than an optimisation — verification runs on the streaming byte-upload path, where a round-trip
 // per resource would be paid on every photo. A route that additionally needs the device's RECORD reads it
@@ -80,10 +84,9 @@
 //     → streams the request body into ONE bunny native Storage PUT, then BEST-EFFORT records the resource
 //       row as uploaded (a failure there never changes the response — the response is the storage
 //       outcome). Requires the token but reads NO event: bytes are device-partitioned and
-//       event-independent, uploaded once and linked into events by reference. The device id remains
-//       self-asserted — the token proves a genuine app instance, NOT ownership of the partition (a stated
-//       non-goal; the UUID is the capability). The OS performs this PUT and DOES carry the header
-//       (verified on device). There is no download GET here; the listing hands out a presigned S3 URL.
+//       event-independent, uploaded once and linked into events by reference. The path's device id must
+//       be the one the token was minted for (403 otherwise — `actsFor`), like every route naming a device.
+//       The OS performs this PUT and DOES carry the header (verified on device). There is no download GET here; the listing hands out a presigned S3 URL.
 //   GET /api/v1/files/devices/:deviceId
 //     → the device's uploaded resources, from ONE query — no storage LIST. Each entry is
 //       `{ filename, url }`, where `filename` is the STORED OBJECT KEY (what the rejoin reconciler matches
@@ -146,7 +149,7 @@
 // There is NO download route: the listing's `url` is a presigned S3 GET the device fetches directly from
 // bunny's S3 endpoint (the short-read integrity check moves to the client).
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { AwsClient } from "aws4fetch";
 import { identityFromLegacyKey, legacyKeyFor, RESOURCE_ROLES } from "./legacy-v1.ts";
 import { compareVersions, splitVersion } from "./version.ts";
@@ -209,6 +212,45 @@ import { deleteByMs } from "./lifecycle.ts";
 
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
 export type { FetchLike } from "./storage.ts";
+
+// The device the verified token was minted for, set by the token gate (capability `privacy-security`,
+// "Only a genuine SnapSync app can change an event"). Typed here, once, so every route reads the same key.
+declare module "hono" {
+  interface ContextVariableMap {
+    tokenDeviceId: string;
+  }
+}
+
+/**
+ * Whether this request's token was minted for `deviceId` — the binding every route naming a device in its
+ * path applies after validating the id and before touching any store (capability `privacy-security`: "A
+ * genuine app SHALL act only for its own device").
+ *
+ * WHY IT EXISTS. The token proves a genuine app instance; on its own it said nothing about WHICH device the
+ * caller is. Device ids are not secret — every member's id is in the event union, which is ungated — so
+ * without this any genuine install could publish, upload, leave or re-register a push token as another
+ * device. The token already carries the id it was minted for (`verifyToken` returns it), so the binding
+ * costs one string compare and no read — the hot-path property the gate was built around still holds.
+ *
+ * Compared against Hono's DECODED path parameter, per route, rather than by re-parsing the raw path in the
+ * gate: the route acts on the decoded value, so that is the only value whose binding means anything (a
+ * percent-encoded id would slip past a raw-path matcher and still be decoded by the router).
+ *
+ * FAILS CLOSED: a request that reached a route without passing the token gate has no token device, and
+ * `undefined` equals no id.
+ */
+function actsFor(c: Context, deviceId: string): boolean {
+  return c.get("tokenDeviceId") === deviceId;
+}
+
+/**
+ * The refusal of a request naming a device its token was not minted for. `403`, not `401`: the credential
+ * is valid and is NOT the problem — a `401` from a gated route makes the shipped client drop its token and
+ * re-attest (`withCredentialInterceptor`), which would loop forever without changing the answer.
+ */
+function notThisDevice(c: Context): Response {
+  return c.text("not this device", 403);
+}
 
 // The browser-facing pages (capabilities `web-site` at `/` and `event-site` at `/join`) are
 // no longer embedded here — they are built by the `site/` Astro module and served by proxying the storage
@@ -564,6 +606,7 @@ export function createApp(
     ) {
       return c.text("invalid key", 400);
     }
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
 
     const target = `https://${config.host}/${config.zone}/${byteKey(deviceId, filename)}`;
     const init: StreamInit = {
@@ -797,9 +840,13 @@ export function createApp(
     // out-of-edge sweep could announce an expiring event before deleting it, and that announcement is
     // gone (capability `event-lifetime`) — so the credential is retired rather than left standing as
     // an authorization path with no caller.
-    if (!token || !await verifyToken(config, token, now())) {
+    const tokenDeviceId = token ? await verifyToken(config, token, now()) : null;
+    if (!tokenDeviceId) {
       return c.text("unattested", 401);
     }
+    // Remembered for the routes that name a device: they refuse any other one (`actsFor`). Verifying
+    // stays the whole cost here — the id rides inside the token, so binding needs no read.
+    c.set("tokenDeviceId", tokenDeviceId);
     return await next();
   });
 
@@ -1251,6 +1298,7 @@ export function createApp(
     if (!validateUUID(eventId) || !validateUUID(deviceId)) {
       return c.text("invalid key", 400);
     }
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
 
     // The manifest is a WIRE FORMAT now, not an object: parse it here rather than streaming it to
     // storage. It is bounded by the device's own library, and the whole point of reading it is that the
@@ -1303,6 +1351,7 @@ export function createApp(
     if (!validateUUID(eventId) || !validateUUID(deviceId)) {
       return c.text("invalid key", 400);
     }
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
 
     try {
       // The lifecycle gate (capability `event-lifetime`): an absent event 404s, which the client already
@@ -1418,6 +1467,7 @@ export function createApp(
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
     }
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
     try {
       const stored = await deviceFiles(db, deviceId);
       c.header("Cache-Control", NO_CACHE); // each `url` is a time-limited presigned S3 URL
@@ -1443,6 +1493,7 @@ export function createApp(
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
     }
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
     let push: { kind: string; token: string; env: string } | null;
     try {
       const body = await c.req.json() as { pushToken?: Record<string, unknown> };
@@ -1591,6 +1642,7 @@ export function createApp(
     const role = c.req.param("role");
     const filename = new URL(c.req.url).searchParams.get("filename");
     if (!validateUUID(deviceId)) return c.text("invalid device", 400);
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
     if (!validateFilename(assetId)) return c.text("invalid asset", 400);
     // The role vocabulary is CLOSED, and the route validates it rather than storing whatever it is given.
     // v1 could not — its role arrived inside an opaque object name — which is why an unknown role is a
@@ -1663,6 +1715,7 @@ export function createApp(
   v2Only.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) return c.text("invalid device", 400);
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
     try {
       const held = await deviceResources(db, deviceId);
       c.header("Cache-Control", NO_CACHE);
@@ -1680,6 +1733,7 @@ export function createApp(
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
     let outcome: EnrollOutcome;
     try {
       outcome = await enroll(db, eventId, deviceId, new Date(now()).toISOString());
@@ -1701,6 +1755,7 @@ export function createApp(
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) return c.text("invalid id", 400);
+    if (!actsFor(c, deviceId)) return notThisDevice(c);
     let assets: ManifestAssetEntry[] | null;
     let version: number | null | undefined;
     try {

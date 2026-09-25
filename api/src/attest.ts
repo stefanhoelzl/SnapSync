@@ -167,9 +167,10 @@ export async function mintToken(config: Config, deviceId: string, nowMs: number)
 /**
  * Verify a token and return the device id it was minted for, or `null`.
  *
- * NOTE the deliberate asymmetry: this proves the token is OURS and UNEXPIRED. It does NOT prove the
- * caller owns the partition named by `deviceId` — nothing binds an attestation key to a device id (see
- * the capability's stated non-goals). Ownership stays capability-based on the unguessable UUID.
+ * This proves the token is OURS and UNEXPIRED, and names the device it was minted for. The token gate
+ * keeps that id so every route naming a device refuses any other (`actsFor` in `app.ts`). What it does
+ * NOT prove is that the minting was the device's rightful owner: `/attest/token` mints for whichever id
+ * its body names, so a genuine install can still attest AS a known id (`docs/architecture.md`).
  */
 export async function verifyToken(
   config: Config,

@@ -52,6 +52,15 @@ export const CONFIG = {
 
 export const TOKEN = await mintToken(CONFIG, D, NOW);
 
+/**
+ * The `authorization` header of a request made AS `deviceId` — for a test acting for a device other than
+ * {@link D}, since a token acts only for the device it was minted for (`actsFor` in `app.ts`). Passed in a
+ * request's `headers`, it replaces the {@link TOKEN} {@link createApp} attaches.
+ */
+export async function as(deviceId: string): Promise<{ authorization: string }> {
+  return { authorization: `Bearer ${await mintToken(CONFIG, deviceId, NOW)}` };
+}
+
 export const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
 export const S3_ZONE = `${CONFIG.s3Scheme}://${CONFIG.s3Host}/${CONFIG.zone}`;
 

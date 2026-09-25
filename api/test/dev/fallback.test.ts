@@ -3,7 +3,7 @@
 // nothing to notice until someone runs a simulator by hand.
 
 import { assertEquals } from "@std/assert";
-import { enrolmentTarget } from "../../src/dev/fallback.ts";
+import { deviceNamedBy, enrolmentTarget } from "../../src/dev/fallback.ts";
 
 const D = "11111111-0000-4000-8000-000000000001";
 
@@ -43,4 +43,28 @@ Deno.test("other methods on the config route are not enrolled", () => {
 Deno.test("a non-UUID device segment is not enrolled", () => {
   assertEquals(enrolmentTarget("PUT", "/api/v1/devices/nope"), null);
   assertEquals(enrolmentTarget("PUT", "/api/v1/devices/"), null);
+});
+
+// The fallback bearer's token subject. Pinned for the same silent-failure reason: the backend refuses a
+// token on any other device's route (403), so a matcher that missed a device route would 403 every
+// simulator and every live contract clause on it.
+Deno.test("the fallback token is minted for the device every device route names", () => {
+  const E = "7a3f9c21-0000-4000-8000-0000000000ee";
+  for (const v of ["v1", "v2"]) {
+    assertEquals(deviceNamedBy(`/api/${v}/devices/${D}`), D);
+    assertEquals(deviceNamedBy(`/api/${v}/events/${E}/devices/${D}`), D);
+    assertEquals(deviceNamedBy(`/api/${v}/events/${E}/devices/${D}/manifest`), D);
+    assertEquals(deviceNamedBy(`/api/${v}/files/devices/${D}`), D);
+    assertEquals(deviceNamedBy(`/api/${v}/files/devices/${D}/ASSET/primary`), D);
+  }
+  // The FIRST `devices` segment is the device, even when an asset happens to be called `devices`.
+  assertEquals(deviceNamedBy(`/api/v2/files/devices/${D}/devices/primary`), D);
+  // Decoded as the router decodes the parameter it binds against.
+  assertEquals(deviceNamedBy(`/api/v2/devices/%31${D.slice(1)}`), D);
+});
+
+Deno.test("a path naming no device gets the fixed dev token", () => {
+  assertEquals(deviceNamedBy("/api/v2/events"), null);
+  assertEquals(deviceNamedBy("/api/v2/events/7a3f9c21-0000-4000-8000-0000000000ee/files"), null);
+  assertEquals(deviceNamedBy(`/devices/${D}`), null);
 });

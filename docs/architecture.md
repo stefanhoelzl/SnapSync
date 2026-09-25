@@ -476,12 +476,23 @@ Top-level Hono middleware in `src/app.ts`, in this order:
    download page, where possession of the event id is the read capability). The gate normalizes the
    `/api/vN` prefix before matching. `GatedPathPinTest` keeps the client's copy of this list in step.
 
-The device id stays self-asserted: a token proves a genuine app instance, not ownership of the id. The
-UUID is the capability.
+4. **Device binding** (per route, `actsFor` in `src/app.ts`). The token names the device it was minted for,
+   and every route that names a device in its path (join, leave, manifest, byte upload, device listing, push
+   registration, under v1 and v2 alike) refuses any other id with `403 not this device`, before reading or
+   writing anything. It is `403`, not `401`: the credential is valid, and a `401` from a gated route makes
+   the client drop its token and re-attest, which would loop. Device ids are not secret (the ungated union
+   lists every member's), so without this any genuine install could act as any member. The binding judges
+   the router's DECODED parameter, so a percent-encoded id cannot slip past it.
+
+What the binding does not close: `/attest/token` mints for whatever `deviceId` its body names, so a genuine
+install can still attest AS a known id (overwriting that device's key) and then hold a token bound to it.
+Refusing a re-attestation for a known id would also refuse the legitimate one after a reinstall, which
+keeps the Keychain device id but loses the App Attest key.
 
 ### HTTP API (v2, current)
 
-All device routes are under `/api/v2`. `<eventId>`/`<deviceId>` are UUIDs (`400` otherwise). Anything
+All device routes are under `/api/v2`. `<eventId>`/`<deviceId>` are UUIDs (`400` otherwise), and a
+`<deviceId>` other than the one the token was minted for is `403` on every route that names one. Anything
 not listed is `404` (no `405`) and makes no upstream request.
 
 | method | path | does | answers |
