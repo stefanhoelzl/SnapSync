@@ -17,8 +17,10 @@ flowchart LR
     domain_compose[":domain:compose"]
     domain_feature[":domain:feature"]
     domain_flow[":domain:flow"]
+    domain_host[":domain:host"]
     domain_model[":domain:model"]
     domain_ports[":domain:ports"]
+    domain_presentation[":domain:presentation"]
   end
   subgraph test
     test_contracts[":test:contracts"]
@@ -26,7 +28,6 @@ flowchart LR
   end
   subgraph ui
     ui_components[":ui:components"]
-    ui_presentation[":ui:presentation"]
     ui_screens[":ui:screens"]
   end
   adapter_generic_app --> domain_model
@@ -58,12 +59,17 @@ flowchart LR
   domain_feature --> domain_ports
   domain_flow --> domain_feature
   domain_flow --> domain_model
+  domain_host --> domain_compose
+  domain_host --> domain_feature
+  domain_host --> domain_model
+  domain_host --> domain_ports
+  domain_host --> domain_presentation
   domain_ports --> domain_model
+  domain_presentation --> domain_feature
+  domain_presentation --> domain_model
   ui_components --> domain_model
-  ui_presentation --> domain_feature
-  ui_presentation --> domain_model
   ui_screens --> domain_feature
   ui_screens --> domain_model
+  ui_screens --> domain_presentation
   ui_screens --> ui_components
-  ui_screens --> ui_presentation
 ```

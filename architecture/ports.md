@@ -25,16 +25,16 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Candidate` | `:domain:model` | `:adapter:generic:fake` InMemoryCandidate; `:adapter:ios:ext-safe` PhotoKitCandidate; `:domain:model` HeldCandidate, LazyCandidate | yes |
 | `CandidateRead` | `:domain:model` | `:domain:model` NotReadable, Readable | no |
 | `CandidateSource` | `:domain:ports` | `:adapter:generic:fake` Blowing, InMemoryCandidateSource, RecordingEnumerator, ResourceCandidates, Switchable; `:adapter:ios:ext-safe` PhotoKitCandidateSource; `:domain:compose` PermissionAwareCandidateSource, RecordingWalk; `:domain:feature` FactsSource, OneAsset, UnreadableSource | yes |
-| `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:ui:presentation` MovableClock; `:ui:screens` MovableClock | no |
+| `Clock` | `:domain:ports` | `:adapter:generic:app` SystemClock; `:domain:presentation` MovableClock; `:ui:screens` MovableClock | no |
 | `ConfigDecodeResult` | `:domain:model` | `:domain:model` Failure, Success | no |
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
-| `ConfigFileRead` | `:domain:ports` | `:domain:ports` Content, Failed, Missing | no |
-| `ConfigRead` | `:domain:ports` | `:domain:ports` Joined, None, Unavailable | no |
+| `ConfigFileRead` | `:domain:model` | `:domain:model` Content, Failed, Missing | no |
+| `ConfigRead` | `:domain:model` | `:domain:model` Joined, None, Unavailable | no |
 | `ConfigReader` | `:domain:ports` | `:adapter:generic:fake` InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore | yes |
 | `ConfigRefresh` | `:domain:ports` | `:adapter:ios:ext-safe` FileBackedConfigStore | no |
 | `ConfigSource` | `:domain:ports` | `:adapter:generic:fake` FakeConfigSource, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigSource | yes |
 | `ConfigStore` | `:domain:ports` | `:adapter:generic:fake` FakeConfigStore, InMemoryConfigStore; `:adapter:ios:ext-safe` FileBackedConfigStore; `:domain:feature` FakeConfig, FakeConfigStore | yes |
-| `CreateOutcome` | `:domain:ports` | `:domain:ports` Created, InvalidName, InvalidWindow, Transient | no |
+| `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:domain:feature` | `:domain:feature` MutableCreationStatusSource | no |
 | `CycleGate` | `:domain:feature` | `:domain:feature` NotJoined, Run, Skip, Withheld | no |
@@ -53,21 +53,24 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DownloadTransportHost` | `:domain:ports` | `:test:contracts` ClauseHost | yes |
 | `Enter` | `:domain:feature` | `:domain:feature` Join, LeavePrevious | no |
 | `EventCreation` | `:domain:ports` | `:adapter:generic:app` HttpEventCreation; `:domain:feature` FakeClient | yes |
-| `EventCreator` | `:domain:feature` | `:domain:feature` CreateEvent, NoOpEventCreator; `:ui:presentation` SpyCreator | no |
-| `EventDetails` | `:domain:ports` | `:domain:ports` Failed, Found, NotFound | no |
+| `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:model` NoOpEventCreator; `:domain:presentation` SpyCreator | no |
 | `EventDirectory` | `:domain:ports` | `:adapter:generic:app` HttpEventDirectory; `:domain:feature` FakeDetails | yes |
 | `EventJoin` | `:domain:ports` | `:adapter:generic:app` HttpEventJoin; `:domain:feature` CapturingJoin, FakeJoin | yes |
 | `EventLinkDelivery` | `:domain:model` | `:domain:model` Forwarded, NoWebpageUrl, NotBrowsingWeb | no |
+| `EventLookup` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
 | `EventRename` | `:domain:ports` | `:adapter:generic:app` HttpEventRename; `:domain:feature` FakeRename | yes |
 | `EventRenamer` | `:domain:feature` | `:domain:feature` NoOpEventRenamer, RenameEvent | no |
 | `EventUnionSource` | `:domain:ports` | `:adapter:generic:app` HttpEventUnionSource; `:adapter:generic:fake` EmptyUnion, FakeUnion, GateableUnion, RecordingUnion | yes |
 | `ExtensionEntries` | `:domain:ports` | `:app:ios:extension` UploadExtensionRoot | no |
 | `ExtensionRegistration` | `:domain:feature` | `:domain:feature` FakeRegistration, OsDrivenRegistration; `:test:architecture` PlatformRegistration | yes |
 | `GalleryStatusSource` | `:domain:ports` | `:adapter:generic:fake` InMemoryGalleryStatusSource; `:domain:feature` OwnDeviceGalleryStatusSource | yes |
-| `Handoff` | `:domain:ports` | `:domain:ports` Accepted, Refused | no |
-| `ImportResult` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
+| `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
+| `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:ports` | `:adapter:generic:fake` CountingPresence, InMemoryAssetPresence; `:adapter:ios:app-only` PhotoKitAssetPresence; `:domain:compose` PermissionAwareAssetPresence, RecordingLibrary; `:test:world` WorldAssetPresence | yes |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound | no |
+| `JoinPhase` | `:domain:model` | `:domain:model` Detailed, LoadFailed, Loading, NotFound | no |
+| `JoinedSurface` | `:domain:model` | `:domain:model` Reconfigure, Status | no |
+| `Layer` | `:domain:model` | `:domain:model` CreateEvent, CreatingEvent, Joined, JoiningEvent, UpdateRequired | no |
 | `LeaveNotifier` | `:domain:ports` | `:adapter:generic:app` HttpLeaveNotifier | no |
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` CountingSource, MutableLedgerCountsSource, ReadingLedgerCountsSource; `:domain:flow` CountingCounts | no |
 | `LedgerStore` | `:domain:ports` | `:adapter:generic:app` SqlDelightLedgerStore; `:adapter:generic:fake` InMemoryLedgerStore; `:domain:feature` FakeLedgerStore, InMemoryLedgerStore | yes |
@@ -76,7 +79,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LinkOpener` | `:domain:ports` | `:adapter:ios:app-only` IosLinkOpener | no |
 | `LogScope` | `:domain:ports` | `:adapter:ios:ext-safe` IosLogScope, IosThreadLogScope; `:domain:ports` NoOp, RecordingScope | no |
 | `ManifestPublisher` | `:domain:ports` | `:adapter:generic:app` HttpManifestPublisher; `:domain:feature` FakeUploader | yes |
-| `MembershipRead` | `:domain:ports` | `:domain:ports` Member, NotMember, Unreadable | no |
+| `MembershipRead` | `:domain:model` | `:domain:model` Member, NotMember, Unreadable | no |
 | `PhotoAccessRequester` | `:domain:ports` | `:adapter:generic:fake` InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission | yes |
 | `PhotoAccessStatusSource` | `:domain:ports` | `:adapter:generic:fake` FakePermissionSource, InMemoryPhotoAccess; `:adapter:ios:app-only` PhotoLibraryPermission; `:test:world` MutablePhotoAccessStatusSource | yes |
 | `PhotoDownloadJobs` | `:domain:ports` | `:adapter:generic:fake` NoopJobs, RecordingJobs; `:domain:feature` QueuedPhotoDownloadJobs | no |
@@ -90,17 +93,19 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PushRegistrationRecord` | `:domain:ports` | `:adapter:generic:fake` InMemoryPushRegistrationRecord; `:adapter:ios:app-only` IosPushRegistrationRecord; `:domain:feature` FakeRecord | yes |
 | `PushTokenPublisher` | `:domain:ports` | `:adapter:generic:app` HttpPushTokenPublisher; `:domain:feature` FakePushTokenPublisher | yes |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable | no |
-| `RenameOutcome` | `:domain:ports` | `:domain:ports` InvalidName, Renamed, Transient | no |
+| `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |
+| `RenameState` | `:domain:model` | `:domain:model` Failed, Idle, InFlight, Succeeded | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `RenameStatusSource` | `:domain:feature` | `:domain:feature` MutableRenameStatusSource | no |
 | `ResetRename` | `:domain:feature` | `:domain:feature` NoOpResetRename, RenameEvent | no |
 | `SceneMode` | `:domain:model` | `:domain:model` Deferred, Live | no |
 | `SecureStore` | `:domain:ports` | `:adapter:generic:fake` InMemorySecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosKeychain, NoSuchStore, StubSecureStore; `:domain:ports` FakeSecureStore | yes |
-| `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
-| `SecureStoreResolution` | `:domain:ports` | `:domain:ports` Adopted, Found, Minted | no |
+| `SecureStoreRead` | `:domain:model` | `:domain:model` Absent, Found, Unavailable | no |
+| `SecureStoreResolution` | `:domain:model` | `:domain:model` Adopted, Found, Minted | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Proceeding, Short | no |
+| `ShareCount` | `:domain:model` | `:domain:model` Counting, Ready, Unavailable | no |
 | `SharePresenter` | `:domain:ports` | `:adapter:ios:app-only` IosShareSheet | no |
 | `Slot` | `:domain:feature` | `:domain:feature` Held, Unread | no |
 | `StagedBytes` | `:domain:ports` | `:adapter:generic:fake` InMemoryStagedBytes, RecordingStagedBytes; `:adapter:ios:app-only` IosStagedBytes | yes |
@@ -108,10 +113,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SwitchDecision` | `:domain:feature` | `:domain:feature` Stay | no |
 | `SyncDecision` | `:domain:model` | `:domain:model` AlreadyUploaded | no |
 | `SyncEvent` | `:domain:model` | `:domain:model` ResourceChanged, UploadFailed, UploadStarted | no |
+| `SyncHealth` | `:domain:model` | `:domain:model` InSync, Loading, NeedsAccess, NotStarted, Syncing, Unattested | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
-| `SyncStatusSource` | `:domain:feature` | `:ui:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource, IdleSync | yes |
+| `SyncStatusSource` | `:domain:feature` | `:domain:presentation` ConstSyncStatusSource, FakeSync, FakeSyncStatusSource, IdleSync | yes |
 | `TimeZoneSource` | `:domain:ports` | `:adapter:generic:app` SystemTimeZone | no |
-| `TokenOutcome` | `:domain:ports` | `:domain:ports` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
+| `TokenOutcome` | `:domain:model` | `:domain:model` ChallengeStale, Minted, NotAttested, Refused, Unreachable | no |
 | `TransferRecord` | `:domain:ports` | — | no |
 | `UploadDiscovery` | `:domain:ports` | `:adapter:generic:fake` InMemoryUploadDiscovery; `:adapter:ios:ext-safe` IosDiscovery; `:domain:feature` FakePlatform, Library, RecordingDelegate, SelectionScopedDiscovery, WalkMemo; `:test:world` FakeUploadDiscovery | yes |
 | `UploadError` | `:domain:model` | `:domain:model` Cancelled, Http, Network, Unknown | no |

@@ -80,15 +80,15 @@
 
 ## 7. Specs, diagrams, docs (commit 6)
 
-- [ ] 7.1 `./gradlew architectureDiagrams` and commit `architecture/`.
-- [ ] 7.2 Update the CLAUDE.md module map:
+- [x] 7.1 `./gradlew architectureDiagrams` and commit `architecture/`.
+- [x] 7.2 Update the CLAUDE.md module map:
       - the `:domain:presentation`/`:domain:host` entries;
       - the read-model packages;
       - pure port data in model/;
       - `build-logic/` in the repo layout;
       - drop the "presentation-imports gate" wording.
       No law digest.
-- [ ] 7.3 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `… validate presentation-and-host-zones
+- [x] 7.3 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` and `… validate presentation-and-host-zones
       --strict`.
 
 ## 8. Final verification and archive (only when asked)

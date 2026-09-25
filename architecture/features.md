@@ -14,7 +14,7 @@ on drift; regenerate instead.
 ## `feature/creation`
 
 - files: `CreateEvent.kt`, `CreationStatus.kt`
-- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `CreationStatusSource (interface)`, `EventCreator (interface)`, `MutableCreationStatusSource (class)`, `NoOpEventCreator (object)`
+- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `CreationStatusSource (interface)`, `MutableCreationStatusSource (class)`
 
 ## `feature/diagnostics`
 
@@ -28,7 +28,7 @@ on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
+- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameCommands.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
 - top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventRenamer (interface)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `NoOpEventRenamer (object)`, `NoOpResetRename (object)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ResetRename (interface)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
@@ -53,12 +53,12 @@ on drift; regenerate instead.
 
 ## `feature/version`
 
-- files: `AppVersionGate.kt`
-- top-level types: `AppVersionGate (class)`
+- files: `AppVersionGate.kt`, `VersionRefusal.kt`
+- top-level types: `AppVersionGate (class)`, `VersionRefusal (class)`
 
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 
-Declared in `ui/presentation/src/forge/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.
+Declared in `domain/presentation/src/forge/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.
 
 | State | Forged inputs |
 |---|---|

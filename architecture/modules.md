@@ -13,7 +13,6 @@ flowchart LR
   adapter_generic_fake[":adapter:generic:fake"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
-  app_composition[":app:composition"]
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
@@ -21,8 +20,10 @@ flowchart LR
   domain_compose[":domain:compose"]
   domain_feature[":domain:feature"]
   domain_flow[":domain:flow"]
+  domain_host[":domain:host"]
   domain_model[":domain:model"]
   domain_ports[":domain:ports"]
+  domain_presentation[":domain:presentation"]
   test_architecture[":test:architecture"]
   test_contracts[":test:contracts"]
   test_control[":test:control"]
@@ -33,7 +34,6 @@ flowchart LR
   test_world[":test:world"]
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
-  ui_presentation[":ui:presentation"]
   ui_screens[":ui:screens"]
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
@@ -56,29 +56,24 @@ flowchart LR
   adapter_ios_ext_safe --> domain_model
   adapter_ios_ext_safe --> domain_ports
   adapter_ios_ext_safe --> test_contracts
-  app_composition --> domain_compose
-  app_composition --> domain_feature
-  app_composition --> domain_model
-  app_composition --> domain_ports
-  app_composition --> ui_presentation
   app_desktop --> adapter_generic_app
   app_desktop --> domain_feature
   app_desktop --> domain_model
   app_desktop --> domain_ports
+  app_desktop --> domain_presentation
   app_desktop --> test_control
   app_desktop --> test_world
   app_desktop --> ui_components
-  app_desktop --> ui_presentation
   app_desktop --> ui_screens
   app_ios --> adapter_generic_app
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
-  app_ios --> app_composition
   app_ios --> domain_compose
   app_ios --> domain_feature
+  app_ios --> domain_host
   app_ios --> domain_model
   app_ios --> domain_ports
-  app_ios --> ui_presentation
+  app_ios --> domain_presentation
   app_ios --> ui_screens
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_ios_ext_safe
@@ -87,7 +82,7 @@ flowchart LR
   app_ios_extension --> domain_model
   app_ios_extension --> domain_ports
   app_ios_forge --> domain_model
-  app_ios_forge --> ui_presentation
+  app_ios_forge --> domain_presentation
   app_ios_forge --> ui_screens
   domain_compose --> domain_feature
   domain_compose --> domain_flow
@@ -97,7 +92,14 @@ flowchart LR
   domain_feature --> domain_ports
   domain_flow --> domain_feature
   domain_flow --> domain_model
+  domain_host --> domain_compose
+  domain_host --> domain_feature
+  domain_host --> domain_model
+  domain_host --> domain_ports
+  domain_host --> domain_presentation
   domain_ports --> domain_model
+  domain_presentation --> domain_feature
+  domain_presentation --> domain_model
   test_architecture --> adapter_generic_app
   test_architecture --> domain_feature
   test_architecture --> domain_model
@@ -105,11 +107,16 @@ flowchart LR
   test_contracts --> domain_feature
   test_contracts --> domain_model
   test_contracts --> domain_ports
+  test_control --> domain_feature
+  test_control --> domain_model
+  test_control --> domain_presentation
   test_control --> test_rig
-  test_control --> ui_presentation
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_harness_driver --> app_desktop
+  test_integration --> domain_feature
+  test_integration --> domain_model
+  test_integration --> domain_presentation
   test_integration --> test_control
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
@@ -117,23 +124,22 @@ flowchart LR
   test_rig --> domain_feature
   test_rig --> domain_model
   test_rig --> domain_ports
+  test_rig --> domain_presentation
   test_rig --> test_contracts
   test_rig --> test_world
-  test_rig --> ui_presentation
   test_world --> adapter_generic_app
   test_world --> adapter_generic_fake
-  test_world --> app_composition
   test_world --> domain_compose
   test_world --> domain_feature
+  test_world --> domain_host
   test_world --> domain_model
   test_world --> domain_ports
+  test_world --> domain_presentation
   test_world --> test_contracts
   test_world --> test_edge
   ui_components --> domain_model
-  ui_presentation --> domain_feature
-  ui_presentation --> domain_model
   ui_screens --> domain_feature
   ui_screens --> domain_model
+  ui_screens --> domain_presentation
   ui_screens --> ui_components
-  ui_screens --> ui_presentation
 ```
