@@ -4,7 +4,7 @@ package app.snapsync.contracts
 
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.assertContentEquals

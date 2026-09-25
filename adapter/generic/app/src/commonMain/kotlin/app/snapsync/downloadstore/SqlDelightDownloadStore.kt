@@ -1,15 +1,15 @@
 package app.snapsync.downloadstore
 
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.DownloadCounts
-import app.snapsync.ports.DownloadState
+import app.snapsync.model.AssetRef
+import app.snapsync.model.DownloadCounts
+import app.snapsync.model.DownloadState
 import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.ImportableAsset
-import app.snapsync.ports.PendingDownload
-import app.snapsync.ports.PlannedAsset
-import app.snapsync.ports.PlannedResource
-import app.snapsync.ports.StagedResource
-import app.snapsync.ports.UnconfirmedImport
+import app.snapsync.model.ImportableAsset
+import app.snapsync.model.PendingDownload
+import app.snapsync.model.PlannedAsset
+import app.snapsync.model.PlannedResource
+import app.snapsync.model.StagedResource
+import app.snapsync.model.UnconfirmedImport
 
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver

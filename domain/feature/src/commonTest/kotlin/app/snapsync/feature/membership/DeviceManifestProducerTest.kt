@@ -17,7 +17,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.EventJoin
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 import app.snapsync.ports.ManifestPublisher
 
 import app.snapsync.model.Resource

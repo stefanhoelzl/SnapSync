@@ -63,6 +63,13 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
+import app.snapsync.model.EventDetails
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.PendingSwitch
+import app.snapsync.model.RenameState
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.UiState
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 

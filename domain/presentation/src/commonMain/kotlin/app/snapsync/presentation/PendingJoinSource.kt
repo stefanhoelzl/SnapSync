@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import app.snapsync.model.JoinPhase
 
 /**
  * An in-progress interactive join/switch confirmation (capability `join-event`): the event being

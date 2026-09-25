@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.EventJoin
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

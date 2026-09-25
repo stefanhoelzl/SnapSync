@@ -1,7 +1,7 @@
 package app.snapsync.join
 
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 import app.snapsync.ports.EventDirectory
 
 import app.snapsync.model.MillisInstant
@@ -22,14 +22,14 @@ import kotlinx.serialization.json.Json
  * [EventDirectory] over an injected Ktor [HttpClient] and host (Darwin on iOS, `MockEngine` in
  * tests). `GET <host>/events/<eventId>`: `200 { eventId, name, createdAt, startsAt, endsAt, deletesAt }`
  * with a **non-blank name** and a **non-null `startsAt`, `endsAt`, AND `deletesAt`** →
- * [EventDetails.Found]; a `200` missing
- * **any** — or carrying an empty/whitespace-only name — → [EventDetails.Failed] (malformed/transient,
- * retryable); `404` → [EventDetails.NotFound]; any
- * other status / transport / parse failure → [EventDetails.Failed].
+ * [EventLookup.Found]; a `200` missing
+ * **any** — or carrying an empty/whitespace-only name — → [EventLookup.Failed] (malformed/transient,
+ * retryable); `404` → [EventLookup.NotFound]; any
+ * other status / transport / parse failure → [EventLookup.Failed].
  *
  * The `404` ↔ `Failed` split is load-bearing beyond the join gate: it is the ONLY place "the event is
  * definitively gone" is separated from "I could not tell", and a membership is destroyed (capability
- * `manage-membership`) on the former. Every ambiguous outcome must keep landing on [EventDetails.Failed].
+ * `manage-membership`) on the former. Every ambiguous outcome must keep landing on [EventLookup.Failed].
  */
 class HttpEventDirectory(
     private val client: HttpClient,
@@ -39,7 +39,7 @@ class HttpEventDirectory(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun fetch(eventId: String): EventDetails =
+    override suspend fun fetch(eventId: String): EventLookup =
         runCatchingCancellable {
             val response = client.get("$base/events/$eventId")
             when (response.status) {
@@ -61,25 +61,25 @@ class HttpEventDirectory(
                     val endsAt = meta.endsAt?.let(::canonicalOrNull)
                     val deletesAt = meta.deletesAt?.let(::canonicalOrNull)
                     if (name != null && startsAt != null && endsAt != null && deletesAt != null) {
-                        EventDetails.Found(
+                        EventLookup.Found(
                             name = name,
                             startsAt = EventStart(startsAt),
                             endsAt = EventEnd(endsAt),
                             deletesAt = DeletesAt(deletesAt),
                         )
                     } else {
-                        EventDetails.Failed
+                        EventLookup.Failed
                     }
                 }
-                HttpStatusCode.NotFound -> EventDetails.NotFound
-                else -> EventDetails.Failed
+                HttpStatusCode.NotFound -> EventLookup.NotFound
+                else -> EventLookup.Failed
             }
-        }.getOrDefault(EventDetails.Failed)
+        }.getOrDefault(EventLookup.Failed)
 
     /**
      * Normalize the fetched `startsAt` into the canonical cutoff shape, or `null` when it does not parse.
      *
-     * This is the boundary that makes [EventDetails.Found.startsAt] canonical **by construction**, and it
+     * This is the boundary that makes [EventLookup.Found.startsAt] canonical **by construction**, and it
      * is not ceremony. The backend guarantees the shape for events created *after* start dates existed —
      * but for a **legacy** marker it synthesizes `startsAt` from `createdAt`, which `toISOString()` mints
      * with MILLISECONDS. An off-shape floor is quietly poisonous downstream: the clamp is a *lexicographic*

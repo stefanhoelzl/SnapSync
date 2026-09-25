@@ -4,8 +4,8 @@ import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.join.HttpEventJoin
 import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.DeviceListingShapeException
-import app.snapsync.ports.JoinResult
-import app.snapsync.ports.CreateOutcome
+import app.snapsync.model.JoinResult
+import app.snapsync.model.CreateOutcome
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.encodeToJson

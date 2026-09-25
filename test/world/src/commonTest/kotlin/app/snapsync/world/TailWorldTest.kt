@@ -5,7 +5,7 @@ import app.snapsync.compose.platformEntries
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.uploadKey
 import app.snapsync.model.ResourceRole
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.PlatformEntries
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout

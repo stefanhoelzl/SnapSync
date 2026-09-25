@@ -9,7 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.SyncHealth
+import app.snapsync.model.SyncHealth
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppEyebrow
 import app.snapsync.ui.components.EyebrowTone
@@ -20,7 +20,7 @@ import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 
 // The joined membership's own screen (capability `sync-status`): the QR to share, the sync
 // health line, and the actions row.

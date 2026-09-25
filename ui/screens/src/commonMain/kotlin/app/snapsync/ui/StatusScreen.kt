@@ -4,11 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import app.snapsync.model.EVENT_NAME_MAX_LENGTH
 import app.snapsync.model.EventConfig
-import app.snapsync.presentation.JoinedSurface
-import app.snapsync.presentation.Layer
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.RenameState
-import app.snapsync.presentation.UiState
+import app.snapsync.model.RenameState
+import app.snapsync.model.UiState
 import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppTheme

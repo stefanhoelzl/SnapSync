@@ -9,6 +9,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ShareCount
 
 /**
  * The capture-range resolution rules, tested **directly** (capability `photo-sharing`).

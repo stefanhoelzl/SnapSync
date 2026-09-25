@@ -1,9 +1,9 @@
 package app.snapsync.keychain
 
 import app.snapsync.ports.DeviceIdentityAbsent
-import app.snapsync.ports.SecureStoreRead
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.SecureStoreUnavailable
-import app.snapsync.ports.StoredProtection
+import app.snapsync.model.StoredProtection
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

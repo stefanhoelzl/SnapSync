@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.model.Arrow
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.SyncHealth
+import app.snapsync.model.Layer
+import app.snapsync.model.SyncHealth
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test

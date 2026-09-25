@@ -3,11 +3,11 @@ package app.snapsync.feature.download
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.PendingDownload
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.AssetRef
+import app.snapsync.model.PendingDownload
+import app.snapsync.model.PlannedResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

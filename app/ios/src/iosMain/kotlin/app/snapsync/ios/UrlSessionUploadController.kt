@@ -23,7 +23,7 @@ import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.feature.upload.AppUploadEvents

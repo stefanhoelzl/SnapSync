@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

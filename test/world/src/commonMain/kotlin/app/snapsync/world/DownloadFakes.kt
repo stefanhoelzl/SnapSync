@@ -3,7 +3,7 @@ package app.snapsync.world
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.ports.ImportResult
+import app.snapsync.model.ImportResult
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.fake.LibraryChangeAnswers
@@ -11,9 +11,9 @@ import app.snapsync.fake.inMemoryPhotoLibraryImporter
 import app.snapsync.fake.inMemoryLibraryPresence
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.CompletableDeferred
-import app.snapsync.ports.TransferOutcome
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.TransferOutcome
+import app.snapsync.model.AssetRef
+import app.snapsync.model.StagedResource
 import app.snapsync.model.AssetPresence
 
 /**

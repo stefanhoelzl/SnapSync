@@ -3,9 +3,9 @@ package app.snapsync.integration
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.eventStart
-import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.step
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.step
 import app.snapsync.rig.RigState
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.boolean

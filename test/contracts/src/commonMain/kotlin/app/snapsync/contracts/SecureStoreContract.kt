@@ -1,9 +1,9 @@
 package app.snapsync.contracts
 
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.SecureStoreRead
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.SecureStoreUnavailable
-import app.snapsync.ports.StoredProtection
+import app.snapsync.model.StoredProtection
 import app.snapsync.ports.resolveOrMint
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

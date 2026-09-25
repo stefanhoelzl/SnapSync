@@ -1,7 +1,7 @@
 package app.snapsync.membership
 
 import app.snapsync.ports.DeviceListingShapeException
-import app.snapsync.ports.StoredResource
+import app.snapsync.model.StoredResource
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope

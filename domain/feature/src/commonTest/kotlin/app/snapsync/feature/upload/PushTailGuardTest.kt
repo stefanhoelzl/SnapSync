@@ -4,7 +4,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.MembershipRead
+import app.snapsync.model.MembershipRead
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.test.Test

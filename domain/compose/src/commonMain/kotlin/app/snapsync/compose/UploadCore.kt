@@ -23,7 +23,7 @@ import app.snapsync.ports.PhotoGrantRead
 import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.UploadDiscovery
-import app.snapsync.ports.ConfigRead
+import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.DeviceIdentityAbsent

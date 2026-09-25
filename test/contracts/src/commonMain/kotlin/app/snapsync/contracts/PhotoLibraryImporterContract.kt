@@ -1,9 +1,9 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.AssetRef
-import app.snapsync.ports.ImportResult
+import app.snapsync.model.AssetRef
+import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoLibraryImporter
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.StagedResource
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals

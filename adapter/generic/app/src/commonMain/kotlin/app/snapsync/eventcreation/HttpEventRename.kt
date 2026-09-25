@@ -2,7 +2,7 @@ package app.snapsync.eventcreation
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.EventRename
-import app.snapsync.ports.RenameOutcome
+import app.snapsync.model.RenameOutcome
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.patch

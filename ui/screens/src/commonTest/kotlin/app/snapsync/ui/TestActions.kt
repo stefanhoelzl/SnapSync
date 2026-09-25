@@ -2,7 +2,7 @@ package app.snapsync.ui
 
 import androidx.compose.runtime.Composable
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.UiState
+import app.snapsync.model.UiState
 import app.snapsync.ui.components.RangeChoiceActions
 import kotlinx.datetime.LocalDateTime
 

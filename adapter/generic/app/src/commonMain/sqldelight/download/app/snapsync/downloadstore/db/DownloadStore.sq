@@ -1,4 +1,4 @@
-import app.snapsync.ports.DownloadState;
+import app.snapsync.model.DownloadState;
 
 -- One row per foreign asset this device is downloading / has imported (capability `receiving-photos`).
 -- Keyed by the SOURCE identity (the owning device + that device's assetId), which is stable across

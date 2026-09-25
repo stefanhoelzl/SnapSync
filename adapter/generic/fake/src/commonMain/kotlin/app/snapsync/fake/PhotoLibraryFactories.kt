@@ -3,7 +3,7 @@ package app.snapsync.fake
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
 import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.LibraryChangeTokenRead

@@ -1,9 +1,9 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.ports.DeviceIdentity
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 import app.snapsync.ports.EventDirectory
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.CaptureCeiling
@@ -58,7 +58,7 @@ class JoinEvent(
 ) {
 
     /** Fetch the event's details for the confirmation gate (loading → loaded/not-found/failed). */
-    suspend fun loadDetails(eventId: String): EventDetails = details.fetch(eventId)
+    suspend fun loadDetails(eventId: String): EventLookup = details.fetch(eventId)
 
     /**
      * Confirm the join for [eventId] with the loaded [name] (required, non-null — the gate only

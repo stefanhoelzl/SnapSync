@@ -1,9 +1,9 @@
 package app.snapsync.attest
 
 import app.snapsync.keychain.StubSecureStore
-import app.snapsync.ports.SecureStoreRead
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.SecureStoreUnavailable
-import app.snapsync.ports.StoredProtection
+import app.snapsync.model.StoredProtection
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

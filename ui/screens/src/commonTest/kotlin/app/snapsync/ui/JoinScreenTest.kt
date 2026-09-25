@@ -2,7 +2,7 @@
 
 package app.snapsync.ui
 
-import app.snapsync.presentation.ShareCount
+import app.snapsync.model.ShareCount
 import app.snapsync.model.captureCeiling
 
 import app.snapsync.model.EventConfig
@@ -38,22 +38,22 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import app.snapsync.model.Direction
 import app.snapsync.ui.components.LocalReduceMotion
-import app.snapsync.presentation.RangeForm
-import app.snapsync.presentation.ResolvedRange
-import app.snapsync.presentation.details
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ResolvedRange
+import app.snapsync.model.details
 import app.snapsync.model.CaptureDate
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.model.FromChoice
 import app.snapsync.model.UntilChoice
 import app.snapsync.ui.components.RangeChoiceActions
-import app.snapsync.presentation.Layer
-import app.snapsync.presentation.EventDetails
+import app.snapsync.model.Layer
+import app.snapsync.model.EventDetails
 import app.snapsync.model.DeletesAt
-import app.snapsync.presentation.JoinPhase
+import app.snapsync.model.JoinPhase
 import app.snapsync.presentation.CutoffFormatter
-import app.snapsync.presentation.PendingSwitch
-import app.snapsync.presentation.SyncHealth
-import app.snapsync.presentation.UiState
+import app.snapsync.model.PendingSwitch
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.UiState
 import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals

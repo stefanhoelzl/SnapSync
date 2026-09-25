@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 import app.snapsync.ports.EventDirectory
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -49,7 +49,7 @@ object EventDirectoryContract : Contract<EventDirectoryState, EdgeSubject<EventD
     override val clauses = clauses {
 
         clause("EXISTING_EVENT_IS_FOUND_WITH_ITS_WINDOW", EventDirectoryState.EVENT_EXISTS) { s ->
-            val found = assertIs<EventDetails.Found>(s.port.fetch(s.seeded.eventId))
+            val found = assertIs<EventLookup.Found>(s.port.fetch(s.seeded.eventId))
             assertEquals(s.seeded.event!!.name, found.name)
             assertEquals(SEEDED_STARTS_AT, found.startsAt.at.iso, "the start the creator chose")
             assertEquals(SEEDED_ENDS_AT, found.endsAt.at.iso, "the end the creator chose")
@@ -58,11 +58,11 @@ object EventDirectoryContract : Contract<EventDirectoryState, EdgeSubject<EventD
         }
 
         clause("UNKNOWN_EVENT_IS_NOT_FOUND", EventDirectoryState.NO_SUCH_EVENT) { s ->
-            assertEquals(EventDetails.NotFound, s.port.fetch(s.seeded.eventId), "absent is NotFound, never Failed")
+            assertEquals(EventLookup.NotFound, s.port.fetch(s.seeded.eventId), "absent is NotFound, never Failed")
         }
 
         clause("REFUSED_BUILD_LEARNS_THE_MINIMUM", EventDirectoryState.VERSION_REFUSED) { s ->
-            assertIsNot<EventDetails.Found>(s.port.fetch(s.seeded.eventId), "a refused build is served nothing")
+            assertIsNot<EventLookup.Found>(s.port.fetch(s.seeded.eventId), "a refused build is served nothing")
             assertTrue(s.gate.buildRefused, "the refusal reaches the app")
             val minimum = assertNotNull(s.gate.refusedMinimum, "the edge names the minimum and the client reads it")
             assertTrue(Regex("""\d+\.\d+""").matches(minimum), "the minimum is an X.Y marketing version: $minimum")
@@ -70,7 +70,7 @@ object EventDirectoryContract : Contract<EventDirectoryState, EdgeSubject<EventD
         }
 
         clause("THE_READ_IS_PUBLIC_WHATEVER_THE_CREDENTIAL", EventDirectoryState.FOREIGN_TOKEN) { s ->
-            assertIs<EventDetails.Found>(s.port.fetch(s.seeded.eventId), "the event read is authorized by the id alone")
+            assertIs<EventLookup.Found>(s.port.fetch(s.seeded.eventId), "the event read is authorized by the id alone")
             assertFalse(s.gate.credentialRejected, "a public read never starts credential recovery")
         }
     }

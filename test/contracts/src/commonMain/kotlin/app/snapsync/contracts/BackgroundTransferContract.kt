@@ -8,7 +8,7 @@ import app.snapsync.model.destinationPathOf
 import app.snapsync.model.toLedgerRow
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.LedgerStore
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

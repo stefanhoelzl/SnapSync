@@ -1,7 +1,7 @@
 package app.snapsync.share
 
 import app.snapsync.objc.objcBoundary
-import app.snapsync.ports.Handoff
+import app.snapsync.model.Handoff
 import app.snapsync.ports.SharePresenter
 import co.touchlab.kermit.Logger
 import kotlin.coroutines.resume

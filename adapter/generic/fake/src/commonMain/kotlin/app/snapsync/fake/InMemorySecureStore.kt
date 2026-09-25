@@ -1,9 +1,9 @@
 package app.snapsync.fake
 
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.SecureStoreRead
+import app.snapsync.model.SecureStoreRead
 import app.snapsync.ports.SecureStoreUnavailable
-import app.snapsync.ports.StoredProtection
+import app.snapsync.model.StoredProtection
 
 /**
  * The honest [SecureStore]: one addressed value in memory, held to the same contract as the Keychain and

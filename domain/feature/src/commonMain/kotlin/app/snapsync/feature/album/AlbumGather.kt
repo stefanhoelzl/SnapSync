@@ -7,7 +7,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.denormalizeAssetId
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.EventUnionSource

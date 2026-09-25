@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 import app.snapsync.ports.ExtensionEntries
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

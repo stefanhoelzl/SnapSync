@@ -6,8 +6,8 @@ import app.snapsync.model.APP_VERSION_HEADER
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.normalizeAssetId
-import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.Layer
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get

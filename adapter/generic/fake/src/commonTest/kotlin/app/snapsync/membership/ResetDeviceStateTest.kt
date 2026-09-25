@@ -6,9 +6,9 @@ import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.PlannedResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

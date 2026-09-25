@@ -41,6 +41,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.JoinedSurface
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.RangeForm
+import app.snapsync.model.ShareCount
+import app.snapsync.model.UiState
+import app.snapsync.model.step
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 

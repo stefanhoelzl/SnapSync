@@ -3,7 +3,7 @@ package app.snapsync.keychain
 import app.snapsync.ports.DeviceIdentity
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.SecureStoreResolution
+import app.snapsync.model.SecureStoreResolution
 import app.snapsync.ports.readExisting
 import app.snapsync.ports.resolveOrMint
 

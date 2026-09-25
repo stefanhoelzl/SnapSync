@@ -1,7 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.model.EventConfig
-import app.snapsync.ports.ConfigRead
+import app.snapsync.model.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore

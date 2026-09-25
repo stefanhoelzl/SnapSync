@@ -27,11 +27,11 @@ import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 import kotlin.test.Test
 
 /**

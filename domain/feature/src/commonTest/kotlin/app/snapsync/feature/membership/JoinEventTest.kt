@@ -1,8 +1,8 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.ports.EventDetails
+import app.snapsync.model.EventLookup
 import app.snapsync.ports.EventDirectory
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.CaptureCutoff
@@ -68,14 +68,14 @@ private class FakeEnroller(private val result: JoinResult = JoinResult.JOINED) :
     }
 }
 
-private class FakeDetails(private val result: EventDetails) : EventDirectory {
-    override suspend fun fetch(eventId: String): EventDetails = result
+private class FakeDetails(private val result: EventLookup) : EventDirectory {
+    override suspend fun fetch(eventId: String): EventLookup = result
 }
 
 private fun joinEvent(
     config: EventConfig?,
     enrollResult: JoinResult = JoinResult.JOINED,
-    details: EventDetails = EventDetails.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT),
+    details: EventLookup = EventLookup.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT),
     provisioned: MutableList<EventConfig> = mutableListOf(),
     enroller: FakeEnroller = FakeEnroller(enrollResult),
 ) = JoinEvent(
@@ -151,11 +151,11 @@ fun `switching to a different event enrolls`() = runTest {
 @Test
 fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
     assertEquals(
-        EventDetails.Found("N", STARTS_AT, ENDS_AT, DELETES_AT),
-        joinEvent(config = null, details = EventDetails.Found("N", STARTS_AT, ENDS_AT, DELETES_AT)).loadDetails(EVENT_A),
+        EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT),
+        joinEvent(config = null, details = EventLookup.Found("N", STARTS_AT, ENDS_AT, DELETES_AT)).loadDetails(EVENT_A),
     )
-    assertEquals(EventDetails.NotFound, joinEvent(config = null, details = EventDetails.NotFound).loadDetails(EVENT_A))
-    assertEquals(EventDetails.Failed, joinEvent(config = null, details = EventDetails.Failed).loadDetails(EVENT_A))
+    assertEquals(EventLookup.NotFound, joinEvent(config = null, details = EventLookup.NotFound).loadDetails(EVENT_A))
+    assertEquals(EventLookup.Failed, joinEvent(config = null, details = EventLookup.Failed).loadDetails(EVENT_A))
 }
 
     @Test

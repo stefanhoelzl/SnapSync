@@ -16,6 +16,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import app.snapsync.model.EventDetails
+import app.snapsync.model.JoinPhase
+import app.snapsync.model.Layer
+import app.snapsync.model.Overlays
+import app.snapsync.model.RangeForm
+import app.snapsync.model.SyncHealth
+import app.snapsync.model.UiState
 
 /** The shell binds the system clock/zone; the test binds a fixed instant (step 9: no system default). */
 private fun fixedFormatter() = CutoffFormatter(

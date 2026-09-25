@@ -1,4 +1,4 @@
-package app.snapsync.ports
+package app.snapsync.model
 
 /**
  * What became of something this app handed to the platform ([PlatformHandoff]).

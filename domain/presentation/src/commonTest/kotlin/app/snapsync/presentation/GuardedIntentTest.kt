@@ -31,6 +31,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import app.snapsync.model.Layer
+import app.snapsync.model.UiState
 
 private const val JOINED = "11111111-1111-4111-8111-111111111111"
 private const val OTHER = "22222222-2222-4222-8222-222222222222"

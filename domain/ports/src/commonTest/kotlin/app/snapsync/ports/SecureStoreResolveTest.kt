@@ -5,6 +5,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import app.snapsync.model.SecureStoreRead
+import app.snapsync.model.SecureStoreResolution
+import app.snapsync.model.StoredProtection
 
 private const val LOCKED = "OSStatus -25308" // errSecInteractionNotAllowed, as the iOS adapter formats it
 

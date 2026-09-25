@@ -161,7 +161,7 @@ class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, Transfe
                     val resource = usable(BackgroundTransferContract.key(clauseId, n = n + 1))
                     val url = base + BackgroundTransferContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
                     val created = platform.createJob(UploadRequest(url, mapOf("Content-Type" to "image/jpeg"), resource), resource)
-                    check(created == app.snapsync.ports.CreateResult.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
+                    check(created == app.snapsync.model.CreateResult.CREATED) { "filling the cap: transfer ${n + 1} was $created" }
                 }
             }
         }

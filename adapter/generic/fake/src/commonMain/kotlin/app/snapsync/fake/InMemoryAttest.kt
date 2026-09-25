@@ -1,7 +1,7 @@
 package app.snapsync.fake
 
 import app.snapsync.ports.AttestClient
-import app.snapsync.ports.TokenOutcome
+import app.snapsync.model.TokenOutcome
 import app.snapsync.ports.AttestKey
 
 /**

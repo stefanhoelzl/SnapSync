@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 import app.snapsync.model.normalizeAssetId
 
 import kotlin.test.Test

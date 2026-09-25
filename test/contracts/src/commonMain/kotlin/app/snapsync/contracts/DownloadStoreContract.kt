@@ -1,9 +1,9 @@
 package app.snapsync.contracts
 
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.DownloadStore
-import app.snapsync.ports.PlannedAsset
-import app.snapsync.ports.PlannedResource
+import app.snapsync.model.PlannedAsset
+import app.snapsync.model.PlannedResource
 
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

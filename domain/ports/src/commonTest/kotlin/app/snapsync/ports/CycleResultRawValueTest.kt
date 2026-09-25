@@ -2,6 +2,7 @@ package app.snapsync.ports
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import app.snapsync.model.CycleResult
 
 /**
  * The `PHBackgroundResourceUploadProcessingResult` raw values (capability `background-upload`;

@@ -2,7 +2,7 @@ package app.snapsync.attest
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.AttestClient
-import app.snapsync.ports.TokenOutcome
+import app.snapsync.model.TokenOutcome
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get

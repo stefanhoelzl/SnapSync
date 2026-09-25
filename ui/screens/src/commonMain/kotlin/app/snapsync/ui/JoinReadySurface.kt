@@ -15,8 +15,8 @@ import app.snapsync.ui.components.AppRangePresetChoices
 import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
-import app.snapsync.presentation.ResolvedRange
-import app.snapsync.presentation.ShareCount
+import app.snapsync.model.ResolvedRange
+import app.snapsync.model.ShareCount
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint

@@ -2,7 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadError
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError

@@ -6,11 +6,11 @@ import app.snapsync.ports.DownloadTask
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.TransferOutcome
 
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.ports.LogScope
-import app.snapsync.ports.PendingDownload
+import app.snapsync.model.PendingDownload
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope

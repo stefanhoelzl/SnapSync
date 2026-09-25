@@ -7,7 +7,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CandidateSource
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer

@@ -36,7 +36,7 @@ import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
 import app.snapsync.model.toLedgerRow
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi

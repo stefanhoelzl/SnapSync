@@ -198,7 +198,7 @@ private fun osAndLibraryLevers(world: World, afterRelaunch: () -> Unit): Map<Str
     "staging/seed-legacy-backlog" to RigCommand { params, _ ->
         val device = params["device"] ?: "DEV-LEGACY"
         val asset = params["asset"] ?: "LEGACY"
-        val paths = world.seedLegacyStagedBacklog(app.snapsync.ports.AssetRef(device, asset))
+        val paths = world.seedLegacyStagedBacklog(app.snapsync.model.AssetRef(device, asset))
         CommandResult.ok(buildJsonObject { putJsonArray("staged") { paths.sorted().forEach { add(JsonPrimitive(it)) } } }.toString())
     },
 )

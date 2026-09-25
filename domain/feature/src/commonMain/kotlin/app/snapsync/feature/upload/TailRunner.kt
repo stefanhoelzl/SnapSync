@@ -4,7 +4,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger

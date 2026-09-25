@@ -8,20 +8,20 @@ import app.snapsync.model.PermissionStatus
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.MembershipRead
+import app.snapsync.model.MembershipRead
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.ports.EventUnionSource
-import app.snapsync.ports.ImportResult
+import app.snapsync.model.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.UnionAsset
 
-import app.snapsync.ports.AssetRef
+import app.snapsync.model.AssetRef
 import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
-import app.snapsync.ports.PendingDownload
-import app.snapsync.ports.StagedResource
+import app.snapsync.model.PendingDownload
+import app.snapsync.model.StagedResource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

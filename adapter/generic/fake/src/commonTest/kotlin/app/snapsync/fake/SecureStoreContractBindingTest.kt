@@ -8,7 +8,7 @@ import app.snapsync.contracts.SecureStoreState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.verify
 import app.snapsync.ports.SecureStore
-import app.snapsync.ports.StoredProtection
+import app.snapsync.model.StoredProtection
 import kotlin.test.Test
 
 /** The honest [SecureStore], held to the contract every real store satisfies. It reaches every state. */

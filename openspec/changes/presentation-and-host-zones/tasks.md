@@ -30,14 +30,14 @@
 
 ## 3. UiState and pure port data into model/ (commit 3)
 
-- [ ] 3.1 Move `UiState.kt`'s data types and public helpers, plus `RangeForm`/`ResolvedRange`, to `app.snapsync.model`
-      (design D3). Keep `Overlays.maskedFor`, `ShareCount` and the `resolve*` helpers in presentation.
-- [ ] 3.2 Rename ports' `EventDetails` → `EventLookup` (its adapters, fakes, mini-edge, contracts and feature users).
-- [ ] 3.3 Move the port pure-data types listed in design D3 from `app.snapsync.ports` to `app.snapsync.model`. Leave
+- [x] 3.1 Move `UiState.kt`'s data types and public helpers, plus `RangeForm`/`ResolvedRange`, to `app.snapsync.model`
+      (design D3), with `ShareCount`. Keep `Overlays.maskedFor` and the `resolve*` helpers in presentation.
+- [x] 3.2 Rename ports' `EventDetails` → `EventLookup` (its adapters, fakes, mini-edge, contracts and feature users).
+- [x] 3.3 Move the port pure-data types listed in design D3 from `app.snapsync.ports` to `app.snapsync.model`. Leave
       the port-adjacent functions in `ports/` and add imports there.
-- [ ] 3.4 Fix imports across `:domain:*`, the adapters, `:adapter:generic:fake`, `:test:*`, `:app:*` and
+- [x] 3.4 Fix imports across `:domain:*`, the adapters, `:adapter:generic:fake`, `:test:*`, `:app:*` and
       `:tools:diagrams` where needed.
-- [ ] 3.5 Verify that no moved type retained logic or a port reference, by re-reading each moved file against the rule.
+- [x] 3.5 Verify that no moved type retained logic or a port reference, by re-reading each moved file against the rule.
 
 ## 4. Read-model packages (commit 4)
 
@@ -54,7 +54,7 @@
 
 - [ ] 5.1 `:ui:screens`: explicit `implementation` deps on presentation, model, feature, Orbit, datetime.
 - [ ] 5.2 `:test:control`: explicit deps on presentation, model, feature, for the integration surface too.
-      `:test:integration` (incl. `journeys`): declare what it names, including presentation for `ShareCount`.
+      `:test:integration` (incl. `journeys`): declare what it names explicitly.
 - [ ] 5.3 `:test:world` becomes the host; `:test:rig`, `:app:desktop`, `:app:ios` and `:app:ios:forge` get the new
       module paths and any dependency previously received transitively.
 - [ ] 5.4 Verify: `./gradlew build`; `./gradlew compileIosMainKotlinMetadata`;

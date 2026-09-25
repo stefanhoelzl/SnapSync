@@ -12,7 +12,7 @@ import app.snapsync.ports.UploadExtensionRegistry
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReader
 import app.snapsync.rig.gallery.photoKitCensus

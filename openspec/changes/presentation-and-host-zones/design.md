@@ -125,17 +125,19 @@ The whole change is a structural refactor. The shipped app's behaviour, every po
   type there.
 - **Why the rule and not the handoff's short list.** A partial move would leave the law "a port's pure-data types are
   declared in `model/`" false on the day it is written.
-- **The cost.** About 120 files change imports, including same-package users inside `ports/` that now need an import.
+- **The cost.** About 200 files change imports, including same-package users inside `ports/` that now need an import.
   The change is mechanical, and the compiler checks it.
 - **`UiState` into `model/`.** The move carries:
   - `UiState.kt`: `UiState`, `Overlays`, `Layer`, `RenameState`, `JoinedSurface`, `PendingSwitch`, `EventDetails`,
     `JoinPhase`, `SyncHealth` and the public helpers `joinPhase`, `JoinPhase.details` and `JoinPhase.step`.
-  - From `RangeForm.kt`: `RangeForm` and `ResolvedRange`.
+  - From `RangeForm.kt`: `RangeForm`, `ResolvedRange` and `ShareCount`. `ShareCount` has to move because
+    `ResolvedRange` carries one; the handoff had placed it in presentation.
 
   These stay in presentation:
-  - `internal fun Overlays.maskedFor`: reduction logic, and `internal` to presentation.
-  - `ShareCount`, `NO_CEILING_YEARS`, and the `resolve*` helpers along with `directionOf`, `nowWithinWindow` and
-    `reconfigureForm`.
+  - `internal fun Overlays.maskedFor` (now `OverlayMask.kt`): reduction logic, and `internal` to presentation.
+  - `NO_CEILING_YEARS` and the `resolve*` helpers, along with `directionOf`, `nowWithinWindow` and
+    `reconfigureForm`. The file keeping them is renamed `RangeResolution.kt`, since `RangeForm.kt` is now the
+    model/ file.
 - **Serialization and datetime.** `model/` already applies the serialization plugin and depends on kotlinx-datetime
   through `implementation`. `RangeForm` now puts `LocalDateTime` in `model/`'s public API, so every consumer that names
   it declares datetime itself. This follows the `implementation()`-only rule, and nothing is re-exported.

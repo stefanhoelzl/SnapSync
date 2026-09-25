@@ -23,7 +23,7 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CreateResult
+import app.snapsync.model.CreateResult
 import app.snapsync.ports.PlatformUploadJob
 import co.touchlab.kermit.Logger
 import platform.Foundation.NSFileManager

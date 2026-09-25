@@ -1,6 +1,6 @@
 package app.snapsync.control
 
-import app.snapsync.presentation.Layer
+import app.snapsync.model.Layer
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import kotlinx.coroutines.runBlocking

@@ -1,7 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.ports.EventJoin
-import app.snapsync.ports.JoinResult
+import app.snapsync.model.JoinResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

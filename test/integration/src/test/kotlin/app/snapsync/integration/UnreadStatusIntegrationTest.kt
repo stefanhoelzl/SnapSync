@@ -1,6 +1,6 @@
 package app.snapsync.integration
 
-import app.snapsync.presentation.SyncHealth
+import app.snapsync.model.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

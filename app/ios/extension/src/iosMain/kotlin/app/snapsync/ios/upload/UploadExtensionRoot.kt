@@ -26,7 +26,7 @@ import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.ports.CycleResult
+import app.snapsync.model.CycleResult
 import app.snapsync.ports.processingResultRawValue
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore

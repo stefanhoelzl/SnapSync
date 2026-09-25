@@ -25,8 +25,8 @@ laws are already true.
   - Consumers that used to receive model, feature, Orbit or datetime transitively now declare them.
 - **`UiState` into model/.**
   - Moves to `app.snapsync.model`: `UiState.kt` with its nested types (`JoinPhase`, `EventDetails`, `Overlays`, `Layer`,
-    …), plus `RangeForm` and `ResolvedRange`.
-  - Stays in presentation: the reduction logic, including `resolve*`, `Overlays.maskedFor` and `ShareCount`.
+    …), plus `RangeForm`, `ResolvedRange` and `ShareCount` (a `ResolvedRange` field).
+  - Stays in presentation: the reduction logic, including `resolve*` and `Overlays.maskedFor`.
 - **Pure port data into model/.** A type moves if and only if it is a data or enum class, or a sealed class or
   interface, with no port or logic reference.
   - Ports' `EventDetails` is renamed `EventLookup`, because presentation's `EventDetails` now lives in model/.
