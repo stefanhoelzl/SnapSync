@@ -58,7 +58,7 @@ class IosPushRegistrationRecord(
         checkedObjC("createDirectoryAtURL") {
             fileManager.createDirectoryAtURL(container, withIntermediateDirectories = true, attributes = null, error = it)
         }.onFailure { log.w(it) { "record directory could not be created — the write below fails" } }
-        val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData ?: return
+        val data = NSString.create(string = value).dataUsingEncoding(NSUTF8StringEncoding) ?: return
         if (!data.writeToURL(url, atomically = true)) {
             log.w { "the registration record was not written — the next entry publishes again" }
         }

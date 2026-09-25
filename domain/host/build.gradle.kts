@@ -28,6 +28,8 @@ kotlin {
             implementation(project(":domain:feature"))
             implementation(project(":domain:compose"))
             implementation(project(":domain:presentation"))
+            // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
+            implementation(libs.orbit.core)
             implementation(libs.kermit)
             // The one `CutoffFormatter` is built here, over the display clock and the `TimeZone`.
             implementation(libs.kotlinx.datetime)
