@@ -53,7 +53,7 @@ internal fun readTextFile(path: String): String? {
 
 /** Write [text] to [path], creating or replacing it. */
 internal fun writeTextFile(path: String, text: String) {
-    val data = (text as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData ?: return
+    val data = NSString.create(string = text).dataUsingEncoding(NSUTF8StringEncoding) ?: return
     data.writeToFile(path, atomically = true)
 }
 

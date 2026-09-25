@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalStdlibApi::class, ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalStdlibApi::class, ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 
 package app.snapsync.rig.hook
 
@@ -41,6 +41,7 @@ import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSURL
+import platform.Foundation.create
 import platform.Foundation.writeToFile
 import platform.Foundation.NSUserActivity
 import platform.Foundation.NSUserActivityTypeBrowsingWeb
@@ -80,8 +81,11 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * a source answering `null` and this line is its only assigner anywhere, so a build compiled without
  * `-Psnapsync.rig=true` — which contains none of this file — cannot carry a pin at all.
  */
+// DEPRECATION: `@EagerInitialization` is deprecated with no replacement, and it is the only way this hook
+// runs at all — production holds no call site into the rig, by construction. If Kotlin removes it, the
+// rig needs a new entry, not a quieter warning.
 @EagerInitialization
-@Suppress("unused")
+@Suppress("unused", "DEPRECATION")
 private val uploaderSwitch: Unit = run {
     SnapSyncRoot.uploaderPinSource = UploaderPinSource(UploaderSwitch::pinned)
 }
@@ -99,7 +103,7 @@ private val inviteLinkHints: Unit = run {
 }
 
 @EagerInitialization
-@Suppress("unused")
+@Suppress("unused", "DEPRECATION") // see `uploaderSwitch` above
 private val rigBoot: Unit = startRig()
 
 private fun startRig() = RigServer(
@@ -188,7 +192,7 @@ private fun iosHooks() = RigHooks(
  * that finds no port file is already in exactly the state this file exists to make visible.
  */
 private fun writeTextFile(path: String?, text: String) {
-    (text as NSString).writeToFile(path.orEmpty(), atomically = true, encoding = NSUTF8StringEncoding, error = null)
+    NSString.create(string = text).writeToFile(path.orEmpty(), atomically = true, encoding = NSUTF8StringEncoding, error = null)
 }
 
 /**

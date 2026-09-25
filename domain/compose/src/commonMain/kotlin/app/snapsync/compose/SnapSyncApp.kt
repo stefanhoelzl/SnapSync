@@ -547,7 +547,6 @@ class AppCore internal constructor(
                     "remains until the sweep (the accepted abandon-leak)"
             }
         }
-        Unit
     }
 
     // The leave use-case: stop the producer, clear the upload ledger (the ledger is the current

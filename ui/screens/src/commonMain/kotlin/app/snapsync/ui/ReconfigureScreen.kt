@@ -153,7 +153,6 @@ internal fun SwitchDialog(
             // `JoiningEvent` and not this overlay (capability `join-event`). CommitFailed cannot occur
             // either: this dialog's confirm runs only the leave, so no commit can fail while the previous
             // event is still configured. Committing is transient — no dialog while a commit runs.
-            Unit
         } else {
             AppDestructiveConfirmDialog(
                 // The names carry the whole weight of the decision, so they are the whole body; the title

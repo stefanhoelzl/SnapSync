@@ -194,7 +194,7 @@ class FileBackedConfigStore(
     private fun writeFile(text: String) {
         val path = configFilePath()
             ?: error("App Group container '$LEDGER_APP_GROUP' unavailable — cannot persist config")
-        val data = (text as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData
+        val data = NSString.create(string = text).dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("config file content did not encode as UTF-8")
         checkedObjC("writeToFile") {
             data.writeToFile(

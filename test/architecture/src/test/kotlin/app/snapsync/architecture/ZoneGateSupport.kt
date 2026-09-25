@@ -70,7 +70,7 @@ internal object ZoneGates {
                 "re-point the scan rather than letting this gate pass on an absent scope",
         )
         assertTrue(
-            files!!.isNotEmpty(),
+            files.isNotEmpty(),
             "$gate gate: the `$zone` zone exists but the scan matched no sources — layout changed; " +
                 "fix the scan or this gate fails open forever",
         )

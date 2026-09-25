@@ -78,7 +78,7 @@ class IosDeviceManifestStore(
             fileManager.createDirectoryAtURL(container, withIntermediateDirectories = true, attributes = null, error = it)
         }.onFailure { log.w(it) { "manifest directory could not be created — the write below fails" } }
         val url = fileUrl(name) ?: return
-        val data = (content as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData ?: return
+        val data = NSString.create(string = content).dataUsingEncoding(NSUTF8StringEncoding) ?: return
         data.writeToURL(url, atomically = true)
     }
 

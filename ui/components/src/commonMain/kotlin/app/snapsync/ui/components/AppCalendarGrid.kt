@@ -16,8 +16,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -198,7 +198,7 @@ internal fun MonthHeader(month: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChevronButton(Icons.Filled.KeyboardArrowLeft, "Previous month", onPrev)
+        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", onPrev)
         Text(
             text = "${monthName(month.month.ordinal.plus(1))} ${month.year}",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -206,7 +206,7 @@ internal fun MonthHeader(month: LocalDate, onPrev: () -> Unit, onNext: () -> Uni
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
-        ChevronButton(Icons.Filled.KeyboardArrowRight, "Next month", onNext)
+        ChevronButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month", onNext)
     }
 }
 

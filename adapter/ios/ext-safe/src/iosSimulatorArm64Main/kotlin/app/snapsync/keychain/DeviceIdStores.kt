@@ -139,7 +139,7 @@ internal class AppGroupFileSecureStore(
     override fun write(value: String): Unit = memScoped {
         val path = filePath()
             ?: throw SecureStoreUnavailable("App Group container '$LEDGER_APP_GROUP' unavailable — cannot persist the device id")
-        val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData
+        val data = NSString.create(string = value).dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("device id did not encode as UTF-8")
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val ok = data.writeToFile(

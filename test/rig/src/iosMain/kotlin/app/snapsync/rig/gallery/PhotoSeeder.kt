@@ -101,7 +101,7 @@ fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
                     val aboveFloor = (policyProbe && index % 2 == 0) || noise
                     val image = if (noise) noiseImage(index) else solidColorImage(index, aboveFloor)
                     if (image != null) {
-                        PHAssetCreationRequest.creationRequestForAssetFromImage(image)?.apply {
+                        PHAssetCreationRequest.creationRequestForAssetFromImage(image).apply {
                             // One minute apart, so every asset has a distinct, deterministic capture date.
                             setCreationDate(NSDate.dateWithTimeIntervalSince1970(base0 + index * 60.0))
                         }

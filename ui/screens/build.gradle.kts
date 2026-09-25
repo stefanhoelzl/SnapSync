@@ -33,8 +33,8 @@ kotlin {
             api(libs.kotlinx.datetime)
             implementation(libs.orbit.core)
             implementation(project(":ui:components"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
         }
         // The screen tests live in commonTest, so they run on BOTH the JVM (fast loop, offscreen —
         // see the jvm block above) and iosSimulatorArm64 (`ios-test` in CI). That is the standing rule
@@ -44,8 +44,7 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             // The multiplatform `runComposeUiTest` API (no JUnit4 rule — that artifact is JVM-only).
-            @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-            implementation(compose.uiTest)
+            implementation(libs.compose.ui.test)
         }
         jvmTest.dependencies {
             // Skiko's desktop native binaries — the JVM renderer the offscreen scene draws into.

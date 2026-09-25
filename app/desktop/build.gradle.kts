@@ -40,11 +40,11 @@ dependencies {
     implementation(project(":test:control"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
     implementation(libs.kermit)
-    implementation(compose.runtime)
-    implementation(compose.foundation)
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.foundation)
     // The panels are deliberately raw Material 3, never App* (specs: full-stack-harness,
     // desktop-test-harness); the applications need the desktop window/runtime.
-    implementation(compose.material3)
+    implementation(libs.compose.material3)
     implementation(compose.desktop.currentOs)
 }
 

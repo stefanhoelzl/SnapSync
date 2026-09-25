@@ -74,7 +74,7 @@ jobs:
   # all answer "deploy". A redundant deploy is probed and harmless; a skipped one leaves production behind
   # `main` with no signal at all.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     outputs:
@@ -208,7 +208,7 @@ jobs:
   api:
     needs: changes
     if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       actions: read
@@ -378,7 +378,7 @@ jobs:
 
       - name: Publish the maintenance window
         if: steps.live.outputs.sha != ''
-        uses: BunnyWay/actions/deploy-script@main
+        uses: BunnyWay/actions/deploy-script@0cae4ba05838d2707b3d5ed779f15c6bc2b43267 # deploy-script@0.5.1
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
@@ -465,7 +465,7 @@ jobs:
       #     This is the ONE publish of the real bundle, on both paths: without a pending migration it
       #     ships the artifact built above, and with one it ships the re-bundle that lifts the window. ---
       - name: Deploy to bunny Edge Scripting
-        uses: BunnyWay/actions/deploy-script@main
+        uses: BunnyWay/actions/deploy-script@0cae4ba05838d2707b3d5ed779f15c6bc2b43267 # deploy-script@0.5.1
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
@@ -525,7 +525,7 @@ jobs:
       # opens, never at rollback time, so an expired archive costs a refused deploy rather than a stuck
       # outage — and re-seeding it is one non-migrating deploy.
       - name: Archive this bundle for a future rollback
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: bundle-${{ github.sha }}
           path: api/dist/main.js
@@ -575,7 +575,7 @@ jobs:
 
       - name: Publish the restored bundle
         if: failure() && steps.live.outputs.sha != ''
-        uses: BunnyWay/actions/deploy-script@main
+        uses: BunnyWay/actions/deploy-script@0cae4ba05838d2707b3d5ed779f15c6bc2b43267 # deploy-script@0.5.1
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
@@ -610,7 +610,7 @@ jobs:
   # script-scoped deploy key. Routing is not configured here: it lives in the api bundle as source-owned
   # code (no pull-zone edge rules). Capability backend-deployment.
   site:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -660,7 +660,7 @@ jobs:
   # pinned, checksum-verified third-party binary (see asc_fetch.sh).
   appstore-metadata-apply:
     name: appstore-metadata-apply
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     env:

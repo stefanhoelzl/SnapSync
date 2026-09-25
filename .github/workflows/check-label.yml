@@ -29,7 +29,7 @@ jobs:
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted).
     name: check-label
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Require a changelog label
         env:

@@ -43,13 +43,13 @@ kotlin {
             // Shared sync vocabulary in App* signatures (`model/`'s Arrow — the step-9 Arrow/ArrowLevel
             // unification): the ONE enum both presentation's reduction and this skin render from.
             api(project(":domain:model"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
             // The ONLY module allowed to depend on Material 3 (spec: docs/architecture.md).
-            implementation(compose.material3)
+            implementation(libs.compose.material3)
             // Material icon glyphs (e.g. the leave action's Logout). Contained here like Material 3 —
             // the `Icons.*` import never leaves this module; no `App*` signature carries a glyph type.
-            implementation(compose.materialIconsExtended)
+            implementation(libs.compose.material.icons.extended)
             // QR rendering for AppQrCode — Compose-MP-native, contained to this module like Material 3
             // (the qrose import never leaves this module; no `App*` signature carries a QR type).
             implementation(libs.qrose)
@@ -62,7 +62,7 @@ kotlin {
         // exercised through :ui:screens, but the picker dialog's internals warrant a direct probe.
         jvmTest.dependencies {
             implementation(kotlin("test"))
-            implementation(compose.desktop.uiTestJUnit4)
+            implementation(libs.compose.ui.test.junit4)
             implementation(compose.desktop.currentOs)
         }
     }

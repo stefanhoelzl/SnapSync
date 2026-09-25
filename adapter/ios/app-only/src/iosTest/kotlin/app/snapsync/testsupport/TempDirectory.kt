@@ -4,12 +4,12 @@ package app.snapsync.testsupport
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSString
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUUID
+import platform.Foundation.create
 import platform.Foundation.dataUsingEncoding
 import platform.Foundation.writeToFile
 
@@ -43,7 +43,7 @@ internal fun removeDirectory(path: String) {
 
 /** Write [text] to [path], creating or replacing it. */
 internal fun writeTextFile(path: String, text: String) {
-    val data = (text as NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData ?: return
+    val data = NSString.create(string = text).dataUsingEncoding(NSUTF8StringEncoding) ?: return
     data.writeToFile(path, atomically = true)
 }
 

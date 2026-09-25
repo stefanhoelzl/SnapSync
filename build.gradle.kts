@@ -444,3 +444,24 @@ tasks.register("architectureDiagrams") {
     description = "Regenerate every derived diagram under architecture/ (`docs/architecture.md`)."
     dependsOn(architectureModulesDiagram, ":tools:diagrams:generate")
 }
+
+// ---- Compiler warnings are errors -------------------------------------------------------------
+//
+// Every Kotlin compilation in every module fails on a warning, so a new one is fixed where it is
+// introduced instead of joining a backlog nobody reads (147 had accumulated in CI logs by 2026-09).
+// A warning that is deliberate is silenced AT ITS SITE (`@Suppress`, `@OptIn`) with the reason next
+// to it, never here. Build scripts are held to the same rule by
+// `org.gradle.kotlin.dsl.allWarningsAsErrors` in gradle.properties.
+//
+// The shared-source-set METADATA compilations (`compile*KotlinMetadata`) are the one exemption, and it
+// costs no coverage: every source set they compile is also compiled by a platform compilation (jvm,
+// iosArm64, iosSimulatorArm64), which is strict, so a warning in `commonMain`/`iosMain` code still fails
+// the build there. What only the metadata compilation reports is the Kotlin/Native KLIB loader's
+// "same unique_name found in more than one library" — Compose Multiplatform puts both its
+// `org.jetbrains.compose.*` and Google's `androidx.compose.*` commonMain klibs on the iosMain metadata
+// classpath, which no source change here can fix.
+subprojects {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>()
+        .matching { !it.name.endsWith("KotlinMetadata") }
+        .configureEach { compilerOptions.allWarningsAsErrors.set(true) }
+}

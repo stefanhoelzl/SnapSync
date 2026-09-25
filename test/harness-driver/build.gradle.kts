@@ -22,11 +22,11 @@ dependencies {
     // The two harness roots this drives — ForgeHarnessRoot AND WorldHarnessRoot both live in
     // `:app:desktop` since the migration step-10 fold.
     implementation(project(":app:desktop"))
-    implementation(compose.runtime)
+    implementation(libs.compose.runtime)
     // `runDesktopComposeUiTest` + `captureToImage` — an `implementation` dep (not `testImplementation`):
     // the driver is a `main()`, not a test. The offscreen Compose scene it renders into is a CPU raster
     // Skia surface, which is exactly what the ui-test artifact provides and nothing else does.
-    implementation(compose.desktop.uiTestJUnit4)
+    implementation(libs.compose.ui.test.junit4)
     implementation(compose.desktop.currentOs)
 }
 

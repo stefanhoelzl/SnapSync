@@ -165,7 +165,6 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             leave = leave,
             create = { name, startsAt, endsAt ->
                 scope.launch { creator.create(name, startsAt.at.iso, endsAt.at.iso) }
-                Unit
             },
             commitJoin = ::commitJoin,
             // Harness share stub (test equipment): copy the invite URL to the clipboard and log it.

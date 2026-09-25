@@ -32,7 +32,7 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
         val wanted = refs.toSet()
         return q.selectImportedLocalIds { device, asset, localId -> AssetRef(device, asset) to localId }
             .executeAsList()
-            .mapNotNull { (ref, localId) -> if (ref in wanted && localId != null) ref to localId else null }
+            .filter { (ref, _) -> ref in wanted }
             .toMap()
     }
 
@@ -98,12 +98,11 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
         }.executeAsList()
 
     override suspend fun unconfirmedImports(): List<UnconfirmedImport> =
-        // The marker is non-null by the query's own `IS NOT NULL`, but the generated column type is
-        // nullable, and the row mapper may not return null — so the mapper stays total and the narrowing
-        // happens here, without an assertion that would outlive the query it depends on.
+        // The marker is non-null by the query's own `IS NOT NULL`, and SQLDelight narrows the generated
+        // column type from it — so no narrowing (and no assertion) is needed here.
         q.selectUnconfirmedAssets { device, asset, createdLocalId ->
-            AssetRef(device, asset) to createdLocalId
-        }.executeAsList().mapNotNull { (ref, id) -> id?.let { UnconfirmedImport(ref, it) } }
+            UnconfirmedImport(AssetRef(device, asset), createdLocalId)
+        }.executeAsList()
 
     override suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
         q.selectResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId) { key, _, role, contentType, original, staged ->
