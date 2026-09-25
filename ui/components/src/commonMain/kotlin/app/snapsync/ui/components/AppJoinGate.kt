@@ -13,12 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Rule
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Rule
 import androidx.compose.material.icons.outlined.SyncProblem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -213,5 +213,5 @@ val JoinNoticeOffline: ImageVector = Icons.Outlined.CloudOff
 val JoinNoticeFailed: ImageVector = Icons.Outlined.SyncProblem
 val JoinAccessShare: ImageVector = Icons.Outlined.PhotoCamera
 val JoinAccessLibrary: ImageVector = Icons.Outlined.PhotoLibrary
-val JoinAccessChoose: ImageVector = Icons.Outlined.Rule
+val JoinAccessChoose: ImageVector = Icons.AutoMirrored.Outlined.Rule
 val JoinAccessCutoff: ImageVector = Icons.Outlined.Event

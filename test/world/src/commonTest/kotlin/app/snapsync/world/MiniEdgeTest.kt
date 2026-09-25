@@ -106,7 +106,7 @@ class MiniEdgeTest {
         val outcome = HttpEventCreation(miniEdgeClient(store), host)
             .create("Party", "2026-07-14T18:00:00Z", null)
         assertTrue(outcome is CreateOutcome.Created)
-        val eventId = (outcome as CreateOutcome.Created).eventId
+        val eventId = outcome.eventId
         assertTrue(store.isRegistered(eventId))
         assertEquals("2026-07-14T18:00:00Z", store.startsAtOf(eventId), "the start date is stored")
     }

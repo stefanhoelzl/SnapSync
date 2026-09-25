@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package app.snapsync.presentation
 
 import app.snapsync.model.eventStart

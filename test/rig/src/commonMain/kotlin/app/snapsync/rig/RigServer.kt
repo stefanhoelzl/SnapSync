@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
@@ -30,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newFixedThreadPoolContext
@@ -97,6 +100,9 @@ class RigServer(
     private val log: Logger = Logger.withTag("rig"),
 ) {
 
+    // Delicate because a thread pool must be closed by hand: `stop()` does, for the one host that outlives
+    // its server; the app host holds it for the life of the process (see "Its own lane").
+    @OptIn(DelicateCoroutinesApi::class)
     private val lane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-rig")
     private val scope = CoroutineScope(SupervisorJob() + lane)
 

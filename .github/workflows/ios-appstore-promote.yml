@@ -73,7 +73,7 @@ concurrency:
 jobs:
   promote:
     name: ios-appstore-promote
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       ASC_APP_ID: "6781692480"
       BUILD_NUMBER: ${{ inputs.build_number }}
@@ -95,10 +95,12 @@ jobs:
       - name: Fetch pinned asc
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
 
-      # For appstore_release.py. release_notes.py needs nothing beyond the standard library: it
-      # carries its own label→heading table and speaks to GitHub over urllib.
-      - name: Install the App Store Connect client
-        run: pip install --quiet 'pyjwt[crypto]' requests
+      # For appstore_release.py, whose dependencies are declared inline (PEP 723) and resolved by
+      # `uv run` into its own ephemeral environment — never a `pip install` into the system Python,
+      # which an externally-managed (PEP 668) image refuses. release_notes.py needs nothing beyond the
+      # standard library: it carries its own label→heading table and speaks to GitHub over urllib.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
 
       # For the screenshot composite below. Installed HERE, with the other tooling, so a missing package
       # fails the run BEFORE any App Store Connect mutation rather than half-way through a release.
@@ -118,7 +120,7 @@ jobs:
       # is not two-part X.Y (e.g. a pre-change 0.1.0 build cannot be promoted). Emits `version` output.
       - name: Resolve the store version from the build
         id: resolve
-        run: python .github/scripts/appstore_release.py resolve "$ASC_APP_ID" "$BUILD_NUMBER"
+        run: uv run .github/scripts/appstore_release.py resolve "$ASC_APP_ID" "$BUILD_NUMBER"
 
       - name: Carry the derived version into env
         run: |
@@ -204,7 +206,7 @@ jobs:
       # to be VALID (an already-uploaded build is normally VALID immediately) and is idempotent. The store
       # version is derived from the build itself, so no version argument is passed.
       - name: Attach the build to its App Store version record
-        run: python .github/scripts/appstore_release.py release "$ASC_APP_ID" "$BUILD_NUMBER"
+        run: uv run .github/scripts/appstore_release.py release "$ASC_APP_ID" "$BUILD_NUMBER"
 
       # The listing SCREENSHOTS for the version we just prepared (`docs/deployment.md`). This
       # is the ONLY automated writer of the App Store screenshot set.

@@ -682,7 +682,7 @@ class StatusContainerHost(
      */
     fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
         val p = pending.state.value ?: return@guardedIntent
-        val ph = p.phase?.takeIf { it.step == JoinPhase.Detailed.Step.Ready } as? JoinPhase.Detailed ?: return@guardedIntent
+        val ph = p.phase.takeIf { it.step == JoinPhase.Detailed.Step.Ready } as? JoinPhase.Detailed ?: return@guardedIntent
         overlaysState.value = Overlays() // every overlay belongs to the layer being left
         commands.leave()
         // Only onto the pending join this switch started from: a member who cancelled while the leave ran keeps

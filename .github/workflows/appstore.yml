@@ -32,7 +32,7 @@ jobs:
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted).
     name: appstore-metadata-validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
       # Validate what will actually be APPLIED, not the committed templates. The listing's

@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package app.snapsync.status
 
 import app.snapsync.model.SyncProgress

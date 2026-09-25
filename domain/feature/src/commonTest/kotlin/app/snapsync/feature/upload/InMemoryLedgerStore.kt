@@ -44,11 +44,11 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun resetTo(seed: List<LedgerEntry>) {
-        val next = seed.associateByTo(mutableMapOf()) { it.key }
-        version += entries.size + next.size
-        entries.clear()
-        entries.putAll(next)
+    override suspend fun resetTo(entries: List<LedgerEntry>) {
+        val next = entries.associateByTo(mutableMapOf()) { it.key }
+        version += this.entries.size + next.size
+        this.entries.clear()
+        this.entries.putAll(next)
         dings.tryEmit(Unit)
     }
 

@@ -1,6 +1,12 @@
 [versions]
 kotlin = "2.4.0"
 compose = "1.11.1"
+# Compose Multiplatform versions Material 3 separately from the rest of the framework; this is the
+# release compose 1.11.1 paired with when its (now deprecated) `compose.material3` accessor was used.
+compose-material3 = "1.9.0"
+# Versioned separately from compose too: the release the deprecated `compose.materialIconsExtended`
+# accessor resolved to under compose 1.11.1.
+compose-material-icons = "1.7.3"
 foojay = "1.0.0"
 jdk = "25"
 orbit = "10.0.0"
@@ -20,6 +26,13 @@ sentry-kmp = "0.27.0"
 sentry-cocoa = "8.58.2"
 
 [libraries]
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
+compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose" }
+compose-ui-test-junit4 = { module = "org.jetbrains.compose.ui:ui-test-junit4", version.ref = "compose" }
+compose-material-icons-extended = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "compose-material-icons" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material3" }
 orbit-core = { module = "org.orbit-mvi:orbit-core", version.ref = "orbit" }
 orbit-test = { module = "org.orbit-mvi:orbit-test", version.ref = "orbit" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }

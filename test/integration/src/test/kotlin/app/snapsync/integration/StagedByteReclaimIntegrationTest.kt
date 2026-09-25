@@ -71,8 +71,7 @@ class StagedByteReclaimIntegrationTest {
 
         // Once the import lands, its own release takes the bytes — the row is settled.
         device("import/resume", "succeeded" to "true")
-        eventually(read = { stagedFiles() }) { files -> files.none { it in partial } }
-        Unit
+        eventually<Set<String>>(read = { stagedFiles() }) { files -> files.none { it in partial } }
     }
 
     /**

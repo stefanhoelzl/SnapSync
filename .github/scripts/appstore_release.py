@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyjwt[crypto]", "requests"]
+# ///
 """Promote an existing App Store Connect build to its App Store version record.
 
 `ios-appstore-promote.yml` PROMOTES a build that `ios-deliver` already uploaded (it builds nothing). The

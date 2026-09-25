@@ -39,7 +39,7 @@ jobs:
     # Changing it without updating the ruleset would freeze merges (the required check would never
     # be posted).
     name: site-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 

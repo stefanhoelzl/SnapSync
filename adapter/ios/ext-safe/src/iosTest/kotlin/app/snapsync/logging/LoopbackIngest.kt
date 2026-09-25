@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.BetaInteropApi::class)
+
 package app.snapsync.logging
 
 import kotlinx.cinterop.ByteVar

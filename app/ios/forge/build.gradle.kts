@@ -49,9 +49,9 @@ kotlin {
             implementation(project(":domain:presentation"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.ui)
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.ui)
         }
     }
 }

@@ -19,7 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.printToString
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import app.snapsync.desktop.FORGE_HEIGHT
 import app.snapsync.desktop.FORGE_WIDTH
 import app.snapsync.desktop.ForgeHarnessRoot

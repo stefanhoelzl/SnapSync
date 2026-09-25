@@ -13,7 +13,7 @@ Guards did not scale because guards are opt-in: they cover what someone remember
 
 WHY PYTHON. No CI job carries both Deno and Gradle (`build.yml` installs Java only; `api.yml` and
 `deploy.yml`'s `api` job install Deno only), so neither runtime can be the single resolver without forcing a toolchain into a
-workflow that deliberately lacks it. Stdlib-only Python3 is present on `ubuntu-latest`, on `macos-26`
+workflow that deliberately lacks it. Stdlib-only Python3 is present on `ubuntu-26.04`, on `macos-26`
 (`ios.yml` already runs it there with no setup step) and on every dev machine. Stdlib-only also sidesteps
 the PEP-668 externally-managed caveat `ios.yml` records, which concerns `pip install`, not imports.
 

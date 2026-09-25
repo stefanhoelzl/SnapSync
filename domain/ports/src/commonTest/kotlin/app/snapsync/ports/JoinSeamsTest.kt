@@ -31,8 +31,8 @@ class JoinSeamsTest {
     fun a_shape_failure_is_a_distinguishable_type_carrying_its_reason() {
         // The reconciler branches on this type to tell a permanent failure from a transient one, so it
         // must stay a type rather than a message anyone has to parse.
-        val e = DeviceListingShapeException("no assetId")
-        assertTrue(e is Exception)
+        // Typed as `Exception`: the subtype relation is asserted by this compiling.
+        val e: Exception = DeviceListingShapeException("no assetId")
         assertEquals("no assetId", e.message)
     }
 

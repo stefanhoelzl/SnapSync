@@ -19,6 +19,7 @@ import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.create
 import platform.Foundation.dataUsingEncoding
 import platform.Security.kSecAttrAccessGroup
 import platform.Security.kSecAttrAccessible
@@ -84,7 +85,7 @@ private fun legacyItem(account: String, value: String): CFDictionaryRef {
         bridged(kSecAttrAccount) to account,
         bridged(kSecAttrAccessGroup) to SHARED_KEYCHAIN_ACCESS_GROUP,
         bridged(kSecAttrAccessible) to bridged(kSecAttrAccessibleWhenUnlocked),
-        bridged(kSecValueData) to (value as NSString).dataUsingEncoding(NSUTF8StringEncoding),
+        bridged(kSecValueData) to NSString.create(string = value).dataUsingEncoding(NSUTF8StringEncoding),
     )
     // +1: the caller releases it once the seam has been handed it (the seam copies what it records).
     return checkNotNull(CFBridgingRetain(attributes)).reinterpret()

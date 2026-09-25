@@ -186,7 +186,7 @@ private fun quoted(value: String?): String = value?.let { "\"${it.replace("\"", 
  * reset the operator runs deliberately. `null` means proceed.
  */
 fun noMembershipRefusal(host: () -> StatusContainerHost): () -> String? = {
-    (host().container.stateFlow.value as? Layer.Joined)?.let { joined ->
+    (host().container.stateFlow.value.layer as? Layer.Joined)?.let { joined ->
         "this device is a member of event ${joined.membership.eventId}, and the run re-registers the extension, " +
             "which wipes its in-flight upload jobs. Reset deliberately first (POST /device/reset), then re-run."
     }
