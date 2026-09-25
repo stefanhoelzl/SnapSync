@@ -64,6 +64,8 @@
 - [x] 9.3 CLAUDE.md: module list mentions (`DownloadBackstop`, pump, receipts) updated
 - [x] 9.4 Detekt tiers: fit new code to the ceilings; no ceiling raised without a stated forcing proof
 
+- [x] 9.5 Standard output never blocks either process (`neverBlockOnStdio()` first in both roots; design D15) — the harness-triggered stdio wedge found during verification
+
 ## 10. Verification
 
 - [x] 10.1 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green; iOS simulator tests and contracts green on CI
