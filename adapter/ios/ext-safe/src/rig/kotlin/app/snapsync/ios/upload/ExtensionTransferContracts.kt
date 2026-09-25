@@ -21,7 +21,8 @@ import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.contracts.runEntry
-import app.snapsync.engine.iosLedgerStore
+import app.snapsync.databases.IosDatabases
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.model.LedgerState
@@ -114,7 +115,7 @@ private class Prepared(clauseId: String, state: BackgroundTransferState, photo: 
 
 /** A fresh ledger holding the prepared transfer's row, `REQUESTED` with the destination it was created with. */
 private suspend fun seededLedger(name: String, prepared: Prepared): LedgerStore =
-    iosLedgerStore(scratch(name)).also {
+    LedgerService(IosDatabases(scratch(name))).also {
         it.recordUnlessSettled(prepared.resource.toLedgerRow(LedgerState.REQUESTED, destinationPath = destinationPathOf(prepared.url)))
     }
 

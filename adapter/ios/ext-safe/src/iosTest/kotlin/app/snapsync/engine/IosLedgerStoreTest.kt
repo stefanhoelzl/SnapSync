@@ -11,12 +11,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import app.snapsync.services.ledger.LedgerService
+import app.snapsync.databases.IosDatabases
 
 /**
  * The iOS ledger's **placement** — that the native SQLite driver really opens its database where the
  * container says (capability `photo-sharing`).
  *
- * The store's row semantics are the shared `SqlDelightLedgerStore`'s, exercised by the storage
+ * The store's row semantics are the shared `LedgerService`'s, exercised by the storage
  * contract in `:test:world`. What is only true on this target, and only in this factory, is the
  * plumbing: the base path travels through `NativeSqliteDriver`'s `onConfiguration` into
  * `extendedConfig.basePath`, a nested copy whose failure mode is not an error but a database opened
@@ -42,7 +44,7 @@ class IosLedgerStoreTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { iosLedgerStore(basePath = dir).recordUnlessSettled(entry("photo-1.heic")) }
+            runBlocking { LedgerService(IosDatabases(dir)).recordUnlessSettled(entry("photo-1.heic")) }
 
             assertTrue(
                 fileExists("$dir/ledger.db"),
@@ -54,7 +56,7 @@ class IosLedgerStoreTest {
     @Test
     fun `a row written through the store is read back`() {
         withTempDirectory { dir ->
-            val store = iosLedgerStore(basePath = dir)
+            val store = LedgerService(IosDatabases(dir))
 
             runBlocking {
                 store.recordUnlessSettled(entry("photo-1.heic"))
@@ -69,7 +71,7 @@ class IosLedgerStoreTest {
     @Test
     fun `an unrecorded key reads as no row`() {
         withTempDirectory { dir ->
-            val store = iosLedgerStore(basePath = dir)
+            val store = LedgerService(IosDatabases(dir))
 
             runBlocking {
                 assertNull(store.get("never-uploaded.heic"), "null is a fact about the ledger, not about storage")
@@ -86,9 +88,9 @@ class IosLedgerStoreTest {
     fun `a store reopened over the same container sees what was written`() {
         withTempDirectory { dir ->
             runBlocking {
-                iosLedgerStore(basePath = dir).recordUnlessSettled(entry("photo-1.heic"))
+                LedgerService(IosDatabases(dir)).recordUnlessSettled(entry("photo-1.heic"))
 
-                val reopened = iosLedgerStore(basePath = dir)
+                val reopened = LedgerService(IosDatabases(dir))
                 assertNotNull(
                     reopened.get("photo-1.heic"),
                     "the ledger is the only memory that a photo was already uploaded; losing it re-uploads " +
@@ -103,10 +105,10 @@ class IosLedgerStoreTest {
         withTempDirectory { first ->
             withTempDirectory { second ->
                 runBlocking {
-                    iosLedgerStore(basePath = first).recordUnlessSettled(entry("photo-1.heic"))
+                    LedgerService(IosDatabases(first)).recordUnlessSettled(entry("photo-1.heic"))
 
                     assertNull(
-                        iosLedgerStore(basePath = second).get("photo-1.heic"),
+                        LedgerService(IosDatabases(second)).get("photo-1.heic"),
                         "if the base path were ignored both stores would be the SAME file and this would " +
                             "pass by accident everywhere else",
                     )

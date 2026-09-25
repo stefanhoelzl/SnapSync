@@ -162,7 +162,7 @@ class JvmRigHost private constructor(
                                     """{"refused":"the world's upload-job queue is the world's own; job sets cannot be handed in","queue":"world"}""" + "\n"
                                 } else {
                                     val result = extension.process()
-                                    """{"result":"${result.name.lowercase()}","queue":"world",""" +
+                                    """{"result":"${result.toString().lowercase()}","queue":"world",""" +
                                         """"created":${world.platform.created.size}}""" + "\n"
                                 }
                             },

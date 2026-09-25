@@ -11,6 +11,7 @@ import app.snapsync.feature.upload.SelectionScopedDiscovery
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
+import app.snapsync.feature.upload.suppressionGate
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
@@ -229,6 +230,14 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
  *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
  */
 private suspend fun readGate(ports: UploadPorts): CycleGate {
+    val gate = readEntryGate(ports)
+    // Last, and only for an admitted cycle: the extension opens the download store read-only here, so a
+    // process that may not create never opens it (capability `receiving-photos`).
+    return if (gate is CycleGate.Run) suppressionGate(gate, ports.suppression.readiness()) else gate
+}
+
+/** The gate from the membership, the identity and the admission — everything but the suppression read. */
+private suspend fun readEntryGate(ports: UploadPorts): CycleGate {
     // The manifest version FIRST — before the membership, and so before the policy and the rows the manifest
     // is projected from (capability `background-upload`). Every change that could alter the projection
     // advances it, so a change this cycle's projection misses happened after this read and carries a higher

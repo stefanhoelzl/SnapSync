@@ -21,6 +21,7 @@ Roots found:
 | `AppGraphReads` | x | |
 | `AppPorts` | x | |
 | `CachedAttestStore` | | x |
+| `DownloadService` | x | |
 | `EntryHooks` | x | |
 | `FileBackedConfigStore` | x | x |
 | `FileLogWriter` | x | x |
@@ -38,6 +39,7 @@ Roots found:
 | `IosAlbumMapStore` | x | x |
 | `IosAttestKey` | x | |
 | `IosBackgroundTime` | x | |
+| `IosDatabases` | x | x |
 | `IosDeviceLogSource` | x | |
 | `IosDeviceManifestStore` | x | x |
 | `IosDiscovery` | | x |
@@ -50,6 +52,7 @@ Roots found:
 | `IosStagedBytes` | x | |
 | `KeychainAttestStore` | x | x |
 | `KeychainDeviceIdentity` | x | x |
+| `LedgerService` | x | x |
 | `MetricKitProcessMetricSource` | x | |
 | `OsDrivenRegistration` | x | |
 | `PhotoKitAssetPresence` | x | |
@@ -63,6 +66,7 @@ Roots found:
 | `PushTokenSource` | x | |
 | `RigSwitches` | x | |
 | `SentryDiagnosticsReporter` | x | x |
+| `SuppressionService` | | x |
 | `UploadPorts` | | x |
 | `UploadRecordPorts` | x | |
 | `UrlSessionUploadController` | x | |

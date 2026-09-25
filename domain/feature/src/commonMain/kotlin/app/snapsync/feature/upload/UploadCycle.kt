@@ -3,6 +3,7 @@ package app.snapsync.feature.upload
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.CreateResult
 import app.snapsync.model.CycleResult
+import app.snapsync.model.PauseReason
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
@@ -232,6 +233,13 @@ class UploadCycle(
                         "nothing created, nothing published"
                 }
                 return Settled.Short(CycleOutcome.Withheld)
+            }
+            is CycleGate.Paused -> {
+                // Admitted, but the echo-suppression store is not ready for this process (capability
+                // `receiving-photos`): uploading without it would send downloaded photos back. Touch NOTHING —
+                // not even the presented results, which the next run acknowledges — and ask to be run again.
+                log.i { "cycle paused (${gate.reason}) — nothing touched; asking to be invoked again" }
+                return Settled.Short(CycleOutcome.Paused(gate.reason))
             }
             is CycleGate.Run -> gate.config to gate.membership
         }
@@ -482,7 +490,8 @@ class UploadCycle(
     private fun CycleOutcome.addedRows(): Boolean = when (this) {
         is CycleOutcome.Truncated -> audit.newWork > 0
         is CycleOutcome.Drained -> audit.newWork > 0
-        CycleOutcome.Unreadable, CycleOutcome.NotJoined, CycleOutcome.Withheld, is CycleOutcome.Declined -> false
+        CycleOutcome.Unreadable, CycleOutcome.NotJoined, CycleOutcome.Withheld, is CycleOutcome.Paused,
+        is CycleOutcome.Declined -> false
     }
 
     /** What one enqueue pass did, for the outcome that reports it. */
@@ -651,6 +660,9 @@ class UploadCycle(
             // moment a grant flipped.
             CycleOutcome.Withheld -> Unit
 
+            // Nothing was read or touched: there is nothing to say yet.
+            is CycleOutcome.Paused -> Unit
+
             // A membership that shares nothing publishes an EMPTY manifest: that is the honest statement
             // of its state, and leaving a stale one in place would keep advertising photos the member has
             // stopped sharing.
@@ -774,6 +786,11 @@ class UploadCycle(
         /** This process may not create now: the presented jobs were acknowledged, nothing was created. */
         data object Withheld : CycleOutcome {
             override val result get() = CycleResult.SKIPPED
+        }
+
+        /** Admitted, but waiting for another process's work (see [CycleResult.Paused]). Nothing was touched. */
+        class Paused(val reason: PauseReason) : CycleOutcome {
+            override val result get() = CycleResult.Paused(reason)
         }
 
         /** This membership's direction excludes upload. */

@@ -76,6 +76,7 @@ kotlin {
             if (rigEnabled) {
                 implementation(project(":test:contracts"))
                 implementation(project(":domain:compose"))
+                implementation(project(":domain:services"))
             }
         }
         commonMain.dependencies {
@@ -93,6 +94,8 @@ kotlin {
             // the grant-aware composition production calls.
             implementation(project(":test:contracts"))
             implementation(project(":domain:compose"))
+            // The transfer contracts record into the real ledger, which is a service over the `Databases` adapter.
+            implementation(project(":domain:services"))
         }
     }
 }

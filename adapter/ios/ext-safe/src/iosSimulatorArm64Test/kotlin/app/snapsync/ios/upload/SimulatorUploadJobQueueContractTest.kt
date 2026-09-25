@@ -15,7 +15,8 @@ import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
-import app.snapsync.engine.iosLedgerStore
+import app.snapsync.databases.IosDatabases
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
@@ -58,7 +59,7 @@ class SimulatorUploadJobQueueContractTest {
 
         override fun create(state: BackgroundTransferState, clauseId: String): Entered<TransferUnderTest> {
             val jobs = SimulatorJobSets()
-            val ledger = iosLedgerStore(scratch(clauseId))
+            val ledger = LedgerService(IosDatabases(scratch(clauseId)))
             val queue = SimulatorUploadJobQueue(Logger.withTag("contract"), ledger, jobs, usablePayload = { it === StandInPhoto })
             val os = PlayedOs(queue, jobs)
             if (state == BackgroundTransferState.AT_CAP) {

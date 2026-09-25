@@ -38,7 +38,7 @@ group, with the group's argument in the commit.
 
 | group | why it exists | members |
 |---|---|---|
-| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:fake` · `:app:ios` `:app:ios:extension` `:app:desktop` |
+| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:services` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:fake` · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:app:ios:forge` (`-Psnapsync.forge`) · `:test:rig`, `:test:contracts` (`-Psnapsync.rig`) |
 | **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:test:world` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
 
@@ -57,23 +57,24 @@ The per-module one-liners are in `CLAUDE.md` ("Modules"). The live graph is `arc
 
 ### The core and its zones
 
-The core is seven modules under `domain/`: six zones and the host, each with its package at
+The core is eight modules under `domain/`: seven zones and the host, each with its package at
 `app.snapsync.<zone>` (the host's is `app.snapsync.host`). Each declares only the zone edges its law
 permits, always with `implementation()`, so a forbidden reference does not resolve. That covers
 fully-qualified names, typealiases and generated source, which a text scan would miss. The permitted
 edges are `ModuleSetTest`'s `permitted` map.
 
 ```
-model  <-  ports  <-  feature  <-  flow  <-  compose
-                         ^                     ^
-                         +-- presentation -----+-- host   (host = compose + presentation + ports)
+model  <-  ports  <-  services  <-  feature  <-  flow  <-  compose
+                                       ^                     ^
+                                       +-- presentation -----+-- host   (host = compose + presentation + ports)
 ```
 
 | zone | holds | may reference |
 |---|---|---|
 | `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers, `UiState`, and **every pure-data type a port carries** | nothing project-internal |
 | `ports/` | every port interface, outbound and inbound (`PlatformEntries`, `ExtensionEntries`), plus port-adjacent logic not yet re-homed (`resolveOrMint`, `runProcessCycle`, the `CycleResult` raw-value mapping, …) | `model/` |
-| `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/` |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means. Today the storage services (`LedgerService`, `DownloadService`, `SuppressionService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them). Each still implements its transitional store interface in `ports/` | `model/`, `ports/` |
+| `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/`, `services/` |
 | `presentation/` | the UI-state reduction (`StatusContainerHost`, reducing into `model/`'s `UiState`) | `model/`, and `feature/` read-model packages only |
 | `flow/` | the OS-callback trigger flows (`Foreground`, `Background`, `SilentPush`, `Provision`): ordering only | `model/`, `feature/` (never `ports/`) |
 | `compose/` | the shared composition (`snapSyncApp`, `uploadCore`), the inbound-port implementations, decorators, port-state subscriptions | every zone but `presentation/` and the host |
@@ -140,7 +141,10 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 
 | law | enforced by |
 |---|---|
-| Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology | **review** (partly the compiler: `ports/` cannot import Ktor/SQLDelight) |
+| Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
+| A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
+| Building a composition opens no database: a storage service opens through `Databases` on first use and keeps only a successful open, so a locked launch's failure is retried on the next use | `CompositionOpensNoDatabaseTest` (`:test:world`) + `LedgerServiceOpenTest` |
+| The download store has one writer and one migrator, the app. The upload extension opens it read-only: no store suppresses nothing; an older schema **pauses** the cycle (`CycleResult.Paused`, answered to iOS as *processing*) and never runs it without suppression; an unopenable one skips it. The pause is asked only after the extension's admission, so a partial grant never pauses | `SuppressionServiceTest`, `ExtensionSuppressionWorldTest`, `DatabasesContract` |
 | A platform's magic values, ABI integers and error tables stay in adapters, never in `model/`/`ports/`/`feature/` | `PhotoKitAbiContainmentTest` (PhotoKit media ABI). The JVM target rejects Apple types. Otherwise **review** |
 | A function type is a seam only for an in-process, non-throwing callback into the core. Anything that leaves the process, can throw, or needs a lane is a port | `CompositionSeamTest`: every function-typed field of a `*Ports` bundle and every function-typed constructor parameter in `feature/`/`compose/` is pinned with its reason, exact in both directions |
 | A process-constant value (build version, baked host) is a plain value, not a thunk | **review** (surfaces via `CompositionSeamTest` pins) |
@@ -714,8 +718,8 @@ class (readable after first unlock; see `DataProtectionEntitlementTest`):
 | path / key | what | owner |
 |---|---|---|
 | `eventconfig.json` | the membership (config file of record). A missing file **is** "left the event", so renaming it is a false leave on every device | `FileBackedConfigStore` |
-| `ledger.db` | the upload ledger (SQLDelight): the membership's share set + manifest version | `SqlDelightLedgerStore` |
-| `downloads.db` | the download store | `SqlDelightDownloadStore` |
+| `ledger.db` | the upload ledger (SQLDelight): the membership's share set + manifest version. Either process opens it read-write and migrates it | `LedgerService` over `IosDatabases` |
+| `downloads.db` | the download store. The app writes and migrates it; the extension opens it read-only | `DownloadService` / `SuppressionService` over `IosDatabases` |
 | `device-manifest/last-uploaded.json` | the manifest skip record (event id, version, snapshot) | manifest store |
 | `upload-staging/` | bytes staged for the app's background `URLSession` uploads | `IosUrlSessionUploadPlatform` |
 | `download-staging/` | downloaded bytes awaiting import | `IosStagedBytes` |

@@ -23,6 +23,8 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
+            // `DatabasesContract` brings its own schema and reads through the driver it is handed.
+            implementation(libs.sqldelight.runtime)
             // `LedgerStoreContract` exercises the ledger through the one writer feature (`LedgerWriter`).
             implementation(project(":domain:feature"))
             api(kotlin("test"))

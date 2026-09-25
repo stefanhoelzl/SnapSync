@@ -65,6 +65,11 @@ kotlin {
             implementation(project(":test:edge"))
             implementation(libs.ktor.client.cio)
         }
+        // The real storage services over the real JVM `Databases`, for the test that forcing the composition
+        // opens no database (`docs/architecture.md`).
+        jvmTest.dependencies {
+            implementation(project(":domain:services"))
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)

@@ -102,6 +102,7 @@ import app.snapsync.model.CycleResult
 import app.snapsync.ports.DeviceLogSource
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.PushRegistrationRecord
+import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.StagedBytes
@@ -160,6 +161,11 @@ class World(
      * device-only one (`changes/fix-lost-upload-acks`).
      */
     val ledgerBackend: LedgerStore = inMemoryLedgerStore(),
+    /**
+     * The download store the app graph writes and the cycle reads for echo suppression — the honest in-memory one
+     * unless a test hands in the real storage service (as the "composition opens no database" test does).
+     */
+    downloadBackend: DownloadStore = inMemoryDownloadStore(),
     /**
      * Whether this world can ATTEST (capability `privacy-security`). **Off by default**, which is the
      * world as it has always been: attestation is composed because `AppPorts` requires the seams, and
@@ -229,7 +235,7 @@ class World(
             is CandidateRead.Readable -> read.candidates
             CandidateRead.NotReadable -> emptyList()
         }
-    val downloadStore: RecordingDownloadStore = RecordingDownloadStore(inMemoryDownloadStore())
+    val downloadStore: RecordingDownloadStore = RecordingDownloadStore(downloadBackend)
     // The SAME ledger the composed cycle writes: this adapter records terminal outcomes into it, exactly
     // as both device adapters do, so the world exercises the real two-phase completion.
     // It completes a transfer with a real PUT over the backend's bare client — the network an OS transfer

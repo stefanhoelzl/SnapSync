@@ -3,6 +3,7 @@ package app.snapsync.ports
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import app.snapsync.model.CycleResult
+import app.snapsync.model.PauseReason
 
 /**
  * The `PHBackgroundResourceUploadProcessingResult` raw values (capability `background-upload`;
@@ -33,5 +34,12 @@ class CycleResultRawValueTest {
     @Test
     fun `failed maps to the failure raw value`() {
         assertEquals(0, CycleResult.FAILED.processingResultRawValue())
+    }
+
+    @Test
+    fun `a paused cycle asks to be invoked again`() {
+        // It touched nothing and waits for the app to migrate the download store: `.processing` is the one
+        // answer that makes the system call again (capability `background-upload`).
+        assertEquals(1, CycleResult.Paused(PauseReason.OLD_SCHEMA).processingResultRawValue())
     }
 }

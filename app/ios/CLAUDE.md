@@ -163,7 +163,7 @@ family, a transport's guarded terminal write, and the membership reset family. O
 ## Entitlements & Info.plist (the cross-process glue)
 
 - **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
-  ledger DB the extension writes and the app reads (`iosLedgerStore`) — and for the config file of
+  ledger DB the extension writes and the app reads (`LedgerService` over `IosDatabases`) — and for the config file of
   record (`eventconfig.json`, `FileBackedConfigStore`; save, clear **and read** are file-only — the
   legacy Keychain write-through ended with the migration and the Stage-2 change deleted the
   read-only legacy-item fallback behind the read, so the container's lifetime IS the membership's:

@@ -113,15 +113,17 @@ kotlin {
             iosTest { kotlin.srcDir("src/rig/kotlin") }
         }
         iosMain.dependencies {
-            if (rigEnabled) implementation(project(":test:contracts"))
+            if (rigEnabled) {
+                implementation(project(":test:contracts"))
+                implementation(project(":domain:services"))
+            }
         }
         iosTest { kotlin.srcDir(embedContractRecordings) }
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:feature"))
-            // The SQLDelight stores these drivers open (SqlDelightLedgerStore/SqlDelightDownloadStore)
-            // and the Ktor core types darwinHttpClient() returns.
+            // The Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic:app"))
             // (The interim :capability:album and :domain:gallery edges died at migration step 6:
             // the album seams now live in :domain ports/, albumMapSource in feature/album, and the
@@ -152,6 +154,9 @@ kotlin {
             // PhotoKit adapters (`docs/architecture.md`, "A live binding binds the composition
             // production calls").
             implementation(project(":domain:compose"))
+            // The storage services' SQLite behaviour on this target, measured over the real `IosDatabases`
+            // (`docs/architecture.md`): a `:domain:*` build file names no module, so those tests live here.
+            implementation(project(":domain:services"))
         }
     }
 }

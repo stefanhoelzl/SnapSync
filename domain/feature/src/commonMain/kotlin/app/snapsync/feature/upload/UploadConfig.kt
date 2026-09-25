@@ -1,8 +1,10 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.PauseReason
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.grantsPhotoAccess
 
@@ -115,8 +117,29 @@ sealed interface CycleGate {
      */
     data class Withheld(val config: UploadConfig) : CycleGate
 
+    /**
+     * Joined and admitted, but the echo-suppression store is at a schema this process may not migrate (the
+     * extension opens it read-only): touch **nothing**, not even the presented results, and ask to be invoked
+     * again — the app migrates it on its next run (capability `receiving-photos`).
+     */
+    data class Paused(val reason: PauseReason) : CycleGate
+
     /** Joined, configured and admitted: run the cycle. */
     data class Run(val config: UploadConfig, val membership: JoinedMembership) : CycleGate
+}
+
+/**
+ * The gate's last step, taken only for an admitted [run]: whether this process's echo-suppression read can
+ * answer (capability `receiving-photos`). Asked after the admission, so a process that may not create never
+ * opens the store (the extension under a partial grant withholds; it never pauses).
+ *
+ * An unreadable store is [CycleGate.Skip] — "I could not look", upload nothing this run — and an old one
+ * [CycleGate.Paused]. Running without suppression is never an answer: it would re-upload downloaded photos.
+ */
+fun suppressionGate(run: CycleGate.Run, readiness: SuppressionReadiness): CycleGate = when (readiness) {
+    SuppressionReadiness.Ready -> run
+    SuppressionReadiness.OldSchema -> CycleGate.Paused(PauseReason.OLD_SCHEMA)
+    is SuppressionReadiness.Unavailable -> CycleGate.Skip("echo-suppression store unavailable (${readiness.detail})")
 }
 
 /**

@@ -135,9 +135,11 @@ class ModuleSetTest {
         val permitted = mapOf(
             "model" to emptySet<String>(),
             "ports" to setOf(":domain:model"),
-            "feature" to setOf(":domain:model", ":domain:ports"),
+            // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
+            "services" to setOf(":domain:model", ":domain:ports"),
+            "feature" to setOf(":domain:model", ":domain:ports", ":domain:services"),
             "flow" to setOf(":domain:model", ":domain:feature"),
-            "compose" to setOf(":domain:model", ":domain:ports", ":domain:feature", ":domain:flow"),
+            "compose" to setOf(":domain:model", ":domain:ports", ":domain:services", ":domain:feature", ":domain:flow"),
             // The UI-state reduction: of the zones, only the vocabulary and the features (and of the features,
             // only their `readmodel` packages — a line inside one module, held by `ReadModelImportsTest`).
             "presentation" to setOf(":domain:model", ":domain:feature"),
@@ -172,9 +174,9 @@ class ModuleSetTest {
     private companion object {
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
-            // The core's six zones and the host (`docs/architecture.md`, "Zones inside the core").
-            ":domain:model", ":domain:ports", ":domain:feature", ":domain:flow", ":domain:presentation",
-            ":domain:compose", ":domain:host",
+            // The core's seven zones and the host (`docs/architecture.md`, "Zones inside the core").
+            ":domain:model", ":domain:ports", ":domain:services", ":domain:feature", ":domain:flow",
+            ":domain:presentation", ":domain:compose", ":domain:host",
             ":ui:screens", ":ui:components",
             ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:generic:app", ":adapter:generic:fake",
             ":app:ios", ":app:ios:extension", ":app:desktop",

@@ -55,8 +55,9 @@ import app.snapsync.compose.EntryHooks
 import app.snapsync.compose.platformEntries
 import app.snapsync.protection.IosProtectedStorage
 import app.snapsync.share.IosShareSheet
-import app.snapsync.downloadstore.SqlDelightDownloadStore
-import app.snapsync.downloadstore.iosDownloadStore
+import app.snapsync.databases.IosDatabases
+import app.snapsync.ports.Databases
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.feature.upload.ExtensionRegistration
 import app.snapsync.feature.upload.OsDrivenRegistration
 import app.snapsync.model.UploaderPin
@@ -66,7 +67,7 @@ import app.snapsync.ports.DeviceIdentity
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
-import app.snapsync.engine.iosLedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.engine.removeOrphanedJoinMarker
 import app.snapsync.model.EventLinkDelivery
 import app.snapsync.model.PlatformEntry
@@ -511,13 +512,16 @@ object SnapSyncRoot : PlatformEntries by rootEntries() {
     // `uploadCore`), the composed counts source's reads, and the membership reset family. On iOS ≥26.1 the
     // extension writes the same ledger from its own process; every write is one guarded transaction owned by
     // named code (capability `photo-sharing`; decision record `changes/both-uploaders-active`).
-    private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
+    private val ledgerStore: LedgerStore by lazy { LedgerService(databases) }
+
+    // This process's SQLite databases, in the App-Group container. The stores open them on first use, never at
+    // construction: building the composition opens no database (`docs/architecture.md`).
+    private val databases: Databases by lazy { IosDatabases() }
 
     // --- Photo download / import (capability `receiving-photos`) ---
     // The app-written download store (idempotency + per-resource staging + the createdLocalId the
-    // extension reads as its suppression set). Concrete type so the importer can write createdLocalId
-    // synchronously from inside a PhotoKit change block.
-    private val downloadStore: SqlDelightDownloadStore by lazy { iosDownloadStore() }
+    // extension reads as its suppression set). The app is its one writer and the one process that migrates it.
+    private val downloadStore: DownloadService by lazy { DownloadService(databases) }
 
     // The `LeaveNotifier` port that tells the backend this device is leaving (DELETE
     // /events/<id>/devices/<id>, capability `event-leave-endpoint`) — the backend renames the manifest

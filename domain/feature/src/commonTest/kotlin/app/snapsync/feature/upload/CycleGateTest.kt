@@ -1,8 +1,10 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.PauseReason
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
@@ -12,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * The skip-or-leave-or-run gate (capability `join-event`, *An unreadable config is not an absent
@@ -242,5 +245,27 @@ class CycleGateTest {
             val expected = if (permission == PermissionStatus.GRANTED) UploadAdmission.Admit else UploadAdmission.Withheld
             assertEquals(expected, extensionAdmission(permission), "under $permission")
         }
+    }
+
+    // ---- the suppression step: after admission, before anything is touched ------------------------------------
+
+    private val run = CycleGate.Run(UploadConfig(host, eventId), JoinedMembership(eventId, admitting, false, 0L))
+
+    @Test
+    fun `a ready suppression read runs the cycle`() {
+        assertEquals(run, suppressionGate(run, SuppressionReadiness.Ready))
+    }
+
+    @Test
+    fun `an old suppression store pauses the cycle`() {
+        // The extension may not migrate the app's store, and running without it re-uploads downloaded photos.
+        assertEquals(CycleGate.Paused(PauseReason.OLD_SCHEMA), suppressionGate(run, SuppressionReadiness.OldSchema))
+    }
+
+    @Test
+    fun `an unopenable suppression store skips the cycle naming why`() {
+        val gate = suppressionGate(run, SuppressionReadiness.Unavailable("locked"))
+        assertIs<CycleGate.Skip>(gate, "\"I could not look\" uploads nothing this run")
+        assertTrue("locked" in gate.detail)
     }
 }

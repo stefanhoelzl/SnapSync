@@ -2,36 +2,23 @@ import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import kotlinx.kover.gradle.plugin.dsl.GroupingEntityType
 
 // `:adapter:generic:app` (`docs/architecture.md`): platform-free technology implementations of the
-// `:domain` ports — the Ktor HTTP clients and the SQLDelight stores. Named for the technology,
-// placed by linkage: generic code links everywhere (JVM harness, app, extension), so this module
-// carries no platform source set. The `generic` prefix is the platform axis (a pure path grouping,
-// no build file — same as `adapter/ios/`); the `app` leaf is SHIPPABILITY — this module links into
-// the shipped app AND extension binaries (both processes, unlike `:adapter:ios:app-only`, whose
-// leaf encodes PROCESS linkage). Packages keep their pre-migration names deliberately (decision
-// D2 of `extract-adapter-modules`): every gate and diagram scopes by directory, and the pure-move
-// diff is the review artifact; package normalization rides the feature-move steps.
+// `:domain` ports — the Ktor HTTP clients, the clock and time zone, and the JVM `Databases` adapter.
+// Named for the technology, placed by linkage: generic code links everywhere (JVM harness, app,
+// extension); its one platform source set, `jvmMain`, holds the SQLite driver only the JVM links (the
+// iOS one is `:adapter:ios:ext-safe`'s). The stores themselves are `:domain:services`'. The `generic`
+// prefix is the platform axis (a pure path grouping, no build file — same as `adapter/ios/`); the `app`
+// leaf is SHIPPABILITY — this module links into the shipped app AND extension binaries (both
+// processes, unlike `:adapter:ios:app-only`, whose leaf encodes PROCESS linkage). Packages keep their
+// pre-migration names deliberately (decision D2 of `extract-adapter-modules`): every gate and diagram
+// scopes by directory, and the pure-move diff is the review artifact; package normalization rides the
+// feature-move steps.
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.sqldelight)
     // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
-}
-
-// Coverage (`docs/architecture.md`). The SQLDelight-GENERATED sources are excluded: nobody
-// writes or reviews them, so bounding them ratchets a code generator's output rather than this
-// module's tests. Effect is small and honest either way - the module measures 76.4% with them and
-// 77.5% without.
-kover {
-    reports {
-        filters {
-            excludes {
-                packages("app.snapsync.engine.db", "app.snapsync.downloadstore.db")
-            }
-        }
-    }
 }
 
 kotlin {
@@ -47,7 +34,6 @@ kotlin {
             // HttpClient appears in every Ktor adapter's public constructor — consumers construct
             // their own engine (Darwin on device, MockEngine in the world/harness), so the type is API.
             api(libs.ktor.client.core)
-            implementation(libs.sqldelight.runtime)
             implementation(libs.kotlinx.serialization.json)
             // Kermit for the stores' own diagnostics (the backfill sweep's positive on-device
             // evidence — photo-sharing). :domain keeps kermit `implementation`, so it is not inherited.
@@ -60,12 +46,20 @@ kotlin {
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
-        // The SQLDelight stores' contract bindings (`docs/architecture.md`). The contracts live in
-        // `:test:contracts`' commonMain. Per-target source sets rather than `iosTest` because each target
-        // brings its own SQLDelight driver (JDBC on the JVM, native on the simulator).
+        // The JVM `Databases` adapter (`JdbcDatabases`): the one platform source set here, because the SQLDelight
+        // driver is per platform. The iOS one is `:adapter:ios:ext-safe`'s.
+        val jvmMain by getting {
+            dependencies {
+                implementation(libs.sqldelight.driver.sqlite)
+            }
+        }
+        // The contract bindings (`docs/architecture.md`). The contracts live in `:test:contracts`' commonMain.
+        // `:domain:services` is here, test-only, because the storage services' SQLite behaviour is measured over
+        // this module's real `JdbcDatabases` — a `:domain:*` build file names no module, so they cannot run there.
         val jvmTest by getting {
             dependencies {
                 implementation(project(":test:contracts"))
+                implementation(project(":domain:services"))
                 implementation(libs.sqldelight.driver.sqlite)
                 // The backend contracts' live bindings talk to the real `api/` over a socket, through the one
                 // process lifecycle `:test:edge` holds for every JVM consumer of the real backend.
@@ -111,51 +105,6 @@ tasks.named<Test>("jvmTest") {
     systemProperty("snapsync.liveEdgeStore", layout.buildDirectory.dir("live-edge").get().asFile.absolutePath)
 }
 
-// Both databases live here (decision D3 of `extract-adapter-modules`): one module per withheld
-// technology, so the two SQLDelight schemas share it, each from its own source dir (two `create`
-// blocks may not share srcDirs). Generated packages are unchanged from their pre-migration homes —
-// they are not runtime identity (the pinned db *filenames* are).
-//
-// ---- The schema snapshots (capability `photo-sharing`) --------------------------------------------
-//
-// `schemaOutputDirectory` is what makes `verifyCommonMain<Db>Migration` MEAN anything. That task is
-// registered either way and runs inside `./gradlew build` either way — but it verifies by applying
-// every migration later than a committed `.db` snapshot's version and comparing the result with the
-// schema the CREATE statements produce. With no snapshot there is nothing to apply migrations to, so
-// the task executes, compares nothing, and reports success. Measured before this was set: a probe
-// migration adding a column absent from Ledger.sq left the task GREEN. The check cost a build gate to
-// say nothing, and the drift it was cited as proving had been in the tree for as long as it had.
-//
-// Setting the directory also registers `generate<SourceSet><Db>Schema`, which emits the snapshot.
-//
-// A SNAPSHOT'S STALENESS IS NOT A DEFECT, and this is the opposite of the usual worry about a
-// generated artifact committed beside its source. An OLDER snapshot has MORE migrations applied to it
-// before the comparison, so it verifies more of the chain than a newer one. Forgetting to regenerate
-// after adding a migration therefore weakens nothing, which is why there is no freshness gate here
-// and none is wanted — unlike `architecture/`, where staleness is a real failure and IS gated.
-// Regenerate a snapshot when you want a later starting point checked, never out of hygiene.
-//
-// WHAT IT DOES NOT COVER: schema only. A data-only migration (8.sqm) changes no schema, so this task
-// cannot tell a right rewrite from a wrong one — `SqlDelightLedgerStoreTest` asserts those.
-sqldelight {
-    databases {
-        create("LedgerDatabase") {
-            packageName.set("app.snapsync.engine.db")
-            srcDirs.setFrom("src/commonMain/sqldelight/ledger")
-            schemaOutputDirectory.set(file("src/commonMain/sqldelight/ledger/databases"))
-            // The sqlite-3-35 dialect: the default rejects ALTER TABLE … DROP COLUMN (2.sqm needs it), and the
-            // record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
-            dialect(libs.sqldelight.dialect.sqlite)
-        }
-        create("DownloadDatabase") {
-            packageName.set("app.snapsync.downloadstore.db")
-            srcDirs.setFrom("src/commonMain/sqldelight/download")
-            schemaOutputDirectory.set(file("src/commonMain/sqldelight/download/databases"))
-            dialect(libs.sqldelight.dialect.sqlite)
-        }
-    }
-}
-
 // ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
@@ -183,7 +132,7 @@ sqldelight {
 // `HttpEnrollment`, `HttpDeviceFilesSource` and `SystemTime`. All four are covered now, so the floor
 // rose 0 -> 75 in one step and the rule guards every package in the module. 75 is `app.snapsync.join`,
 // and what is left there is generated: the decode-only DTOs' synthetic constructors, which no test can
-// reach. The next real step here is `SqlDelightLedgerStore` (87%), not the DTOs.
+// reach. (The SQLDelight stores that were the next step moved to `:domain:services`.)
 kover {
     reports {
         total {
@@ -194,8 +143,9 @@ kover {
                         minValue = 89
                         coverageUnits = CoverageUnit.INSTRUCTION
                     }
+                    // 56 -> 63 when the SQLDelight stores moved to `:domain:services` (measured 64.0%).
                     bound {
-                        minValue = 56
+                        minValue = 63
                         coverageUnits = CoverageUnit.BRANCH
                     }
                 }

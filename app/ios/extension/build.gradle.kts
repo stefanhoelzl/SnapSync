@@ -49,11 +49,13 @@ kotlin {
             // UploadExtensionRoot composes its UploadCycle.
             // The extension framework's contents are decided by linkage (migration step 4): the
             // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,
-            // the ledger/download-store native drivers, the Keychain config/attest/device-id/album
-            // stores, the Darwin client, the joined-event marker, the device-log writers) over the
-            // platform-free technology impls (:adapter:generic:app — the SQLDelight stores + Ktor clients).
+            // the SQLite `Databases` adapter, the Keychain config/attest/device-id/album
+            // stores, the Darwin client, the device-log writers) over the
+            // platform-free technology impls (:adapter:generic:app — the Ktor clients).
             implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
+            // The storage services the root builds over the thin storage adapters (`docs/architecture.md`).
+            implementation(project(":domain:services"))
             // The event-notify sender (capability `receiving-photos`): a bodyless POST to
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from
             // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.

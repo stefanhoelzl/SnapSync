@@ -86,6 +86,10 @@ subprojects {
 listOf(
     ":domain:model" to ":adapter:generic:fake",
     ":domain:ports" to ":adapter:generic:fake",
+    // The storage services' SQLite behaviour is measured beside the JVM `Databases` adapter (a `:domain:*` build
+    // file names no module), and their composition through the world.
+    ":domain:services" to ":adapter:generic:app",
+    ":domain:services" to ":test:world",
     ":domain:feature" to ":adapter:generic:fake",
     ":domain:flow" to ":adapter:generic:fake",
     ":ui:components" to ":ui:screens",
@@ -229,6 +233,7 @@ val detektTierOf: Map<String, String> = mapOf(
     // it is wiring, and detektAppShell's threshold-2 proof is what keeps it decision-free.
     ":domain:model" to "core",
     ":domain:ports" to "core",
+    ":domain:services" to "core",
     ":domain:feature" to "core",
     ":domain:flow" to "core",
     ":domain:compose" to "core",
