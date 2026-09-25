@@ -34,12 +34,12 @@ class MembershipRefresh(
     /** The composition's one clock — "now" is the OFFLINE witness of the absence verdict. */
     private val clock: Clock,
     /**
-     * The ordinary local teardown (capability `leave-event`), performed on a confirmed absence.
+     * The ordinary local teardown (capability `manage-membership`), performed on a confirmed absence.
      *
      * A SIBLING of this rule inside `feature/membership`, so referencing it directly is not a
      * feature-blindness breach — and the consequence belongs with the decision. It lives here rather than
      * as a `when` in the flow because the flow transcriber's closed grammar admits no `when` inside an
-     * escaping `scope.launch` (specs `architecture-diagrams` / `module-architecture`), and its own remedy
+     * escaping `scope.launch` (specs `docs/architecture.md` / `docs/architecture.md`), and its own remedy
      * is to sink the rule into a feature. Doing so also means every trigger reaches the same consequence
      * by construction: one verdict cannot mean two things depending on which flow observed it.
      */
@@ -51,7 +51,7 @@ class MembershipRefresh(
      *
      * - [RefreshOutcome.REFRESHED] — the fetch resolved for the still-configured event. Two rewrites ride
      *   together in **one** whole-config save: **name convergence** (an unchanged name saves nothing), and
-     *   the **window + retention backfill** (capability `upload-state-reconciliation`) filling the
+     *   the **window + retention backfill** (capability `photo-sharing`) filling the
      *   event's `endsAt` and `deletesAt` — each only when ABSENT. Doing them in one save is what stops
      *   the rewrites from losing each other's field. The membership's own `maxPhotoDate` is **not**
      *   backfilled: it is required on every persisted membership (capability `join-event`), so a config
@@ -62,7 +62,7 @@ class MembershipRefresh(
      *   nothing is torn down.**
      * - [RefreshOutcome.ABSENT] — the event is definitively gone **and** this membership's own persisted
      *   deadline has passed. Only then may the caller tear the membership down (capability
-     *   `leave-event`).
+     *   `manage-membership`).
      *
      * On [RefreshOutcome.ABSENT] this performs the teardown itself and then returns the verdict; callers
      * need do nothing with the result but may read it (tests do).
@@ -90,12 +90,12 @@ class MembershipRefresh(
             is JoinLoad.Found -> {
                 var next = current
                 // Name CONVERGENCE on the served name — not a fill for a membership that lacks one:
-                // every membership carries a name (capability `event-link`, no decode default), so this
+                // every membership carries a name (capability `join-event`, no decode default), so this
                 // arm exists so a diverged persisted name can still be repaired toward the backend's
                 // value. It is the only path by which that could ever happen. An unchanged name saves
                 // nothing.
                 if (current.name != fetched.name) next = next.copy(name = fetched.name)
-                // Event-window backfill (capability `upload-state-reconciliation`): a membership
+                // Event-window backfill (capability `photo-sharing`): a membership
                 // persisted before the event window existed carries a `null` `endsAt`; fill it from the
                 // freshly fetched details, so a legacy member gains the event's declared end.
                 //

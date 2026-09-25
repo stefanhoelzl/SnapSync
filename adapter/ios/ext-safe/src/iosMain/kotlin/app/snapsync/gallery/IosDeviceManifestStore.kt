@@ -20,16 +20,16 @@ import platform.Foundation.dataWithContentsOfURL
 import platform.Foundation.writeToURL
 
 /**
- * The App-Group persistence for the device manifest (capability `device-manifest`): the device-global
+ * The App-Group persistence for the device manifest (capability `photo-sharing`): the device-global
  * JSON of the last successfully-uploaded projection (skip-if-unchanged), under `device-manifest/` in
  * the [LEDGER_APP_GROUP] container.
  *
  * The device-global accumulator this also held is gone — the manifest is projected from the upload
- * ledger now (capability `sync-ledger`). Its file is simply abandoned: a stale `accumulator.json` in
+ * ledger now (capability `photo-sharing`). Its file is simply abandoned: a stale `accumulator.json` in
  * the container is inert, and deleting it would be a migration with nothing to gain.
  *
  * **[containerPath] is a parameter, defaulting to the shared container**, so *where* the container
- * lives is the composition's decision rather than this adapter's (spec `module-architecture`, "Ports
+ * lives is the composition's decision rather than this adapter's (`docs/architecture.md`, "Ports
  * are the I/O boundary named for the need"). Both shells omit it. This file was previously described
  * as "untestable (Foundation file I/O)", which was only true while the path was resolved in here: a
  * bundle-less test binary has no App-Group entitlement, so the container resolves to `null` and every

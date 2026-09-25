@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **The manifest declares intent** (capability `device-manifest`), over the real stack.
+ * **The manifest declares intent** (capability `photo-sharing`), over the real stack.
  *
  * The unit tests assert the projection over a list of rows. This asserts the consequence the change exists for,
  * through the composed core the device shells actually run and the faithful mini-edge, driven through the control
@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * in different cycles. With a manifest that listed only COMPLETED rows, the asset was declared with `primary` alone
  * in between, so the union served it as a complete one-resource asset — and a recipient reconciling in that window
  * imported it as a plain still, marked the asset settled, and never took the video, because a recipient plans per
- * ASSET (capability `photo-download`).
+ * ASSET (capability `receiving-photos`).
  */
 class DeclaredIntentIntegrationTest {
 

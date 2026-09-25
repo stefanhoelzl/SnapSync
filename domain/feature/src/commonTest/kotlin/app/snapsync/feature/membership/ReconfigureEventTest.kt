@@ -243,7 +243,7 @@ class ReconfigureEventTest {
         assertTrue(order.none { it.startsWith("reconcile") })
     }
 
-    // ---- the cutoff-lowering backfill fix (capability `reconfigure-membership`) -----------------------
+    // ---- the cutoff-lowering backfill fix (capability `manage-membership`) -----------------------
 
     @Test
     fun `always ensures the album and refreshes status`() = runTest {

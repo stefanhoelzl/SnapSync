@@ -29,7 +29,7 @@ private const val SEED_EPOCH_SECONDS = 978_307_200.0
  * image size. These assets are dated 2001 and so are excluded by the cutoff anyway; they never upload.
  *
  * They are also, incidentally, three orders of magnitude below the selection policy's 3 MP image floor
- * (capability `photo-selection-policy`) — so a bulk seed is doubly out of scope. That is harmless for the
+ * (capability `photo-sharing`) — so a bulk seed is doubly out of scope. That is harmless for the
  * walk-cost purpose but useless for exercising an **upload**, which is what [SeedKind.POLICY] is for.
  */
 private const val SEED_IMAGE_SIDE = 64.0

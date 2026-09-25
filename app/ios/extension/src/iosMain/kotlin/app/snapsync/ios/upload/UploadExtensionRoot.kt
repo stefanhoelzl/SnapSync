@@ -80,14 +80,14 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
         //
         // This process writes into the SHARED App Group (`ext-debug.log`) rather than its own
         // Documents, because the app cannot read another bundle's Documents and the app is what
-        // assembles a diagnostic dump (capability `diagnostic-logging`). The App Group is not
+        // assembles a diagnostic dump (capability `privacy-security`). The App Group is not
         // USB-pullable, so `SNAPSYNC_EXPORT_LOGS` copies this file into the app's Documents.
         val logDestination = extensionLogDestination()
         Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter(logDestination.path))
         // The pre-relocation file at the old path would otherwise keep answering pulls with frozen
         // content forever. Idempotent, and a no-op while the writer is itself falling back there.
         removeStaleExtensionDocumentsLog(logDestination)
-        // Boot banner (capability `diagnostic-logging`, D5) — the extension is a separate, short-lived
+        // Boot banner (capability `privacy-security`, D5) — the extension is a separate, short-lived
         // process; name it + the build version so its file is unambiguous. `log` isn't assigned yet.
         Logger.withTag("UploadExtension").i { "=== extension process start build=${appBuildVersion()} ===" }
         // Where this run's log is going — including whether it fell back to this bundle's own
@@ -111,7 +111,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
         // The adapter records terminal outcomes into the ledger — through the narrow `TransferRecord` the
         // store satisfies — and acknowledges in place. Same store the cycle gets.
         //
-        // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `ios-photokit-upload`,
+        // WHICH adapter is chosen by the COMPILATION TARGET, not here (capability `background-upload`,
         // "The upload-job subsystem binding is fixed by the compilation target"). Every shipped binary is
         // `iosArm64` and binds the PhotoKit queue; `iosSimulatorArm64` binds a substitute, because on that
         // host job creation does not fail — it raises an uncaught ObjC exception inside PhotoKit and kills
@@ -120,7 +120,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     }
 
     // The app-written download store, opened read-only through the NARROWED SuppressionSource type
-    // (capability `download-store`): only `suppressedLocalIds()`, never the full DownloadStore surface,
+    // (capability `receiving-photos`): only `suppressedLocalIds()`, never the full DownloadStore surface,
     // so the extension is compile-prevented from writing it or reading beyond the suppression set. It
     // only reads which downloaded-then-imported assets must not be re-uploaded.
     private val suppression: SuppressionSource by lazy { iosSuppressionSource() }
@@ -138,7 +138,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // `/files/devices/<deviceId>/` byte-store partition the provider writes to, and the per-event
     // device-manifest key. Resolved once for the process lifetime.
     //
-    // READ_ONLY — this process neither mints nor adopts (capability `device-identity`). It cannot tell
+    // READ_ONLY — this process neither mints nor adopts (capability `photo-sharing`). It cannot tell
     // "no identity yet" from "the app's identity is not reachable from here", and guessing is what gave
     // this device two identities: the extension uploaded under one while the app reconciled under the
     // other, so the app re-imported every photo the device itself had uploaded. Absence raises
@@ -149,7 +149,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed
     // engines under the same `runBlocking`.
     /**
-     * The device token (capability `device-attestation`), read from the **shared Keychain** — the app put
+     * The device token (capability `privacy-security`), read from the **shared Keychain** — the app put
      * it there.
      *
      * The extension is a strict READER. It never attests and never renews, because it *cannot*:
@@ -168,7 +168,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
      * thrown error here would take down the cycle.
      *
      * The collapse is kept — but it is **no longer silent**, and the reason is the law (spec
-     * `module-architecture`, "Absence is never silent"). The justification above covers
+     * `docs/architecture.md`, "Absence is never silent"). The justification above covers
      * `errSecInteractionNotAllowed` (-25308, locked device, retryable). The same `runCatching`
      * also absorbs `errSecMissingEntitlement` (-34018), which is **permanent**, not retryable, and
      * produced the "dead in the water" mis-signing incident of 2026-07-21 — a cause with a materially
@@ -206,7 +206,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * The cycle — assembled by the SHARED composition `uploadCore` (spec `module-architecture`, "One
+     * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One
      * shared composition"): this root supplies only its ports and platform reads (the Keychain
      * three-state `ConfigReader`, the identity resolve, the compile-time bundle host, the PhotoKit
      * platform, the App-Group stores, and the generic HTTP adapters). The entry-gate translation,
@@ -222,9 +222,11 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
             UploadPorts(
                 appVersion = appMarketingVersion(),
                 diagnosticsReporter = SentryDiagnosticsReporter(),
-                // This process's own grant read (capability `ios-photokit-upload`, "The extension withholds its
+                // This process's own grant read (capability `background-upload`, "The extension withholds its
                 // cycle without a full grant"): a registration made under a full grant survives a downgrade,
-                // and a cycle here has no selection snapshot to scope to.
+                // and a cycle here has no selection snapshot to scope to. Measured (SE2, iOS 26.6, 2026-09-21): the
+                // OS invoked a surviving registration under `.limited` 4 s after a photo joined the selection, so
+                // this gate is what stops it (changes/archive/2026-09-22-both-uploaders-active).
                 process = UploaderProcess.Extension(PhotoKitGrantRead),
                 // Unrestricted, stated: the extension never reads the library under a partial grant — the OS
                 // does invoke a surviving registration there, but its admission withholds before any read.
@@ -239,13 +241,13 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
                 ledger = ledgerStore,
                 transfer = platform,
                 discovery = discovery,
-                // The per-event device manifest (capability `device-manifest`): the extension is its
+                // The per-event device manifest (capability `photo-sharing`): the extension is its
                 // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpManifestPublisher`
                 // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = IosDeviceManifestStore(),
                 manifestPublisher = HttpManifestPublisher(httpClient, bakedUploadBase()),
                 suppression = suppression,
-                // Denylisted-album membership (capability `photo-selection-policy`): this tier's
+                // Denylisted-album membership (capability `photo-sharing`): this tier's
                 // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on
                 // the OS's next invocation).
                 albumManager = albumManager,
@@ -271,7 +273,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
      * The one hand-written line this root keeps for the inbound port: the operating system invokes the cycle
      * synchronously and the process does not outlive it, so this blocks on the delegated [process]. Wiring only — no
      * branch here a second tier could answer differently. [process] and [onTerminate] themselves reach the core by
-     * delegation (spec `module-architecture`, "OS entry points cross an inbound port").
+     * delegation (`docs/architecture.md`, "OS entry points cross an inbound port").
      */
     @PlatformEntry
     fun processRawValue(): Int = runBlocking { process() }.processingResultRawValue()
@@ -282,7 +284,7 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
  * delegation expression is evaluated before the object's body; both providers resolve on first call.
  *
  * The root delegates to `extensionRootEntries()`, which the build takes from one of two directories
- * (capability `module-architecture`, "A build-time-only module is contained by compilation, not by a runtime
+ * (`docs/architecture.md`, "A build-time-only module is contained by compilation, not by a runtime
  * check"): `src/entries`, which answers exactly this, or — only under `-Psnapsync.rig=true` — the rig's, which
  * answers this wrapped so a requested port-contract run takes the place of a cycle.
  */

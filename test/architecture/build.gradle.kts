@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
 }
-// NOT INSTRUMENTED (capability `coverage-bounds`, "Coverage is measured over unit tests only"):
+// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage is measured over unit tests only"):
 // structural guards over the repository's own text. A guard passing is not evidence that the
 // code it inspects is tested - measured, it adds zero incremental coverage anywhere.
 //
@@ -20,7 +20,7 @@ kover {
 }
 
 
-// Test-only ARCHITECTURE GUARDS (capability `architecture-guards`): structural invariants the compiler
+// Test-only ARCHITECTURE GUARDS (`docs/architecture.md`): structural invariants the compiler
 // cannot express, enforced as ordinary tests so they run under `./gradlew build` — the canonical check.
 //
 // JVM-only on purpose. The guards read the repository's SOURCE TEXT, which reaches `iosMain` — Kotlin/Native
@@ -43,7 +43,7 @@ kotlin {
 dependencies {
     testImplementation(kotlin("test"))
     // ProducerExclusivityTest drives the REAL UploadTransitions and admission functions over fakes (capability
-    // `architecture-guards`, "The upload transitions stop in-flight work only at a leave") — the one guard here
+    // `docs/architecture.md`, "The upload transitions stop in-flight work only at a leave") — the one guard here
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
@@ -82,7 +82,7 @@ tasks.test {
             // UP-TO-DATE, so the gate reported coverage from a recording that no longer said so. Measured
             // while adding grant-keyed recordings: a stray `.LIMITED.rec` passed until `--rerun`.
             include("test/contracts/recordings/*.rec")
-            // The event-link domain guard's subjects (capability `event-link`). Without these the task
+            // The event-link domain guard's subjects (capability `join-event`). Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
             // `LINK_DOMAIN` alone left the task UP-TO-DATE until they were declared here.
@@ -95,18 +95,16 @@ tasks.test {
             include("api/src/config.ts")
             // GatedPathPinTest reads the backend gate's closed ungated list, so a route the backend opens re-runs it.
             include("api/src/app.ts")
-            // `ModuleSetTest` (capability `module-architecture`): the spec's module enumeration IS the
-            // expected value the build's include set is compared against, and the guard holds no copy of
-            // it. Without this declared, amending the spec alone leaves the task UP-TO-DATE — the precise
-            // staleness the guard exists to catch.
-            //
-            // `CLAUDE.md` is declared for `RunbookSkillsTest` (below), which is now its ONLY reader here:
-            // `LawsDigestTest` held CLAUDE.md's laws digest against this spec, and both the digest and
-            // that guard are gone — the duplicate was deleted rather than guarded. Do not remove the
-            // CLAUDE.md line on the strength of that: the runbook pointers still depend on it.
+            // `CLAUDE.md` is declared for `RunbookSkillsTest` (below), its ONLY reader here: the runbook
+            // pointers depend on it. No guard reads anything under `openspec/` — `ModuleSetTest` and
+            // `RuntimeIdentityTest` hold their enumerations in code.
             include("CLAUDE.md")
-            include("openspec/specs/module-architecture/spec.md")
-            // `RunbookSkillsTest`'s subjects (capability `architecture-guards`): CLAUDE.md's runbook
+            // `ModuleSetTest`'s subjects: the include set it compares against its in-code groups, and
+            // the core zones' build files whose project edges it pins. Without them an include-only or
+            // edge-only edit leaves this task UP-TO-DATE.
+            include("settings.gradle.kts")
+            include("domain/*/build.gradle.kts")
+            // `RunbookSkillsTest`'s subjects (`docs/architecture.md`): CLAUDE.md's runbook
             // pointers must resolve to these files. Without them declared, renaming or
             // deleting a skill leaves this task UP-TO-DATE — a dangling pointer is invisible by
             // construction, so a guard that stops re-running is the same as no guard at all.

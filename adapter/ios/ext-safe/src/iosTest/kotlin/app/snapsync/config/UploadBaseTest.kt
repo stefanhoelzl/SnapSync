@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The baked backend base (capability `ios-app-shell`).
+ * The baked backend base (capability `sync-status`).
  *
  * The host is compile-time because PhotoKit validates every upload job's destination against the
  * extension's baked value, so a user-configurable host is impossible by design. What is left to

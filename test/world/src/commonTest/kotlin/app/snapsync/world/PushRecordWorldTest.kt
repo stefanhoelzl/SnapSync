@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The mini-edge records the pushes it would send (capability `harness-world-model`, "The mini-edge records the
+ * The mini-edge records the pushes it would send (`docs/testing.md`, "The mini-edge records the
  * pushes it would send"), on the real backend's rule: a write that makes an asset newly servable wakes the
  * event's OTHER active members holding a token — recorded, never delivered, because the operator plays the OS.
  */

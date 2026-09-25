@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The selection policy over the **real** stack (capability `photo-selection-policy`): the real `UploadCycle`,
+ * The selection policy over the **real** stack (capability `photo-sharing`): the real `UploadCycle`,
  * engine, ledger, device-manifest producer and mini-edge, with only PhotoKit faked — driven through the control
  * protocol.
  *

@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Runtime identity is pinned** (capability `architecture-guards`; decision record:
+ * **Runtime identity is pinned** (`docs/architecture.md`; decision record:
  * `pin-runtime-identity-and-zone-gates`).
  *
  * Every literal here is a string the OS or the installed base holds on its side — App-Group
@@ -25,8 +25,8 @@ import kotlin.test.fail
  * nothing raises) — and the plist's listing must be EXACTLY the pinned set, each registered by the
  * Swift shell, so a retired id left behind fails too.
  *
- * The pin inventory is the spec's (`openspec/specs/architecture-guards/spec.md`): adding, removing,
- * or re-valuing a pin is a spec delta, deliberately.
+ * The agreed pin inventory is [DOCUMENTED_INVENTORY]: adding, removing, or re-valuing a pin is a
+ * deliberate two-place edit (a pin list AND the inventory), never a casual one.
  */
 /**
  * The shared Keychain access group, as production Kotlin must state it. Held here as a literal
@@ -34,6 +34,49 @@ import kotlin.test.fail
  * the pin is — deliberately — a text assertion about source, exactly like every other pin here.
  */
 private const val SHARED_ACCESS_GROUP = "E9Z8BADH58.app.snapsync.shared"
+
+/**
+ * The agreed inventory of runtime identity — every value the OS or the installed base holds on its
+ * side, current or retired. Formerly the backticked values of the `architecture-guards` spec's
+ * "Runtime identity is pinned" requirement (as last stated on `main`, including the retired
+ * `app.snapsync.download.backstop` BGTask id); held here since that spec was retired, because a
+ * guard whose inventory is parsed out of prose breaks the moment the prose moves. See
+ * `every pinned identity is documented in the inventory`.
+ */
+private val DOCUMENTED_INVENTORY: Set<String> = setOf(
+    // App Group container, NSUserDefaults keys, file names.
+    "group.app.snapsync",
+    "rejoin.joinedEventId",
+    "app.snapsync.album.map",
+    "ledger.db",
+    "downloads.db",
+    "eventconfig.json",
+    "device-manifest",
+    "last-uploaded.json",
+    // OS-registered BGTask / URLSession identifiers.
+    "app.snapsync.upload.heartbeat",
+    "app.snapsync.upload.session",
+    "app.snapsync.download.bg",
+    // Framework baseNames.
+    "SnapSyncKit",
+    "SnapSyncUploadKit",
+    // Keychain services and accounts.
+    "app.snapsync.deviceid",
+    "deviceid",
+    "app.snapsync.attest",
+    "token",
+    "keyid",
+    "app.snapsync.album",
+    "albummap",
+    // Retired identities, recorded so a revert or reuse is recognisable (not pinned: they appear in
+    // production Kotlin nowhere; the retired BGTask id is kept out of every plist listing by
+    // `BGTaskSchedulerPermittedIdentifiers lists exactly the pinned BGTask set`).
+    "accumulator.json",
+    "discovery.changeToken",
+    "app.snapsync.config",
+    "eventconfig",
+    "app.snapsync.download.backstop",
+)
 
 /** The app bundle's plist — the one that MUST declare the BGTask listing. */
 private const val APP_PLIST = "iosApp/iosApp/Info.plist"
@@ -74,8 +117,7 @@ class RuntimeIdentityTest {
     /** Quoted Kotlin string literals: exactly one production occurrence each. */
     private val kotlinLiterals = listOf(
         "group.app.snapsync",
-        // NB `discovery.changeToken` was pinned here until the discovery cursor was removed (capability
-        // `architecture-guards`): every walk is a full enumeration now, so the key appears in production
+        // NB `discovery.changeToken` was pinned here until the discovery cursor was removed: every walk is a full enumeration now, so the key appears in production
         // Kotlin nowhere and an exactly-once pin would fail forever. A stale value in the App Group is inert.
         // The retired join marker's key: pinned as a REMOVAL TARGET, not an identity anything reads. Its one
         // production occurrence is the start-up removal (`removeOrphanedJoinMarker`), which keeps a revert of
@@ -87,14 +129,14 @@ class RuntimeIdentityTest {
         "eventconfig.json",
         "device-manifest",
         // NB `accumulator.json` was pinned here until the device manifest became a projection of the
-        // upload ledger (capability `sync-ledger`). The file is gone, so pinning it would fail the
+        // upload ledger (capability `photo-sharing`). The file is gone, so pinning it would fail the
         // "nowhere — a move dropped or re-valued it" arm forever; `DeletionLedgerTest` keeps the
         // accumulator itself from growing back.
         "last-uploaded.json",
         "app.snapsync.upload.heartbeat",
         "app.snapsync.upload.session",
         "app.snapsync.download.bg",
-        // The shared Keychain access group (capability `device-identity`). It is runtime identity in
+        // The shared Keychain access group (capability `photo-sharing`). It is runtime identity in
         // the same sense as a service or account: re-valuing it addresses a DIFFERENT real item, and
         // does so silently — every read still succeeds and simply returns something else. That is
         // precisely how the app and the upload extension came to hold two different device ids.
@@ -112,13 +154,14 @@ class RuntimeIdentityTest {
      *
      * The config seat (`app.snapsync.config`/`eventconfig`) left this set with `KeychainConfigReader`
      * — the Stage-2 change deleted the read-only legacy fallback that was its only justification for
-     * searching unscoped (capability `upload-state-reconciliation`). Because the set is exact in both
+     * searching unscoped (capability `photo-sharing`). Because the set is exact in both
      * directions, reconstructing that seat **unscoped** fails this gate. Stated blind spot:
      * reconstructing it **scoped** would not — scoped sites are only checked for the device-id seat's
      * presence, never pinned as a set — which is narrow, since a scoped read cannot find the unscoped
      * items pre-11a builds wrote, the only thing such a seat could be after.
      *
-     * Adding, removing, or re-scoping an entry here is a spec delta to `architecture-guards`.
+     * Adding, removing, or re-scoping an entry here is a deliberate change to this set and to
+     * [DOCUMENTED_INVENTORY].
      */
     private val unscopedKeychainSeats = setOf(
         "app.snapsync.attest" to "token",
@@ -137,7 +180,7 @@ class RuntimeIdentityTest {
         // seat. It now appears in production Kotlin NOWHERE, which an exactly-once pin cannot
         // express — pinning it would fail the "nowhere" arm for ever. The config's runtime identity
         // is carried by the "eventconfig.json" literal above; a reconstructed unscoped seat is
-        // caught by the unscoped inventory (capability upload-state-reconciliation).
+        // caught by the unscoped inventory (capability `photo-sharing`).
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",
         "app.snapsync.album" to "albummap",
@@ -182,44 +225,29 @@ class RuntimeIdentityTest {
                 (if (found.isEmpty()) " (nowhere — a move dropped or re-valued it)"
                  else "\n  ${found.joinToString("\n  ")}") +
                 "\nThis literal is runtime identity the installed base depends on. If the change is " +
-                "intentional, it is a spec delta to architecture-guards, not a casual edit.",
+                "intentional, it is a deliberate change to DOCUMENTED_INVENTORY and the pin lists, not a casual edit.",
         )
     }
 
     /**
-     * **Every pinned identity is documented in the spec that owns the inventory.**
+     * **Every pinned identity is in the agreed inventory, [DOCUMENTED_INVENTORY].**
      *
-     * This guard's own doc says "the pin inventory is the spec's (`openspec/specs/architecture-guards/`)
-     * — adding, removing, or re-valuing a pin is a spec delta, deliberately". It said that while holding
-     * its own private copy and never reading the spec, which is the shape `ModuleSetTest` was rebuilt to
-     * escape: that guard compared the module set against a table three lines below the assertion, told
-     * you twice that a new module "is a spec delta", and got a table edit both times.
+     * This used to parse the backticked values out of the `architecture-guards` spec's "Runtime
+     * identity is pinned" requirement. That spec is gone, so the inventory it carried is now held in
+     * code, separately from the pin lists above, and on purpose: the drift worth catching is a pin
+     * that exists in one place and not the other. A pin with a WRONG value already fails loudly (it is
+     * asserted against production Kotlin); a pin ADDED to a list above without also being entered in
+     * the inventory fails here. That second, deliberate edit is the point — changing runtime identity
+     * later must read as the field-breaking change it is, not as a casual test edit.
      *
-     * The drift here is **asymmetric**, which is why this direction is worth having on its own. A pin
-     * with a WRONG value already fails loudly — it is asserted against production Kotlin, and a literal
-     * that is not there is not found. What drifts silently is a pin that exists in one place and not the
-     * other. This closes the guard→spec half: a pin added here without a spec delta fails.
-     *
-     * ⚠️ The spec→guard half — an identity the SPEC names that this guard does not assert — is NOT
-     * closed, and that is the half matching the `:tools:diagrams` failure mode. Closing it needs the
-     * spec's inventory to be machine-readable; today it is prose whose backticks carry values
-     * (`ledger.db`) and terms (`NSUserDefaults`, `TEAM_ID`) indistinguishably, and a parser guessing
-     * between them would under-extract silently — the exact defect class this capability exists to
-     * prevent. That restructuring belongs with the `architecture-guards` spec delta.
+     * ⚠️ The reverse half — an inventory entry the guard does not assert — is NOT closed: the
+     * inventory also records retired identities (kept so a revert or a reuse is recognisable), which
+     * no exactly-once pin can express.
      */
     @Test
-    fun `every pinned identity is documented in the spec that owns the inventory`() {
-        val spec = File(repoRoot, "openspec/specs/architecture-guards/spec.md")
-        assertTrue(spec.isFile, "the architecture-guards spec is missing — this guard's inventory has no owner")
-        val text = spec.readText()
-        val start = text.indexOf("### Requirement: Runtime identity is pinned")
-        assertTrue(start >= 0, "the spec no longer declares `Runtime identity is pinned` — re-point this guard")
-        val section = text.substring(start).let { body ->
-            val next = body.indexOf("### Requirement:", 10)
-            if (next == -1) body else body.substring(0, next)
-        }
-        val documented = Regex("`([^`]+)`").findAll(section).map { it.groupValues[1] }.toSet()
-        assertTrue(documented.isNotEmpty(), "parsed zero backticked values out of the pin requirement")
+    fun `every pinned identity is documented in the inventory`() {
+        val documented = DOCUMENTED_INVENTORY
+        assertTrue(documented.isNotEmpty(), "the documented inventory is empty")
 
         val pinned = buildSet {
             addAll(kotlinLiterals)
@@ -228,16 +256,16 @@ class RuntimeIdentityTest {
             keychainPairs.forEach { (service, account) -> add(service); add(account) }
             unscopedKeychainSeats.forEach { (service, account) -> add(service); add(account) }
         }
-        // The shared Keychain access group is named by the spec as a concept but not as a value, and
-        // deliberately: the value composes the Apple TEAM_ID, which is declared in `Config.xcconfig` and
-        // has no business being restated in a spec. Its agreement across Kotlin, TEAM_ID and both
-        // entitlements is asserted by its own test below, which is the stronger check anyway.
+        // The shared Keychain access group is documented as a concept but not as a value, and
+        // deliberately: the value composes the Apple TEAM_ID, which is declared in `Config.xcconfig`.
+        // Its agreement across Kotlin, TEAM_ID and both entitlements is asserted by its own test
+        // below, which is the stronger check anyway.
         val documentedElsewhere = setOf(SHARED_ACCESS_GROUP)
         val undocumented = (pinned - documented - documentedElsewhere).sorted()
         assertTrue(
             undocumented.isEmpty(),
-            "these identities are pinned by the guard but named nowhere in the spec's inventory: " +
-                "$undocumented. The spec owns the inventory; a pin that exists only in the guard is a " +
+            "these identities are pinned by the guard but named nowhere in DOCUMENTED_INVENTORY: " +
+                "$undocumented. The inventory is the agreement; a pin that exists only in a pin list is a " +
                 "runtime identity nobody agreed to, and changing it later looks like a test edit rather " +
                 "than the field-breaking change it is.",
         )
@@ -275,7 +303,7 @@ class RuntimeIdentityTest {
     @Test
     fun `the shared Keychain access group agrees across Kotlin, TEAM_ID and both entitlements`() {
         // TEAM_ID moved into the GENERATED Deployment.xcconfig (capability
-        // `deployment-configuration`): it is Apple identity, resolved from the deployment alongside the
+        // `docs/deployment.md`): it is Apple identity, resolved from the deployment alongside the
         // bundle id, so the backend's copy and this one can no longer disagree.
         val xcconfig = File(repoRoot, "iosApp/Configuration/Deployment.xcconfig")
         assertTrue(
@@ -311,7 +339,7 @@ class RuntimeIdentityTest {
                 "  Kotlin:       $SHARED_ACCESS_GROUP\n" +
                 "  entitlements: $composed  (TEAM_ID=$teamId + ${suffixes.single()})\n" +
                 "Drift here does not fail loudly — both processes still read successfully and each " +
-                "gets a DIFFERENT item. That is the split-identity fault (capability device-identity).",
+                "gets a DIFFERENT item. That is the split-identity fault (capability `photo-sharing`).",
         )
     }
 
@@ -349,11 +377,11 @@ class RuntimeIdentityTest {
                 "  found:    ${unscoped.sortedBy { it.first + it.second }}\n" +
                 "A NEW unscoped seat means an item's access group is again chosen by the platform at " +
                 "write time, from whatever entitlements the writing build carried. Scoping one is " +
-                "welcome — as a spec delta to architecture-guards, not a silent edit.",
+                "welcome — as a deliberate change to this guard's inventory, not a silent edit.",
         )
         assertTrue(
             ("app.snapsync.deviceid" to "deviceid") in scoped,
-            "the device id must address its access group explicitly (capability device-identity)",
+            "the device id must address its access group explicitly (capability `photo-sharing`)",
         )
     }
 
@@ -377,7 +405,7 @@ class RuntimeIdentityTest {
      * The symptom is `SBMainWorkspace` refusing the launch, which says nothing about entitlements, so
      * the obvious repair for a reader who notices the "missing" key is exactly the edit that causes it.
      *
-     * This is why `device-identity` resolves through a per-target `SecureStore` binding rather than the
+     * This is why `photo-sharing` resolves through a per-target `SecureStore` binding rather than the
      * shared Keychain group on `iosSimulatorArm64`.
      */
     @Test
@@ -396,7 +424,7 @@ class RuntimeIdentityTest {
                 "that entitlement makes an ad-hoc-signed simulator build un-launchable " +
                 "(SBMainWorkspace refuses it, saying nothing about entitlements). The device id " +
                 "resolves through the iosSimulatorArm64 SecureStore binding instead — see " +
-                "capability device-identity.",
+                "capability `photo-sharing`.",
         )
     }
 
@@ -445,7 +473,7 @@ class RuntimeIdentityTest {
                     "  missing (pinned, not listed — its submit is refused): $missing\n" +
                     "  duplicated: $duplicated\n" +
                     "A retired id left listed is an operating-system error nothing else notices; retiring or " +
-                    "adding one is a spec delta to architecture-guards.",
+                    "adding one is a deliberate change to bgTaskIds and DOCUMENTED_INVENTORY.",
             )
         }
     }

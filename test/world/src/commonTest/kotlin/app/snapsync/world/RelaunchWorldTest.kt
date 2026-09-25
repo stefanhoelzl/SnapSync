@@ -10,7 +10,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `World.relaunch()` is process death and a cold launch (capability `harness-world-model`, "The world relaunches
+ * `World.relaunch()` is process death and a cold launch (`docs/testing.md`, "The world relaunches
  * its app over its durable state"). These pin the classification the relaunch rests on: every durable cell
  * survives into the new app, and every piece of process memory is fresh. A cell classified wrongly would make
  * every relaunch test lie, in the direction of whichever way it was wrong.

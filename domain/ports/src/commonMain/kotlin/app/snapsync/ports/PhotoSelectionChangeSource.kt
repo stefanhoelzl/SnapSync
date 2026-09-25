@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
 /**
- * Selection snapshots under a **partial** photo grant (capability `limited-photo-access`): the full
+ * Selection snapshots under a **partial** photo grant (capability `photo-access`): the full
  * current selection, as resources, emitted once when observation begins (the cold-launch baseline
  * read) and once per selection change (the in-app picker, a Settings-side edit, iCloud sync — the
  * platform's change observer does not distinguish, and neither does this seam).

@@ -1,7 +1,7 @@
 package app.snapsync.architecture
 
 /**
- * **Just enough declaration parsing for the seam-shape gates** (capability `architecture-guards`): constructor
+ * **Just enough declaration parsing for the seam-shape gates** (`docs/architecture.md`): constructor
  * parameter lists, property declarations, and whether a declared type is a function type.
  *
  * Text, not a resolved model, for [SourceScan]'s reasons — it must reach `iosMain`, which has no JVM bytecode.

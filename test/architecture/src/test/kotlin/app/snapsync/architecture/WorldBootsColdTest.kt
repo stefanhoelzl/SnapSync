@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **The world boots cold** (capability `harness-world-model`, "The world boots cold"; decision record
+ * **The world boots cold** (`docs/testing.md`, "The world boots cold"; decision record
  * `harden-seam-bug-classes`).
  *
  * Constructing the world may force no member of the composed `AppCore`. It used to touch

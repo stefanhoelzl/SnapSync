@@ -12,7 +12,7 @@ import platform.posix.fcntl
 
 /**
  * Make this process's stdout and stderr **non-blocking**, so that writing a log line can never park the
- * thread that writes it (capability `diagnostic-logging`). Each composition root calls it first, before the
+ * thread that writes it (capability `privacy-security`). Each composition root calls it first, before the
  * first line is logged.
  *
  * **Why.** [PublicNSLogWriter] calls `NSLog`. `NSLog` sends the line to the unified log, and ALSO to stderr

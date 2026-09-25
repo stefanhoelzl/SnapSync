@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * **The third rung of the cost ladder** (capability `photo-selection-policy`): `EventPhotoSet.resources()`
+ * **The third rung of the cost ladder** (capability `photo-sharing`): `EventPhotoSet.resources()`
  * — the bytes to upload and the entries to list. `count()` and `assets()` are exercised in
  * `FactsOnlyAdmissionTest` and `CeilingReachesEveryConsumerTest`; this rung was reached by no test at all,
  * and it is the one whose output leaves the device.

@@ -27,9 +27,9 @@ class PushRegistrationIntegrationTest {
         deviceJson("backend/device-config")["config"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
 
     /**
-     * A JOIN re-registers the push token (capability `push-registration`): committing a join runs the real
+     * A JOIN re-registers the push token (capability `receiving-photos`): committing a join runs the real
      * `flow/Provision`, whose `registerPush` re-PUTs the delivered token — closing the warm-rejoin window the
-     * nightly sweep's device-record collection opens (capability `scheduled-cleanup`).
+     * nightly sweep's device-record collection opens (capability `event-lifetime`).
      *
      * The config is last-write-wins, so the document cannot tell one registration from two; the backend's count of
      * stored registrations can. The delivery registers once; the join registers again.
@@ -49,7 +49,7 @@ class PushRegistrationIntegrationTest {
 
     /**
      * **The credential arm of `AppCore.installPushRegistration` is wired** (capabilities
-     * `push-registration`, `device-attestation`).
+     * `receiving-photos`, `privacy-security`).
      *
      * THE JOIN THIS PINS. The app publishes a delivered APNs token only when it differs from the last
      * registration the backend accepted. A registration refused because the backend rejected the credential

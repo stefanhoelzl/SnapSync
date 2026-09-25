@@ -1,4 +1,4 @@
-// A STORE'S SCHEMA AS A COMPARABLE VALUE (capability `database`).
+// A STORE'S SCHEMA AS A COMPARABLE VALUE (`docs/architecture.md`).
 //
 // Shared by the deploy-time assertion, which compares a LIVE store against what the migrations build.
 // The two sides run on different engines — the deployed store is libSQL, a replay is `node:sqlite` — so

@@ -6,8 +6,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **A rejected credential still reaches the trust feature** (capability `architecture-guards`; the
- * recovery loop `device-attestation` and `api-endpoints` both rest on).
+ * **A rejected credential still reaches the trust feature** (`docs/architecture.md`; the
+ * recovery loop `privacy-security` and `docs/architecture.md` both rest on).
  *
  * THE LOOP. When any gated call answers `401`, the shared HTTP client's interceptor tells the trust
  * feature its credential was rejected; the feature drops the token and attests afresh; obtaining a new

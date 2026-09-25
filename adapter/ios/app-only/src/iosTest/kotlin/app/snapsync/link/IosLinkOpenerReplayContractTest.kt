@@ -15,7 +15,7 @@ import app.snapsync.ports.LinkOpener
 import kotlin.test.Test
 
 /**
- * The device's `UIApplication.openURL`, REPLAYED (capability `port-contracts`): the CURRENT [IosLinkOpener] runs
+ * The device's `UIApplication.openURL`, REPLAYED (`docs/architecture.md`): the CURRENT [IosLinkOpener] runs
  * against what iOS answered when `test/contracts/recordings/LinkOpener@IOS_DEVICE_APP.rec` was recorded, and the
  * current clauses judge.
  *

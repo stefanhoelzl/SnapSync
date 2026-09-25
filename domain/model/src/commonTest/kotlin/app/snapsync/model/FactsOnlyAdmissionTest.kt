@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
 /**
- * **A cheap admission and an expensive one give the same answer** (capability `photo-selection-policy`).
+ * **A cheap admission and an expensive one give the same answer** (capability `photo-sharing`).
  *
  * This is the property removing the animated-image rule buys, and it is worth a test of its own because
  * its absence was a live divergence rather than a theoretical one:

@@ -1,4 +1,4 @@
-// THE IN-REPOSITORY MIGRATION RUNNER (capability `database`): applies `api/migrations/*.sql` to a local
+// THE IN-REPOSITORY MIGRATION RUNNER (`docs/architecture.md`): applies `api/migrations/*.sql` to a local
 // SQLite store — the dev rig, every test fixture, and the schema generator.
 //
 // WHY THIS EXISTS ALONGSIDE THE PLATFORM RUNNER. `bunny db migrations apply` is what migrates the
@@ -90,7 +90,7 @@ async function appliedFiles(db: Handle): Promise<Map<string, string>> {
 /**
  * Apply every migration this store has not seen, in order. Returns the file names applied.
  *
- * ⚠️ FOREIGN KEYS ARE DISABLED AROUND EACH FILE, AND THAT IS LOAD-BEARING (capability `database`).
+ * ⚠️ FOREIGN KEYS ARE DISABLED AROUND EACH FILE, AND THAT IS LOAD-BEARING (`docs/architecture.md`).
  * SQLite performs an implicit `DELETE FROM` when a table is dropped, which FIRES `ON DELETE CASCADE` —
  * so rebuilding a table that others reference deletes their rows while reporting success. Measured on
  * this exact schema shape: with enforcement on, rebuilding `memberships` left `event_assets` empty.

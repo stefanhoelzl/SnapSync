@@ -48,7 +48,7 @@ import kotlinx.datetime.plus
 // widget was split out of an 887-line file. Everything another split file reaches is widened to module
 // scope and no further — `:ui:components` is the design system, the same audience these had before.
 //
-// The calendar grids the date pickers open onto (capability `event-creation-ui`): a range-aware grid
+// The calendar grids the date pickers open onto (capability `create-event`): a range-aware grid
 // with its day cell, a single-date grid with its own, and the month/weekday chrome both share.
 
 /**

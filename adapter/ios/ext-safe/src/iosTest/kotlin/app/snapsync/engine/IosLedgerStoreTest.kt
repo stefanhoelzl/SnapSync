@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 
 /**
  * The iOS ledger's **placement** — that the native SQLite driver really opens its database where the
- * container says (capability `sync-ledger`).
+ * container says (capability `photo-sharing`).
  *
  * The store's row semantics are the shared `SqlDelightLedgerStore`'s, exercised by the storage
  * contract in `:test:world`. What is only true on this target, and only in this factory, is the

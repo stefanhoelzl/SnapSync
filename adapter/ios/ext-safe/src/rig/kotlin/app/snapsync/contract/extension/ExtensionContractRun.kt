@@ -45,7 +45,7 @@ fun extensionContractEntries(
  * re-registers the extension (which empties the queue and invokes it), then waits for the run's calls, five minutes
  * apart. The recordings are merged into one file. A full run takes about twenty minutes: call it in the background.
  *
- * Preconditions first, in order (capability `port-contracts`): a full photo grant, which only a person can set; no
+ * Preconditions first, in order (`docs/architecture.md`): a full photo grant, which only a person can set; no
  * membership, because re-registering wipes every in-flight upload job.
  */
 private fun runInExtension(

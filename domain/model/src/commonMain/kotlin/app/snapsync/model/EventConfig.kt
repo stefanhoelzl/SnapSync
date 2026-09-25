@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  *
  * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
  * instead of waiting for a tap (capability `join-event`). [minPhotoDate] is likewise a **dev/test**
- * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-selection-policy`) that,
+ * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-sharing`) that,
  * on an auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering.
  * [maxPhotoDate] is likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z`
  * string) that, on an auto-confirmed join, forces a specific upper bound — clamped to the event `endsAt` on
@@ -46,7 +46,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
  * `eventId`, the human-readable event `name`, and this device's chosen capture-date [minPhotoDate]
- * cutoff for the event (capability `photo-selection-policy`). The name is **required, with no default**:
+ * cutoff for the event (capability `photo-sharing`). The name is **required, with no default**:
  * the join gate only provisions from a loaded phase that carries a name (capability `join-event`), and the
  * backend enforces name-required on create (capability `event-creation`), so a nameless event cannot
  * exist.
@@ -61,7 +61,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * at `HttpEventDirectory`, and it is the ONLY one — nothing downstream re-checks.
  * Decision record: `changes/archive/…-remove-nameless-config-fallback`.
  *
- * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-selection-policy`): the
+ * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-sharing`): the
  * per-device, per-membership capture-date cutoff, a UTC `…Z` string. A membership with no cutoff is not a
  * representable state — an absent cutoff once meant whole-library scope, which under event photo sharing
  * uploads a guest's entire camera roll to another person's event.
@@ -79,7 +79,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * and the **floor** for this membership's cutoff: the persisted [minPhotoDate] is always
  * `max(chosen, startsAt)` (the clamp lives in `JoinEvent`), so the invariant `minPhotoDate >= startsAt`
  * holds for every config. It is what the not-started status line compares against (`startsAt > now`,
- * capability `sync-status-screen`).
+ * capability `sync-status`).
  *
  * Unlike [minPhotoDate], [startsAt] **defaults** — to [minPhotoDate] — so a config persisted before this
  * field existed decodes instead of failing. That asymmetry is deliberate and the reasoning is *not*
@@ -99,7 +99,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * [endsAt] is the **event's** end date (capability `event-creation`) — the host's declared, immutable event
  * window ceiling, same canonical `…Z` shape as [startsAt]. It is the ceiling the membership's upper bound is
  * clamped to, the default upper bound a joiner sees, and what the "Event ended" status line compares against
- * (`now > endsAt`, capability `sync-status-screen`). [maxPhotoDate] is this membership's chosen capture-date
+ * (`now > endsAt`, capability `sync-status`). [maxPhotoDate] is this membership's chosen capture-date
  * **upper** bound, always clamped to `min(chosen, endsAt)` at join (the clamp lives in `JoinEvent`), so
  * `maxPhotoDate <= endsAt` holds for every config that has one.
  *
@@ -119,13 +119,13 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * feeds the "Event ended" line and gives the reconfigure surface something to clamp against, and neither
  * failure is worth a decode failure. Its backfill stays.
  *
- * [deletesAt] is when the backend deletes the event's shared data (capability `event-limits`) — a
+ * [deletesAt] is when the backend deletes the event's shared data (capability `event-lifetime`) — a
  * canonical `…Z` instant **derived server-side** (`max(createdAt, startsAt) + lifetime`) and served on the
  * details response. The device stores it, never computes it: duplicating the retention constant and the
  * anchor rule in the client would let a join gate confidently promise a date the backend will not honour,
  * and the drift would be silent.
  *
- * It exists for exactly one job — the **second witness** of the self-leave (capability `leave-event`). A
+ * It exists for exactly one job — the **second witness** of the self-leave (capability `manage-membership`). A
  * membership is torn down without user action only when the backend reports the event definitively absent
  * **and** this stored deadline has passed. One witness is offline, so no backend misconfiguration can
  * manufacture both: a zone-wide fault that 404s every event would otherwise destroy every membership in
@@ -133,7 +133,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  *
  * It **defaults to `null`** like [endsAt], and a `null` means **never reached** — the self-leave cannot
  * fire on a membership that has not yet learned its deadline. Reconcile backfills it (capability
- * `upload-state-reconciliation`). Both defaults fail toward keeping the membership.
+ * `photo-sharing`). Both defaults fail toward keeping the membership.
  *
  * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
  * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the

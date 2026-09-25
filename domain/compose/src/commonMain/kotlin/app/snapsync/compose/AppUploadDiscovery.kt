@@ -8,7 +8,7 @@ import app.snapsync.ports.UploadDiscovery
 import co.touchlab.kermit.Logger
 
 /**
- * Whether the app process's walk memo **serves** walks, or only shadows them (capability `sync-ledger`, "An
+ * Whether the app process's walk memo **serves** walks, or only shadows them (capability `photo-sharing`, "An
  * unchanged library is answered from the walk memo").
  *
  * [WalkMemoUse.SERVE]: the memo's soundness rests on a change made outside the process always moving the change
@@ -27,7 +27,7 @@ val APP_WALK_MEMO_USE: WalkMemoUse = WalkMemoUse.SERVE
  * The app process's upload discovery binding: [walk] behind the walk memo (decision record
  * `changes/own-work-per-wake`, D9). The **one** place a [WalkMemo] is built, and called only from the app's
  * uploader — the upload extension binds its walk bare and walks afresh on every `process()` call (capability
- * `ios-photokit-upload`; `WalkMemoContainmentTest` pins both sides).
+ * `background-upload`; `WalkMemoContainmentTest` pins both sides).
  *
  * [changeToken] and [grant] are platform reads: the library's change token, and the grant [walk] itself decides
  * its authority by, so the memo keys on the same answer the walk reports under.

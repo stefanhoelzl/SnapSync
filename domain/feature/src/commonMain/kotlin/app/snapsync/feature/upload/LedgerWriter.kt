@@ -61,7 +61,7 @@ class LedgerWriter(
     suspend fun recordFailed(resource: Resource) = record(resource, LedgerState.DISCOVERED)
 
     /**
-     * Delete exactly the rows keyed by [keys] — the cycle's one row deletion (capability `sync-ledger`,
+     * Delete exactly the rows keyed by [keys] — the cycle's one row deletion (capability `photo-sharing`,
      * "Deletion is a presence diff over an authoritative walk"). A sync write by the single writer, and
      * key-scoped on purpose: the caller holds evidence about individual rows, never about every row an
      * asset has.
@@ -70,7 +70,7 @@ class LedgerWriter(
 
     /**
      * Fill an already-recorded row's manifest detail from the freshly discovered [resource]
-     * (capability `sync-ledger`). A no-op unless the row is still bare.
+     * (capability `photo-sharing`). A no-op unless the row is still bare.
      *
      * This is what makes the ledger-backed manifest survive a re-join: the reconcile seeds
      * `COMPLETED` rows from a filename listing, the engine then answers `AlreadyUploaded` for each
@@ -84,7 +84,7 @@ class LedgerWriter(
     suspend fun manifestRows(): List<LedgerEntry> = backend.manifestRows()
 
     /**
-     * Every row that needs an upload job — the cycle's **source of work** (capability `sync-ledger`): the
+     * Every row that needs an upload job — the cycle's **source of work** (capability `photo-sharing`): the
      * `DISCOVERED` rows, never attempted or returned there by a failure, in a stable key order.
      *
      * Unbounded: the caller admits these rows against the membership's current policy and bounds what it
@@ -114,7 +114,7 @@ class LedgerWriter(
      * The `prior` read serves that preservation and nothing else. It is NOT the settled-row guard: that lives
      * in the backend's statement, because a read here followed by a write is not atomic against a second
      * writer. A declined write is logged rather than dropped — with one writer it means a rare late record
-     * reached a finished row (`module-architecture`, "Absence is never silent").
+     * reached a finished row (`docs/architecture.md`, "Absence is never silent").
      */
     private suspend fun record(
         resource: Resource,

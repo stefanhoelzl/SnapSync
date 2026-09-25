@@ -147,7 +147,7 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
             Button(onClick = { controller.adjustInFlightBy(+1) }) { Text("in-flight +") }
         }
 
-        Text("Download (joined layer — capability photo-download)")
+        Text("Download (joined layer — capability `receiving-photos`)")
         ButtonRow {
             Button(onClick = { controller.setDownload(0, 0) }) { Text("hidden (0/0)") }
             Button(onClick = { controller.setDownload(2, 5) }) { Text("downloading (2/5)") }

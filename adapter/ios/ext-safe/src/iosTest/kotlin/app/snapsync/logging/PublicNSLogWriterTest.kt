@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The format string this writer hands `NSLog` (capability `diagnostic-logging`).
+ * The format string this writer hands `NSLog` (capability `privacy-security`).
  *
  * The class exists to defeat os_log's `<private>` redaction, and the trick it uses is to put the
  * already-formatted message in `NSLog`'s **format-string** position — the one part os_log does not

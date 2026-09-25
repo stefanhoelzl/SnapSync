@@ -64,7 +64,7 @@ the extension so the app's uploader runs alone.
 ## Reading the logs
 
 The app and extension are separate processes, each writing its **own** verbatim, un-redacted log
-(capability `diagnostic-logging`). Each rolls to a `.1` sibling past 10 MB.
+(capability `privacy-security`). Each rolls to a `.1` sibling past 10 MB.
 
 ```bash
 P="uvx --python 3.14 pymobiledevice3"
@@ -87,8 +87,7 @@ activity) — don't retry that.
 
 ## Verifying the event link
 
-An invite is an HTTPS **Universal Link** — `https://snapsync.stho.net/join#v=3&d=<base64url>` (capability
-`event-link`). The payload rides in the **fragment** on purpose: a browser never sends it, so the
+An invite is an HTTPS **Universal Link** — `https://snapsync.stho.net/join#v=3&d=<base64url>` (capability `join-event`). The payload rides in the **fragment** on purpose: a browser never sends it, so the
 `eventId` (which *is* the upload capability) never reaches the backend or its CDN even when someone
 without the app opens the link and gets redirected to the App Store.
 
@@ -129,7 +128,7 @@ once. `.onContinueUserActivity` is warm-only; `application(_:continue:)` is neve
 app (re-measured on iOS 18, build 683: zero hits on all three app-delegate continuation callbacks). A
 `:test:architecture` guard pins the scene delegate AND the modifier (`EventLinkDeliveryTest`).
 
-**The authoritative on-device check is `debug.log`, not the screen** (spec `ios-app-shell`): read the
+**The authoritative on-device check is `debug.log`, not the screen** (spec `sync-status`): read the
 `[onOpenUrl]` lines. A **cold** delivery is an `onOpenUrl` sharing a timestamp with
 `=== app process start ===`; a **warm** one has no preceding process start. A multi-second gap after a
 launch means a *second* scan delivered warm — misreading that gap is how "cold works" was concluded
@@ -145,7 +144,7 @@ installed apps on its own.
 
 By default on-device uploads go to the **deployed HTTPS backend** (the device-facing host baked into
 `Deployment.plist`). Confirm one landed by checking the backend's bunny **storage zone** (see
-`api/README.md` / `openspec/specs/backend-deployment`), **not** the app status screen — the screenshot's
+`api/README.md` / `docs/deployment.md`), **not** the app status screen — the screenshot's
 status counts are informational, not the authoritative landing check. Connections are HTTPS-only —
 default ATS, no `NSAllowsLocalNetworking` exception, on any host.
 

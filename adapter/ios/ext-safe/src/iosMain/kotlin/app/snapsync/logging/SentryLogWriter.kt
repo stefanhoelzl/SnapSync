@@ -9,7 +9,7 @@ import io.sentry.kotlin.multiplatform.SentryLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 
 /**
- * The crash-reporting capture seam (capability `crash-reporting`, design D2): one Kermit writer maps
+ * The crash-reporting capture seam (capability `privacy-security`, design D2): one Kermit writer maps
  * the existing logging surface onto the Sentry channel, so every error a feature already reduces
  * into state and logs is reported without per-call-site instrumentation. `Error`/`Assert` become
  * events (with the throwable when present); everything below rides along as breadcrumbs.

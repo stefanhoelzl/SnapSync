@@ -5,7 +5,7 @@ import app.snapsync.model.CandidateRead
 import app.snapsync.model.SelectionPolicy
 
 /**
- * The **one** seam through which the photo library is read for admission (capability `gallery-status`).
+ * The **one** seam through which the photo library is read for admission (capability `sync-status`).
  *
  * It takes the membership's [SelectionPolicy] — not a bound flattened out of it — for two reasons that are
  * really the same reason:
@@ -15,7 +15,7 @@ import app.snapsync.model.SelectionPolicy
  *   sealed, adding a rule forces every translator to state explicitly whether it can express it, instead of
  *   silently not narrowing by it. A narrowing is an optimization only: the authoritative in-memory
  *   admission runs over whatever comes back, so a fetch can neither widen nor narrow the admitted set
- *   (capability `photo-selection-policy`).
+ *   (capability `photo-sharing`).
  *
  * ② **Nothing has to relay it.** This replaced three stacked ports — a raw-asset walk, a resource
  *   enumeration over it, and the composition of the two — each taking a `since: String` and forwarding it
@@ -27,7 +27,7 @@ import app.snapsync.model.SelectionPolicy
  * A [Candidate] carries its asset's neutral facts and can fetch that asset's resources **on demand**.
  * Facts are plain in-memory platform properties; a resource read is one synchronous round-trip (~110 ms
  * per asset on an SE2). Since every selection rule decides on facts alone (capability
- * `photo-selection-policy`), a consumer that needs a count or the admitted asset set pays nothing, and one
+ * `photo-sharing`), a consumer that needs a count or the admitted asset set pays nothing, and one
  * that needs resources pays only for assets **already admitted** — filter-then-fetch, where the seam this
  * replaced fetched every in-scope asset's resources and then discarded the excluded ones.
  *
@@ -53,14 +53,14 @@ interface CandidateSource {
      * The first says the library was read and nothing in it qualifies — a counted zero, which settles the
      * status screen. The second says no answer exists yet. Every implementation states which it means;
      * none may arrive at the second by defaulting. This is the seam's half of the law "Absence is never
-     * silent" (`module-architecture`), and it is not a hypothetical distinction: the collapse shipped as
+     * silent" (`docs/architecture.md`), and it is not a hypothetical distinction: the collapse shipped as
      * `SNAPSYNC-14` / `SNAPSYNC-16`, and it survived under a partial grant after being fixed under a full
      * one. [CandidateRead] carries the whole account.
      *
      * A consumer therefore keeps **no grant check of its own**. Where candidates come from and whether
      * they can be produced at all are both answered here — splitting the two left each consumer restating
      * the grant distinction this seam already owns, and it is the restatement, not the reading, that lets
-     * two paths drift apart (capability `limited-photo-access`).
+     * two paths drift apart (capability `photo-access`).
      *
      * A [SelectionPolicy.None] membership SHOULD NOT reach here — callers short-circuit before enumerating,
      * because a walk costs one round-trip per asset and the direction already gave the empty answer.

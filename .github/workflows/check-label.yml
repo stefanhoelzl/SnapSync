@@ -1,6 +1,6 @@
-# The changelog-label gate (capability `changelog-labels`). Every PR must carry exactly one of
+# The changelog-label gate (`docs/deployment.md`). Every PR must carry exactly one of
 # `enhancement` / `bug` / `internal`, because the App Store release notes are DERIVED from those
-# labels (capability `ios-appstore-release`) and the derivation drops what it cannot categorize: an
+# labels (`docs/deployment.md`) and the derivation drops what it cannot categorize: an
 # unlabelled PR reaches no heading, since the label→heading table in
 # `.github/scripts/release_notes.py` deliberately declares no catch-all.
 #

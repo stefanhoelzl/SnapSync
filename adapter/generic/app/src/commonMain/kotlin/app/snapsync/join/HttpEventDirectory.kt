@@ -29,7 +29,7 @@ import kotlinx.serialization.json.Json
  *
  * The `404` ↔ `Failed` split is load-bearing beyond the join gate: it is the ONLY place "the event is
  * definitively gone" is separated from "I could not tell", and a membership is destroyed (capability
- * `leave-event`) on the former. Every ambiguous outcome must keep landing on [EventDetails.Failed].
+ * `manage-membership`) on the former. Every ambiguous outcome must keep landing on [EventDetails.Failed].
  */
 class HttpEventDirectory(
     private val client: HttpClient,

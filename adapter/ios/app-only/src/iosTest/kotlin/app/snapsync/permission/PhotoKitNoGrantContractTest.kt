@@ -22,7 +22,7 @@ import kotlin.test.Test
 
 /**
  * The app-only PhotoKit adapters, live, in the simulator's Kotlin/Native test executable (capability
- * `port-contracts`). That process has no bundle identifier, so no photo grant can reach it, and the only
+ * `docs/architecture.md`). That process has no bundle identifier, so no photo grant can reach it, and the only
  * state it presents is `NO_GRANT`. Every granted state runs in the simulator app instead.
  */
 class PhotoKitNoGrantContractTest {

@@ -19,7 +19,7 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * The grant decides **where candidates come from**, and no consumer branches on it
- * (capability `limited-photo-access`, D10: *"the mode difference is one source impl, not a branch in the
+ * (capability `photo-access`, D10: *"the mode difference is one source impl, not a branch in the
  * policy() or its consumers"*).
  *
  * That principle was already true of the policy() and false of the consumers: the status total had two
@@ -91,7 +91,7 @@ class PermissionAwareCandidateSourceTest {
         // The load-bearing half. Under a partial grant the selection IS the membership's scope, so a
         // source that merely *happened* to return the right ids while also walking would be reading the
         // wrong universe — it could surface photos the member never chose to share. (Not an alert
-        // argument: reads of an unchanged library raise no limited-access prompt — `limited-photo-access`.)
+        // argument: reads of an unchanged library raise no limited-access prompt — `photo-access`.)
         val (walk, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1", "S2"))
         assertEquals(listOf("S1", "S2"), source.readable(policy()).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
@@ -132,7 +132,7 @@ class PermissionAwareCandidateSourceTest {
         // The snapshot arrives already read, WITH resources, from the sanctioned read points. Asking a
         // candidate for them must therefore issue nothing: a deferred read here would have to reach the
         // assets again later, off-flow — an autonomous library fetch the read discipline forbids
-        // (capability `limited-photo-access`).
+        // (capability `photo-access`).
         val (_, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
         val resources = source.readable(policy()).single().resources()
         assertEquals(listOf("S1-primary.jpg"), resources.map { it.filename })

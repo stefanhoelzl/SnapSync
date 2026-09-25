@@ -5,7 +5,7 @@ import app.snapsync.ports.LedgerStore
 
 /**
  * What this process knows about its own uploads — the two seams that only mean anything together (spec
- * `module-architecture`, "One shared composition").
+ * `docs/architecture.md`, "One shared composition").
  *
  * A **cohesive sub-bundle** of [AppPorts], which the `compose` complexity tier's config names as the way
  * that bundle's parameter ceiling comes down. The [ledger] records what this device believes it uploaded;
@@ -13,9 +13,9 @@ import app.snapsync.ports.LedgerStore
  *
  * The app **reads** through this bundle — the status counts' per-asset progress read and the diagnostic
  * dump's aggregates — and **resets** through it at membership transitions: the join-time load `resetTo`s
- * (or clears) the ledger, and a leave clears it (capability `upload-state-reconciliation`). Both resets are
+ * (or clears) the ledger, and a leave clears it (capability `photo-sharing`). Both resets are
  * the store's reset family, owned by the membership use-cases — each one guarded transaction (capability
- * `sync-ledger`, "Reader and writer capability split"). Records are the upload cycle's own, through its
+ * `photo-sharing`, "Reader and writer capability split"). Records are the upload cycle's own, through its
  * `LedgerWriter`, in whichever process runs it. Nothing composed over this bundle records a row.
  */
 class UploadRecordPorts(

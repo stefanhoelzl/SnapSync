@@ -1,4 +1,4 @@
-// THE SCHEMA GATES (capability `database`).
+// THE SCHEMA GATES (`docs/architecture.md`).
 //
 // Two things live here. First, THE VERIFY PROPERTY: the committed `api/schema.sql` is exactly what
 // replaying `api/migrations/*.sql` produces. That pair used to be two HAND-WRITTEN forms kept honest by a

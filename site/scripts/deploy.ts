@@ -8,7 +8,7 @@
 // It REUSES the api's own storage client + source constants (api/src/{storage,config}.ts): the bunny
 // PUT/LIST/DELETE and the `zone`/`host` live in ONE place, so this deploy can never target a different
 // zone than the api proxy reads. Auth is the STORAGE-ZONE PASSWORD only (BUNNY_STORAGE_ACCESS_KEY) —
-// never the bunny account key, which stays out of CI (backend-deployment).
+// never the bunny account key, which stays out of CI (docs/deployment.md).
 //
 // Deno (not Node): `deno run --allow-read --allow-env --allow-net scripts/deploy.ts`. The site is built
 // under Node (astro:assets); only this deploy step runs under Deno, matching the api's tooling.

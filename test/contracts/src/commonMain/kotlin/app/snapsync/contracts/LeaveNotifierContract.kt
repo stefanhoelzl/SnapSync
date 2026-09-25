@@ -12,7 +12,7 @@ enum class LeaveNotifierState {
     NO_SUCH_EVENT,
 }
 
-/** What telling the edge this device is leaving promises (capability `port-contracts` — the port's specification). */
+/** What telling the edge this device is leaving promises (`docs/architecture.md` — the port's specification). */
 object LeaveNotifierContract : Contract<LeaveNotifierState, EdgeSubject<LeaveNotifier>>("LeaveNotifier") {
 
     suspend fun seed(state: LeaveNotifierState, clauseId: String, setup: EdgeSetup): Seeded {

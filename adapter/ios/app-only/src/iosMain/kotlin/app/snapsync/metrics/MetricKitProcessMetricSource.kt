@@ -15,7 +15,7 @@ import platform.MetricKit.MXMetricPayload
 import platform.darwin.NSObject
 
 /**
- * The MetricKit binding of [ProcessMetricSource] (capability `crash-reporting`).
+ * The MetricKit binding of [ProcessMetricSource] (capability `privacy-security`).
  *
  * Seated in `:adapter:ios:app-only` by linkage: MetricKit is app-process-only, and the
  * background-upload extension must not link it. That is not a tidiness point — a subscriber in the
@@ -50,7 +50,7 @@ import platform.darwin.NSObject
  * [observe] must only be called where the handler is already live; registering and then dropping what
  * arrives is strictly worse than never registering.
  *
- * **No port contract, by reason rather than omission** (capability `port-contracts`, "Every clause runs
+ * **No port contract, by reason rather than omission** (`docs/architecture.md`, "Every clause runs
  * against a real implementation on some host"). No host can enter a state for a clause: MetricKit delivers when
  * the OS decides — roughly daily, one-shot, and only on a device — so a binding cannot make a report arrive,
  * and a recording would replay only a payload we chose. Nor is there an in-memory double for a contract to
@@ -69,7 +69,7 @@ class MetricKitProcessMetricSource(
     /**
      * The ObjC subscriber this retains, built by [observe] around the handler it delivers to — the handler
      * is a constructor argument, not a slot assigned later (law "Callbacks are bound at construction",
-     * capability `module-architecture`), so a subscriber that exists always has somewhere to deliver.
+     * `docs/architecture.md`), so a subscriber that exists always has somewhere to deliver.
      */
     private var subscriber: MetricKitSubscriber? = null
 
@@ -98,7 +98,7 @@ class MetricKitProcessMetricSource(
  * Both callbacks claim the log prefix for **their own thread only** ([IosThreadLogScope]). Handling is
  * inline and launches nothing, so every line of theirs is on the calling thread; a process-wide claim
  * instead labelled seven concurrent launch lines `[didReceiveMetricPayloads]` (capability
- * `diagnostic-logging`). ⚠️ If a callback ever hands work to another thread, those lines log
+ * `privacy-security`). ⚠️ If a callback ever hands work to another thread, those lines log
  * unprefixed — move it to the process-wide claim rather than accept that silently.
  *
  * Separate from [MetricKitProcessMetricSource] because Kotlin/Native refuses to mix Kotlin and ObjC
@@ -135,7 +135,9 @@ internal class MetricKitSubscriber(
      *
      * Not hopped to another lane, deliberately and against the observer convention this module
      * otherwise follows. The work is small (call-stack branches are dropped by [flattenToDottedKeys]
-     * before anything is rendered), and a process woken briefly in the background may be killed before
+     * before anything is rendered — measured: one delivery of twelve queued payloads WITH call stacks
+     * serialized to 15.1 MB, rolled the 10 MB log and blocked 18 s; see
+     * changes/archive/2026-09-14-add-os-exit-attribution), and a process woken briefly in the background may be killed before
      * deferred work runs — which for a one-shot delivery means losing the report permanently.
      */
     private fun deliver(raw: Map<Any?, *>) {

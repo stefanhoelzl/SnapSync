@@ -4,8 +4,8 @@ import platform.Foundation.NSURLSessionConfiguration
 
 /**
  * **Which `URLSession` this app process moves bytes over, chosen by COMPILATION TARGET rather than at
- * runtime** (capability `ios-url-session-upload`, "The transport binding is fixed by the compilation
- * target"; also `photo-download`).
+ * runtime** (capability `background-upload`, "The transport binding is fixed by the compilation
+ * target"; also `receiving-photos`).
  *
  * `iosArm64` — every shipped binary — yields a **background** configuration, unchanged in every respect
  * including its session identifier and its `discretionary` / `sessionSendsLaunchEvents` /
@@ -40,7 +40,7 @@ import platform.Foundation.NSURLSessionConfiguration
  *
  * `iosSimulatorArm64` is not a guess about the host: it is a compilation target whose output only ever runs
  * on a simulator, so a device binary contains **no route** to the default binding — *"a fact that is fixed
- * by the compilation target SHALL NOT be re-derived at runtime"* (spec `module-architecture`, "One shared
+ * by the compilation target SHALL NOT be re-derived at runtime"* (`docs/architecture.md`, "One shared
  * composition"). The alternative is production deciding at runtime which host it is on, which is the
  * `OsFacts`/`SIMULATOR_DEVICE_NAME` read that `changes/archive/2026-08-09-delete-simulator-session-downgrade`
  * deleted; it is not coming back. `:adapter:ios:ext-safe`'s `DeviceIdStores.kt` is the same shape for the
@@ -50,7 +50,7 @@ import platform.Foundation.NSURLSessionConfiguration
  *
  * What it DOES evidence is everything after this lookup, and that is asserted rather than assumed: the
  * `BackgroundTransfer` and `DownloadTransport` contracts run both transports live in the simulator app on every push
- * (`SimAppBackgroundTransferBinding`, `SimAppDownloadTransportBinding`; capability `port-contracts`, "An adapter bound
+ * (`SimAppBackgroundTransferBinding`, `SimAppDownloadTransportBinding`; `docs/architecture.md`, "An adapter bound
  * per compilation target is real for the clauses it runs there"). What follows is what no contract can reach.
  *
  * A default session runs in-process and dies with it. A simulator run is **not** evidence of: transfers

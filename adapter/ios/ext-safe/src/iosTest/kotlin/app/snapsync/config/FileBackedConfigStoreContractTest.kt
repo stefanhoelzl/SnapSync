@@ -18,7 +18,7 @@ import platform.posix.chmod
 import kotlin.test.Test
 
 /**
- * The App-Group config file store, live (capability `port-contracts`) — the first run of the leave
+ * The App-Group config file store, live (`docs/architecture.md`) — the first run of the leave
  * decision through the real adapter's own file IO and `NSError` mapping, rather than through the
  * classifier and the read algorithm separately.
  *

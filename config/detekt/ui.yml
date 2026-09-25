@@ -6,7 +6,7 @@
 #
 # The number below is a ceiling that MAY ONLY FALL. Lowering it is ordinary work; RAISING it requires a
 # stated forcing proof in the change that raises it. Nothing enforces that — it is a ratchet carried by
-# this paragraph and by review (capability `complexity-budgets`).
+# this paragraph and by review (`docs/architecture.md`).
 #
 # WHY THIS ONE REMAINS. `LongParameterList` is fixed by bundling, and a bundle is itself a constructor
 # whose fields detekt counts. This paragraph once concluded "the recursion has no base case", which was

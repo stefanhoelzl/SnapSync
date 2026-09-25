@@ -16,7 +16,7 @@ kotlin {
         }
     }
 
-    // Sentry test-link (capability `crash-reporting`): this module's simulator TEST binary links
+    // Sentry test-link (capability `privacy-security`): this module's simulator TEST binary links
     // :adapter:ios:ext-safe and therefore Sentry symbols; reuse the Sentry-Dynamic framework that
     // module provisions (see its build script for why the DYNAMIC variant) — same -F for the link,
     // same -rpath for the simulator-process load.
@@ -34,8 +34,8 @@ kotlin {
     //
     // `-Psnapsync.rig=true` adds BOTH the module and the source directory it contributes; without the
     // property it adds NEITHER, so a production build contains no rig source at all — not a stub, not an
-    // inert branch (spec `module-architecture`, "A build-time-only module is contained by compilation").
-    // That is why this change alters no `ios-app-shell` requirement: nothing shipped can observe the rig
+    // inert branch (`docs/architecture.md`, "A build-time-only module is contained by compilation").
+    // That is why this change alters no `sync-status` requirement: nothing shipped can observe the rig
     // or the env var its hook reads.
     //
     // The contributed directory compiles INTO this module, which is what lets it reach

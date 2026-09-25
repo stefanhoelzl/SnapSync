@@ -11,7 +11,7 @@ private class RefusalBody(@SerialName("minAppVersion") val minAppVersion: String
 
 /**
  * The minimum version out of a `426 Upgrade Required` body, or `null` when it does not carry one
- * (capability `min-app-version`).
+ * (capability `app-update-required`).
  *
  * A pure codec, here in `model/` rather than in the interceptor that reads it, for the reason every
  * codec is here: it is the one definition of a wire shape, and it is unit-testable without a client, a
@@ -21,7 +21,7 @@ private class RefusalBody(@SerialName("minAppVersion") val minAppVersion: String
  * the status alone — this build is too old — but only the minimum makes it *actionable*, and inventing
  * one would put a specific, wrong number on the screen. A caller that gets `null` says "this build is
  * out of date" without naming a version, which is true; naming a version we guessed is not
- * (`module-architecture`, "Absence is never silent").
+ * (`docs/architecture.md`, "Absence is never silent").
  *
  * Absence: null means the refusal named no version this build could read, and every cause collapses to
  * it — malformed JSON, a JSON value that is not an object, a missing field, a null field, a blank one.

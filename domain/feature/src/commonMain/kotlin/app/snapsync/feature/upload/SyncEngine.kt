@@ -10,11 +10,11 @@ import app.snapsync.model.UploadRequestProvider
 import co.touchlab.kermit.Logger
 
 /**
- * The decision core (spec: sync-engine): platforms drive it with [SyncEvent] observations, it
+ * The decision core (spec: background-upload): platforms drive it with [SyncEvent] observations, it
  * answers with [SyncDecision]s. Its only state is the [ledger] — the durable per-key memory of
  * what was requested, completed, and still needs a job. The engine records requests and failures; a
  * completion is recorded by the platform itself, where it is told, through the ledger's guarded terminal
- * write (capability `sync-ledger`).
+ * write (capability `photo-sharing`).
  *
  * Decision rules ([SyncEvent.ResourceChanged] is a **pure query** — it reads the ledger and mints a
  * request for `Work` answers, but writes nothing): a key is skipped when the ledger holds it
@@ -47,7 +47,7 @@ class SyncEngine(
     private val log = Logger.withTag("SyncEngine")
 
     /**
-     * Logging (spec: diagnostic-logging, field diagnostics — the headless iOS extension's only observability):
+     * Logging (spec: privacy-security, field diagnostics — the headless iOS extension's only observability):
      * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key, and the
      * [SyncEvent.UploadStarted] confirmation INFOs "started". The skip on
      * re-enumeration ([SyncDecision.AlreadyUploaded] for
@@ -119,7 +119,7 @@ class SyncEngine(
     private suspend fun retry(failed: UploadRequest): SyncDecision {
         val resource = failed.resource
         // The retry's credential comes from the store of record: the failure may be the `401` of a token another
-        // process has renewed since this process last read it (capability `edge-upload-provider`).
+        // process has renewed since this process last read it (capability `background-upload`).
         val request = provider.provideForRetry(resource)
         // Return the row to DISCOVERED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).

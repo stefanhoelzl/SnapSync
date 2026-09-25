@@ -83,7 +83,7 @@ const val CONTRACT_TIMEOUT: String = "timeout: "
 /**
  * The CI entry point: runs the whole contract and fails ONCE, with the full outcome table, if any clause is
  * [Outcome.Failed], [Outcome.Diverged] or [Outcome.NotWithin], whatever the binding's kind (capability
- * `port-contracts`, "Outcomes are explicit and none is silent"). An expired wait established nothing: on a
+ * `docs/architecture.md`, "Outcomes are explicit and none is silent"). An expired wait established nothing: on a
  * `Live` binding the clause ran nothing, on a `Replay` a recorded answer was never delivered, and on a `Fake`
  * the double did not deliver what the clause requires. `NotRunHere` never fails a run by itself — whether it
  * is admissible is the contract-coverage gate's question.

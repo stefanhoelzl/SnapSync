@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * The iOS 18–26.0 heartbeat's **refusal** path (capability `ios-url-session-upload`).
+ * The iOS 18–26.0 heartbeat's **refusal** path (capability `background-upload`).
  *
  * A successful submit is out of reach here: `BGTaskScheduler` only accepts an identifier the process's
  * own `Info.plist` declares under `BGTaskSchedulerPermittedIdentifiers`, and a Kotlin/Native test
@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
  * crash, nothing on any screen. The whole tier simply stops waking, and the app looks idle rather
  * than broken. So the two things asserted are that the refusal does not escape as a throw (which
  * would take down whichever entry point re-armed the heartbeat) and that it is **said out loud**
- * (`module-architecture`, "Absence is never silent").
+ * (`docs/architecture.md`, "Absence is never silent").
  *
  * `RuntimeIdentityTest` pins the identifier itself against `Info.plist`, from the JVM. This covers
  * what happens on the device when something else goes wrong.

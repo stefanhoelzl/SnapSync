@@ -7,7 +7,7 @@ import kotlin.test.fail
 
 /**
  * **The default data-protection class is never raised to `NSFileProtectionComplete`** (capability
- * `architecture-guards`).
+ * `docs/architecture.md`).
  *
  * This is the file-side twin of the Keychain guard, and the same invariant — *state read by background
  * work must survive a locked device* — with the opposite polarity: the Keychain accessibility class must

@@ -2,18 +2,18 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
-// PORT CONTRACTS (capability `port-contracts`): the contract mechanism and every port contract, as clause
+// PORT CONTRACTS (`docs/architecture.md`): the contract mechanism and every port contract, as clause
 // VALUES — one explicit list per port that every binding runs, on CI through a thin `@Test` and in-app on
 // a device through the rig. A list rather than `@Test` methods because Kotlin/Native has no reflection:
 // an in-app runner cannot discover test methods, and `kotlin.test` cannot skip one dynamically.
 //
-// CONTAINED, not support (`module-architecture`, "The module set withholds"): it links into the iOS app
+// CONTAINED, not support (`docs/architecture.md`, "The module set withholds"): it links into the iOS app
 // — and into `:adapter:ios:ext-safe`'s rig-gated source set — ONLY under `-Psnapsync.rig=true`. Its
 // withholding argument: it is the only module whose MAIN source set depends on `kotlin-test`, so no
 // production module's main code can assert.
 //
 // `iosArm64` because the device app links it; `jvm` + `iosSimulatorArm64` because every binding's test
-// source set does. NOT INSTRUMENTED for coverage (`coverage-bounds`): this is test equipment.
+// source set does. NOT INSTRUMENTED for coverage (`docs/architecture.md`): this is test equipment.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()

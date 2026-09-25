@@ -15,7 +15,7 @@ import kotlin.test.Test
 
 /**
  * The inbound ports' contracts, bound on this host (JVM) over the core's real implementations and the world
- * (capability `port-contracts`). `Live`: the implementation under contract is the one the shells delegate to.
+ * (`docs/architecture.md`). `Live`: the implementation under contract is the one the shells delegate to.
  */
 class EntryContractsJvmTest {
 

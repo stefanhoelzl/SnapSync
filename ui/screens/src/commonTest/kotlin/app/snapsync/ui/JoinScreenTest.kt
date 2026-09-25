@@ -63,7 +63,7 @@ import app.snapsync.ui.SwitchActions
 
 /**
  * The **redesigned join gate** with a capture-date RANGE (capabilities `join-event`,
- * `photo-selection-policy`): two participation switches whose combination DERIVES the direction, a From/Until
+ * `photo-sharing`): two participation switches whose combination DERIVES the direction, a From/Until
  * range selector (From: Event start / Now / Custom; Until: Event end / Custom) defaulting to the FULL event
  * window, a standalone album opt-in, and the event-naming photo-access explainer.
  */
@@ -79,7 +79,7 @@ private val NOW = captureCutoff("2026-07-06T12:00:00Z")
 private val EVENT_START = eventStart("2026-07-04T18:00:00Z")
 private val EVENT_END = eventEnd("2026-07-20T18:00:00Z")
 
-/** The event's retention deadline (capability `event-limits`): 30 days past its start. */
+/** The event's retention deadline (capability `event-lifetime`): 30 days past its start. */
 private val EVENT_DELETES = deletesAt("2026-08-03T18:00:00Z")
 
 /** An event that has NOT started yet (after [NOW]) — where the "Now" preset falls outside the window. */
@@ -340,7 +340,7 @@ class JoinScreenTest {
         assertEquals(0, confirmed)
     }
 
-    // ---- the From/Until range selector (capability `photo-selection-policy`) ---------------------------
+    // ---- the From/Until range selector (capability `photo-sharing`) ---------------------------
 
     @Test
     fun `ready shows the From and Until groups defaulting to the full event window`() = runComposeUiTest {
@@ -487,7 +487,7 @@ class JoinScreenTest {
         onNodeWithTag("until-custom").assertIsSelected()
     }
 
-    // ---- the retention statement (capability `event-limits`) ------------------------------------------
+    // ---- the retention statement (capability `event-lifetime`) ------------------------------------------
 
     @Test
     fun `the join surface states the retention deadline and the fixed ceiling`() = runComposeUiTest {
@@ -507,7 +507,7 @@ class JoinScreenTest {
         onNodeWithText("kept for at most 30 days", substring = true).assertExists()
     }
 
-    // ---- the shareable-count row (capability `join-share-count`) ---------------------------------------
+    // ---- the shareable-count row (capability `join-event`) ---------------------------------------
 
     @Test
     fun `the share section shows how many photos will be shared`() = runComposeUiTest {
@@ -559,7 +559,7 @@ class JoinScreenTest {
     @Test
     fun `share off hides the count`() = runComposeUiTest {
         // Not offered rather than shown as zero: absent and zero are different answers, and "no count"
-        // is what a non-contributing choice means (capability `join-share-count`).
+        // is what a non-contributing choice means (capability `join-event`).
         setScreen {
             TestStatusScreen(
                 joining(
@@ -782,7 +782,7 @@ class JoinScreenTest {
     /**
      * The confirmation names both events and **promises no participation**: its confirm runs only the
      * leave, and the member picks direction, cutoff and album on the join surface that follows. It renders
-     * no shareable count either — there is no chosen range to count yet (capability `join-share-count`).
+     * no shareable count either — there is no chosen range to count yet (capability `join-event`).
      */
     @Test
     fun `switch dialog names both events and confirms with no choices`() = runComposeUiTest {
@@ -885,7 +885,7 @@ private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsRadio() =
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertToggle(state: ToggleableState) =
     assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, state))
 
-// The membership and invite URL live inside the joined state now (capability `sync-status-screen`), so
+// The membership and invite URL live inside the joined state now (capability `sync-status`), so
 // these tests build the state that carries them instead of passing them beside it.
 private val SWITCH_MEMBERSHIP = EventConfig(
     eventId = "E1",

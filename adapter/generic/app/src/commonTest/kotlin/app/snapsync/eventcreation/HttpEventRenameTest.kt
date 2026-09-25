@@ -73,7 +73,7 @@ class HttpEventRenameTest {
 
     @Test
     fun `404 maps to the TRANSIENT outcome — never a distinct event-gone one`() = runTest {
-        // The single-witness rule (capability `leave-event`): a 404 here must not acquire a meaning of
+        // The single-witness rule (capability `manage-membership`): a 404 here must not acquire a meaning of
         // its own, or a future change can wire a teardown to it. See RenameOutcome.Transient.
         val engine = MockEngine { respondError(HttpStatusCode.NotFound) }
         assertEquals(RenameOutcome.Transient, client(engine).rename(eventId, "x"))

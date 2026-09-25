@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * Tells the shared event that **this device is leaving it** (capability `leave-event`; the backend
+ * Tells the shared event that **this device is leaving it** (capability `manage-membership`; the backend
  * route is `event-leave-endpoint`). The event then renames this device's manifest to its departed
  * `.left.json` sibling and, once the last active member has gone, reaps the event and
  * garbage-collects its now-unreferenced bytes.
@@ -25,13 +25,13 @@ package app.snapsync.ports
  * caller's local teardown proceeds regardless: the config is already cleared and the screen has already
  * left the joined layer by the time this runs. A dropped notify leaves the backend membership in place
  * — the accepted abandon-leak — and never blocks or rolls back leaving locally. Invoked by both the
- * explicit Leave and the switch path (provisioning a different event while joined; see `event-link`).
+ * explicit Leave and the switch path (provisioning a different event while joined; see `join-event`).
  *
  * An interface of this shape existed once and was deleted as single-implementation ceremony
  * (`changes/archive/2026-07-17-delete-dead-weight`); the composition then handed the core a
  * `suspend (eventId) -> Unit` lambda closing over the adapter instead. That is the reasoning this port
  * exists to overturn: a port is not justified by a second implementation, it is the declared boundary
- * where the core stops and an external system begins (spec `module-architecture`, "Ports are the I/O
+ * where the core stops and an external system begins (`docs/architecture.md`, "Ports are the I/O
  * boundary named for the need"), and a lambda in its place makes the crossing invisible to every gate
  * that looks at types.
  */

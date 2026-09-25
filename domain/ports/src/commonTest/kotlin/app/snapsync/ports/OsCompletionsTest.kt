@@ -14,7 +14,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The OS-handler contract (capability `ios-app-shell`, "OS completion handlers are released only after their work
+ * The OS-handler contract (capability `sync-status`, "OS completion handlers are released only after their work
  * completes"): released after the wake's own work, on every path; released at once on the operating system's
  * expiry; exactly once whichever path gets there first; never orphaned by a second handover; and released after own
  * work through the lane UIKit requires.

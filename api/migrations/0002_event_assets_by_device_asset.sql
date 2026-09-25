@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════
--- 0002 — INDEX `event_assets` BY (device_id, asset_id) (capability `database`)
+-- 0002 — INDEX `event_assets` BY (device_id, asset_id) (`docs/architecture.md`)
 --
 -- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
 -- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
@@ -7,9 +7,9 @@
 -- WHY THIS INDEX EXISTS — it is FORCED, not an optimisation.
 --
 -- The device manifest declares what a member WILL provide rather than what it has already uploaded
--- (capability `device-manifest`), so the moment an asset becomes fetchable is the arrival of its LAST
+-- (capability `photo-sharing`), so the moment an asset becomes fetchable is the arrival of its LAST
 -- declared role's bytes. The byte upload is therefore what wakes the event's other members (capability
--- `upload-completion-notify`).
+-- `receiving-photos`).
 --
 -- That route addresses a resource from its path alone — `PUT /api/v2/files/devices/<d>/<asset>/<role>` —
 -- and **that path carries no event**. To decide whether a landed byte completed an asset, and whom to

@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The silent-push payload codec (capability `push-registration`; migration step 12). The Swift shell
+ * The silent-push payload codec (capability `receiving-photos`; migration step 12). The Swift shell
  * forwards `userInfo` whole; this is the one tested place that knows the field — so a malformed or
  * foreign push resolves to `null` (no fan-out) rather than a crash or a phantom event id.
  */

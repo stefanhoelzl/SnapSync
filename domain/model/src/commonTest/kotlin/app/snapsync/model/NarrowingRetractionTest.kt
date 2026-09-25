@@ -6,9 +6,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **A narrowing scope change retracts the member's listings** (capability `reconfigure-membership`).
+ * **A narrowing scope change retracts the member's listings** (capability `manage-membership`).
  *
- * These began as pinning tests for the opposite claim. `reconfigure-membership` used to state that a
+ * These began as pinning tests for the opposite claim. `manage-membership` used to state that a
  * narrowing change — raising the cutoff, or turning a direction off — did **not** retract photos already
  * shared, and `ReconfigureEvent` carried a comment saying a raised cutoff "un-shares nothing". Both were
  * false: [projectDeviceManifest] re-filters already-`COMPLETED` rows through the *current* policy, so a
@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  *
  * The resolution was to change the **spec**, not the behaviour: the manifest answers *what does this member
  * share now?*, so a narrowing SHOULD retract there. What changed underneath is that the retraction is now
- * confined to the listing — the ledger rows survive (capability `sync-ledger`), so widening again restores
+ * confined to the listing — the ledger rows survive (capability `photo-sharing`), so widening again restores
  * the listing without re-uploading a byte, and the drain requirement keeps its meaning.
  *
  * The retraction is **partial by nature**: a member who already downloaded the photo holds it in their own

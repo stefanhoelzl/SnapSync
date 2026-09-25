@@ -12,7 +12,7 @@ import kotlinx.datetime.toLocalDateTime
 
 /**
  * Bridges the join screen's **local** date-time picker and the UTC `…Z` capture-date cutoff string
- * (capability `photo-selection-policy`). Injected into the screen so `:ui:screens` needs no clock or
+ * (capability `photo-sharing`). Injected into the screen so `:ui:screens` needs no clock or
  * timezone knowledge: it holds only a `LocalDateTime` and calls these methods. **Pure given its
  * inputs** (migration step 9): [now] and [zone] arrive injected — production binds the `Clock` /
  * `TimeZoneSource` ports (`:adapter:generic:app`'s `SystemClock`/`SystemTimeZone`, wired in the shells
@@ -37,7 +37,7 @@ class CutoffFormatter(
 
     /**
      * "Now" directly as a canonical `…Z` string — the form the event-start comparison needs
-     * (`startsAt > nowCutoff()`, capability `sync-status-screen`).
+     * (`startsAt > nowCutoff()`, capability `sync-status`).
      *
      * Comparing in the **cutoff string domain** rather than converting `startsAt` to a local time and
      * comparing `LocalDateTime`s is deliberate: the strings are fixed-width canonical UTC, so a plain

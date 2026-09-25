@@ -157,7 +157,7 @@ Deno.test("validateEndsAt: rejects off-canonical shapes and non-instants", () =>
 });
 
 Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical cutoff shape", () => {
-  // 30 days — the absent-endsAt fallback (capability `event-limits`): endsAt = startsAt + windowMax.
+  // 30 days — the absent-endsAt fallback (capability `event-lifetime`): endsAt = startsAt + windowMax.
   assertEquals(
     canonicalPlusSeconds("2026-06-27T18:00:00Z", 30 * 24 * 60 * 60),
     "2026-07-27T18:00:00Z",

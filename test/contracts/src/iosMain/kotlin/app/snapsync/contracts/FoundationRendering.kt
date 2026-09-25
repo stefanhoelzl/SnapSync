@@ -19,7 +19,7 @@ import platform.posix.memcpy
 /**
  * Renders an operating-system dictionary — the attributes of a query, or of an answer — as one line of
  * `key=value` tokens, sorted by key so the same dictionary always renders the same way (capability
- * `port-contracts`, "Replay matches exactly, in order, over deterministic clauses").
+ * `docs/architecture.md`, "Replay matches exactly, in order, over deterministic clauses").
  *
  * Values carry a type tag so an answer parses back to the objects the adapter reads: `s:` string, `d:`
  * data (hex), `n:` number, `t:` date (seconds since 1970), `o:` anything else (its description — visible

@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 /**
- * The date vocabulary (capability `photo-selection-policy`). Two properties carry the whole design:
+ * The date vocabulary (capability `photo-sharing`). Two properties carry the whole design:
  * the wrapping must not disturb **ordering** (every capture-date compare in the system is a plain string
  * compare that is only chronological because the shape is canonical), and it must not disturb the
  * **wire** (the persisted `EventConfig` is the only record of a join, so a changed encoding strands every

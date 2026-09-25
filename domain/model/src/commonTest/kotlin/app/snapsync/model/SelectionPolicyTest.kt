@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The origin-exclusion matrix (capability `photo-selection-policy`). Every rule is checked in both
+ * The origin-exclusion matrix (capability `photo-sharing`). Every rule is checked in both
  * directions — what it excludes *and* what it must not — because the expensive failure here is the false
  * drop: an event photo that silently never uploads.
  */

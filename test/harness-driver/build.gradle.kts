@@ -12,7 +12,7 @@ plugins {
 // real buttons; pixels come out of the real render.
 //
 // This module exists rather than a `main()` in the harness modules because the harnesses are specified
-// as thin test equipment carrying no logic (`full-stack-harness` req. 8) — the HTTP surface, the
+// as thin test equipment carrying no logic (`docs/testing.md` req. 8) — the HTTP surface, the
 // command loop, and the ui-test dependency belong outside them.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())

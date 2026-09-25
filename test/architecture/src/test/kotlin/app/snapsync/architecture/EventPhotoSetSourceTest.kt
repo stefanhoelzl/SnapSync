@@ -5,8 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **Production candidates come from the policy-taking read seam** (capability `architecture-guards`;
- * law: `gallery-status`, `photo-selection-policy`).
+ * **Production candidates come from the policy-taking read seam** (`docs/architecture.md`;
+ * law: `sync-status`, `photo-sharing`).
  *
  * `EventPhotoSet` takes `suspend (SelectionPolicy) -> List<Candidate>` rather than the
  * `ports/CandidateSource` itself, because it lives in `model/` — the innermost zone, which references

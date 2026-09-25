@@ -7,8 +7,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * When the composed app publishes its push registration (capability `push-registration`, "Registration timing —
- * launch, join, and rotation"; capability `ios-app-shell`, "Push registration is started by the shared
+ * When the composed app publishes its push registration (capability `receiving-photos`, "Registration timing —
+ * launch, join, and rotation"; capability `sync-status`, "Push registration is started by the shared
  * composition"): installed as the graph is composed — on every cold start, a background one that never assembles
  * the host included — once per process, and publishing a delivered token only when it differs from the last one
  * the backend accepted. The join and fresh-credential triggers are `:test:integration`'s

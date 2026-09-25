@@ -5,7 +5,7 @@ plugins {
 
 // The dev/test CONTROL CHANNEL (`:test:rig`) — an HTTP server that runs INSIDE the iOS app so an agent
 // can force OS-callback entry points and read live state over `usbmux forward`. Its protocol is specified
-// (capability `testing-architecture`, "One control protocol, served by two hosts") and its JVM host is tested in
+// (`docs/testing.md`, "One control protocol, served by two hosts") and its JVM host is tested in
 // the canonical check; beyond that it is honest for the reason it always was: every surface is a projection
 // of a contract specified elsewhere
 // (`/state` is a compiler-generated encoder over the real `UiState`, `/trigger` invokes the real
@@ -13,21 +13,21 @@ plugins {
 // second way-to-drive that can rot or lie. Decision record:
 // `openspec/changes/.../add-rig-control-channel/design.md`.
 //
-// WITHHOLDING ARGUMENT (`module-architecture`, "The module set withholds; packages organize"): this is
+// WITHHOLDING ARGUMENT (`docs/architecture.md`, "The module set withholds; packages organize"): this is
 // the ONLY module permitted to depend on `ktor-server-*`. A server import anywhere else is a compile
 // error — which is what makes this a module rather than a package.
 //
 // CONTAINMENT IS COMPILE-TIME. `:app:ios` links this module, and adds `src/hook/` to its own iosMain
 // source set, ONLY under `-Psnapsync.rig=true`. A production build contains no source from here at all —
-// not a stub, not an inert branch. That is why no `ios-app-shell` requirement changes: nothing shipped
+// not a stub, not an inert branch. That is why no `sync-status` requirement changes: nothing shipped
 // can observe this module or the env var its hook reads.
 //
-// TWO HOSTS, ONE PROTOCOL (capability `testing-architecture`, "One control protocol, served by two hosts").
+// TWO HOSTS, ONE PROTOCOL (`docs/testing.md`, "One control protocol, served by two hosts").
 // `commonMain` is the server, the routes, the state projection, the closed verb vocabulary and every command
 // table both hosts share. `iosMain` + `src/hook/` are the app host (above). `jvmMain` is the JVM host: a
 // `World` from `:test:world` — whose `core` is the real `AppCore` from the same `snapSyncApp` — handed to the
 // unchanged server through its own hook. The JVM target links into no shipped-format binary; only test
-// equipment consumes it (`module-architecture`, "The module set withholds; packages organize").
+// equipment consumes it (`docs/architecture.md`, "The module set withholds; packages organize").
 //
 // TESTS. `commonMain` is tested now, through the JVM host, by `:test:control` (the protocol's typed client),
 // which ends the no-tests exception `…-retire-launch-env-triggers` D9 took for this module. The exception that
@@ -47,14 +47,14 @@ kotlin {
             // the presentation read-model it serializes. Platform-bound verbs arrive as injected lambdas
             // the host shell builds — the same shape `flow/` uses for port touches — so this module names
             // no platform API and an Android target would be a build-file edit, not a rewrite.
-            // The port contracts it can run in-app on a device (capability `port-contracts`), and the
+            // The port contracts it can run in-app on a device (`docs/architecture.md`), and the
             // refusal marker the `/contract` route answers 409 on. Both modules are contained the same
             // way: linked only under `-Psnapsync.rig=true`.
             //
             // All `implementation`, never `api`: the protocol's JVM client (`:test:control`) compiles against
             // this module, and what it may reach is exactly what is on ITS compile path — the wire types here,
             // plus the read-models it declares itself. An `api` edge would hand it the ports and the composition
-            // (`module-architecture`, "The module set withholds; packages organize").
+            // (`docs/architecture.md`, "The module set withholds; packages organize").
             implementation(project(":test:contracts"))
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))

@@ -67,7 +67,7 @@ class IosUrlSessionUploadPlatform(
     // The ledger, narrowed to what a transport may touch. This adapter RECORDS: the party iOS tells that an
     // upload terminated is this delegate, iOS tells it exactly once, and a fact parked in memory for a later
     // cycle to collect does not survive the process. `markTerminal` is the guarded, non-suspending write that
-    // lets a completion callback record before it returns (`sync-ledger`). Recording through [TransferRecord]
+    // lets a completion callback record before it returns (`photo-sharing`). Recording through [TransferRecord]
     // rather than a `LedgerWriter` is deliberate and narrow — see that spec's reader/writer split. It reads no
     // other ledger state.
     private val ledger: TransferRecord,
@@ -100,7 +100,7 @@ class IosUrlSessionUploadPlatform(
     // one: the staged file's path is a pure function of the key, the request's content type is a ledger
     // column, and the live tasks are the session's own (`getAllTasks`). The download transport reached the
     // same conclusion first — "the destination must be derivable from the description alone" — and the
-    // kill-test in `module-architecture` asks for exactly this: after a relaunch every fact recoverable
+    // kill-test in `docs/architecture.md` asks for exactly this: after a relaunch every fact recoverable
     // through a port, keyed only by identifiers the external system persisted.
     //
     // It also fixes a cap that did not bind. `createJob` used to compare against an in-process count,
@@ -116,7 +116,7 @@ class IosUrlSessionUploadPlatform(
 
     /**
      * On every shipped binary a **background** session, so transfers survive suspension
-     * (`ios-url-session-upload`). The binding is fixed by the **compilation target**, not chosen here and
+     * (`background-upload`). The binding is fixed by the **compilation target**, not chosen here and
      * not read from the host: see [transferSessionConfiguration], which is the single place this file and
      * [app.snapsync.download.IosDownloadTransport] both resolve it, so the two cannot diverge.
      *
@@ -125,7 +125,7 @@ class IosUrlSessionUploadPlatform(
      * that it can (a probe that aimed at a closed port and read `NSURLErrorUnknown` as a refusal). Both
      * survived because the claim lived in a comment beside the code it justified, where nothing
      * re-measured it. It is stated once now, on the seam, with its evidence and its ⏰ expiry trigger, and
-     * two gates hold the bindings in place (`architecture-guards`, "The transport-binding gate").
+     * two gates hold the bindings in place (`docs/architecture.md`, "The transport-binding gate").
      *
      * ⚠️ [reattach] is structurally inert wherever the binding is `default`: `getAllTasks` can never find a
      * prior process's task, because no transfer outlives the process there.
@@ -275,7 +275,7 @@ class IosUrlSessionUploadPlatform(
         if (applied) {
             log.i { "task terminal: $key -> $state" }
         } else {
-            // Never silent (`module-architecture`, "Absence is never silent"): the guard matched no row,
+            // Never silent (`docs/architecture.md`, "Absence is never silent"): the guard matched no row,
             // so this key was not REQUESTED — already settled, or pruned. That is a different fact from
             // "recorded", and it is the only line that would show a completion arriving for a row we no
             // longer hold. `Info`, not `Warn`: a pruned row is routine now — an authoritative walk deletes an
@@ -355,7 +355,7 @@ private class SessionDelegate(
     private val log: Logger = Logger.withTag("urlSessionUpload"),
 ) : NSObject(), NSURLSessionTaskDelegateProtocol {
 
-    // PLATFORM ENTRY POINT (spec `diagnostic-logging`). DEBUG, not INFO: one per uploaded photo, so
+    // PLATFORM ENTRY POINT (spec `privacy-security`). DEBUG, not INFO: one per uploaded photo, so
     // at INFO a large event would flush the bounded breadcrumb window and roll the device log.
     // Note the early `return` below on a task with no description — that is an entry that decides to
     // do nothing, which is exactly the shape that may not be silent, so the enter line precedes it.

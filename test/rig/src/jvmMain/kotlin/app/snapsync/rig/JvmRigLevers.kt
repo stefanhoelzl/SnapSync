@@ -17,7 +17,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import kotlin.time.Duration.Companion.seconds
 
-// The JVM host's integration-surface verbs (capability `testing-architecture`, "The seam-to-UI-state integration
+// The JVM host's integration-surface verbs (`docs/testing.md`, "The seam-to-UI-state integration
 // surface"): the observable reads of the world's simulated systems — the backend, the crash reporter, the push
 // service, the staging directory, the photo library's albums — and the levers that put them, the operating system
 // and the photo library into the states a test starts from. Each is a world lever or a device fact the app host

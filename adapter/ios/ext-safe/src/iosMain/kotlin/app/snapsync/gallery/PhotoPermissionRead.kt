@@ -13,7 +13,7 @@ import platform.Photos.PHPhotoLibrary
  * mapping, read by both processes.
  *
  * It lives here, in the module the extension links, because the extension needs it too: its cycle withholds
- * under anything but a full grant (capability `ios-photokit-upload`, "The extension withholds its cycle without
+ * under anything but a full grant (capability `background-upload`, "The extension withholds its cycle without
  * a full grant"), and the app-only permission adapter — which also presents the picker and opens Settings —
  * imports UIKit and PhotosUI, which the extension-safety gate forbids. `Photos` is allowed, so the mapping moved
  * and the app-only adapter delegates to it: one mapping, not a copy that could drift.

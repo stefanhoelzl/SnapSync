@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **The callback-slot and lambda-default gates** (capability `architecture-guards`; laws: `module-architecture`,
+ * **The callback-slot and lambda-default gates** (`docs/architecture.md`; laws: `docs/architecture.md`,
  * "Callbacks are bound at construction" and "Function-typed parameters have no defaults in production").
  *
  * Both close a way for a seam to be silently unwired:

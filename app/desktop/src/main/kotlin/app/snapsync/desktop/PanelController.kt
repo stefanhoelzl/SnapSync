@@ -59,7 +59,7 @@ class PanelController {
     private val creationState = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
     private val armedGrants = MutableStateFlow(true)
 
-    // The attestation cell (capability `device-attestation`): forge `SyncHealth.Unattested`. Injected
+    // The attestation cell (capability `privacy-security`): forge `SyncHealth.Unattested`. Injected
     // into the container via StatusPane. Because `!attested` outranks the sync states, every other
     // precondition-forcing preset resets it to attested (see `resetOverlays`), so it can't stick and
     // mask a later screen.
@@ -74,7 +74,7 @@ class PanelController {
         override val status = syncState
     }
 
-    // The joined-layer download line (capability `photo-download`): forge "downloaded X of Y" to
+    // The joined-layer download line (capability `receiving-photos`): forge "downloaded X of Y" to
     // review the indicator without a device. 0/0 hides the line.
     //
     // Seeded a READ `(0, 0)` — the panel's own "hidden (0/0)" preset — rather than the fake's un-read
@@ -143,7 +143,7 @@ class PanelController {
      * commands are inert and the platform ones print what a device would have done — except the
      * permission taps, which play the grant through [requester]. The bug-report command echoes to the
      * console so the hidden double-tap and its sheet are reviewable offscreen (capability
-     * `diagnostic-logging`); the shared forge host factory stays without one, so the on-device forge
+     * `privacy-security`); the shared forge host factory stays without one, so the on-device forge
      * composition (no DSN) still offers no affordance at all.
      */
     val commands: UserCommands = UserCommands(
@@ -267,7 +267,7 @@ class PanelController {
         pendingJoinSource.set(PendingJoin(JOIN_EVENT_ID, phase))
     }
 
-    // Unattested preset (capability `device-attestation`): force config present + granted, clear any
+    // Unattested preset (capability `privacy-security`): force config present + granted, clear any
     // overlay, and drop the attested cell so `!attested` reduces to `SyncHealth.Unattested`. Every other
     // precondition-forcing preset restores the cell (see `resetOverlays`), so this never sticks.
     fun showUnattested() {
@@ -308,7 +308,7 @@ class PanelController {
     var host: StatusContainerHost? = null
 
     /**
-     * Scan a QR the decoder rejects (capability `event-link`).
+     * Scan a QR the decoder rejects (capability `join-event`).
      *
      * This state was unreviewable in either desktop harness until now, and that was not an oversight of
      * the panel: the banner reached the screen as a parameter, and this harness's one call site never
@@ -321,7 +321,7 @@ class PanelController {
     }
 
     /**
-     * Forge the joined layer's NOT-STARTED health (capability `sync-status-screen`) by giving the config a
+     * Forge the joined layer's NOT-STARTED health (capability `sync-status`) by giving the config a
      * **future** `startsAt` — NOT by fabricating the health value.
      *
      * Forging the *input* rather than the *output* is what keeps the harness honest: it exercises the real
@@ -408,7 +408,7 @@ class PanelController {
         val JOIN_STARTS_AT = eventStart("2026-06-01T12:00:00Z")
         val JOIN_ENDS_AT = eventEnd("2026-06-08T12:00:00Z")
 
-        /** The forged event's retention deadline — 30 days past its start (capability `event-limits`). */
+        /** The forged event's retention deadline — 30 days past its start (capability `event-lifetime`). */
         val JOIN_DELETES_AT = deletesAt("2026-07-01T12:00:00Z")
 
         // A stand-in config so the "joined an event" step shows connected; never used to upload. The
@@ -416,7 +416,7 @@ class PanelController {
         val CANNED_CONFIG = EventConfig(
             eventId = "00000000-0000-4000-8000-000000000000",
             name = "Anna's Birthday",
-            // A membership always carries a cutoff (capability `photo-selection-policy`); the forge never uploads.
+            // A membership always carries a cutoff (capability `photo-sharing`); the forge never uploads.
             minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
             maxPhotoDate = captureCeiling("2026-02-01T00:00:00Z"),
         )

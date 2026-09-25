@@ -5,7 +5,7 @@ import co.touchlab.kermit.Logger
 
 /**
  * The steps of a multi-step membership use case, each declared **required** or **best-effort** (law "A multi-step
- * use case declares which steps are required", capability `module-architecture`).
+ * use case declares which steps are required", `docs/architecture.md`).
  *
  * - [required]: a failure stops the sequence — the caller returns as soon as it answers `false`, and reports it.
  *   A step whose failure would leave a later step acting on state that was never persisted is required: the

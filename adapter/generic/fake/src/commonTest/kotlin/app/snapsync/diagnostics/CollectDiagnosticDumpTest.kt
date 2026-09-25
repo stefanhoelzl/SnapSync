@@ -25,7 +25,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The dump assembly (capability `diagnostic-logging`), against the honest in-memory doubles.
+ * The dump assembly (capability `privacy-security`), against the honest in-memory doubles.
  *
  * The budget is the load-bearing property: an over-budget dump is rejected by the reporting server
  * and swallowed by the SDK, so it arrives nowhere and says nothing — the one failure mode the device
@@ -151,7 +151,7 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `a partial grant never reports a selection size`() = runTest {
         // No shipped read makes that count available to this feature, so reporting it would mean
-        // adding a seam for diagnostics alone — which `diagnostic-logging` forbids: a dump reads no
+        // adding a seam for diagnostics alone — which `privacy-security` forbids: a dump reads no
         // data the app does not already read.
         val dump = collector(permission = PermissionStatus.LIMITED).collect(NOTE, SCREEN)
 

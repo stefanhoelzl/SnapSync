@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 /**
  * The download store's **placement**, and the one view the upload extension is given of it
- * (capability `download-store`).
+ * (capability `receiving-photos`).
  *
  * Same argument as `IosLedgerStoreTest`: the row semantics belong to the shared
  * `SqlDelightDownloadStore` and its storage contract, while what is only true here is that the base

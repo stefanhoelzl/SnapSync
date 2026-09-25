@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * How one fixture route answers a transfer — chosen by the clause, not by the system under contract (capability
- * `port-contracts`, "An adapter bound per compilation target is real for the clauses it runs there": a server a
+ * `docs/architecture.md`, "An adapter bound per compilation target is real for the clauses it runs there": a server a
  * transport's clauses exchange bytes with is a clause input).
  */
 sealed interface FixtureAnswer {
@@ -92,7 +92,7 @@ fun interface FixtureObjects {
 
 /**
  * Polls [condition] in REAL time until it holds, and ends the clause as [Outcome.NotWithin] when [within] expires
- * (capability `port-contracts`: a bounded wait on an operating-system callback that expires is `NotWithin`, never
+ * (`docs/architecture.md`: a bounded wait on an operating-system callback that expires is `NotWithin`, never
  * `Failed` and never `Passed`). A clause body runs under `runTest`, whose `delay` is virtual — so the wait is moved
  * onto a real dispatcher, where a transfer can actually complete.
  */

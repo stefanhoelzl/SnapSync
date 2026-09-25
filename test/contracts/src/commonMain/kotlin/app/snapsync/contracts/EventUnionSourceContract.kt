@@ -21,7 +21,7 @@ enum class EventUnionSourceState {
 }
 
 /**
- * What the event-wide union promises (capability `port-contracts` — this list IS the port's specification):
+ * What the event-wide union promises (`docs/architecture.md` — this list IS the port's specification):
  * the read every download is planned from. An asset appears only once every resource it declares has landed,
  * because a half-present asset would be imported as a broken photo.
  */

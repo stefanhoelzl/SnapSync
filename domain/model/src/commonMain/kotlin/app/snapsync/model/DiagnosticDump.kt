@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The **total** bytes of device log one diagnostic dump may carry (capability `diagnostic-logging`).
+ * The **total** bytes of device log one diagnostic dump may carry (capability `privacy-security`).
  *
  * It is a hard bound, not a target. The reporting channel's server rejects an event over [MAX_EVENT_BYTES] with a
  * `413`, and the SDK surfaces no transport error, so the dump completes and tells the user nothing. The refused
@@ -9,7 +9,7 @@ package app.snapsync.model
  * newer envelopes evict it (see [MAX_EVENT_BYTES]). The only defence is to stay clear of the ceiling.
  *
  * The dump rides in an event with other parts, so this budget is one row of a **whole-event sum**. Every other row
- * is capped too (capability `crash-reporting`):
+ * is capped too (capability `privacy-security`):
  *
  * | part | worst case |
  * |---|---|
@@ -34,14 +34,14 @@ package app.snapsync.model
 const val DIAGNOSTIC_LOG_BUDGET_BYTES: Int = 700_000
 
 /**
- * One operator-initiated diagnostic dump (capability `diagnostic-logging`): five labelled sections,
+ * One operator-initiated diagnostic dump (capability `privacy-security`): five labelled sections,
  * ready for a reporter to transmit as a single event.
  *
  * Deliberately plain strings and string maps: the transport renders them as structured sections, and
  * a value type that knew about the transport would put the reporting SDK's vocabulary in `model/`.
  *
  * Identifiers ride **verbatim** — a dump is a deliberate, confirmed act whose value is precisely the
- * event, asset and device ids a scrub would destroy (capability `crash-reporting` carves this out;
+ * event, asset and device ids a scrub would destroy (capability `privacy-security` carves this out;
  * automatic events stay redacted). That now covers the [note] and the message built from it: a report
  * reading "stuck on event ‹uuid›" has lost the one fact it carried.
  */

@@ -47,7 +47,7 @@ import kotlin.test.assertTrue
  *   it; this flow's job is only to pass `hasUsableAccess()` through honestly.
  *
  * A provision into a new membership now DOES reach destructive verbs — a switch stops the previous
- * membership's uploads, and the load resets the ledger (capability `upload-lifecycle`, reversed by
+ * membership's uploads, and the load resets the ledger (capability `background-upload`, reversed by
  * `changes/join-loads-leave-clears`) — so a Stay's "nothing was stopped or loaded" is asserted, not assumed.
  */
 @OptIn(ExperimentalCoroutinesApi::class)

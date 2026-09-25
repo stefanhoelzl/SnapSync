@@ -45,7 +45,7 @@ class DeviceManifestProducerTest {
     )
 
     /**
-     * One ledger row — what the manifest is projected from (capability `sync-ledger`). [state] defaults
+     * One ledger row — what the manifest is projected from (capability `photo-sharing`). [state] defaults
      * to COMPLETED for the tests that do not care, but the projection reads it for nothing: the manifest
      * declares INTENT, so every non-absent row is listed whatever its upload state.
      */
@@ -242,9 +242,9 @@ class DeviceManifestProducerTest {
         //
         // The join writes no manifest now, so there is nothing to repair: the server still holds the real
         // projection, and the record is still TRUE for the version it names. What the join DOES change is the
-        // version: its ledger load advances the counter (capability `sync-ledger`), and the backend's join
+        // version: its ledger load advances the counter (capability `photo-sharing`), and the backend's join
         // cleared the stored one — so the next cycle republishes the unchanged projection under the newer
-        // version, which is what re-establishes it on the backend (capability `device-manifest`).
+        // version, which is what re-establishes it on the backend (capability `photo-sharing`).
         val store = FakeStore()
         val up = FakeUploader()
         val join = FakeJoin()

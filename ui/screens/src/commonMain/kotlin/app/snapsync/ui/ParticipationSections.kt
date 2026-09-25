@@ -16,8 +16,8 @@ import app.snapsync.ui.components.RangeWindow
 import app.snapsync.ui.components.RangeChoices
 import app.snapsync.model.UntilChoice
 
-// The participation decision surface (capabilities `join-event`, `reconfigure-membership`,
-// `photo-selection-policy`, `event-album`) — the three questions a member answers about an event, and the
+// The participation decision surface (capabilities `join-event`, `manage-membership`,
+// `photo-sharing`, `event-album`) — the three questions a member answers about an event, and the
 // ONE place they are arranged.
 
 /**
@@ -75,7 +75,7 @@ AppToggleSection(
     onCheckedChange = actions.onShareOn,
 ) {
     if (state.shareOn) {
-        // The origin exclusions (capability `photo-selection-policy`), stated as what is SUBTRACTED,
+        // The origin exclusions (capability `photo-sharing`), stated as what is SUBTRACTED,
         // never as a guarantee of what gets through: the policy cannot infer capture-origin (PhotoKit
         // exposes no camera flag), so it removes only what is certainly not a capture and ADMITS ON
         // DOUBT. "Screenshots … are never shared" is exactly true; "only photos you took are shared"
@@ -87,7 +87,7 @@ AppToggleSection(
         // The ONE statement of the RANGE that decides which photos leave the phone. The Custom rows
         // below deliberately never repeat it — their pickers feed this line.
         AppSectionValue("Sharing ${state.rangeLabel}")
-        // The live shareable count (capability `join-share-count`): how many of the member's own
+        // The live shareable count (capability `join-event`): how many of the member's own
         // gallery photos this RANGE would share, recomputed as either bound (or a late permission
         // resolve) changes. Omitted when no count is available.
         ShareCountRow(state.range.shareCount)
@@ -201,7 +201,7 @@ class ParticipationActions(
  * [album] differs in meaning, not wording. At the join gate it states what WILL be collected, and varies
  * over which switches are on; at reconfigure it states that turning the album on also collects the photos
  * already synced, because the album gathers what the device already holds (capabilities
- * `reconfigure-membership`, `event-album`).
+ * `manage-membership`, `event-album`).
  */
 class ParticipationNotes(
     val fromFloor: String,

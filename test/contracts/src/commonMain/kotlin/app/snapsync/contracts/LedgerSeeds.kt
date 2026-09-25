@@ -10,7 +10,7 @@ import app.snapsync.ports.LedgerStore
  *
  * Test-only on purpose. No production writer records `COMPLETED`: a completion is a fact the platform reports
  * through the guarded terminal write, and a stored resource is seeded by the join-time load's
- * `resetTo` (capability `sync-ledger`). The row is built from the resource the same way the writer builds
+ * `resetTo` (capability `photo-sharing`). The row is built from the resource the same way the writer builds
  * one, so no call site re-states a row's columns by hand.
  */
 suspend fun LedgerStore.seedCompleted(resource: Resource) =

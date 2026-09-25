@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The `PHBackgroundResourceUploadProcessingResult` raw values (capability `ios-photokit-upload`;
+ * The `PHBackgroundResourceUploadProcessingResult` raw values (capability `background-upload`;
  * settled forcing proof ① of migration step 12). The system type is Swift-only, so the Swift shell
  * constructs it via `init?(rawValue:)` from exactly these integers — pinning them here is what makes
  * "Kotlin decides, Swift constructs" a tested decision rather than an untestable Swift `switch`.

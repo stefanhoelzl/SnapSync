@@ -16,7 +16,7 @@ import app.snapsync.ports.UploadExtensionRegistry
 import co.touchlab.kermit.Logger
 
 /*
- * `UploadExtensionRegistryContract`'s iOS bindings (capability `port-contracts`): the real
+ * `UploadExtensionRegistryContract`'s iOS bindings (`docs/architecture.md`): the real
  * `PhotoKitExtensionRegistry` recorded in the app on a device — once under a full grant, once under a partial
  * one — and replayed on every CI build.
  *

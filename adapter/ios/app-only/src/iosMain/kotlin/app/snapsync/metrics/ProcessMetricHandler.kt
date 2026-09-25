@@ -6,7 +6,7 @@ import app.snapsync.ports.DiagnosticsReporter
 import co.touchlab.kermit.Logger
 
 /**
- * What happens to a delivered report (capability `crash-reporting`): the three channels, and nothing
+ * What happens to a delivered report (capability `privacy-security`): the three channels, and nothing
  * else.
  *
  * ```
@@ -18,7 +18,7 @@ import co.touchlab.kermit.Logger
  * **This is wiring, and it is wiring on purpose.** It holds no decision: the rule returns emissions
  * — severity, text, reasons — and this loops over them. There is no `if` here about what is worth
  * reporting, which is what lets every such judgement live in `:domain:model` where tests reach it
- * (spec `module-architecture`: the wiring graph is smoke-tested end to end, never unit-tested).
+ * (`docs/architecture.md`: the wiring graph is smoke-tested end to end, never unit-tested).
  *
  * The context is attached **before** the emissions are logged. A crossing is logged at `Error`, which
  * the reporting channel turns into an event through the logging seam — so the context has to be
@@ -45,7 +45,7 @@ class ProcessMetricHandler(
             if (reasons.isEmpty()) report else ProcessMetricReport(report.fields + (REASONS_KEY to reasons.joinToString(","))),
         )
         // No branch: each emission carries Kermit's own severity, so this renders without deciding.
-        // An `Error` here is what `crash-reporting` carries onward as the event.
+        // An `Error` here is what `privacy-security` carries onward as the event.
         emissions.forEach { emission -> log.log(emission.severity, log.tag, null, emission.message) }
     }
 

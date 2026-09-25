@@ -87,14 +87,14 @@ class EdgeUploadRequestProviderTest {
     @Test
     fun the_request_declares_the_app_version_because_the_os_performs_it() = runTest {
         // The shared HTTP client cannot add this: the platform issues this request later, outside any
-        // client this app controls (capability `min-app-version`).
+        // client this app controls (capability `app-update-required`).
         val req = provider(appVersion = "0.4").provide(resource("x-primary.jpg"))
         assertEquals("0.4", req.headers[APP_VERSION_HEADER])
     }
 
     @Test
     fun headers_are_exactly_content_type_and_the_device_token_no_metadata() = runTest {
-        // The byte route is GATED (capability `device-attestation`), so the request carries the token —
+        // The byte route is GATED (capability `privacy-security`), so the request carries the token —
         // and still nothing else: no `Host` (URL-implied), and no `x-*-meta-*` even though the resource
         // has metadata (the bunny native Storage API has no metadata headers).
         val req = provider().provide(resource("x.jpg", contentType = "image/heic"))
@@ -160,7 +160,7 @@ class EdgeUploadRequestProviderTest {
 
     @Test
     fun a_retry_reads_the_store_of_record_even_when_the_first_request_was_served_a_copy() = runTest {
-        // The token source may serve an in-memory copy between re-reads (capability `device-attestation`), so a
+        // The token source may serve an in-memory copy between re-reads (capability `privacy-security`), so a
         // copy can predate the other process's renewal. A retry is when that matters — the failure may have been
         // that stale token's 401 — so it mints from the uncached read, and the destination stays identical.
         val copy: String? = "stale-copy"

@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The scrub functions apply the event-size caps (capability `crash-reporting`: "Every outgoing event is bounded below
+ * The scrub functions apply the event-size caps (capability `privacy-security`: "Every outgoing event is bounded below
  * the ingest's maximum event size"). What the caps sum to on the wire is the `DiagnosticsReporter` contract's
  * worst-case clause; this pins where each cap is applied and what it leaves alone.
  */

@@ -45,7 +45,7 @@ class IosLinkOpener internal constructor(private val platform: UrlOpenerApi) : L
 
 /**
  * **The operating-system boundary of [IosLinkOpener]**: the one `UIApplication` call it makes (capability
- * `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on
+ * `docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on
  * every build"). Opening a URL another app claims backgrounds this app, so no CI host can run it live; it
  * is recorded on a device and replayed through this seam. `internal`: the recording and replaying
  * implementations live in this module's rig-gated source set.

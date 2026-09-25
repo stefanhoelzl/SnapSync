@@ -13,9 +13,9 @@ sealed interface JoinLoad {
      * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt]
      * its **end date** — canonical UTC `…Z` strings, all required and non-null. [startsAt] is both the
      * range row's lower default and its **floor**; [endsAt] is both its upper default and its **ceiling**
-     * (capability `photo-selection-policy`). [deletesAt] is when the event's shared photos are deleted
-     * (capability `event-limits`) — the retention deadline the gate states before confirm, and the second
-     * witness the self-leave later depends on (capability `leave-event`).
+     * (capability `photo-sharing`). [deletesAt] is when the event's shared photos are deleted
+     * (capability `event-lifetime`) — the retention deadline the gate states before confirm, and the second
+     * witness the self-leave later depends on (capability `manage-membership`).
      *
      * A details response lacking **any** of the four is a transient [Failed], never a [Found] with a null
      * name (the event-album title needs one) nor one with an invented `startsAt`/`endsAt` (a defaulted

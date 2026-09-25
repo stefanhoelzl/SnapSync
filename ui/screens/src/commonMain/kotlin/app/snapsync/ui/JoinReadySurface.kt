@@ -104,12 +104,12 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
                 ),
             )
 
-            // How long the shared photos are kept (capability `event-limits`). This is the ONE place the
+            // How long the shared photos are kept (capability `event-lifetime`). This is the ONE place the
             // app states retention — the creator passes through this same gate right after minting, so a
             // single line serves the host and every guest.
             //
             // The date is the CEILING, stated unconditionally. An event is often reclaimed sooner (once
-            // everyone has left, capability `scheduled-cleanup`), but that depends on every member's leave
+            // everyone has left, capability `event-lifetime`), but that depends on every member's leave
             // reaching the backend and is NOT assured — so it must never be presented as a promise, nor as
             // a qualification that makes this date read as unreliable.
             AppMinorSection {
@@ -139,7 +139,7 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
 }
 
 /**
- * The shareable-count row (capability `join-share-count`): `XX photos from your gallery will be shared`. A
+ * The shareable-count row (capability `join-event`): `XX photos from your gallery will be shared`. A
  * brief `counting…` shows while the container recomputes; a zero carries a forward gloss so it does not read
  * as broken; an unavailable count (no usable grant, or a failed read) renders **nothing**.
  *

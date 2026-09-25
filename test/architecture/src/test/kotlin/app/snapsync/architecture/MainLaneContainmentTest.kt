@@ -6,8 +6,8 @@ import kotlin.test.assertTrue as assertTrueKt
 import kotlin.test.fail
 
 /**
- * **The main lane is contained to platform UI** (capability `architecture-guards`; law:
- * `module-architecture`, "Dispatcher lanes are fixed by the composition").
+ * **The main lane is contained to platform UI** (`docs/architecture.md`; law:
+ * `docs/architecture.md`, "Dispatcher lanes are fixed by the composition").
  *
  * Whether a blocking platform call lands on the main thread used to be a property of *who called it* —
  * not decidable where the call is written, and duly not decided: 21 of 23 iOS adapter files touching a
@@ -41,7 +41,7 @@ class MainLaneContainmentTest {
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/share/IosShareSheet.kt" to
             "presents UIActivityViewController",
         // Leaves the app for a URL — the update-required screen's store button (capability
-        // `min-app-version`). `UIApplication` is main-thread-only, and the adapter names the lane
+        // `app-update-required`). `UIApplication` is main-thread-only, and the adapter names the lane
         // itself so it is correct for any caller rather than only the command declared on that lane.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/link/IosLinkOpener.kt" to
             "UIApplication.openURL",
@@ -51,7 +51,7 @@ class MainLaneContainmentTest {
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoLibraryPermission.kt" to
             "UIApplication.openURL + presentLimitedLibraryPicker + a UIApplication notification observer",
         // Reads the main-thread-only `isProtectedDataAvailable` for the background entry points' diagnostics
-        // (capability `ios-app-shell`). The read moved here from `SnapSyncRoot` when the shell became a driving
+        // (capability `sync-status`). The read moved here from `SnapSyncRoot` when the shell became a driving
         // adapter: the core's entries ask the `ProtectedStorage` port, and this adapter names the lane itself.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProtectedStorage.kt" to
             "UIApplication.isProtectedDataAvailable",

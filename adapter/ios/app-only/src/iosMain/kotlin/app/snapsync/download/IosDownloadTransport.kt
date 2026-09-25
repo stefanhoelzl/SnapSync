@@ -35,7 +35,7 @@ import platform.darwin.NSObject
 private const val DOWNLOAD_SESSION_ID = "app.snapsync.download.bg"
 
 /**
- * The iOS [DownloadTransport] (capability `photo-download`): a `URLSession` (Wi-Fi *and* cellular,
+ * The iOS [DownloadTransport] (capability `receiving-photos`): a `URLSession` (Wi-Fi *and* cellular,
  * non-discretionary) which on every shipped binary is a **background** session that keeps downloading while
  * the app is suspended and relaunches it on completion. The binding is fixed by the compilation target —
  * see [transferSessionConfiguration] for what `iosSimulatorArm64` gets instead, and for the list of
@@ -150,7 +150,7 @@ class IosDownloadTransport(
      * protocol implementer) holding a back-reference to the [transport] it forwards to.
      */
     private class Delegate(private val transport: IosDownloadTransport) : NSObject(), NSURLSessionDownloadDelegateProtocol {
-        // PLATFORM ENTRY POINTS (spec `diagnostic-logging`): the OS calls these, so each records that
+        // PLATFORM ENTRY POINTS (spec `privacy-security`): the OS calls these, so each records that
         // it was called before doing anything. The two per-task callbacks log at DEBUG on purpose —
         // they fire once per photo, and at INFO a 200-photo event would flush the crash reporter's
         // bounded breadcrumb window and roll the size-capped device log before anyone read it.

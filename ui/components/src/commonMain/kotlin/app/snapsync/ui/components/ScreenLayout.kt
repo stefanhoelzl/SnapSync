@@ -36,9 +36,9 @@ import androidx.compose.ui.unit.Dp
  * optional prominent [heading] beneath it (the joined event's name), the vertical centering of the
  * body content (the screen is a glanceable status display), and a bottom action cluster centered
  * across the width. Screens supply one or more action composables; this container row-arranges them
- * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (spec: design-system).
+ * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (spec: docs/architecture.md).
  *
- * [onEditHeading] is the heading's edit affordance (capability `event-rename`). It is the deliberate
+ * [onEditHeading] is the heading's edit affordance (capability `manage-membership`). It is the deliberate
  * OPPOSITE of [onTitleDoubleTap]: a visible control with click semantics and an accessibility label,
  * because renaming an event is something a member should be able to find. The two never collide — they
  * sit on different slots (the app-name label and the heading), and only one of them is a control.
@@ -102,7 +102,7 @@ fun ScreenLayout(
 /**
  * The small app-name nav label — always present, top-anchored (mockup `.navtitle`).
  *
- * [onDoubleTap] is the hidden operator affordance (capability `diagnostic-logging`), and it is
+ * [onDoubleTap] is the hidden operator affordance (capability `privacy-security`), and it is
  * deliberately a raw pointer-input gesture rather than `combinedClickable`: that would add click
  * semantics and a role to a label that must stay invisible to assistive tech and to a UI test that has
  * not been told where to look.

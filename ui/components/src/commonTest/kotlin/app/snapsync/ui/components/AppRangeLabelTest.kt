@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlinx.datetime.LocalDateTime
 
 /**
- * The range + duration formatting the create/join surfaces render (capability `photo-selection-policy`):
+ * The range + duration formatting the create/join surfaces render (capability `photo-sharing`):
  * compact-adaptive and pure: it formats two wall-clock values and reads no clock or zone, which is
  * why it belongs to the design system rather than to the reduction that decides what the values ARE.
  */

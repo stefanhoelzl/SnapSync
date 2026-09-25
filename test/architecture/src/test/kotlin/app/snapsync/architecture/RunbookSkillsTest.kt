@@ -7,7 +7,7 @@ import kotlin.test.fail
 
 /**
  * **The runbook pointers resolve, and the launch-trigger index agrees with source**
- * (capability `architecture-guards`; decision record: `move-runbooks-behind-skills`).
+ * (`docs/architecture.md`; decision record: `move-runbooks-behind-skills`).
  *
  * The operator runbooks moved out of CLAUDE.md into `.claude/skills/`, leaving one imperative
  * pointer line per skill. That buys ~15k tokens off every session and costs two new ways to rot,
@@ -15,7 +15,7 @@ import kotlin.test.fail
  *
  * 1. **A pointer that reaches nothing.** An agent reads "load the `ios-device` skill", finds no such
  *    skill, and proceeds **without** it — executing the very procedure the skill exists to make
- *    safe. Nothing raises. That is the "absence is never silent" law (spec `module-architecture`)
+ *    safe. Nothing raises. That is the "absence is never silent" law (`docs/architecture.md`)
  *    applied to the seam between the always-loaded file and the on-demand ones.
  *
  * 2. **A launch trigger returning to production Kotlin.** Dev/test control of a device is the control

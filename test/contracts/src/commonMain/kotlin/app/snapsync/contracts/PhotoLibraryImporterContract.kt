@@ -25,7 +25,7 @@ enum class PhotoLibraryImporterState {
 enum class MarkerState { NONE, RECORDED, CONFIRMED, CLEARED }
 
 /**
- * What a clause observes of the library an importer writes into (capability `port-contracts`: a port that
+ * What a clause observes of the library an importer writes into (`docs/architecture.md`: a port that
  * declares no reads of its own is observed through a handle each binding implements over the system it built).
  * Outcomes only.
  */
@@ -49,7 +49,7 @@ class StagedImport(
 )
 
 /**
- * What every [PhotoLibraryImporter] promises (capability `port-contracts` — this list IS the specification of
+ * What every [PhotoLibraryImporter] promises (`docs/architecture.md` — this list IS the specification of
  * the port's obligations).
  *
  * The import is where a foreign photo enters this device's library, and every failure shape matters: a

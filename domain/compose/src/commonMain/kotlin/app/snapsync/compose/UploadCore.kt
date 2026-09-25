@@ -55,7 +55,7 @@ sealed interface UploaderProcess {
 }
 
 /**
- * The ports one upload-cycle assembly consumes (spec `module-architecture`, "One shared
+ * The ports one upload-cycle assembly consumes (`docs/architecture.md`, "One shared
  * composition"): port interfaces plus the thunks whose *call time* is load-bearing. A root
  * constructs its adapters and states its policies here; [uploadCore] does the assembling — so a
  * port added to the cycle is added to this bundle once, and every tier (and the world harness)
@@ -63,7 +63,7 @@ sealed interface UploaderProcess {
  * how the app-driven tier once shipped without the direction gate).
  */
 class UploadPorts(
-    /** The three-state membership read (capability `event-link`). Read fresh once per cycle. */
+    /** The three-state membership read (capability `join-event`). Read fresh once per cycle. */
     val config: ConfigReader,
     /**
      * The device identity. Its resolve MUST throw [SecureStoreUnavailable] while protected data is
@@ -80,15 +80,15 @@ class UploadPorts(
     val ledger: LedgerStore,
     val transfer: BackgroundTransfer,
     /**
-     * The cycle's photo-library reads (capability `ios-url-session-upload`, "Ledger keys resolve to uploadable
+     * The cycle's photo-library reads (capability `background-upload`, "Ledger keys resolve to uploadable
      * resources"): bound once per root — `IosDiscovery` on both device tiers — and never by a transport.
      */
     val discovery: UploadDiscovery,
-    /** Crash/error reporting (capability `crash-reporting`). Required on both tiers — see AppPorts. */
+    /** Crash/error reporting (capability `privacy-security`). Required on both tiers — see AppPorts. */
     val diagnosticsReporter: DiagnosticsReporter,
     /**
      * Which uploader process this cycle runs in, which decides whether it may run a cycle now (capability
-     * `upload-lifecycle`, "The upload cycle owns its entry decision"), read once per gate. Required, with **no
+     * `background-upload`, "The upload cycle owns its entry decision"), read once per gate. Required, with **no
      * default**: the app answers from its composed core (admit under any usable grant), the extension from its
      * own photo grant (admit only under `GRANTED`), and a default would state either answer silently — for the
      * extension, a wrong admit reads the whole library under a partial grant. It is decided before the
@@ -96,7 +96,7 @@ class UploadPorts(
      */
     val process: UploaderProcess,
     /**
-     * What upload discovery may read (capability `limited-photo-access`): [SelectionScope.Unrestricted]
+     * What upload discovery may read (capability `photo-access`): [SelectionScope.Unrestricted]
      * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
      * platform read. The default keeps every full-grant composition byte-identical — the extension root
      * keeps it because it never reads the library under a partial grant: the OS does invoke a surviving
@@ -107,9 +107,9 @@ class UploadPorts(
     val manifestStore: DeviceManifestStore,
     /** The device-manifest publisher — production passes `:adapter:generic:app`'s `HttpManifestPublisher`. */
     val manifestPublisher: ManifestPublisher,
-    /** Echo-suppression (capability `photo-download`): required, no default (`upload-lifecycle`). */
+    /** Echo-suppression (capability `receiving-photos`): required, no default (`background-upload`). */
     val suppression: SuppressionSource,
-    /** The album port the policy's denylisted-album read goes through (capability `photo-selection-policy`). */
+    /** The album port the policy's denylisted-album read goes through (capability `photo-sharing`). */
     val albumManager: AlbumManager,
     /** How this tier answers a failed denylisted-album lookup — see [AlbumLookupFailure]. */
     val albumLookupFailure: AlbumLookupFailure,
@@ -119,12 +119,12 @@ class UploadPorts(
     val token: suspend () -> String?,
     /**
      * The attestation bearer token read from its store of record, bypassing any in-process copy — what a retry's
-     * request carries (capability `edge-upload-provider`, "A retry picks up a refreshed token"). Required, like
+     * request carries (capability `background-upload`, "A retry picks up a refreshed token"). Required, like
      * [token]: `{ null }` must be stated.
      */
     val freshToken: suspend () -> String?,
     /**
-     * The calling build's marketing version, declared on the byte upload (capability `min-app-version`).
+     * The calling build's marketing version, declared on the byte upload (capability `app-update-required`).
      *
      * A plain value, and required: each process builds its own bundle in its own root and reads its own
      * bundle there, so there is no other process's answer to bind. It used to be a thunk defaulting to `""`,
@@ -135,7 +135,7 @@ class UploadPorts(
 )
 
 /**
- * The ONE upload-cycle assembly (spec `module-architecture`, "One shared composition"): both device
+ * The ONE upload-cycle assembly (`docs/architecture.md`, "One shared composition"): both device
  * tiers' roots and the world harness call this — there is no second wiring, so a wiring difference
  * between the harness and production is impossible rather than undetected.
  *
@@ -177,13 +177,13 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         },
         ledger = ledger,
         platform = ports.transfer,
-        // The read-discipline gate (capability `limited-photo-access`): the ONE shared assembly wraps
+        // The read-discipline gate (capability `photo-access`): the ONE shared assembly wraps
         // the library reads, so every tier and the world get the same walk-vs-snapshot decision.
         library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope),
         log = ports.log,
-        // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
+        // Device manifest (capability `photo-sharing`) from the cycle's OWN discovery — no second
         // library enumeration. Catching a failed publish is the cycle's; nothing bounds it but the
-        // per-request HTTP timeout (no timeout of ours — capability `ios-app-shell`).
+        // per-request HTTP timeout (no timeout of ours — capability `sync-status`).
         // The manifest DECLARES what this device will provide: every non-absent ledger row, whatever its
         // upload state. This hook therefore needs no discovery of its own — the cycle has already
         // recorded every admitted resource and backfilled the bare ones by the time it fires, and the
@@ -191,10 +191,10 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         onDiscovery = { eventId, policy, manifestVersion ->
             manifestProducer.produce(
                 eventId = eventId,
-                policy = policy, // the ONE admission (capability `photo-selection-policy`)
+                policy = policy, // the ONE admission (capability `photo-sharing`)
                 rows = ledger.manifestRows(),
                 // Read by the gate BEFORE the membership, so every change the rows or the policy miss
-                // carries a higher version (capability `sync-ledger`).
+                // carries a higher version (capability `photo-sharing`).
                 manifestVersion = manifestVersion,
             )
         },
@@ -208,7 +208,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
 }
 
 /**
- * THE ENTRY-GATE TRANSLATION (capability `upload-lifecycle`, "The upload cycle owns its entry
+ * THE ENTRY-GATE TRANSLATION (capability `background-upload`, "The upload cycle owns its entry
  * decision") — one implementation over the ports, where three per-root copies used to live. It is
  * **port-pure**: one fresh [ConfigReader.read] per cycle, the identity probe, the host read, and the
  * root's admission answer — and deliberately nothing else.
@@ -230,7 +230,7 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
  */
 private suspend fun readGate(ports: UploadPorts): CycleGate {
     // The manifest version FIRST — before the membership, and so before the policy and the rows the manifest
-    // is projected from (capability `upload-lifecycle`). Every change that could alter the projection
+    // is projected from (capability `background-upload`). Every change that could alter the projection
     // advances it, so a change this cycle's projection misses happened after this read and carries a higher
     // version. Unreadable (a locked device's protected ledger) is "I could not look", like the config.
     val version = runCatchingCancellable { ports.ledger.manifestVersion() }
@@ -241,7 +241,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
     //
     // `DeviceIdentityAbsent` joins `SecureStoreUnavailable` here, and the two are handled identically on
     // purpose. It means the lookup succeeded, found nothing, and this process may not mint (the upload
-    // extension — capability `device-identity`). Both are "proceed with no identity", and proceeding
+    // extension — capability `photo-sharing`). Both are "proceed with no identity", and proceeding
     // is exactly what must not happen: an invented id partitions this device's bytes away from its own
     // manifest. Anything else still propagates — a genuine fault must not be silently downgraded to a
     // skipped cycle.
@@ -256,7 +256,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
             JoinedMembership(
                 eventId = it.eventId,
                 // A supplier, not a value: the derivation reads two ports and this translation must stay
-                // port-pure. Closing over them is not calling them (capability `upload-lifecycle`).
+                // port-pure. Closing over them is not calling them (capability `background-upload`).
                 policy = {
                     selectionPolicyFor(
                         config = it,
@@ -274,7 +274,7 @@ private suspend fun readGate(ports: UploadPorts): CycleGate {
             )
         },
         host = ports.host,
-        // Whether THIS process may run (capability `upload-lifecycle`): each root states its own answer —
+        // Whether THIS process may run (capability `background-upload`): each root states its own answer —
         // the app from resolution, the extension from its own grant read.
         admission = when (val process = ports.process) {
             is UploaderProcess.App -> process.admission()

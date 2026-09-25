@@ -19,13 +19,13 @@ enum class CandidateSourceState {
 }
 
 /**
- * What every [CandidateSource] promises (capability `port-contracts` — this list IS the specification of the
+ * What every [CandidateSource] promises (`docs/architecture.md` — this list IS the specification of the
  * port's obligations). The seam's point is that **a counted zero is never "no answer"**: `Readable(empty)`
  * settles the status screen, `NotReadable` says nothing, and the collapse of the two shipped as
  * `SNAPSYNC-14`/`16`.
  *
  * A real binding binds the composition production calls — the grant-aware source over the platform read —
- * because that composition is where the "no answer" half of this contract lives (capability `port-contracts`,
+ * because that composition is where the "no answer" half of this contract lives (`docs/architecture.md`,
  * "A live binding binds the composition production calls").
  */
 object CandidateSourceContract : Contract<CandidateSourceState, SeededLibrary<CandidateSource>>("CandidateSource") {

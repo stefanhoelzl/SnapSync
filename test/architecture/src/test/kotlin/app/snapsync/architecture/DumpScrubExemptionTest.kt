@@ -6,7 +6,7 @@ import kotlin.test.fail
 
 /**
  * **The diagnostic dump's scrub exemption is a decision, not an accident** (capability
- * `architecture-guards`; contracts: `diagnostic-logging`, `crash-reporting`).
+ * `docs/architecture.md`; contracts: `privacy-security`, `privacy-security`).
  *
  * An operator-initiated dump travels **verbatim** — it is confirmed by the operator and worthless
  * without its event, asset and device ids, and its message carries what the operator wrote, quoted
@@ -54,7 +54,7 @@ class DumpScrubExemptionTest {
 
         assertTrue(
             "NON_REDACTED_TAG" in sendBody,
-            "the dump send no longer sets the exemption tag (capability `diagnostic-logging`). Without " +
+            "the dump send no longer sets the exemption tag (capability `privacy-security`). Without " +
                 "it `scrubbedEvent` redacts the report like any other event: the operator's description " +
                 "and every id in the payload arrive as `‹uuid›`, the send still succeeds, and nothing " +
                 "anywhere reports a problem. If the exemption is being revoked, change the spec first.",
@@ -67,7 +67,7 @@ class DumpScrubExemptionTest {
         assertTrue(
             "redactUuids" !in sendBody,
             "the dump send now redacts its own payload. That is the exemption, undone at the other end " +
-                "(capability `diagnostic-logging`): a dump without ids cannot answer which photo, which " +
+                "(capability `privacy-security`): a dump without ids cannot answer which photo, which " +
                 "event, or which device.",
         )
     }
@@ -78,7 +78,7 @@ class DumpScrubExemptionTest {
 
         assertTrue(
             "redactsMessages" in scrubBody,
-            "`scrubbedEvent` no longer consults the exemption predicate (capability `crash-reporting`). " +
+            "`scrubbedEvent` no longer consults the exemption predicate (capability `privacy-security`). " +
                 "Every operator-initiated dump is now redacted along with everything else — silently, " +
                 "since the event still sends and the failure is visible only to whoever later reads a " +
                 "report full of `‹uuid›`. Re-point this guard only if the exemption moved; do not delete it.",

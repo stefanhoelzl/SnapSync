@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run the simulator app's port contracts, end to end — the `ios-contracts` CI job, and its reproduction on a
-# Mac session (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig").
+# Mac session (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig").
 #
 #   scripts/sim-contracts            # on macOS, from the repo root, with snapsync.rig=true in ~/.gradle
 #
@@ -19,13 +19,13 @@
 # app's first write is its own `photo library: ready` stage, one BULK seed (dated 2001, outside every capture
 # window) through the rig, before the first contract.
 #
-# It FAILS on: any outcome that fails a run — `Failed(`, `Diverged(`, `NotWithin(` (capability `port-contracts`,
+# It FAILS on: any outcome that fails a run — `Failed(`, `Diverged(`, `NotWithin(` (`docs/architecture.md`,
 # "Outcomes are explicit and none is silent") — any refusal (409: the process is not the simulator app, or it does
 # not hold GRANTED), an empty registry, and an app that never publishes its rig port. Everything it learns goes to
 # build/sim-contracts/, which CI keeps as an artifact: the outcome tables, and on a no-answer the screenshot and
 # log, because a pending system alert is visible only in a screenshot.
 #
-# Then the ALL-REAL JOURNEYS (capability `testing-architecture`, "All-real journeys are the contracts' safety net"):
+# Then the ALL-REAL JOURNEYS (`docs/testing.md`, "All-real journeys are the contracts' safety net"):
 # the same app, the real backend served locally on the address the `local` deployment bakes into the build
 # (127.0.0.1:8080), and `:test:integration:journeys` driving the app through the typed client while playing the
 # second member itself over the backend's public HTTP surface. Before any of that, the app's `GET /device` is read

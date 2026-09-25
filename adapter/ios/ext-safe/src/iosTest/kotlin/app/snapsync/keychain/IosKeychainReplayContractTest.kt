@@ -17,7 +17,7 @@ import app.snapsync.ports.SecureStore
 import kotlin.test.Test
 
 /**
- * The entitled device's Keychain, REPLAYED (capability `port-contracts`): the CURRENT [IosKeychain] runs
+ * The entitled device's Keychain, REPLAYED (`docs/architecture.md`): the CURRENT [IosKeychain] runs
  * against what iOS answered when `test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec` was recorded,
  * and the current clauses judge.
  *

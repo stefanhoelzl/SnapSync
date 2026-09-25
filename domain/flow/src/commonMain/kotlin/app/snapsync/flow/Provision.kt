@@ -8,13 +8,13 @@ import app.snapsync.model.EventConfig
 
 /**
  * The **provision** trigger flow — the shared path for a scanned/typed event link and a freshly created
- * event (capabilities `event-link`, `upload-lifecycle`, `photo-selection-policy`). It **coordinates**
+ * event (capabilities `join-event`, `background-upload`, `photo-sharing`). It **coordinates**
  * the join side effects in order and **decides** nothing: whether a transition is due is
  * `feature/membership`'s sealed [switchDecision] rule.
  *
  * A provision into a **new** membership replaces the upload ledger — the ledger is the current
- * membership's share set (capability `sync-ledger`). That reverses the old rule that no destructive verb
- * reaches a provision (`upload-lifecycle`): a switch now stops the previous membership's uploads, and a
+ * membership's share set (capability `photo-sharing`). That reverses the old rule that no destructive verb
+ * reaches a provision (`background-upload`): a switch now stops the previous membership's uploads, and a
  * switch or a first join resets the ledger through [enterMembership]. A re-provision of the joined event
  * reaches neither.
  *
@@ -30,7 +30,7 @@ import app.snapsync.model.EventConfig
  *       usable), after the save so a registered extension never reads the previous membership's config;
  *     - a re-provision of the joined event ([SwitchDecision.Stay]) only **saves** the config: nothing is
  *       stopped, left, loaded or registered, so a re-scan never wipes the extension's in-flight jobs
- *       (capability `upload-lifecycle`; decision record `changes/both-uploaders-active`, D5).
+ *       (capability `background-upload`; decision record `changes/both-uploaders-active`, D5).
  *     The config is saved as-is on both branches (never destructured — a newly-added field like the cutoff
  *     must not be dropped before the persist the extension reads).
  *  2. **Refresh** the status sources (re-enumerate the own total, re-read completeness) — synchronous,
@@ -43,7 +43,7 @@ import app.snapsync.model.EventConfig
  *     returns (law "A trigger flow never outlives its own run").
  *
  * This flow issues **no** event-details fetch. It once did, to fill a title a scan could not fetch
- * while offline; a membership can no longer arrive nameless (capability `event-link`), and every
+ * while offline; a membership can no longer arrive nameless (capability `join-event`), and every
  * provision route — interactive join, `autoJoin`, switch, headless create — has just loaded or minted
  * the event's details, so the fetch was redundant by construction. `Foreground` is the sole trigger
  * that refreshes the membership (capability `join-event`).
@@ -61,7 +61,7 @@ class Provision(
     /**
      * Enter a new membership — leaving `previousEventId` first on a switch (`null` for a first join), making the
      * upload ledger its share set, saving the config and starting its uploads (capabilities
-     * `upload-state-reconciliation`, `upload-lifecycle`).
+     * `photo-sharing`, `background-upload`).
      */
     private val enterMembership: suspend (previousEventId: String?, cfg: EventConfig) -> Unit,
     /** Persist the whole config (a port touch) — the re-provision branch's only step. */
@@ -70,12 +70,12 @@ class Provision(
     private val refreshStatus: suspend () -> Unit,
     /**
      * Whether photo access is USABLE — full or limited, `grantsPhotoAccess` (a port touch). Not "fully granted":
-     * the album it gates can be created under a limited grant too (capability `limited-photo-access`).
+     * the album it gates can be created under a limited grant too (capability `photo-access`).
      */
     private val hasUsableAccess: () -> Boolean,
     /** Re-register the device's APNs push token with the backend on join (capability
-     *  `push-registration`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
-     *  device whose config the nightly sweep collected (capability `scheduled-cleanup`) is pushable again
+     *  `receiving-photos`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
+     *  device whose config the nightly sweep collected (capability `event-lifetime`) is pushable again
      *  the instant it rejoins WARM — before its next cold launch. Idempotent, best-effort. */
     private val registerPush: suspend () -> Unit,
 ) {
@@ -94,7 +94,7 @@ class Provision(
         albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, hasUsableAccess = hasUsableAccess())
         // 4. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
         //    inside the controller) and re-register the push token — the latter closes the warm-rejoin
-        //    window the sweep's device-record collection opens (capability `push-registration`). No
+        //    window the sweep's device-record collection opens (capability `receiving-photos`). No
         //    details fetch rides here: the membership this flow just persisted came from details the
         //    route already loaded or minted.
         //

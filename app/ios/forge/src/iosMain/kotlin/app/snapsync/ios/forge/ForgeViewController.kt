@@ -25,7 +25,7 @@ import platform.UIKit.UIViewController
  * This renders the **real** `StatusScreen` over **forged sources**: the container's inputs are substituted,
  * never its output, so every frame a capture shows was produced by the real presentation reduction. A state
  * the reduction cannot reach cannot be captured, which is the property the App Store listing depends on
- * (capability `ios-appstore-metadata`, "The committed captures depict the real screen in a reachable
+ * (`docs/deployment.md`, "The committed captures depict the real screen in a reachable
  * state").
  *
  * ## What is NOT here, and why that is the point

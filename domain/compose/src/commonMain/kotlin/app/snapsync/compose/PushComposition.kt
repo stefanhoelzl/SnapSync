@@ -7,7 +7,7 @@ import app.snapsync.ports.PushTokenPublisher
 import app.snapsync.ports.PushTokenSource
 
 /**
- * The push registration's three ports (capability `push-registration`), one [AppPorts] field because they are one
+ * The push registration's three ports (capability `receiving-photos`), one [AppPorts] field because they are one
  * need: [publisher] writes this device's registration (the `PUT` of its APNs token — built into `PushRegistration`
  * here rather than by a shell, which once re-entered it through a `registerPush` lambda the world bound to a
  * counter), [tokens] is what the OS delivered and in which environment, and [record] is the last registration the
@@ -22,7 +22,7 @@ class PushPorts(
 )
 
 /**
- * The device's push registration (capability `push-registration`) over the app's ports — built in `compose/`
+ * The device's push registration (capability `receiving-photos`) over the app's ports — built in `compose/`
  * rather than by a shell, so the launch/rotation collector and the join's re-registration are the same instance
  * on every composition and the world exercises the real one. It used to be built by the iOS root and reached
  * the core through a `registerPush` lambda the world bound to a counter.
@@ -34,7 +34,7 @@ internal fun pushRegistrationFor(ports: AppPorts): PushRegistration =
 
 /**
  * Re-PUT the delivered APNs token on join, whatever the last-registered record holds (capability
- * `push-registration`: a join publishes unconditionally); a no-op before the OS has delivered one.
+ * `receiving-photos`: a join publishes unconditionally); a no-op before the OS has delivered one.
  */
 internal suspend fun PushRegistration.reRegister(ports: AppPorts) {
     ports.push.tokens.token.value?.let { register(ApnsPushToken(it, ports.push.tokens.env)) }

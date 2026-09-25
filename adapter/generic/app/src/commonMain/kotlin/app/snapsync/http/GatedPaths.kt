@@ -2,7 +2,7 @@ package app.snapsync.http
 
 /**
  * Whether the backend's token gate guards [method] [path] — the client's copy of the gate's CLOSED ungated list in
- * `api/src/app.ts` (capability `device-attestation`, "Only a rejected credential is invalidated, and only that one";
+ * `api/src/app.ts` (capability `privacy-security`, "Only a rejected credential is invalidated, and only that one";
  * decision record `harden-seam-bug-classes`, D10).
  *
  * A `401` means "your credential is rejected" only where the gate ran. From an ungated route it is that route's own

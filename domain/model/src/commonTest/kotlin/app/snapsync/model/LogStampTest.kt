@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The device-log stamp's text, pinned against known instants (capability `diagnostic-logging`).
+ * The device-log stamp's text, pinned against known instants (capability `privacy-security`).
  *
  * The writer used to build this text from `NSDate.description` (UTC, `yyyy-MM-dd HH:mm:ss +0000`) with
  * the milliseconds spliced in ahead of the zone; [utcLogStamp] produces it arithmetically, so what has to

@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The manifest version of the storage seam (capability `sync-ledger`, "The manifest version orders the
+ * The manifest version of the storage seam (capability `photo-sharing`, "The manifest version orders the
  * device's manifest snapshots"): a counter that advances on every change that could alter the device
  * manifest's projection, and on nothing else. Part of [LedgerStoreContract]'s clause list — a split for size
  * only, like [recordGuardClauses].

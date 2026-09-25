@@ -39,8 +39,8 @@ internal const val NO_CEILING_YEARS = 100
  *
  * Screen-local navigation, every one of them: opening a confirm dialog, a rename sheet, a bug-report
  * sheet or the reconfigure surface touches no port and is not a state of the sync, so none belongs in
- * `UiState` or in the reduction (capability `reconfigure-membership` calls this "local Compose
- * navigation"; `diagnostic-logging` and `event-rename` make the same call for their sheets).
+ * `UiState` or in the reduction (capability `manage-membership` calls this "local Compose
+ * navigation"; `privacy-security` and `manage-membership` make the same call for their sheets).
  *
  * A holder rather than four separate `var`s because the overlays that read them are a composable of
  * their own: four flags would otherwise cross that boundary as four values and four setters.
@@ -49,7 +49,7 @@ internal const val NO_CEILING_YEARS = 100
 @Composable
 fun StatusScreen(
     // Everything this screen renders. The membership, the invite URL, the inline create error and the
-    // rename status all travel INSIDE it (capability `sync-status-screen`): a value the screen shows is a
+    // rename status all travel INSIDE it (capability `sync-status`): a value the screen shows is a
     // value the state carries, so no call site can supply the state and silently omit a rendered value.
     state: UiState,
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
@@ -202,12 +202,12 @@ private fun LeaveConfirmDialog(actions: StatusActions) {
 }
 
 /**
- * The rename dialog (capability `event-rename`), opened by the pen beside the heading.
+ * The rename dialog (capability `manage-membership`), opened by the pen beside the heading.
  *
  * Pre-filled with the current name; the field is capped at the backend's own 100-character rule and
  * confirm is inert while the trimmed value is empty or unchanged, so a no-op rename never reaches the
  * network. A failure keeps the sheet open with the typed value and an error BANNER — never a reddened
- * field: a server saying no must not read as a complaint about the host's typing (`event-creation-ui`
+ * field: a server saying no must not read as a complaint about the host's typing (`create-event`
  * makes the same call for the same reason).
  */
 @Composable
@@ -243,7 +243,7 @@ private fun RenameSheet(
             maxLength = EVENT_NAME_MAX_LENGTH,
             busy = renameState == RenameState.InFlight,
             // The copy arrives already formatted: turning a failure REASON into words is the reduction's
-            // job, exactly as it is for the create layer's twin (capability `event-rename`).
+            // job, exactly as it is for the create layer's twin (capability `manage-membership`).
             error = (renameState as? RenameState.Failed)?.message,
         ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
@@ -261,7 +261,7 @@ private fun RenameSheet(
  * operator learns what leaves the device.
  *
  * It names the payload rather than asking a bare yes/no, and claims nothing about identifiers being
- * removed (they are not: a report travels verbatim, capability `diagnostic-logging`). Writing the
+ * removed (they are not: a report travels verbatim, capability `privacy-security`). Writing the
  * description IS the confirmation, so there is no second dialog behind Send. There is deliberately NO
  * feedback afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim the app
  * cannot honestly make.
@@ -286,7 +286,7 @@ private fun BugReportSheet(
         field = PromptField(
             placeholder = "What went wrong, and what were you doing?",
             // The description titles the report in the error-tracking service, so it is bounded to
-            // stay readable in a list of issues (capability `diagnostic-logging`).
+            // stay readable in a list of issues (capability `privacy-security`).
             maxLength = 200,
         ),
         onConfirm = { note ->
@@ -337,7 +337,7 @@ private fun ColumnScope.CurrentLayer(
     chrome: StatusChrome,
     // Still needed by the CREATE form (its own local name/date state, which this change does not lift)
     // and by the joined layer's clock line. The RANGE form no longer needs it: its bounds arrive
-    // resolved (capability `sync-status-screen`).
+    // resolved (capability `sync-status`).
     cutoff: CutoffFormatter,
     actions: StatusActions,
 ) {

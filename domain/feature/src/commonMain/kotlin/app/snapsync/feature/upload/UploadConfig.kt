@@ -46,8 +46,8 @@ class JoinedMembership(
      * The membership's selection policy, as a **supplier** rather than a built value.
      *
      * The one derivation reads two ports — the download store's imported ids and the platform album
-     * lookup (capability `photo-selection-policy`) — and the entry-gate translation that builds this
-     * membership must stay **port-pure** (capability `upload-lifecycle`: a fresh three-state config read,
+     * lookup (capability `photo-sharing`) — and the entry-gate translation that builds this
+     * membership must stay **port-pure** (capability `background-upload`: a fresh three-state config read,
      * the identity probe, the host read, and nothing else). So the translation closes over the readers
      * instead of calling them; the shared composition is where both the config and the readers are in
      * scope, and invoking this is the cycle's business.
@@ -61,7 +61,7 @@ class JoinedMembership(
     val saveToAlbum: Boolean,
     /**
      * The ledger's manifest version, read by the entry-gate translation **before** the membership (capability
-     * `upload-lifecycle`), and carried by the cycle to its manifest publish (capability `device-manifest`).
+     * `background-upload`), and carried by the cycle to its manifest publish (capability `photo-sharing`).
      *
      * Read first because every change that could alter the projection — a ledger row, or a reconfigure's
      * save — advances it: a change the projection misses therefore happened after this read and carries a
@@ -78,7 +78,7 @@ class JoinedMembership(
  * *locked* — and a locked device could not read the Keychain at all before the accessibility fix. That
  * read failure used to arrive as "not joined", so every invocation performed a **false leave**, clearing
  * the join state a later readable cycle then had to rebuild. [NotJoined] now clears nothing (the explicit
- * leave clears the ledger itself, capability `leave-event`), but "could not look" and "not joined" still
+ * leave clears the ledger itself, capability `manage-membership`), but "could not look" and "not joined" still
  * mean different things to every reader of this answer.
  *
  * This gate is consumed by [UploadCycle.run] — the choke point every trigger on every tier funnels
@@ -120,7 +120,7 @@ sealed interface CycleGate {
 }
 
 /**
- * Whether THIS process may run an upload cycle now (capability `upload-lifecycle`, "The upload cycle owns
+ * Whether THIS process may run an upload cycle now (capability `background-upload`, "The upload cycle owns
  * its entry decision") — the per-process answer a root supplies and [cycleGate] consumes.
  *
  * Asymmetric by process, and each root states its own: the app admits under any usable grant (`LIMITED`
@@ -147,7 +147,7 @@ enum class UploadAdmission {
  * It withholds too while the [scope] is [SelectionScope.Unread] — a partial grant whose selection has not been
  * read yet. A read selection snapshot is an authoritative walk, so a cycle run over an unread one would take the
  * absence of a selection for the absence of every photo and delete their rows (capability
- * `limited-photo-access`; decision record `changes/selection-is-the-walk`, D1). The scope is derived from the
+ * `photo-access`; decision record `changes/selection-is-the-walk`, D1). The scope is derived from the
  * same snapshot cell discovery reads, so admission and discovery cannot disagree about whether it was read.
  */
 fun appAdmission(permission: PermissionStatus, scope: SelectionScope, pin: UploaderPin? = null): UploadAdmission =

@@ -22,11 +22,11 @@ import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
- * The version gate on the SCREEN (capability `min-app-version`): a backend refusal of this build
+ * The version gate on the SCREEN (capability `app-update-required`): a backend refusal of this build
  * reduced into `UiState`, and the one command it offers.
  *
  * Its own file rather than more cases on `StatusContainerHostTest`, which is at its size ceiling
- * (`complexity-budgets`) — and the split is by capability rather than to make a number pass: these
+ * (`docs/architecture.md`) — and the split is by capability rather than to make a number pass: these
  * exercise one read-model, one layer and one command, and share none of that class's join/create
  * fixtures.
  *

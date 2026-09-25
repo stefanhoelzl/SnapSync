@@ -42,7 +42,7 @@ internal fun albumGather(
  * The app is the sole album creator, and sync needs the same grant, so the album exists before the first
  * synced photo — both processes then only ADD (capability `event-album`). Unconditional call: the
  * membership's opt-in gate is the coordinator's own guard. Usable access (`grantsPhotoAccess`): album
- * creation works under a LIMITED grant (measured — capability `limited-photo-access`), so a limited member's
+ * creation works under a LIMITED grant (measured — capability `photo-access`), so a limited member's
  * opted-in album exists before their first import lands.
  *
  * The album gather rides the SAME collector, after the ensure; the gather decides whether this emission is an

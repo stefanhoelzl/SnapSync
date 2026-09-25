@@ -8,7 +8,7 @@ import app.snapsync.ports.invocation
 import app.snapsync.ports.runProcessCycle
 
 /**
- * The core's implementation of the upload extension's inbound port (spec `module-architecture`, "OS entry points
+ * The core's implementation of the upload extension's inbound port (`docs/architecture.md`, "OS entry points
  * cross an inbound port") over the cycle [uploadCore] built from the same [ports].
  *
  * Both are providers, resolved per call, so the root can delegate from its own initializer without building the
@@ -24,7 +24,7 @@ fun extensionEntries(
     logScope: LogScope = LogScope.NoOp,
     /**
      * Drop this process's in-memory copy of the device token, so the invocation reads the one the app last
-     * stored (capability `device-attestation`). The app renews into the shared Keychain item, which the
+     * stored (capability `privacy-security`). The app renews into the shared Keychain item, which the
      * extension's copy cannot see; re-reading at every OS invocation bounds that copy's staleness to one.
      */
     rereadCredential: () -> Unit = {},
@@ -52,7 +52,7 @@ fun extensionEntries(
 
         // The OS's `notifyTermination` marks the END of an invocation, not a kill: measured on an SE2 (iOS 26.6,
         // 2026-09-23), it arrives ~55 ms after every normal return of `process()`, and a call killed at its ~60 s
-        // budget receives nothing (capability `ios-photokit-upload`, "How the operating system invokes the extension
+        // budget receives nothing (capability `background-upload`, "How the operating system invokes the extension
         // is recorded as measured"). So this records an ordinary end at `Info`. A KILLED call is the one that reads
         // as a `→ process` with no `← process` and no line from here — which is how to tell the two apart.
         override fun onTerminate() = log.invocation(logScope, "onTerminate") {

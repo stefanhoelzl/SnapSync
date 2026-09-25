@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The leave use-case: tears down the configured event's **local** state, best-effort, leaving every
- * already-uploaded object in storage untouched (see `leave-event`).
+ * already-uploaded object in storage untouched (see `manage-membership`).
  *
  * It does four things, in order: (1) **stop** the upload producer, (2) **clear the upload ledger**,
  * (3) **clear the persisted config**, then (4) **notify the backend** this device is leaving (via the
@@ -18,12 +18,12 @@ import kotlinx.coroutines.launch
  * event even though the config is already gone.
  *
  * **Leaving clears the upload ledger** — a deliberate reversal of the rule that no lifecycle transition
- * destroys dedup state (capabilities `sync-ledger`, `upload-lifecycle`). The ledger is the current
+ * destroys dedup state (capabilities `photo-sharing`, `background-upload`). The ledger is the current
  * membership's share set: a later join rebuilds it from the device's stored-file listing, so nothing already
  * stored is uploaded again unless that listing fails (then the cost is idempotent re-uploads, bounded by
  * the next event's window). Only the **upload** ledger is cleared: the download store's handle-carrying rows
  * are what stop this device uploading its own imports back into an event, and nothing here touches them
- * (capability `download-store`).
+ * (capability `receiving-photos`).
  *
  * Stop comes first so no mechanism starts new work against rows about to vanish. A transfer already in
  * flight may still complete after the clear: its outcome finds no row, is acknowledged and discarded, and

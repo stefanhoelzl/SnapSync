@@ -4,7 +4,7 @@ package app.snapsync.ports
  * What became of something this app handed to the platform ([PlatformHandoff]).
  *
  * The app ACTS on neither answer — nothing in `UiState` depends on one — but it records both, because they
- * have different consequences (spec `module-architecture`, "Absence is never silent"): after [Accepted] the
+ * have different consequences (`docs/architecture.md`, "Absence is never silent"): after [Accepted] the
  * user is elsewhere and it is not this app's business; after [Refused] the user is still here, and the tap
  * they made did nothing they can see.
  */

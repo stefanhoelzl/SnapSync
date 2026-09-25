@@ -8,7 +8,7 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
 /**
- * Capture-date cutoff string helpers (capability `photo-selection-policy`).
+ * Capture-date cutoff string helpers (capability `photo-sharing`).
  *
  * A cutoff is compared against an asset's `creationDate` **lexicographically** (`creationDate >=
  * cutoff`), so it MUST be byte-identical in shape to what the iOS enumerator produces — a bare
@@ -37,7 +37,7 @@ fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate =
 
 /**
  * Clamp a [chosen] cutoff up to the event's [startsAt] **floor** — the effective cutoff is
- * `max(chosen, startsAt)` (capability `photo-selection-policy`).
+ * `max(chosen, startsAt)` (capability `photo-sharing`).
  *
  * This is applied ONCE, at join, and the result is what gets persisted as `EventConfig.minPhotoDate`.
  * Because `startsAt` is immutable, the clamped value is stable for the life of the membership — which is
@@ -61,7 +61,7 @@ fun clampToFloor(chosen: CaptureCutoff, startsAt: EventStart): CaptureCutoff =
 
 /**
  * Clamp a [chosen] upper bound down to the event's [endsAt] **ceiling** — the effective upper bound is
- * `min(chosen, endsAt)` (capability `photo-selection-policy`). The mirror of [clampToFloor].
+ * `min(chosen, endsAt)` (capability `photo-sharing`). The mirror of [clampToFloor].
  *
  * Applied ONCE, at join, alongside the floor clamp in the single `JoinEvent` choke point; the result is
  * persisted as `EventConfig.maxPhotoDate`. Because [endsAt] is the host's declared, immutable event window
@@ -78,7 +78,7 @@ fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
     CaptureCeiling(minOf(chosen.at, endsAt.at))
 
 /**
- * Has this membership's own retention deadline passed (capability `leave-event`)? [deletesAt] is the
+ * Has this membership's own retention deadline passed (capability `manage-membership`)? [deletesAt] is the
  * server-derived instant persisted on the membership (`EventConfig.deletesAt`); [now] is the current
  * canonical instant.
  *

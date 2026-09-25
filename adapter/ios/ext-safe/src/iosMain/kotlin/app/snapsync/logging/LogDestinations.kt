@@ -9,7 +9,7 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 
 /**
- * Where each process writes its device log (capability `diagnostic-logging`).
+ * Where each process writes its device log (capability `privacy-security`).
  *
  * The **app** writes its own `Documents/`[APP_LOG_FILE_NAME], exactly as it always has — a process can
  * always read its own container, so relocating it would buy no capability while breaking every
@@ -19,11 +19,11 @@ import platform.Foundation.NSUserDomainMask
  * the one read the old placement made impossible: the two processes have separate sandboxes, so the
  * app cannot read the extension's `Documents/`, and the app is the process that assembles a
  * diagnostic dump. The App Group container is not USB-pullable, so the extension's log reaches a
- * cable via the `SNAPSYNC_EXPORT_LOGS` launch trigger (capability `ios-app-shell`), which copies it
+ * cable via the `SNAPSYNC_EXPORT_LOGS` launch trigger (capability `sync-status`), which copies it
  * into the app's `Documents/`.
  *
  * Resolution — including the fallback and the sentence that announces it — lives here rather than in
- * the composition roots, which hold no decisions (`module-architecture`, "Shells are wiring only").
+ * the composition roots, which hold no decisions (`docs/architecture.md`, "Shells are wiring only").
  */
 const val APP_LOG_FILE_NAME: String = "debug.log"
 

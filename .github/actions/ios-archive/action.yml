@@ -19,10 +19,10 @@
 #     max(floor, latest tag + minor 1) for a Release build.
 #   * There is deliberately NO aps-environment / apns-env / sentry-dsn input any more: those are
 #     DERIVED into the generated Deployment.xcconfig from one `channel` value (capability
-#     `deployment-configuration`), so the three environments cannot disagree and the DSN cannot be
+#     `docs/deployment.md`), so the three environments cannot disagree and the DSN cannot be
 #     armed on an undistributed build. An override here would beat the fragment and reopen both.
 #   * There is deliberately NO upload-host input: every CI archive bakes the Config.xcconfig host,
-#     the single source of the host literal (capability ios-ci). Pointing a DEV build at another
+#     the single source of the host literal (`docs/deployment.md`). Pointing a DEV build at another
 #     backend is done on the interactive dev build loop, where the IPA is actually delivered
 #     to a device — CI never produced an installable dev IPA, so the input it once had was dead.
 name: iOS archive (signed)
@@ -281,7 +281,7 @@ runs:
         path: build/ios/SourcePackages
         key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
 
-    # Build the DEBUG cache family main would otherwise never produce (capability `ios-ci`).
+    # Build the DEBUG cache family main would otherwise never produce (`docs/deployment.md`).
     #
     # The branch gate archives Debug; main archives Release. Only main's ~/.konan entry is restorable
     # by a branch, so the `ios_arm64-gSTATIC-*` family the gate needs has only ever been whatever an

@@ -1,4 +1,4 @@
-// DOES THIS DEPLOY TOUCH THE SCHEMA? (capabilities `database`, `backend-deployment`)
+// DOES THIS DEPLOY TOUCH THE SCHEMA? (capabilities `docs/architecture.md`, `docs/deployment.md`)
 //
 // deploy.yml's `api` job branches a MAINTENANCE WINDOW on this answer, so it is the most consequential thing
 // in the pipeline that is not itself a deploy step. It asks `bunny db migrations list` — which never

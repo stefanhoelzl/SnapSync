@@ -31,11 +31,11 @@ import app.snapsync.ui.components.StatusHint
 import androidx.compose.foundation.layout.ColumnScope
 import app.snapsync.ui.components.DialogCopy
 
-// In-place membership reconfigure (capability `reconfigure-membership`) and the switch confirmation
+// In-place membership reconfigure (capability `manage-membership`) and the switch confirmation
 // that guards a change of event.
 
 /**
- * The **reconfigure** surface (capability `reconfigure-membership`): a joined member re-opens the three
+ * The **reconfigure** surface (capability `manage-membership`): a joined member re-opens the three
  * participation settings they picked at join — the two switches (Share / Receive → direction), the
  * capture-date cutoff, and the album opt-in — and changes them **in place**, without leaving.
  *
@@ -64,7 +64,7 @@ internal fun ReconfigureScreen(
     onCancel: () -> Unit,
 ) {
     // No local state: the member's picks and what they resolve to are both reduced (capability
-    // `sync-status-screen`). Seeding — lossy by construction, reconstructed from the persisted
+    // `sync-status`). Seeding — lossy by construction, reconstructed from the persisted
     // timestamps — happens where the surface is opened, so a foreground refresh landing mid-edit updates
     // the heading and not the controls in the member's hand.
     val range = surface.range
@@ -79,7 +79,7 @@ internal fun ReconfigureScreen(
         ) {
             // Read-only header: which event's settings these are.
             AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
-            // The last Save did not land (capability `reconfigure-membership`): the edits are still here, and
+            // The last Save did not land (capability `manage-membership`): the edits are still here, and
             // nothing about the membership changed — said plainly, so the member knows a retry is safe.
             if (surface.saveFailed) StatusHint("Your settings couldn't be saved, so nothing changed. Try again.")
 
@@ -98,7 +98,7 @@ internal fun ReconfigureScreen(
 }
 
 /**
- * What the operator was looking at when they wrote a report (capability `diagnostic-logging`).
+ * What the operator was looking at when they wrote a report (capability `privacy-security`).
  *
  * It is derived **here** rather than in the container because the two surfaces worth naming are
  * screen-local: the reconfigure surface and, over the joined layer, a pending switch. Both are Compose
@@ -160,7 +160,7 @@ internal fun SwitchDialog(
                 // is the crisp question. Destructive, because the confirm leaves immediately. It promises
                 // NO participation — the member picks direction, cutoff and album on the join surface that
                 // follows — and shows no shareable count, there being no chosen range to count yet
-                // (capability `join-share-count`).
+                // (capability `join-event`).
                 copy = DialogCopy(
                     title = "Switch events?",
                     confirmLabel = "Switch",
@@ -218,7 +218,7 @@ private fun reconfigureNotes(
         // against the member's own ceiling, but naming an event end we do not know would be a guess.
         "Pick when to stop sharing."
     },
-    // Turning the album on gathers what the device already holds (capabilities `reconfigure-membership`,
+    // Turning the album on gathers what the device already holds (capabilities `manage-membership`,
     // `event-album`), so the on-note says the already-synced photos are included. "Synced", not "shared and
     // received": this note does not vary with the switches, and must not name a feed the membership lacks.
     album = if (saveToAlbum) {
@@ -233,7 +233,7 @@ private fun reconfigureNotes(
  *
  * That line used to say a change "never retracts photos already shared or received", and half of that
  * became false: narrowing what you share now re-projects the device manifest, so those photos stop being
- * listed to the event (capability `reconfigure-membership`).
+ * listed to the event (capability `manage-membership`).
  *
  * What it must NOT imply is deletion. The retraction is partial by nature — SnapSync syncs
  * gallery-to-gallery, so a member who already downloaded the photo holds it in their own library and

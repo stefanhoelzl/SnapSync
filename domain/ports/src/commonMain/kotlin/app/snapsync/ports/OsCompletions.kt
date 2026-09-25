@@ -14,7 +14,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * The **OS-supplied completion handlers** of one kind of wake, held across that wake's **own work** and released
- * exactly once (capability `ios-app-shell`, "OS completion handlers are released only after their work completes";
+ * exactly once (capability `sync-status`, "OS completion handlers are released only after their work completes";
  * decision record `changes/own-work-per-wake`, D1, D3 and D5).
  *
  * iOS hands one of these to every background wake — the silent-push fetch handler, a `BGTask`'s `setTaskCompleted`,
@@ -24,7 +24,7 @@ import kotlin.coroutines.EmptyCoroutineContext
  * watchdog-backed assertion — overrun is a kill without warning).
  *
  * **This is the one type licensed to hold such a handler**, and a `:test:architecture` guard fails the build on a
- * handler-shaped mutable field anywhere else (capability `architecture-guards`, "OS completion handlers are held in
+ * handler-shaped mutable field anywhere else (`docs/architecture.md`, "OS completion handlers are held in
  * one type"). It replaces `OsReceipt` and `BackgroundEventsReceipts`, which bounded the hold with a deadline of the
  * app's own — the 20 s bound the field evidence condemned: it released on 45 % of download wakes and 66 % of
  * upload-session wakes on an iPhone XS, iOS suspended the app ≤ 0.4 s later, and import batches were cut off.
@@ -113,7 +113,7 @@ class OsCompletions(
                 handler()
             } finally {
                 signal.complete(Unit)
-                // Logged, never silent (capability `diagnostic-logging`): a release on the OS's signal is the only
+                // Logged, never silent (capability `privacy-security`): a release on the OS's signal is the only
                 // evidence that the wake's own work did not finish inside the time the OS gave it.
                 if (expired != null) {
                     log.w {

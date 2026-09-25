@@ -7,7 +7,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The registration classifier (capability `ios-photokit-upload`).
+ * The registration classifier (capability `background-upload`).
  *
  * Its whole reason for existing is that the platform call used to discard both its `Boolean` and its
  * `NSError**`, making a failed registration invisible: the extension is never registered, the OS never

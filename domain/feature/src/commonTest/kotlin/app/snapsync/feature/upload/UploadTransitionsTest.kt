@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The membership transitions (capability `upload-lifecycle`, "Membership transitions reconcile the upload
+ * The membership transitions (capability `background-upload`, "Membership transitions reconcile the upload
  * mechanisms in one tested place"), over the REAL registration fact and fakes for the registration and the app
  * engine.
  *

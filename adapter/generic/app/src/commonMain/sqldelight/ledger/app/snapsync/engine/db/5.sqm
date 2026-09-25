@@ -1,5 +1,5 @@
 -- v5 -> v6: carry the device manifest's presentation detail on the ledger row (capability
--- `sync-ledger`), so the manifest can be PROJECTED from the ledger instead of maintained in a
+-- `photo-sharing`), so the manifest can be PROJECTED from the ledger instead of maintained in a
 -- parallel accumulator that tracked the same deletion-aware asset set with different columns.
 --
 -- Like 2.sqm/3.sqm/4.sqm this migration is ROW-PRESERVING, and here that matters more than usual: a

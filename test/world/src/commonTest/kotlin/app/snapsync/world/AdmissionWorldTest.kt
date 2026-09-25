@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The app process's admission over the REAL composition (capability `upload-lifecycle`, "The upload cycle owns
+ * The app process's admission over the REAL composition (capability `background-upload`, "The upload cycle owns
  * its entry decision"): the world's cycle takes the same `appUploadAdmission()` the device app engine gates on.
  */
 class AdmissionWorldTest {

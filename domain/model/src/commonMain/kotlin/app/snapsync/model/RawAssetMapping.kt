@@ -3,7 +3,7 @@ package app.snapsync.model
 /**
  * The **pure fan-out mapping** `RawAsset` → engine `Resource`s — the single site of the fan-out
  * orchestration, extracted from the iOS enumerator so it runs on JVM + the simulator (capability
- * `gallery-status`, Move A). For each [RawAsset]: normalize its `assetId` `'/'→'_'` ([normalizeAssetId]);
+ * `sync-status`, Move A). For each [RawAsset]: normalize its `assetId` `'/'→'_'` ([normalizeAssetId]);
  * for each [RawResource], drop it when its raw [RawResource.type] maps to no role
  * ([resourceRole] — originals only), else wrap it as a `Resource` whose `filename` is the shared
  * [uploadKey] and whose `metadata` carries the per-asset manifest detail (creation date, original
@@ -20,13 +20,13 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
                 assetId = assetId,
                 // The resolved MIME, not the platform's own type identifier: this is what the upload
                 // provider sends as `Content-Type`, and what the ledger row has always preferred
-                // (spec `gallery-status`). The two used to disagree, with the UTI on the wire.
+                // (spec `sync-status`). The two used to disagree, with the UTI on the wire.
                 contentType = raw.mimeContentType,
                 metadata = mapOf(
                     RESOURCE_META_CREATION_DATE to asset.creationDate,
                     RESOURCE_META_ORIGINAL_FILENAME to raw.originalFilename,
                     RESOURCE_META_MIME to raw.mimeContentType,
-                    // Neutral origin facts (capability `photo-selection-policy`) — carried, never acted
+                    // Neutral origin facts (capability `photo-sharing`) — carried, never acted
                     // on here. Already interpreted by the platform; no PhotoKit value crosses.
                     RESOURCE_META_IS_SCREENSHOT to asset.facts.isScreenshot.toString(),
                     RESOURCE_META_IS_SCREEN_RECORDING to asset.facts.isScreenRecording.toString(),

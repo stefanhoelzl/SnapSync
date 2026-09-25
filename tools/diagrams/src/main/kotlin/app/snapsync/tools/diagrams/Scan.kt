@@ -4,7 +4,7 @@ import java.io.File
 
 /**
  * Shared source-scanning infrastructure for the derived diagrams (capability
- * `architecture-diagrams`). Everything here is a directory walk plus text heuristics — the scope
+ * `docs/architecture.md`). Everything here is a directory walk plus text heuristics — the scope
  * is always DERIVED, never a hand-enumerated file list, so the diagrams track the migration
  * automatically as modules move.
  *

@@ -5,7 +5,7 @@ import app.snapsync.ui.components.RangeChoiceActions
 
 /**
  * The status screen's callback bundle, bound to a container — **the one tap → intent table** (spec
- * `sync-status-screen`, "The screen's callback bundle is built in one place").
+ * `sync-status`, "The screen's callback bundle is built in one place").
  *
  * Every host that composes the screen calls this: the iOS app, the forge binary, the desktop pane. The table used to
  * be written out at each of them, and three hand copies of an eighteen-callback table were already disagreeing — only
@@ -29,7 +29,7 @@ fun statusActions(host: StatusContainerHost): StatusActions = StatusActions(
         onLeaveEvent = host::onLeaveEvent,
         onShareInvite = host::onShareInvite,
         onReconfigure = host::onReconfigure,
-        // The heading rename (capability `event-rename`): the command, and the latch reset the screen fires once
+        // The heading rename (capability `manage-membership`): the command, and the latch reset the screen fires once
         // it has acted on a terminal value.
         onRenameEvent = host::onRenameEvent,
         onRenameStatusConsumed = host::onRenameStatusConsumed,
@@ -54,7 +54,7 @@ fun statusActions(host: StatusContainerHost): StatusActions = StatusActions(
         onCancelSwitch = host::onCancelSwitch,
     ),
     onCreateEvent = host::onCreateEvent,
-    // The store button's URL is read from state by the container (capability `min-app-version`), so the argument
+    // The store button's URL is read from state by the container (capability `app-update-required`), so the argument
     // the screen passes is not needed; a state holding no store URL makes this inert.
     onOpenLink = { host.onOpenAppStore() },
     participation = ParticipationActions(
@@ -68,6 +68,6 @@ fun statusActions(host: StatusContainerHost): StatusActions = StatusActions(
         onReceiveOn = host.form::onReceiveOn,
         onSaveToAlbum = host.form::onSaveToAlbum,
     ),
-    // Null when the build has no reporting channel: the screen then wires no gesture (capability `diagnostic-logging`).
+    // Null when the build has no reporting channel: the screen then wires no gesture (capability `privacy-security`).
     onSendDiagnostics = host.onSendDiagnostics,
 )

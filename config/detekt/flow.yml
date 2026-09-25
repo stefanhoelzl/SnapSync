@@ -1,6 +1,6 @@
 # Tier `flow` — the OS-callback trigger flows (`:domain` `flow/`)
 #
-# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
 # RAISING one requires a stated forcing proof in that change's description, naming what the platform,
 # the language, or the shape of the problem makes unavoidable. There is no check that enforces this:
@@ -32,7 +32,7 @@
 # runs in everyone's `./gradlew build`, so it was not adopted. EXPIRY: revisit when detekt 2.0 reaches
 # stable, or at the first parse failure on newer syntax — whichever comes first.
 #
-# WHAT THIS TIER IS FOR. Making an existing LAW executable. `module-architecture` states that flows
+# WHAT THIS TIER IS FOR. Making an existing LAW executable. `docs/architecture.md` states that flows
 # COORDINATE and never DECIDE, and until this gate landed nothing enforced it — the zone sat at
 # cyclomatic 3 across four sites, one step from being provable.
 #

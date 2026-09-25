@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * The read-discipline gate (capability `limited-photo-access`): under a [SelectionScope.Scoped],
+ * The read-discipline gate (capability `photo-access`): under a [SelectionScope.Scoped],
  * discovery consumes the snapshot with NO platform read and is authoritative (the selection is the gallery,
  * so de-selecting is deleting); under [SelectionScope.Unrestricted] it delegates unchanged; under
  * [SelectionScope.Unread] it refuses, because every answer it could give would delete rows.
@@ -97,7 +97,7 @@ class SelectionScopedDiscoveryTest {
         assertEquals(0, delegate.resolveCalls, "an unread scope must not fall through to a platform read")
     }
 
-    // ---- the ledger-driven resolve, under the same discipline (capability `sync-ledger`) ------------
+    // ---- the ledger-driven resolve, under the same discipline (capability `photo-sharing`) ------------
 
     @Test
     fun unrestricted_resolve_delegates_to_the_platform() = runTest {

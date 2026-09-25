@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The boot banner's version string (capability `diagnostic-logging`, D5).
+ * The boot banner's version string (capability `privacy-security`, D5).
  *
  * The banner is the first line of every device log and the thing an operator reads to answer "which
  * build produced this?" — a question every other line's meaning depends on. The decision it embeds is

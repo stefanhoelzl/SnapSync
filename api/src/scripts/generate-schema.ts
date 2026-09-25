@@ -1,4 +1,4 @@
-// GENERATE THE SCHEMA SNAPSHOT (capability `database`): replay every migration into an empty store, dump
+// GENERATE THE SCHEMA SNAPSHOT (`docs/architecture.md`): replay every migration into an empty store, dump
 // what SQLite says the schema is, and write it to `api/schema.sql`.
 //
 // WHY GENERATED RATHER THAN WRITTEN. This file replaces a hand-maintained `SCHEMA` constant that stated
@@ -10,7 +10,7 @@
 // WHAT THE SNAPSHOT IS FOR. Two readers:
 //   1. a HUMAN, reviewing a migration — the diff shows what the migration did to the schema, including
 //      the things a migration file does not mention (an index that went away with a rebuilt table);
-//   2. the DEPLOY, which asserts the live store matches it (capability `backend-deployment`).
+//   2. the DEPLOY, which asserts the live store matches it (`docs/deployment.md`).
 //
 // ⚠️ FRESHNESS IS NOT CORRECTNESS. `--check` proves the committed file is what replaying produces. It
 // does NOT prove the migrations were right: an author who drops an index, regenerates and commits gets a
@@ -28,7 +28,7 @@ export const SCHEMA_PATH: string = fromFileUrl(new URL("../../schema.sql", impor
 
 const HEADER =
   `-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
--- THE SCHEMA, AS THE MIGRATIONS BUILD IT (capability \`database\`) — GENERATED, DO NOT EDIT.
+-- THE SCHEMA, AS THE MIGRATIONS BUILD IT (\`docs/architecture.md\`) — GENERATED, DO NOT EDIT.
 --
 -- Regenerate with:  deno task schema
 -- CI fails when this file is not what replaying \`api/migrations/*.sql\` produces.

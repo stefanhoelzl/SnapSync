@@ -6,7 +6,7 @@ import co.touchlab.kermit.Logger
 
 /**
  * **Which implementation of the OS upload-job subsystem this target binds** (capability
- * `ios-photokit-upload`, "The upload-job subsystem binding is fixed by the compilation target").
+ * `background-upload`, "The upload-job subsystem binding is fixed by the compilation target").
  *
  * The subsystem is the OS-owned job queue — fetch, create, retry, acknowledge — and, beside it, the
  * registration record the app toggles. `iosArm64`, every shipped binary, binds
@@ -26,7 +26,7 @@ import co.touchlab.kermit.Logger
  *
  * `iosSimulatorArm64` is not a guess about the host: it is a compilation target whose output only ever
  * runs on a simulator, so a device binary contains **no route** to the substitute — *"contained by
- * compilation, not by a runtime check"* (spec `module-architecture`). Because a simulator refuses every
+ * compilation, not by a runtime check"* (`docs/architecture.md`). Because a simulator refuses every
  * provisionable entitlement, ad-hoc signing with the App Group alone is the only buildable configuration
  * for that target, so the measurement is co-extensive with the target rather than with one signing form.
  *

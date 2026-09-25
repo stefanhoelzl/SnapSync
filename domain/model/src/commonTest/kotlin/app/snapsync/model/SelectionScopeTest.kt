@@ -6,7 +6,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertSame
 
 /**
- * What a member may upload **at all** under each grant (capability `limited-photo-access`): under a
+ * What a member may upload **at all** under each grant (capability `photo-access`): under a
  * partial grant the hand-picked selection IS the membership's own-photo scope, and discovery must read
  * exactly it and never walk.
  *

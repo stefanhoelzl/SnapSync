@@ -18,9 +18,9 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The tail runner's rules (capability `ios-app-shell`, "Each OS wake does its own work, then hands the rest to one
+ * The tail runner's rules (capability `sync-status`, "Each OS wake does its own work, then hands the rest to one
  * opportunistic tail", "Expiry stops work cooperatively at the next boundary", "The discovery walk is atomic under a
- * stop"; `ios-url-session-upload`, "The tail runner reimplements the OS scheduler", "A wake that joins a running tail
+ * stop"; `background-upload`, "The tail runner reimplements the OS scheduler", "A wake that joins a running tail
  * keeps its obligations"), over injected units that record what ran.
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
@@ -487,7 +487,7 @@ class TailRunnerTest {
         assertEquals(1, scheduler.scheduled, "so the relaunch still re-arms on the work its top-up left")
     }
 
-    // ---- the operating-system expiry line (capability `diagnostic-logging`) ---------------------------------
+    // ---- the operating-system expiry line (capability `privacy-security`) ---------------------------------
 
     @Test
     fun `an expiry during the walk is logged with the signal and the abandoned walk and what was left`() = runTest {
@@ -527,7 +527,7 @@ class TailRunnerTest {
         assertTrue("staged downloads not yet imported: 2" in end, "what was left: $end")
     }
 
-    // ---- an import that never reports holds no one hostage (capability `photo-download`) -----------------------
+    // ---- an import that never reports holds no one hostage (capability `receiving-photos`) -----------------------
 
     private fun hungImportRunner(units: Units, scheduler: Scheduler = Scheduler()): Pair<TailRunner, CompletableDeferred<Unit>> {
         val never = CompletableDeferred<Unit>()

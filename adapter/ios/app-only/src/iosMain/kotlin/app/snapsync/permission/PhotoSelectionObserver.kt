@@ -17,7 +17,7 @@ import platform.darwin.NSObject
  *
  * App-only by construction: the observer protocol is Photos surface reached through
  * `PHPhotoLibrary`, and its one consumer ([PhotoSelectionSnapshotSource], capability
- * `limited-photo-access`) is app-process only.
+ * `photo-access`) is app-process only.
  *
  * The instance must be retained by the caller — `PHPhotoLibrary` holds only a weak reference to
  * registered observers. The callback arrives on a PhotoKit-owned background queue; the consumer owns
@@ -37,7 +37,7 @@ class PhotoSelectionObserver(
         PHPhotoLibrary.sharedPhotoLibrary().unregisterChangeObserver(this)
     }
 
-    // PLATFORM ENTRY POINT (spec `diagnostic-logging`). DEBUG on purpose: PhotoKit fires this on
+    // PLATFORM ENTRY POINT (spec `privacy-security`). DEBUG on purpose: PhotoKit fires this on
     // EVERY library mutation, including each asset the download importer creates, so a 200-photo
     // import emits hundreds of these. At INFO they would flush the crash reporter's bounded
     // breadcrumb window and roll the size-capped device log before anyone read it.

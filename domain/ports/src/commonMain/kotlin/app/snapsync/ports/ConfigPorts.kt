@@ -26,7 +26,7 @@ sealed interface ConfigRead {
      * There is definitively no usable config: the config file is genuinely missing. This is the only
      * outcome that reads as not joined, and since the Stage-2 fallback deletion
      * it is reached from **one** fact — the file's not-found error class — with no second store
-     * consulted (capability `upload-state-reconciliation`).
+     * consulted (capability `photo-sharing`).
      */
     data object None : ConfigRead
 
@@ -68,7 +68,7 @@ sealed interface ConfigFileRead {
      * The file genuinely does not exist (not-found error class **only**) — **definitively not
      * joined**, the sole road to "this device left the event", reached with nothing else consulted.
      * An App-Group container dies with the install, so this is also what makes a reinstall a leave
-     * (capability `upload-state-reconciliation`).
+     * (capability `photo-sharing`).
      */
     data object Missing : ConfigFileRead
 
@@ -96,7 +96,7 @@ const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2
 
 /**
  * The file-backed config read, pure so every branch runs on JVM **and** the iOS simulator
- * (capability `event-link`):
+ * (capability `join-event`):
  *
  * - [ConfigFileRead.Content] → decode via the versioned envelope (`decodeConfigFile`, `model/`):
  *   valid → [ConfigRead.Joined]; same-version-but-unusable → [ConfigRead.Unavailable] with
@@ -112,7 +112,7 @@ const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2
  * - [ConfigFileRead.Failed] → [ConfigRead.Unavailable] with the platform's status: the file
  *   exists-or-unknowable, which is never evidence of a leave.
  *
- * It stays a `:domain` function rather than collapsing into the adapter (`event-link` requires the
+ * It stays a `:domain` function rather than collapsing into the adapter (`join-event` requires the
  * read algorithm be pure and `commonTest`-covered on both targets): the one decision in the app
  * that can silently log a user out must not be testable on macOS only.
  */
@@ -163,7 +163,7 @@ interface ConfigSource {
     val config: StateFlow<EventConfig?>
 
     /**
-     * The membership as three answers (capability `upload-lifecycle`; decision record `harden-seam-bug-classes`,
+     * The membership as three answers (capability `background-upload`; decision record `harden-seam-bug-classes`,
      * D11): [config]'s `null` merges "not joined" with "could not read it yet", and a reader that ACTS on absence —
      * the upload transitions, the silent-push receivers — must tell them apart and defer on the second.
      *
@@ -205,7 +205,7 @@ fun membershipAfterReload(read: ConfigRead, current: MembershipRead): Membership
  *
  * A port, not a `suspend () -> Unit`: on iOS the re-read is an App-Group file read, which is a platform
  * read the composition must not hand the core as a bare lambda (law "Ports are the I/O boundary named for
- * the need", capability `module-architecture`). Every trigger flow re-reads before acting, because
+ * the need", `docs/architecture.md`). Every trigger flow re-reads before acting, because
  * cross-process writes and a pre-first-unlock seed never notify this process's state flow. An implementation
  * that holds its membership in-process only (the world harness) refreshes nothing, and says so by
  * implementing this as a no-op rather than by the composition defaulting it away.
@@ -222,7 +222,7 @@ fun interface ConfigRefresh {
  * orchestrated by the provision path, not this seam; see the event-link spec). [clear] is the inverse:
  * it removes the persisted config and updates the [ConfigSource] to `null` (an idempotent no-op when
  * none is persisted), and — like [save] — leaves the ledger untouched (the caller orchestrates any
- * ledger reset; see the `leave-event` capability). Implementations typically also implement
+ * ledger reset; see the `manage-membership` capability). Implementations typically also implement
  * [ConfigSource] as one platform adapter; consumers depend on each port separately.
  */
 interface ConfigStore {

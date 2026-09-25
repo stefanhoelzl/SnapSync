@@ -18,7 +18,7 @@ import kotlinx.coroutines.runBlocking
 
 /**
  * The REAL backend, served locally for the backend port contracts' `Live` bindings (capability
- * `port-contracts`; the choice and its costs: `changes/archive/2026-09-23-contract-backend-clients`).
+ * `docs/architecture.md`; the choice and its costs: `changes/archive/2026-09-23-contract-backend-clients`).
  *
  * One `deno` process per test JVM runs `api/src/dev/serve.ts --ephemeral` — the production `createApp` over a
  * filesystem store and SQLite, on a loopback port Deno picks. "A fresh instance per clause" is a fresh client,

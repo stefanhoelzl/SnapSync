@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlinx.coroutines.test.runTest
 
-/** Every candidate carries a cutoff (capability `photo-selection-policy`). */
+/** Every candidate carries a cutoff (capability `photo-sharing`). */
 private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
 private const val PRE_CUTOFF = "2026-07-01T00:00:00Z"
@@ -41,7 +41,7 @@ private fun asset(
  *
  * Both are load-bearing rather than decorative: the consultation count proves a non-contributing
  * membership short-circuits before any read, and the throwing `resources()` makes "a count reads no
- * resources" structural instead of a comment (capability `photo-selection-policy`).
+ * resources" structural instead of a comment (capability `photo-sharing`).
  */
 private class FactsSource(private val facts: List<AssetFacts>) : CandidateSource {
     var consulted = 0
@@ -92,7 +92,7 @@ class ShareableCountTest {
 
     @Test
     fun `an upper bound excludes assets captured after it`() = runTest {
-        // The count is a policy consumer (capability `photo-selection-policy`): it must respect the
+        // The count is a policy consumer (capability `photo-sharing`): it must respect the
         // capture-date range [cutoff, until] exactly as the upload cycle does, or the join surface
         // over-reports what will be shared.
         val n = countSource(FactsSource(listOf(asset("IN"), asset("AFTER", creationDate = POST_UNTIL))))
@@ -130,14 +130,14 @@ class ShareableCountTest {
 
         assertEquals(0, countSource(source).countFor(includesUpload = false), "Share off counts nothing")
 
-        // The caller-side short-circuit is gone with `enumerates` (capability `photo-selection-policy`).
+        // The caller-side short-circuit is gone with `enumerates` (capability `photo-sharing`).
         // The cost it avoided has not moved to the caller — it is removed where it actually arises: a
         // deny-everything policy is translated into a fetch predicate matching NO asset, so a real
         // platform returns nothing rather than a library's worth of round-trips. This fake does not
         // translate rules, so it is consulted once and its (unnarrowed) list is refused by `admits`.
         //
         // One fetch is the price, and it is charged per cycle rather than per asset — which is the
-        // requirement (capability `gallery-status`: the count costs no PER-ASSET read).
+        // requirement (capability `sync-status`: the count costs no PER-ASSET read).
         assertEquals(1, source.consulted, "exactly one fetch, which a real platform narrows to nothing")
     }
 

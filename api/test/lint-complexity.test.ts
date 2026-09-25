@@ -2,7 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import plugin from "../src/lint/complexity.ts";
 
 /**
- * The ceiling rule's own tests (capability `complexity-budgets`).
+ * The ceiling rule's own tests (`docs/architecture.md`).
  *
  * The rule is hand-written because nothing published measures complexity for Deno, so its definition
  * of "a decision" is ours and has to be pinned — a definition stated only in a doc comment drifts from

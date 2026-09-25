@@ -7,7 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The web-link test over a delivered `NSUserActivity` (capability `event-link`).
+ * The web-link test over a delivered `NSUserActivity` (capability `join-event`).
  *
  * This assertion used to live in `:domain`'s `commonTest` as
  * `assertEquals("NSUserActivityTypeBrowsingWeb", BROWSING_WEB_ACTIVITY_TYPE)` — a constant compared

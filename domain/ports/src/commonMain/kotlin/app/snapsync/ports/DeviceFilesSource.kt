@@ -4,7 +4,7 @@ package app.snapsync.ports
  * The seam that fetches what a **device** has already stored (`GET /files/devices/<deviceId>`,
  * `bunny-list-endpoint`). Bytes are device-partitioned and event-independent, so this is the dedup
  * source the join-time load seeds the ledger's `COMPLETED` rows from (capability
- * `upload-state-reconciliation`): whatever the backend already holds for this device is not uploaded
+ * `photo-sharing`): whatever the backend already holds for this device is not uploaded
  * again. Failures are a failed [Result] (never thrown), so a failed load can fall back to an empty
  * ledger rather than crash the join.
  */
@@ -28,7 +28,7 @@ data class StoredResource(val key: String, val assetId: String)
  * A **permanent** failure, and that is the whole reason it has a type. A transport failure is transient
  * and is answered by deferring the cycle and retrying; a shape mismatch will never heal by retrying, so
  * collapsing the two leaves a device deferring uploads forever behind a warning that reads exactly like
- * a slow network (`module-architecture`, "Absence is never silent" — "'nothing' and 'couldn't tell' are
+ * a slow network (`docs/architecture.md`, "Absence is never silent" — "'nothing' and 'couldn't tell' are
  * different answers wherever their consequences differ").
  *
  * It is a real hazard rather than a hypothetical one: both listing shapes carry a field named `filename`

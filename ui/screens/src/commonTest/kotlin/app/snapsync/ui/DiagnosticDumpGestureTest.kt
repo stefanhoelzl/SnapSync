@@ -37,7 +37,7 @@ import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
 
 /**
- * The hidden bug-report affordance (capability `diagnostic-logging`).
+ * The hidden bug-report affordance (capability `privacy-security`).
  *
  * Two halves are under test. The *hidden* half: an affordance that cannot be stumbled into, cannot be
  * reached by an accessibility traversal, and does not exist at all on a build with nothing to send.
@@ -234,7 +234,7 @@ class DiagnosticDumpGestureTest {
     }
 }
 
-// The membership and invite URL live inside the joined state now (capability `sync-status-screen`), so
+// The membership and invite URL live inside the joined state now (capability `sync-status`), so
 // these tests build the state that carries them instead of passing them beside it.
 private val SWITCH_MEMBERSHIP = EventConfig(
     eventId = "E1",

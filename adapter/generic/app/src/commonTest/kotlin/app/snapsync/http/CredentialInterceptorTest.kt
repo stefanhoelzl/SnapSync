@@ -117,7 +117,7 @@ class CredentialInterceptorTest {
         assertEquals(emptyList(), rejected, "only a 401 means the backend rejected the token")
     }
 
-    // ── the declared version (capability `min-app-version`) ────────────────────────────────────────
+    // ── the declared version (capability `app-update-required`) ────────────────────────────────────────
 
     @Test
     fun every_request_declares_this_builds_version() = runTest {

@@ -17,7 +17,7 @@ enum class PushRegistrationRecordState {
 }
 
 /**
- * What the last-registered push record promises (capability `port-contracts`; the port's own KDoc carries why). A
+ * What the last-registered push record promises (`docs/architecture.md`; the port's own KDoc carries why). A
  * `null` load publishes, which costs one idempotent `PUT`, so an unreachable store degrades to `null` and to writes
  * that go nowhere — it never raises into the registration. A save must be what the next load answers, or an
  * unchanged token would be re-published at every app entry, the cost the record exists to remove.

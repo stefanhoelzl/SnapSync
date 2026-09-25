@@ -13,7 +13,7 @@ import app.snapsync.contracts.verify
 import kotlin.test.Test
 
 /**
- * The entitled device's `BGTaskScheduler`, REPLAYED (capability `port-contracts`): the CURRENT
+ * The entitled device's `BGTaskScheduler`, REPLAYED (`docs/architecture.md`): the CURRENT
  * [app.snapsync.ios.urlsession.IosBackgroundScheduler] runs against what iOS answered when
  * `test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec` was recorded, and the current clauses judge.
  *

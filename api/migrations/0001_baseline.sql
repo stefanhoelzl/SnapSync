@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════
--- 0001 — THE BASELINE (capability `database`)
+-- 0001 — THE BASELINE (`docs/architecture.md`)
 --
 -- ⚠️ THIS FILE IS A FROZEN INPUT. It is never regenerated and never edited once applied: the runner
 -- records a CHECKSUM of these bytes, so an edit makes every later apply refuse as `modified` history.
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS resources (
 -- ONE ROW PER DEVICE, TWO INDEPENDENTLY-WRITTEN GROUPS.
 --
 -- The push token is THREE columns, not a document. It began as one `push_token TEXT` holding the
--- config body verbatim, on the reasoning that the shape is `push-registration`'s to decide and the
+-- config body verbatim, on the reasoning that the shape is `receiving-photos`'s to decide and the
 -- backend should hold no second opinion. That reasoning was wrong: `readPushToken` reads exactly
 -- `kind`, `token` and `env` and ignores everything else, so the opinion existed either way — it was
 -- just buried in a parser instead of declared here, where STRICT can type it and a malformed write
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS resources (
 -- not launched since attesting), and is why notify is best-effort.
 --
 -- The ATTESTATION group is `NOT NULL`, because A ROW EXISTS IF AND ONLY IF THE DEVICE HAS ATTESTED
--- (capability `device-attestation`). That is not a convention chosen here — it is forced by the gate:
+-- (capability `privacy-security`). That is not a convention chosen here — it is forced by the gate:
 -- every route but `/attest/*` requires a device token, and a token is obtainable only by attesting, so
 -- no device can reach any other device-scoped write first. `created_at` therefore means FIRST ATTESTED.
 --

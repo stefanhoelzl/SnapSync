@@ -141,7 +141,7 @@ class AlbumGatherTest {
     fun `a departed own photo whose row is gone is not gathered`() = runTest {
         val r = rig()
         r.own("GONE", "2026-09-10T00:00:00Z")
-        // A photo that left the library loses its row to the walk's deletion (capability `sync-ledger`).
+        // A photo that left the library loses its row to the walk's deletion (capability `photo-sharing`).
         r.ledger.deleteKeys(listOf("GONE.HEIC"))
         r.gather.gather("E2")
         assertTrue(r.manager.added.isEmpty())

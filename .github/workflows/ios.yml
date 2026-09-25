@@ -2,11 +2,11 @@
 # beta SDK; branch-protection requires exactly these two status checks); the THIRD delivers and gates
 # on both. There is NO automatic distribution to any external tester: the uploaded build reaches only
 # the INTERNAL `development` group. Distribution to real users is the dispatch-driven App Store release
-# (ios-appstore-promote.yml, capability ios-appstore-release); the public alpha promotion was removed.
+# (ios-appstore-promote.yml, `docs/deployment.md`); the public alpha promotion was removed.
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
 #     iosArm64, so it IS the merge gate. Configuration is keyed on whether the run DELIVERS
-#     (capability ios-ci): a push to main and a branch `workflow_dispatch` both archive RELEASE;
+#     (`docs/deployment.md`): a push to main and a branch `workflow_dispatch` both archive RELEASE;
 #     every other push ref archives DEBUG,
 #     which compiles the identical surface and skips only the LLVM optimization pass that dominates
 #     the Release link (~5-9.5 min) on an archive that is discarded anyway. This job is a PURE GATE:
@@ -58,7 +58,7 @@ on:
     # still runs (no path filter), so the required `ios-build` / `ios-test` checks are posted on every
     # branch and PR and no merge can freeze.
     branches: ["**"]
-  # A DELIBERATE BRANCH DELIVERY (capability `ios-ci`): dispatch this workflow on any ref and it
+  # A DELIBERATE BRANCH DELIVERY (`docs/deployment.md`): dispatch this workflow on any ref and it
   # archives RELEASE and DELIVERS to internal TestFlight, exactly as a push to main does. It exists
   # for the one loop the repo otherwise cannot run — an iOS version we have no device for on a cable.
   # The dev build loop hands a human an IPA, which needs a USB cable; a tester's phone reachable only
@@ -71,12 +71,12 @@ on:
   # distribution remains the separate, dispatch-driven App Store promotion.
   #
   # WHY IT MUST BE MARKED DISTRIBUTED. `SNAPSYNC_CHANNEL: release` is not cosmetic here: the xcconfig
-  # renderer emits `SENTRY_DSN` only for a distributed build (capability `deployment-configuration`,
+  # renderer emits `SENTRY_DSN` only for a distributed build (`docs/deployment.md`,
   # "absence is the off-switch"), and with NO DSN the in-app bug-report dialog does not open at all
-  # (capability `diagnostic-logging`). A branch build that could not send a dump would be useless for
+  # (capability `privacy-security`). A branch build that could not send a dump would be useless for
   # the only reason this trigger exists. A TestFlight build must carry production APNs anyway, which
   # the same `release` channel derives — so one discriminator still decides all four settings and
-  # `deployment-configuration` is untouched. Its dumps report `environment=production` like main's;
+  # `docs/deployment.md` is untouched. Its dumps report `environment=production` like main's;
   # `data.dist` (the run number, unique and monotonic per run, dispatches included) is what tells one
   # build from another, and the `/bugsink` skill already keys on it.
   #
@@ -126,7 +126,7 @@ jobs:
     # re-resolving idempotent. `channel` is the single discriminator the xcconfig renderer derives
     # APS_ENVIRONMENT / APNS_ENV / SENTRY_ENVIRONMENT from, and it also gates the DSN: the renderer emits
     # none unless the channel names a distributed build, so a stray secret cannot arm crash reporting on a
-    # branch-gate archive (capability `ios-testflight-delivery`).
+    # branch-gate archive (`docs/deployment.md`).
     env:
       # DELIVERING — a push to main, or a deliberate branch dispatch. Both produce a build that goes
       # to internal TestFlight, so both must be marked distributed: production APNs, and the DSN
@@ -140,22 +140,22 @@ jobs:
         with:
           fetch-tags: true
       # Pick the build configuration and APNs environment — two shapes, keyed on the ref alone
-      # (capability ios-ci pins the per-ref configuration):
+      # (`docs/deployment.md` pins the per-ref configuration):
       #   * a DELIVERING run — a push to main, or a branch `workflow_dispatch` — RELEASE, APNs
       #     PRODUCTION: its archive is the delivery source, and a TestFlight/App Store distribution
-      #     build must be production (capability ios-testflight-delivery).
+      #     build must be production (`docs/deployment.md`).
       #   * push to any OTHER ref — the DEBUG gate archive: identical compile surface (all iosArm64
       #     klibs, Swift, entitlements, signing), skipping only the LLVM optimization pass that
       #     dominates the Release link (measured 5-9.5 min of a 9-15 min job) on an archive that is
       #     discarded (no artifact off main). Version/APNs/DSN are immaterial to it; the
       #     BUILD_CONFIG-keyed conditionals below give it the dev defaults automatically. Trade-off
-      #     (accepted, capability ios-ci): a Release-only build failure surfaces on the post-merge
+      #     (accepted, `docs/deployment.md`): a Release-only build failure surfaces on the post-merge
       #     main run — red but non-gating, and delivery is skipped because ios-deliver needs both
       #     gates. The pre-merge escape is a `workflow_dispatch` on the branch, which takes the
       #     Release path in full.
       #
       # The upload host is NEVER overridden here: every ref bakes the Config.xcconfig default, the
-      # single source of the host literal (capability ios-ci, "Compile-time edge host default"). A dev
+      # single source of the host literal (`docs/deployment.md`, "Compile-time edge host default"). A dev
       # build aimed at another backend is built on the dev build loop instead.
       - name: Select build configuration
         env:
@@ -171,14 +171,14 @@ jobs:
       # fragment, so a build without this step fails rather than falling through to stale values.
       #
       # APS_ENVIRONMENT, APNS_ENV, SENTRY_ENVIRONMENT and SENTRY_DSN are all DERIVED here from the one
-      # `channel` value (capability `deployment-configuration`) instead of being passed as four separate
+      # `channel` value (`docs/deployment.md`) instead of being passed as four separate
       # xcodebuild overrides that had to agree with each other. SNAPSYNC_CHANNEL and SENTRY_DSN are
       # JOB-level env (below), so the resolve Gradle performs at configuration time renders the identical
       # fragment — otherwise it would silently re-render this one with the `dev` defaults.
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
 
-      # Compute the marketing version this build carries (capability ios-testflight-delivery):
+      # Compute the marketing version this build carries (`docs/deployment.md`):
       #   MARKETING_VERSION = max(floor, latest vX.Y tag with its minor incremented by 1)
       # The floor is Config.xcconfig's MARKETING_VERSION (seed 0.1); the tag-derived value wins after the
       # first release. The minor bump is INTEGER (v0.9 → 0.10, never a decimal carry to 1.0 — a major jump
@@ -279,14 +279,14 @@ jobs:
       # there to validate the background-upload registration insert, and can see no resource we ship;
       # absent, `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and the
       # OS launches the extension never (measured on device 2026-08-28; capability
-      # `ios-photokit-upload`). It must equal `Deployment.plist`'s `uploadBase` EXACTLY. The comparison
+      # `background-upload`). It must equal `Deployment.plist`'s `uploadBase` EXACTLY. The comparison
       # is meaningful because the two carriers compose ONE fact by DIFFERENT routes — the plist from
       # Python into a grammar that escapes, the Info.plist from `$(UPLOAD_SCHEME)`/`$(UPLOAD_HOST)`
       # through the xcconfig, which truncates at `//` — so only one of them can be truncated and
       # equality between them is a differential test of the grammar. A prefix test would NOT do: it
       # passes on an empty value (every string starts with "") and on a truncated host.
       #
-      # Capability `deployment-configuration`; the four-value contract is `ios-testflight-delivery`.
+      # Capability `docs/deployment.md`; the four-value contract is `docs/deployment.md`.
       - name: Verify the archive baked the resolved deployment
         run: |
           set -euo pipefail
@@ -351,7 +351,7 @@ jobs:
           if-no-files-found: error
 
   # TestFlight delivery — DELIVERING runs only (a push to main, or a branch `workflow_dispatch`),
-  # and gated on BOTH merge checks (capability ios-testflight-delivery). `needs: [ios-build,
+  # and gated on BOTH merge checks (`docs/deployment.md`). `needs: [ios-build,
   # ios-test]` is the whole point of this job: it is what makes a RED TEST SUITE STOP THE RELEASE.
   # If either gate fails, this job never runs and nothing reaches TestFlight.
   #
@@ -415,7 +415,7 @@ jobs:
       - name: Unpack the signed archive
         run: tar -xzf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP"
 
-      # Crash-report symbolication (capability crash-reporting): the Bugsink instance ingests no
+      # Crash-report symbolication (capability `privacy-security`): the Bugsink instance ingests no
       # dSYMs, so each delivered build's symbols stay fetchable BY BUILD NUMBER for offline `atos`
       # symbolication of an address-only crash report. 90 days is the platform's artifact-retention
       # maximum — a build expected to live longer in the App Store needs its dSYMs parked elsewhere
@@ -486,7 +486,7 @@ jobs:
       # discoverable in App Store Connect (its own --max-find-build-wait, default 10 min), and
       # attaches the beta test info — no bespoke find-build retry lives in the repo. Deliberately NO
       # --testflight / submit flag: upload and build metadata only — no beta-review submission, no
-      # group assignment (distribution stays App-Store-only, capability ios-appstore-release). This
+      # group assignment (distribution stays App-Store-only, `docs/deployment.md`). This
       # replaced apple-actions/upload-testflight-build@v5, which has no what's-new input (decision D1
       # in the change's design record). No continue-on-error: a discovery timeout or note failure is
       # a visibly red, non-gating run. codemagic reads the key from ITS OWN env var names — same
@@ -633,18 +633,18 @@ jobs:
             done
 
   ios-contracts:
-    # Display name = the status-check context the branch ruleset requires (capability `ios-ci`, "Run the
+    # Display name = the status-check context the branch ruleset requires (`docs/deployment.md`, "Run the
     # in-app port contracts on a simulator on every push"). Parallel to ios-build and ios-test, with no
     # `needs:` edge, for the reason those two carry none: a red gate must never skip another's required check.
     #
     # WHAT IT RUNS: the port contracts whose bindings live in the APP, then the all-real journeys against the same
     # ONE simulator app and the real backend served locally, the second member played by the journey itself over the
-    # backend's public HTTP surface (capability `testing-architecture`, "All-real journeys are the contracts' safety
+    # backend's public HTTP surface (`docs/testing.md`, "All-real journeys are the contracts' safety
     # net"). One simulator, because a second fresh one's first-boot work swamped this 3-vCPU runner
     # (`changes/archive/2026-09-25-one-simulator-journeys`); the stage timestamps, resource samples and crash reports it keeps are in the
     # evidence artifact below. First, the port contracts whose bindings live in the APP — the simulator app is the only
     # simulator process `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real
-    # full grant (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). The
+    # full grant (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig"). The
     # registry is whatever `GET /contract` lists for this host; `scripts/sim-contracts` runs every entry and
     # fails on any `Failed(…)`, a refusal, or an empty registry.
     name: ios-contracts
@@ -667,7 +667,7 @@ jobs:
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-sim-
             konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
-      # The real backend the journeys run against (capability `ios-ci`, "Run the in-app port contracts on a
+      # The real backend the journeys run against (`docs/deployment.md`, "Run the in-app port contracts on a
       # simulator on every push"): `scripts/sim-contracts` serves `api/` locally on the address the build bakes in.
       - uses: denoland/setup-deno@v2
         with:

@@ -1,7 +1,7 @@
 // What the rig's FALLBACK BEARER has to supply besides a token (dev infrastructure — `main.ts` never
 // imports `src/dev/`, so none of this can ship).
 //
-// A `devices` row is created only by `POST /attest/token` (capability `device-attestation`: a row exists
+// A `devices` row is created only by `POST /attest/token` (capability `privacy-security`: a row exists
 // iff the device has attested), and `PUT /api/v1/devices/<id>` — the push registration — UPDATEs that row,
 // answering 401 when there is none.
 //

@@ -5,7 +5,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Kotlin source enumeration for the guards that read text** (capability `architecture-guards`).
+ * **Kotlin source enumeration for the guards that read text** (`docs/architecture.md`).
  *
  * Five guards used to obtain their file list from Konsist. None of them used Konsist: they called
  * `.files`, `.path` and `.text` and then matched with a `Regex`, so a PSI parser was doing the work of

@@ -101,7 +101,7 @@ class UnreadStatusIntegrationTest {
 
         // "We hold no selection" is not "the selection is empty". Collapsing them counts a zero, and a counted
         // zero SETTLES — on a member who has photos selected and simply has not been told which yet (capability
-        // `limited-photo-access`; the `SNAPSYNC-14` / `SNAPSYNC-16` shape, one grant over from where it was fixed).
+        // `photo-access`; the `SNAPSYNC-14` / `SNAPSYNC-16` shape, one grant over from where it was fixed).
         neverSettles()
     }
 
@@ -126,7 +126,7 @@ class UnreadStatusIntegrationTest {
         addPhoto("A") // in the library, but not selected — outside this membership's scope
 
         // A snapshot DID arrive and it is empty. Receive-only under a partial grant is a valid resting state
-        // (capability `limited-photo-access`), so this must still settle — the fix must not turn every limited
+        // (capability `photo-access`), so this must still settle — the fix must not turn every limited
         // member's screen into a permanent "Syncing…".
         device("selection/change", "assets" to "")
         refresh()

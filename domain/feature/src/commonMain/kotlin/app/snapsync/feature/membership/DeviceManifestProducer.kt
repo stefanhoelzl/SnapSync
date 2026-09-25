@@ -9,11 +9,11 @@ import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.ManifestPublisher
 
 /**
- * Writes the per-event device manifest each cycle (capability `device-manifest`). The **sole** writer of
+ * Writes the per-event device manifest each cycle (capability `photo-sharing`). The **sole** writer of
  * the manifest; it PUTs **synchronously in-cycle** (no background `URLSession`).
  *
- * The manifest is a **projection of the upload ledger** (capability `sync-ledger`), admitted by the
- * membership's one policy (capability `photo-selection-policy`). It used to be projected from a
+ * The manifest is a **projection of the upload ledger** (capability `photo-sharing`), admitted by the
+ * membership's one policy (capability `photo-sharing`). It used to be projected from a
  * device-global accumulator this class also maintained — a second durable structure tracking the same
  * deletion-aware asset set with different columns, and pruning it on the same signals. The ledger already
  * had to be right about all of that (a wrong row re-uploads a whole library, or hides a photo forever),
@@ -28,7 +28,7 @@ import app.snapsync.ports.ManifestPublisher
  *
  * Deletion-awareness comes from the ledger itself: an authoritative walk that no longer returns an in-window
  * asset deletes its rows, so it leaves the projection with no second structure to keep in step (capability
- * `sync-ledger`, "Deletion is a presence diff over an authoritative walk"). The walk is judged by presence,
+ * `photo-sharing`, "Deletion is a presence diff over an authoritative walk"). The walk is judged by presence,
  * never by the policy-admitted set — the retired retain-live reconcile was fed that set, so a raised capture
  * cutoff discarded rows for photos still present and still uploaded.
  *
@@ -37,7 +37,7 @@ import app.snapsync.ports.ManifestPublisher
  *
  * Both processes publish (the app and, on iOS ≥26.1, the upload extension), and each publish carries the
  * ledger's manifest version its cycle read first; the backend refuses a strictly older one. That ordering is
- * what keeps two crossing publishes from leaving the backend a snapshot behind (capability `device-manifest`).
+ * what keeps two crossing publishes from leaving the backend a snapshot behind (capability `photo-sharing`).
  */
 class DeviceManifestProducer(
     private val store: DeviceManifestStore,
@@ -56,7 +56,7 @@ class DeviceManifestProducer(
      * **Nothing reads this answer any more, and that is deliberate rather than an oversight.** It used to
      * gate the device's completion notify; the versioned device API removed that call, and the wake is
      * now the backend's effect of the write that makes an asset fetchable (capability
-     * `upload-completion-notify`). It is kept because "did this cycle actually publish?" is the honest
+     * `receiving-photos`). It is kept because "did this cycle actually publish?" is the honest
      * result of the operation and is what a test asserts on — not because a caller branches on it.
      */
     suspend fun produce(

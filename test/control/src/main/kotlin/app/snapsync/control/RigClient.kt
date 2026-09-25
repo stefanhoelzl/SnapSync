@@ -23,7 +23,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * What a verb answered (capability `testing-architecture`, "One control protocol, served by two hosts").
+ * What a verb answered (`docs/testing.md`, "One control protocol, served by two hosts").
  *
  * A refusal is its own shape and never an exception: a host that cannot honour a verb says so with `409` and a
  * reason, and a caller deciding whether to skip must be able to read that without catching anything.
@@ -169,7 +169,7 @@ class RigClient(
         val json = Json { ignoreUnknownKeys = false }
         val POLL = 50.milliseconds
 
-        /** The contract verb's refusal marker (capability `port-contracts`). */
+        /** The contract verb's refusal marker (`docs/architecture.md`). */
         const val CONTRACT_MARKER = "refused: "
     }
 }

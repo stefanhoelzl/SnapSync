@@ -10,7 +10,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
 /**
- * The **date vocabulary** (capability `photo-selection-policy`): one canonical instant type plus a
+ * The **date vocabulary** (capability `photo-sharing`): one canonical instant type plus a
  * distinct type per *role* it can play, so a date can never be used as a date it is not.
  *
  * Every date in this system is the same *shape* — the canonical UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` the iOS
@@ -66,7 +66,7 @@ value class CaptureCutoff(val at: CaptureDate) : Comparable<CaptureCutoff> {
  * contributes, already clamped to `min(chosen, endsAt)` at join. Persisted as `EventConfig.maxPhotoDate`.
  *
  * This is the bound `add-event-date-range` dropped at two of four consumers. It reaches every consumer now
- * because they all read the one admitted set (capability `photo-selection-policy`).
+ * because they all read the one admitted set (capability `photo-sharing`).
  */
 @Serializable(with = CaptureCeilingSerializer::class)
 @JvmInline
@@ -101,12 +101,12 @@ value class EventEnd(val at: CaptureDate) : Comparable<EventEnd> {
 }
 
 /**
- * When the backend deletes the event's shared data (capability `event-limits`) — derived **server-side**
+ * When the backend deletes the event's shared data (capability `event-lifetime`) — derived **server-side**
  * from `max(createdAt, startsAt) + lifetime` and served on the details response. The device stores it and
  * never computes it.
  *
  * Its own type because it is the one date that decides whether a membership is **destroyed** (the offline
- * second witness of the self-leave, capability `leave-event`) — the single most expensive role to confuse
+ * second witness of the self-leave, capability `manage-membership`) — the single most expensive role to confuse
  * with any other.
  */
 @Serializable(with = DeletesAtSerializer::class)

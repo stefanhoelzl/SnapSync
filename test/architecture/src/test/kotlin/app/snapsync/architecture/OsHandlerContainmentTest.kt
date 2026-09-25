@@ -6,8 +6,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **An OS completion handler is held in one type** (capability `architecture-guards`; spec
- * `ios-app-shell`, "OS completion handlers are released only after their work completes").
+ * **An OS completion handler is held in one type** (`docs/architecture.md`; spec
+ * `sync-status`, "OS completion handlers are released only after their work completes").
  *
  * iOS hands the app a completion block on every background wake, and calling it declares *"I am done"*.
  * Failing to call one costs the app its **future** background wakes — uploads and downloads silently stop

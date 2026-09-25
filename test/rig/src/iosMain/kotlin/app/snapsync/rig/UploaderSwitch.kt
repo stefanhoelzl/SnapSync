@@ -6,7 +6,7 @@ import app.snapsync.model.extensionRegistrable
 
 /**
  * The development switch per uploader — the control channel's way to exercise one uploader alone
- * (capability `upload-lifecycle`, "A mechanism override is a runtime input a shipped build cannot carry").
+ * (capability `background-upload`, "A mechanism override is a runtime input a shipped build cannot carry").
  *
  * **This is the whole of the switch's state, and it lives entirely on this side of the seam.** The production
  * composition root holds only a source (`uploaderPinSource`, answering `null` by default) which the boot hook points

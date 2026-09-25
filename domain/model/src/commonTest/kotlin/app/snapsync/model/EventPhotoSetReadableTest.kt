@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * **The one unwrap of [CandidateRead]** (capability `gallery-status`; law `module-architecture`,
+ * **The one unwrap of [CandidateRead]** (capability `sync-status`; law `docs/architecture.md`,
  * "Absence is never silent").
  *
  * The property under test is the distinction itself: an unreadable library and a library holding nothing
@@ -16,7 +16,7 @@ import kotlinx.coroutines.test.runTest
  * `sync-status`) — that frame cannot be taken back, so the two answers have to be separable *before*
  * anything counts.
  *
- * Exercised on JVM **and** `iosSimulatorArm64` (capability `testing-architecture`), because this is the
+ * Exercised on JVM **and** `iosSimulatorArm64` (`docs/testing.md`), because this is the
  * seam both device tiers reach through.
  */
 class EventPhotoSetReadableTest {

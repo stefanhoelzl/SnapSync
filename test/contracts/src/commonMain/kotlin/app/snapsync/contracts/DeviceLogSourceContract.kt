@@ -24,7 +24,7 @@ enum class DeviceLogSourceState {
 }
 
 /**
- * What reading a device log's tail promises (capability `port-contracts`; the port's KDoc carries why):
+ * What reading a device log's tail promises (`docs/architecture.md`; the port's KDoc carries why):
  * at most `maxBytes`, cut so the first line is whole, from the **current** file only, and `null` — never a
  * partial lie, never an empty string — when there is nothing to read.
  */

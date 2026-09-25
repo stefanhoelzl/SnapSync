@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the deployment resolver (capability `deployment-configuration`).
+"""Tests for the deployment resolver (`docs/deployment.md`).
 
 Stdlib `unittest` only, for the same reason the resolver is stdlib-only: it must run on every runner and
 every dev machine with no install step. Run: `python3 scripts/resolve_deployment_test.py`.
@@ -287,7 +287,7 @@ class RenderingTest(unittest.TestCase):
         in each bundle's OWN `Info.plist` — a file no generated value can reach, so the version there is
         AUTHORED and the version in `uploadBase` is RENDERED. Move one without the other and the build
         is fine, the archive is fine, and the registration may well succeed; the uploads are simply
-        refused, with nothing logged anywhere (capability `ios-photokit-upload`).
+        refused, with nothing logged anywhere (capability `background-upload`).
 
         `ios.yml` compares the two for real after archiving, which is the authoritative check — but it
         needs a Mac and a signed build, so it reports a half-move hours later. This reads the committed
@@ -376,7 +376,7 @@ class RenderingTest(unittest.TestCase):
 
         Recomposed here exactly as the plists do it, because `assetsd` validates the registration
         against that composed value and a mismatch fails with a bare `PHPhotosErrorDomain -1`
-        (capability `ios-photokit-upload`).
+        (capability `background-upload`).
         """
         for domain, scheme in (
             ("example.invalid", "https"),
@@ -447,7 +447,7 @@ class RenderingTest(unittest.TestCase):
 
 
 class MaintenanceKeyTest(unittest.TestCase):
-    """The maintenance flag (capability `backend-deployment`): default off, JSON only, one key apart."""
+    """The maintenance flag (`docs/deployment.md`): default off, JSON only, one key apart."""
 
     def test_a_deployment_that_does_not_set_it_serves_normally(self):
         # The default is what makes every local resolve and every non-migrating deploy safe: a rendering

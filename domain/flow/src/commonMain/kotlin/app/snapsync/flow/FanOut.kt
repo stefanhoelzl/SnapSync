@@ -7,7 +7,7 @@ import app.snapsync.model.runCatchingCancellable
 
 /**
  * Run a flow's independent [children] concurrently, **isolated** from one another, and return once every one of
- * them has finished (law "A trigger flow never outlives its own run", capability `module-architecture`).
+ * them has finished (law "A trigger flow never outlives its own run", `docs/architecture.md`).
  *
  * A child that throws is logged under its name and cancels nothing: its siblings run to completion. That is the
  * difference from the bare `coroutineScope { launch … }` it replaces, where one throwing child — the foreground

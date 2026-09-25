@@ -16,7 +16,7 @@ import { createApp } from "./app.ts";
 import { readConfig } from "./config.ts";
 import { libsqlDb } from "./db-libsql.ts";
 
-// The relational store (capability `database`). Its credentials are validated by `readConfig` above, so
+// The relational store (`docs/architecture.md`). Its credentials are validated by `readConfig` above, so
 // a deployment that cannot reach its store fails HERE, at boot, rather than serving requests whose
 // relational writes go nowhere. This is the ONLY module that constructs the remote driver — the local rig
 // and the tests build a `node:sqlite` one over the same port.

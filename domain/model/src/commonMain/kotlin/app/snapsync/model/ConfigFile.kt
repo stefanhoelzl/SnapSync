@@ -5,12 +5,12 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The **config-file envelope** (capability `event-link`, migration step 11a): the persisted
+ * The **config-file envelope** (capability `join-event`, migration step 11a): the persisted
  * [EventConfig] rides in an App-Group file as `{"v": <version>, "payload": <EventConfig JSON>}`.
  *
  * The envelope exists for exactly one reason: a **future build must be able to change the format
  * without a past build misreading the result as a leave**. The file read is what decides "this
- * device left the event" (capability `upload-state-reconciliation`), so a revert build that opens a
+ * device left the event" (capability `photo-sharing`), so a revert build that opens a
  * successor's file must land on *unreadable* ([ConfigFileDecode.Foreign]) — deferring, membership
  * intact — never on *absent*. A bare `EventConfig` JSON could not make that distinction: any
  * unparseable content would be indistinguishable from a corrupt current-format file.
@@ -23,7 +23,7 @@ import kotlinx.serialization.json.JsonElement
  *   is an unexplained state, and an unexplained state defers rather than driving a leave. (The
  *   Keychain legacy-item rule — undecodable reads as no config — deliberately does NOT transfer;
  *   it stays in force on the Keychain side only.) Nothing uploads meanwhile either way
- *   (capability `photo-selection-policy`), and a re-scan overwrites the file.
+ *   (capability `photo-sharing`), and a re-scan overwrites the file.
  * - any other `v` (a future format) → [ConfigFileDecode.Foreign] — this build cannot interpret it,
  *   which is *unreadable*, never *absent* and never a crash.
  * - text that is not an envelope at all → [ConfigFileDecode.Foreign]: only content this build can
@@ -86,7 +86,7 @@ fun decodeConfigFile(text: String): ConfigFileDecode {
 // It used to sit here so it could be exercised in `commonTest` on both targets — but its inputs are
 // an `NSError` domain and code, so a JVM run asserted integer literals against themselves and could
 // not fail. Beside its inputs it can assert against the real Cocoa and POSIX constants instead
-// (spec `module-architecture`, "Ports are the I/O boundary named for the need").
+// (`docs/architecture.md`, "Ports are the I/O boundary named for the need").
 //
 // What stays here is the neutral vocabulary the adapter reports into: [ConfigFileRead] in `ports/`,
 // whose three cases are the platform-independent fact, and the rule that turns a `Missing` into a

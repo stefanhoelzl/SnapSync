@@ -1,4 +1,4 @@
-// The nightly cleanup sweep (capability `scheduled-cleanup`). Runs OUT of the Edge Script — Bunny has no
+// The nightly cleanup sweep (capability `event-lifetime`). Runs OUT of the Edge Script — Bunny has no
 // scheduler and caps a request at 50 subrequests / 30 s CPU, so a whole-storage sweep cannot run there.
 // This is a Deno program a scheduled GitHub Actions job runs on an Ubuntu runner: it talks to the
 // relational store and to Bunny storage DIRECTLY (thousands of calls, no cap) and imports the Edge
@@ -6,7 +6,7 @@
 //
 // IT MARKS FROM THE DATABASE AND DELETES FROM STORAGE. Only the bytes live in storage now; everything
 // the sweep reasons about — which events exist, who is a member, which keys are referenced, each
-// device's floor — is a query (capability `database`). The per-event, per-device manifest fan-out the
+// device's floor — is a query (`docs/architecture.md`). The per-event, per-device manifest fan-out the
 // root set used to require is gone.
 //
 // Two ordered phases, and the order still matters for its original reason: the asset phase evaluates
@@ -91,7 +91,7 @@ export type SweepDeps = {
   fetch: FetchLike;
   /** Validated config (storage host/zone/accessKey). */
   config: Config;
-  /** The relational store this sweep marks from (capability `database`). */
+  /** The relational store this sweep marks from (`docs/architecture.md`). */
   db: Db;
   /** Wall clock, epoch ms. Injected so tests pin it. */
   now: () => number;
@@ -143,7 +143,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       // payload, which is the OPPOSITE of what a deletion means, and it would have to be dispatched
       // milliseconds before the deletes it announces — so the device wakes to an already-deleted event
       // and burns a scarce wake syncing against a corpse. Members discover the deletion on their own next
-      // foreground details fetch (capability `leave-event`), the only context where acting on it is safe.
+      // foreground details fetch (capability `manage-membership`), the only context where acting on it is safe.
       await deleteEvent(tx, event.eventId);
       summary.events.deleted++;
       log(`deleted stale event ${event.eventId}`);

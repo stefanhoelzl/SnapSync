@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * The app process's walk memo (capability `sync-ledger`, "An unchanged library is answered from the walk memo";
+ * The app process's walk memo (capability `photo-sharing`, "An unchanged library is answered from the walk memo";
  * decision record `changes/own-work-per-wake`, D9): an unchanged library under the same policy and a full grant is
  * answered without a walk, with exactly what the walk returned; every other key walks afresh; and nothing that was
  * not an authoritative, completed, full-grant walk is ever stored.

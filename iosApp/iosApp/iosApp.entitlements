@@ -19,7 +19,7 @@
 	<array>
 		<string>group.app.snapsync</string>
 	</array>
-	<!-- APNs environment for remote notifications (capability `push-registration`). Driven by the
+	<!-- APNs environment for remote notifications (capability `receiving-photos`). Driven by the
 	     APS_ENVIRONMENT build setting (the generated Deployment.xcconfig): `development` (APNs
 	     sandbox) for dev/sideloaded builds, `production` for TestFlight/App Store — kept in lockstep
 	     with the compile-time APNS_ENV the app reports in its device config. Push Notifications must
@@ -27,7 +27,7 @@
 	     provision. -->
 	<key>aps-environment</key>
 	<string>$(APS_ENVIRONMENT)</string>
-	<!-- Associated domain for the event link's Universal Link (capability `event-link`). Driven by the
+	<!-- Associated domain for the event link's Universal Link (capability `join-event`). Driven by the
 	     ASSOCIATED_DOMAIN build setting (the generated Deployment.xcconfig), carrying the same host
 	     as the app's generated LINK_ORIGIN and the AASA the backend serves — a :test:architecture
 	     guard asserts all of them agree, because drift here is SILENT: iOS just declines to match and

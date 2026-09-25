@@ -15,7 +15,7 @@ import platform.posix.utsname
 
 /**
  * The build/OS/device facts a diagnostic dump's state section carries (capability
- * `diagnostic-logging`) — read here rather than in the shell, which holds no decisions.
+ * `privacy-security`) — read here rather than in the shell, which holds no decisions.
  *
  * The device model comes from `uname()` rather than `UIDevice.model`: this module is linked by the
  * **extension**, where the extension-safety gate forbids the app-only UI framework outright (naming

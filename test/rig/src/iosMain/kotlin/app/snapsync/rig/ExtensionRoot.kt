@@ -11,7 +11,7 @@ import kotlinx.coroutines.newSingleThreadContext
 
 /**
  * Driving the **upload extension's** composition root from the control channel — the `/os/photokit-ext/…`
- * group (capability `ios-photokit-upload`).
+ * group (capability `background-upload`).
  *
  * On a simulator the OS never invokes the upload extension, so its root is never entered and the shipping
  * tier's cycle cannot run there at all. The channel invokes that root directly instead. Everything the
@@ -32,7 +32,7 @@ import kotlinx.coroutines.newSingleThreadContext
  * The lane the extension root is invoked on: **its own single thread, never main.**
  *
  * `process()` is synchronous by the OS's contract and runs under `runBlocking` on the OS-invoked thread,
- * and the extension process has no main lane at all (spec `module-architecture`, the dispatcher-lane law).
+ * and the extension process has no main lane at all (`docs/architecture.md`, the dispatcher-lane law).
  * Running that `runBlocking` on the live app's main thread would freeze the UI for the whole cycle and can
  * deadlock on anything the cycle needs from main. Single-threaded rather than a pool, because the core
  * relies on serial execution for mutual exclusion — the same reason the composition lane is one thread.
@@ -123,7 +123,7 @@ internal expect fun uploadJobDeviceCommands(): Map<String, RigCommand>
  */
 internal expect fun uploadJobRefusals(): Map<String, String>
 
-/** The app host's refusals of the shared vocabulary (capability `testing-architecture`). */
+/** The app host's refusals of the shared vocabulary (`docs/testing.md`). */
 fun iosRefusals(): Map<String, String> =
     RigVocabulary.worldLeverRefusals + RigVocabulary.appHostUnwiredRefusals + uploadJobRefusals()
 

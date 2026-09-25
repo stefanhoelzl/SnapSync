@@ -61,7 +61,7 @@ private val OnSurfaceVariantDark = Color(0xFF8B95A5)
 private val OutlineDark = Color(0xFF6B7585)
 private val OutlineVariantDark = Color(0xFF2B313C)
 
-// The attention line's amber (capability `sync-status-screen`), read through [appAttentionText] /
+// The attention line's amber (capability `sync-status`), read through [appAttentionText] /
 // [appAttentionContainer] below. It lives HERE and not beside the component that draws it because a
 // design system with two places to define a colour has two places for one to drift; the component keeps
 // the behaviour, the palette keeps the values.
@@ -186,7 +186,7 @@ fun appIsDark(): Boolean = LocalDarkThemeOverride.current ?: isSystemInDarkTheme
 fun appAccentText(): Color = if (appIsDark()) GreenDark else AccentTextLight
 
 /**
- * The attention line's amber text/icon colour (capability `sync-status-screen`). A skin-local semantic
+ * The attention line's amber text/icon colour (capability `sync-status`). A skin-local semantic
  * colour, not an M3 `colorScheme` token, so it follows [appIsDark] the way the scheme itself does.
  */
 @Composable

@@ -36,7 +36,7 @@ import {
 const BYTE_PATH = `/api/v1/files/devices/${D}/IMG_0001-photo.jpg`;
 const DEVLIST_PATH = `/api/v1/files/devices/${D}`;
 
-// ── The lifecycle derivation (capability `event-limits`) ───────────────────────────────────────────
+// ── The lifecycle derivation (capability `event-lifetime`) ───────────────────────────────────────────
 
 Deno.test("deleteByMs → anchors at max(createdAt, startsAt) and adds the stamped lifetime", () => {
   const day = 24 * 60 * 60;
@@ -64,7 +64,7 @@ Deno.test("deleteByMs → NaN when neither anchor parses", () => {
   assert(Number.isNaN(deleteByMs({ createdAt: "nope", startsAt: "nope", lifetimeSeconds: 60 })));
 });
 
-// ── The maintenance window (capability `backend-deployment`) ───────────────────────────────────────
+// ── The maintenance window (`docs/deployment.md`) ───────────────────────────────────────
 
 /** The same app, built from a bundle that carries the maintenance flag. */
 function windowOpen(deps: Omit<Deps, "config">) {
@@ -258,7 +258,7 @@ Deno.test("health → a mutating method is not served by this route", async () =
   db.close();
 });
 
-// ── The devices table's two writers (capability `database`) ────────────────────────────────────────
+// ── The devices table's two writers (`docs/architecture.md`) ────────────────────────────────────────
 //
 // One row, two independently-written column groups. The property under test is that neither writer can
 // disturb the other's fact — which no route test can show, because each route exercises only its own half.

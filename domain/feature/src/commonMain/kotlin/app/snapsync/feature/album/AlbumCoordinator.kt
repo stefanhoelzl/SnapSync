@@ -28,12 +28,12 @@ class AlbumCoordinator(
      * opt-in gate is the leading guard here, so no caller can forget it — [saveToAlbum] off is a silent
      * no-op, exactly the rule the app shell's
      * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3). The guard does **not** test
-     * [name]: a membership's name is required and non-null (capability `event-link`), so a nameless one
+     * [name]: a membership's name is required and non-null (capability `join-event`), so a nameless one
      * is not a representable state and a clause guarding against it would be an unreachable branch
      * suggesting otherwise. [hasUsableAccess] joined that guard at
      * the migration finale: an album can only be ensured with USABLE photo access — full or limited
      * (`grantsPhotoAccess`), because asset and album creation is unrestricted under a limited grant
-     * (capability `limited-photo-access`) — so the Provision flow passes the access fact instead of
+     * (capability `photo-access`) — so the Provision flow passes the access fact instead of
      * branching on it (the flow coordinates, the feature decides); it defaults to `true` for the paths
      * that run *because* access became usable (the compose-installed grant subscription). It was called
      * `granted`, which read as "fully granted" to every caller and reviewer (decision record

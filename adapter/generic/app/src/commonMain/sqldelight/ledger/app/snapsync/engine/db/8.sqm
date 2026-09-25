@@ -1,4 +1,4 @@
--- v8 -> v9: retire the `UPLOADED` state (capability `sync-ledger`).
+-- v8 -> v9: retire the `UPLOADED` state (capability `photo-sharing`).
 --
 -- `UPLOADED` meant "the bytes are stored, and the work a completion triggers has not run". That work is gone
 -- from the completion path — the device manifest is the announcement, and own-photo album placement happens

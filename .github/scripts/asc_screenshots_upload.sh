@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Upload the composited listing images to App Store Connect — main-only (capability
-# `ios-appstore-metadata`). The committed raws + headline file are the source of truth; `--replace` makes
+# `docs/deployment.md`). The committed raws + headline file are the source of truth; `--replace` makes
 # the live set exactly what they compose to, so a screenshot added by hand in the console is removed.
 #
 # `upload`, NOT `apply`: `asc screenshots apply` is [experimental] and is the tail of a human review flow

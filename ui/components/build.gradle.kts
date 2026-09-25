@@ -5,11 +5,11 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
-// Coverage (capability `coverage-bounds`). `:ui:screens`' Compose tests render the real
+// Coverage (`docs/architecture.md`). `:ui:screens`' Compose tests render the real
 // screens, and rendering a screen is what exercises
 // these components. Without this edge the module reads 48% instead of 95%.
 //
@@ -46,7 +46,7 @@ kotlin {
             api(project(":domain:model"))
             implementation(compose.runtime)
             implementation(compose.foundation)
-            // The ONLY module allowed to depend on Material 3 (spec: design-system).
+            // The ONLY module allowed to depend on Material 3 (spec: docs/architecture.md).
             implementation(compose.material3)
             // Material icon glyphs (e.g. the leave action's Logout). Contained here like Material 3 —
             // the `Icons.*` import never leaves this module; no `App*` signature carries a glyph type.
@@ -69,7 +69,7 @@ kotlin {
     }
 }
 
-// ---- Coverage bounds (capability `coverage-bounds`) ---------------------------------------------
+// ---- Coverage bounds (`docs/architecture.md`) ---------------------------------------------
 //
 // A FLOOR on this module's coverage, seeded at what the tree measured when the gate landed, and
 // permitted to move in one direction only: UP. The destination is full coverage, and these numbers
@@ -78,7 +78,7 @@ kotlin {
 // RAISING a bound is ordinary work - do it in the change that makes it true. LOWERING one requires a
 // stated forcing proof in that change's description, naming what makes the loss of coverage
 // unavoidable. Nothing checks this: it is a ratchet carried by this paragraph and by review, and it
-// is deliberately NOT a proof. `complexity-budgets` carries the same contract at the opposite
+// is deliberately NOT a proof. `docs/architecture.md` carries the same contract at the opposite
 // polarity - a ceiling that may only fall.
 //
 // TWO RULES, because they fail on different things. The aggregate catches a broad slide that leaves

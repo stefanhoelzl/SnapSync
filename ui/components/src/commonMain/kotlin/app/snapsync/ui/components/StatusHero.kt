@@ -69,7 +69,7 @@ internal fun IndicatorIcon(indicator: StatusIndicator) {
 // is a declared dependency of this module and twenty of its icons are already used across the design
 // system, including three of the four below. A forcing proof that cites a dependency's availability is
 // only worth keeping while it is true, so it is retired here rather than left to mislead the next
-// reader (capability `design-system` already places this artifact in this module and states that a
+// reader (`docs/architecture.md` already places this artifact in this module and states that a
 // component's glyph is the skin's choice).
 //
 // Three of the four indicators drew a circle around their own stroke, so the circle-inclusive Material

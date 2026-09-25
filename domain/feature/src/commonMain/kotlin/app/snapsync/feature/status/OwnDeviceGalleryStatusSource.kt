@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * photo is taken, before the background extension uploads anything (completeness comes separately from
  * the ledger, see [LedgerCountsSource]).
  *
- * **`N` counts the admitted set, and nothing else** (capability `photo-selection-policy`). It counts
+ * **`N` counts the admitted set, and nothing else** (capability `photo-sharing`). It counts
  * exactly the assets the upload cycle admits, by asking the *same* [SelectionPolicy] rather than
  * re-applying its rules — the identity is a REQUIREMENT, not a coincidence. This source runs in the app
  * process and the cycle runs in the upload path; they enumerate independently, and any rule applied there
@@ -42,7 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * reaches the total, so a placeholder `0` standing in for an unread count renders a checkmark reading
  * "everything shared" on a device that has counted nothing. This source used to seed `0`, and that is
  * what members reported as a status going backwards across launches — a settled frame that was never
- * true, followed by the first honest one (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `gallery-status`).
+ * true, followed by the first honest one (`SNAPSYNC-14`, `SNAPSYNC-16`; capability `sync-status`).
  *
  * That fix held here and leaked underneath. The read seam still answered an unreadable library with an
  * empty list, so a `0` arrived through the ordinary path and this source published it in good faith —
@@ -62,7 +62,7 @@ class OwnDeviceGalleryStatusSource(
     // The echo-suppression and denylisted-album readers used to sit here, so this source could complete a
     // config-derived policy itself. They are gone with the two-phase construction: the one derivation runs
     // in the shared composition, and `refresh` receives a finished policy (capability
-    // `photo-selection-policy`). Their `{ emptySet() }` defaults are gone with them — a default that
+    // `photo-sharing`). Their `{ emptySet() }` defaults are gone with them — a default that
     // silently admits a member's WhatsApp album is exactly what the required-ports rule exists to prevent.
     private val log: Logger = Logger.withTag("gallery"),
     private val timeSource: TimeSource = TimeSource.Monotonic,
@@ -71,7 +71,7 @@ class OwnDeviceGalleryStatusSource(
     // `null` until a count has been taken. NOT `0`: a placeholder zero is indistinguishable from a
     // membership that genuinely contributes nothing, and the status projection settles to "In sync" the
     // moment the synced count reaches the total — so a seeded `0` renders a checkmark on a device that
-    // has counted nothing (capability `gallery-status`; reported as `SNAPSYNC-14` / `SNAPSYNC-16`).
+    // has counted nothing (capability `sync-status`; reported as `SNAPSYNC-14` / `SNAPSYNC-16`).
     private val _admitted = MutableStateFlow<Set<String>?>(null)
 
     /** The upload total `N`: the count of this device's OWN admitted assets, or `null` if not counted. */
@@ -83,17 +83,17 @@ class OwnDeviceGalleryStatusSource(
      * **One entry point, both grants.** There used to be a second — `refreshFrom(resources, policy)` — for
      * the `LIMITED` snapshot, which meant the caller decided which mode was in play. That restated the
      * mode difference the source already owns, and it is the restatement rather than the reading that lets
-     * two paths drift apart (capability `limited-photo-access`). The permission-aware source now answers
+     * two paths drift apart (capability `photo-access`). The permission-aware source now answers
      * "where do candidates come from"; this asks only for the count.
      *
-     * **The direction gate, for the total** (capability `photo-selection-policy`). A non-contributing
+     * **The direction gate, for the total** (capability `photo-sharing`). A non-contributing
      * membership reports `0` **without enumerating** — the short-circuit must live here, because `N` is a
      * *parallel* computation that no upload gate feeds (unlike the download arm, whose total flows through
      * its gate and is zero for free). A walk costs one synchronous platform round-trip per in-scope asset,
      * so a 4000-photo library would spend minutes of XPC to reach the empty set the direction already
      * told us.
      *
-     * The cost and shape are **logged** (capability `diagnostic-logging`). Without a line here, whether the
+     * The cost and shape are **logged** (capability `privacy-security`). Without a line here, whether the
      * capture bound is actually bounding anything is invisible on a real device: a bounded and an
      * unbounded fetch differ only in how many assets they touch.
      *
@@ -105,7 +105,7 @@ class OwnDeviceGalleryStatusSource(
      * protect a rule it does not own.
      */
     suspend fun refresh(policy: SelectionPolicy) {
-        // The policy arrives COMPLETE (capability `photo-selection-policy`): there is one derivation, and
+        // The policy arrives COMPLETE (capability `photo-sharing`): there is one derivation, and
         // it runs where the config and the two port readers are both in scope — the shared composition.
         // This source therefore receives a decision and never the material to re-decide, and there is no
         // half-built policy for it to finish. A non-contributing membership carries `DenyAll`, so the
@@ -113,7 +113,7 @@ class OwnDeviceGalleryStatusSource(
         // returns nothing rather than the source guarding the walk itself.
         val started = timeSource.markNow()
         // `assets()` reads facts only — no per-asset resource round-trip is issued for a set of ids
-        // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*). The set,
+        // (capability `photo-sharing`, *Admission is decidable on asset facts alone*). The set,
         // not just its size, is published: status counts the ledger's per-photo done-ness over exactly
         // these ids (capability `sync-status`).
         // ONE call, TWO answers this source must keep apart, and a third the walk can throw:
@@ -126,7 +126,7 @@ class OwnDeviceGalleryStatusSource(
         counted.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed walk. `runCatching` catches it like anything else, and
             // swallowing it would break structured concurrency AND post an Error-severity line — which
-            // reaches the crash reporter on production builds (capability `crash-reporting`) — for an
+            // reaches the crash reporter on production builds (capability `privacy-security`) — for an
             // ordinary teardown. `StatusCountsPoller` separates the two for the same reason.
             if (failure is CancellationException) throw failure
             // **The invariant is this source's, so the containment is too.** A walk that blew up must
@@ -142,7 +142,7 @@ class OwnDeviceGalleryStatusSource(
             return
         }
         // NOT READABLE — no grant, an unresolved grant, or a partial grant whose selection snapshot has
-        // not arrived (capability `gallery-status`). The SAME rule the arm above keeps, reached without
+        // not arrived (capability `sync-status`). The SAME rule the arm above keeps, reached without
         // a failure: **never publish a count we did not compute, and never withdraw one we did.** A
         // refusal must not be more destructive than a failure.
         //

@@ -22,7 +22,7 @@ import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.presentation.Layer
 
-// The joined membership's own screen (capability `sync-status-screen`): the QR to share, the sync
+// The joined membership's own screen (capability `sync-status`): the QR to share, the sync
 // health line, and the actions row.
 
 /**
@@ -53,7 +53,7 @@ internal fun JoinedLayer(
         // need to do here?" in front of exactly that line.
         // So the caption may name NO noun the reader could be: "guests" fails as badly, because host and
         // guest see this identical screen and the confused member WAS a guest. Hence "someone else", and
-        // hence "let" — permission the member grants, not a task they owe. Capability `event-invite-qr`.
+        // hence "let" — permission the member grants, not a task they owe. Capability `manage-membership`.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -82,7 +82,7 @@ internal fun JoinedLayer(
                 }
             },
         )
-        // The partial-grant resting affordances (capability `limited-photo-access`): present in every
+        // The partial-grant resting affordances (capability `photo-access`): present in every
         // health, OUTSIDE the status-line slot — the selection is the membership's scope, and widening
         // it is an ordinary action, not a problem to fix. Two peer offers in fixed order: widen the
         // selection (the cheaper step) above, switch the grant itself below. The second can only

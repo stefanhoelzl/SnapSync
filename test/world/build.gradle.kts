@@ -3,8 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kover)
 }
-// NOT INSTRUMENTED (capability `coverage-bounds`, "Coverage is measured over unit tests only"):
-// the tier `testing-architecture` calls "The world hosts feature tests over the real stack" -
+// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage is measured over unit tests only"):
+// the tier `docs/testing.md` calls "The world hosts feature tests over the real stack" -
 // real features driven against a composed world, which is integration by any reading.
 //
 // `disabledForAll` - note the spelling, not `disableForAll` - means this module is not instrumented,
@@ -22,11 +22,11 @@ kover {
 // Shared test-infra: a controllable in-memory "world" the REAL app graph runs against — since
 // migration step 10 composed through the SAME `snapSyncApp`/`uploadCore` the device shells call,
 // over `:adapter:generic:fake`'s honest doubles; the world adds the backend store, the mini-edge, and the
-// operator levers/wrappers that rig them (capability `harness-world-model`). Consumed by BOTH
+// operator levers/wrappers that rig them (`docs/testing.md`). Consumed by BOTH
 // `:app:desktop` (the full-stack harness) and `:test:integration`. Targets `jvm()` +
 // `iosSimulatorArm64` ONLY — it never links into a shipped framework, so no `iosArm64`; its
 // self-tests run on both per testing rule 1. It hosts NO port contracts: those live in
-// `:test:contracts` (capability `port-contracts`), so this module's main code carries no assertion
+// `:test:contracts` (`docs/architecture.md`), so this module's main code carries no assertion
 // library.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
@@ -38,7 +38,7 @@ kotlin {
             api(project(":domain:ports"))
             api(project(":domain:feature"))
             api(project(":domain:compose"))
-            // The shared host composition (spec `module-architecture`, "One shared composition"): the world's core
+            // The shared host composition (`docs/architecture.md`, "One shared composition"): the world's core
             // and status host come from the same `snapSyncHost` the iOS shell calls, so the host its consumers
             // drive is the phone's.
             api(project(":app:composition"))
@@ -55,7 +55,7 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.serialization.json)
         }
-        // The REAL backend (`DenoBackend`, capability `harness-world-model`): JVM-only, because it is a local
+        // The REAL backend (`DenoBackend`, `docs/testing.md`): JVM-only, because it is a local
         // process `:test:edge` launches, which a Kotlin/Native target cannot.
         jvmMain.dependencies {
             implementation(project(":test:edge"))
@@ -64,7 +64,7 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
-            // The mini-edge is bound as the backend port contracts' `Fake` (capability `port-contracts`):
+            // The mini-edge is bound as the backend port contracts' `Fake` (`docs/architecture.md`):
             // the contracts and their shared setup live in `:test:contracts`' commonMain.
             implementation(project(":test:contracts"))
         }

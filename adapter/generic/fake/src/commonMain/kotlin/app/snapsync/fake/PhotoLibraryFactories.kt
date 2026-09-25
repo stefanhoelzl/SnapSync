@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 // The photo-library fakes' factories: the same rule as `Factories.kt` (each returns the PORT type over an
 // `internal` class, taking initial state), kept in their own file so neither file outgrows its measured
-// surface (capability `complexity-budgets`).
+// surface (`docs/architecture.md`).
 
 /**
  * The upload cycle's library reads over [source] (the walk) and [library] (the unscoped contents a fetch by

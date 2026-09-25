@@ -18,7 +18,7 @@ import platform.Foundation.NSURL
  * shared `IosDiscovery` as the cycle's `UploadDiscovery`, and the upload request is built by the shared
  * [uploadUrlRequest]; only the job lifecycle differs and stays here. All *domain* decisions live in
  * `UploadCycle`; the branches here are technology-vocabulary mappings (job state, error class, the
- * per-job key recovery), which is exactly what an adapter may hold (spec `module-architecture`,
+ * per-job key recovery), which is exactly what an adapter may hold (`docs/architecture.md`,
  * "Ports are the I/O boundary named for the need": adapters are named for the technology, placed by
  * linkage, and MAY branch on technology vocabulary). Seated in `:adapter:ios:ext-safe` at the
  * migration finale — the extension process is its only linker, and its former `:app:ios:extension`
@@ -31,10 +31,10 @@ import platform.Foundation.NSURL
  * `PHAssetResourceUploadJob` has no public initializer and only ever arrives from a fetch, so no host can drive
  * this class with synthetic jobs; instead the upload extension's contract run records every seam call and iOS's
  * answer on a device, and every CI build replays that recording against this class (capability
- * `port-contracts`). What a replay cannot cover is [SystemUploadJobApi]'s conversion of a real job into facts.
+ * `docs/architecture.md`). What a replay cannot cover is [SystemUploadJobApi]'s conversion of a real job into facts.
  *
  * A returned job is resolved to its ledger row by the **destination path** the ledger recorded when the
- * job was created (capability `sync-ledger`) — the destination being the only field reliably present for
+ * job was created (capability `photo-sharing`) — the destination being the only field reliably present for
  * every job state, since `resource` is nil for succeeded jobs — and it is the only route: the v1
  * last-segment fallback is retired (`changes/retire-legacy-key-fallback`). A byte-route job it does not
  * resolve is **pruned**: its row was deleted because the photo left the library or the
@@ -45,6 +45,10 @@ import platform.Foundation.NSURL
  * non-null-typed value may be elided
  * (`05435ff9`, `8c8dbe28`). Do not "simplify" those two locals away — see `PhotoKitJobMapping.kt`'s KDoc
  * for the full account.
+ *
+ * Measured (SE2, iOS 26.6, 2026-09-22), and asserted by no clause: jobs created under a full grant survive a
+ * round trip through `.limited` — a withheld call under the partial grant is shown none of them, and the first
+ * call after full access returns presents them all as succeeded. See changes/archive/2026-09-22-both-uploaders-active.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoKitUploadPlatform internal constructor(
@@ -55,7 +59,7 @@ class IosPhotoKitUploadPlatform internal constructor(
     // both tiers. It holds only the narrow [TransferRecord]: the guarded write and the destination read.
     private val ledger: TransferRecord,
     // Every operating-system effect goes through this seam, so the upload extension's contract run can record
-    // it and CI can replay it (capability `port-contracts`). Production never passes one.
+    // it and CI can replay it (`docs/architecture.md`). Production never passes one.
     private val api: UploadJobApi,
 ) : BackgroundTransfer {
 
@@ -77,11 +81,13 @@ class IosPhotoKitUploadPlatform internal constructor(
      * **Every** presented job is acknowledged, whatever its guarded write did — a write that applies to
      * nothing (the row was pruned, or already settled) is still a job the system expects back, and
      * leaving one un-acknowledged is what makes it report `appex failed to acknowledge jobs for
-     * processing state` (error 50008).
+     * processing state` (error 50008). Measured (iOS 26.6): with 50008 the OS also discards the outstanding jobs
+     * and defers the extension ~300 s, escalating with the attempt count. See
+     * changes/archive/2026-09-22-both-uploaders-active.
      *
      * The OS reports 50008 only in the system log, which no process can read, so no contract clause can observe
      * the OS's side of that obligation. What a clause does assert is this adapter's side: after a drain, no job it
-     * was presented is presented again (capability `port-contracts`; the upload-job contract, recorded inside the
+     * was presented is presented again (`docs/architecture.md`; the upload-job contract, recorded inside the
      * extension).
      */
     override suspend fun drainTerminals(): List<PlatformUploadJob> =
@@ -98,7 +104,7 @@ class IosPhotoKitUploadPlatform internal constructor(
                         val key = when (val row = rowFor(classified)) {
                             is JobRow.Found -> row.key
                             // The photo left the library or the selection, maybe mid-upload: answered, nothing
-                            // written, nothing handed back (capability `upload-lifecycle`).
+                            // written, nothing handed back (capability `background-upload`).
                             JobRow.Pruned -> { pruned++; acknowledgeJob(job); continue }
                             JobRow.Unmappable -> { unrecoverable++; acknowledgeJob(job); continue }
                         }
@@ -152,7 +158,7 @@ class IosPhotoKitUploadPlatform internal constructor(
                         data = job.resource,
                     )
                     // Never handed to the cycle, which would decline to retry it and leave it un-acknowledged:
-                    // a job for a photo that left is answered HERE (capability `upload-lifecycle`).
+                    // a job for a photo that left is answered HERE (capability `background-upload`).
                     JobRow.Pruned -> { pruned++; acknowledgeJob(job) }
                     JobRow.Unmappable -> { unrecoverable++; acknowledgeJob(job) }
                 }
@@ -168,7 +174,7 @@ class IosPhotoKitUploadPlatform internal constructor(
      * The ledger row a returned job belongs to, or null when none is found.
      *
      * The destination this job was addressed to is what the ledger recorded when the job was created
-     * (capability `sync-ledger`), so it is the route — the only one.
+     * (capability `photo-sharing`), so it is the route — the only one.
      */
     private suspend fun resolveKey(emit: FetchedJob.Emit): String? = (rowFor(emit) as? JobRow.Found)?.key
 
@@ -183,7 +189,7 @@ class IosPhotoKitUploadPlatform internal constructor(
      * Report jobs whose destination this build cannot map at all — at `Error`, so it reaches crash reporting.
      *
      * An unmappable job is an upload whose outcome is being discarded for a reason this build cannot name: no
-     * destination, or one of no byte-route shape it ever created. Nothing else reports it (`module-architecture`,
+     * destination, or one of no byte-route shape it ever created. Nothing else reports it (`docs/architecture.md`,
      * "Absence is never silent"), and a per-job warning would be a breadcrumb rather than an event, so the count
      * is raised once per cycle and only when it is non-zero.
      *

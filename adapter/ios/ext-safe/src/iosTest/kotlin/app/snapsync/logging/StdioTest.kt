@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
 
 /**
  * [neverBlockOnStdio]: a log line must never park its thread on a stdout/stderr pipe that nobody drains
- * (capability `diagnostic-logging`). The incident behind it is in [neverBlockOnStdio]'s KDoc.
+ * (capability `privacy-security`). The incident behind it is in [neverBlockOnStdio]'s KDoc.
  *
  * Both tests build the undrained pipe themselves: a `pipe()` whose read end is held open and never read. Without
  * the fix, each of them BLOCKS instead of failing. A blocking write is the defect, so a test run that hangs here

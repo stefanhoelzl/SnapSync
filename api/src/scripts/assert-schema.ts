@@ -1,4 +1,4 @@
-// ASSERT THE DEPLOYED STORE'S SHAPE (capability `backend-deployment`).
+// ASSERT THE DEPLOYED STORE'S SHAPE (`docs/deployment.md`).
 //
 // Compares the LIVE store's schema against what replaying `api/migrations/*.sql` builds, and fails the
 // deploy when they differ.

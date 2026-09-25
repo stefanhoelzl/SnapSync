@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * The album denylist (capability `photo-selection-policy`): albums whose contents are, by construction,
+ * The album denylist (capability `photo-sharing`): albums whose contents are, by construction,
  * things the member received rather than took.
  *
  * **Its recall is known to be poor, and that is accepted.** On current iOS most messaging apps save straight

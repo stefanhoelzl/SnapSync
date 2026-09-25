@@ -8,10 +8,10 @@ import kotlin.test.fail
 
 /**
  * **The transport binding is fixed by the compilation target, and the DEVICE actual is the one nothing can
- * run** (capability `architecture-guards`, "The transport-binding gate").
+ * run** (`docs/architecture.md`, "The transport-binding gate").
  *
  * `transferSessionConfiguration` is `expect`/`actual` across `iosArm64` and `iosSimulatorArm64`
- * (`ios-url-session-upload`, "The transport binding is fixed by the compilation target"). The simulator
+ * (`background-upload`, "The transport binding is fixed by the compilation target"). The simulator
  * actual has an executable test beside it in `:adapter:ios:app-only`; the device actual has none and can
  * have none, because every iOS test in this repo runs on `iosSimulatorArm64`. A swap of the two actuals —
  * or a "simplification" giving both targets the default configuration — would ship a **foreground session
@@ -27,7 +27,7 @@ import kotlin.test.fail
  * **What this does NOT establish**, stated so nobody reads it as more than it is: that the device actual
  * *names* the background factory, never that the resulting session behaves. Whether a background
  * `URLSession` actually transfers on a device is a platform fact with its own forcing proof and expiry
- * trigger in `ios-url-session-upload`; only a device run shows it, and this guard is blind to it.
+ * trigger in `background-upload`; only a device run shows it, and this guard is blind to it.
  */
 class TransferSessionBindingTest {
 
@@ -47,7 +47,7 @@ class TransferSessionBindingTest {
         assertTrue(
             file.isFile,
             "the $sourceSet transport-session actual is missing (${seamPath.format(sourceSet)}). " +
-                "Deleting an actual is not a way past this gate — see `architecture-guards`, " +
+                "Deleting an actual is not a way past this gate — see `docs/architecture.md`, " +
                 "\"The transport-binding gate\".",
         )
         return file.readText()

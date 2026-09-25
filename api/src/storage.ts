@@ -1,7 +1,7 @@
-// Storage primitives and on-wire shapes for the one bunny Storage zone (capability `backend-deployment`).
+// Storage primitives and on-wire shapes for the one bunny Storage zone (`docs/deployment.md`).
 //
 // Extracted from app.ts so BOTH the Edge Script (app.ts) AND the out-of-edge nightly sweep
-// (capability `scheduled-cleanup`, which runs from GitHub Actions and cannot use the 50-subrequest-capped
+// (capability `event-lifetime`, which runs from GitHub Actions and cannot use the 50-subrequest-capped
 // edge) import the SAME key builders, storage calls, and record types — the storage layout can then never
 // drift between the two. Everything here is parameterized by `(fetch, config)`; nothing imports Hono.
 
@@ -24,7 +24,7 @@ export function markerKey(eventId: string): string {
  * it as a directory, and a directory DELETE is RECURSIVE; see {@link deleteObject}).
  *
  * Exists for exactly one caller: the nightly sweep's TOMBSTONE reclamation (capability
- * `scheduled-cleanup`). Bunny keeps a directory after its last object is removed, so every event the sweep
+ * `event-lifetime`). Bunny keeps a directory after its last object is removed, so every event the sweep
  * deletes leaves this husk behind — and the sweep would otherwise re-classify it stale and "delete" it
  * again every night, forever. Only ever passed a directory already established to hold no marker and no
  * manifest, so the recursion has nothing to recurse over.
@@ -76,14 +76,14 @@ export function deviceConfigKey(deviceId: string): string {
  * `createdAt` (server wall-clock, ms) and `startsAt` (the host's canonical statement of when the event
  * began) are distinct facts.
  *
- * `endsAt`, `capacity`, and `lifetimeSeconds` are the event's LIMITS (capability `event-limits`), all
+ * `endsAt`, `capacity`, and `lifetimeSeconds` are the event's LIMITS (capability `event-lifetime`), all
  * resolved at mint. `endsAt` bounds ONLY which captures may be uploaded — it is not a lifetime and no
  * lifecycle check reads it. `lifetimeSeconds` is a DURATION, never an absolute delete-by: stamping the
  * duration keeps the per-event value immutable against a later config change while leaving the anchor it
  * is measured from (`max(createdAt, startsAt)`) in `lifecycle.ts`, so the anchor policy can be corrected
  * without rewriting a single stored marker.
  *
- * Write-once EXCEPT for `name` — the rename route (capability `event-rename`) is the only route that
+ * Write-once EXCEPT for `name` — the rename route (capability `manage-membership`) is the only route that
  * rewrites a marker, and it replaces `name` alone, writing every other field back verbatim. No route
  * changes `eventId`, `createdAt`, `startsAt`, `endsAt`, `capacity`, or `lifetimeSeconds`; the lifecycle
  * is recomputed from those fields on every read (see `classifyEvent` / `deleteByMs`).
@@ -118,7 +118,7 @@ export type StoredEventMarker =
 // everything else (Guid, ServerId, …) is ignored. `LastChanged` is the object's server-set
 // last-modified time — the last-write-wins tiebreak between a device's active/departed manifests
 // (see `resolveMembership`) and the upload-time floor the asset sweep compares against (capability
-// `scheduled-cleanup`); it is a wall-clock string minted by the storage zone, comparable across
+// `event-lifetime`); it is a wall-clock string minted by the storage zone, comparable across
 // sibling objects without any client clock.
 export type BunnyEntry = {
   ObjectName: string;
@@ -127,7 +127,7 @@ export type BunnyEntry = {
   LastChanged: string;
 };
 
-// The on-storage device manifest (`device-manifest`), after the `key`/`filename` rename. A resource's
+// The on-storage device manifest (`photo-sharing`), after the `key`/`filename` rename. A resource's
 // `key` is its storage object name (`files/devices/<deviceId>/<key>`, the fetch handle); `filename` is
 // the human capture name.
 export type ManifestResource = {
@@ -194,7 +194,7 @@ export async function listDir(
 /**
  * Can this deployment reach its storage zone at all? `true` only on a `2xx`; `false` on any other status,
  * any network error, and any abort. Used by the health route so the deploy probe witnesses the zone
- * (capability `backend-deployment`).
+ * (`docs/deployment.md`).
  *
  * IT DELIBERATELY DOES NOT REUSE {@link listDir}, and the reason is the whole point of this function.
  * `listDir` maps `404` to `[]` — tolerance, so an absent partition reads as "no bytes" — and a zone name

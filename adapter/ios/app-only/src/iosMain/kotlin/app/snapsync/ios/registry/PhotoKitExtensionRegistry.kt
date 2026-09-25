@@ -15,7 +15,7 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit binding of [UploadExtensionRegistry] — **the only place in the repo that calls
- * `setUploadJobExtensionEnabled` or `isUploadJobExtensionEnabled`** (capability `ios-photokit-upload`).
+ * `setUploadJobExtensionEnabled` or `isUploadJobExtensionEnabled`** (capability `background-upload`).
  *
  * It moved here from `:app:ios`, which is wiring-only: an adapter is named for its technology and placed by
  * linkage, and only the app process ever registers. What the shell kept, and what this preserves exactly,
@@ -62,7 +62,7 @@ internal class PhotoKitExtensionRegistry(
             errorCode = answer.errorCode,
         )
         // No branch: the outcome carries Kermit's own severity, so this renders without deciding. An
-        // `Error` here is what `crash-reporting` carries onward as field telemetry.
+        // `Error` here is what `privacy-security` carries onward as field telemetry.
         log.log(outcome.severity, log.tag, null, outcome.message)
         return outcome
     }
@@ -70,6 +70,12 @@ internal class PhotoKitExtensionRegistry(
     /**
      * The OS's own view. Never `null` here: this class exists only where the selector does, so "the
      * question does not apply" is answered by not constructing it at all rather than by a runtime check.
+     *
+     * Measured (SE2, iOS 26.6): it answered `false` under `NOT_DETERMINED` for a live record that had survived a
+     * reinstall, and `true` once access was granted — the record is keyed by bundle id and persists across
+     * delete/reinstall and reboot, which is why a bare enable over a stale one fails `3202`. The contract asserts
+     * the read-back only under a full grant; the other cells (`NOT_DETERMINED`, `LIMITED`, a differently-signed
+     * build's record) are unasserted. See changes/archive/2026-09-22-both-uploaders-active.
      */
     override fun isEnabled(): Boolean? = api.isEnabled()
 }
@@ -79,7 +85,7 @@ internal class RegistrationAnswer(val ok: Boolean, val errorDomain: String?, val
 
 /**
  * The two `PHPhotoLibrary` calls [PhotoKitExtensionRegistry] makes, as a seam in this module (capability
- * `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
+ * `docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
  * build"): the device run records every call and iOS's answer through it, and every CI build replays that
  * recording against the current adapter. Production binds [SystemExtensionRegistrationApi]; nothing else does.
  */

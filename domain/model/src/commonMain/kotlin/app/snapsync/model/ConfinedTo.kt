@@ -2,7 +2,7 @@ package app.snapsync.model
 
 /**
  * This mutable field is read and written only on [lane] (law "State reached from OS callbacks is confined",
- * capability `module-architecture`; decision record `harden-seam-bug-classes`, D12).
+ * `docs/architecture.md`; decision record `harden-seam-bug-classes`, D12).
  *
  * A class that receives OS callbacks — a delegate queue, a PhotoKit observer, a URLSession handler — is reached
  * from threads it does not choose. Each mutable field it holds is either confined to one named serial lane, or is a

@@ -25,8 +25,8 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
       # `./gradlew build` launches the REAL backend: `:adapter:generic:app`'s jvmTest runs the backend port
-      # contracts' live bindings against `api/src/dev/serve.ts --ephemeral` (capability `port-contracts`;
-      # `testing-architecture`, "The canonical check and its Kotlin/Native half"). Offline and zone-safe —
+      # contracts' live bindings against `api/src/dev/serve.ts --ephemeral` (`docs/architecture.md`;
+      # `docs/testing.md`, "The canonical check and its Kotlin/Native half"). Offline and zone-safe —
       # a filesystem store, network granted to loopback only. Same pin as `api.yml`, so the contracts run
       # the backend under the Deno its own suite runs under. Without it they FAIL naming Deno; they never skip.
       - uses: denoland/setup-deno@v2
@@ -52,7 +52,7 @@ jobs:
       # So the gated TESTS are compiled and RUN here too. Running rather than only compiling is the point:
       # a compile would have caught that particular rot, but the value of `ForgeStatusHostTest` is its
       # assertion — that each marketing preset reaches its frame THROUGH THE REAL REDUCTION, which is what
-      # the App Store listing's honesty rests on (`ios-appstore-metadata`). A gate that compiles an
+      # the App Store listing's honesty rests on (`docs/deployment.md`). A gate that compiles an
       # assertion without evaluating it is the same shape of check as a verify task with nothing to
       # compare. It is seconds on this runner; do not narrow it back to a compile.
       #
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      # The deployment resolver's own suite (capability `deployment-configuration`), and the ONLY place
+      # The deployment resolver's own suite (`docs/deployment.md`), and the ONLY place
       # it runs — the api deploy workflow shed its copy when the api checks became a gate.
       # A TEST THAT CAN ONLY FAIL AFTER MERGE IS NOT A GATE. This suite used to run only in
       # the api deploy workflow, whose deploy triggers on PUSH TO MAIN, so it could only fail after a merge:

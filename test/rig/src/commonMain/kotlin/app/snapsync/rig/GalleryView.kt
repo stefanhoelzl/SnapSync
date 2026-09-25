@@ -23,7 +23,7 @@ data class GalleryView(
     val policy: PolicyView?,
     /**
      * The read seam could produce no admitted set at all — no grant, an unresolved grant, or a partial
-     * grant whose selection snapshot has not landed (capability `gallery-status`).
+     * grant whose selection snapshot has not landed (capability `sync-status`).
      *
      * A separate field rather than a second meaning for a null [policy]: "you asked for no cutoff" and
      * "we could not answer" are different answers, and an operator staring at an empty policy block has

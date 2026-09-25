@@ -8,8 +8,8 @@ import co.touchlab.kermit.Logger
 /**
  * **The OS-driven mechanism's registration** (iOS ≥26.1) — the one thing the app does for the tier whose uploads
  * the system performs: register the background-upload extension so the OS can invoke it, and deregister it
- * (capability `ios-photokit-upload`). Which of those a membership transition needs is `UploadTransitions`'
- * decision (capability `upload-lifecycle`); this class only performs them, correctly.
+ * (capability `background-upload`). Which of those a membership transition needs is `UploadTransitions`'
+ * decision (capability `background-upload`); this class only performs them, correctly.
  *
  * Named for the need rather than the technology, because it lives in the platform-free core. It reaches the
  * platform through one port — [UploadExtensionRegistry] for the registration record — so it names no platform
@@ -80,7 +80,7 @@ class OsDrivenRegistration(
 
     /**
      * Deregister the extension — **and nothing else**: at a leave (a switch leaves first), or the rig's
-     * `extension=off` (capability `upload-lifecycle`). The disable wipes every in-flight OS job; at a leave the
+     * `extension=off` (capability `background-upload`). The disable wipes every in-flight OS job; at a leave the
      * ledger is cleared right after, and on the rig path the wipe is the test's intent.
      */
     override suspend fun deregister() = log.invocation(logScope, "photokit.deregister") {

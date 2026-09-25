@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * What the backend's answers tell the core — an **inbound** port (spec `module-architecture`, "OS entry points
+ * What the backend's answers tell the core — an **inbound** port (`docs/architecture.md`, "OS entry points
  * cross an inbound port"): the core implements it, and the credential-carrying HTTP interceptor drives it.
  *
  * It is one object rather than three callbacks because the three are one wiring. A root that assembled them one

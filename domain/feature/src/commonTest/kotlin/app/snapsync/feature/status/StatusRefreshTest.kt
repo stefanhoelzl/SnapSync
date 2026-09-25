@@ -122,7 +122,7 @@ class StatusRefreshTest {
     @Test
     fun `no membership counts nothing and never walks`() = runTest {
         // `N` stays null — NOT COUNTED. A zero here would settle the screen at "In sync" on a device
-        // that has counted nothing (capability `gallery-status`).
+        // that has counted nothing (capability `sync-status`).
         val (steps, refresh) = harness(activeConfig = null)
         refresh.run()
         assertEquals(listOf("ledger", "downloads"), steps, "the cheap reads still run; nothing else does")

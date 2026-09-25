@@ -10,11 +10,11 @@ enum class ProtectedStorageState {
 }
 
 /**
- * What the protected-storage read promises (capability `port-contracts` — this list IS the port's
+ * What the protected-storage read promises (`docs/architecture.md` — this list IS the port's
  * specification).
  *
  * One clause, and deliberately no `LOCKED` one: no host lets a binding enter "not unlocked since boot" — the
- * simulator implements no data protection, and the rig drives only a running, unlocked app (`port-contracts`,
+ * simulator implements no data protection, and the rig drives only a running, unlocked app (`docs/architecture.md`,
  * "Hosts are a closed set of what changes reachable states"). A clause only the in-memory double could reach
  * may not exist, so that belief lives in `IosProtectedStorage`'s documentation.
  */

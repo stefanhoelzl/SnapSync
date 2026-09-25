@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 /**
  * **The ledger is the current membership's share set**, over the real stack driven through the control protocol
- * (capabilities `sync-ledger`, `upload-state-reconciliation`, `leave-event`): a join loads it from the device's
+ * (capabilities `photo-sharing`, `photo-sharing`, `manage-membership`): a join loads it from the device's
  * stored-file listing, a leave clears it, and a switch does both — without re-uploading anything the backend already
  * holds, and without a failed listing ever blocking a join.
  *

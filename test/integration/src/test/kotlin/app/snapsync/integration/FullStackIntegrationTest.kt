@@ -18,7 +18,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun a_future_start_event_uploads_nothing_and_reads_not_started() = rigTest {
-        // THE THEOREM the whole design rests on (capability `photo-selection-policy`).
+        // THE THEOREM the whole design rests on (capability `photo-sharing`).
         //
         // Nothing syncs before the event starts — and NOT because a gate refuses. There is no gate. The join-time
         // clamp makes the effective cutoff `max(chosen, startsAt)`, and a photo's capture date cannot lie in the
@@ -115,7 +115,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun a_limited_grant_receives_foreign_photos_and_never_reads_needs_access() = rigTest {
-        // Receive-only under a LIMITED grant is a valid resting state (capability `limited-photo-access`): imports
+        // Receive-only under a LIMITED grant is a valid resting state (capability `photo-access`): imports
         // work, no upload work is created, and the screen shows the ordinary health line — never NeedsAccess.
         permission("LIMITED")
         createAndJoin()
@@ -140,7 +140,7 @@ class FullStackIntegrationTest {
     @Test
     fun a_selection_change_under_limited_raises_n_and_uploads_the_selected_photos() = rigTest {
         // One selection-change emission serves N and the cycle's discovery; the cycle under LIMITED reads the
-        // snapshot (never the library) and uploads through the ordinary engine (capability `limited-photo-access`).
+        // snapshot (never the library) and uploads through the ordinary engine (capability `photo-access`).
         permission("LIMITED")
         createAndJoin()
         addPhoto("A")
@@ -186,7 +186,7 @@ class FullStackIntegrationTest {
     @Test
     fun an_imported_foreign_asset_in_the_selection_never_reuploads() = rigTest {
         // The app's own import auto-joins the platform selection (measured); the snapshot then carries it, and
-        // echo-suppression drops it at the cycle (capability `limited-photo-access`).
+        // echo-suppression drops it at the cycle (capability `photo-access`).
         createAndJoin()
         foreignDevice("DEV-F", "FQ")
         downloadAll()
@@ -238,7 +238,7 @@ class FullStackIntegrationTest {
         assertTrue(!state().ready.configResolved)
         // ...and the backend outcome lands when the fire-and-forget DELETE does. Leaving is RENAME-ONLY
         // (capability `event-leave-endpoint`): the device is departed, but the event and its bytes are RETAINED
-        // until the nightly sweep reclaims them (capability `scheduled-cleanup`).
+        // until the nightly sweep reclaims them (capability `event-lifetime`).
         eventually(read = { deviceJson("backend/departed", "event" to event) }) {
             it.getValue("departed").jsonPrimitive.boolean
         }
@@ -288,7 +288,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun download_only_uploads_nothing_when_the_cycle_actually_runs() = rigTest {
-        // THE PRIVACY INVARIANT (capability `upload-lifecycle`). The join gate promises "Only receive the event's
+        // THE PRIVACY INVARIANT (capability `background-upload`). The join gate promises "Only receive the event's
         // photos — you won't share yours". On the app-driven tier the APP invokes the cycle — foreground entry, the
         // heartbeat, a silent push — and every one of those reaches exactly this call.
         val event = createAndJoin("direction" to "download")
@@ -301,7 +301,7 @@ class FullStackIntegrationTest {
         assertEquals(0, jobs().created, "download-only must create no upload job — the member was promised they would share nothing")
         assertTrue(objects().isEmpty(), "download-only must upload no bytes")
         // The union leak, distinct from the bytes: a manifest listing the member's assets offers them to every
-        // other member (capability `photo-selection-policy`, "One policy gates both byte upload and manifest listing").
+        // other member (capability `photo-sharing`, "One policy gates both byte upload and manifest listing").
         assertTrue(manifest(event).isNullOrEmpty(), "download-only must list no asset in its device manifest")
     }
 

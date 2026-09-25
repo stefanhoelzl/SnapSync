@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The forge factory behind the `SNAPSYNC_FORGE_STATE` developer launch trigger (capability
- * `ios-app-shell`): map a recognized state name to a [StatusContainerHost] assembled over **forged
+ * `sync-status`): map a recognized state name to a [StatusContainerHost] assembled over **forged
  * sources**, for capturing marketing screenshots of the shared `StatusScreen` in a simulator with no
  * backend, attestation, or photo-library access.
  *
@@ -78,7 +78,7 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
             reconfigure = { _, _, _, _, _ -> ReconfigureOutcome.NotCurrent },
             rename = { _, _ -> },
             resetRename = {},
-            // No reporting channel in a forge binary, so no gesture (capability `diagnostic-logging`).
+            // No reporting channel in a forge binary, so no gesture (capability `privacy-security`).
             sendDiagnostics = null,
         ),
         diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
@@ -134,7 +134,7 @@ internal const val EVENT_START = "2026-07-20T18:00:00Z"
  *  upper default/ceiling and the "Event end" preset. */
 internal const val EVENT_END = "2026-07-25T18:00:00Z"
 
-/** The event's retention deadline, as the details fetch reports it (capability `event-limits`): the
+/** The event's retention deadline, as the details fetch reports it (capability `event-lifetime`): the
  *  30-day lifetime measured from the event's start. The join gate states it before confirm. */
 internal const val EVENT_DELETES = "2026-08-19T18:00:00Z"
 

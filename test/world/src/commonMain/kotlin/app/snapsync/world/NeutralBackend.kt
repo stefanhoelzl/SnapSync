@@ -24,14 +24,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * The world's **backend-neutral** reads, levers and seeding (capability `harness-world-model`, "Neutral inspection
+ * The world's **backend-neutral** reads, levers and seeding (`docs/testing.md`, "Neutral inspection
  * and minted event ids beside the mini-edge-only surface") — `World.neutral`.
  *
  * Everything the backend's public HTTP surface can carry goes over the world's own real clients ([client], the
  * listing and union seams), so it is written ONCE for both backends. What only the mini-edge's in-memory store can
  * answer is an explicit [Answer.Unavailable] on any other backend, never an empty value or a silent no-op.
  *
- * Its own class rather than more members on `World`, which is at its complexity ceiling (`complexity-budgets`):
+ * Its own class rather than more members on `World`, which is at its complexity ceiling (`docs/architecture.md`):
  * this is one concern — the backend as a test sees it — and it reads as one.
  */
 class NeutralBackend internal constructor(
@@ -147,21 +147,21 @@ class NeutralBackend internal constructor(
             eventId
         }
 
-    /** Backend-offline — the per-device listing and event-union routes answer `502` (capability `harness-world-model`). */
+    /** Backend-offline — the per-device listing and event-union routes answer `502` (`docs/testing.md`). */
     fun setOffline(offline: Boolean): Answer<Unit> =
         onMiniEdge("backend-offline", "nothing makes the real edge answer 502") { it.offline = offline }
 
-    /** The minimum app version the backend demands (capability `min-app-version`); `null` turns the gate off. */
+    /** The minimum app version the backend demands (capability `app-update-required`); `null` turns the gate off. */
     fun setMinAppVersion(minimum: String?): Answer<Unit> =
         onMiniEdge("the minimum-app-version lever", "the real edge fixes its minimum version when it starts") {
             it.minAppVersion = minimum
         }
 
-    /** Devices an event admits before its join answers `409` (capability `event-limits`). */
+    /** Devices an event admits before its join answers `409` (capability `event-lifetime`). */
     fun setCapacity(capacity: Int): Answer<Unit> =
         onMiniEdge("the capacity lever", "the real edge fixes its capacity when it starts") { it.capacity = capacity }
 
-    /** The nightly sweep deleting [eventId] (capability `scheduled-cleanup`). */
+    /** The nightly sweep deleting [eventId] (capability `event-lifetime`). */
     fun sweepEvent(eventId: String): Answer<Unit> =
         onMiniEdge("the event sweep", NOT_RUNTIME_DRIVABLE) { it.sweepEvent(eventId) }
 

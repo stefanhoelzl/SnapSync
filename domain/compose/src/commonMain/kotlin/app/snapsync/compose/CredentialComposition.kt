@@ -4,7 +4,7 @@ import app.snapsync.ports.BackendVerdicts
 import kotlinx.coroutines.launch
 
 /**
- * The shared HTTP client's rejection route (capability `device-attestation`, "Only a rejected credential is
+ * The shared HTTP client's rejection route (capability `privacy-security`, "Only a rejected credential is
  * invalidated, and only that one"; decision record `harden-seam-bug-classes`, D10).
  *
  * The interceptor reports [sentToken] only for a token-bearing `401` from a gated route. The trust feature

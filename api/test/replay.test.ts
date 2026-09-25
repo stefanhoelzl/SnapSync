@@ -1,4 +1,4 @@
-// THE IN-REPOSITORY RUNNER (capability `database`). What is asserted here is not "it applies files" —
+// THE IN-REPOSITORY RUNNER (`docs/architecture.md`). What is asserted here is not "it applies files" —
 // it is the two properties that, if wrong, produce a DIFFERENT STORE rather than an error, and which no
 // schema comparison anywhere else would notice.
 

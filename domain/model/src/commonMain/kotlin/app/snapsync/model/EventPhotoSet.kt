@@ -2,7 +2,7 @@ package app.snapsync.model
 
 /**
  * The **admitted set** of a membership, as a thing consumers *receive* rather than a policy they apply
- * (capability `photo-selection-policy`).
+ * (capability `photo-sharing`).
  *
  * ## Why an object and not a shared predicate
  *
@@ -39,7 +39,7 @@ package app.snapsync.model
  * ## Why [candidates] is a lambda and not the port itself
  *
  * The production backing IS a port (`ports/CandidateSource`), but this type cannot name it: `model/` is the
- * innermost zone and references nothing project-internal outside itself (law `module-architecture`, "Zones
+ * innermost zone and references nothing project-internal outside itself (law `docs/architecture.md`, "Zones
  * inside the core"), while a port lives in `ports/`. Features — which may hold ports — bind the two:
  * `EventPhotoSet(policy, source::candidates)`. That keeps the admission itself in `model/`, where it is
  * exercised in `commonTest` on JVM **and** the simulator, rather than in untested wiring.
@@ -121,7 +121,7 @@ class EventPhotoSet(
         // No caller-side short-circuit for a non-contributing membership. The walk it used to avoid costs
         // one synchronous platform round-trip per asset, and that cost is now removed where it actually
         // arises: `DenyAll` is translated into a fetch predicate matching no asset (capability
-        // `gallery-status`), so the expensive path — a cold-start whole-library enumeration — returns
+        // `sync-status`), so the expensive path — a cold-start whole-library enumeration — returns
         // nothing. The two predicate-less paths (the change-feed walk, the partial-grant observer) are
         // bounded to a delta or a hand-picked selection by construction.
         candidates(policy).filter { policy.admits(it.facts) }

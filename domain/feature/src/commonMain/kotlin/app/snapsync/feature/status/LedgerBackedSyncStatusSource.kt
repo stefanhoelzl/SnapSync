@@ -85,7 +85,7 @@ fun LedgerBackedSyncStatusSource(
                     total = total,
                     failed = 0,
                     // Usable access: syncing is operational under both a full and a limited grant
-                    // (capability `limited-photo-access` — under LIMITED the total is selection-scoped).
+                    // (capability `photo-access` — under LIMITED the total is selection-scoped).
                     active = perm.grantsPhotoAccess,
                     estimatedRemaining = null,
                 ),

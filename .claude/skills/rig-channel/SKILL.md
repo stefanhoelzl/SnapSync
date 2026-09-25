@@ -21,7 +21,7 @@ background-`URLSession` relaunch, so a headless host fires **neither**: a fully 
 access granted and the tier armed will sit there running **no cycle at all**, and nothing says so.
 
 `:test:rig` is a Ktor CIO server that runs inside the app and lets you drive those entry points and
-read the state back. Its protocol is specified (capability `testing-architecture`, "One control protocol,
+read the state back. Its protocol is specified (`docs/testing.md`, "One control protocol,
 served by two hosts") and served by **two hosts**: this app host, and a JVM host over a `:test:world` world
 (see "The JVM host" below). Every surface is a projection of a contract specified elsewhere, so there is no
 second way-to-drive that can rot or lie.
@@ -139,7 +139,7 @@ a rolled `.1` sibling is not reachable this way.
 
 ## `/contract/<name>` — recording a port contract on the device
 
-Capability `port-contracts`. A contract whose clauses need the **entitled** Keychain (`SecureStore`: the
+Capability `docs/architecture.md`. A contract whose clauses need the **entitled** Keychain (`SecureStore`: the
 legacy-protection upgrade, a real write read back) cannot run in CI — a simulator test executable is
 refused every Keychain call. So it runs here, in-app, and every `SecItem*` call the adapter makes is
 recorded with iOS's answer; CI then **replays** that recording against the current adapter on every build.

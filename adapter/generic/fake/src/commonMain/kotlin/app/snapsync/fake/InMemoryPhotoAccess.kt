@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The honest in-memory photo-access adapter: both permission ports over one [status] cell, as the iOS
- * adapter implements both over one `PHPhotoLibrary` (capability `permission-gate`). It is held to
+ * adapter implements both over one `PHPhotoLibrary` (capability `photo-access`). It is held to
  * `PhotoAccessContract` exactly as `PhotoLibraryPermission` is.
  *
  * [answer] is what the user will choose when asked, which is state the platform holds and this app cannot

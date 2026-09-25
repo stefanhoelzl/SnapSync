@@ -17,11 +17,11 @@ enum class UploadDiscoveryState {
 }
 
 /**
- * What every [UploadDiscovery] promises (capability `port-contracts` — this list IS the specification of the
+ * What every [UploadDiscovery] promises (`docs/architecture.md` — this list IS the specification of the
  * port's obligations).
  *
  * The walk's `fullEnumeration` is a **deletion authority**: the cycle deletes the in-window ledger rows of every
- * asset an authoritative walk did not return (capability `sync-ledger`). So a walk over a library the process
+ * asset an authoritative walk did not return (capability `photo-sharing`). So a walk over a library the process
  * could not read must say it is not authoritative. An empty authoritative walk deletes every in-window row.
  */
 object UploadDiscoveryContract : Contract<UploadDiscoveryState, SeededLibrary<UploadDiscovery>>("UploadDiscovery") {

@@ -29,7 +29,7 @@ import platform.Foundation.NSThread
 import platform.Foundation.NSUserDomainMask
 
 /**
- * The Sentry seat of `DiagnosticsReporter`, live on the simulator test executable (capability `port-contracts`),
+ * The Sentry seat of `DiagnosticsReporter`, live on the simulator test executable (`docs/architecture.md`),
  * over the REAL SDK.
  *
  * - `UNCONFIGURED` is the **production default**: this executable carries no `Deployment.plist`, so the adapter's

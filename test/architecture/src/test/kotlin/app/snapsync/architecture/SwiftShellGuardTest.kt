@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Swift is a transcriber — its decisions are pinned, exactly** (capability `architecture-guards`;
- * law: `module-architecture` "Shells are wiring only"; decision record: `establish-target-architecture`).
+ * **Swift is a transcriber — its decisions are pinned, exactly** (`docs/architecture.md`;
+ * law: `docs/architecture.md` "Shells are wiring only"; decision record: `establish-target-architecture`).
  *
  * The zero-conditional shell law is enforced on Kotlin by tooling that reads Kotlin; nothing in this
  * repo parses Swift — and the Swift shells are where a silent shipping failure already lived (the
@@ -29,7 +29,7 @@ import kotlin.test.fail
  *    retried failure (the posture the previous `switch`'s compiler-mandated `default:` carried).
  *    Re-evaluate at iOS 27 GM (~Sept 2026) with the async extension protocol.
  *
- * `??` joined the counted keywords with that pin (the `architecture-guards` spec always named it):
+ * `??` joined the counted keywords with that pin (the `docs/architecture.md` spec always named it):
  * a nil-coalesce is a decision by another name, and counting only `if`/`guard`/`switch` would let
  * the table read zero while fallbacks accumulate.
  */
@@ -124,8 +124,8 @@ class SwiftShellGuardTest {
     }
 
     /**
-     * **Every Swift shell function forwards to Kotlin** (spec `architecture-guards`, "The shell
-     * gates"; spec `module-architecture`, "Absence is never silent").
+     * **Every Swift shell function forwards to Kotlin** (`docs/architecture.md`, "The shell
+     * gates"; `docs/architecture.md`, "Absence is never silent").
      *
      * A shell function that reaches no Kotlin is invisible by construction: this layer is
      * wiring-only and untested by project rule, and os_log redacts an interpolated `NSLog`
@@ -181,7 +181,7 @@ class SwiftShellGuardTest {
         const val BODY_SCAN_LINES = 14
 
         /**
-         * Pinned exemptions, each with its forcing proof (spec `module-architecture`, "Necessity
+         * Pinned exemptions, each with its forcing proof (`docs/architecture.md`, "Necessity
          * claims carry forcing proofs"). Add one only for a function the platform requires to EXIST
          * but never uses to tell us anything — never for one that merely looks uninteresting.
          *

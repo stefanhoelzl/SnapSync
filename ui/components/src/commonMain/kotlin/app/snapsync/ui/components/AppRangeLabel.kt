@@ -8,7 +8,7 @@ import kotlinx.datetime.LocalDateTime
  *
  * In the design system rather than beside the reduction because it reads no clock and no zone: it formats
  * two wall-clock values, exactly as [appDateTimeLabel] and [appDateLabel] do, and how a date READS is the
- * design system's business (capability `design-system`). The reduction decides what the dates ARE.
+ * design system's business (`docs/architecture.md`). The reduction decides what the dates ARE.
  *
  * The shape adapts to what the range actually is, so the common cases read as a person would say them: a
  * single day with a time span, whole days as a day span, and anything else spelled out at both ends.

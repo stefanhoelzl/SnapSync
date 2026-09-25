@@ -8,7 +8,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 /**
- * The `https://<domain>/join#v=3&d=<base64url(json)>` wire format (spec: event-link): the runtime config
+ * The `https://<domain>/join#v=3&d=<base64url(json)>` wire format (spec: join-event): the runtime config
  * payload — just the **event id** — carried in a single opaque, versioned param. The device holds no
  * storage credential; the event id is the upload capability. The upload **host** is not here: it is
  * fixed at compile time by the extension's baked `uploadBase`. This file is the one

@@ -8,13 +8,13 @@ import co.touchlab.kermit.Logger
 
 /**
  * Void this device's durable sync state (the control channel's `POST /device/reset`, capability
- * `ios-app-shell`), so a build pointed at a **different backend** starts from nothing.
+ * `sync-status`), so a build pointed at a **different backend** starts from nothing.
  *
  * ## What it adds to a leave
  *
  * Very little, now. The leave command already prunes non-terminal download rows
  * (`DownloadController.onLeaveOrSwitch`) and, since `changes/join-loads-leave-clears`, clears the upload
- * ledger too: the ledger is the current membership's share set (`sync-ledger`), and the next join reloads
+ * ledger too: the ledger is the current membership's share set (`photo-sharing`), and the next join reloads
  * it from the backend's stored-file listing. The one remaining difference is that a reset **notifies no
  * backend** (below).
  *
@@ -66,7 +66,7 @@ class ResetDeviceState(
      * controller's lock: a ref is claimed under that lock before its import's change block runs, and a
      * reset that merely reads a snapshot of what is claimed leaves a window for a claim in between —
      * whose row is then pruned, so the marker write lands on nothing and the created asset is uploaded
-     * back into the event (capability `download-store`). This feature cannot take that lock without
+     * back into the event (capability `receiving-photos`). This feature cannot take that lock without
      * reaching for its sibling, so the composition passes the critical section instead of the value.
      *
      * Required, with no default: a no-op default would make a reset that quietly prunes nothing look

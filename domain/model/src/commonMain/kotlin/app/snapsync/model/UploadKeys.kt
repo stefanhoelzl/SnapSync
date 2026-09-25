@@ -24,14 +24,14 @@ enum class ResourceRole(val wire: String) {
 // `PHAssetResourceType` integers — an ABI table written in bare literals, which no import- or
 // token-based gate can see and which a second platform's integers would silently collide with. The
 // adapter now reports the role itself, which is the platform-independent fact (spec
-// `module-architecture`, "Ports are the I/O boundary named for the need").
+// `docs/architecture.md`, "Ports are the I/O boundary named for the need").
 //
 // [ResourceRole] itself stays here: it is the neutral vocabulary, and it was already neutral — the
 // adapter was reporting the raw type *beside* it rather than instead of it.
 
 /**
  * The header a versioned backend request declares its marketing version in (capability
- * `min-app-version`). Declared here because BOTH transports must send it — the shared HTTP client and
+ * `app-update-required`). Declared here because BOTH transports must send it — the shared HTTP client and
  * the byte-upload request the OS performs — and two spellings of one header name is exactly the drift
  * this vocabulary exists to prevent.
  */
@@ -85,13 +85,13 @@ const val RESOURCE_META_ORIGINAL_FILENAME: String = "originalFilename"
 const val RESOURCE_META_MIME: String = "mimeContentType"
 
 /**
- * The **neutral origin facts** (capability `photo-selection-policy`), stashed alongside the manifest
+ * The **neutral origin facts** (capability `photo-sharing`), stashed alongside the manifest
  * detail so the one admission can decide in `commonMain` on a `Resource` — which is all the upload cycle
  * ever sees (the `RawAsset` is consumed by [resourcesFrom] before the cycle is reached).
  *
  * They are **platform-neutral by construction**: the iOS adapter interprets `PHAssetMediaSubtype` /
  * `PHAssetMediaType` / the pixel dimensions into these, so no PhotoKit value reaches `model/`
- * (capability `gallery-status`; the `:test:architecture` PhotoKit-ABI guard enforces it).
+ * (capability `sync-status`; the `:test:architecture` PhotoKit-ABI guard enforces it).
  *
  * The device-manifest producer reads only the three keys above by name, so these entries are inert to it.
  * Values are `"true"`/`"false"` for the flags and a decimal string for the area; [factsFromResources]

@@ -7,13 +7,13 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Whether the backend is refusing this build as too old, and the version it named (capability
- * `min-app-version`).
+ * `app-update-required`).
  *
  * A **read-model**, in the shape the presentation already consumes: one cell, observed, never
  * commanded. It is written by the shared HTTP client's interceptor — the one place every metadata seam
  * passes through — so no seam has to remember to report a refusal, and a seam added later is covered for
  * free. Presentation observes it directly, which is a READ and therefore does not cross `flow/`
- * (`module-architecture`, "Commands cross one door").
+ * (`docs/architecture.md`, "Commands cross one door").
  *
  * **It is a coordination primitive, not authority.** Nothing durable is written and nothing is
  * recovered across a launch, deliberately: the answer is a property of the backend's current opinion of
@@ -39,7 +39,7 @@ class AppVersionGate(
     /**
      * The backend refused this build (`426`), naming [minimumVersion] when it carried one.
      *
-     * Reported at **`Error`**, so it reaches crash reporting (capability `crash-reporting`). That is not
+     * Reported at **`Error`**, so it reaches crash reporting (capability `privacy-security`). That is not
      * a judgement about severity in the abstract — it is that this device now does nothing at all: every
      * metadata call is refused, no photo is shared and none arrives, and the member sees only a screen
      * telling them to update. An operator who cannot see that from the reports cannot tell a bad release

@@ -1,7 +1,7 @@
 package app.snapsync.model
 
 /**
- * How visible the app is when the shell asks whether to compose a scene (capability `ios-app-shell`).
+ * How visible the app is when the shell asks whether to compose a scene (capability `sync-status`).
  *
  * Named for the need rather than for the platform enum it is read from, so the rule below stays testable
  * off-device and `model/` keeps no UIKit knowledge. The three values are the only distinctions the rule
@@ -19,7 +19,7 @@ enum class AppVisibility {
 }
 
 /**
- * `UIApplicationState`'s raw values, mapped here rather than in the shell (capability `ios-app-shell`).
+ * `UIApplicationState`'s raw values, mapped here rather than in the shell (capability `sync-status`).
  *
  * The mapping is a **decision**, so it belongs in tested code — the same move the PhotoKit processing
  * result made when its `when` left the shell for `model/` with its raw values pinned in `commonTest`. The
@@ -40,7 +40,7 @@ fun appVisibilityFrom(rawApplicationState: Long): AppVisibility = when (rawAppli
 }
 
 /**
- * Whether the shell composes a Compose scene (capability `ios-app-shell`): a **sealed** type so the shell
+ * Whether the shell composes a Compose scene (capability `sync-status`): a **sealed** type so the shell
  * switches once on it and the compiler fails closed if a third mode is ever added.
  *
  * - [Deferred] — compose nothing. The shell returns a bare placeholder view controller: no
@@ -50,9 +50,9 @@ fun appVisibilityFrom(rawApplicationState: Long): AppVisibility = when (rawAppli
 sealed interface SceneMode {
 
     /**
-     * How the device log names the resolved mode (capability `diagnostic-logging`). The shell transcribes
+     * How the device log names the resolved mode (capability `privacy-security`). The shell transcribes
      * this one resolved fact rather than branching a second time to describe itself
-     * (`module-architecture`, "Shells are wiring only") — and it is the **verification** of the deferral:
+     * (`docs/architecture.md`, "Shells are wiring only") — and it is the **verification** of the deferral:
      * a background-woken process must record `deferred` and never `live` until it has been active.
      */
     val diagnosticName: String
@@ -67,7 +67,7 @@ sealed interface SceneMode {
 }
 
 /**
- * The pure scene-mode resolver (capability `ios-app-shell`).
+ * The pure scene-mode resolver (capability `sync-status`).
  *
  * **Why this exists.** iOS connects UI scenes in `UISceneActivationState.background`, so a process launched
  * or woken by a silent push or a `BGTask` gets a connected scene and — with an unconditional shell — stands
@@ -106,7 +106,7 @@ fun resolveScene(visibility: AppVisibility, everActive: Boolean): SceneMode = wh
 /**
  * The scene generation after the shell has handed out [handedOut] — the value the SwiftUI host binds to
  * `.id(…)`, so a **change** in it is what makes the platform ask for the root view controller again
- * (capability `ios-app-shell`).
+ * (capability `sync-status`).
  *
  * **It counts placeholders retired, and it never decreases.** That monotonicity is the whole contract:
  * `.id(…)` reacts to CHANGE, not to magnitude, so a value that fell back would rebuild just as surely as

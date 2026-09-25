@@ -22,7 +22,7 @@ enum class AttestStoreState {
 }
 
 /**
- * What the store of the device token and its `keyId` promises (capability `port-contracts` — this list IS
+ * What the store of the device token and its `keyId` promises (`docs/architecture.md` — this list IS
  * the port's specification).
  *
  * Two promises carry the weight. An unreadable store is **never** "not attested yet": minting on a forged

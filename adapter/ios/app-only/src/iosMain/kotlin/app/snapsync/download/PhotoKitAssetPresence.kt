@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 import platform.Photos.PHAsset
 
 /**
- * The full-access [ImportedAssetPresence] (capability `photo-download`): asks PhotoKit, by identifier,
+ * The full-access [ImportedAssetPresence] (capability `receiving-photos`): asks PhotoKit, by identifier,
  * which of the assets this device created still exist.
  *
  * **Only ever composed for a full grant.** Under a partial grant the answer would be wrong in the
@@ -21,7 +21,7 @@ import platform.Photos.PHAsset
  *
  * **The hop buys CONCURRENCY, not safety.** Keeping this off the main thread is not this seam's job:
  * the app's composition scope is a dedicated non-UI lane, so every adapter is off main whether it hops
- * or not (spec `module-architecture`, law "Dispatcher lanes are fixed by the composition"). What the
+ * or not (`docs/architecture.md`, law "Dispatcher lanes are fixed by the composition"). What the
  * hop buys is that a stalled `photolibraryd` parks one `Dispatchers.Default` thread rather than the
  * **serial** composition lane — and that is what makes the caller's deliberate choice to adjudicate
  * outside the download controller's mutex mean anything. With the lane itself blocked, being off the
@@ -35,6 +35,12 @@ import platform.Photos.PHAsset
  * Identifier form: the store speaks the normalized `/`→`_` id; PhotoKit speaks the raw
  * `{UUID}/L0/NNN`. The conversion is exact in both directions (a `localIdentifier` never contains `_`),
  * and it is the same pair the event-album add path already relies on.
+ *
+ * Measured, and asserted by no clause: a `performChanges` commit survives the death of its process (SE2, iOS
+ * 26.5.2: SIGKILL 200 ms after the change block returned still left the asset), and while that commit is in
+ * flight a relaunch's lookup here answers ABSENT (8 of 9 runs at 25–43 MB, two hosts). Under a partial grant
+ * iOS adds app-created assets to the selection only at creation, hence the full-grant-only composition above.
+ * See changes/archive/2026-08-27-stop-repeating-futile-import-work.
  */
 @OptIn(ExperimentalForeignApi::class)
 class PhotoKitAssetPresence : ImportedAssetPresence {

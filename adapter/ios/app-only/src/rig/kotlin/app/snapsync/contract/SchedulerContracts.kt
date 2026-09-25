@@ -28,7 +28,7 @@ import platform.Foundation.NSProcessInfo
 
 /*
  * `BGTaskScheduler`'s operating-system boundary as TEXT, and the entitled app's binding of `BackgroundSchedulerContract`
- * (capability `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on
+ * (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on
  * every build").
  *
  * Compiled into this module's `iosMain` only under `-Psnapsync.rig=true` (where the device records), and into `iosTest`

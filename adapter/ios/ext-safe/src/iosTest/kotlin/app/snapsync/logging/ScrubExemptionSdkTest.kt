@@ -11,7 +11,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * **The SDK half of the dump's redaction exemption** (capability `diagnostic-logging`).
+ * **The SDK half of the dump's redaction exemption** (capability `privacy-security`).
  *
  * `scrubbedEvent` skips redaction when the event carries [NON_REDACTED_TAG], and the dump's `send`
  * sets that tag on the **scope** it captures with. Between those two facts sits an assumption about

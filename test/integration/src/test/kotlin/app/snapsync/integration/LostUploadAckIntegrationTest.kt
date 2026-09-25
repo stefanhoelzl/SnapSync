@@ -8,8 +8,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **A terminal upload outcome survives the process that learned it** (capability `sync-ledger`,
- * `ios-url-session-upload`; decision record `changes/fix-lost-upload-acks`).
+ * **A terminal upload outcome survives the process that learned it** (capability `photo-sharing`,
+ * `background-upload`; decision record `changes/fix-lost-upload-acks`).
  *
  * The defect these pin is Bugsink `SNAPSYNC-11`. iOS delivers a background-`URLSession` completion
  * exactly once — `URLSessionTask.State.completed` is documented as *"the task has completed (without

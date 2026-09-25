@@ -4,29 +4,23 @@ context: |
   SnapSync: an iOS app for sharing photos from an event (Kotlin
   Multiplatform + Compose), shipped via TestFlight.
 
-  There is no narrative design doc. openspec/specs/<capability>/spec.md is
-  the contract of record (Purpose + Requirements); the decision record —
+  openspec/specs/<capability>/spec.md is the contract of record for what a
+  USER can observe (see WHAT EARNS A SPEC below); the decision record —
   rationale, alternatives, trade-offs — lives in
-  openspec/changes/archive/<id>/design.md, cited from each spec's Purpose.
-  Project rules live in CLAUDE.md. Read them rather than restating them here.
+  openspec/changes/archive/<id>/design.md. Engineering knowledge (architecture,
+  testing, deployment — app and api) lives in docs/architecture.md,
+  docs/testing.md and docs/deployment.md, which are explanation, not contract;
+  the gates in the build are the authority for engineering rules. Project rules
+  live in CLAUDE.md. Read them rather than restating them here.
 
-  Specs are per-capability. Scope a change to the capabilities it actually
-  touches. A spec's Purpose never defers its meaning outside openspec/.
-
-  Tests belong in commonTest so they run on both JVM and
-  iosSimulatorArm64. No :app:* module declares a test source set. Both rules,
-  their exceptions, and what each does NOT cover: capability
-  testing-architecture.
-
-  ARCHIVING — three gates, all BEFORE reporting success. They live here rather
-  than in .claude/ because `openspec update` regenerates that and deletes them
-  (measured). Contract + rationale: capability openspec-archive-command.
+  ARCHIVING — two gates, both BEFORE reporting success. They live here rather
+  than in .claude/ because `openspec update` regenerates that directory and
+  deletes anything written there (measured). Decision record:
+  changes/archive/2026-09-25-spec-diet.
 
   1. Placeholder Purpose. No spec's `## Purpose` may contain the CLI's minted
      "TBD - created by archiving". Check the WHOLE tree — a placeholder from an
-     earlier archive surfaces at this one. Scope the match to the Purpose
-     section: openspec-archive-command legitimately quotes that string in its
-     Requirements, and a whole-file grep would make it permanently unarchivable.
+     earlier archive surfaces at this one.
 
        for f in openspec/specs/*/spec.md; do
          awk '/^## Purpose/{p=1;next} /^## /{p=0} p' "$f" \
@@ -35,47 +29,74 @@ context: |
 
      Anything printed: STOP, name the files, do not archive.
 
-  2. Delta completeness. Enumerate the modules your diff touched. Resolve each
-     to its owning capability via CLAUDE.md's module list. For each, either name
-     that capability's delta or record why none is needed (e.g. the change is
-     behavior-preserving there). An unaccounted module: STOP and name it.
-     Recording a reason is enough — the gate exists to force the question, not
-     to demand a delta. A module the map does not name is unaccounted: fix the
-     map, which is how the map stays true.
+  2. No code identifiers. A spec names no module, class, port, function, table,
+     route, file path, iOS API or error code — those are HOW. Check every spec
+     your change touched:
 
-  3. Dead types. For every type declaration your diff REMOVES that exists nowhere
-     else in the tree, grep openspec/specs/ for it; any spec still naming it must
-     be fixed or accounted for. This is the only gate that reaches a spec your
-     change never touched.
+       grep -nE '`[^`]*([A-Z][a-z]+[A-Z][A-Za-z]*|[a-z]+[A-Z][A-Za-z]*\(|/[a-z]|:[a-z]+:)[^`]*`' \
+         openspec/specs/<capability>/spec.md
 
-       git diff <base>..HEAD -- '*.kt' | grep '^-' | grep -vE '^---' \
-         | grep -oE '\b(class|object|interface|fun)\s+[A-Z][A-Za-z0-9]{4,}'
-
-     Match CamelCase `fun` too — Kotlin's fake-constructor idiom is a type
-     (ListingSyncStatusSource was one, and a class/object/interface-only match
-     misses it). Do NOT widen to `val`/lowercase `fun`: that matches `config`
-     and `url` and flags every spec in the tree.
+     Anything printed that is not a product or platform name, or the invite link
+     format itself: rewrite it as the
+     outcome a user observes, or move it to code/KDoc/docs. Do not archive with
+     an identifier left in.
 
   A MODIFIED delta restates a WHOLE requirement, so it silently drops whatever
   you did not scroll to. Build each one from the current main spec and diff it —
   the removed lines must be only the ones you intended.
 
-  WHAT EARNS A SPEC. A spec exists where a contract is spread across artifacts and
-  drift between them is invisible until it costs something. Where a SINGLE committed
-  artifact IS the contract and carries its own rationale, a spec is a second copy —
-  a drift source with no gate behind it. Apply this when a capability is touched, not
-  as a sweep. Worked examples, from the change that recorded this rule
-  (changes/archive/2026-08-26-address-pr-titles-to-users): ship-command and
-  branch-protection were REMOVED — /ship is a global skill plus this repo's `.ship/`
-  hooks, and the ruleset is the live one on `main` that ship owns, each
-  self-documenting, and a line-by-line rescue pass found zero claims stated only in the
-  spec. changelog-labels was KEPT — its contract
-  spans `release_notes.py`, `check-label.yml` and a ruleset entry, and a label renamed
-  in one but not the others silently loses a changelog heading, discovered at a release
-  that already shipped. openspec-archive-command was KEPT although its artifact lives
-  in `.claude/`: that directory is REGENERATED, so a rule written there is deleted by
-  the next `openspec update` — which is why these gates are in this file. A `.claude/`
-  artifact can therefore never be the single artifact this rule means.
+  WHAT EARNS A SPEC. A spec defines every outcome a user of SnapSync can observe — the
+  host, a guest, a visitor of the web pages — wherever it shows up, stated from their
+  side: what happens, never how. Decision record: changes/archive/2026-09-25-spec-diet.
+
+  An outcome is observable if a user can see it, experience it, or rely on it:
+  - in the app: what a screen lets them do, what is prevented, what they are told and
+    when, what the app shows while it works or when something fails;
+  - in their photo library: which photos arrive, with what fidelity, in which album,
+    and which never arrive (a photo they deleted, their own photo coming back);
+  - on the other members' devices: which of their photos the others get, when, and when
+    those photos are withdrawn;
+  - on the web: what an invite link shows without the app, the public site;
+  - over time and without the app open: photos shared in the background, an event
+    deleted at the end of its lifetime, a late guest still able to join;
+  - under adverse conditions: offline, the app killed, access revoked or narrowed to a
+    selection, a device locked, an outdated app, the event full or gone;
+  - as promises they rely on but cannot inspect: privacy (what leaves the device, and
+    when), security (who can read or write an event's photos), retention (when an event
+    and its photos are deleted), and sharing guarantees (what is and is not shared, that
+    a photo is never lost).
+  - The one external format kept compatible across versions is also a user outcome: the
+    invite link / QR. A printed QR must open in every future version.
+
+  NOT in a spec — and where it goes instead:
+  - How a screen looks (layout, visuals, exact copy)  → the code and its UI tests.
+  - How anything works: modules, classes, ports, tables, routes, iOS APIs, error codes,
+    algorithms, retry and timing mechanics            → the code and its KDoc.
+  - Measured platform facts (what iOS actually does)  → port-contract clauses, so a
+    fact that stops being true fails a test.
+  - Architecture laws, testing placement, deployment and release
+    (app and api)            → docs/architecture.md · docs/testing.md · docs/deployment.md.
+  - The HTTP API, the device manifest, storage layout → docs/architecture.md. They are
+    not user contracts: min-app-version bounds the API, and the manifest is re-derived.
+  - Why an outcome is the way it is, what was rejected, what was measured, what changed
+    before                                            → the change's design.md, archived.
+
+  THE SWAP TEST. For each requirement ask: could the implementation change with no user
+  observing a difference — in the app, the library, another member's device, the web,
+  or what leaves the device? If yes, it does not belong in the spec. A scenario's WHEN
+  may be anything that happens — a user action, a photo taken, time passing, the network
+  dropping, iOS revoking access, the app being killed. Its THEN is always an outcome a
+  user can observe, never a call, a state value or a row.
+
+  SHAPE. One capability per thing a user does or gets (join an event, receive photos,
+  …), never per mechanism. `## Purpose` is one paragraph: whom it serves and what it
+  promises — no history, no measurements, at most one decision-record cite. An outcome
+  lives in exactly ONE spec; another spec that depends on it names that capability
+  instead of restating it. There is no size budget; the swap test is the budget.
+
+  A change to an observable outcome still goes through the OpenSpec flow (user-driven,
+  see CLAUDE.md). A change no user could observe — a refactor, a new mechanism, a
+  platform workaround — touches no spec and needs no delta.
 
   MISSION (decision record: changes/archive/2026-07-21-align-specs-with-mission). SnapSync
   lets joined users easily share the photos they take during an event. Events are

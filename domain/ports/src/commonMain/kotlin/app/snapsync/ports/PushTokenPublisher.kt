@@ -3,11 +3,11 @@ package app.snapsync.ports
 import app.snapsync.model.ApnsPushToken
 
 /**
- * Where this device's push token is published so the backend can wake it (capability `push-registration`).
+ * Where this device's push token is published so the backend can wake it (capability `receiving-photos`).
  * Named for the need: the HTTP binding `PUT`s the device config; the address, the body and the device id
  * are the adapter's, so the feature above it holds only the policy (absorb, retry on the next trigger).
  *
- * Its promises are the port contract `PushTokenPublisherContract` (capability `port-contracts`), run
+ * Its promises are the port contract `PushTokenPublisherContract` (`docs/architecture.md`), run
  * against the real edge and the world's mini-edge.
  */
 fun interface PushTokenPublisher {

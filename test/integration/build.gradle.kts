@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
 }
-// NOT INSTRUMENTED (capability `coverage-bounds`, "Coverage is measured over unit tests only"):
+// NOT INSTRUMENTED (`docs/architecture.md`, "Coverage is measured over unit tests only"):
 // the seam-to-UI-state integration surface. It drives the real core over the whole graph, so counting it
 // would let a thick integration suite stand in for a thin unit suite.
 //
@@ -17,14 +17,14 @@ kover {
     }
 }
 
-// The seam-to-UI-state integration surface (capability `testing-architecture`, "The seam-to-UI-state
+// The seam-to-UI-state integration surface (`docs/testing.md`, "The seam-to-UI-state
 // integration surface"). Every test starts the control channel's JVM host in-process — a world composed by the
 // same shared host composition the iOS shell calls, over the mini-edge — and drives it through the protocol's
 // typed client (`:test:control`) ONLY. So a test names no world, port, flow or composition type, and one test
 // body could target any host: the client's compile path carries only the wire types and the read-model types
 // (the rig declares its own dependencies `implementation`), which is what holds that rule.
 //
-// JVM-only, and that FORGOES the composed graph's Kotlin/Native run over fakes (capability `testing-architecture`,
+// JVM-only, and that FORGOES the composed graph's Kotlin/Native run over fakes (`docs/testing.md`,
 // "Every test runs on every target its module declares"): the host is an in-process HTTP server, a JVM target.
 // The native composition is still exercised by the core's own `iosSimulatorArm64` unit tests, and by the
 // simulator app running the composed graph over real adapters under the contracts and the journeys.
@@ -40,7 +40,7 @@ dependencies {
 }
 
 // ---- The all-real journeys ----
-// (capability `testing-architecture`, "All-real journeys are the contracts' safety net")
+// (`docs/testing.md`, "All-real journeys are the contracts' safety net")
 //
 // A few end-to-end runs with EVERY system real: the rig build of the iOS app on ONE simulator, the real backend
 // served locally, the real photo library. The second member is played by the journey itself, over the backend's

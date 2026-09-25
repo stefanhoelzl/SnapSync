@@ -148,7 +148,7 @@ class DownloadControllerTest {
         importer: FakeImporter = FakeImporter(),
         presence: ImportedAssetPresence = InMemoryAssetPresence(),
         // Whether a row's staged bytes are still on disk — the second oracle the *absent* branch reads
-        // (capability `photo-download`). Defaults to `None`, which answers "all present": these tests
+        // (capability `receiving-photos`). Defaults to `None`, which answers "all present": these tests
         // stage bytes through the store and nothing in them consumes those files, so that is the honest
         // answer for the default fixture. A test modelling a library that INGESTED the bytes passes
         // `inMemoryStagedBytes(mutableSetOf())` and says so at the call site.
@@ -357,7 +357,7 @@ class DownloadControllerTest {
 
         // The second resource lands, then the NEXT wake's union fetch times out. The asset is fully
         // staged, so this wake must still import it — through its tail's ①, which runs whatever the union
-        // answered (capability `photo-download`, "A failed union fetch still drains the staged imports").
+        // answered (capability `receiving-photos`, "A failed union fetch still drains the staged imports").
         store.markStaged(ref, "Q-live.mov", "/stage/l")
         val enqueuedBefore = jobs.enqueued.size
         val next = controller(FakeUnion(emptyList(), ok = false), store = store, jobs = jobs, importer = importer)
@@ -371,7 +371,7 @@ class DownloadControllerTest {
     }
 
     /**
-     * ONE stalled import strands no other ref (capability `photo-download`).
+     * ONE stalled import strands no other ref (capability `receiving-photos`).
      *
      * This is what the claim buys, and it is the opposite of the rule it replaced. A per-import deadline
      * used to stop the whole wake's drain, so that a stalled library did not have one transaction
@@ -454,7 +454,7 @@ class DownloadControllerTest {
 
     /**
      * An import that never answers is not waited for by anything but its own drain, and leaves the photo importable
-     * (capability `photo-download`). Nothing bounds the import: the wake's background time does, through the
+     * (capability `receiving-photos`). Nothing bounds the import: the wake's background time does, through the
      * operating system's expiry — which ends the wake at once and leaves this import claimed and running (the
      * inbound port's contract, `PlatformEntriesContract`, pins that half).
      */
@@ -476,7 +476,7 @@ class DownloadControllerTest {
     }
 
     /**
-     * The tail's unit ① honours the operating system's stop between two imports (capability `ios-app-shell`,
+     * The tail's unit ① honours the operating system's stop between two imports (capability `sync-status`,
      * "Expiry stops work cooperatively at the next boundary"): the import in flight completes, no further one
      * starts, and what is left stays staged for a later wake.
      */
@@ -531,7 +531,7 @@ class DownloadControllerTest {
         assertEquals(1, importer.attempted.count { it.sourceAssetId == "Q" }, "the hung import stays claimed")
     }
 
-    /** A reconcile plans and enqueues only; the drain is the tail's (capability `photo-download`). */
+    /** A reconcile plans and enqueues only; the drain is the tail's (capability `receiving-photos`). */
     @Test
     fun a_reconcile_imports_nothing_even_when_assets_are_staged() = runTest {
         val store = InMemoryDownloadStore()
@@ -610,7 +610,7 @@ class DownloadControllerTest {
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
             // Its staged bytes are INTACT, so the library never ingested them and nothing was created —
-            // which is what makes this absence actionable (capability `photo-download`). A marker with no
+            // which is what makes this absence actionable (capability `receiving-photos`). A marker with no
             // staged resources at all is not a state a device reaches: the marker is written from inside
             // the change block, which runs only once every resource is staged.
             stagedBytes = inMemoryStagedBytes(mutableSetOf("/p", "/l")),
@@ -668,7 +668,7 @@ class DownloadControllerTest {
     }
 
     /**
-     * Two triggers over ONE importable asset create exactly ONE asset (capability `photo-download`).
+     * Two triggers over ONE importable asset create exactly ONE asset (capability `receiving-photos`).
      *
      * This is the race the lock's *span* used to prevent and the claim now does. Asserted on the number of
      * imports rather than on a marker's value: creating the second asset IS the harm, and an assertion on
@@ -696,7 +696,7 @@ class DownloadControllerTest {
     }
 
     /**
-     * A permanently failing asset is offered at most once per drain (capability `photo-download`).
+     * A permanently failing asset is offered at most once per drain (capability `receiving-photos`).
      *
      * A `Failed` import leaves its row importable AND releases its claim, so without the drain's
      * attempted-set the loop re-selects the same ref forever — spinning on any permanently bad resource.
@@ -825,7 +825,7 @@ class DownloadControllerTest {
 
     /**
      * UNKNOWN is what a partial or revoked photo grant produces — a first-class grant in this app
-     * (capability `limited-photo-access`). Treating it as absence clears live markers for every such user.
+     * (capability `photo-access`). Treating it as absence clears live markers for every such user.
      */
     @Test
     fun an_unknown_verdict_changes_nothing() = runTest {
@@ -872,7 +872,7 @@ class DownloadControllerTest {
     }
 
     /**
-     * THE DEFECT THIS CHANGE CLOSES (capability `photo-download`). A `performChanges` commit SURVIVES the
+     * THE DEFECT THIS CHANGE CLOSES (capability `receiving-photos`). A `performChanges` commit SURVIVES the
      * death of the process that opened it (measured, SE2 2026-08-09), so a relaunch can adjudicate a row
      * **while that commit is still landing**, and the library answers *absent* about an asset that is
      * about to exist. Clearing the marker there strips the created asset's only suppression handle, and
@@ -965,7 +965,7 @@ class DownloadControllerTest {
     }
 
     /**
-     * THE REGRESSION THIS CHANGE EXISTS TO PREVENT (capability `photo-download`).
+     * THE REGRESSION THIS CHANGE EXISTS TO PREVENT (capability `receiving-photos`).
      *
      * Adjudication used to be the first act of `reconcile`, `importReady` and `onResourceStaged`. The last
      * fires once per staged resource, and during a burst the only unconfirmed row is the import in flight —
@@ -1105,7 +1105,7 @@ class DownloadControllerTest {
         assertEquals(0, store.counts().imported, "and it is emphatically not counted as arrived")
     }
 
-    // ---- the durable-state reset (capability `ios-app-shell`, `POST /device/reset`) -----------------
+    // ---- the durable-state reset (capability `sync-status`, `POST /device/reset`) -----------------
 
     @Test
     fun reset_prunes_non_terminal_rows() = runTest {
@@ -1166,7 +1166,7 @@ class DownloadControllerTest {
         stalled.cancel()
     }
 
-    // ---- the staged-byte backlog reclaim (capability `download-store`) ------------------------------
+    // ---- the staged-byte backlog reclaim (capability `receiving-photos`) ------------------------------
 
     /**
      * A [StagedBytes] that is its own inspection: [remaining] is the "disk" and [released] records the

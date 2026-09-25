@@ -21,7 +21,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The device log's write side (capability `diagnostic-logging`).
+ * The device log's write side (capability `privacy-security`).
  *
  * This file is the **canonical un-redacted diagnostic channel** — os_log replaces arguments with
  * `<private>`, so when something goes wrong on a real device this is what a person actually reads.

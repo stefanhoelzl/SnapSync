@@ -34,7 +34,7 @@ class RigHooks(
     private val uploadBase: String,
     /**
      * Which `URLSession` binding this binary compiled — `"background"` or `"default"` — fixed by the
-     * compilation target (`ios-url-session-upload`, "The transport binding is fixed by the compilation
+     * compilation target (`background-upload`, "The transport binding is fixed by the compilation
      * target").
      *
      * Reported rather than inferred, because the two are told apart by *what does not happen*: under
@@ -112,7 +112,7 @@ class RigHooks(
     val publishBoundPort: (Int) -> Unit,
     /**
      * The port contracts this build can run in-app — `POST /contract/<name>`, and `GET /contract` for the ones
-     * registered for the host this process is (capability `port-contracts`). A device entry records what the
+     * registered for the host this process is (`docs/architecture.md`). A device entry records what the
      * real implementation asked the operating system and returns the recording to commit verbatim; a
      * simulator-app entry runs live and returns its outcome table, which the `ios-contracts` job judges.
      */
@@ -120,7 +120,7 @@ class RigHooks(
     /**
      * The shared vocabulary entries ([RigVocabulary]) this host REFUSES, each with its reason. Everything this
      * host wires is honoured; everything it refuses is listed here; `GET /device` answers both, and names any
-     * entry that is neither (capability `testing-architecture`, "One control protocol, served by two hosts").
+     * entry that is neither (`docs/testing.md`, "One control protocol, served by two hosts").
      */
     val refusals: Map<String, String> = emptyMap(),
     /**
@@ -198,7 +198,7 @@ class RigHooks(
      * Only `onBackgroundTransfers` earns a caveat, and only under `"default"` — the one binding whose session
      * reports nothing; a host with no `URLSession` at all (the JVM host's `"world"`) earns none. That entry is the one
      * whose OS handler is released by the session reporting its events drained — a callback a default session
-     * never sends (`ios-url-session-upload`, "The transport binding is fixed by the compilation target") —
+     * never sends (`background-upload`, "The transport binding is fixed by the compilation target") —
      * so on that binding the hold always ends on the background time's expiry, which says nothing about the app. The
      * other receipted entries answer their own handlers and are unaffected.
      *
@@ -235,7 +235,7 @@ class TriggerGroup(
      * The app's root is called from the **main** thread by Swift, so the rig calls it there too. The upload
      * extension's root is not: *"In the extension process there is no UI and no main lane: `process()` is
      * synchronous by the OS's contract and runs under `runBlocking` on the OS-invoked thread"* (spec
-     * `module-architecture`). Invoking that root on main would run its `runBlocking` on the live app's UI
+     * `docs/architecture.md`). Invoking that root on main would run its `runBlocking` on the live app's UI
      * thread — freezing the UI for the whole cycle, and deadlocking on anything the cycle needs from main.
      */
     val lane: CoroutineContext,
@@ -269,7 +269,7 @@ sealed interface RigTrigger {
      * **receives** it, on the same channel the OS does, and reports the measured hold.
      *
      * There is no deadline to report beside it: no clock of the app's own releases a handler any more
-     * (capability `ios-app-shell`, "Time is up is learned only from the operating system"). The rig classifies
+     * (capability `sync-status`, "Time is up is learned only from the operating system"). The rig classifies
      * nothing either — the release carries no outcome, so "released after its own work" versus "released on
      * the operating system's expiry" is not recoverable here. The authoritative answer is production's own:
      * `OsCompletions` logs its expiry line on the expiry path and no other, readable through `/logs` after the
@@ -307,7 +307,7 @@ class RigUserCommand(val run: (params: Map<String, String>) -> Unit)
 /**
  * Thrown by a user command that THIS build cannot honour — a command the composed core leaves absent, such as the
  * diagnostics send on a build with no reporter. Answered `409` with [reason], never a `202` for a tap that could
- * not have happened (capability `testing-architecture`, "One control protocol, served by two hosts").
+ * not have happened (`docs/testing.md`, "One control protocol, served by two hosts").
  */
 class UserCommandRefused(val reason: String) : RuntimeException(reason)
 
@@ -342,7 +342,7 @@ class CommandResult(val status: Int, val body: String) {
         fun badRequest(why: String) = CommandResult(status = 400, body = """{"error":"$why"}""")
 
         /**
-         * A verb, or a form of one, that THIS host cannot honour (capability `testing-architecture`, "One
+         * A verb, or a form of one, that THIS host cannot honour (`docs/testing.md`, "One
          * control protocol, served by two hosts") — `409`, with the reason, never a success that did nothing.
          */
         fun refused(why: String) = CommandResult(status = 409, body = """{"refused":${jsonString(why)}}""")

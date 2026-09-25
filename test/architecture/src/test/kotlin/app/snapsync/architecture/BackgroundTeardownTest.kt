@@ -5,11 +5,11 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **No background trigger flow can tear a membership down** (capability `architecture-guards`; laws:
- * `leave-event`, `module-architecture`).
+ * **No background trigger flow can tear a membership down** (`docs/architecture.md`; laws:
+ * `manage-membership`, `docs/architecture.md`).
  *
  * A membership is destroyed without user action only on a **confirmed absence** (capability
- * `leave-event`): the backend reports the event definitively gone AND the device's own persisted
+ * `manage-membership`): the backend reports the event definitively gone AND the device's own persisted
  * deadline has passed. That teardown is reachable from the **foreground** trigger and from nothing else,
  * and the reason is not stylistic:
  *
@@ -51,7 +51,7 @@ class BackgroundTeardownTest {
                 teardownSymbols.filter { code.contains(it) }.map { symbol ->
                     "${file.name}:${i + 1} references `$symbol` — a background wake may run pre-first-unlock, " +
                         "where an unreadable config reads as absent; the teardown belongs to the foreground only " +
-                        "(capability `leave-event`)"
+                        "(capability `manage-membership`)"
                 }
             }
         }

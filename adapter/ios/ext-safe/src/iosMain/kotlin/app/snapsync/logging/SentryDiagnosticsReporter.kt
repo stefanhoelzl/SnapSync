@@ -20,9 +20,9 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import platform.Foundation.NSBundle
 
 /**
- * The Sentry seat of the [DiagnosticsReporter] port (capability `crash-reporting`) — a NO-OP unless this
+ * The Sentry seat of the [DiagnosticsReporter] port (capability `privacy-security`) — a NO-OP unless this
  * process's generated `Deployment.plist` carries a `sentryDsn`. Only CI Release archives resolve one
- * (capability `ios-testflight-delivery`), so dev-sideload/simulator builds never start the SDK and never
+ * (`docs/deployment.md`), so dev-sideload/simulator builds never start the SDK and never
  * open a connection to the reporting host. `sentryEnvironment` is baked beside it, derived from the same
  * build-channel discriminant, so the two cannot disagree.
  *
@@ -36,7 +36,7 @@ import platform.Foundation.NSBundle
  * process both `snapSyncApp` and the app-driven tier's `uploadCore` start the port, and the roots
  * construct their adapters independently — a second [start] must not re-init the SDK or register a
  * duplicate writer (which would double every event). Composition runs on the app's serial composition lane —
- * one thread, though no longer the main one (spec `module-architecture`) — so a plain flag
+ * one thread, though no longer the main one (`docs/architecture.md`) — so a plain flag
  * suffices.
  *
  * What leaves the device is bounded here, not at call sites: every outgoing message field is
@@ -74,7 +74,7 @@ class SentryDiagnosticsReporter internal constructor(
     /**
      * Where this process reports to, or `null` for a build that reports nowhere. Production passes the
      * bundle's baked value (the public constructor); only this module — its contract binding, which points
-     * the channel at a loopback ingest — can supply one of its own choosing (capability `port-contracts`,
+     * the channel at a loopback ingest — can supply one of its own choosing (`docs/architecture.md`,
      * "Every clause runs against a real implementation on some host"). A value rather than a lookup: the
      * bundle file cannot change under a running process, so reading it at construction is reading it always.
      */
@@ -86,7 +86,7 @@ class SentryDiagnosticsReporter internal constructor(
     override val isConfigured: Boolean get() = dsn != null
 
     /**
-     * The operator-initiated dump (capability `diagnostic-logging`): ONE event titled by **what the
+     * The operator-initiated dump (capability `privacy-security`): ONE event titled by **what the
      * operator wrote**, behind a fixed marker prefix, carrying the five sections as **contexts**.
      *
      * The message is the grouping key — Bugsink titles a non-exception issue from the first line of
@@ -103,7 +103,7 @@ class SentryDiagnosticsReporter internal constructor(
      * budget. Context strings, by contrast, came back **byte-identical** at 340 KB each.
      *
      * The dump is NOT scrubbed, and it says so **on the event**: [NON_REDACTED_TAG] is the narrow,
-     * deliberate carve-out from this channel's UUID redaction (capability `crash-reporting`). A dump
+     * deliberate carve-out from this channel's UUID redaction (capability `privacy-security`). A dump
      * is confirmed by the operator and worthless without its ids — including ids the operator quoted
      * in the description, which now rides in the message the scrub would otherwise reach. Automatic
      * events, sent without anyone's knowledge, carry no tag and stay redacted. `DumpScrubExemptionTest`
@@ -164,7 +164,7 @@ class SentryDiagnosticsReporter internal constructor(
     }
 
     /**
-     * The OS's standing account of how this process has been behaving (capability `crash-reporting`).
+     * The OS's standing account of how this process has been behaving (capability `privacy-security`).
      *
      * On the **global** scope, for the same measured reason the `process` tag is: the native SDK
      * persists it into fatal events. So a crash captured in this process and delivered on a later

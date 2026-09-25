@@ -1,4 +1,4 @@
-// `:adapter:ios:app-only` (spec `module-architecture`): iOS adapters only the MAIN APP process
+// `:adapter:ios:app-only` (`docs/architecture.md`): iOS adapters only the MAIN APP process
 // links — placed by linkage. Two reference app-only OS surfaces outright (`BGTaskScheduler`);
 // the others are app-process-bound by identity or need: `IosUrlSessionUploadPlatform` and
 // `IosDownloadTransport` own background-`URLSession` ids the OS reattaches to the app process
@@ -12,14 +12,14 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
-// ---- Port contracts (capability `port-contracts`) ---------------------------------------------------
+// ---- Port contracts (`docs/architecture.md`) ---------------------------------------------------
 //
 // `src/rig/kotlin` holds the simulator app's live bindings of the photo-library contracts: every PhotoKit adapter
 // of both iOS adapter modules, run under the full grant only an app bundle can hold. They live here rather than
 // beside each adapter because a rig directory compiles into its module's `iosTest` without the property, and one
 // module's tests cannot see another's; this module sees both modules' adapters. Under `-Psnapsync.rig=true` the
 // directory compiles into `iosMain`, together with `:test:contracts`, and a build without the property contains
-// neither (`module-architecture`, "A build-time-only module is contained by compilation"). Otherwise it compiles
+// neither (`docs/architecture.md`, "A build-time-only module is contained by compilation"). Otherwise it compiles
 // into `iosTest`, so the bindings are compile-checked on every build.
 val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
 
@@ -53,7 +53,7 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    // Sentry test-link (capability `crash-reporting`): this module's simulator TEST binary links
+    // Sentry test-link (capability `privacy-security`): this module's simulator TEST binary links
     // :adapter:ios:ext-safe (api) and therefore Sentry symbols — even with no test sources, K/N
     // still links an empty test.kexe. Reuse the Sentry-Dynamic framework ext-safe provisions.
     val sentrySimulatorSlice = project(":adapter:ios:ext-safe").layout.buildDirectory
@@ -88,7 +88,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-            // The contract bindings of this module's adapters (capability `port-contracts`): the live
+            // The contract bindings of this module's adapters (`docs/architecture.md`): the live
             // `StagedBytesContract` binding beside `IosStagedBytes`, and the photo-library contracts over
             // the grant-aware composition production calls.
             implementation(project(":test:contracts"))

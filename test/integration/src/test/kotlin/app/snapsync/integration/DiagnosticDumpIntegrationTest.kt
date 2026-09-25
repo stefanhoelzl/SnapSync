@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The operator-initiated diagnostic dump over the **real** stack (capability `diagnostic-logging`):
+ * The operator-initiated diagnostic dump over the **real** stack (capability `privacy-security`):
  * the same `snapSyncApp` core the device shells call, fired through `/user/sendDiagnostics` — the same
  * `UserCommands` bundle presentation fires — landing in the host's reporter (`diagnostics/sent`).
  *
@@ -87,7 +87,7 @@ class DiagnosticDumpIntegrationTest {
 
     @Test
     fun the_dump_travels_verbatim_with_its_identifiers_intact() = rigTest {
-        // The deliberate carve-out (capability `crash-reporting`): a dump is confirmed by the operator
+        // The deliberate carve-out (capability `privacy-security`): a dump is confirmed by the operator
         // and worthless without the ids — a log where every id reads alike cannot answer WHICH event.
         // Automatic events stay redacted; only this path is exempt.
         val eventId = createAndJoin()

@@ -9,10 +9,10 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The PhotoKit [LibraryChangeTokenRead]: `PHPhotoLibrary.sharedPhotoLibrary().currentChangeToken`, compared with
- * `isEqual` (capability `sync-ledger`, "An unchanged library is answered from the walk memo").
+ * `isEqual` (capability `photo-sharing`, "An unchanged library is answered from the walk memo").
  *
  * **App process only**, and placed by linkage to say so: this module is one the upload extension never links, so
- * the extension cannot hold a token or a memo even by accident (capability `ios-photokit-upload` — its 32 MB limit
+ * the extension cannot hold a token or a memo even by accident (capability `background-upload` — its 32 MB limit
  * leaves no room for a held walk). Read only under a full grant: the memo passes every other grant straight to the
  * walk without asking for a token.
  *

@@ -33,7 +33,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The download client's orchestration, exercised without an iOS runtime (capability `photo-download`):
+ * The download client's orchestration, exercised without an iOS runtime (capability `receiving-photos`):
  * the bounded in-flight window, the transfer-description codec, the URL guard, and — the reason this
  * suite exists — the **cancellation lifecycle**. Cancelling must cancel *tasks*, never the transport;
  * destroying the transport is what aborted the app in production.
@@ -464,7 +464,7 @@ class QueuedPhotoDownloadJobsTest {
 
     /**
      * The OS's background-events handler reports on the wake's own work — the STAGINGS the session's events caused
-     * — not on the events themselves (capability `photo-download`, "The download session's OS handler is released
+     * — not on the events themselves (capability `receiving-photos`, "The download session's OS handler is released
      * after staging"). Releasing it when the session drained announced work that had only been queued, and iOS
      * suspended the process on the strength of it (SNAPSYNC-6). Nor is it held for the imports any more: those are
      * the process tail's, run after the release under the app's own background time (`changes/own-work-per-wake`).
@@ -500,7 +500,7 @@ class QueuedPhotoDownloadJobsTest {
     /**
      * The other half of the same guarantee: awaiting the stagings is correct, awaiting them **unboundedly** is not —
      * an unanswered handler costs the app the very download wakes this capability runs on (capability
-     * `ios-app-shell`). No clock of ours bounds it: the operating system's expiry does, through the handover the
+     * `sync-status`). No clock of ours bounds it: the operating system's expiry does, through the handover the
      * wake's owner was given, and it releases at once without cancelling the work.
      */
     @Test

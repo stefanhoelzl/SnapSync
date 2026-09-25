@@ -1,5 +1,5 @@
 // The API version prefix, and the minimum app version a versioned request must declare
-// (capabilities `backend-deployment`, `min-app-version`).
+// (capabilities `docs/deployment.md`, `app-update-required`).
 //
 // Both middlewares need to know which version a request is for, and Hono does NOT strip a mount's prefix
 // from its path accessors — so the resolution lives here, once. It used to be a regex literal inside the
@@ -39,7 +39,7 @@ export function splitVersion(pathname: string): { version: ApiVersion | null; pa
 /**
  * Compare two `X.Y` marketing versions numerically, part by part. Returns a negative number when `a` is
  * older than `b`, zero when equal, positive when newer. A version that does not parse sorts as OLDEST, so
- * an unreadable declaration is refused exactly like a too-old one (capability `min-app-version`).
+ * an unreadable declaration is refused exactly like a too-old one (capability `app-update-required`).
  *
  * NOT a string comparison, and the difference is not academic: `"0.10" < "0.9"` lexicographically, so a
  * string compare admits builds the gate exists to refuse and refuses builds it exists to admit — silently,

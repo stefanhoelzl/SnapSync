@@ -25,7 +25,7 @@ import platform.darwin.dispatch_get_main_queue
  * `AppPorts.share: (String) -> Unit`. A function reference is not a port: nothing about
  * `(String) -> Unit` distinguished "presents system UI" from in-core coordination, and the gates that
  * inspect types therefore saw a platform touch cross into the core unremarked (spec
- * `module-architecture`, "Ports are the I/O boundary named for the need").
+ * `docs/architecture.md`, "Ports are the I/O boundary named for the need").
  *
  * The presenter walk (following `presentedViewController` to the top of the presentation stack) is
  * technology mechanics — UIKit rejects presentation from a covered controller — and adapters may

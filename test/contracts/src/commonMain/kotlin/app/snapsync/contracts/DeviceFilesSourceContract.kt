@@ -15,7 +15,7 @@ enum class DeviceFilesSourceState {
 }
 
 /**
- * What the per-device listing promises (capability `port-contracts` — this list IS the port's specification):
+ * What the per-device listing promises (`docs/architecture.md` — this list IS the port's specification):
  * the read a join-time share-set load and the extension's reconcile settle uploads against. A key that does not
  * match what the uploader stored under re-uploads the library.
  */

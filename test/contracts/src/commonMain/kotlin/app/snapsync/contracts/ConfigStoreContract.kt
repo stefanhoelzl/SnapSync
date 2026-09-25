@@ -48,12 +48,12 @@ enum class ConfigStoreState {
 class ConfigPorts(val source: ConfigSource, val store: ConfigStore, val reader: ConfigReader)
 
 /**
- * What the persisted membership promises (capability `port-contracts` — this list IS the specification of
+ * What the persisted membership promises (`docs/architecture.md` — this list IS the specification of
  * the ports' obligations).
  *
  * The point of the surface is that ONE answer — [ConfigRead.None] — means "this device left the event", and
  * it is reached from exactly one fact: the record is definitively missing. Every other failure, of any kind,
- * reads as [ConfigRead.Unavailable] and defers (capability `upload-state-reconciliation`). Seeds derive from
+ * reads as [ConfigRead.Unavailable] and defers (capability `photo-sharing`). Seeds derive from
  * the clause id so every binding writes the same thing.
  *
  * Not covered, because no host can enter it: a background wake before first unlock, where the file is

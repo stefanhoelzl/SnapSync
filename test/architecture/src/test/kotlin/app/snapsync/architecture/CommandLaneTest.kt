@@ -5,8 +5,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Every user command declares its dispatcher lane** (capability `architecture-guards`; law:
- * `module-architecture`, "Dispatcher lanes are fixed by the composition").
+ * **Every user command declares its dispatcher lane** (`docs/architecture.md`; law:
+ * `docs/architecture.md`, "Dispatcher lanes are fixed by the composition").
  *
  * The composition scope cannot cover this door. The presentation container launches an `intent { }` on
  * an unconfined dispatcher, so a command's synchronous prefix runs on whichever thread fired it — the

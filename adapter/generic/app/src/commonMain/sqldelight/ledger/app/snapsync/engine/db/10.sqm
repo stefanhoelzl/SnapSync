@@ -1,5 +1,5 @@
 -- v10 -> v11: a three-state ledger with no attempt count, no provenance and no absence mark
--- (capability `sync-ledger`).
+-- (capability `photo-sharing`).
 --
 -- Four statements, and none of them creates upload work or settles anything:
 --  1. `FAILED` rows become `DISCOVERED`. A failure now returns its row to the work source, and the two states were

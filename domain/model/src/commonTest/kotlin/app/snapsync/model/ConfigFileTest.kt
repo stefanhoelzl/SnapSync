@@ -12,7 +12,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The versioned config-file envelope (capability `event-link`, migration step 11a). The stakes: the
+ * The versioned config-file envelope (capability `join-event`, migration step 11a). The stakes: the
  * file read decides "this device left the event", so every text this build cannot **positively**
  * interpret must land on the unreadable side ([ConfigFileDecode.Foreign]) — a future build's file,
  * or corruption, must never read as a leave on a revert build.

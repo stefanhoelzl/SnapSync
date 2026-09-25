@@ -5,7 +5,7 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * An [AttestStore] that keeps the last token it read in memory (capability `device-attestation`), so a
+ * An [AttestStore] that keeps the last token it read in memory (capability `privacy-security`), so a
  * process does not pay a Keychain read (`SecItemCopyMatching`) on every request it authenticates — the
  * credential interceptor reads the token for every HTTP request, and the upload request provider for every
  * upload request it builds.

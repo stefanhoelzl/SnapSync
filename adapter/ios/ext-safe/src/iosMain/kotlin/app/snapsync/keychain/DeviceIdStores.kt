@@ -4,7 +4,7 @@ import app.snapsync.ports.SecureStore
 
 /**
  * **Where the device id is kept, chosen by COMPILATION TARGET rather than at runtime**
- * (capability `device-identity`).
+ * (capability `photo-sharing`).
  *
  * `iosArm64` — every shipped binary — keeps the addressed shared-Keychain item, unchanged and
  * unchangeable from here. `iosSimulatorArm64` keeps a file in the App-Group container instead,
@@ -20,7 +20,7 @@ import app.snapsync.ports.SecureStore
  *
  * `iosSimulatorArm64` is not a guess about the host: it is a compilation target whose output only
  * ever runs on a simulator. A device binary therefore contains **no route** to the store below —
- * *"contained by compilation, not by a runtime check"* (spec `module-architecture`). The
+ * *"contained by compilation, not by a runtime check"* (`docs/architecture.md`). The
  * alternatives all require production to decide, at runtime, that it is on a host where the group
  * is unreachable: asking the host is the `OsFacts` pattern deleted one change earlier, and
  * classifying the `OSStatus` reopens what `reshape-keychain-port` D3 closed on purpose. Both put a

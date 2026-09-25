@@ -1,4 +1,4 @@
-// `:adapter:generic:fake` (spec `module-architecture`): HONEST in-memory implementations of the `:domain`
+// `:adapter:generic:fake` (`docs/architecture.md`): HONEST in-memory implementations of the `:domain`
 // ports — what the world harness, the composition smoke, and the integration tests stand on. An
 // adapter named for its technology ("fake", i.e. in-memory — platform-free, hence the `generic`
 // platform-axis prefix), placed by linkage: it links only into test equipment, never a shipped
@@ -13,7 +13,7 @@
 // framework, so there is no `iosArm64` to pay for.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // Coverage measurement (capability `coverage-bounds`). Applied here rather than in a
+    // Coverage measurement (`docs/architecture.md`). Applied here rather than in a
     // `subprojects {}` block so the instrumented set is readable per module.
     alias(libs.plugins.kover)
 }
@@ -36,11 +36,11 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
-            // The fakes' own contract bindings (capability `port-contracts`): only this module's test
+            // The fakes' own contract bindings (`docs/architecture.md`): only this module's test
             // source set can construct an `internal` fake in a chosen state.
             implementation(project(":test:contracts"))
             // The photo-library contracts bind the grant-aware composition production calls, over the fake
-            // just as over the platform read (capability `port-contracts`).
+            // just as over the platform read (`docs/architecture.md`).
             implementation(project(":domain:compose"))
         }
     }

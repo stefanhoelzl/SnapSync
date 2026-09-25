@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * The denylisted-album lookup is **asked only under a full grant** (capability `photo-selection-policy`), in the
+ * The denylisted-album lookup is **asked only under a full grant** (capability `photo-sharing`), in the
  * one place every consumer reaches it through — the upload cycle on both tiers, the status total, the join
  * preview.
  *

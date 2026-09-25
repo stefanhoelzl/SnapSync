@@ -43,7 +43,7 @@ enum class BackgroundTransferState {
 }
 
 /**
- * The upload tier as a clause receives it (capability `port-contracts`). [transfer] is the port; the rest is what
+ * The upload tier as a clause receives it (`docs/architecture.md`). [transfer] is the port; the rest is what
  * the clause needs that the port does not answer.
  *
  * - [base] is the fixture's address; a route is `base + TransferFixture.path(...)`.
@@ -68,7 +68,7 @@ class TransferUnderTest(
 )
 
 /**
- * What every [BackgroundTransfer] owes the upload cycle, whichever tier it is (capability `port-contracts` — this
+ * What every [BackgroundTransfer] owes the upload cycle, whichever tier it is (`docs/architecture.md` — this
  * list IS the specification). One contract for both upload tiers, because the port is one interface: a tier's own
  * vocabulary — the PhotoKit tier's single free `.retry` — is not stated here, because the other tier answers it
  * trivially and no clause may be reached only by a fake.

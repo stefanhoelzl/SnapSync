@@ -4,7 +4,7 @@ import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.ProcessMetricReport
 
 /**
- * Reporting this process's diagnostics off-device for the operator (capability `crash-reporting`):
+ * Reporting this process's diagnostics off-device for the operator (capability `privacy-security`):
  * starts the reporting channel, if this build carries one. Named for the need — any platform that
  * can report failures off-device can seat this.
  *
@@ -24,14 +24,14 @@ interface DiagnosticsReporter {
      *
      * Read by `compose/` to decide whether the operator-initiated dump command exists: a build that
      * could send nothing must offer no affordance that suggests it can (capability
-     * `diagnostic-logging`). Constant for the process — it is a property of the build.
+     * `privacy-security`). Constant for the process — it is a property of the build.
      */
     val isConfigured: Boolean
 
     fun start()
 
     /**
-     * Transmit one operator-initiated diagnostic dump (capability `diagnostic-logging`).
+     * Transmit one operator-initiated diagnostic dump (capability `privacy-security`).
      *
      * A complete no-op when the build is unconfigured, on the same rule as [start]. Delivery is the
      * channel's business: an implementation may queue and retransmit later, so returning does **not**
@@ -41,7 +41,7 @@ interface DiagnosticsReporter {
 
     /**
      * Attach [report] as the standing account of how this process has been behaving (capability
-     * `crash-reporting`), so that **every** event this process reports afterwards carries it —
+     * `privacy-security`), so that **every** event this process reports afterwards carries it —
      * including a crash captured here and delivered on a later launch.
      *
      * Named for what it does to the channel, not for the reporting SDK's own vocabulary. It exists on

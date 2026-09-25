@@ -58,7 +58,7 @@ internal class ChangeAnswer(val ok: Boolean, val code: Long?, val description: S
 
 /**
  * The operating-system effects [IosPhotoKitUploadPlatform] makes, as a seam in this module (capability
- * `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
+ * `docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and replayed on every
  * build"): the upload extension's contract run records every call and iOS's answer through it, and every CI build
  * replays that recording against the current adapter. Production binds [SystemUploadJobApi]; nothing else does.
  */

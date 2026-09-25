@@ -37,7 +37,7 @@ export function validateEventName(raw: unknown): string | null {
 }
 
 /**
- * The canonical capture-date cutoff shape (capability `photo-selection-policy`): UTC `Z`, SECOND precision,
+ * The canonical capture-date cutoff shape (capability `photo-sharing`): UTC `Z`, SECOND precision,
  * no offset, no fractional seconds. Anchored, so no prefix/suffix slips through.
  */
 const CUTOFF_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -74,7 +74,7 @@ export function validateStartsAt(raw: unknown): string | null {
 
 /**
  * Add a whole number of seconds to a canonical-cutoff-shaped instant, returning the canonical shape
- * (capability `event-limits`: `endsAt` is stored in the SAME shape as `startsAt` so comparisons stay
+ * (capability `event-lifetime`: `endsAt` is stored in the SAME shape as `startsAt` so comparisons stay
  * plain string/epoch comparisons and no consumer ever normalizes). The input is expected to be
  * already-validated (see {@link validateStartsAt}); whole seconds in, whole seconds out, so the `.000Z`
  * strip is exact, never a truncation.
@@ -85,7 +85,7 @@ export function canonicalPlusSeconds(canonical: string, seconds: number): string
 
 /**
  * Render an epoch-ms instant in the canonical cutoff shape, rounding DOWN to the second (capability
- * `event-limits`: the derived `deletesAt` is served in the same shape as `startsAt`/`endsAt`, so a client
+ * `event-lifetime`: the derived `deletesAt` is served in the same shape as `startsAt`/`endsAt`, so a client
  * compares all three the same way). Rounding down rather than to nearest keeps the served deadline at or
  * before the real one — an early self-leave is recoverable by re-scanning, a late one is a phantom.
  */
@@ -94,7 +94,7 @@ export function canonicalFromMs(ms: number): string {
 }
 
 /**
- * Validate a client-supplied event `endsAt` (capability `event-limits`). Same canonical-instant
+ * Validate a client-supplied event `endsAt` (capability `event-lifetime`). Same canonical-instant
  * discipline as {@link validateStartsAt} — right shape, a real instant that round-trips — PLUS it must
  * fall strictly after the (already-validated) `startsAt` and no more than [windowMaxSeconds] after it.
  *

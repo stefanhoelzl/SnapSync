@@ -4,8 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **The walk memo is composed in the app process only** (capability `ios-photokit-upload`, "In-extension
- * discovery by full enumeration"; capability `sync-ledger`, "An unchanged library is answered from the walk memo";
+ * **The walk memo is composed in the app process only** (capability `background-upload`, "In-extension
+ * discovery by full enumeration"; capability `photo-sharing`, "An unchanged library is answered from the walk memo";
  * decision record `changes/own-work-per-wake`, D9).
  *
  * The upload extension runs under a 32 MB memory limit whose overrun is a jetsam kill and a relaunch loop, not an

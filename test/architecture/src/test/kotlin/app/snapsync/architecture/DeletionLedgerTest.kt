@@ -61,7 +61,7 @@ class DeletionLedgerTest {
             // 2026-07-17 judgement was that a single-implementation interface is ceremony, and that
             // reasoning does not survive the law it collides with. A port is not justified by a second
             // implementation — it is the declared boundary where the core stops and an external system
-            // begins (`module-architecture`, "Ports are the I/O boundary named for the need"). With the
+            // begins (`docs/architecture.md`, "Ports are the I/O boundary named for the need"). With the
             // interface gone, the composition handed the core a `suspend (eventId) -> Unit` closure over
             // the adapter instead, which is the same crossing made invisible to every gate that reads
             // types. The row is deleted rather than narrowed because there is nothing left to keep dead.
@@ -74,7 +74,7 @@ class DeletionLedgerTest {
             // deletion-aware asset set as the upload ledger, with different columns and the same
             // pruning signals. The ledger already had to be right about all of it — a wrong row
             // re-uploads a library or hides a photo forever — so the accumulator could only ever
-            // disagree. The manifest is a projection of the ledger now (capability `device-manifest`).
+            // disagree. The manifest is a projection of the ledger now (capability `photo-sharing`).
             declared(files, "fun load" + "Accumulator").forEach {
                 add("the device-manifest accumulator in $it (the manifest projects from the ledger)")
             }

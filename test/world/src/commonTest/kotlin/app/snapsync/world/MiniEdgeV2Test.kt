@@ -16,7 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The mini-edge serves BOTH device-API versions (capability `harness-world-model`).
+ * The mini-edge serves BOTH device-API versions (`docs/testing.md`).
  *
  * These drive the client raw rather than through a seam, because the seams do not speak v2 yet — that is
  * the whole reason this step is additive. When they move, they run against exactly these routes.

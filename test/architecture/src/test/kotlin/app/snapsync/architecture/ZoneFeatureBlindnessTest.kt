@@ -3,7 +3,7 @@ package app.snapsync.architecture
 import kotlin.test.Test
 
 /**
- * **Features are mutually blind** (capability `architecture-guards`; law: `module-architecture`
+ * **Features are mutually blind** (`docs/architecture.md`; law: `docs/architecture.md`
  * "Zones inside the core" / "Rules in features, order in flows"). A feature references only
  * `model/`, `ports/`, and itself — never a sibling feature (features coordinate via one-writer
  * durable state behind shared ports, not via each other), never `flow/` or `compose/`, never

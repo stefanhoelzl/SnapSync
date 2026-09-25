@@ -3,7 +3,7 @@ package app.snapsync.ports
 import app.snapsync.model.ProcessMetricReport
 
 /**
- * Where reports about **this process's own behaviour** come from (capability `crash-reporting`):
+ * Where reports about **this process's own behaviour** come from (capability `privacy-security`):
  * how its previous runs ended, how responsive it was, what it peaked at. Named for the need — any
  * platform that can account for its own processes can seat this.
  *

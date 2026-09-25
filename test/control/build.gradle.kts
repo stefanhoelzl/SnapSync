@@ -2,10 +2,10 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
-// `:test:control` — the typed JVM client of the control channel's protocol (capability `testing-architecture`,
+// `:test:control` — the typed JVM client of the control channel's protocol (`docs/testing.md`,
 // "One control protocol, served by two hosts"), and the home of the JVM host's tests.
 //
-// Support group (`module-architecture`, "The module set withholds; packages organize"): it links into no
+// Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
 // shipped-format binary. JVM-only because every caller of the protocol is: a test drives the simulator app over
 // HTTP from the build host exactly as it drives the JVM host.
 //

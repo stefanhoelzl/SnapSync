@@ -117,10 +117,10 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 /**
- * The controllable in-memory **world** (capability `harness-world-model`): the backend object store,
+ * The controllable in-memory **world** (`docs/testing.md`): the backend object store,
  * the mini-edge, and the operator levers — wrapped around `:adapter:generic:fake`'s honest doubles — that the
  * REAL app graph runs against. Since migration step 10 the world composes that graph through the
- * **same** [snapSyncApp] the iOS shell calls (spec `module-architecture`, "One shared composition"),
+ * **same** [snapSyncApp] the iOS shell calls (`docs/architecture.md`, "One shared composition"),
  * so [core] IS the production `AppCore` — features, flows, and the user-tap command bundle — over
  * fake ports; and the upload cycle is the same [uploadCore] both device tiers call. A wiring
  * difference between the harness and production is impossible rather than undetected.
@@ -139,14 +139,14 @@ class World(
     val scope: CoroutineScope,
     val ownDeviceId: String = "00000000-0000-4000-9000-0000000000a1",
     /**
-     * The backend this world composes over (capability `harness-world-model`, "The world's backend is one seam
+     * The backend this world composes over (`docs/testing.md`, "The world's backend is one seam
      * with two implementations") — the mini-edge unless a test asks for the real `api/` (`denoBackend()`, JVM
      * only). Everything the world does to its backend goes through it.
      */
     val backend: WorldBackend = MiniEdgeBackend(),
     /**
      * The device-facing base every seam composes from — carrying **exactly one** version prefix, as a
-     * real build's baked base does (capability `backend-deployment`). The mini-edge serves both
+     * real build's baked base does (`docs/deployment.md`). The mini-edge serves both
      * versions, so pointing this at the other prefix is how a test exercises the other one.
      */
     val host: String = backend.base,
@@ -159,7 +159,7 @@ class World(
      */
     val ledgerBackend: LedgerStore = inMemoryLedgerStore(),
     /**
-     * Whether this world can ATTEST (capability `device-attestation`). **Off by default**, which is the
+     * Whether this world can ATTEST (capability `privacy-security`). **Off by default**, which is the
      * world as it has always been: attestation is composed because `AppPorts` requires the seams, and
      * nothing exercises it.
      *
@@ -174,7 +174,7 @@ class World(
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
 
     /**
-     * The mini-edge's in-memory store — **mini-edge-only** (capability `harness-world-model`, "Neutral inspection
+     * The mini-edge's in-memory store — **mini-edge-only** (`docs/testing.md`, "Neutral inspection
      * and minted event ids beside the mini-edge-only surface"). On a world over any other backend reading it
      * fails with a stated error rather than answering an empty store, which would let a test assert against
      * state the backend never held. Backend-neutral code reads through [objectsOf], [unionOf], [isRegistered]
@@ -189,11 +189,11 @@ class World(
 
     /**
      * What the composed graph logged — an **inspection list**, the same family of operator rigging as the
-     * failure levers (capability `harness-world-model`).
+     * failure levers (`docs/testing.md`).
      *
      * It exists because a **severity** is part of some contracts rather than an implementation detail. The
      * read-only upload-ledger check reports its fault at `Error` precisely so it reaches crash reporting
-     * as an event (capability `crash-reporting`), and the two states it must stay *silent* about are only
+     * as an event (capability `privacy-security`), and the two states it must stay *silent* about are only
      * assertable by watching what it wrote. Asserting on the outcome instead is not available: the check
      * writes nothing, by contract.
      *
@@ -246,7 +246,7 @@ class World(
     // Wired to the store exactly as the iOS shell wires the real importer: the marker is written from
     // inside the "change block", before the created asset is observable. Without this the world cannot
     // reach an unconfirmed row — a marker written, the confirmation never arriving — which is the state
-    // the duplicate-import defect lives in (capability `download-store`).
+    // the duplicate-import defect lives in (capability `receiving-photos`).
     val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(
         gallery = gallery,
         recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
@@ -256,24 +256,24 @@ class World(
     /**
      * Presence over the world's own gallery: an asset the importer created is visible here for exactly
      * the same reason it is visible to upload discovery, so a test cannot assert against an answer the
-     * rest of the world disagrees with (capability `harness-world-model`).
+     * rest of the world disagrees with (`docs/testing.md`).
      */
     val assetPresence: WorldAssetPresence = WorldAssetPresence(gallery)
 
     /**
-     * The world's "disk" for staged download bytes (capability `download-store`). Real enough to assert
+     * The world's "disk" for staged download bytes (capability `receiving-photos`). Real enough to assert
      * the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and vanish only
      * once the row is settled — rather than merely that a release call happened.
      */
     /** The operator's own cell: the rigging owns what it wants to observe and passes it in, rather
-     *  than reading it back off the honest double (capability `architecture-guards`). */
+     *  than reading it back off the honest double (`docs/architecture.md`). */
     val stagedFiles: MutableSet<String> = mutableSetOf()
     val stagedBytes: StagedBytes = inMemoryStagedBytes(stagedFiles)
 
     /**
      * Model the photo library **ingesting** a staged resource: it takes a resource's file when it
      * ingests it, which it does only as part of creating an asset, and it does so even when the process
-     * that submitted the change then dies (capability `photo-download`).
+     * that submitted the change then dies (capability `receiving-photos`).
      *
      * Removing the path from [stagedFiles] IS the entire model — that set is the disk — and this exists
      * to NAME the operation rather than to add a mechanism. Without a name a test spells it as a set
@@ -283,7 +283,7 @@ class World(
     fun consumeStagedBytes(vararg paths: String) {
         stagedFiles.removeAll(paths.toSet())
     }
-    /** Push-registration writes that LANDED on the mini-edge (capability `push-registration`), counted at the
+    /** Push-registration writes that LANDED on the mini-edge (capability `receiving-photos`), counted at the
      *  port: the composed registration — its launch/rotation collector and the join's re-PUT — writes through
      *  it, so a test can assert the join path fired it. Counted after the write, so a count is a landed write. */
     var registerPushCount: Int = 0
@@ -293,7 +293,7 @@ class World(
     val heartbeatsScheduled: Int get() = operatorEngine.heartbeat.scheduled
 
     /**
-     * The operating system's table of outstanding background-time holds (spec `module-architecture`, "Background
+     * The operating system's table of outstanding background-time holds (`docs/architecture.md`, "Background
      * time is an outbound port named for the need") — the operator's cell, read to see which wakes still hold time
      * and expired through [expireBackgroundTime]. Durable across [relaunch] only in the sense a real table is not:
      * a relaunch is a new process, so the operator clears nothing and the dead process's holds simply never end.
@@ -316,13 +316,13 @@ class World(
     /** Whether the composition started reporting — the `DiagnosticsReporter.start()` observation. */
     val diagnosticsStarted: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
-    /** Every diagnostic dump the composition transmitted, in order (capability `diagnostic-logging`). */
+    /** Every diagnostic dump the composition transmitted, in order (capability `privacy-security`). */
     val diagnosticsSent: MutableStateFlow<List<DiagnosticDump>> = MutableStateFlow(emptyList())
 
     /** The device logs a dump reads back. Seed one to give the world a log to carry. */
     val deviceLogs: MutableStateFlow<Map<DeviceLogSource.Process, String>> = MutableStateFlow(emptyMap())
 
-    // Selection snapshots under a partial grant (capability `limited-photo-access`): the honest fake
+    // Selection snapshots under a partial grant (capability `photo-access`): the honest fake
     // over an operator-held cell. Emitting IS the operator lever (see [changeSelection]); replay 0 —
     // a snapshot is a change notification, not a state the composition may re-collect.
     private val selectionChangesCell = MutableSharedFlow<List<Resource>>()
@@ -352,7 +352,7 @@ class World(
     )
 
     /**
-     * The marketing version this world's requests DECLARE (capability `min-app-version`) — an operator
+     * The marketing version this world's requests DECLARE (capability `app-update-required`) — an operator
      * lever, so a test can be a build the backend refuses. High by default, so every test that is not
      * about the gate is served.
      */
@@ -410,7 +410,7 @@ class World(
     /**
      * Arm the next foreign import to create its asset and write its marker, and only THEN report failure
      * — the real adapter's "commit reported failure after the change block ran" path, where the mirror
-     * clears the marker again (capability `download-store`).
+     * clears the marker again (capability `receiving-photos`).
      */
     fun failNextImportAfterCreating() {
         importer.failNextImportAfterCreating = true
@@ -450,7 +450,7 @@ class World(
     }
 
     /**
-     * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
+     * Force the membership to read as **unreadable** (capability `background-upload`) — the state a real
      * device is in before its first unlock after a boot, where the Keychain cannot be read at all.
      *
      * It is a lever rather than a property of [configCell] because a nullable cell can express only
@@ -481,7 +481,7 @@ class World(
      * pending-join gate instead, so create shows the real join surface, exactly like the iOS app.
      *
      * It used to call the operator's [provision] lever, which writes the config cell directly: a create in the
-     * world then skipped the Provision flow a device runs (capability `harness-world-model`).
+     * world then skipped the Provision flow a device runs (`docs/testing.md`).
      */
     var onEventMinted: suspend (eventId: String) -> Unit = { eventId -> joinMinted(eventId) }
 
@@ -502,7 +502,7 @@ class World(
      */
     val requester: PhotoAccessRequester = permission.requester
 
-    // Attestation (capability `device-attestation`), OFF unless [attests] says otherwise — see that
+    // Attestation (capability `privacy-security`), OFF unless [attests] says otherwise — see that
     // parameter for why the default is off and what turning it on is for.
     //
     // TWO BACKEND BEHAVIOURS THE WORLD STILL DOES NOT MODEL, stated rather than left to be discovered:
@@ -527,7 +527,7 @@ class World(
      * depends on the host clock and every run is deterministic.
      *
      * Advance it to reach a time-gated behaviour. The one that needs it is the membership self-leave
-     * (capability `leave-event`), whose second, OFFLINE witness is the device's own persisted deadline:
+     * (capability `manage-membership`), whose second, OFFLINE witness is the device's own persisted deadline:
      * with the clock at the epoch that witness can never be satisfied, so a `404` is always disbelieved —
      * which is the safe default a test must be able to step past deliberately.
      */
@@ -550,7 +550,7 @@ class World(
 
     /**
      * The core AND the status host over it, from the shared host composition the iOS shell calls (spec
-     * `module-architecture`, "One shared composition"). The host is assembled on first touch of [statusHost], which
+     * `docs/architecture.md`, "One shared composition"). The host is assembled on first touch of [statusHost], which
      * installs the permission-grant subscriptions, exactly as on the phone; a world whose [statusHost] is never
      * touched installs none (the desktop harness, whose operator plays the OS, and every background cold start).
      * The push registration is installed as this is composed, on every launch, as on the phone.
@@ -576,7 +576,7 @@ class World(
         ),
         // A device unlocked since boot: the background entry points record this, and nothing decides on it.
         protectedStorage = inMemoryProtectedStorage(),
-        // The device logs a dump reads back (capability `diagnostic-logging`) — empty until an
+        // The device logs a dump reads back (capability `privacy-security`) — empty until an
         // operator seeds them, which is honest: a world has no device writing log files.
         deviceLogSource = inMemoryDeviceLogSource(deviceLogs),
         configSource = configSource,
@@ -596,7 +596,7 @@ class World(
         // cycle by hand, exactly like every other world trigger.
         candidateSource = enumerator,
         // The SAME ledger the composed cycle writes, and the mini-edge's per-device listing the join-time
-        // load seeds it from (capability `upload-state-reconciliation`).
+        // load seeds it from (capability `photo-sharing`).
         uploadRecord = UploadRecordPorts(
             ledger = ledgerBackend,
             files = deviceFiles,
@@ -631,12 +631,12 @@ class World(
         appDrivenUpload = { operatorEngine },
         albumManager = albumManager,
         albumMapStore = albumMapStore,
-        // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
+        // Denylisted-album membership (capability `photo-sharing`) — the REAL policy
         // constant over the world's forgeable album membership, exactly as the shell wires it.
         leaveNotifier = leaveNotifier,
         // The push registration writes to the mini-edge, counted (see [registerPushCount]). A join in the
         // world runs the REAL Provision flow now — including this re-registration — rather than a
-        // world-local provision body (capability `harness-world-model`).
+        // world-local provision body (`docs/testing.md`).
         push = PushPorts(
             publisher = HttpPushTokenPublisher(client, host, deviceId = { ownDeviceId }).let { inner ->
                 PushTokenPublisher { token -> inner.publish(token).also { registerPushCount++ } }
@@ -651,7 +651,7 @@ class World(
 
 
     /**
-     * **Process death and a cold launch** (capability `harness-world-model`, "The world relaunches its app over
+     * **Process death and a cold launch** (`docs/testing.md`, "The world relaunches its app over
      * its durable state"): end the running app — every collector and feature launch it owns — and compose a new
      * one, through the same shared host composition, over the same ports.
      *
@@ -692,7 +692,7 @@ class World(
     val ledgerCounts: ReadingLedgerCountsSource get() = core.ledgerCounts
     val creationStatus: MutableCreationStatusSource get() = core.creationStatus
 
-    /** The rename status the real `RenameEvent` drives (capability `event-rename`). */
+    /** The rename status the real `RenameEvent` drives (capability `manage-membership`). */
     val renameStatus: MutableRenameStatusSource get() = core.renameStatus
     val downloadStatusSource: StoreDownloadStatusSource get() = core.downloadStatusSource
     val syncStatusSource: SyncStatusSource get() = core.syncStatusSource
@@ -703,7 +703,7 @@ class World(
     suspend fun refreshStatus() = core.refreshStatusSources()
 
     /**
-     * Operator lever (capability `limited-photo-access`): the user changed the photo selection under a
+     * Operator lever (capability `photo-access`): the user changed the photo selection under a
      * partial grant to exactly [assetIds]. Mirrors the iOS adapter faithfully: the snapshot is the
      * selected assets' resources mapped through the SAME enumerator seam
      * (`PhotoLibrary.resources(ids, "")` — the empty cutoff admits every asset; the policy filters
@@ -717,7 +717,7 @@ class World(
         // would otherwise silently do nothing.
         selectionChangesCell.subscriptionCount.first { it > 0 }
         // The sanctioned read the real snapshot source makes: eager, WITH resources (capability
-        // `limited-photo-access` — deferring it would need a re-fetch by identifier later, an autonomous
+        // `photo-access` — deferring it would need a re-fetch by identifier later, an autonomous
         // library fetch the read discipline forbids). Unscoped here because the selection IS the scope.
         val wanted = assetIds.toSet()
         selectionChangesCell.emit(
@@ -731,7 +731,7 @@ class World(
      * Add one of the OWN device's photos to the gallery (default: a single primary JPEG).
      *
      * The origin facts default to an ordinary 12 MP camera photo, so an asset added without them is
-     * **admitted** by the selection policy (capability `photo-selection-policy`) — see [addScreenshot] and
+     * **admitted** by the selection policy (capability `photo-sharing`) — see [addScreenshot] and
      * friends to forge one that is not.
      */
     suspend fun addOwnAsset(
@@ -751,7 +751,7 @@ class World(
                 creationDate = creationDate,
                 rawResources = resources,
                 // NEUTRAL facts — the world forges what the platform would have interpreted, never a
-                // PhotoKit bitmask (capability `gallery-status`).
+                // PhotoKit bitmask (capability `sync-status`).
                 facts = AssetFacts(
                     assetId = assetId,
                     creationDate = CaptureDate(creationDate),
@@ -765,7 +765,7 @@ class World(
         )
     }
 
-    // ---- selection-policy levers (capability `photo-selection-policy`) ---------------------------
+    // ---- selection-policy levers (capability `photo-sharing`) ---------------------------
     // Each forges one category the policy excludes, so every rule is exercisable in the harness and the
     // integration tests without PhotoKit — and so an operator can *see* that a screenshot never uploads.
 
@@ -795,7 +795,7 @@ class World(
     /**
      * A GIF as a messenger saves one — 480×270 = 0.13 MP. Excluded by the **resolution floor**, not by a
      * rule reading its MIME: there is no animated-image rule any more (capability
-     * `photo-selection-policy`). Kept as a lever because "a received GIF does not upload" is still the
+     * `photo-sharing`). Kept as a lever because "a received GIF does not upload" is still the
      * operator-visible behaviour worth forging, even though the rule that used to produce it is gone.
      */
     suspend fun addGif(assetId: String, creationDate: String = DEFAULT_DATE) =
@@ -841,7 +841,7 @@ class World(
     }
 
     /**
-     * **An install upgraded from a build that predates per-asset byte release** (capability `download-store`): a
+     * **An install upgraded from a build that predates per-asset byte release** (capability `receiving-photos`): a
      * confirmed import of [ref] whose resource rows, with their staged paths, survive, and whose files are still on
      * the staging "disk". Returns the staged paths.
      *
@@ -897,7 +897,7 @@ class World(
 
     // ---- backend-neutral inspection, levers and minted event ids -------------------------------
     //
-    // Capability `harness-world-model`, "Neutral inspection and minted event ids beside the mini-edge-only
+    // Capability `docs/testing.md`, "Neutral inspection and minted event ids beside the mini-edge-only
     // surface". The reads and levers are [neutral]'s; the minted-id helpers are here, because a provision is
     // the world's own membership as much as the backend's.
 
@@ -947,8 +947,8 @@ class World(
     /**
      * Join/provision an event: register its marker, load the upload ledger from this device's stored-file
      * listing as a join does (a first join or a switch — never a re-provision of the joined event; capability
-     * `upload-state-reconciliation`), and make its config present (the config gate lifts).
-     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-selection-policy`),
+     * `photo-sharing`), and make its config present (the config gate lifts).
+     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-sharing`),
      * always present. It defaults to [DEFAULT_CUTOFF], which precedes [DEFAULT_DATE] so an asset added with
      * default arguments is in scope.
      *
@@ -1020,7 +1020,7 @@ class World(
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
      * the real backend leave (the `:adapter:generic:app` `HttpLeaveNotifier` over the mini-edge — the same
      * `DELETE` the app fires, driving the store's RENAME-ONLY departed-mark), then clear the upload ledger
-     * (the ledger is the current membership's share set — capability `sync-ledger`) and the config cell.
+     * (the ledger is the current membership's share set — capability `photo-sharing`) and the config cell.
      * Deliberately an operator edge, not [UserCommands.leave]: the composed leave's backend notify is
      * fire-and-forget by design, and the operator's leave must be COMPLETE on return so world assertions
      * never race the DELETE (drive `core.userCommands.leave` to exercise the production ordering
@@ -1030,7 +1030,7 @@ class World(
      * `COMPLETED` through the join-time load, not through a retained ledger. Clearing
      * [configCell] is reactive, so the listing-backed status projection leaves the joined layer with
      * no rebuild. Backend outcomes (the device departed; the event and its bytes RETAINED until the
-     * nightly sweep reclaims them, capability `scheduled-cleanup`) are assertable on [store].
+     * nightly sweep reclaims them, capability `event-lifetime`) are assertable on [store].
      */
     suspend fun leave() {
         core.downloadController.onLeaveOrSwitch()
@@ -1051,7 +1051,7 @@ class World(
     // ---- the upload cycle (the extension tier's shared assembly) --------------------------------
 
     /**
-     * What the joined membership contributes (capability `photo-selection-policy`) — its participation
+     * What the joined membership contributes (capability `photo-sharing`) — its participation
      * direction AND its cutoff, derived from the config cell through the **same** `Contribution.of` the
      * composition roots use. Both consumers of the policy take this: the upload cycle (which declines with
      * `SKIPPED` for `None`) and the own-device total `N` (which reports 0 without walking).
@@ -1076,7 +1076,7 @@ class World(
 
     /**
      * The real cycle — assembled by the SAME shared composition the device tiers call ([uploadCore],
-     * spec `module-architecture` "One shared composition"), over the world's fakes. Long-lived, as on
+     * `docs/architecture.md` "One shared composition"), over the world's fakes. Long-lived, as on
      * both tiers: the shared entry gate re-reads the membership on every `run()`, so a provision,
      * leave, or switch takes effect on the next cycle. The world carries no gate, reconciler, or
      * manifest-producer wiring of its own — a wiring difference from production is impossible.
@@ -1111,7 +1111,7 @@ class World(
                 manifestPublisher = manifestPublisher,
                 suppression = downloadStore,
                 // The app tier's cycle: the same port and the same declared answer as the app graph's status
-                // total (capability `photo-selection-policy`) — admit on doubt.
+                // total (capability `photo-sharing`) — admit on doubt.
                 albumManager = albumManager,
                 albumLookupFailure = AlbumLookupFailure.AdmitOnDoubt,
                 // Shared with the app graph, as the world's single-process stand-in for the App-Group map.
@@ -1140,20 +1140,20 @@ class World(
 
     /**
      * Deliver a finish for every in-flight transfer, through the **real** jobs (capability
-     * `harness-world-model`). The operator plays the network: [outcome] is what the transfer turned out to
+     * `docs/testing.md`). The operator plays the network: [outcome] is what the transfer turned out to
      * be, defaulting to an ordinary healthy one.
      *
      * A rejected outcome stages nothing and leaves the resource PENDING for retry — that is the world's
      * existing no-terminal-failure posture, not a new state. This is the only way to reproduce the shape of
      * the bug end-to-end: a `502` arrives here as a *successful* transfer of an error body, and staging it
-     * would make it the store's truth forever (capability `photo-download`).
+     * would make it the store's truth forever (capability `receiving-photos`).
      */
     suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownloadTransport.HEALTHY) {
         val transport = downloadTransport ?: return
         transport.inFlight().forEach { transport.finish(it.description, outcome) }
         // Await the stagings the jobs launched, then the import the tail runs for them, so this action is complete
         // on return — the operator drives the world synchronously, and a racy stage would make every download
-        // assertion flaky. The import is the tail's first unit (capability `photo-download`), requested as a staged
+        // assertion flaky. The import is the tail's first unit (capability `receiving-photos`), requested as a staged
         // download does; it joins the tail those stagings already requested.
         core.downloadJobs.awaitOutstandingStagings()
         core.tail.runner.request(TailTrigger.DOWNLOAD_STAGED)
@@ -1166,7 +1166,7 @@ class World(
         const val WORLD_APP_STORE_URL: String = "https://apps.apple.com/app/id0000000000"
 
         /**
-         * The world's default capture-date cutoff (capability `photo-selection-policy`). Strictly precedes
+         * The world's default capture-date cutoff (capability `photo-sharing`). Strictly precedes
          * [DEFAULT_DATE], so an asset added with default arguments is in scope and the harness behaves as
          * it did when a `null` cutoff meant whole-library. A cutoff is never absent.
          */
@@ -1182,7 +1182,7 @@ class World(
 
         /**
          * The default event **name** of a provisioned membership. It exists because a membership without
-         * a name is not a representable state (capability `event-link`): `provision` used to take a
+         * a name is not a representable state (capability `join-event`): `provision` used to take a
          * nullable name and coerce `null` to `""`, which forged a config the real stack can no longer
          * hold. The world may model a *backend* event whose details response lacks a name — that is what
          * `BackendStore.registerEvent`'s nullable name is for — but never a joined membership without one.

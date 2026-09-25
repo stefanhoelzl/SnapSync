@@ -4,7 +4,7 @@ import app.snapsync.ports.SecureStore
 
 /**
  * The device target's binding: the addressed shared-Keychain item, exactly as before this seam
- * existed (capability `device-identity`).
+ * existed (capability `photo-sharing`).
  *
  * Every shipped binary — TestFlight, App Store, and every sideloaded dev build — compiles this
  * actual and only this one. The `iosSimulatorArm64` file store is not merely unused here; it is

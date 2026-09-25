@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * **Coverage is derived, never remembered** (spec `complexity-budgets`). Every subproject in the
+ * **Coverage is derived, never remembered** (`docs/architecture.md`). Every subproject in the
  * build resolves to exactly one complexity tier, so a module added to `settings.gradle.kts` is
  * measured without anyone remembering to add it — or fails HERE, by name, until a tier is chosen.
  *
@@ -38,7 +38,7 @@ class DetektTierCoverageTest {
 
     /**
      * Not a tier's config. `_base.yml` is the shared baseline every tier layers beneath its own file;
-     * `app-shell.yml` belongs to the shell PROOF (capability `architecture-guards`), which is a
+     * `app-shell.yml` belongs to the shell PROOF (`docs/architecture.md`), which is a
      * different kind of gate and deliberately absent from the tier map.
      */
     private val nonTierConfigs = setOf("_base", "app-shell")
@@ -86,7 +86,7 @@ class DetektTierCoverageTest {
             unmapped.isEmpty(),
             "these modules are in the build but in NO complexity tier, so nothing measures them: " +
                 "${unmapped.sorted()}. Add each to `detektTierOf` in build.gradle.kts " +
-                "(spec `complexity-budgets`, \"Coverage is derived, never remembered\").",
+                "(`docs/architecture.md`, \"Coverage is derived, never remembered\").",
         )
 
         val stale = pairs.map { it.first }.toSet() - modules.toSet()
@@ -116,7 +116,7 @@ class DetektTierCoverageTest {
      * The assertion runs ONE WAY ONLY: every config file must belong to a tier. The reverse — every
      * tier must have a config — was true while a tier's numbers were mandatory, and is now false by
      * design: a scope that deviates from the baseline on nothing has nothing to write down, and its
-     * missing file is the record of that (capability `complexity-budgets`).
+     * missing file is the record of that (`docs/architecture.md`).
      *
      * What remains worth catching is a file that governs nothing. It measures no scope while sitting
      * in the directory looking like it does, so a reader counting files to see which scopes carry debt

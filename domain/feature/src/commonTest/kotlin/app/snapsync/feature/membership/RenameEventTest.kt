@@ -160,7 +160,7 @@ class RenameEventTest {
 
     @Test
     fun `NO failure path is destructive — the membership survives every outcome`() = runTest {
-        // The single-witness rule (capability `leave-event`): a 404 reaches this use-case as Transient,
+        // The single-witness rule (capability `manage-membership`): a 404 reaches this use-case as Transient,
         // and no outcome here may clear the config. There is exactly one door to the teardown, and it is
         // MembershipRefresh's two-witness path — not this one.
         for (outcome in listOf(RenameOutcome.InvalidName, RenameOutcome.Transient)) {

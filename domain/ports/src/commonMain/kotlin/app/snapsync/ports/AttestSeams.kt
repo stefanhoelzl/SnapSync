@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * The App Attest key seam (capability `device-attestation`) — the platform half of attestation, kept
+ * The App Attest key seam (capability `privacy-security`) — the platform half of attestation, kept
  * behind an interface so the whole policy in [DeviceAttestation] is testable on the JVM and the simulator.
  *
  * **[isSupported] is not ceremony.** It is `false` inside the upload extension and `true` in the app —
@@ -59,7 +59,7 @@ interface AttestClient {
 
 /**
  * What an `/attest/token` or `/attest/renew` call came to, classified by the adapter that owns the route (capability
- * `device-attestation`, "Only a rejected credential is invalidated, and only that one"; decision record
+ * `privacy-security`, "Only a rejected credential is invalidated, and only that one"; decision record
  * `harden-seam-bug-classes`, D10).
  *
  * It used to be `String?`, and every `null` got one answer — attest afresh — whatever the cause. Each case below
@@ -128,7 +128,7 @@ interface AttestStore {
     fun clearToken()
 
     /**
-     * Drop the stored token only if it is still [expected] — compare-and-clear (capability `device-attestation`,
+     * Drop the stored token only if it is still [expected] — compare-and-clear (capability `privacy-security`,
      * "Only a rejected credential is invalidated, and only that one"). Returns whether it cleared.
      *
      * A rejection names the token the refused request CARRIED. Several requests carrying T1 can be refused after a

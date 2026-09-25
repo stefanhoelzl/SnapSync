@@ -1,6 +1,6 @@
 # Tier `shell` — the iOS app shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`)
 #
-# A CEILING on complexity for this scope (capability `complexity-budgets`). Every number below is a
+# A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
 # RAISING one requires a stated forcing proof in that change's description, naming what the platform,
 # the language, or the shape of the problem makes unavoidable. There is no check that enforces this:
@@ -33,7 +33,7 @@
 # stable, or at the first parse failure on newer syntax — whichever comes first.
 #
 # WHAT THIS TIER IS FOR. The shells' DECISIONS are not this file's business — `detektAppShell` holds
-# them at cyclomatic 2 and pins every suppression (capability `architecture-guards`, "The shell
+# them at cyclomatic 2 and pins every suppression (`docs/architecture.md`, "The shell
 # gates"). `CyclomaticComplexMethod` is therefore absent here rather than set to some other number:
 # one measure, one owner. This tier covers what that proof does not — length, parameter counts,
 # naming — plus the OTHER decision measures, which are held tight because they restate the same

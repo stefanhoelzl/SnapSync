@@ -19,13 +19,13 @@ enum class PhotoAccessState {
 class PhotoAccess(val status: PhotoAccessStatusSource, val requester: PhotoAccessRequester)
 
 /**
- * What every photo-access adapter promises (capability `port-contracts` — this list IS the specification of
+ * What every photo-access adapter promises (`docs/architecture.md` — this list IS the specification of
  * the ports' obligations).
  *
  * Only [PhotoAccessRequester.request] is contracted, and only once the grant is determined. Asked while
  * undetermined, it raises a system prompt that only a person can answer. `openSettings` and `choosePhotos`
  * hand the user to another surface, and what the user chooses there is read back only afterwards, through the
- * status. None of those has an outcome a run can reach (capability `port-contracts`, "An authorization the
+ * status. None of those has an outcome a run can reach (`docs/architecture.md`, "An authorization the
  * process cannot give itself is a precondition of the run").
  */
 object PhotoAccessContract : Contract<PhotoAccessState, PhotoAccess>("PhotoAccess") {

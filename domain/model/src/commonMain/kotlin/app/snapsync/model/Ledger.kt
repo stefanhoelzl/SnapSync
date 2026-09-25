@@ -9,13 +9,13 @@ package app.snapsync.model
  *
  * The row keeps **no attempt count, no event provenance and no absence mark** — `10.sqm` dropped all three,
  * because nothing read them (decision record `changes/shrink-the-ledger-row`). The key is the bare,
- * event-independent filename, so a `COMPLETED` row stays valid across an event switch (spec `sync-ledger`,
+ * event-independent filename, so a `COMPLETED` row stays valid across an event switch (spec `photo-sharing`,
  * "Event-independent key").
  *
  * The last four fields carry the **device manifest's presentation detail** (capability
- * `sync-ledger`): the asset's [creationDate] and, per resource, its [role], [contentType] and human
+ * `photo-sharing`): the asset's [creationDate] and, per resource, its [role], [contentType] and human
  * [originalFilename]. They make this table the single durable, deletion-aware record of the device's
- * in-event resources, so the manifest is a projection of it (capability `device-manifest`) rather
+ * in-event resources, so the manifest is a projection of it (capability `photo-sharing`) rather
  * than a parallel accumulator maintaining the same asset set with different columns.
  *
  * They default to `""` — the "not yet enriched" sentinel, and a row can rest there two ways: it
@@ -36,7 +36,7 @@ class LedgerEntry(
      * ledger kept it.
      *
      * It exists so a returned platform upload job can be resolved back to its row from **what the
-     * external system persisted** (`module-architecture`, "State and authority"). The OS-driven tier
+     * external system persisted** (`docs/architecture.md`, "State and authority"). The OS-driven tier
      * hands PhotoKit a destination and the process dies; when the job comes back its `resource` is nil
      * and the destination is all that is left. Under the v1 byte route the key happened to be that
      * destination's last path segment — an accident of formatting that a route naming identity in its
@@ -80,7 +80,7 @@ class LedgerEntry(
 /**
  * Whether replacing the row [before] with [after] (either `null` for an insert or a delete) changes what the
  * device manifest projects from it — so whether the ledger's **manifest version** advances (capability
- * `sync-ledger`, "The manifest version orders the device's manifest snapshots").
+ * `photo-sharing`, "The manifest version orders the device's manifest snapshots").
  *
  * The SQLite store decides this in its triggers; this is the same rule for a store that has none (the
  * in-memory stores), stated once so no fake grows its own reading of it. `state` and `destinationPath` are
@@ -99,7 +99,7 @@ fun changesManifestProjection(before: LedgerEntry?, after: LedgerEntry?): Boolea
 
 /**
  * Record one resource as a ledger row, carrying the **device manifest's** presentation detail
- * (capability `sync-ledger`) off the resource that caused the transition.
+ * (capability `photo-sharing`) off the resource that caused the transition.
  *
  * The one place that mapping is made, so the manifest cannot disagree with the ledger about what a
  * resource is called or when it was taken. [role] is derived from the upload key rather than stored
@@ -131,7 +131,7 @@ enum class LedgerState {
      * can be the cycle's source of work at all: without it, the sole record of "this needs uploading"
      * lives in the walk's return value and dies with the cycle, so a cycle that could not enqueue
      * everything it saw had to re-walk the whole library next time to find the remainder. It is also what
-     * lets the walk skip an asset it has already recorded (capability `sync-ledger`, "A walk re-reads only
+     * lets the walk skip an asset it has already recorded (capability `photo-sharing`, "A walk re-reads only
      * the assets the ledger does not fully know"): the work lives in this row, not in a re-read.
      *
      * It is recorded **before** the first `createJob` of a cycle. It does not mean a job exists — that is
@@ -142,7 +142,7 @@ enum class LedgerState {
      * Not a done state ([isDone]) and **does** need a job ([needsJob]), so it counts toward the backlog
      * everywhere. It is nonetheless DECLARED in the device manifest: that document states what this device
      * intends to provide, and a resource the walk found and the policy admitted is exactly that
-     * (capability `device-manifest`). The backend tells "not yet" from "never" by comparing the declared
+     * (capability `photo-sharing`). The backend tells "not yet" from "never" by comparing the declared
      * roles against the resources it has recorded — which is why declaring before the bytes land is the
      * point rather than a leak.
      *
@@ -171,7 +171,7 @@ enum class LedgerState {
 
 /**
  * How an upload **terminated**, as the platform reported it, and the state the ledger's guarded terminal write
- * records for each (capability `sync-ledger`): a success is [LedgerState.COMPLETED]; a failure returns the row
+ * records for each (capability `photo-sharing`): a success is [LedgerState.COMPLETED]; a failure returns the row
  * to [LedgerState.DISCOVERED], so the ledger's work read offers it again.
  *
  * A type rather than a [LedgerState] because that write is the one record operation reachable outside the

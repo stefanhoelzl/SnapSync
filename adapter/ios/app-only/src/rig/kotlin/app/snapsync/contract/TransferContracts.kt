@@ -56,7 +56,7 @@ import platform.Photos.PHPhotoLibrary
 import platform.posix.memcpy
 
 /**
- * The simulator app's live bindings of the two app-process transfer contracts (capability `port-contracts`, "An
+ * The simulator app's live bindings of the two app-process transfer contracts (`docs/architecture.md`, "An
  * adapter bound per compilation target is real for the clauses it runs there").
  *
  * The adapters run exactly as production builds them. What differs on this target is the ONE lookup

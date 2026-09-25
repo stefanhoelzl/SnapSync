@@ -25,11 +25,11 @@ enum class EventDirectoryState {
 }
 
 /**
- * What the event directory promises (capability `port-contracts` — this list IS the specification of the
+ * What the event directory promises (`docs/architecture.md` — this list IS the specification of the
  * port's obligations): the details the join gate and the status screen read, and how the edge's gate treats
  * this read. The version gate precedes every route, so an obsolete build is refused here, at the first call a
  * joining device makes. The CREDENTIAL gate does not apply: the event read is public by design (capability
- * `web-event-download` — the event id is the read capability), so a dead credential neither blocks the join
+ * `event-site` — the event id is the read capability), so a dead credential neither blocks the join
  * gate's fetch nor starts recovery from it. The rejected-credential clause is on a gated route: `EventJoin`.
  */
 object EventDirectoryContract : Contract<EventDirectoryState, EdgeSubject<EventDirectory>>("EventDirectory") {

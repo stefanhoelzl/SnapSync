@@ -7,7 +7,7 @@ import app.snapsync.model.selectionPolicyFor
 
 /**
  * What the photo-library contracts share: the fixture a binding seeds, and where each clause seeds it
- * (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig").
+ * (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig").
  *
  * A real photo library is **shared by every clause of every contract** in a run, and a clause cannot empty it:
  * deleting an asset raises a system confirmation someone has to tap. So a clause owns an address instead,

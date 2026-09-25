@@ -229,7 +229,7 @@ class LedgerBackedSyncStatusSourceTest {
 
     @Test
     fun `a limited grant is active`() = runTest {
-        // Usable access (capability `limited-photo-access`): a partial grant is syncing, not blocked.
+        // Usable access (capability `photo-access`): a partial grant is syncing, not blocked.
         ledgerCounts.set(done = setOf("a1"), pending = ids("a", 4) - "a1")
         galleryCell.value = ids("a", 4)
         val source = source(backgroundScope)

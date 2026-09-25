@@ -15,7 +15,7 @@ import app.snapsync.testsupport.writeTextFile
 import kotlin.test.Test
 
 /**
- * The device-log tail reader, live (capability `port-contracts`), over two log paths in a fresh directory —
+ * The device-log tail reader, live (`docs/architecture.md`), over two log paths in a fresh directory —
  * on a device one is `Documents/debug.log` and the other the App-Group `ext-debug.log`; the reader is given
  * both, and seeks the same way over either. The rolled state writes only each log's `.1` sibling, exactly
  * as `FileLogWriter` names it.

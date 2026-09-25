@@ -18,7 +18,7 @@ enum class AttestKeyState {
 }
 
 /**
- * What App Attest's device half promises (capability `port-contracts` — this list IS the port's specification).
+ * What App Attest's device half promises (`docs/architecture.md` — this list IS the port's specification).
  *
  * The point of the refusal clauses is that a refusal is an **exception**, never a hang and never an invented
  * answer: `DeviceAttestation` reduces an exception to "no fresh token", and it cannot reduce a coroutine that

@@ -1,4 +1,4 @@
-// The backend's RELATIONAL STORE (capability `database`): the schema, the one narrow port every caller
+// The backend's RELATIONAL STORE (`docs/architecture.md`): the schema, the one narrow port every caller
 // speaks, and the statements that express this backend's invariants.
 //
 // WHY A DATABASE AT ALL. Until this change every relational fact was encoded in the shape of an S3 key
@@ -11,7 +11,7 @@
 //
 // WHY `resources` IS NOT UNDER THE EVENT CASCADE. This is FORCED, not chosen. The byte upload route
 // addresses a resource row from the URL path alone — `/api/v1/files/devices/<deviceId>/<filename>`,
-// which carries NO event (capability `api-endpoints`). A resource row bearing `event_id` could not be
+// which carries NO event (`docs/architecture.md`). A resource row bearing `event_id` could not be
 // written by the one route that knows a byte landed. The upload URL is compile-time on the client
 // (PhotoKit forces it), so this outlives any schema revision: a proposal to move `resources` under the
 // event chain must first explain how the byte route learns the event. The same separation is what lets
@@ -19,7 +19,7 @@
 //
 // WHY THE UNION CAN JOIN RESOURCES BY (device, asset) rather than through a per-event resource list: an
 // asset's ORIGINAL resource set is a property of the ASSET, not of the membership (capability
-// `device-manifest` — one `primary`, at most one `live`, no edit artifacts). Two events' manifests for
+// `photo-sharing` — one `primary`, at most one `live`, no edit artifacts). Two events' manifests for
 // the same asset therefore name the same resources, so a device-global resource table reproduces each
 // event's projection exactly, with no sixth join table.
 //
@@ -114,7 +114,7 @@ export async function insertEvent(db: Db, e: EventRow): Promise<void> {
 
 /**
  * Read one event, or `null` when it does not exist. An event EXISTS exactly when this row does — the
- * whole existence gate, and the reason a `404` is a SEALED absence that `leave-event`'s two-witness
+ * whole existence gate, and the reason a `404` is a SEALED absence that `manage-membership`'s two-witness
  * teardown can act on. A transport failure THROWS, so a transient fault is never mistaken for absence.
  */
 export async function readEvent(db: Db, eventId: string): Promise<EventRow | null> {
@@ -124,7 +124,7 @@ export async function readEvent(db: Db, eventId: string): Promise<EventRow | nul
 
 /**
  * Rename. The ONLY write to an existing event, and it writes `name` ALONE — every other column is
- * write-once (capability `event-limits`). Under an object store violating that meant rewriting a whole
+ * write-once (capability `event-lifetime`). Under an object store violating that meant rewriting a whole
  * document; here it is one careless `SET` away, which is why the statement is spelled out in one place
  * rather than composed.
  */
@@ -141,7 +141,7 @@ export async function renameEvent(db: Db, eventId: string, name: string): Promis
 export type MembershipState = "active" | "departed";
 
 /**
- * The capacity gate, as ONE conditional statement (capability `event-limits`, design.md D5).
+ * The capacity gate, as ONE conditional statement (capability `event-lifetime`, design.md D5).
  *
  * It admits a device when the event exists AND (the device already holds a membership — a rejoin reuses
  * its own slot — OR the event has fewer than `capacity` memberships of ANY state, because leaving frees
@@ -228,7 +228,7 @@ export async function membersOf(
 // ── The manifest publish ──────────────────────────────────────────────────────────────────────────
 
 /**
- * One resource of one asset, as the device manifest names it (wire format: `device-manifest`).
+ * One resource of one asset, as the device manifest names it (wire format: `photo-sharing`).
  *
  * `key` is the BARE object name the bytes are stored under; `filename` is the human capture name. They
  * are different facts and routinely differ — the union projects both, and the download URL is built from
@@ -270,12 +270,12 @@ export type ManifestAssetEntry = {
  * that was `MAX(uploaded, …)`; under row-existence semantics it is simply "never delete", which is the
  * same guarantee spelled without a column.
  *
- * ORDERED, on v2 (capability `api-endpoints`, "The v2 manifest publish is ordered by its version"). The
+ * ORDERED, on v2 (`docs/architecture.md`, "The v2 manifest publish is ordered by its version"). The
  * FIRST statement records the publish's manifest version, and when the publish carries one it matches only
  * if the stored version is absent or not newer — so its count is the verdict: `1` won, `0` refused. Every
  * later statement is then gated on the stored version now being exactly this one, which is true iff the
  * first statement matched: a refused publish applies none of itself, however many statements (chunks) it
- * spans, and all of it is one transaction (capability `database`). Equal is admitted — two publishes with
+ * spans, and all of it is one transaction (`docs/architecture.md`). Equal is admitted — two publishes with
  * one version carry one snapshot, so re-applying it is harmless. A publish with NO version (a v2 build that
  * predates it) clears the stored version and is ungated: today's behaviour, and the next versioned publish
  * always wins. `legacy` never touches the column — v1 is frozen.
@@ -398,7 +398,7 @@ export async function recordResource(db: Db, r: {
 
 /**
  * The events whose union would GAIN this asset if `role`'s bytes were recorded right now — the byte
- * route's wake list (capability `upload-completion-notify`).
+ * route's wake list (capability `receiving-photos`).
  *
  * ASK BEFORE WRITING, not after. "Is this asset complete?" answered after the insert cannot tell a
  * completion from a re-upload of a role that was already stored, and a re-upload makes the union gain
@@ -438,12 +438,12 @@ export async function eventsCompletedBy(db: Db, r: {
 
 /**
  * The events whose union GAINS an asset because this publish declared one that is already fully stored —
- * the manifest route's wake list (capability `upload-completion-notify`).
+ * the manifest route's wake list (capability `receiving-photos`).
  *
  * The manifest publish is no longer the moment the union grows: under a manifest that declares INTENT, its
  * content changes when discovery changes, and the assets it names are usually incomplete. The one case
  * where a publish alone makes something fetchable is a **widening** — a membership re-admits assets whose
- * bytes it uploaded under an earlier, broader range (capability `reconfigure-membership`), so no byte
+ * bytes it uploaded under an earlier, broader range (capability `manage-membership`), so no byte
  * moves and only the declaration changed.
  *
  * Asked BEFORE the replace, for the same reason as [eventsCompletedBy]: afterwards, "complete" cannot be
@@ -451,7 +451,7 @@ export async function eventsCompletedBy(db: Db, r: {
  * that the stored set did not.
  *
  * An asset that was already served and merely gained a resource is deliberately NOT a wake: recipients
- * plan per asset and would refetch nothing (capability `photo-download`), so the union gained no asset.
+ * plan per asset and would refetch nothing (capability `receiving-photos`), so the union gained no asset.
  *
  * COST: two reads proportional to the device's declared and stored sets. That is the same order as the
  * publish it precedes — `publishStatements` already emits one statement per declared asset — so it adds
@@ -562,7 +562,7 @@ export async function unionRows(db: Db, eventId: string): Promise<UnionResourceR
  * The device's uploaded resources, for the per-device listing and the rejoin reconcile's seed.
  *
  * It yields the stored `key`, NOT the human `filename`: the listing's `filename` field is the object name
- * the reconciler matches its ledger against (capability `upload-state-reconciliation` — "the bare
+ * the reconciler matches its ledger against (capability `photo-sharing` — "the bare
  * `<assetId>-<role>.<ext>`"), and handing it a capture name instead would seed nothing and look exactly
  * like "this device has uploaded nothing".
  */
@@ -665,7 +665,7 @@ export async function touchTokenExpiry(
 
 // ── Devices: the push-registration group ──────────────────────────────────────────────────────────
 
-/** A device's registered push token, as the notify fan-out needs it (capability `apns-push-sender`). */
+/** A device's registered push token, as the notify fan-out needs it (capability `receiving-photos`). */
 export type DevicePushToken = { kind: string; token: string; env: string };
 
 /**
@@ -674,7 +674,7 @@ export type DevicePushToken = { kind: string; token: string; env: string };
  *
  * An UPDATE, never an upsert. A row exists only where a device has attested, and this route cannot attest
  * on the device's behalf — so `rowsAffected === 0` means the backend holds no attestation for this device,
- * which the caller answers with `401` (capability `api-endpoints`). Inserting a row here would fabricate
+ * which the caller answers with `401` (`docs/architecture.md`). Inserting a row here would fabricate
  * an enrolment, and the `NOT NULL` attestation columns make it impossible anyway.
  */
 export async function putDeviceRecord(
@@ -718,7 +718,7 @@ export async function readDeviceRecord(
   return { kind, token, env };
 }
 
-// ── The nightly sweep's queries (capability `scheduled-cleanup`) ───────────────────────────────────
+// ── The nightly sweep's queries (capability `event-lifetime`) ───────────────────────────────────
 //
 // The sweep runs its EVENT phase first and deletes stale rows; every query below then reads the store
 // as it stands, so "the surviving events" needs no id list threaded through — it is simply what is left.
@@ -876,7 +876,7 @@ export async function deleteDevice(db: Db, deviceId: string): Promise<void> {
 export type DeviceResourceRow = { assetId: string; role: string; filename: string };
 
 /**
- * Everything this device has had recorded as arrived (capability `api-endpoints`, the v2 listing).
+ * Everything this device has had recorded as arrived (`docs/architecture.md`, the v2 listing).
  *
  * Answers in IDENTITY terms rather than by object name, because that is the question v2 asks: "what do
  * you hold for me?" A consumer comparing this against what it intends to contribute gets its pending set

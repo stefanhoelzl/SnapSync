@@ -36,7 +36,7 @@ import kotlin.test.Test
 
 /**
  * The world's two transfer doubles, held to the contracts the app's `URLSession` adapters satisfy (capability
- * `harness-world-model`, "The world's transfer doubles are the transfer contracts' Fake bindings").
+ * `docs/testing.md`, "The world's transfer doubles are the transfer contracts' Fake bindings").
  *
  * The world has no network, so each binding PLAYS it — the role the loopback fixture server plays for the live
  * bindings. It answers every transfer the way the clause's route says, through the double's own operator actions:
@@ -88,7 +88,7 @@ class TransferContractsTest {
     /**
      * The network the upload double's transfers cross, as the binding plays it: every request reaches it and is
      * accepted, and the route is recorded. The binding completes only jobs whose fixture route accepts, so an
-     * accepting network is the fixture's answer rather than a lever (capability `harness-world-model`).
+     * accepting network is the fixture's answer rather than a lever (`docs/testing.md`).
      */
     private fun recordingNetwork(received: MutableSet<String>) = HttpClient(
         MockEngine { request ->

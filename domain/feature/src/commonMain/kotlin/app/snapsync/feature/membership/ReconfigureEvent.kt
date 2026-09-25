@@ -12,7 +12,7 @@ import app.snapsync.ports.ConfigStore
 import co.touchlab.kermit.Logger
 
 /**
- * The in-place **reconfigure** use-case (capability `reconfigure-membership`): a joined member changes
+ * The in-place **reconfigure** use-case (capability `manage-membership`): a joined member changes
  * the three participation settings they picked at join — the capture-date cutoff, the direction, and the
  * album opt-in — **without leaving**. It is the fourth writer of the one-writer membership config
  * (join/provision saves it, leave clears it, [MembershipRefresh] reconciles it against fresh details,
@@ -28,7 +28,7 @@ import co.touchlab.kermit.Logger
  *
  * On a successful save it re-drives the same provision-side effects a join performs, so a change takes
  * effect immediately rather than waiting for the OS's next scheduled cycle — but with a deliberate
- * **asymmetry** between the two arms when a direction is turned **off** (`reconfigure-membership`):
+ * **asymmetry** between the two arms when a direction is turned **off** (`manage-membership`):
  *
  * - **Upload**: [armUpload] runs the upload arm's reconfigure transition **whatever the new direction** — a
  *   kick of the app's uploader that never touches the extension's registration and cancels nothing. The
@@ -60,7 +60,7 @@ class ReconfigureEvent(
     private val startDownloads: suspend (eventId: String) -> Unit,
     private val cancelDownloads: suspend () -> Unit,
     /**
-     * Advance the ledger's manifest version (capability `reconfigure-membership`, "The reconfigure save advances
+     * Advance the ledger's manifest version (capability `manage-membership`, "The reconfigure save advances
      * the manifest version after it lands"). This save is the one writer of the policy bounds the device
      * manifest is projected through, and those bounds live outside the ledger, so no trigger sees them change.
      */
@@ -111,12 +111,12 @@ class ReconfigureEvent(
         // A LOWERED cutoff widens scope, and needs nothing from this use-case to take effect: every upload
         // walk is a full enumeration narrowed by the membership's CURRENT policy, so the next cycle's walk
         // already covers the newly-in-scope older photos and back-shares them — tier-agnostically
-        // (capability `reconfigure-membership`). There used to be a forward-only discovery cursor here to
+        // (capability `manage-membership`). There used to be a forward-only discovery cursor here to
         // invalidate; there is no cursor any more.
         // Raising the cutoff brings nothing new into scope. It DOES stop the
         // now-out-of-scope photos, on BOTH sides: the next cycle re-projects the manifest against the new
         // policy AND admits its work source against it, so rows a wider cutoff recorded stop being
-        // uploaded rather than draining behind the member's back (capability `photo-selection-policy`).
+        // uploaded rather than draining behind the member's back (capability `photo-sharing`).
         // Their ledger rows are untouched, so lowering the cutoff again re-lists them and re-enqueues
         // them without re-uploading a byte.
         // Re-enumerate the own total + re-read completeness so the status reflects a changed cutoff/direction.

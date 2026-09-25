@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * Whether the device's **protected storage** is readable right now (capability `ios-app-shell`, "Background entry
+ * Whether the device's **protected storage** is readable right now (capability `sync-status`, "Background entry
  * points record protected-data state").
  *
  * Until the first unlock after a boot the operating system keeps protected files — the ledger, the config file, the

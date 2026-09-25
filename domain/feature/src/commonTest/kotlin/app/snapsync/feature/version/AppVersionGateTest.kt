@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The read-model that owns "the backend is refusing this build" (capability `min-app-version`).
+ * The read-model that owns "the backend is refusing this build" (capability `app-update-required`).
  *
  * It is a cell, so what is worth pinning is not that it stores a value but the three rules around it:
  * a refusal that names no version is still a refusal, a served response CLEARS it, and the `Error` that

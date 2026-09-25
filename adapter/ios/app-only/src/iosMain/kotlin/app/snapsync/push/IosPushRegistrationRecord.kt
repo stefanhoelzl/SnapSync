@@ -19,7 +19,7 @@ import platform.Foundation.dataWithContentsOfURL
 import platform.Foundation.writeToURL
 
 /**
- * The last push registration the backend accepted (capability `push-registration`), as one file under
+ * The last push registration the backend accepted (capability `receiving-photos`), as one file under
  * `push-registration/` in the [LEDGER_APP_GROUP] container — beside the membership and the manifest record, and
  * under the same default protection, so it is readable on a locked device once it has been unlocked since boot.
  *

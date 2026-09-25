@@ -1,6 +1,6 @@
 import app.snapsync.ports.DownloadState;
 
--- One row per foreign asset this device is downloading / has imported (capability `download-store`).
+-- One row per foreign asset this device is downloading / has imported (capability `receiving-photos`).
 -- Keyed by the SOURCE identity (the owning device + that device's assetId), which is stable across
 -- syncs and events — so idempotency and cross-event dedup are by (sourceDeviceId, sourceAssetId).
 -- `createdLocalId` is the local PHAsset identifier minted at import; it is the suppression handle the
@@ -92,7 +92,7 @@ WHERE sourceDeviceId = :sourceDeviceId
   AND sourceAssetId = :sourceAssetId
   AND createdLocalId = :createdLocalId;
 
--- Settle a row as permanently unimportable (capability `photo-download`). The library rejected its
+-- Settle a row as permanently unimportable (capability `receiving-photos`). The library rejected its
 -- resource content and consumed the staged file, so there is nothing left to retry with and every later
 -- trigger would spend a photo-library transaction rediscovering that.
 --
@@ -103,7 +103,7 @@ WHERE sourceDeviceId = :sourceDeviceId
 -- would match nothing.
 --
 -- `createdLocalId` is left NULL rather than set: a terminal row is a suppression handle only when an asset
--- exists, and none does here (capability `download-store`).
+-- exists, and none does here (capability `receiving-photos`).
 settleUnimportable:
 UPDATE downloadAsset
 SET state = 'UNIMPORTABLE'
@@ -114,7 +114,7 @@ WHERE sourceDeviceId = :sourceDeviceId
 
 -- How many rows the statement immediately before it changed, read INSIDE that statement's own transaction.
 --
--- This is how a non-suspending marker write reports whether it applied (capability `download-store`). The
+-- This is how a non-suspending marker write reports whether it applied (capability `receiving-photos`). The
 -- three callback writes cannot suspend — PhotoKit's change and completion blocks cannot call a suspending
 -- function — and two of them are guarded, so "did this take effect?" is a real question with two different
 -- consequences: a guarded write that matched nothing means the row moved on and the caller must not act on
@@ -158,7 +158,7 @@ SELECT sourceDeviceId, sourceAssetId, createdLocalId FROM downloadAsset
 WHERE state = 'IMPORTED' AND createdLocalId IS NOT NULL;
 
 -- The download projection's three counts in ONE statement, so they come from one snapshot of the
--- database rather than three reads taken at different instants (capability `download-store`; the
+-- database rather than three reads taken at different instants (capability `receiving-photos`; the
 -- `sync-status` group requires each of its members to be internally consistent). SQLite evaluates the
 -- whole SELECT in a single implicit transaction, so the three subqueries cannot disagree with each other.
 projectionCounts:
@@ -175,7 +175,7 @@ SELECT
 
 -- The rows a prune would drop: non-terminal and carrying no `createdLocalId`. Read inside the prune's own
 -- transaction so the caller can subtract the refs whose imports are in flight and free exactly the files it
--- strands (capability `download-store`).
+-- strands (capability `receiving-photos`).
 --
 -- A row that carries a marker is NEVER prunable. The marker is the record that an asset was created for
 -- this ref, and it is the only thing keeping that asset out of the upload universe; deleting the row
@@ -264,7 +264,7 @@ WHERE r.stagedPath IS NULL AND a.state NOT IN ('IMPORTED', 'UNIMPORTABLE');
 -- `createdLocalId IS NULL` is part of the gate, not a refinement of it: a row carrying a marker already
 -- has an asset in the library, and importing it again is precisely the duplicate this capability exists
 -- to prevent. Those rows leave through `selectUnconfirmedAssets` to be adjudicated, and re-enter here
--- only once their marker has been cleared (capability `photo-download`).
+-- only once their marker has been cleared (capability `receiving-photos`).
 selectImportableAssets:
 SELECT a.sourceDeviceId, a.sourceAssetId, a.creationDate
 FROM downloadAsset a

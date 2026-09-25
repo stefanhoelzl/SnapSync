@@ -7,7 +7,7 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 
 /**
- * The humanized duration the create surface states (capability `event-creation-ui`). Zone-injected and
+ * The humanized duration the create surface states (capability `create-event`). Zone-injected and
  * pure, and still a formatter concern rather than a design-system one: it reads the injected clock's zone
  * to compare two instants, which is exactly what `appRangeLabel` does not do.
  */

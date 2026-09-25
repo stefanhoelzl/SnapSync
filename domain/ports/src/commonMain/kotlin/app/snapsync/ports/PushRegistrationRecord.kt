@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * The record of the **last push registration the backend accepted** (capability `push-registration`,
+ * The record of the **last push registration the backend accepted** (capability `receiving-photos`,
  * "Registration timing — launch, join, and rotation"), for publish-only-on-a-change: the app asks the OS for its
  * APNs token at every app entry, and a delivered token is published only when what it would register differs from
  * this record. On iOS a file in the App-Group container; the world and the tests use the in-memory double.

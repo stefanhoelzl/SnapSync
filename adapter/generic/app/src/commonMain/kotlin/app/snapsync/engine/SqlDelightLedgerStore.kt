@@ -105,7 +105,7 @@ class SqlDelightLedgerStore(
 
     override suspend fun manifestRows(): List<LedgerEntry> =
         // `state` is read from the row rather than asserted. Nothing is bound: the query is not
-        // state-scoped, because the manifest declares intent (capability `device-manifest`).
+        // state-scoped, because the manifest declares intent (capability `photo-sharing`).
         queries.selectManifestRows { key, assetId, state, creationDate, role, contentType, filename ->
             LedgerEntry(
                 key = key,
@@ -201,7 +201,7 @@ class SqlDelightLedgerStore(
     }
 
     // The counter itself is maintained by `Ledger.sq`'s triggers, inside each write's own transaction; these
-    // are its one read and the one explicit advance (capability `sync-ledger`).
+    // are its one read and the one explicit advance (capability `photo-sharing`).
     override suspend fun manifestVersion(): Long = queries.selectManifestVersion().executeAsOne()
 
     override suspend fun bumpManifestVersion() {

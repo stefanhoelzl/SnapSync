@@ -12,9 +12,9 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (capability
-// `testing-architecture`, "One control protocol, served by two hosts"). The shared commands take the same
+// `docs/testing.md`, "One control protocol, served by two hosts"). The shared commands take the same
 // parameters and answer the same shape as on the app host — their parsing and rendering are `commonMain`'s — and
-// the world levers are the full-stack inspector's set (capability `full-stack-harness`).
+// the world levers are the full-stack inspector's set (`docs/testing.md`).
 
 private val json = Json { encodeDefaults = true; prettyPrint = true }
 
@@ -22,7 +22,7 @@ private val json = Json { encodeDefaults = true; prettyPrint = true }
 internal fun worldDeviceCommands(world: World, afterRelaunch: () -> Unit): Map<String, RigCommand> =
     inspectorLevers(world) + worldIntegrationCommands(world, afterRelaunch)
 
-/** The full-stack world inspector's levers (capability `full-stack-harness`). */
+/** The full-stack world inspector's levers (`docs/testing.md`). */
 private fun inspectorLevers(world: World): Map<String, RigCommand> = mapOf(
     "reset" to resetCommand { world.core },
     "gallery/seed" to seedCommand { n, kind -> seedWorld(world, n, kind) },

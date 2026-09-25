@@ -27,7 +27,7 @@ import androidx.compose.runtime.setValue
  * cancel action.
  *
  * **General, not purpose-named.** It serves the diagnostic dump's bug report (capability
- * `diagnostic-logging`) and the event rename (capability `event-rename`) as ONE component. It was
+ * `privacy-security`) and the event rename (capability `manage-membership`) as ONE component. It was
  * `AppBugReportSheet` while it had a single caller; the second caller wanted the same sheet with a
  * pre-filled value, an error slot, and a busy state, and a second near-identical overlay would have been
  * two components for one meaning. The inventory grows demand-driven with the screens that need it.

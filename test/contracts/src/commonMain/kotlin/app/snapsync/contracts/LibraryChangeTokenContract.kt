@@ -21,10 +21,10 @@ enum class LibraryChangeTokenState {
 class LibraryChange(val port: LibraryChangeTokenRead, val change: suspend () -> Unit)
 
 /**
- * What every [LibraryChangeTokenRead] promises (capability `port-contracts` — this list IS the specification of
+ * What every [LibraryChangeTokenRead] promises (`docs/architecture.md` — this list IS the specification of
  * the port's obligations).
  *
- * The walk memo (capability `sync-ledger`) serves a stored walk as a **deletion authority** whenever two tokens
+ * The walk memo (capability `photo-sharing`) serves a stored walk as a **deletion authority** whenever two tokens
  * compare equal, so the safety clause is that a change moves the token; the liveness clause is that an unchanged
  * library keeps comparing equal across distinct reads (by value, not identity), or the memo would never serve.
  *

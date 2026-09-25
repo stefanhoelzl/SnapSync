@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The loopback peer the transfer contracts exchange bytes with (capability `port-contracts`, "An adapter bound per
+"""The loopback peer the transfer contracts exchange bytes with (`docs/architecture.md`, "An adapter bound per
 compilation target is real for the clauses it runs there"). It is a clause INPUT: each route answers what the clause
 chose, encoded in the route's last segment, so what the contract states is how the app's transports behave given an
 answer, never how a backend behaves.

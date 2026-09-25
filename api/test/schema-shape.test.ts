@@ -1,4 +1,4 @@
-// THE COMPARISON THE DEPLOY ASSERTS ON (capability `backend-deployment`).
+// THE COMPARISON THE DEPLOY ASSERTS ON (`docs/deployment.md`).
 //
 // It runs across two engines — libSQL live, `node:sqlite` for the replay — so the risk is symmetrical and
 // both directions are tested here: normalising away something that MATTERS makes the assertion blind,

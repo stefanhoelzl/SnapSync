@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
  * reports a **counted** `0` — reached on its own branch, without enumerating — which settles the screen
  * exactly as it always has.
  *
- * The set is scoped by the membership's selection policy (capability `photo-selection-policy`); there
+ * The set is scoped by the membership's selection policy (capability `photo-sharing`); there
  * is no whole-library count. It carries normalized `assetId`s and nothing else — no per-asset state —
  * and it is ONE value, so the total and the set it is counted over can never come from different
  * refreshes. Status counts the ledger's per-photo done-ness over exactly this set (capability

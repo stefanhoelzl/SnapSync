@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The `PHAssetResourceType` → [ResourceRole] table (capability `gallery-status`).
+ * The `PHAssetResourceType` → [ResourceRole] table (capability `sync-status`).
  *
  * These assertions used to live in `:domain`'s `commonTest` as bare integers compared to bare
  * integers (`resourceRole(1L)`, `resourceRole(9L)`) — a table over Apple's ABI that no JVM run could

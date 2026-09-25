@@ -1,5 +1,5 @@
-// Event lifecycle — pure functions over event rows (capability `event-limits`). Extracted from app.ts so
-// the Edge Script AND the out-of-edge nightly sweep (capability `scheduled-cleanup`) decide an event's
+// Event lifecycle — pure functions over event rows (capability `event-lifetime`). Extracted from app.ts so
+// the Edge Script AND the out-of-edge nightly sweep (capability `event-lifetime`) decide an event's
 // fate by the SAME rules. Depends only on the row shape in db.ts — never on Hono, never on storage.
 //
 // WHAT LEFT THIS MODULE WHEN THE RELATIONAL STORE ARRIVED, and why none of it is missed:
@@ -21,7 +21,7 @@ import type { EventRow } from "./db.ts";
 export type LifecycleFields = Pick<EventRow, "createdAt" | "startsAt" | "lifetimeSeconds">;
 
 /**
- * When an event's data is deleted (capability `event-limits`), in epoch ms — DERIVED on every read,
+ * When an event's data is deleted (capability `event-lifetime`), in epoch ms — DERIVED on every read,
  * never stored. `NaN` when neither anchor date can be parsed.
  *
  * `anchor = max(createdAt, startsAt)`, plus the event's own stamped `lifetimeSeconds`.
@@ -55,7 +55,7 @@ export function deleteByMs(event: LifecycleFields): number {
 export type MembershipCounts = { total: number; active: number };
 
 /**
- * Is an event STALE — should the nightly sweep delete it (capability `scheduled-cleanup`)? Two
+ * Is an event STALE — should the nightly sweep delete it (capability `event-lifetime`)? Two
  * independent reasons, either of which suffices:
  *
  *   DEADLINE    now is past the derived delete-by — the GUARANTEE, nothing can prevent it

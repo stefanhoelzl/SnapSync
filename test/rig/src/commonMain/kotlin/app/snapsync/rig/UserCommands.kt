@@ -35,7 +35,7 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
         )
     },
     // The commit carries nothing now: what is committed is what the reduction resolved from the form
-    // (capability `sync-status-screen`). So the channel does what a member does — set the choices, then
+    // (capability `sync-status`). So the channel does what a member does — set the choices, then
     // confirm — rather than handing the container a pre-resolved answer it would have to trust.
     "confirmJoin" to RigUserCommand { params ->
         host().applyRangeChoices(params)
@@ -44,7 +44,7 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
     "cancelJoin" to RigUserCommand { host().onCancelJoin() },
     // The membership change this channel could not previously express. Narrowing a scope — raising the
     // cutoff, or turning the share direction off — is what re-projects the device manifest (capability
-    // `reconfigure-membership`), so without this the one behaviour that change turns on is undriveable
+    // `manage-membership`), so without this the one behaviour that change turns on is undriveable
     // on a device.
     "reconfigure" to RigUserCommand { params ->
         // Open first: opening seeds the form from the persisted membership, exactly as the settings gear
@@ -54,7 +54,7 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
         host().onReconfigure()
     },
     // The form, set without committing: what a member does before they confirm, and what the join gate's
-    // shareable-count preview answers (capability `join-share-count`). `until=eventEnd` and `from=eventStart|now`
+    // shareable-count preview answers (capability `join-event`). `until=eventEnd` and `from=eventStart|now`
     // pick the presets; a `cutoff`/`until` instant picks a custom bound, as `confirmJoin` does.
     "setRange" to RigUserCommand { params ->
         params["from"]?.let { host().form.onFromPreset(fromPreset(it)) }
@@ -63,7 +63,7 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
         }
         host().applyRangeChoices(params.filterNot { (k, v) -> k == "until" && v.equals("eventEnd", ignoreCase = true) })
     },
-    // Rename the joined event (capability `event-rename`). `event` defaults to the joined one — naming another is
+    // Rename the joined event (capability `manage-membership`). `event` defaults to the joined one — naming another is
     // how a caller reproduces a rename the dialog opened for an event a switch has since replaced.
     "rename" to RigUserCommand { params ->
         val event = params["event"] ?: joinedEventId(host())
@@ -137,7 +137,7 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "The state that offers it IS reachable over the channel — /device/state reports the " +
         "update-required screen and the URL it carries — so what is untestable here is only the " +
         "hand-off itself.",
-    // ---- the range form (capability `photo-selection-policy`) ------------------------------------
+    // ---- the range form (capability `photo-sharing`) ------------------------------------
     //
     // The channel drives the form through `confirmJoin`/`reconfigure`, which set the values a caller
     // names and then commit. The PRESET taps are the two it does not need: a preset is a shorthand for a
@@ -147,7 +147,7 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
         "reached through `setRange?from=eventStart|now`, which names the preset rather than a second command for it.",
     "onUntilPreset" to
         "reached through `setRange?until=eventEnd`, for the same reason.",
-    // ---- what is drawn OVER the layer (capability `sync-status-screen`) ---------------------------
+    // ---- what is drawn OVER the layer (capability `sync-status`) ---------------------------
     //
     // Every one of these opens or dismisses a confirmation. None reaches a port, so driving them would
     // change what a screenshot shows and nothing else — and what the app DOES is what this channel is

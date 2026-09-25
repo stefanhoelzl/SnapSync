@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * Seam ↔ UI-state integration for the event rename (capability `event-rename`), driven through the control
+ * Seam ↔ UI-state integration for the event rename (capability `manage-membership`), driven through the control
  * protocol's `/user/rename` over the real core — asserting **`UiState` AND backend outcomes**: the backend's event
  * carries the new name, the joined membership carries the ECHOED name (which is the heading the status screen
  * renders), and a failure destroys nothing.
@@ -72,7 +72,7 @@ class RenameIntegrationTest {
             RenameState.Failed("Couldn't rename the event. Check your connection and try again."),
             status,
         )
-        // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two (capability `leave-event`). The
+        // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two (capability `manage-membership`). The
         // membership must survive a rename against a swept event byte for byte — the config is the only record of
         // the join, and losing it is unrecoverable.
         assertEquals(before, state().joined?.membership, "the membership survives the 404 unchanged")

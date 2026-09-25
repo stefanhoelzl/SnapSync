@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 /**
- * Reading back what this device logged (capability `diagnostic-logging`): the **tail** of a process's
+ * Reading back what this device logged (capability `privacy-security`): the **tail** of a process's
  * device log, bounded in bytes.
  *
  * Named for the need — anything that can hand back the end of a log can seat it. The bound is the

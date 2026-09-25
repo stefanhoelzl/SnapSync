@@ -39,7 +39,7 @@ import platform.Foundation.writeToFile
 
 /**
  * The config file in the App-Group container root (a runtime-identity pin, capability
- * `architecture-guards`): the **storage of record** for the persisted [EventConfig] since migration
+ * `docs/architecture.md`): the **storage of record** for the persisted [EventConfig] since migration
  * step 11a, and its only storage since the Stage-2 fallback deletion. Both processes read and write
  * it; the path derives from the same [LEDGER_APP_GROUP] container every other shared store uses.
  */
@@ -57,7 +57,7 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  * That makes **reinstall = left the event** the real behaviour rather than a staged one: an
  * App-Group container dies with the install, so a reinstalled device reads definitively not joined,
  * uploads nothing, and rejoins only by re-scanning the invite (capability
- * `upload-state-reconciliation`). The fallback existed because the migration reached the whole
+ * `photo-sharing`). The fallback existed because the migration reached the whole
  * installed base as ONE merge, which made every joined device pre-11a at update time; that
  * population is gone — the fallback shipped in step 11a and both it and the finale are ancestors of
  * `v0.1`, the first App Store release (decision record:
@@ -68,7 +68,7 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  *
  * An **unreachable container** — [containerPath] `null`, which only a build without the App-Group
  * entitlement reaches — is unreadable on every member: the read defers, and both [save] and [clear]
- * raise (capability `event-link`). What all three ports promise together is `ConfigStoreContract`
+ * raise (capability `join-event`). What all three ports promise together is `ConfigStoreContract`
  * (`:test:contracts`), run against this class on the simulator.
  *
  * All decode/decision intelligence is pure and `commonTest`-covered (`configReadViaFile` in
@@ -88,7 +88,7 @@ class FileBackedConfigStore(
     /**
      * Where the App-Group container is, or `null` when this process cannot reach one. The composition's
      * decision rather than this adapter's, and defaulting to the shared container so both shells omit it
-     * (capability `event-link`). A test hands it a directory it owns, which is what lets the port contract
+     * (capability `join-event`). A test hands it a directory it owns, which is what lets the port contract
      * run this class's own file IO and error mapping; the `null` a missing entitlement yields reads as
      * unreadable on every member, never as absence.
      */
@@ -130,7 +130,7 @@ class FileBackedConfigStore(
     }
 
     /**
-     * The three-state read (capability `event-link`): the pure `configReadViaFile` over this
+     * The three-state read (capability `join-event`): the pure `configReadViaFile` over this
      * process's file IO, and nothing else. A definitively missing file is **definitively not
      * joined** — no Keychain item is consulted, no membership is migrated forward, and no
      * compare-and-repair runs. See the class doc for why the fallback that used to sit here is
@@ -209,7 +209,7 @@ class FileBackedConfigStore(
         // An unreachable container is NOT "nothing to delete": returning here used to let `clear` report
         // success and null the flow while a file it never touched survived to resurrect the membership at
         // the next launch — the half-completed leave the throw below exists to prevent. Refuse, as
-        // `writeFile` does (capability `event-link`).
+        // `writeFile` does (capability `join-event`).
         val path = configFilePath()
             ?: error("App Group container '$LEDGER_APP_GROUP' unavailable — cannot clear config")
         checkedObjC("removeItemAtPath") { NSFileManager.defaultManager.removeItemAtPath(path, error = it) }

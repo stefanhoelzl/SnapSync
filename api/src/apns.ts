@@ -1,4 +1,4 @@
-// APNs provider sender (capability `apns-push-sender`). Token-based (provider JWT) auth: an ES256 JWT
+// APNs provider sender (capability `receiving-photos`). Token-based (provider JWT) auth: an ES256 JWT
 // signed from the `.p8` Auth Key via jose (WebCrypto under the hood, no native dependency), reused within
 // its lifetime. Each push is a silent (content-available) background notification sent over HTTP/2 via the
 // runtime `fetch` (which ALPN-negotiates h2 — all APNs requires). Per-token failures are isolated and
@@ -101,7 +101,7 @@ export function createApnsSender(
           "apns-priority": "5",
           // COALESCE BY EVENT. Two wakes for one event are interchangeable by construction — a wake
           // carries only its event id, and a recipient answers by reconciling that event's whole union
-          // (capability `photo-download`) — so collapsing undelivered ones loses no information. It buys
+          // (capability `receiving-photos`) — so collapsing undelivered ones loses no information. It buys
           // real headroom: Apple throttles background notifications on total volume and documents a
           // ceiling of two or three per hour, so a burst that would spend several deliveries spends one.
           // Per-ASSET would be the mistake: it preserves a distinction no recipient reads, at a delivery

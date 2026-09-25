@@ -22,7 +22,7 @@ class Clause<K : Enum<K>, T>(
 )
 
 /**
- * A port's contract: an explicit list of [Clause]s (capability `port-contracts`). The list IS the
+ * A port's contract: an explicit list of [Clause]s (`docs/architecture.md`). The list IS the
  * specification of the port's obligations — no spec restates it — and the same list feeds every runner.
  *
  * [K] is the port's hand-written state vocabulary, which lives beside the contract and never in
@@ -55,7 +55,7 @@ class ClauseList<K : Enum<K>, T> internal constructor() {
 }
 
 /**
- * One implementation on one host (capability `port-contracts`, "Clauses are conditioned on states that
+ * One implementation on one host (`docs/architecture.md`, "Clauses are conditioned on states that
  * bindings enter at construction").
  *
  * [reaches] MUST be written as a literal `setOf(...)` of state constants: the contract-coverage gate reads
@@ -69,7 +69,7 @@ interface Binding<K : Enum<K>, T> {
 
     /**
      * The photo grant this binding runs under, or `null` where the port does not depend on one (capability
-     * `port-contracts`, "An authorization the process cannot give itself is a precondition of the run").
+     * `docs/architecture.md`, "An authorization the process cannot give itself is a precondition of the run").
      *
      * A grant is not host identity, but it does decide which recording a recorded host's run belongs to: one
      * run holds one grant, so a host recorded under two grants keeps two files, named by [recordingName]. Where
@@ -97,7 +97,7 @@ sealed interface Entered<out T> {
  * Runs a binding's entry into — or exit from — a state whose setup SUSPENDS: filling a transfer tier's in-flight cap,
  * cancelling what a clause left open. [Binding.create] and [Entered.Ready.dispose] are not coroutines, and the runner
  * enters the state before the clause's own `runTest`, so the entry gets a `runTest` of its own, on the calling thread,
- * exactly as a clause body runs (capability `port-contracts`). Not a general-purpose bridge: it exists so a binding
+ * exactly as a clause body runs (`docs/architecture.md`). Not a general-purpose bridge: it exists so a binding
  * never reaches for `runBlocking`, which production lanes may not use.
  */
 fun runEntry(block: suspend () -> Unit) {
@@ -106,7 +106,7 @@ fun runEntry(block: suspend () -> Unit) {
 
 /**
  * The committed recording's name, without `.rec`, for [contract] recorded on [host] under [grant]
- * (capability `port-contracts`, "A recording is one committed plain-text file per contract and host"):
+ * (`docs/architecture.md`, "A recording is one committed plain-text file per contract and host"):
  * `<Contract>@<HOST>` where no grant is declared, `<Contract>@<HOST>.<GRANT>` where one is.
  */
 fun recordingName(contract: String, host: Host, grant: PermissionStatus?): String =

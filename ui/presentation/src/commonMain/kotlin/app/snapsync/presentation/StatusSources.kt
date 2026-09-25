@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
  * arity rather than by meaning, and the next reader would have to open it to learn what it is.
  *
  * Presentation observes read-model `StateFlow`s directly and never names `ports/` (spec
- * `module-architecture`, "Commands cross one door"); the armed presentation gate enforces it, and the
+ * `docs/architecture.md`, "Commands cross one door"); the armed presentation gate enforces it, and the
  * shell or the harness passes each flow in. The defaults are all **inert** so a host that does not
  * exercise an arm — the forge reviewing a forged state, a test that only drives the join gate —
  * constructs without naming it.
@@ -46,12 +46,12 @@ class StatusSources(
      */
     val creation: CreationStatusSource = MutableCreationStatusSource(),
     /**
-     * The rename-status read-model (capability `event-rename`), the create twin, with the same inert
+     * The rename-status read-model (capability `manage-membership`), the create twin, with the same inert
      * default for the same reason.
      */
     val rename: RenameStatusSource = MutableRenameStatusSource(),
     /**
-     * Download progress (capability `photo-download`).
+     * Download progress (capability `receiving-photos`).
      *
      * The default is a READ `(0, 0)`, spelled out rather than taken from the fake's own default, and the
      * distinction is the point: "this host has no download arm" is an ANSWER, while the fake's default
@@ -61,7 +61,7 @@ class StatusSources(
      */
     val download: DownloadStatusSource = InMemoryDownloadStatusSource(DownloadProgress(0, 0)),
     /**
-     * Attestation health (capability `device-attestation`): false only when this device's token is
+     * Attestation health (capability `privacy-security`): false only when this device's token is
      * UNUSABLE (absent, unreadable, or expired) and the refresh could not obtain one. Never false for a
      * token merely due for renewal — that one still authorizes every upload, and saying otherwise told a
      * member sharing was paused with six days of token left (`SNAPSYNC-20`). The feature that owns the
@@ -79,9 +79,9 @@ class StatusSources(
     val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
     /**
      * Whether the backend is refusing this build as too old, and the version it named (capability
-     * `min-app-version`) — `AppVersionGate.refusal`, written by the shared HTTP client's interceptor.
+     * `app-update-required`) — `AppVersionGate.refusal`, written by the shared HTTP client's interceptor.
      *
-     * An OBSERVATION, like every field here, so it does not cross `flow/` (`module-architecture`,
+     * An OBSERVATION, like every field here, so it does not cross `flow/` (`docs/architecture.md`,
      * "Commands cross one door": reads do not). Defaults to never-refused, so a host with no backend —
      * the forge, and every test that does not exercise it — constructs unchanged.
      */
@@ -109,10 +109,10 @@ class StatusDiagnostics(
      */
     val log: (String) -> Unit,
     /**
-     * The container's ERROR seam (spec `sync-status-screen`, "A failing command never disables the status
+     * The container's ERROR seam (spec `sync-status`, "A failing command never disables the status
      * container"): every throwable that escapes an intent arrives here instead of propagating. The
      * composition binds it to `Error` severity, which is the threshold at which a Kermit line becomes a
-     * crash-reporting EVENT rather than a breadcrumb (capability `crash-reporting`).
+     * crash-reporting EVENT rather than a breadcrumb (capability `privacy-security`).
      *
      * Required: a host that binds nothing here must say so. The container stays alive either way, because
      * it is the handler's PRESENCE that stops Orbit's rethrow — a host binding a no-op loses the report,

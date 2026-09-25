@@ -31,7 +31,7 @@ import app.snapsync.model.UploadError
 import app.snapsync.model.PermissionStatus
 
 /**
- * The world-inspector control panel (capability `full-stack-harness`): raw Material 3, **never** App*
+ * The world-inspector control panel (`docs/testing.md`): raw Material 3, **never** App*
  * (test equipment, like the forge's `ControlPanel`). Every control routes through the single
  * [WorldInspectorController]; no composable mutates world state inline. Two-column paired sections fill
  * the width and cut scroll. The panel reads the controller's recomputed [InspectorSnapshot].
@@ -89,7 +89,7 @@ fun WorldInspector(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.reprovision() }) { Text("Re-provision") }
             // Both sides of the event-start FLOOR, drivable through the real stack (capability
-            // `photo-selection-policy`). "started" is the ordinary case. "not started" is the interesting one:
+            // `photo-sharing`). "started" is the ordinary case. "not started" is the interesting one:
             // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
             // extension must leave the backend column empty while the phone frame reads the clock line.
             OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START, PAST_END) }) {
@@ -106,7 +106,7 @@ fun WorldInspector(
         TwoUp(
             left = {
                 Button(onClick = { controller.addAsset() }) { Text("+ Add asset") }
-                // Selection policy (capability `photo-selection-policy`): each of these adds a real asset to
+                // Selection policy (capability `photo-sharing`): each of these adds a real asset to
                 // the gallery that the policy EXCLUDES — it must appear here and then never upload, never
                 // enter the union, and never inflate N. "+ 1080p video" is the control: it is BELOW the
                 // image floor but above the video floor, so it must still upload.
@@ -191,7 +191,7 @@ fun WorldInspector(
                     Text(if (snap.backendOffline) "backend OFFLINE (502)" else "backend online")
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // The membership read's THIRD state (capability `upload-lifecycle`). Not a mood: an
+                    // The membership read's THIRD state (capability `background-upload`). Not a mood: an
                     // unreadable read must skip — touching no ledger, no manifest, no job — where an
                     // absent one reads as not joined. It is a switch because it is otherwise unreachable by a
                     // reviewer: the config cell has only joined/absent, and the dev SE2 has no passcode, so
@@ -262,7 +262,7 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
 }
 
 /**
- * Event-start presets for the inspector's Create controls (capability `full-stack-harness`). Canonical
+ * Event-start presets for the inspector's Create controls (`docs/testing.md`). Canonical
  * cutoff shape — the mini-edge 400s anything else, faithfully to the real backend.
  *
  * [PAST_START] precedes `World.DEFAULT_DATE`, so a default-dated gallery asset is in scope and uploads
@@ -272,7 +272,7 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
 private const val PAST_START = "2026-01-01T00:00:00Z"
 private const val FUTURE_START = "2099-12-31T23:59:59Z"
 
-// The window ENDS (capability `event-limits`: creator-chosen). [PAST_END] is far future so the past-start
+// The window ENDS (capability `event-lifetime`: creator-chosen). [PAST_END] is far future so the past-start
 // event stays LIVE with a wide window — a default-dated gallery asset is well inside `[PAST_START, PAST_END]`.
 // [FUTURE_END] follows [FUTURE_START] so the future event carries a valid `startsAt < endsAt` window.
 private const val PAST_END = "2099-12-31T23:59:59Z"

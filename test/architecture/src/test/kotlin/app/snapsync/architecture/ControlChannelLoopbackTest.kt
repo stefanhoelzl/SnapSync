@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **A dev/test control channel binds the loopback address only** (capability `architecture-guards`).
+ * **A dev/test control channel binds the loopback address only** (`docs/architecture.md`).
  *
  * The control channel forces operating-system entry points and exposes event state on its app host, and pulls
  * the world's failure levers on its JVM host. Widening its bind is a one-token edit that reads as fixing a
@@ -34,7 +34,7 @@ class ControlChannelLoopbackTest {
             wide,
             "\nA control-channel server is bound to something other than the `LOOPBACK` constant.\n" +
                 "  The channel must be reachable only from the machine it runs on (capability\n" +
-                "  `architecture-guards`, \"A dev/test control channel binds the loopback address only\").\n",
+                "  `docs/architecture.md`, \"A dev/test control channel binds the loopback address only\").\n",
         )
     }
 

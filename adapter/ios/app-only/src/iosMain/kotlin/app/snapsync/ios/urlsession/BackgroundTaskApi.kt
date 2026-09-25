@@ -14,7 +14,7 @@ import kotlin.coroutines.resume
 
 /**
  * **The operating-system boundary of [IosBackgroundScheduler]**: the `BGTaskScheduler` calls it makes, and the one
- * read a clause observes the system's queue through (capability `port-contracts`, "Hosts CI cannot reach are
+ * read a clause observes the system's queue through (`docs/architecture.md`, "Hosts CI cannot reach are
  * recorded at the operating-system boundary and replayed on every build").
  *
  * It sits below every decision the adapter makes — the request it builds, how it reports a refusal — so a replay

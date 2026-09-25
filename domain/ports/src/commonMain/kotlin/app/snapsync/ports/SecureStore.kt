@@ -10,9 +10,9 @@ package app.snapsync.ports
  * `ConfigStore` is constructed for one config. Which item an instance addresses, and how a value is
  * protected there, are the adapter's business and never cross this seam.
  *
- * It is named for that need rather than for the technology satisfying it (law `module-architecture`,
+ * It is named for that need rather than for the technology satisfying it (law `docs/architecture.md`,
  * "Ports are the I/O boundary named for the need"). On iOS the implementation is the Keychain, which
- * is the only module in the repo permitted to touch `SecItem*` (capability `architecture-guards`);
+ * is the only module in the repo permitted to touch `SecItem*` (`docs/architecture.md`);
  * that is a binding note, not this contract. Decision record:
  * `changes/…/reshape-keychain-port` (D2).
  *
@@ -29,7 +29,7 @@ package app.snapsync.ports
  *   to mean **the device left the event** — clearing its join marker on every locked wake.
  *
  * So "absent" and "I could not look" are different answers, and [SecureStoreRead] refuses to conflate
- * them (law `module-architecture`, "Absence is never silent"). Decision record:
+ * them (law `docs/architecture.md`, "Absence is never silent"). Decision record:
  * `changes/archive/…-fix-locked-device-keychain-access`.
  */
 interface SecureStore {
@@ -82,7 +82,7 @@ sealed interface SecureStoreRead {
  *
  * Three members rather than a boolean because [RESTRICTED] and [UNREPORTED] are different facts even
  * though they drive the same action. Collapsing them would be a collapse nobody chose (law
- * `module-architecture`, "Absence is never silent").
+ * `docs/architecture.md`, "Absence is never silent").
  */
 enum class StoredProtection {
 
@@ -224,7 +224,7 @@ class DeviceIdentityAbsent :
  * Absence: null means **absent, and only absent**. This function is where that separation is
  * enforced for every [SecureStore]-backed store: an unreadable item throws rather than answering
  * empty, so no caller can mistake "the device is locked" for "this device never had a token". It is
- * the reference implementation of the rule, not an exception to it (spec `module-architecture`,
+ * the reference implementation of the rule, not an exception to it (`docs/architecture.md`,
  * "Absence is never silent").
  */
 fun readExisting(
@@ -247,7 +247,7 @@ fun readExisting(
  *
  * Migration is not optional book-keeping, and the argument is a property of **this seam**, not of any
  * one platform: a [SecureStore] **outlives the app install** by contract (that is the
- * reinstall-stability capability `device-identity` depends on), and the device id is written exactly
+ * reinstall-stability capability `photo-sharing` depends on), and the device id is written exactly
  * once, at mint. Nothing in the device's remaining lifetime will therefore ever rewrite the item — no
  * reinstall, no app update, no later write of any kind — so an item a pre-fix build filed as
  * unreadable-in-background stays that way **forever** unless the read path upgrades it.

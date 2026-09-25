@@ -1,4 +1,4 @@
-# The api's check gate (capabilities backend-deployment, deployment-configuration). One job,
+# The api's check gate (capabilities docs/deployment.md, docs/deployment.md). One job,
 # `api-test`, running the full Deno check set — fmt, lint, type-check, tests — plus the bundle and its
 # commit stamp, on EVERY ref.
 #
@@ -20,7 +20,7 @@
 # not repeat it, because no commit can reach `main` without this having passed.
 #
 # It is isolated from the Gradle/iOS workflows (its own file, coupled to neither) — a standing
-# requirement of capability backend-deployment — and carries its own concurrency group rather than
+# requirement of `docs/deployment.md` — and carries its own concurrency group rather than
 # sharing build.yml's or deploy.yml's.
 name: api
 
@@ -86,7 +86,7 @@ jobs:
         run: deno task test
 
       # The committed schema snapshot must be exactly what replaying `api/migrations/*.sql` produces
-      # (capability `database`). It has two readers and a stale copy makes both wrong: a REVIEWER reads
+      # (`docs/architecture.md`). It has two readers and a stale copy makes both wrong: a REVIEWER reads
       # its diff to see what a migration did to the schema — including what the migration silently
       # dropped, which is visible nowhere else — and the DEPLOY asserts the live store against it.
       #

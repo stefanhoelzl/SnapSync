@@ -44,7 +44,7 @@ interface LedgerStore : TransferRecord {
      * already holds. Transitions between non-done states still apply.
      *
      * Dings [changes] only when it applied. `false` means the row was settled, which is a different fact from
-     * "recorded" and SHALL NOT be discarded silently (`module-architecture`, "Absence is never silent").
+     * "recorded" and SHALL NOT be discarded silently (`docs/architecture.md`, "Absence is never silent").
      */
     suspend fun recordUnlessSettled(entry: LedgerEntry): Boolean
 
@@ -54,7 +54,7 @@ interface LedgerStore : TransferRecord {
      * applied, and dings [changes] once if any did.
      *
      * The atomicity is load-bearing, not an optimization. A walk re-reads only the assets the ledger does not
-     * fully know (capability `sync-ledger`), so an asset whose resources were recorded one write at a time
+     * fully know (capability `photo-sharing`), so an asset whose resources were recorded one write at a time
      * could be left with one role recorded when the process died between them — and every later walk would
      * then skip it as known, and its other role would never upload. Recorded together, a walk's discoveries
      * land whole or not at all.
@@ -70,7 +70,7 @@ interface LedgerStore : TransferRecord {
 
     /**
      * Per photo, whether **every** row of that asset is done: `assetId → done`, one entry per asset the ledger
-     * holds a row for (capability `sync-ledger`, "Per-asset progress read"). The same per-asset collapse
+     * holds a row for (capability `photo-sharing`, "Per-asset progress read"). The same per-asset collapse
      * [aggregates] performs, un-counted, in one snapshot-consistent read. Status intersects it with the
      * admitted set the gallery counted for `N`; the ledger interprets nothing about admission.
      */
@@ -85,7 +85,7 @@ interface LedgerStore : TransferRecord {
 
     /**
      * The rows that **need an upload job**, in a stable key order — the upload cycle's source of work
-     * (capability `sync-ledger`).
+     * (capability `photo-sharing`).
      *
      * Returns exactly the rows whose state is in [app.snapsync.model.NEEDS_JOB_STATES], interpreting
      * nothing else: *which* states need a job is decided once, in `model/`, not per query. That set is
@@ -95,7 +95,7 @@ interface LedgerStore : TransferRecord {
      * **Unbounded, deliberately.** A cycle does bound its work — a first walk on a large library records a
      * row per outstanding resource, and enqueuing all of them would stage every one to disk — but it
      * bounds what it **resolves**, never what it reads, because a row needing a job is not yet the
-     * admitted set (capability `photo-selection-policy`). A bound here would starve: rows come back in a
+     * admitted set (capability `photo-sharing`). A bound here would starve: rows come back in a
      * stable key order, so rows the membership's current policy excludes, sorting ahead of admitted ones,
      * would fill the slice on every cycle and the admitted work further down would never be reached. The
      * scan is local and indexed; the platform round-trip the bound protects is the caller's to make.
@@ -103,22 +103,22 @@ interface LedgerStore : TransferRecord {
     suspend fun rowsNeedingJob(): List<LedgerEntry>
 
     /**
-     * The rows the **device manifest** projects from (capability `device-manifest`): every row,
+     * The rows the **device manifest** projects from (capability `photo-sharing`): every row,
      * whatever its upload state.
      *
      * Deliberately **not state-scoped**, and deliberately carrying no state adjective in its name. The
      * manifest declares what this member *intends to provide*, and that does not depend on how far a
      * resource's bytes have got — so a `DISCOVERED` row and a `COMPLETED` one are equally listed. This
      * read used to return only settled rows, and the stale word "completed" in its name outlived the
-     * decision behind it: `api-endpoints` came to describe a manifest that declares intent while
-     * `device-manifest` still required the completed projection.
+     * decision behind it: `docs/architecture.md` came to describe a manifest that declares intent while
+     * `photo-sharing` still required the completed projection.
      *
      * It filters on nothing: a departed asset's rows — gone from the library, or de-selected under a partial
      * grant, in flight or not — are deleted by the walk that shows it gone, so every row is one this device
      * still holds. **Admission is the policy's**, applied by the projection: the
      * capture-date bounds, and with them the exclusion of a row whose `creationDate` is still bare, whose
      * empty value sorts before every real cutoff. Restating that here would be a second copy of an
-     * admission rule (capability `photo-selection-policy`).
+     * admission rule (capability `photo-sharing`).
      */
     suspend fun manifestRows(): List<LedgerEntry>
 
@@ -146,13 +146,13 @@ interface LedgerStore : TransferRecord {
      * **once** on success. It applies no precedence — a settled row is replaced like any other. This is a
      * reset-family op (alongside [clear]) — the app-side
      * join seed uses it; it is **not** a per-key record, and it is owned by that membership use-case
-     * (capability `sync-ledger`, "Reader and writer capability split").
+     * (capability `photo-sharing`, "Reader and writer capability split").
      */
     suspend fun resetTo(entries: List<LedgerEntry>)
 
     /**
      * Delete exactly the rows whose key is among [keys], whatever their state, and no other — the one row
-     * deletion a cycle performs (capability `sync-ledger`, "Deletion is a presence diff over an authoritative
+     * deletion a cycle performs (capability `photo-sharing`, "Deletion is a presence diff over an authoritative
      * walk").
      *
      * **Key-scoped, never asset-scoped.** Several resources of one photo share an `assetId` and hold per-key
@@ -168,7 +168,7 @@ interface LedgerStore : TransferRecord {
 
     /**
      * The **manifest version**: a counter that advances on every change that could alter the device manifest's
-     * projection, `0` before the first (capability `sync-ledger`, "The manifest version orders the device's
+     * projection, `0` before the first (capability `photo-sharing`, "The manifest version orders the device's
      * manifest snapshots"). The upload cycle reads it FIRST — before the membership, the policy and the rows —
      * and its publish carries it, so the backend can refuse a publish older than one it already holds.
      *
@@ -181,7 +181,7 @@ interface LedgerStore : TransferRecord {
     /**
      * Advance the manifest version by one, for the one projection input that lives outside this store: the
      * membership's policy bounds, whose writer (the reconfigure save) calls this **after** its config save has
-     * landed (capability `reconfigure-membership`). Dings nothing: no row changed.
+     * landed (capability `manage-membership`). Dings nothing: no row changed.
      */
     suspend fun bumpManifestVersion()
 }

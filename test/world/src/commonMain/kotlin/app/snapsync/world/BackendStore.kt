@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * One entry of the per-device file listing (`GET /files/devices/<id>`) — `{filename, url}`.
  *
- * `size` used to ride here and is gone with the relational store (capability `api-endpoints`): it had no
+ * `size` used to ride here and is gone with the relational store (`docs/architecture.md`): it had no
  * reader on either read route, and it was the ONE field sourced from a storage listing rather than from
  * the backend's own record — so carrying it would have made the byte route's best-effort record
  * load-bearing, and one lost write would silently drop an asset from the union.
@@ -60,9 +60,9 @@ class UnionAssetDto(
 
 /**
  * The `201` body of `POST /events` (and the `GET /events/<id>` read). [deletesAt] is the event's
- * retention deadline (capability `event-limits`) — DERIVED by the edge, never stored as a field, and
+ * retention deadline (capability `event-lifetime`) — DERIVED by the edge, never stored as a field, and
  * required on every `200`: the client refuses a details response missing it, because an invented
- * deadline would decide whether a membership is destroyed (capability `leave-event`).
+ * deadline would decide whether a membership is destroyed (capability `manage-membership`).
  */
 @Serializable
 class CreatedEventDto(
@@ -81,14 +81,14 @@ enum class MemberState { ACTIVE, DEPARTED }
  * One membership: the device's state in the event, and the assets it shares there.
  *
  * The assets are retained across a leave, which is what lets a departed member keep contributing to the
- * union, and are REPLACED wholesale by each publish (full-state, capability `device-manifest`) — unless the
+ * union, and are REPLACED wholesale by each publish (full-state, capability `photo-sharing`) — unless the
  * publish carries a manifest version older than [manifestVersion], the backend's `memberships.manifest_version`
- * (capability `api-endpoints`, "The v2 manifest publish is ordered by its version"). A join clears it.
+ * (`docs/architecture.md`, "The v2 manifest publish is ordered by its version"). A join clears it.
  */
 data class Membership(val state: MemberState, val manifest: DeviceManifest, val manifestVersion: Long? = null)
 
 /**
- * The in-memory model of the edge's byte store + registry (capability `harness-world-model`) — the
+ * The in-memory model of the edge's byte store + registry (`docs/testing.md`) — the
  * single source of world truth. Three maps:
  *
  * - [byteStore]: `deviceId -> stored object names` (the `files/devices/<deviceId>/<filename>` byte partitions).
@@ -115,7 +115,7 @@ class BackendStore {
     // Per-event start date (capability `event-creation`). Absent ⇒ a legacy marker, whose `startsAt` the
     // mini-edge synthesizes from `createdAt` on read.
     private val eventStarts = mutableMapOf<String, String>()
-    // Per-event end date (capability `event-limits`). Absent ⇒ the mini-edge's GET synthesizes `+30d`.
+    // Per-event end date (capability `event-lifetime`). Absent ⇒ the mini-edge's GET synthesizes `+30d`.
     private val eventEnds = mutableMapOf<String, String>()
     // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
@@ -142,11 +142,11 @@ class BackendStore {
      *
      * Off by default and armed deliberately. A gate that refused by default would fail every seam that
      * does not yet declare a version — which is all of them until the client half ships — so the default
-     * has to be the permissive one (capability `min-app-version`).
+     * has to be the permissive one (capability `app-update-required`).
      */
     var minAppVersion: String? = null
 
-    /** Devices ever enrolled per event (capability `event-limits`); the v2 join is the only route that refuses on it. */
+    /** Devices ever enrolled per event (capability `event-lifetime`); the v2 join is the only route that refuses on it. */
     var capacity: Int = 10
 
     // ---- mutations ------------------------------------------------------------------------------
@@ -156,7 +156,7 @@ class BackendStore {
         val before = servableByEvent(deviceId)
         byteStore.getOrPut(deviceId) { linkedSetOf() }.add(filename)
         // AFTER the write, as the real byte route does: an event this byte completed an asset in wakes its other
-        // members (capability `upload-completion-notify`). A byte that completed nothing wakes nobody.
+        // members (capability `receiving-photos`). A byte that completed nothing wakes nobody.
         servableByEvent(deviceId).forEach { (eventId, assets) ->
             if (!before[eventId].orEmpty().containsAll(assets)) notifyMembers(eventId, deviceId)
         }
@@ -172,7 +172,7 @@ class BackendStore {
         }.toMap()
 
     /**
-     * A push the backend would have sent (the APNs mock, capability `harness-world-model`, "The mini-edge records
+     * A push the backend would have sent (the APNs mock, `docs/testing.md`, "The mini-edge records
      * the pushes it would send"): the event it announces, and the member and token it was addressed to.
      */
     data class SentPush(val eventId: String, val deviceId: String, val token: String)
@@ -208,7 +208,7 @@ class BackendStore {
     /**
      * Register an event marker (the `POST /events` effect / a direct injection), with an optional name and
      * an optional [startsAt] — the event's start date, which is both the default and the FLOOR for every
-     * member's capture-date cutoff (capability `photo-selection-policy`).
+     * member's capture-date cutoff (capability `photo-sharing`).
      *
      * An event registered with **no** `startsAt` models a marker written before start dates existed; the
      * mini-edge's `GET` then synthesizes one from `createdAt`, exactly as the real backend does.
@@ -247,7 +247,7 @@ class BackendStore {
 
     /**
      * Collect **one** stored object — the nightly sweep's per-object effect (capability
-     * `scheduled-cleanup`), which reclaims the bytes no manifest references rather than a whole
+     * `event-lifetime`), which reclaims the bytes no manifest references rather than a whole
      * partition.
      *
      * Distinct from [wipeBytes] because the difference is the whole question a device-side check has to
@@ -264,7 +264,7 @@ class BackendStore {
 
     /**
      * Delete an event from the registry — the **nightly sweep's** effect (capability
-     * `scheduled-cleanup`), which is the only thing that ever removes one. Every subsequent
+     * `event-lifetime`), which is the only thing that ever removes one. Every subsequent
      * `GET /events/<id>` then answers `404`, exactly as it would against the real backend after a sweep.
      *
      * A DELIBERATELY blunt lever: the sweep runs out-of-edge and the world models no scheduler, so what
@@ -304,7 +304,7 @@ class BackendStore {
         val existing = memberships[eventId to deviceId]
         if (existing != null) {
             // A (re)join clears the stored manifest version, as the real `ENROLL` does: a re-joined device whose
-            // counter restarted must not have every publish refused as older (capability `api-endpoints`).
+            // counter restarted must not have every publish refused as older (`docs/architecture.md`).
             memberships[eventId to deviceId] = existing.copy(state = MemberState.ACTIVE, manifestVersion = null)
             return JoinOutcome.ENROLLED
         }
@@ -382,10 +382,10 @@ class BackendStore {
     fun deviceConfigWritesOf(deviceId: String): Int = deviceConfigWrites[deviceId] ?: 0
 
     /**
-     * Leave an event (the `DELETE /events/<id>/devices/<id>` endpoint, capability `api-endpoints`).
+     * Leave an event (the `DELETE /events/<id>/devices/<id>` endpoint, `docs/architecture.md`).
      * ONE COLUMN: the membership's state becomes `departed`. Its assets STAY, so the union keeps serving
      * its photos, and nothing else happens — no last-member reap, no byte/config GC. The event survives
-     * (rejoinable) until the nightly sweep reclaims it (capability `scheduled-cleanup`). Idempotent, and
+     * (rejoinable) until the nightly sweep reclaims it (capability `event-lifetime`). Idempotent, and
      * a leave for an unregistered event or a device that never joined is a no-op.
      */
     fun leave(eventId: String, deviceId: String) {
@@ -485,7 +485,7 @@ class BackendStore {
          *
          * This was `world://…` while the world faked `PhotoDownloadJobs` and no guard ever ran, so the
          * harness proved downloads worked over a scheme production would have refused. Composing the real
-         * jobs surfaced it immediately (capability `harness-world-model`).
+         * jobs surfaced it immediately (`docs/testing.md`).
          */
         fun syntheticUrl(deviceId: String, filename: String): String =
             "https://world.store/$deviceId/$filename"

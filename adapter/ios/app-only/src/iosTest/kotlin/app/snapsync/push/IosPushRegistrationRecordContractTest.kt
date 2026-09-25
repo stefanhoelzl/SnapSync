@@ -13,7 +13,7 @@ import app.snapsync.testsupport.removeDirectory
 import kotlin.test.Test
 
 /**
- * The App-Group push registration record, live (capability `port-contracts`). Readable states get a fresh container
+ * The App-Group push registration record, live (`docs/architecture.md`). Readable states get a fresh container
  * directory, seeded through the adapter's own write so the layout is the adapter's, not this test's.
  * [PushRegistrationRecordState.UNAVAILABLE] is the DEFAULT container, which this unentitled executable's App-Group
  * lookup answers with `nil` — the degraded, never-raising record the port promises.

@@ -98,7 +98,7 @@ State these before writing a scenario against this host, or you will write one t
 
 - **No background `URLSession` at all — so this target does not use one.** Bytes DO move here: the
   `iosSimulatorArm64` build binds an ordinary **default** session instead (`transferSessionConfiguration`
-  in `:adapter:ios:app-only`, capability `ios-url-session-upload`). Uploads and downloads both work.
+  in `:adapter:ios:app-only`, capability `background-upload`). Uploads and downloads both work.
   Verified 2026-08-25 end to end for uploads: three photos, ledger `completed=3`, objects in
   `api/.localstore`.
 
@@ -232,7 +232,7 @@ finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, t
 reproduce a red job. The contracts **seed photos and never delete them**, because deleting raises a
 confirmation that needs a finger. See `rig-channel` for the verb.
 
-The same script then runs the **all-real journeys** (capability `testing-architecture`): it serves `api/` with
+The same script then runs the **all-real journeys** (`docs/testing.md`): it serves `api/` with
 `deno task dev:local` on `127.0.0.1:8080` — the address the `local` deployment bakes into the build, so it is
 started before the xcodebuild and warmed with one request (a cold deno exceeds the app's 5 s timeout) — reads the
 app's `GET /device` once (an unclassified vocabulary entry fails the job), and runs

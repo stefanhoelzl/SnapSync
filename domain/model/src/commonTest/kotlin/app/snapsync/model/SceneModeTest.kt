@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The pure scene-mode resolver (capability `ios-app-shell`).
+ * The pure scene-mode resolver (capability `sync-status`).
  *
  * The load-bearing case is the **background-woken process**: iOS connects UI scenes in the background, so
  * an unconditional shell composes a Compose runtime and Metal renderer in a process that cannot draw, keeps
@@ -86,7 +86,7 @@ class SceneModeTest {
         assertEquals(SceneMode.Deferred, resolveScene(appVisibilityFrom(99L), everActive = false))
     }
 
-    // ── The rebuild signal (capability `ios-app-shell`) ────────────────────────────────────────────
+    // ── The rebuild signal (capability `sync-status`) ────────────────────────────────────────────
 
     @Test
     fun `handing out a placeholder advances the signal`() {

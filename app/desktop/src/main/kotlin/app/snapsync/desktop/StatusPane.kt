@@ -67,8 +67,8 @@ fun StatusPane(
     }
     val state by host.container.stateFlow.collectAsState()
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
-    // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
-    // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
+    // The current membership settings for the reconfigure surface (capability `manage-membership`).
+    // The rename lifecycle for the heading's rename dialog (capability `manage-membership`).
 
     PhoneFrame {
         // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
@@ -82,7 +82,7 @@ fun StatusPane(
         StatusScreen(
             state = state,
             cutoff = cutoffFormatter,
-            // The one tap → intent table (spec `sync-status-screen`), exactly as the shipped app binds it.
+            // The one tap → intent table (spec `sync-status`), exactly as the shipped app binds it.
             actions = statusActions(host),
         )
         }

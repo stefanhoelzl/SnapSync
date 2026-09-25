@@ -6,11 +6,11 @@ import co.touchlab.kermit.Severity
 import co.touchlab.kermit.loggerConfigInit
 
 /**
- * The world's log inspection list (capability `harness-world-model`, "Rigging cannot live in a fake") —
+ * The world's log inspection list (`docs/testing.md`, "Rigging cannot live in a fake") —
  * what the composed graph wrote, and at what severity.
  *
  * The severity is the point. Kermit's `Error`/`Assert` lines become crash-reporting **events** while
- * lower ones ride as breadcrumbs (capability `crash-reporting`), so "reported at `Error`" is a contract
+ * lower ones ride as breadcrumbs (capability `privacy-security`), so "reported at `Error`" is a contract
  * some features have — and for a feature that deliberately writes nothing else, the log is the only
  * observable it has. Anything asserting on messages is asserting on wording, so the helpers here are
  * severity-scoped and callers match on the substring they actually care about.

@@ -39,7 +39,7 @@ import kotlin.time.TimeSource
 
 /**
  * The **loopback address, and the only bind address this module may name** (capability
- * `architecture-guards`, "A dev/test control channel binds the loopback address only").
+ * `docs/architecture.md`, "A dev/test control channel binds the loopback address only").
  *
  * The channel forces OS callbacks and exposes event state, and it runs on a phone attached to whatever
  * network it happens to be on. Widening this is a one-token edit that reads as fixing a connectivity
@@ -68,14 +68,14 @@ private val json = Json { encodeDefaults = true; prettyPrint = true }
  *
  * Linked into `:app:ios` ONLY under `-Psnapsync.rig=true`; a production build contains none of this. The
  * same server is the JVM host's (`JvmRigHost`), over a world — one protocol, two hosts (capability
- * `testing-architecture`, "One control protocol, served by two hosts"). Every surface is a mechanical
+ * `docs/testing.md`, "One control protocol, served by two hosts"). Every surface is a mechanical
  * projection of a contract that already exists elsewhere, so there is no second way-to-drive that can rot or lie.
  *
  * ## The core arrives as a THUNK, never a value
  * [core] and [host] are thunks on purpose. `SnapSyncRoot.app` and `.host` are `by lazy` deliberately —
  * *"nothing resolves the device identity or opens a protected store earlier than before (the
  * locked-background-launch property)"* — and touching `host` calls `installPermissionSubscriptions()`,
- * which `ios-app-shell` has a scenario forbidding on a cold background wake. So binding the socket must
+ * which `sync-status` has a scenario forbidding on a cold background wake. So binding the socket must
  * force **nothing**: a rig build's launch behaves exactly like production, and the graph is forced by the
  * first request, which forces precisely what a real entry point would.
  *
@@ -161,7 +161,7 @@ class RigServer(
         // rot unnoticed. `/device` has no population at all.
         routing {
             get("/health") { call.traced { call.respondText(hooks.health(boundPort)) } }
-            // What this host honours and refuses of the shared vocabulary (capability `testing-architecture`,
+            // What this host honours and refuses of the shared vocabulary (`docs/testing.md`,
             // "One control protocol, served by two hosts").
             get("/device") { call.traced { call.respondAdvertisement() } }
 
@@ -176,7 +176,7 @@ class RigServer(
             post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
             get("/contract") { call.traced { call.respondContractList() } }
             post("/contract/{name}") { call.traced { call.respondContract() } }
-            // The upload receiver the upload-job contract's jobs are pointed at (capability `port-contracts`): the OS's
+            // The upload receiver the upload-job contract's jobs are pointed at (`docs/architecture.md`): the OS's
             // upload daemon PUTs each job's bytes here, over the rig build's loopback upload base, in the fixture route
             // grammar `scripts/transfer-fixture.py` serves the simulator app (`TransferFixture`). The answer is a
             // STIMULUS — it puts the OS's job queue into the clause's state — and no clause asserts it.
@@ -370,11 +370,11 @@ class RigServer(
     /**
      * `GET /contract` — the names of the contracts registered for the host this process is, one per line. The
      * `ios-contracts` job runs exactly this list, so a contract registered for the simulator app is run on every
-     * push, and one registered for nothing is run by nobody (capability `port-contracts`).
+     * push, and one registered for nothing is run by nobody (`docs/architecture.md`).
      */
     private suspend fun ApplicationCall.respondContractList() {
         // Refused rather than empty on a host with no in-app registry, so "run every contract this host lists"
-        // can never pass vacuously against it (capability `port-contracts`).
+        // can never pass vacuously against it (`docs/architecture.md`).
         if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
         respondText(hooks.contracts.filter { it.host == currentHost }.joinToString("") { it.name + "\n" })
     }

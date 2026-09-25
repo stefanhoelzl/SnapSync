@@ -15,7 +15,7 @@ import platform.Foundation.NSFileNoSuchFileError
 
 /**
  * The two helpers every Kotlin/Objective-C crossing goes through (law "ObjC boundaries contain every throw",
- * capability `module-architecture`; decision record `harden-seam-bug-classes`, D9). The ObjC-boundary gate in
+ * `docs/architecture.md`; decision record `harden-seam-bug-classes`, D9). The ObjC-boundary gate in
  * `:test:architecture` holds the adapters to them.
  *
  * **Inbound — [objcBoundary].** A Kotlin exception that unwinds into Objective-C frames does not become an

@@ -21,7 +21,7 @@ import app.snapsync.ports.AttestStore
 import kotlin.test.Test
 
 /**
- * App Attest and the attestation store on an entitled device, REPLAYED (capability `port-contracts`): the
+ * App Attest and the attestation store on an entitled device, REPLAYED (`docs/architecture.md`): the
  * CURRENT [IosAttestKey] and [KeychainAttestStore] run against what iOS answered when
  * `test/contracts/recordings/AttestKey@IOS_DEVICE_APP.rec` and `AttestStore@IOS_DEVICE_APP.rec` were recorded,
  * and the current clauses judge.

@@ -32,7 +32,7 @@ import kotlin.test.Test
 
 /**
  * The simulator target's upload-job substitute held to the clauses the upload extension's recording is
- * (capability `port-contracts`): the queue every simulator scenario creates jobs through is licensed by the contract
+ * (`docs/architecture.md`): the queue every simulator scenario creates jobs through is licensed by the contract
  * its real implementation passes inside the extension on a device.
  *
  * The substitute expects someone to play the OS; here [PlayedOs] does, in memory and as the device was measured to

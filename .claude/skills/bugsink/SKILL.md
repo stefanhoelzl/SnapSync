@@ -13,7 +13,7 @@ description: >-
 # bugsink — crash triage
 
 Read-only triage of the crashes both SnapSync iOS processes report to the operator's
-**Bugsink** instance (capability `crash-reporting`). Dev/operator infrastructure:
+**Bugsink** instance (capability `privacy-security`). Dev/operator infrastructure:
 non-gating, no spec, no shipped-code change — same posture as
 `harness-driver` and the local backend rig. **Triage is read-only**: every step below
 issues `GET`s. There is exactly **one** write — resolving an issue a shipped fix closes
@@ -142,8 +142,7 @@ device context and log trail. For the stacktrace, prefer step 3.
 ## 2b. Bug reports / diagnostic dumps (operator-triggered, not crashes)
 
 Any issue whose message begins **`Bug Report:`** is **not a crash**. It is a device log someone asked
-to send by double-tapping the "SnapSync" label in the app and writing what went wrong (capability
-`diagnostic-logging`). The rest of the title is that description, verbatim.
+to send by double-tapping the "SnapSync" label in the app and writing what went wrong (capability `privacy-security`). The rest of the title is that description, verbatim.
 
 ⚠️ **One issue per description, not one issue for all reports.** The message *is* the grouping key, so
 two reports worded differently arrive as two distinct issues — expect several `Bug Report: …` entries
@@ -258,7 +257,7 @@ Store version"*, and a crash recurring on a TestFlight build in between does **n
 its issue. Sending `0.4.<build>` instead would make it exact — strict `MAJOR.MINOR.PATCH`, so
 Bugsink orders by semver rather than falling back to date order, which is already scrambled
 here (release `0.1` is dated 2026-07-31, *after* `0.2`'s 2026-07-29). That changes what crash
-events carry — capability `crash-reporting` — so it is a separate change nobody has proposed.
+events carry — capability `privacy-security` — so it is a separate change nobody has proposed.
 
 ### The procedure
 
@@ -343,5 +342,5 @@ wrong, say so and let the operator reopen it in the web UI.
   number, not from whatever was installed when the report was finally delivered (a cached crash can
   arrive days later; `SNAPSYNC-1` took three). That is what makes `dsyms-<dist>` the right artifact.
   It holds *because* the app deliberately never sets the SDK's `dist` option — see the
-  `crash-reporting` spec requirement "The build number is the SDK's crash-time value and is never
+  `privacy-security` spec requirement "The build number is the SDK's crash-time value and is never
   overridden". Do not "fix" that omission.

@@ -6,7 +6,7 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 
 /**
- * The iOS binding of the `:domain` `LogScope` port (capability `diagnostic-logging`): drives the
+ * The iOS binding of the `:domain` `LogScope` port (capability `privacy-security`): drives the
  * process-global [LogContext] the device-log writers read. This is the ambient-context set/clear
  * seam every live iOS binary injects (world / tests inject `LogScope.NoOp`), so the global mutable
  * stays in the adapter layer while `:domain` code drives it through the port.
@@ -18,7 +18,7 @@ object IosLogScope : LogScope {
 
 /**
  * The thread-scoped binding of the `LogScope` port: the prefix reaches only lines logged on the thread
- * the entry point was called on (capability `diagnostic-logging`).
+ * the entry point was called on (capability `privacy-security`).
  *
  * ⚠️ **Only for a body that does not suspend and launches nothing whose lines should inherit the
  * prefix.** That is what makes it exact: a synchronous call occupies its thread, so nothing else logs

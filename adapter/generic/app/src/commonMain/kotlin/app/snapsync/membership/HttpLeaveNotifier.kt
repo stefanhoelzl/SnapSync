@@ -18,7 +18,7 @@ import io.ktor.http.isSuccess
  * It is **best-effort**: it returns a failed [Result] (never throws) so the caller's local teardown
  * proceeds regardless — a dropped notify simply leaves the backend membership in place (the accepted
  * abandon-leak), it never blocks or rolls back leaving locally. Invoked by both the explicit Leave
- * action and the switch path (provisioning a different event while joined; see `event-link`).
+ * action and the switch path (provisioning a different event while joined; see `join-event`).
  *
  * **[identity] is bound here, and that is the whole reason this class holds it.** The port
  * says "this device is leaving"; *which* device is a per-process constant, not a per-call choice (see

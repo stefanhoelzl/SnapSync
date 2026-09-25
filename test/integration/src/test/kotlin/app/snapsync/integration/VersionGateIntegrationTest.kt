@@ -7,7 +7,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
 /**
- * The version gate end to end (capability `min-app-version`), over the REAL composed core, driven through the
+ * The version gate end to end (capability `app-update-required`), over the REAL composed core, driven through the
  * control protocol.
  *
  * Nothing here is simulated between the wire and the screen. The mini-edge answers a genuine `426`; the REAL

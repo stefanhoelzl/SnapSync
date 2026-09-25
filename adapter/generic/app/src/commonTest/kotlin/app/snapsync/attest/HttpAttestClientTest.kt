@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * The Ktor adapter behind the `AttestClient` port (capability `device-attestation`; the policy that
+ * The Ktor adapter behind the `AttestClient` port (capability `privacy-security`; the policy that
  * calls it — `DeviceAttestation` — is tested in `:adapter:generic:fake` over a fake port). Two things
  * are this adapter's own contract and are pinned here.
  *

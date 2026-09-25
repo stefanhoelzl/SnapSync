@@ -1,5 +1,5 @@
 /**
- * A cyclomatic-complexity ceiling for this backend's TypeScript (capability `complexity-budgets`).
+ * A cyclomatic-complexity ceiling for this backend's TypeScript (`docs/architecture.md`).
  *
  * THE CEILING IS A NUMBER THAT MAY ONLY FALL. Lowering it is ordinary work — do it in the change that
  * makes it true. RAISING it requires a stated forcing proof in that change's description. There is no
@@ -95,7 +95,7 @@ const plugin: Deno.lint.Plugin = {
                 node,
                 message:
                   `This function's cyclomatic complexity is ${scope.complexity}, above the ceiling ` +
-                  `of ${MAX_COMPLEXITY} (capability \`complexity-budgets\`). Split it, or state a ` +
+                  `of ${MAX_COMPLEXITY} (\`docs/architecture.md\`). Split it, or state a ` +
                   `forcing proof and raise the ceiling in api/src/lint/complexity.ts.`,
               });
             }

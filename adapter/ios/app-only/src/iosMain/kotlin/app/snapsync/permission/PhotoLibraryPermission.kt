@@ -34,7 +34,7 @@ import platform.darwin.dispatch_get_main_queue
  * ding, re-reading the status. Status changes from a `request()` arrive via the same source.
  *
  * The mapping is faithful: `.authorized` → GRANTED (full library), `.limited` → LIMITED (the user's
- * hand-picked selection — a first-class working grant, capability `limited-photo-access`),
+ * hand-picked selection — a first-class working grant, capability `photo-access`),
  * `.notDetermined` → NOT_DETERMINED, `.denied`/`.restricted` → DENIED. Access level is `.readWrite`
  * (PhotoKit has no read-only level; it is what discovery, resource reads, and imports need).
  *
@@ -57,7 +57,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
             `object` = null,
             queue = NSOperationQueue.mainQueue,
         ) { _: NSNotification? ->
-            // PLATFORM ENTRY POINT (spec `diagnostic-logging`): the OS calls this observer body, so
+            // PLATFORM ENTRY POINT (spec `privacy-security`): the OS calls this observer body, so
             // it records that it was called and what it read. Once per foreground: INFO.
             objcBoundary(log, "photoPermission.onDidBecomeActive") {
                 log.invocation("photoPermission.onDidBecomeActive", result = { status: PermissionStatus -> "$status" }) {
@@ -75,7 +75,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
 
     /**
      * PhotoKit's limited-library picker — the system sheet that lets a user with a **partial** grant
-     * widen (or narrow) the set of photos this app can see (capability `limited-photo-access`).
+     * widen (or narrow) the set of photos this app can see (capability `photo-access`).
      *
      * This is the other half of `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` in the app's
      * Info.plist: that key stops iOS auto-presenting its own "Select More Photos" alert on every
@@ -87,7 +87,7 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
      * It lived beside this class as a top-level `presentLimitedLibraryPicker()` the composition root
      * passed as `AppPorts.presentPhotoPicker: () -> Unit` — a platform presentation handed to the core
      * behind a type that said nothing, and defaulted inert, so a composition that never wired it looked
-     * exactly like one that had (spec `module-architecture`, "Ports are the I/O boundary named for the
+     * exactly like one that had (`docs/architecture.md`, "Ports are the I/O boundary named for the
      * need"). It is folded into this adapter because [PhotoAccessRequester] is where it belongs: the
      * same object already presents the permission dialog and the Settings page, and the picker is the
      * third face of that one need.

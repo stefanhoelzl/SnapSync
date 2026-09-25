@@ -13,7 +13,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Which prefix a line gets, and from which thread (capability `diagnostic-logging`).
+ * Which prefix a line gets, and from which thread (capability `privacy-security`).
  *
  * The measured failure this pins: a MetricKit delivery held the process-wide claim while launch work
  * logged on other threads, and seven launch lines were labelled as the delivery's. A thread-scoped

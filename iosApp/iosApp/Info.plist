@@ -26,7 +26,7 @@
 	     the same reason (its Info.plist explains, and holds the measurement); the app carries it
 	     because the registration call is made by THIS process and which bundle the daemon reads has
 	     not been established — restoring both makes the question moot rather than betting on it.
-	     Capability `ios-photokit-upload`.
+	     Capability `background-upload`.
 
 	     It is COMPOSED from two build settings the resolver generates (a scheme enum and a bare host),
 	     never carried as one URL-valued setting: an Info.plist substitution can only read a build
@@ -34,7 +34,7 @@
 	     is data. ios.yml asserts what this composes to equals this bundle's Deployment.plist
 	     `uploadBase`.
 
-	     EVERY OTHER deployment value stays out of this file (capability deployment-configuration). The
+	     EVERY OTHER deployment value stays out of this file (`docs/deployment.md`). The
 	     APNs environment and the crash-reporting pair live in the GENERATED Deployment.plist, bundled
 	     as a resource into this target and the extension's. They were moved because an xcconfig build
 	     setting is the wrong carrier for a value containing "//": that silently truncated the
@@ -42,8 +42,7 @@
 	     lives on the resolver's key inventory, where every toolchain that reads them can see it. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2</string>
-	<!-- No CFBundleURLTypes, deliberately: the `snapsync` custom scheme is retired (capability
-	     `event-link`). An invite is now an HTTPS Universal Link, claimed via the associated-domains
+	<!-- No CFBundleURLTypes, deliberately: the `snapsync` custom scheme is retired (capability `join-event`). An invite is now an HTTPS Universal Link, claimed via the associated-domains
 	     entitlement rather than a scheme — which is what lets a QR scanned by someone who does NOT
 	     have the app reach the App Store instead of dead-ending. Re-adding a scheme here would
 	     resurrect a second URL form the one authoritative codec no longer accepts. -->
@@ -80,20 +79,18 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<!-- Background processing for the app-driven upload heartbeat BGProcessingTask (capability
-	     ios-url-session-upload). Every identifier below MUST match a Swift register(forTaskWithIdentifier:)
+	<!-- Background processing for the app-driven upload heartbeat BGProcessingTask (capability `background-upload`). Every identifier below MUST match a Swift register(forTaskWithIdentifier:)
 	     call and nothing else may be listed: registering an unlisted identifier, or listing one never
 	     registered, is an operating-system error. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
-		<!-- Silent (content-available) remote notifications wake the app in the background (capability
-		     push-registration). Registered at launch; the AppDelegate forwards receipt to Kotlin. -->
+		<!-- Silent (content-available) remote notifications wake the app in the background (capability `receiving-photos`). Registered at launch; the AppDelegate forwards receipt to Kotlin. -->
 		<string>remote-notification</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<!-- The app-driven upload heartbeat (capability ios-url-session-upload): its work is the core's
+		<!-- The app-driven upload heartbeat (capability `background-upload`): its work is the core's
 		     tail — imports staged downloads, tops up the background URLSession queue, catches new captures
 		     while the app is closed. The download import-tail backstop that was listed here is deleted
 		     (changes/own-work-per-wake, D7). -->

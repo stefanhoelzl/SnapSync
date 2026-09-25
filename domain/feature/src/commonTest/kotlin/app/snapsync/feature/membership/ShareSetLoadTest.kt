@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
 /**
- * The join-time load (capability `upload-state-reconciliation`): a new membership starts from exactly the
+ * The join-time load (capability `photo-sharing`): a new membership starts from exactly the
  * device's stored resources, or from nothing — never from what the ledger held before the join.
  */
 class ShareSetLoadTest {

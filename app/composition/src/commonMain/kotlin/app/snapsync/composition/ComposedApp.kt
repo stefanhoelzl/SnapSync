@@ -11,7 +11,7 @@ import app.snapsync.presentation.StatusSources
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * The composed app: the core, and the status host over it (spec `module-architecture`, "One shared
+ * The composed app: the core, and the status host over it (`docs/architecture.md`, "One shared
  * composition").
  *
  * [host] is `by lazy`, and touching it is **host assembly**: it installs the permission-grant subscriptions, then
@@ -47,7 +47,7 @@ class ComposedApp internal constructor(
  * The push registration is installed HERE, on composition, rather than at host assembly: a process composes its
  * graph on every cold start — the first operating-system entry that reaches the core does it, foreground or
  * background — while it assembles its host only on a foreground launch. A rotated APNs token or a renewed credential
- * learned in a background wake is therefore published from that wake (capability `ios-app-shell`, "Push registration
+ * learned in a background wake is therefore published from that wake (capability `sync-status`, "Push registration
  * is started by the shared composition"). The installer is idempotent, so nothing re-installs it.
  *
  * A root supplies ports and nothing else. It builds no host, installs no subscription and passes no read-model:
@@ -71,7 +71,7 @@ fun snapSyncHost(scope: CoroutineScope, ports: AppPorts): ComposedApp {
             diagnostics = StatusDiagnostics(
                 log = { message -> ports.log.i { message } },
                 // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a
-                // breadcrumb (capability `crash-reporting`) — a command that failed outright is exactly what
+                // breadcrumb (capability `privacy-security`) — a command that failed outright is exactly what
                 // should reach the operator.
                 onIntentError = { throwable -> ports.log.e(throwable) { "user command failed" } },
             ),

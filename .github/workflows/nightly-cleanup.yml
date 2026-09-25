@@ -1,10 +1,10 @@
 name: nightly-cleanup
 
-# The nightly sweep (capability `scheduled-cleanup`). It reclaims, in two ordered phases, every STALE
+# The nightly sweep (capability `event-lifetime`). It reclaims, in two ordered phases, every STALE
 # event (past its derived delete-by, or emptied) and every STALE asset (a byte or device record no
 # surviving event still needs).
 #
-# It MARKS FROM THE DATABASE and DELETES FROM STORAGE (capability `database`): only the photo bytes and
+# It MARKS FROM THE DATABASE and DELETES FROM STORAGE (`docs/architecture.md`): only the photo bytes and
 # the attestation records still live in the zone, so everything the sweep reasons about — which events
 # exist, who is a member, which keys are referenced, each device's floor — is a query.
 #
@@ -13,7 +13,7 @@ name: nightly-cleanup
 # storage calls, so it cannot run in the edge at all. This job runs the SAME `api/src/scripts/sweep.ts`
 # program on an Ubuntu runner with no such caps, talking to bunny storage directly. It imports the Edge
 # Script's own `storage`/`lifecycle` modules, so the layout and lifecycle rules cannot drift between the
-# two (backend-deployment).
+# two (docs/deployment.md).
 #
 # It is DEV/OPS INFRASTRUCTURE, non-gating: it posts no required status check and blocks no merge. A failed run is red and visible but stops nothing.
 #
@@ -22,7 +22,7 @@ name: nightly-cleanup
 # from, and delete the rows it collects). It makes no request to the Edge Script, so it holds no
 # credential authorizing one — it no longer announces a deletion, because the notify channel could not
 # say what a deletion means and arrived after the deletes it described. It does NOT hold the bunny
-# ACCOUNT key (which owns config + DNS) — that prohibition (backend-deployment) is unchanged, and the
+# ACCOUNT key (which owns config + DNS) — that prohibition (docs/deployment.md) is unchanged, and the
 # edge-only secrets (APNs, token signing) are never given to this job either.
 #
 # The scheduled run is a REAL delete. Validate first with the manual dry-run:

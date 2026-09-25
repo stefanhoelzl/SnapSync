@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * The Ktor `MockEngine` mini-edge (capability `harness-world-model`): a routing `HttpClient` that
+ * The Ktor `MockEngine` mini-edge (`docs/testing.md`): a routing `HttpClient` that
  * answers the app-side metadata calls off the [store], so the REAL common-Ktor seams
  * (`HttpDeviceFilesSource`, `HttpEventUnionSource`, `HttpEventCreation`, `HttpEventJoin` and
  * `HttpManifestPublisher`) run unmodified against it. It generalizes the repo's existing
@@ -70,13 +70,13 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
             val method = request.method
             val body = (request.body as? TextContent)?.text.orEmpty()
 
-            // The version gate (capability `min-app-version`), OFF unless armed. It precedes every route
+            // The version gate (capability `app-update-required`), OFF unless armed. It precedes every route
             // — including the ungated ones — because a build too old to be served cannot be helped by
             // reaching one, which is the ordering the real gate takes for the same reason.
             refusedForVersion(store, version, request.headers[APP_VERSION_HEADER])
                 ?.let { return@MockEngine respond(it, HttpStatusCode.UpgradeRequired, jsonHeaders()) }
 
-            // The operator's per-request levers (capability `harness-world-model`), before any route answers.
+            // The operator's per-request levers (`docs/testing.md`), before any route answers.
             leverAnswer(store, method, segments, request.headers[HttpHeaders.Authorization], request.url.encodedPath)
                 ?.let { return@MockEngine it }
 
@@ -158,7 +158,7 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     )
                 }
 
-                // PATCH /events/<id>  (rename, capability `event-rename`) — the ONE route that rewrites
+                // PATCH /events/<id>  (rename, capability `manage-membership`) — the ONE route that rewrites
                 // a registered event, and it rewrites `name` alone.
                 method == HttpMethod.Patch && segments.size == 2 && segments[0] == "events" ->
                     renameEvent(store, json, segments[1], body, ::jsonHeaders)
@@ -218,7 +218,7 @@ private suspend fun MockRequestHandleScope.leverAnswer(
  * The routes only `/api/v2` serves, or null when this request is not one of them.
  *
  * Extracted so the dispatcher stays under the harness tier's complexity ceiling — a budget that may only
- * fall (`complexity-budgets`), so a route table that grows gets split rather than a number that gets
+ * fall (`docs/architecture.md`), so a route table that grows gets split rather than a number that gets
  * raised. It also puts the version's whole route table in one readable place.
  */
 private fun MockRequestHandleScope.v2Route(
@@ -273,7 +273,7 @@ private fun MockRequestHandleScope.v2Route(
  * `PUT /files/devices/<deviceId>/<assetId>/<role>?filename=<capture name>` — the v2 byte upload, or null when
  * this request is not one. The world's own uploader deposits store-direct (it plays the OS's transfer), so this
  * route exists for callers that upload the way the app's uploader ADDRESSES the edge: the backend port
- * contracts' setup (capability `port-contracts`), which enters "a device holds uploads" through the public
+ * contracts' setup (`docs/architecture.md`), which enters "a device holds uploads" through the public
  * surface on every edge it binds. It stores under the key the real edge composes for the same resource.
  */
 private fun MockRequestHandleScope.v2Upload(
@@ -305,7 +305,7 @@ private fun refusedForVersion(store: BackendStore, version: Int, declared: Strin
 }
 
 /**
- * `PATCH /events/<id>` — the rename (capability `event-rename`). Faithful to the real route: the same
+ * `PATCH /events/<id>` — the rename (capability `manage-membership`). Faithful to the real route: the same
  * name rule as create, a `404` for an unregistered event, and every other field left exactly as it was
  * (`registerEvent` overwrites only its non-null arguments, so passing just the name is a verbatim
  * rewrite). Existence is checked AFTER validation, matching the real route's order — so a bad name
@@ -345,7 +345,7 @@ private sealed interface CreateEvent {
  * `400`, and the bug would surface only on device.
  *
  * Extracted from the dispatcher to keep it under the harness tier's complexity ceiling, which may only
- * fall (`complexity-budgets`).
+ * fall (`docs/architecture.md`).
  */
 private fun parseCreateEvent(json: Json, body: String): CreateEvent {
     val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
@@ -356,7 +356,7 @@ private fun parseCreateEvent(json: Json, body: String): CreateEvent {
     if (startsAt == null || !CANONICAL_CUTOFF.matches(startsAt)) {
         return CreateEvent.Invalid("invalid startsAt")
     }
-    // `endsAt` is creator-supplied at mint (capability `event-limits`): when present it must be canonical,
+    // `endsAt` is creator-supplied at mint (capability `event-lifetime`): when present it must be canonical,
     // strictly after `startsAt`, AND no later than `startsAt + 30d` (the window maximum); when absent it falls
     // back to that maximum. The upper bound was missing here until `EventCreationContract` held this edge to
     // the real one, which refuses a longer window.
@@ -373,7 +373,7 @@ private fun parseCreateEvent(json: Json, body: String): CreateEvent {
 /** The `/api/vN` prefix shape the mini-edge splits off, mirroring the backend's own matcher. */
 private val VERSION_SEGMENT = Regex("v\\d+")
 
-/** The header a v2 request declares its marketing version in (capability `min-app-version`). */
+/** The header a v2 request declares its marketing version in (capability `app-update-required`). */
 private const val APP_VERSION_HEADER = "x-snapsync-app-version"
 
 /**
@@ -404,7 +404,7 @@ internal fun compareAppVersions(a: String, b: String): Int {
  *
  * **Carries milliseconds on purpose.** The real backend mints this with `new Date().toISOString()`, which
  * always emits `.sss` — and a fractional-second `createdAt` is exactly what broke the capture-date cutoff
- * (`photo-selection-policy`): reused verbatim it violates the second-precision invariant, and a bare
+ * (`photo-sharing`): reused verbatim it violates the second-precision invariant, and a bare
  * `NSISO8601DateFormatter` then fails to parse it, silently costing the bounded PhotoKit fetch. The world
  * previously minted a *tidier* timestamp than production, so the join gate's normalization went untested
  * against the shape it actually receives. A fake backend must not be cleaner than the real one.
@@ -413,18 +413,18 @@ private const val CREATED_AT = "2026-01-01T00:00:00.000Z"
 
 /**
  * The canonical capture-date cutoff shape the real backend demands of `startsAt` (second precision, UTC,
- * no fraction, no offset — capability `photo-selection-policy`). Unlike [CREATED_AT], a `startsAt` is CLEAN by
+ * no fraction, no offset — capability `photo-sharing`). Unlike [CREATED_AT], a `startsAt` is CLEAN by
  * contract: the real endpoint 400s anything else, so the world must too.
  */
 private val CANONICAL_CUTOFF = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""")
 
-/** The mini-edge's `endsAt` fallback (capability `event-limits`): `startsAt + 30d`, mirroring the real
+/** The mini-edge's `endsAt` fallback (capability `event-lifetime`): `startsAt + 30d`, mirroring the real
  *  backend's absent-`endsAt` stamp. The app normalizes any sub-second precision, so the raw instant
  *  string is fine. */
 private fun plus30Days(canonical: String): String = (Instant.parse(canonical) + 30.days).toString()
 
 /**
- * The mini-edge's DERIVED retention deadline (capability `event-limits`), mirroring the real backend:
+ * The mini-edge's DERIVED retention deadline (capability `event-lifetime`), mirroring the real backend:
  * `max(createdAt, startsAt) + 30d`. Anchoring at the LATER of the two is what keeps a back-dated event
  * from being born already expired and a created-early event from dying inside its own window.
  */

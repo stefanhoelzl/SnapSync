@@ -5,7 +5,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The album denylist's matching rule (capability `photo-selection-policy`). The match is deliberately
+ * The album denylist's matching rule (capability `photo-sharing`). The match is deliberately
  * **exact** (after trim, case-insensitive): a prefix or substring match would silently swallow a user's own
  * album that merely happens to start with a denied word, which is the false-drop this policy forbids.
  */

@@ -12,7 +12,7 @@ import platform.Foundation.NSUserDefaults
 import kotlin.test.Test
 
 /**
- * The event-album map in its `NSUserDefaults` suite, live (capability `port-contracts`). Each clause gets its
+ * The event-album map in its `NSUserDefaults` suite, live (`docs/architecture.md`). Each clause gets its
  * own suite, named from the clause id and removed afterwards — measured in this executable (2026-09-23): a
  * named suite round-trips and `removePersistentDomainForName` empties it.
  *

@@ -56,7 +56,7 @@ class DownloadPushReceiverTest {
         union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), InMemoryAssetPresence(),
         myDeviceId = myDevice,
         // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
-        // (capability `photo-download`) — so state a downloading membership explicitly. The gate no
+        // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
         // longer defaults: a permissive default is what let "no membership" mean "download freely".
         downloadEnabled = { true },
     )

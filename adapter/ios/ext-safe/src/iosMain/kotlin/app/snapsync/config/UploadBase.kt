@@ -9,6 +9,12 @@ package app.snapsync.config
  * user-configurable host is impossible by design; this is the authoritative source of the edge URL's
  * host, combined at each composition root with the runtime event id.
  *
+ * Measured (SE2, iOS 26.6): with `BackgroundUploadURLBase` absent from the extension's own `Info.plist` an
+ * enable fails `PHPhotosErrorDomain -1` (2026-08-28); default ATS exempts a loopback IP literal, so a registration
+ * against `http://127.0.0.1:<port>/…` succeeds and `assetsd` delivers job bytes there in plaintext (2026-09-23).
+ * CI checks the key is baked into the archive; no clause asserts either answer. See
+ * changes/archive/2026-09-23-contract-upload-job-tier.
+ *
  * Consolidated here beside [app.snapsync.logging.appBuildVersion] for the same two reasons: it is read
  * by **both** processes (each `NSBundle.mainBundle` being its own bundle), and neither wiring-only
  * composition root may carry the absent-key defaulting decision — `:app:*` Kotlin is gated to zero

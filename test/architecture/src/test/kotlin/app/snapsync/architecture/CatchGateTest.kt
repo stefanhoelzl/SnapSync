@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **The catch gate** (capability `architecture-guards`; law `module-architecture`, "Catch sites keep
+ * **The catch gate** (`docs/architecture.md`; law `docs/architecture.md`, "Catch sites keep
  * cancellation").
  *
  * `runCatching` and `catch (… : Throwable | Exception)` catch `CancellationException` — the way a cancelled

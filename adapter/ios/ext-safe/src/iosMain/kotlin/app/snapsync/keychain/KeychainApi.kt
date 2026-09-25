@@ -13,7 +13,7 @@ import platform.Security.SecItemUpdate
 
 /**
  * **The operating-system boundary of [IosKeychain]**: the four `SecItem*` calls it makes, and nothing else
- * (capability `port-contracts`, "Hosts CI cannot reach are recorded at the operating-system boundary and
+ * (`docs/architecture.md`, "Hosts CI cannot reach are recorded at the operating-system boundary and
  * replayed on every build").
  *
  * It exists so the adapter can be run against a *recording* of what iOS answered on an entitled device.
@@ -22,7 +22,7 @@ import platform.Security.SecItemUpdate
  * device's real answers, and a change in what the adapter asks iOS shows up as a divergence rather than
  * as a stale green.
  *
- * `internal`: nothing outside this module may reach the Keychain (capability `architecture-guards`), and
+ * `internal`: nothing outside this module may reach the Keychain (`docs/architecture.md`), and
  * the recording and replaying implementations live in this module's rig-gated source set and its tests.
  */
 internal interface KeychainApi {

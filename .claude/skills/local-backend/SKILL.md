@@ -69,7 +69,7 @@ It answers with the ledger counts after the fact — `{"reset":true,"ledgerCompl
 so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are departing.
 
 **Why it is not optional:** the upload ledger's key is the **bare filename**, event-independent, and a
-*leave* deliberately keeps it (a `COMPLETED` row stays true across a leave — `sync-ledger`). Point the
+*leave* deliberately keeps it (a `COMPLETED` row stays true across a leave — `photo-sharing`). Point the
 build at a different backend and the bytes are on the one you left while the ledger still says
 `COMPLETED`, so the device uploads **nothing** — no error, no failed request, no log line. Clearing the
 ledger alone is **not enough** either: the discovery cursor is a `PHPersistentChangeToken`, and with it
@@ -84,7 +84,7 @@ its own request now, so reset **before** leaving: after a reset the device is un
 a no-op rather than a `DELETE` aimed at the backend you are leaving behind.
 
 ⚠️ **The rig's relational state lives in `api/.localstore/api.db`** — a real SQLite file beside the
-objects (capability `database`), which is where events, memberships, assets and the `uploaded` record now
+objects (`docs/architecture.md`), which is where events, memberships, assets and the `uploaded` record now
 live. `rm -rf api/.localstore` clears both halves; clearing one and not the other leaves a rig whose
 events exist but whose photos do not, which looks like "downloads are inert" with no error anywhere.
 
@@ -100,13 +100,13 @@ bearer enrols the device the path names whenever it supplies the token. A caller
 is untouched.
 
 ⚠️ **`api/.localstore` survives across sessions.** If it still holds objects from an earlier run, the
-join-time load (`upload-state-reconciliation`) seeds them as `COMPLETED` from the device's
+join-time load (`photo-sharing`) seeds them as `COMPLETED` from the device's
 stored-file listing and they never re-upload. `rm -rf api/.localstore` when you want a clean slate —
 measured 2026-08-25: a rejoin seeded 167 rows this way, which is correct behaviour and looks exactly
 like "nothing uploaded".
 
 Going **back to production** is the direction with no automatic protection and it needs the same reset;
-`upload-state-reconciliation` then re-seeds already-stored photos as `COMPLETED`, so the cost is one
+`photo-sharing` then re-seeds already-stored photos as `COMPLETED`, so the cost is one
 reconcile, not a re-upload of the library.
 
 ## Two rig behaviours worth knowing before you debug them

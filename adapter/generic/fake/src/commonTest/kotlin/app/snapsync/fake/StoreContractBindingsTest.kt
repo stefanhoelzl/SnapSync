@@ -15,7 +15,7 @@ import kotlin.test.Test
 
 /**
  * The honest storage fakes, held to the same contracts as the SQLDelight stores (capability
- * `port-contracts`). Bound here because only this module's test source set can construct an `internal`
+ * `docs/architecture.md`). Bound here because only this module's test source set can construct an `internal`
  * fake; `commonTest`, so they run on the JVM and on the simulator.
  */
 class StoreContractBindingsTest {

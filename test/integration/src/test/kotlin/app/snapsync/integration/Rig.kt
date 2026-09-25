@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * One integration test's host: a fresh control-channel JVM host, in-process, over the mini-edge — closed when the
- * test ends. The test drives it through [Rig] and nothing else (capability `testing-architecture`, "The
+ * test ends. The test drives it through [Rig] and nothing else (`docs/testing.md`, "The
  * seam-to-UI-state integration surface"), so a test body names no world, port or composition type.
  */
 fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {

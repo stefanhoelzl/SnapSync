@@ -8,7 +8,7 @@ import kotlin.test.fail
 
 /**
  * **The Kotlin shells hold zero unpinned decisions — and the pins are inventoried, exactly**
- * (capability `architecture-guards`, "The shell gates"; law: `module-architecture` "Shells are
+ * (`docs/architecture.md`, "The shell gates"; law: `docs/architecture.md` "Shells are
  * wiring only"). Armed permanently at the migration finale, when the shells reached zero.
  *
  * The gate itself is `detektAppShell` (root build): `CyclomaticComplexMethod` at threshold 2 over
@@ -23,7 +23,7 @@ import kotlin.test.fail
  *
  * The pinned site (it carries its forcing proof as a comment at the suppression):
  *  - `MainViewController.kt` ×1 — the one switch on the resolved `SceneMode`, which decides whether a
- *    Compose scene is composed at all (capability `ios-app-shell`). The DECIDING is `resolveScene`, pure
+ *    Compose scene is composed at all (capability `sync-status`). The DECIDING is `resolveScene`, pure
  *    and `commonTest`-covered; the sealed type exists so a third mode fails the compile. Expiry: dies
  *    with the deferral, when CMP-5978 is fixed upstream and the mitigation can be deleted.
  *
@@ -51,12 +51,12 @@ class KotlinShellGuardTest {
      *
      * `test/rig/src/hook` lives in `:test:rig`'s tree but is compiled INTO `:app:ios` under
      * `-Psnapsync.rig=true`, so it is shell source and is gated as such rather than exempted
-     * (capability `architecture-guards`, "Source contributed into a shell's source set is shell
+     * (`docs/architecture.md`, "Source contributed into a shell's source set is shell
      * source for the gates").
      *
      * `app/ios/forge/src` is the forge shell, built under `-Psnapsync.forge=true`. It was missing
      * from BOTH this list and the build's — the mirror was faithful and both copies were wrong,
-     * which is the argument recorded in `complexity-budgets` for deriving the wider gate's coverage
+     * which is the argument recorded in `docs/architecture.md` for deriving the wider gate's coverage
      * from the Gradle model instead of mirroring a list. This gate keeps the list because one of its
      * roots (`test/rig/src/hook`) is not a module and the project model cannot express it.
      */
@@ -128,7 +128,7 @@ class KotlinShellGuardTest {
      * So the expected set is derived from a THIRD place neither list controls — the build's own include
      * set. Every `:app:ios*` module SHALL have its source root scanned. `:app:desktop` is excluded
      * deliberately and by name: it is test equipment hosting two harness applications, measured as
-     * harness under capability `complexity-budgets`, and has never been in this gate's scope.
+     * harness under `docs/architecture.md`, and has never been in this gate's scope.
      */
     @Test
     fun `every iOS shell module is scanned by the shell gate`() {

@@ -5,7 +5,7 @@ import app.snapsync.model.grantsPhotoAccess
 import kotlinx.coroutines.launch
 
 /**
- * The reconfigure use-case over the core's features (capability `reconfigure-membership`). A builder rather than
+ * The reconfigure use-case over the core's features (capability `manage-membership`). A builder rather than
  * an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]). Upload ARMS on enable but drains on
  * disable (no stop); download reconciles on enable and cancels in-flight on disable — the deliberate arm asymmetry
  * lives in the tested use-case.
@@ -31,6 +31,6 @@ internal fun AppCore.reconfigureEventFor(): ReconfigureEvent =
         startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
         cancelDownloads = { downloadController.onLeaveOrSwitch() },
         // The policy bounds are a manifest projection input that lives outside the ledger (capability
-        // `reconfigure-membership`); the use-case calls this after its config save has landed.
+        // `manage-membership`); the use-case calls this after its config save has landed.
         bumpManifestVersion = { ports.uploadRecord.ledger.bumpManifestVersion() },
     )

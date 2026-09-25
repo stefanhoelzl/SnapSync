@@ -12,7 +12,7 @@ import kotlin.test.Test
 
 /**
  * The real [IosKeychain], live, in the simulator's Kotlin/Native test executable (capability
- * `port-contracts`). That host is unentitled: `securityd` refuses it every `SecItem*` call with
+ * `docs/architecture.md`). That host is unentitled: `securityd` refuses it every `SecItem*` call with
  * `-25291` (`errSecNotAvailable`), so the only state it can present is [SecureStoreState.INACCESSIBLE] —
  * which is also the state the build-297 crash lived in, run here against the real API on every build.
  *
