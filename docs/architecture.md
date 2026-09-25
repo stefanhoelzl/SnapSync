@@ -568,6 +568,19 @@ its wire tests (`v1.test.ts`) must pass **unmodified** across any schema migrati
   gated by `api/test/migrations.test.ts`.
 - A one-time data cutover is never committed. It runs from a scratchpad.
 
+**Accepted limitations** (decided 2026-09-25, spec diet follow-ups; no user promise either way):
+- **A lost upload record is not repaired.** If a database failover loses a `resources` row after the
+  bytes landed, the uploader believes the photo is shared, but it never appears in the event union for
+  others. The photo stays in the uploader's own library. Rare infrastructure event, deliberately no
+  device-side reconciliation.
+- **A reinstall forgets what was received.** The download memory lives in the App-Group container,
+  which a reinstall deletes. After reinstalling and rejoining mid-event, photos received earlier may be
+  re-shared as the member's own (others see duplicates), and received photos the member deleted may
+  arrive again. Inferred from the code, not measured. Accepted: reinstalling mid-event is rare and
+  events are short.
+- **The leave notice is sent once.** An offline leave never tells the backend, which only forgoes the
+  opportunistic early deletion of an event everyone has left. The 30-day deletion is unaffected.
+
 Decision records: `changes/archive/2026-08-25-record-uploads-in-database`,
 `changes/archive/2026-09-07-adopt-bunny-cli-migrations`, `changes/archive/2026-09-22-manifest-versions`.
 
