@@ -1,6 +1,6 @@
-# iOS CI. Three jobs. TWO are the parallel merge gates on the macos-26 hosted runner (GM Xcode, no
-# beta SDK; branch-protection requires exactly these two status checks); the THIRD delivers and gates
-# on both. There is NO automatic distribution to any external tester: the uploaded build reaches only
+# iOS CI. Four jobs. THREE are the parallel merge gates on the macos-26 hosted runner (GM Xcode, no
+# beta SDK; branch-protection requires exactly these three status checks); the FOURTH delivers and gates
+# on all three. There is NO automatic distribution to any external tester: the uploaded build reaches only
 # the INTERNAL `development` group. Distribution to real users is the dispatch-driven App Store release
 # (ios-appstore-promote.yml, `docs/deployment.md`); the public alpha promotion was removed.
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
@@ -19,14 +19,19 @@
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
 #     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target. Runs in PARALLEL
 #     with ios-build (no `needs:`) — neither gate waits on the other.
+#   * ios-contracts — builds the rig-linked simulator APP, runs the in-app port contracts over the
+#     control channel, then the all-real journeys against a local api/ (scripts/sim-contracts).
+#     Parallel to the other two gates, with no `needs:` either way.
 #   * ios-deliver — DELIVERING runs only (a push to main, or a branch dispatch), and
-#     `needs: [ios-build, ios-test]`: exports the App Store IPA from
+#     `needs: [ios-build, ios-test, ios-contracts]`: exports the App Store IPA from
 #     ios-build's archive and uploads it to TestFlight via codemagic's `app-store-connect publish`,
 #     which also attaches the "What to Test" note (`<PR title> (#<num>, <short sha>)`) in the same
-#     invocation. Because it needs BOTH gates, a RED TEST SUITE
-#     NOW STOPS THE RELEASE. It previously could not: export+upload lived inside ios-build, which has
-#     no dependency on ios-test, so a green build shipped to TestFlight while the tests were failing
-#     on the very same commit (run #297 / build 297 did exactly that).
+#     invocation. Because it needs EVERY merge gate, a RED TEST SUITE — or red in-app contracts or
+#     journeys — STOPS THE RELEASE. A job that joins the merge gates joins this `needs:` in the same
+#     change (`docs/deployment.md`); ios-contracts once shipped as a gate without it. Delivery once
+#     could not stop anything: export+upload lived inside ios-build, which has no dependency on
+#     ios-test, so a green build shipped to TestFlight while the tests were failing on the very same
+#     commit (run #297 / build 297 did exactly that).
 # Together ios-build and ios-test exercise BOTH Kotlin/Native targets (device via build, simulator
 # via test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in
 # build.yml; this workflow does only the irreducible Apple delta.
@@ -66,7 +71,7 @@ on:
   # answer had to merge to main to be asked. It no longer does.
   #
   # WHY IT IS SAFE TO WIDEN. A dispatch is a deliberate human act on a named ref, not something a
-  # push can cause; `ios-deliver` keeps `needs: [ios-build, ios-test]`, so a red suite still stops a
+  # push can cause; `ios-deliver` keeps `needs:` on every merge gate, so a red gate still stops a
   # dispatched build; and delivery reaches only the INTERNAL `development` group — external
   # distribution remains the separate, dispatch-driven App Store promotion.
   #
@@ -251,8 +256,8 @@ jobs:
           signing-dev-cert-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
 
       # Hand the archive to ios-deliver (main ONLY). Export + TestFlight upload no longer happen here:
-      # they moved to ios-deliver, which needs BOTH gates green, so a red ios-test now stops the
-      # release. The device app is still compiled EXACTLY ONCE per push — ios-deliver re-signs and
+      # they moved to ios-deliver, which needs EVERY merge gate green, so a red ios-test or
+      # ios-contracts stops the release. The device app is still compiled EXACTLY ONCE per push — ios-deliver re-signs and
       # packages this archive, it never recompiles.
       #
       # TAR first, then upload: upload-artifact zips its payload and does not preserve executable bits
@@ -351,9 +356,10 @@ jobs:
           if-no-files-found: error
 
   # TestFlight delivery — DELIVERING runs only (a push to main, or a branch `workflow_dispatch`),
-  # and gated on BOTH merge checks (`docs/deployment.md`). `needs: [ios-build,
-  # ios-test]` is the whole point of this job: it is what makes a RED TEST SUITE STOP THE RELEASE.
-  # If either gate fails, this job never runs and nothing reaches TestFlight.
+  # and gated on EVERY merge check (`docs/deployment.md`). `needs: [ios-build,
+  # ios-test, ios-contracts]` is the whole point of this job: it is what makes a RED GATE STOP THE
+  # RELEASE. If any gate fails, this job never runs and nothing reaches TestFlight. The edges run from
+  # this job TO the gates, never between two gates, so they skip no required check.
   #
   # This job posts NO branch-protection status check (see the ruleset note in the header): it never
   # runs on a PR branch's push, so requiring it would freeze merges. That means it is free to fail
@@ -364,7 +370,7 @@ jobs:
   # ios-build already produced.
   ios-deliver:
     name: ios-deliver
-    needs: [ios-build, ios-test]
+    needs: [ios-build, ios-test, ios-contracts]
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     runs-on: macos-26
     steps:

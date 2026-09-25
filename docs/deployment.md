@@ -360,7 +360,9 @@ any branch (tags excluded, and **no path filter**, so docs-only merges build and
 are cached. Signing material is **never** cached.
 
 Three parallel **merge gates**. None of them may `needs:` another, because a red gate would then skip a
-required check and block merges:
+required check and block merges. `ios-deliver` (§5) needs **all three**; a job that joins the gates joins
+its `needs:` in the same change, or delivery stops consulting it (`ios-contracts` once shipped as a gate
+without it, so red contracts and journeys still reached TestFlight):
 
 | Job | What it does |
 |---|---|
@@ -390,18 +392,21 @@ one bundle, or a value truncated by a grammar, fails the run here instead of pro
 included. It reaches **no external tester**: the builds go to the internal `development` group only.
 Real users get builds only through the App Store release (§6).
 
-- **`ios-deliver`** (`needs: [ios-build, ios-test]`, runs on delivering runs only): downloads and unpacks
+- **`ios-deliver`** (`needs: [ios-build, ios-test, ios-contracts]`, every merge gate; runs on delivering runs only): downloads and unpacks
   the archive, re-signs and exports an `app-store-connect` IPA **without recompiling**, and uploads it
   with one `app-store-connect publish --whats-new …` call (codemagic-cli-tools). That call waits for the
-  build to become visible. There is no `--testflight` flag and no beta-group change. A red test suite
-  means nothing is uploaded. The job is **not** required and does **not** use `continue-on-error`: a
+  build to become visible. There is no `--testflight` flag and no beta-group change. Any red gate — the
+  build, the test suite, or the in-app contracts and journeys — means nothing is uploaded. Delivery
+  therefore starts only when the slowest gate (`ios-contracts`) finishes, and a flaky `ios-contracts`
+  skips that commit's upload until it is re-run. Decision record:
+  `changes/archive/2026-09-25-deliver-needs-ios-contracts`. The job is **not** required and does **not** use `continue-on-error`: a
   failed delivery shows red and blocks nothing.
 - **"What to Test" note**: `<PR title> (#<num>, <short sha>)`, resolved through
   `GET repos/{repo}/commits/{sha}/pulls`. It falls back to `<head subject> (<short sha>)`. On a dispatch
   it uses the operator's note, or `<ref> (<short sha>)`. Arbitrary text reaches the shell only through
   environment variables.
 - **Branch dispatch = a real TestFlight build of a branch**: `gh workflow run ios.yml --ref <branch>
-  [-f what_to_test="…"]`. It follows every rule of a `main` delivery (both gates, Release, production APNs, DSN,
+  [-f what_to_test="…"]`. It follows every rule of a `main` delivery (every merge gate, Release, production APNs, DSN,
   dSYMs, internal group only). Use it for anything only a distributed build can do, for example the hidden
   diagnostic dump.
 - **Build numbers**: `CFBundleVersion` = `github.run_number` (monotonic across refs).

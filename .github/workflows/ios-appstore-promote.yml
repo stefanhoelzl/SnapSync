@@ -22,8 +22,8 @@
 # ios.yml computed as max(floor, lastTag+1) at build time). So the version record and the build always
 # match by construction — the "attach a mismatched build" hazard cannot arise. There is no `version` input.
 #
-# PROVENANCE IS AN UPLOAD-TIME GUARANTEE. `ios-deliver` runs only on main and only when both merge gates
-# pass, so every promotable build is from a merged, gate-passing commit. This workflow therefore does NOT
+# PROVENANCE IS AN UPLOAD-TIME GUARANTEE. `ios-deliver` runs only on main and only when every merge gate
+# passes, so every promotable build is from a merged, gate-passing commit. This workflow therefore does NOT
 # re-check the commit's ancestry or check-runs (the old green-check apparatus is gone). Two guards remain:
 # the derived version must be two-part `^\d+\.\d+$`, and the `vX.Y` tag must not already exist.
 #
