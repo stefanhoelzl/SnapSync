@@ -41,7 +41,10 @@ kotlin {
             // The shared host composition (`docs/architecture.md`, "One shared composition"): the world's core
             // and status host come from the same `snapSyncHost` the iOS shell calls, so the host its consumers
             // drive is the phone's.
-            api(project(":app:composition"))
+            api(project(":domain:host"))
+            // `World.statusHost` is presentation's container host; the host zone no longer exports it.
+            api(project(":domain:presentation"))
+            api(libs.orbit.core)
             // `api` (not `implementation`): the world's whole purpose is to hand the REAL stack's types
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, honest fakes, wrappers), so they must leak transitively.
@@ -51,6 +54,7 @@ kotlin {
             api(project(":adapter:generic:app"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
+            implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.serialization.json)

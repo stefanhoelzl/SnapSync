@@ -25,7 +25,7 @@ kover {
     reports {
         filters {
             includes {
-                projects.add(":ui:presentation")
+                projects.add(":domain:presentation")
             }
         }
     }
@@ -49,19 +49,17 @@ kotlin {
             // on (`docs/deployment.md`), so it must run wherever the presets compile.
             commonTest { kotlin.srcDir("src/forgeTest/kotlin") }
         }
+        // The core's `presentation` zone (spec `module-architecture`, "Zones inside the core"): the UI-state
+        // reduction. Every edge is `implementation()` — a consumer that needs `model/`, `feature/`, Orbit or
+        // kotlinx-datetime declares it, rather than receiving it from here. Of `feature/`, only the `readmodel`
+        // packages may be named (the read-model import gate, capability `architecture-guards`).
         commonMain.dependencies {
-            api(project(":domain:model"))
-            api(project(":domain:feature"))
-            // The container consumes the config seam + decoder (onOpenUrl), and ConfigSource/
-            // ConfigStore appear in its constructor — so they surface in this module's API.
-            // The create-event seams (CreationStatusSource/EventCreator) folded into the reduction and
-            // the container's constructor — so they surface in this module's API.
-            api(libs.orbit.core)
-            // Capability `photo-sharing`: LocalDateTime appears in CutoffFormatter's signature (used
-            // by the join screen in :ui:screens), so it is part of this module's API.
-            api(libs.kotlinx.datetime)
-            // `@Serializable` on `UiState` (see the plugin note above). `:domain` keeps its own
-            // serialization dep as `implementation`, so it does not reach here transitively.
+            implementation(project(":domain:model"))
+            implementation(project(":domain:feature"))
+            implementation(libs.orbit.core)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.coroutines.core)
+            // `@Serializable` on the reduction's own serializable types (see the plugin note above).
             implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
@@ -110,7 +108,7 @@ kover {
         total {
             verify {
                 onCheck = true
-                rule(":ui:presentation aggregate") {
+                rule(":domain:presentation aggregate") {
                     bound {
                         minValue = 77
                         coverageUnits = CoverageUnit.INSTRUCTION
@@ -122,7 +120,7 @@ kover {
                 }
                 // No per-package BRANCH rule: branch denominators per package run as low as 6 in this
                 // tree, where a single uncovered arm moves the number by 17 points.
-                rule(":ui:presentation package floor") {
+                rule(":domain:presentation package floor") {
                     groupBy = GroupingEntityType.PACKAGE
                     bound {
                         minValue = 77

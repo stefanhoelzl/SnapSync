@@ -1,4 +1,4 @@
-# Tier `core` — the tested core (`:domain` less `flow/` and `compose/`, `:adapter:*`, `:ui:presentation`)
+# Tier `core` — the tested core (`:domain` less `flow/`, `compose/` and the host, `:adapter:*`)
 #
 # A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
@@ -32,8 +32,8 @@
 # runs in everyone's `./gradlew build`, so it was not adopted. EXPIRY: revisit when detekt 2.0 reaches
 # stable, or at the first parse failure on newer syntax — whichever comes first.
 #
-# WHAT THIS TIER IS FOR. The code that carries the rules. `:ui:presentation` belongs here and not in
-# `ui` because the presentation-imports gate keeps it Compose-free, so none of Compose's structural
+# WHAT THIS TIER IS FOR. The code that carries the rules. `:domain:presentation` belongs here and not in
+# `ui` because it is a core zone with no Compose dependency, so none of Compose's structural
 # inflation applies to it. `flow/` and `compose/` are carved out into their own tiers: they carry a
 # decision-free law this scope does not.
 #

@@ -59,7 +59,9 @@ kotlin {
             implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:compose"))
-            implementation(project(":ui:presentation"))
+            implementation(project(":domain:presentation"))
+            // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.
+            implementation(libs.orbit.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)

@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  *
  * Every field is a direct `.value` read of a flow the screen itself observes, or a direct read through
  * the same source the status screen uses. Aggregation, never transformation — the encoder for [ui] is
- * compiler-generated from the declaration in `:ui:presentation`, so there is no second rendering of the
+ * compiler-generated from the declaration in `:domain:presentation`, so there is no second rendering of the
  * state that could disagree with the screen. That is the property that lets this module carry no tests.
  */
 @Serializable

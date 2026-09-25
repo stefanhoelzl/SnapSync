@@ -1,4 +1,4 @@
-package app.snapsync.composition
+package app.snapsync.host
 
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts

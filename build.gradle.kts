@@ -89,7 +89,7 @@ listOf(
     ":domain:feature" to ":adapter:generic:fake",
     ":domain:flow" to ":adapter:generic:fake",
     ":ui:components" to ":ui:screens",
-    ":ui:presentation" to ":ui:screens",
+    ":domain:presentation" to ":ui:screens",
 ).forEach { (consumer, producer) ->
     project(consumer).plugins.withId("org.jetbrains.kotlinx.kover") {
         project(consumer).dependencies.add("kover", project(producer))
@@ -122,7 +122,7 @@ val appShellSources = files(
     "app/ios/forge/src",
     // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision. A shell by the
     // same definition, and listed for the same reason as the forge above — added with the module.
-    "app/composition/src",
+    "domain/host/src",
     // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes
     // even though it lives in `:test:rig`'s tree (`docs/architecture.md`, "Source contributed
     // into a shell's source set is shell source for the gates"). Listed rather than exempted: the gates
@@ -221,11 +221,12 @@ val detektTierOf: Map<String, String> = mapOf(
     ":app:ios" to "shell",
     ":app:ios:extension" to "shell",
     ":app:ios:forge" to "shell",
-    ":app:composition" to "shell",
+    ":domain:host" to "shell",
 
-    // The tested core and its adapters. `:ui:presentation` belongs here and not in `ui`: it is
-    // Compose-free by the presentation-imports gate, so none of Compose's structural inflation
-    // applies to it.
+    // The tested core and its adapters. `:domain:presentation` belongs here and not in `ui`: it is
+    // Compose-free (a core zone with no Compose dependency), so none of Compose's structural inflation
+    // applies to it. The host, `:domain:host`, is a core zone too, but it is tiered as a shell above:
+    // it is wiring, and detektAppShell's threshold-2 proof is what keeps it decision-free.
     ":domain:model" to "core",
     ":domain:ports" to "core",
     ":domain:feature" to "core",
@@ -235,7 +236,7 @@ val detektTierOf: Map<String, String> = mapOf(
     ":adapter:generic:fake" to "core",
     ":adapter:ios:app-only" to "core",
     ":adapter:ios:ext-safe" to "core",
-    ":ui:presentation" to "core",
+    ":domain:presentation" to "core",
 
     // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
     // STRUCTURALLY — a screen that renders six states has six branches by construction — so holding

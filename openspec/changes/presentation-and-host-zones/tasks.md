@@ -13,19 +13,19 @@
 
 ## 2. Move the two modules (commit 2)
 
-- [ ] 2.1 `git mv ui/presentation domain/presentation`. Change `settings.gradle.kts` to `:domain:presentation`. Rename
+- [x] 2.1 `git mv ui/presentation domain/presentation`. Change `settings.gradle.kts` to `:domain:presentation`. Rename
       the kover filter and rule names in its build file.
-- [ ] 2.2 `git mv app/composition domain/host`, re-package `app.snapsync.composition` → `app.snapsync.host`
+- [x] 2.2 `git mv app/composition domain/host`, re-package `app.snapsync.composition` → `app.snapsync.host`
       (directory `app/snapsync/host`), and change `settings.gradle.kts` to `:domain:host`.
-- [ ] 2.3 Presentation's edges become `implementation()` only: model, feature, Orbit, datetime, coroutines,
+- [x] 2.3 Presentation's edges become `implementation()` only: model, feature, Orbit, datetime, coroutines,
       serialization-json.
-- [ ] 2.4 The host's edges become `implementation()` only: model, ports, feature, compose, presentation, Kermit,
+- [x] 2.4 The host's edges become `implementation()` only: model, ports, feature, compose, presentation, Kermit,
       coroutines.
-- [ ] 2.5 Root `build.gradle.kts`:
+- [x] 2.5 Root `build.gradle.kts`:
       - the kover crediting edge becomes `:domain:presentation` → `:ui:screens`;
       - `appShellSources` changes `app/composition/src` → `domain/host/src`;
       - `detektTierOf` rekeys `:domain:presentation` (core) and `:domain:host` (shell), with comments updated.
-- [ ] 2.6 Update the `config/detekt/core.yml` and `_base.yml` comments. Change `.github/workflows/build.yml` to
+- [x] 2.6 Update the `config/detekt/core.yml` and `_base.yml` comments. Change `.github/workflows/build.yml` to
       `:domain:presentation:jvmTest`, and update the `ios.yml` comment.
 
 ## 3. UiState and pure port data into model/ (commit 3)

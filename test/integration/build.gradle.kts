@@ -34,6 +34,11 @@ kotlin {
 
 dependencies {
     testImplementation(project(":test:control"))
+    // Named explicitly, not received through the client: the core's zones export nothing transitively.
+    testImplementation(project(":domain:model"))
+    testImplementation(project(":domain:presentation"))
+    testImplementation(project(":domain:feature"))
+    testImplementation(libs.kotlinx.datetime)
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json)
@@ -52,6 +57,10 @@ dependencies {
 val journeys: SourceSet by sourceSets.creating
 dependencies {
     "journeysImplementation"(project(":test:control"))
+    "journeysImplementation"(project(":domain:model"))
+    "journeysImplementation"(project(":domain:presentation"))
+    "journeysImplementation"(project(":domain:feature"))
+    "journeysImplementation"(libs.kotlinx.datetime)
     "journeysImplementation"(kotlin("test-junit"))
     "journeysImplementation"(libs.coroutines.core)
     "journeysImplementation"(libs.kotlinx.serialization.json)

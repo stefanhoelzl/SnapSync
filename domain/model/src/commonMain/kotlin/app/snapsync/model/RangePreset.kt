@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
  * reduction and the design-system skin BOTH name. The reduction resolves a preset against the event
  * window to produce the instant that would be committed; the picker renders which preset is selected.
  * Putting them in either UI module would force an edge between two modules that deliberately have none —
- * `:ui:presentation` is Compose-free and `:ui:components` knows nothing of the reduction — and the
+ * `:domain:presentation` is Compose-free and `:ui:components` knows nothing of the reduction — and the
  * shared enum would have to be duplicated or the layering inverted.
  *
  * A preset is deliberately **semantic**, not an instant: "the event's start" survives an event whose

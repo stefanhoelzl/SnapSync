@@ -601,7 +601,7 @@ class StatusContainerHostTest {
     }
 
     // NB (migration step 9): the two tests below used to assemble the REAL `CreateEvent` use-case over
-    // a stubbed `EventCreation` port. The armed presentation gate scans ALL of `ui/presentation/src`
+    // a stubbed `EventCreation` port. The armed presentation gate scans ALL of `domain/presentation/src`
     // (tests included), so this file may no longer name `ports/`; the mint itself is pinned in
     // `CreateEventTest` (feature/creation) and the full create→gate→join stack in
     // `:test:integration`'s `create_event_lifts_the_setup_gate`. What stays here is presentation's own

@@ -575,7 +575,7 @@ jobs:
         run: |
           # Boots an iOS simulator (iOS 26 runtime on macos-26) and runs the iosSimulatorArm64 tests
           # of EVERY module that declares the target — ~140 test classes. That is the whole shared
-          # commonTest surface (:domain, :ui:presentation, :ui:screens, :adapter:generic:app,
+          # commonTest surface (:domain, :domain:presentation, :ui:screens, :adapter:generic:app,
           # :adapter:generic:fake, :test:world, :test:integration), which is the same logic build.yml
           # runs as JVM bytecode, now compiled to Native. This is the ONLY place that difference is
           # checked, and it is not theoretical: it catches Native-only breakage the JVM accepts (e.g.

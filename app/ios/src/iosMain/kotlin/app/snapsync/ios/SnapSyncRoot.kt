@@ -11,8 +11,8 @@ import app.snapsync.compose.AppPorts
 import app.snapsync.compose.PushPorts
 import app.snapsync.compose.RigSwitches
 import app.snapsync.compose.UploadRecordPorts
-import app.snapsync.composition.ComposedApp
-import app.snapsync.composition.snapSyncHost
+import app.snapsync.host.ComposedApp
+import app.snapsync.host.snapSyncHost
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.config.bakedApnsEnv
 import app.snapsync.config.bakedAppStoreUrl

@@ -24,7 +24,7 @@ rootProject.name = "snapsync"
 
 include(":app:desktop")
 include(":app:ios")
-include(":app:composition")
+include(":domain:host")
 include(":app:ios:extension")
 // Built only under `-Psnapsync.forge=true`; included unconditionally so the module set is stable and
 // `ModuleSetTest` has one answer rather than a property-dependent one.
@@ -38,7 +38,7 @@ include(":domain:ports")
 include(":domain:feature")
 include(":domain:flow")
 include(":domain:compose")
-include(":ui:presentation")
+include(":domain:presentation")
 include(":ui:screens")
 include(":ui:components")
 include(":test:architecture")

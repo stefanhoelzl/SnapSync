@@ -5,7 +5,7 @@ import kotlinx.datetime.TimeZone
 
 /**
  * Wall-clock "now" (`docs/architecture.md`, "Ports are the I/O boundary named for the need"):
- * time is an external system, so nothing in the core — or in `:ui:presentation`, whose
+ * time is an external system, so nothing in the core — or in `:domain:presentation`, whose
  * `CutoffFormatter` seeds the cutoff picker and the event-start comparison — reads the system clock
  * directly. Adapters implement (`SystemClock` in `:adapter:generic:app`); tests pass a fixed instant.
  */
