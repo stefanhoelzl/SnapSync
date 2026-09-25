@@ -238,7 +238,7 @@ app's `GET /device` once (an unclassified vocabulary entry fails the job), and r
 simulator: A creates and joins, A's photos reach the event union, then the journey itself plays a second member
 over the backend's public HTTP surface (joining through the id in A's invite link, uploading real JPEGs) and A
 receives them. It uses **one** simulator on purpose: a second fresh one's first-boot work swamped the hosted runner
-and made the job slow and flaky (the `one-simulator-journeys` change). Nothing overlaps the build: the journeys
+and made the job slow and flaky (`changes/archive/2026-09-25-one-simulator-journeys`). Nothing overlaps the build: the journeys
 compile on the build's daemon, every Gradle and Kotlin daemon is stopped, and only then does the simulator boot. A
 fresh simulator's photo library is not writable at boot (`assetsd` migrates it, and its Syndication library, in the
 background), so the app's first write, one `BULK` seed through the rig, is its own `photo library: ready` stage

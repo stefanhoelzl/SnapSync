@@ -640,8 +640,8 @@ jobs:
     # WHAT IT RUNS: the port contracts whose bindings live in the APP, then the all-real journeys against the same
     # ONE simulator app and the real backend served locally, the second member played by the journey itself over the
     # backend's public HTTP surface (capability `testing-architecture`, "All-real journeys are the contracts' safety
-    # net"). One simulator, because a second fresh one's first-boot work swamped this 3-vCPU runner (the
-    # `one-simulator-journeys` change); the stage timestamps, resource samples and crash reports it keeps are in the
+    # net"). One simulator, because a second fresh one's first-boot work swamped this 3-vCPU runner
+    # (`changes/archive/2026-09-25-one-simulator-journeys`); the stage timestamps, resource samples and crash reports it keeps are in the
     # evidence artifact below. First, the port contracts whose bindings live in the APP — the simulator app is the only
     # simulator process `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real
     # full grant (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig"). The

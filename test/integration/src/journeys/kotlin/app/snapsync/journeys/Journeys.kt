@@ -39,7 +39,8 @@ import kotlin.time.Duration.Companion.seconds
  * same typed client every integration test speaks. The second member is played by this test itself, over the
  * backend's public HTTP surface only, with real JPEG bytes ([Member]): to the backend it is a device, to A a foreign
  * member whose photos take the real download and PhotoKit import path. One simulator, because a second freshly
- * created one's first-boot work swamped the hosted runner (decision record: the `one-simulator-journeys` change).
+ * created one's first-boot work swamped the hosted runner (decision record:
+ * `changes/archive/2026-09-25-one-simulator-journeys`).
  *
  * They exist because the integration surface runs on mocks the port contracts license, so a real run tests the
  * CONTRACTS: a failure here that the mocked suite does not show is read first as a clause nobody wrote, and fixed by

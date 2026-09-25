@@ -4,6 +4,8 @@
 Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — doing only the irreducible Apple delta. **Two parallel jobs are the merge gates**: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` (the archive is the gate, and the app's only compile), and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. `ios-build` is a **pure gate** — it exports nothing and uploads nothing to Apple. **Delivery is a third job** (`ios-deliver`) that runs on **delivering runs** — a push to `main`, or a deliberate `workflow_dispatch` on any ref — and **depends on both gates**, so a red test suite stops the release; it re-signs and packages `ios-build`'s archive without recompiling (capability `ios-testflight-delivery`, which also details code signing). Per-branch device installability before merge is served by that dispatch (the only route to a test device reachable solely through TestFlight) or out of band by the interactive dev build loop, which hands a human an IPA.
 
 Decision record for the protocol-driven integration surface, the shared host composition and the journeys: `changes/archive/2026-09-24-integration-over-control`.
+
+Decision record for running the journeys on one simulator, with the second member played over the backend's public surface, and for `ios-contracts`' build-first order and photo-library readiness stage: `changes/archive/2026-09-25-one-simulator-journeys`.
 ## Requirements
 ### Requirement: Build iOS on every push
 
@@ -205,23 +207,33 @@ rather than pinned).
 **Building and installing.** The job SHALL:
 1. build the app with `-Psnapsync.rig=true` for the iOS simulator, against the `local` deployment;
 2. ad-hoc sign it with `scripts/sim-sign`;
-3. install it on **two freshly created** simulators;
-4. grant photo access to the app's bundle on each, with a version-pinned `applesimutils`, before the first
-   launch;
+3. install it on **one freshly created** simulator. One, because a second freshly created simulator's first-boot
+   work swamps the hosted runner: measured, it tripled the job and made the journeys flaky;
+4. grant photo access to the app's bundle, with a version-pinned `applesimutils`, before the first launch;
 5. start the **loopback transfer fixture server** the transport contracts exchange bytes with (capability
    `port-contracts`, "An adapter bound per compilation target is real for the clauses it runs there") on a
    port chosen for this run;
 6. start the **real backend** (`api/`) locally on the loopback address and port the `local` deployment names,
-   with a filesystem store fresh for the run, and warm it with one request before either app launches;
-7. launch both apps, each on its own rig port.
+   with a filesystem store fresh for the run, and warm it with one request before the app launches;
+7. launch the app on a rig port chosen for this run.
+
+**Nothing overlaps the build.** The simulator SHALL boot only after the build, and after the build's Gradle and
+Kotlin daemons are stopped: on the hosted runner a booting simulator slows the build several-fold, and a daemon left
+running holds memory the simulator then swaps against.
+
+**Photo-library readiness.** A fresh simulator's photo library is not writable when the simulator reports it booted:
+the system migrates its libraries in the background, and the first write waits minutes for it. The job SHALL make
+the app's first photo-library write an explicit, timestamped stage before the first contract, with an asset dated
+outside every contract's capture window, so that wait is attributed to the platform rather than to whichever
+contract touches the library first.
 
 **Running.** It SHALL then:
-- read each app's `GET /device` advertisement once, and fail if either names an unclassified entry or an entry
+- read the app's `GET /device` advertisement once, and fail if it names an unclassified entry or an entry
   outside the vocabulary;
-- run every contract in the first simulator app's registry through the rig's contract verb, passing the
+- run every contract in the simulator app's registry through the rig's contract verb, passing the
   fixture's base URL (capability `port-contracts`, "In-app hosts CI can reach are run live over the rig");
 - run the all-real journeys (capability `testing-architecture`, "All-real journeys are the contracts' safety
-  net") against both apps and the local backend.
+  net") against the app and the local backend.
 
 **The status check.** It SHALL post the `ios-contracts` status-check context. The check SHALL conclude as
 failure when:
@@ -235,7 +247,13 @@ failure when:
 - an app never answers on its rig port. In that case the job SHALL capture a simulator screenshot and the
   app's log, because a pending system alert is visible only there.
 
-**Evidence.** The fixture server's request log and the backend's output SHALL be kept with the job's evidence.
+**Evidence.** The job SHALL keep, with its evidence:
+- the fixture server's request log;
+- the backend's output, including a log of every request it served (method, path, status, duration);
+- the host's memory and CPU load, sampled throughout the run;
+- the host's and the simulator's crash reports;
+- on a journey failure, the failing assertion's message, printed in the job log and not only kept in the test
+  report.
 
 #### Scenario: A contract clause fails in the simulator app
 - **WHEN** a clause run in the simulator app reads `Failed`
@@ -260,12 +278,19 @@ failure when:
 
 #### Scenario: A journey fails
 - **WHEN** a journey's awaited outcome is not reached within its bound
-- **THEN** the `ios-contracts` check concludes as failure, with both apps' logs and the backend's output kept
+- **THEN** the `ios-contracts` check concludes as failure, printing the failing assertion's message, with the
+  app's log, the backend's request log and the resource samples kept
 
 #### Scenario: The backend is not up
-- **WHEN** the local backend does not answer before the apps launch
+- **WHEN** the local backend does not answer before the app launches
 - **THEN** the job fails naming the backend, rather than letting every journey time out
 
 #### Scenario: An app host's vocabulary has a gap
-- **WHEN** an app's `GET /device` names an unclassified entry
+- **WHEN** the app's `GET /device` names an unclassified entry
 - **THEN** the `ios-contracts` check concludes as failure naming the entry
+
+#### Scenario: The photo library's first-use wait is its own stage
+- **WHEN** a fresh simulator's photo library takes minutes to accept its first write
+- **THEN** the job's stage timestamps attribute that wait to the readiness stage, and the first contract's
+  timing no longer carries it
+
