@@ -238,9 +238,11 @@ app's `GET /device` once (an unclassified vocabulary entry fails the job), and r
 simulator: A creates and joins, A's photos reach the event union, then the journey itself plays a second member
 over the backend's public HTTP surface (joining through the id in A's invite link, uploading real JPEGs) and A
 receives them. It uses **one** simulator on purpose: a second fresh one's first-boot work swamped the hosted runner
-and made the job slow and flaky (the `one-simulator-journeys` change). Right after the boot it warms the photo
-library with `simctl addmedia scripts/sim-warmup.jpg` (EXIF-dated 1975, outside every capture window), and the
-contracts wait on a `photo library: ready` stage. Everything lands in `build/sim-contracts/`: `stages`,
+and made the job slow and flaky (the `one-simulator-journeys` change). Nothing overlaps the build: the journeys
+compile on the build's daemon, every Gradle and Kotlin daemon is stopped, and only then does the simulator boot. A
+fresh simulator's photo library is not writable at boot (`assetsd` migrates it, and its Syndication library, in the
+background), so the app's first write, one `BULK` seed through the rig, is its own `photo library: ready` stage
+before the contracts. Everything lands in `build/sim-contracts/`: `stages`,
 `resources.log` (load and memory every 10 s), the backend's output with a line per request, the app's `debug.log`,
 and `crash/`.
 

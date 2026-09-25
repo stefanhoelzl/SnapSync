@@ -18,10 +18,15 @@
    with a filesystem store fresh for the run, and warm it with one request before the app launches;
 7. launch the app on a rig port chosen for this run.
 
-**Photo-library readiness.** A fresh simulator's photo library is not ready when the simulator reports it booted:
-its first write can wait minutes. The job SHALL start a photo-library warm-up right after boot, and SHALL wait for
-the library to be ready as an explicit, timestamped stage before the first contract, so that wait is attributed to
-the platform rather than to whichever contract touches the library first.
+**Nothing overlaps the build.** The simulator SHALL boot only after the build, and after the build's Gradle and
+Kotlin daemons are stopped: on the hosted runner a booting simulator slows the build several-fold, and a daemon left
+running holds memory the simulator then swaps against.
+
+**Photo-library readiness.** A fresh simulator's photo library is not writable when the simulator reports it booted:
+the system migrates its libraries in the background, and the first write waits minutes for it. The job SHALL make
+the app's first photo-library write an explicit, timestamped stage before the first contract, with an asset dated
+outside every contract's capture window, so that wait is attributed to the platform rather than to whichever
+contract touches the library first.
 
 **Running.** It SHALL then:
 - read the app's `GET /device` advertisement once, and fail if it names an unclassified entry or an entry
@@ -86,6 +91,6 @@ failure when:
 - **THEN** the `ios-contracts` check concludes as failure naming the entry
 
 #### Scenario: The photo library's first-use wait is its own stage
-- **WHEN** a fresh simulator's photo library takes minutes to become ready
+- **WHEN** a fresh simulator's photo library takes minutes to accept its first write
 - **THEN** the job's stage timestamps attribute that wait to the readiness stage, and the first contract's
   timing no longer carries it

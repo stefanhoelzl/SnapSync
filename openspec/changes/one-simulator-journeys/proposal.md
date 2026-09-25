@@ -27,10 +27,10 @@ over the real backend's public HTTP surface, with real JPEG bytes. That removes 
   **Coverage dropped**: a second *app* opening the invite link, and the download-only join. Both remain covered
   by the mocked integration surface.
 - `ios-contracts` creates, boots, installs, grants and launches **one** simulator, not two.
-- A **photo-library warm-up** starts right after boot. An explicit, timestamped *photo library ready* stage then
-  runs before the first contract, so the platform's first-use wait is no longer hidden inside a contract's timing.
-- The journeys' Gradle compile moves off the serial path: it runs in the background after xcodebuild, and the
-  journeys run reuses its daemon.
+- The app's **first photo-library write** becomes an explicit, timestamped *photo library ready* stage before the
+  first contract, so the platform's first-use wait is no longer hidden inside a contract's timing.
+- Nothing overlaps the build: the journeys compile on the build's daemon, every daemon is stopped, and only then does
+  the simulator boot.
 - The job keeps more evidence:
   - memory/CPU samples throughout the run;
   - host and simulator crash reports;
@@ -57,7 +57,7 @@ None.
 
 ## Impact
 
-- `scripts/sim-contracts`: one simulator, the warm-up and readiness stage, the background journey compile,
+- `scripts/sim-contracts`: one simulator, the build-first order, the readiness stage, the journeys' early compile,
   resource sampling, and evidence collection.
 - `test/integration` (`journeys` source set and its Gradle task):
   - the journey reshaped;

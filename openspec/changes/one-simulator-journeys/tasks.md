@@ -13,8 +13,8 @@
 ## 3. One simulator, readiness, and the early compile (D4, D5)
 
 - [x] 3.1 `scripts/sim-contracts`: create, boot, install, grant and launch ONE simulator; drop `DEVICE_B`, `RIG_PORT_B`, `DATA_B` and the second advertisement check
-- [x] 3.2 Commit a warm-up JPEG with an EXIF capture date decades in the past. Right after `bootstatus`, run `xcrun simctl addmedia` with it in the background, and add a `photo library: ready` stage that awaits it before the first contract
-- [x] 3.3 After `xcodebuild: done`, start `./gradlew :test:integration:journeysClasses` in the background with a daemon (no `--no-daemon`), with its own stage marks. Await it before the journeys, run the journeys on the warm daemon, and `./gradlew --stop` in `cleanup`
+- [x] 3.2 Add a `photo library: ready` stage before the first contract: the app's first write, one BULK seed through the rig (dated 2001, outside every capture window). Replaces the first version's `simctl addmedia` warm-up, which the first run measured not to warm the path (design D4)
+- [x] 3.3 After `xcodebuild: done`, compile the journeys on the build's daemon, then stop every Gradle and Kotlin daemon, and only then boot the simulator (design D5; the first run measured the overlapped boot at +10 min of build)
 - [x] 3.4 Update the script's header comment to describe the new flow and stages
 
 ## 4. Evidence (D6)

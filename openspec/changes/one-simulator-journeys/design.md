@@ -109,25 +109,36 @@ event window. The download path does not filter by date, but a real device's pho
 **Coverage dropped:** a second *app* opening the invite link through `onSceneContinueActivity`, and the
 download-only join. The mocked integration surface still covers both through the rig's JVM host.
 
-### D4. Readiness is a stage: warm-up at boot, then an explicit wait
+### D4. Readiness is a stage: the app's first write, on a quiet machine
 
-Right after `bootstatus`, the job runs `xcrun simctl addmedia` with one JPEG in the background, overlapping the
-build. The command returns only once the system has imported the image, so its completion is the readiness
-signal. A `photo library: ready` stage awaits it before the first contract.
+The first `ios-contracts` run of this change measured the plan this decision first held, and corrected it:
+- **A `simctl addmedia` warm-up does not warm the path the app waits on.** `assetsd` migrates each photo library
+  from the runtime's baked schema on first boot. The main library's foreground migration finished at 15:29, long
+  before the app ran. The app's first write still took 304 s, and it returned at 15:48:06.8, the instant the
+  **Syndication** library's background migration finished (15:47:20–15:48:06). `addmedia` touches only the main
+  library.
+- **Booting during the build is a net loss even with one simulator.** xcodebuild took 13.6 min, against 3.8 when
+  the simulator booted after it. Load average sat between 100 and 450, and swapping began during the framework
+  link and continued through the contracts. The migrations run at utility priority, which the system defers while
+  the machine is busy.
 
-The warm-up image carries an EXIF capture date decades in the past. That keeps it outside every contract's
-capture window and outside the journey's event window, so it can never join an upload or a count.
+So nothing overlaps the build any more (D5), and readiness is measured where it is spent: once the app is up, the
+job issues one `BULK` seed through the rig (`POST /device/gallery/seed?n=1&kind=bulk`, one tiny asset dated 2001,
+outside every contract's capture window and the journey's event window) and marks `photo library: ready` when it
+returns. That is the same kind of `performChangesAndWait` the first contract would block in.
 
-The boot stays overlapped with the build: with one simulator the overlap should cost little. The stage
-timestamps settle it on this change's runs. If the build grows by more than the settle time the overlap saves,
-the boot moves after the build.
+### D5. Build first, then stop every daemon, then boot
 
-### D5. The journeys compile off the serial path
+Order:
+1. xcodebuild.
+2. `./gradlew :test:integration:journeysClasses`, on the daemon the build's Gradle left running, so the journeys'
+   run at the end compiles nothing.
+3. `./gradlew --stop`, and the Kotlin compile daemon killed, because each holds gigabytes the simulator would swap
+   against.
+4. Boot the simulator, install, grant, launch, then the readiness stage.
 
-The journeys' Gradle run cost 2–6 min for a 20–60 s test. Once xcodebuild is done, the job starts
-`./gradlew :test:integration:journeysClasses` in the background, **with a daemon**. That runs while install,
-grant, launch and warm-up are only waiting. It never runs alongside xcodebuild's own Gradle, which holds the
-project's locks. The journeys run then reuses the warm daemon, and `./gradlew --stop` ends it.
+The first version compiled the journeys in the background while the simulator settled. That kept a second
+daemon's memory alive during the most memory-sensitive stretch of the run.
 
 ### D6. Evidence that answers the next failure
 
@@ -153,14 +164,14 @@ change sets out to remove, and it would hide a repeat. If flakes remain, the new
   contract, which the backend contracts already pin.
 - [The dropped invite-link-open and download-only coverage regresses unseen] → Both stay covered on the mocked
   integration surface. The link itself is still exercised, because its decoded id is what the member joins.
-- [`addmedia` does not warm the path the app's `performChangesAndWait` waits on] → The readiness stage and
-  `CandidateSource`'s own timing make it visible on the first run. If it does not warm the path, the readiness
-  probe becomes one seed-and-read through the app's rig after launch.
+- [The platform's first-write wait stays long even on a quiet machine] → It is now its own stage, so it is visible
+  and attributable. If it dominates, the next lever is starting it earlier, for example a boot before the build on a
+  runner with memory to spare.
 - [One simulator is still flaky on the standard runner] → The pre-journeys record was 1 flake in 28 runs.
   `resources.log` and the crash reports now say which resource ran out, and that decides whether a larger
   runner is worth paying for.
-- [The background compile races the install for CPU] → Those stages mostly wait on the simulator. The stage
-  timestamps show it, and it can move to before the build if it hurts.
+- [Booting after the build adds the boot to the serial path] → About 3 min on a quiet machine, against the build's
+  measured +10 min when they overlap.
 
 ## Migration Plan
 
@@ -169,5 +180,4 @@ This changes test infrastructure only: a revert of the change's PR restores the 
 
 ## Open Questions
 
-- Whether booting during the build still pays with one simulator (measured by D4's stage timestamps).
-- Whether `addmedia` alone readies the library for the app's first write (measured by `CandidateSource`'s timing).
+- How long the first-write wait is on a quiet machine (measured by the readiness stage on this change's runs).
