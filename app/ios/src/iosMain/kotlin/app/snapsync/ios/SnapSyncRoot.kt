@@ -79,6 +79,7 @@ import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.logging.invocation
@@ -136,6 +137,9 @@ import platform.UIKit.registerForRemoteNotifications
 object SnapSyncRoot : PlatformEntries by rootEntries() {
 
     init {
+        // First, before anything logs: a DVT- or Xcode-launched process writes NSLog's stderr copy (and Ktor's stdout)
+        // into a pipe the host drains, and an undrained one used to wedge every logging thread (see the KDoc).
+        neverBlockOnStdio()
         // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
         // `<private>` on current iOS (dynamic format strings are private), so the file writer
         // (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable channel.
