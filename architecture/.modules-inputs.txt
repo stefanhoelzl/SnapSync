@@ -16,6 +16,7 @@ module :domain:host
 module :domain:model
 module :domain:ports
 module :domain:presentation
+module :domain:services
 module :test:architecture
 module :test:contracts
 module :test:control
@@ -29,6 +30,7 @@ module :ui:components
 module :ui:screens
 edge :adapter:generic:app :domain:model
 edge :adapter:generic:app :domain:ports
+edge :adapter:generic:app :domain:services
 edge :adapter:generic:app :test:contracts
 edge :adapter:generic:app :test:edge
 edge :adapter:generic:fake :domain:compose
@@ -41,12 +43,14 @@ edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain:compose
 edge :adapter:ios:app-only :domain:model
 edge :adapter:ios:app-only :domain:ports
+edge :adapter:ios:app-only :domain:services
 edge :adapter:ios:app-only :test:contracts
 edge :adapter:ios:ext-safe :adapter:generic:app
 edge :adapter:ios:ext-safe :domain:compose
 edge :adapter:ios:ext-safe :domain:feature
 edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports
+edge :adapter:ios:ext-safe :domain:services
 edge :adapter:ios:ext-safe :test:contracts
 edge :app:desktop :adapter:generic:app
 edge :app:desktop :domain:feature
@@ -66,6 +70,7 @@ edge :app:ios :domain:host
 edge :app:ios :domain:model
 edge :app:ios :domain:ports
 edge :app:ios :domain:presentation
+edge :app:ios :domain:services
 edge :app:ios :ui:screens
 edge :app:ios:extension :adapter:generic:app
 edge :app:ios:extension :adapter:ios:ext-safe
@@ -73,6 +78,7 @@ edge :app:ios:extension :domain:compose
 edge :app:ios:extension :domain:feature
 edge :app:ios:extension :domain:model
 edge :app:ios:extension :domain:ports
+edge :app:ios:extension :domain:services
 edge :app:ios:forge :domain:model
 edge :app:ios:forge :domain:presentation
 edge :app:ios:forge :ui:screens
@@ -92,6 +98,8 @@ edge :domain:host :domain:presentation
 edge :domain:ports :domain:model
 edge :domain:presentation :domain:feature
 edge :domain:presentation :domain:model
+edge :domain:services :domain:model
+edge :domain:services :domain:ports
 edge :test:architecture :adapter:generic:app
 edge :test:architecture :domain:feature
 edge :test:architecture :domain:model
@@ -127,6 +135,7 @@ edge :test:world :domain:host
 edge :test:world :domain:model
 edge :test:world :domain:ports
 edge :test:world :domain:presentation
+edge :test:world :domain:services
 edge :test:world :test:contracts
 edge :test:world :test:edge
 edge :ui:components :domain:model

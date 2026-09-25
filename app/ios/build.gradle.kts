@@ -73,12 +73,14 @@ kotlin {
             implementation(project(":domain:host"))
             implementation(project(":ui:screens"))
             implementation(project(":domain:presentation"))
-            // The technology adapters, placed by linkage (migration step 4): the Ktor/SQLDelight
+            // The technology adapters, placed by linkage (migration step 4): the Ktor
             // impls (:adapter:generic:app), the extension-safe iOS adapters (:adapter:ios:ext-safe —
-            // Keychain stores, ledger/download drivers, discovery walk, log writers), and the
+            // Keychain stores, the SQLite `Databases` adapter, discovery walk, log writers), and the
             // app-only iOS adapters (:adapter:ios:app-only — URLSession upload/download transports,
             // BGTaskScheduler, PhotoKit importer, permission).
             implementation(project(":adapter:generic:app"))
+            // The storage services the root builds over the thin storage adapters (`docs/architecture.md`).
+            implementation(project(":domain:services"))
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
             implementation(libs.coroutines.core)

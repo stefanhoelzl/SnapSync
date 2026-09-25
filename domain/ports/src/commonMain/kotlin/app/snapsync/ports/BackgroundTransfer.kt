@@ -82,11 +82,13 @@ class PlatformUploadJob(
  *
  * Raw values are derived from the swiftinterface's case order (`failure`, `processing`,
  * `completed`); Session D verifies them against the SDK on device. [CycleResult.SKIPPED] maps like
- * [CycleResult.COMPLETED]: nothing to do, the system rests.
+ * [CycleResult.COMPLETED]: nothing to do, the system rests. [CycleResult.Paused] maps like
+ * [CycleResult.PROCESSING]: the cycle touched nothing and asks to be invoked again, until the process it
+ * waits for (the app, migrating the download store) has run.
  */
 fun CycleResult.processingResultRawValue(): Int = when (this) {
     CycleResult.COMPLETED, CycleResult.SKIPPED -> 2
-    CycleResult.PROCESSING -> 1
+    CycleResult.PROCESSING, is CycleResult.Paused -> 1
     CycleResult.FAILED -> 0
 }
 

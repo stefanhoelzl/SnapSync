@@ -7,6 +7,7 @@ import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.StagedResource
+import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UnconfirmedImport
 
 /**
@@ -16,6 +17,14 @@ import app.snapsync.model.UnconfirmedImport
  * depends on the read, not on the full app-side [DownloadStore] surface.
  */
 interface SuppressionSource {
+
+    /**
+     * Whether [suppressedLocalIds] can answer in this process now. The upload cycle asks it once, after its
+     * admission — so a process that may not create never opens the store — and before it touches anything:
+     * [SuppressionReadiness.OldSchema] pauses the cycle, [SuppressionReadiness.Unavailable] skips it.
+     */
+    suspend fun readiness(): SuppressionReadiness
+
     suspend fun suppressedLocalIds(): Set<String>
 }
 

@@ -21,6 +21,7 @@ flowchart LR
     domain_model[":domain:model"]
     domain_ports[":domain:ports"]
     domain_presentation[":domain:presentation"]
+    domain_services[":domain:services"]
   end
   subgraph test
     test_contracts[":test:contracts"]
@@ -32,6 +33,7 @@ flowchart LR
   end
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
+  adapter_generic_app --> domain_services
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_fake --> domain_compose
@@ -44,12 +46,14 @@ flowchart LR
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model
   adapter_ios_app_only --> domain_ports
+  adapter_ios_app_only --> domain_services
   adapter_ios_app_only --> test_contracts
   adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain_compose
   adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_model
   adapter_ios_ext_safe --> domain_ports
+  adapter_ios_ext_safe --> domain_services
   adapter_ios_ext_safe --> test_contracts
   domain_compose --> domain_feature
   domain_compose --> domain_flow
@@ -67,6 +71,8 @@ flowchart LR
   domain_ports --> domain_model
   domain_presentation --> domain_feature
   domain_presentation --> domain_model
+  domain_services --> domain_model
+  domain_services --> domain_ports
   ui_components --> domain_model
   ui_screens --> domain_feature
   ui_screens --> domain_model

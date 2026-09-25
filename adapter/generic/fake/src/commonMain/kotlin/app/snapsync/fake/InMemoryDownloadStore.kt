@@ -9,6 +9,7 @@ import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.StagedResource
+import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UnconfirmedImport
 
 import kotlinx.coroutines.sync.Mutex
@@ -30,6 +31,9 @@ internal class InMemoryDownloadStore : DownloadStore {
     // Resource keys whose download has been sent to the OS (the enqueued marker) — combined with a
     // null staged path this is "in flight" (the ↓-pulse signal).
     private val enqueued = LinkedHashMap<AssetRef, MutableSet<String>>()
+
+    /** Always ready: like the app's read-write store, an in-memory one is never at an older schema. */
+    override suspend fun readiness(): SuppressionReadiness = SuppressionReadiness.Ready
 
     override suspend fun suppressedLocalIds(): Set<String> = lock.withLock {
         assets.values.mapNotNull { it.createdLocalId }.toSet()

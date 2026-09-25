@@ -184,7 +184,11 @@ end of this section.
 
 Where bindings live: beside their implementations.
 - Fakes: `:adapter:generic:fake` `commonTest`.
-- SQLDelight and the live backend: `:adapter:generic:app` tests.
+- The live backend, and the JVM `Databases` adapter with the storage services bound through it: `:adapter:generic:app`
+  `jvmTest`. The storage services live in `:domain:services`, but their contracts (`LedgerStore`, `DownloadStore`)
+  are bound **through** the service over each platform's real `Databases` adapter, beside that adapter: a
+  `:domain:*` build file names no module, and the contract is a claim about the service over the real database.
+- The iOS `Databases` adapter, and the storage services through it on Kotlin/Native: `:adapter:ios:ext-safe` tests.
 - The mini-edge and the world's transfer doubles: `:test:world` `commonTest`.
 - Keychain and App-Group stores: `:adapter:ios:ext-safe` tests.
 - Simulator-app PhotoKit and URLSession: `:adapter:ios:app-only` `src/rig`.

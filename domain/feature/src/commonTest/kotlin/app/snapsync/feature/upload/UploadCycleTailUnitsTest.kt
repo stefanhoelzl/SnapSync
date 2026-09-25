@@ -13,6 +13,7 @@ import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.model.CreateResult
 import app.snapsync.model.CycleResult
+import app.snapsync.model.PauseReason
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.UploadDiscovery
@@ -35,9 +36,10 @@ class UploadCycleTailUnitsTest {
         val created = mutableListOf<String>()
         var walks = 0
         var resolves = 0
+        var platformReads = 0
 
-        override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList()
-        override suspend fun drainTerminals(): List<PlatformUploadJob> = emptyList()
+        override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList<PlatformUploadJob>().also { platformReads++ }
+        override suspend fun drainTerminals(): List<PlatformUploadJob> = emptyList<PlatformUploadJob>().also { platformReads++ }
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) = Unit
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
             if (created.size >= limit) return CreateResult.LIMIT_EXCEEDED
@@ -100,6 +102,25 @@ class UploadCycleTailUnitsTest {
     )
 
     private val never: () -> Boolean = { false }
+
+    @Test
+    fun `a paused cycle touches nothing in any unit and asks to be invoked again`() = runTest {
+        // The extension found the download store at an older schema than its own (capability `receiving-photos`): it
+        // may not migrate it, and uploading without echo suppression would send downloaded photos back. Unlike a
+        // withheld cycle it does not even read what the platform presented — the next run acknowledges it.
+        val f = Fixture(listOf(resource("a")))
+        val cycle = f.cycle(gate = CycleGate.Paused(PauseReason.OLD_SCHEMA))
+        val paused = CycleResult.Paused(PauseReason.OLD_SCHEMA)
+
+        assertEquals(paused, cycle.run())
+        assertEquals(paused, cycle.topUp(never))
+        assertEquals(WalkOutcome.Walked(paused, addedRows = false), cycle.walkAndPublish(never))
+        assertEquals(0, f.library.platformReads, "nothing presented is read or acknowledged")
+        assertEquals(0, f.library.walks, "the library is not walked")
+        assertTrue(f.library.created.isEmpty(), "no job is created")
+        assertEquals(0, f.publishes, "no manifest is published")
+        assertEquals(null, f.backend.get("a"), "nothing is recorded")
+    }
 
     @Test
     fun `the walk records and publishes but creates no job`() = runTest {

@@ -1,0 +1,275 @@
+import app.snapsync.model.LedgerState;
+
+-- THE "MUST MATCH <n>.sqm EXACTLY" NOTES BELOW ARE NOW ENFORCED, and were not always. They cite
+-- `verifyCommonMainLedgerDatabaseMigration`, which applies every migration to the committed schema
+-- snapshot (`databases/9.db`) and diffs the result against these CREATE statements. Before that snapshot
+-- existed the task had nothing to compare and passed on anything — measured: a migration adding a column
+-- absent from this file was green. It cost a build gate to say nothing, and it hid a real divergence for
+-- as long as it existed (see the `destinationPath` index below). The snapshot and the contract that keeps
+-- it honest live in `adapter/generic/app/build.gradle.kts`; read that before touching either.
+--
+-- WHAT IT STILL DOES NOT COVER: schema only. A data-only change changes no schema and is invisible to
+-- it, which is why the row rewrites of 8.sqm and 10.sqm are asserted by `LedgerServiceTest` instead.
+
+-- The row carries no attempt count, no event provenance and no absence mark: 10.sqm dropped all three, because
+-- nothing read them (decision record `changes/shrink-the-ledger-row`). The key is the bare, event-independent
+-- resource filename.
+--
+-- The four manifest columns carry the DEVICE MANIFEST's presentation detail (capability `photo-sharing`),
+-- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
+-- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
+-- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
+-- enriched" sentinel that a join-time load's row and a pre-5.sqm row both start in, swept by
+-- `backfillManifestDetail`.
+CREATE TABLE ledgerRow (
+    key TEXT NOT NULL PRIMARY KEY,
+    assetId TEXT NOT NULL,
+    state TEXT AS LedgerState NOT NULL,
+    creationDate TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    contentType TEXT NOT NULL DEFAULT '',
+    originalFilename TEXT NOT NULL DEFAULT '',
+    -- The destination this row's upload was addressed to, or NULL for a row recorded before the column
+    -- existed. NULLABLE must match 7.sqm exactly (the verify task compares migrated vs created schemas).
+    destinationPath TEXT
+);
+
+CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
+
+-- The ack path resolves a returned upload job to its row through this index; without it every returned
+-- job would scan the table, on a path the OS invokes with a deadline.
+--
+-- ⚠️ AN INDEX MUST BE CREATED BY BOTH ROUTES — this file AND the migration chain. This is the exact line
+-- where that was got wrong: `7.sqm` added `destinationPath` with ALTER TABLE ... ADD COLUMN, which creates
+-- NO index, while this statement was added here in the same change. The result was two schemas both called
+-- current — a fresh install indexed, every device that upgraded through 7.sqm scanning the table on a
+-- deadline path — and it stood until `9.sqm` repaired it. Adding a column here and indexing it is
+-- therefore TWO obligations, not one. The verify task now catches a missed second one.
+CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
+
+-- THE MANIFEST VERSION (capability `photo-sharing`, "The manifest version orders the device's manifest
+-- snapshots"). One counter, one row, that advances on every change that could alter the device manifest's
+-- projection. Each publish carries the value its cycle read FIRST, and the backend refuses a strictly older
+-- one — which is what stops the app's and the upload extension's publishes, crossing in the network, from
+-- leaving the backend a snapshot behind (decision record `changes/manifest-versions`).
+--
+-- The row is kept at `id = 0` and every advance is "create the row if absent, then add one", so an absent row
+-- reads as 0 and the first advance creates it: nothing depends on a seed that a create route or a migration
+-- could forget. NOT `INSERT OR REPLACE`: inside a trigger SQLite applies the OUTER statement's conflict
+-- resolution, so fired by `recordUnlessSettled`'s upsert the replace became an abort (measured — a
+-- `manifestVersion.id` PRIMARY KEY failure on the first re-record). The guarded insert never conflicts. The counter never moves backwards — the reset family deletes
+-- `ledgerRow` rows only, and those deletes advance it like any other change.
+CREATE TABLE manifestVersion (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    value INTEGER NOT NULL
+);
+
+-- The advance, by TRIGGER, so that no write path — present or future — can change the projection without
+-- it. Each fires inside its statement's transaction, so a reader that sees version N sees every change
+-- numbered up to N: two publishes carrying one version carry one snapshot.
+--
+-- The UPDATE trigger compares values (a `WHERE` on `old`/`new` in its body — SQLDelight's parser does not
+-- resolve them in a trigger's `WHEN` clause, measured), NOT `UPDATE OF`: `recordUnlessSettled` names every detail
+-- column in its `SET` list, and `UPDATE OF` would fire on unchanged values and force a republish for
+-- nothing. `state` and `destinationPath` are deliberately absent: the manifest carries no upload state, and
+-- a bump per finished upload would force a republish per cycle.
+--
+-- ⚠️ SQLite REFUSES `DROP COLUMN` for a column a trigger names. A migration that drops one of the columns
+-- below must DROP and re-CREATE `ledgerRow_version_update` around it — in the migration AND here.
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;
+
+get:
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow
+WHERE key = :key;
+
+-- The record write (capability `photo-sharing`, "Record operations"): upsert one complete row, EXCEPT over a
+-- row whose state is done. There is no unconditional per-row upsert any more — this is the only one.
+--
+-- The guard lives in the statement because a read-then-write is not atomic against a second writer, and a
+-- late record over a settled row (a stale failure, a duplicate REQUESTED) would demand a job for bytes the
+-- backend already holds. `:doneStates` is bound from Kotlin's `LedgerState.isDone`, never written as a
+-- literal, for the same reason every state-scoped read binds it.
+recordUnlessSettled:
+INSERT INTO ledgerRow (
+    key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+)
+VALUES (
+    :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
+)
+ON CONFLICT(key) DO UPDATE SET
+    assetId = excluded.assetId,
+    state = excluded.state,
+    creationDate = excluded.creationDate,
+    role = excluded.role,
+    contentType = excluded.contentType,
+    originalFilename = excluded.originalFilename,
+    destinationPath = excluded.destinationPath
+WHERE ledgerRow.state NOT IN :doneStates;
+
+-- A plain insert, for `resetTo` only: it runs after `deleteAll` inside one transaction, so no row can
+-- conflict, and the reset family applies no precedence.
+insert:
+INSERT INTO ledgerRow (
+    key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+)
+VALUES (
+    :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, :destinationPath
+);
+
+-- Resolve a row from the destination its upload was addressed to (capability `background-upload`).
+-- A NULL column never matches, which is correct: such a row predates the write and is recovered by the
+-- tier's fallback instead.
+selectByDestinationPath:
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow
+WHERE destinationPath = :destinationPath;
+
+-- Fill the manifest detail of ONE already-recorded row, without touching its state.
+-- The sweep for rows a migration could not fill and for rows the join-time load seeded from a
+-- stored-file listing (which carries no capture date). Touches only bare rows: a row already enriched
+-- is never rewritten, so re-running is free and cannot clobber a good value with a worse one.
+backfillManifestDetail:
+UPDATE ledgerRow
+SET creationDate = :creationDate,
+    role = :role,
+    contentType = :contentType,
+    originalFilename = :originalFilename
+WHERE key = :key AND creationDate = '';
+
+-- The rows the device manifest projects from — what this device INTENDS to provide to the event
+-- (capability `photo-sharing`). Deliberately NOT state-scoped: what a member will contribute does not
+-- depend on how far its bytes have got, and a state predicate here is what let the manifest and the
+-- backend's declaration model disagree.
+--
+-- No row filter at all: a departed asset's rows are deleted by the walk that shows it gone, so every row
+-- here is one this device still holds. Admission is NOT decided here: the membership's policy applies the
+-- capture-date bounds, including the exclusion of a bare row, whose empty `creationDate` sorts before
+-- every real cutoff (`SelectionRule.CaptureAfter` — "the one place a missing fact excludes rather than
+-- admits"). A `creationDate != ''` predicate here would be a second copy of that rule, which is the
+-- drift `photo-sharing` exists to make unrepresentable.
+--
+-- `state` is still selected because the mapper reads it rather than asserting it.
+selectManifestRows:
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename
+FROM ledgerRow;
+
+deleteAll:
+DELETE FROM ledgerRow;
+
+-- Delete exactly the named rows, by primary key (capability `photo-sharing`). KEY-scoped on purpose: every
+-- caller holds evidence about individual rows, and the resources of one asset hold per-key states, so an
+-- asset-scoped delete would reach rows its caller never judged. The caller chunks the IN list below the
+-- driver's bind-variable limit.
+deleteKeys:
+DELETE FROM ledgerRow
+WHERE key IN :keys;
+
+-- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
+-- photo in Kotlin to intersect outstanding resources with observed completions, without
+-- materializing the (large, static) completed set. Shrinks as sync drains.
+selectPending:
+SELECT assetId, key FROM ledgerRow
+WHERE state NOT IN :doneStates;
+
+-- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
+-- count. A photo is complete only when none of its rows is non-COMPLETED.
+aggregates:
+WITH perAsset AS (
+    SELECT assetId,
+           SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
+    FROM ledgerRow
+    GROUP BY assetId
+)
+SELECT
+    COUNT(CASE WHEN notDone > 0 THEN 1 END) AS pending,
+    COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed
+FROM perAsset;
+
+-- Per photo, whether every row is done (capability `photo-sharing`, "Per-asset progress read"): the same
+-- per-asset collapse `aggregates` performs, un-counted, in one query. Status intersects it with the admitted
+-- set it counts `N` over; the ledger interprets nothing about admission.
+assetProgress:
+SELECT assetId,
+       SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
+FROM ledgerRow
+GROUP BY assetId;
+
+-- Flip ONE row's state, but only while it is still REQUESTED — the guarded terminal write
+-- (capability `photo-sharing`). Two writers reach this row holding no shared lock: a platform callback on
+-- the platform's own queue, and the upload cycle on the composition lane. A read-then-write pair is not
+-- atomic against the one that does not take the lock, so the guard lives in the statement.
+--
+-- Every other column is preserved by construction — this is an UPDATE of one column, not an upsert, so
+-- assetId, destinationPath and all four manifest columns cannot be blanked by a caller that does not
+-- know them. That matters: the party that learns an upload terminated is a delegate holding only the key.
+markTerminal:
+UPDATE ledgerRow
+SET state = :state
+WHERE key = :key AND state = 'REQUESTED';
+
+-- How many rows the statement immediately before it changed, read INSIDE that statement's own
+-- transaction — the same mechanism `DownloadStore.sq` uses for its three callback writes, and for the
+-- same reason: "did this take effect?" is a real question here. A `markTerminal` that matches nothing
+-- means the row moved on (already terminal, or pruned), which is a different fact from "recorded" and
+-- may not be silent (`docs/architecture.md`, "Absence is never silent").
+changedRows:
+SELECT changes();
+
+-- The rows that need an upload job — the upload cycle's source of work (capability `photo-sharing`).
+--
+-- `:needsJobStates` is bound from Kotlin's `LedgerState.needsJob` rather than written as a literal here,
+-- for the same reason `:doneStates` is: a state added without classifying it would otherwise land
+-- silently on one side of a string comparison, and this query is the one that decides whether the cycle
+-- ever looks at it again.
+--
+-- Ordered by key, and deliberately UNLIMITED. The cycle bounds what it RESOLVES, not what it reads: a row
+-- needing a job records that the policy admitted its asset when the row was written, not that the
+-- membership's current policy admits it (capability `photo-sharing`). A LIMIT here would starve —
+-- excluded rows sorting ahead of admitted ones would fill the slice on every cycle, and the admitted work
+-- further down would never be reached. This is a local indexed scan; the platform round-trip and the
+-- staged temp file the bound exists to protect follow the admitted rows, in the caller.
+selectNeedingJob:
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow
+WHERE state IN :needsJobStates
+ORDER BY key;
+
+-- The manifest version, 0 before the first change. One read, taken FIRST by the upload cycle's entry gate.
+selectManifestVersion:
+SELECT COALESCE((SELECT value FROM manifestVersion WHERE id = 0), 0);
+
+-- The explicit advance, for the one projection input that lives outside this database: the membership's
+-- policy bounds, whose writer (the reconfigure save) calls this AFTER its config save has landed.
+bumpManifestVersion {
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+}

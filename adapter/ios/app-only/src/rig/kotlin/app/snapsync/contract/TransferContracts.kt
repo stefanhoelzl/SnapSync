@@ -21,7 +21,8 @@ import app.snapsync.contracts.StagingDisk
 import app.snapsync.contracts.TransferUnderTest
 import app.snapsync.download.IosDownloadTransport
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.engine.iosLedgerStore
+import app.snapsync.databases.IosDatabases
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadRequest
@@ -142,7 +143,7 @@ class SimAppBackgroundTransferBinding : Binding<BackgroundTransferState, Transfe
         val base = fixture.require()
         val contract = BackgroundTransferContract.name
         // A real SQLDelight ledger over a fresh directory — never the app's own, which lives in the App Group.
-        val ledger = iosLedgerStore(scratch("$contract-ledger", clauseId))
+        val ledger = LedgerService(IosDatabases(scratch("$contract-ledger", clauseId)))
         val platform = IosUrlSessionUploadPlatform(
             log = Logger.withTag("contract"),
             appGroup = LEDGER_APP_GROUP,

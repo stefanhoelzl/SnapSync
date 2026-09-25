@@ -3,7 +3,9 @@ package app.snapsync.downloadstore
 import app.snapsync.model.AssetRef
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import app.snapsync.downloadstore.db.DownloadDatabase
+import app.snapsync.databases.opened
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.downloads.db.DownloadDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
@@ -53,7 +55,7 @@ class DownloadStoreMigrationTest {
         // Migrate v1 -> current; the suppression row must survive with its createdLocalId intact.
         DownloadDatabase.Schema.migrate(driver, 1L, DownloadDatabase.Schema.version).await()
 
-        val store = SqlDelightDownloadStore(DownloadDatabase(driver))
+        val store = DownloadService(opened(driver))
         assertEquals(setOf("LOCAL-OLD"), store.suppressedLocalIds(), "suppression row survived the migration")
         assertEquals(1, store.counts().imported)
         assertEquals(true, store.isSettled(AssetRef("DEV-A", "OLD")))

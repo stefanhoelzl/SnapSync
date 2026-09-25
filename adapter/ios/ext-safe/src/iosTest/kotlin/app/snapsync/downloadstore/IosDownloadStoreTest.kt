@@ -10,13 +10,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.downloads.SuppressionService
+import app.snapsync.databases.IosDatabases
 
 /**
  * The download store's **placement**, and the one view the upload extension is given of it
  * (capability `receiving-photos`).
  *
  * Same argument as `IosLedgerStoreTest`: the row semantics belong to the shared
- * `SqlDelightDownloadStore` and its storage contract, while what is only true here is that the base
+ * `DownloadService` and its storage contract, while what is only true here is that the base
  * path reaches `extendedConfig.basePath` and that this is a **different file** from the ledger.
  *
  * The separation is not tidiness. Each store keeps a single writer per file — the ledger is
@@ -46,7 +49,7 @@ class IosDownloadStoreTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { iosDownloadStore(basePath = dir).counts().stillArriving }
+            runBlocking { DownloadService(IosDatabases(dir)).counts().stillArriving }
 
             assertTrue(fileExists("$dir/downloads.db"))
         }
@@ -55,7 +58,7 @@ class IosDownloadStoreTest {
     @Test
     fun `the download store is a separate file from the ledger`() {
         withTempDirectory { dir ->
-            runBlocking { iosDownloadStore(basePath = dir).counts().stillArriving }
+            runBlocking { DownloadService(IosDatabases(dir)).counts().stillArriving }
 
             assertFalse(
                 fileExists("$dir/ledger.db"),
@@ -68,7 +71,7 @@ class IosDownloadStoreTest {
     @Test
     fun `a planned download is read back as pending`() {
         withTempDirectory { dir ->
-            val store = iosDownloadStore(basePath = dir)
+            val store = DownloadService(IosDatabases(dir))
 
             runBlocking {
                 store.plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
@@ -85,10 +88,10 @@ class IosDownloadStoreTest {
     fun `a store reopened over the same container sees what was written`() {
         withTempDirectory { dir ->
             runBlocking {
-                iosDownloadStore(basePath = dir)
+                DownloadService(IosDatabases(dir))
                     .plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
 
-                assertEquals(1, iosDownloadStore(basePath = dir).pendingDownloads().size)
+                assertEquals(1, DownloadService(IosDatabases(dir)).pendingDownloads().size)
             }
         }
     }
@@ -101,7 +104,7 @@ class IosDownloadStoreTest {
     @Test
     fun `the suppression view reads the local ids the app recorded`() {
         withTempDirectory { dir ->
-            val app = iosDownloadStore(basePath = dir)
+            val app = DownloadService(IosDatabases(dir))
 
             runBlocking {
                 app.plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
@@ -109,7 +112,7 @@ class IosDownloadStoreTest {
 
                 assertEquals(
                     setOf("local-identifier-1"),
-                    iosSuppressionSource(basePath = dir).suppressedLocalIds(),
+                    SuppressionService(IosDatabases(dir)).suppressedLocalIds(),
                     "an empty suppression set makes the upload cycle re-upload every photo this device " +
                         "downloaded from the event it downloaded them from",
                 )
@@ -120,14 +123,14 @@ class IosDownloadStoreTest {
     @Test
     fun `an asset this device never imported suppresses nothing`() {
         withTempDirectory { dir ->
-            val store = iosDownloadStore(basePath = dir)
+            val store = DownloadService(IosDatabases(dir))
 
             runBlocking {
                 store.plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
 
                 assertEquals(
                     emptySet(),
-                    iosSuppressionSource(basePath = dir).suppressedLocalIds(),
+                    SuppressionService(IosDatabases(dir)).suppressedLocalIds(),
                     "a planned-but-not-imported asset has no local id to suppress",
                 )
             }

@@ -24,6 +24,7 @@ flowchart LR
   domain_model[":domain:model"]
   domain_ports[":domain:ports"]
   domain_presentation[":domain:presentation"]
+  domain_services[":domain:services"]
   test_architecture[":test:architecture"]
   test_contracts[":test:contracts"]
   test_control[":test:control"]
@@ -37,6 +38,7 @@ flowchart LR
   ui_screens[":ui:screens"]
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
+  adapter_generic_app --> domain_services
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_fake --> domain_compose
@@ -49,12 +51,14 @@ flowchart LR
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_model
   adapter_ios_app_only --> domain_ports
+  adapter_ios_app_only --> domain_services
   adapter_ios_app_only --> test_contracts
   adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain_compose
   adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_model
   adapter_ios_ext_safe --> domain_ports
+  adapter_ios_ext_safe --> domain_services
   adapter_ios_ext_safe --> test_contracts
   app_desktop --> adapter_generic_app
   app_desktop --> domain_feature
@@ -74,6 +78,7 @@ flowchart LR
   app_ios --> domain_model
   app_ios --> domain_ports
   app_ios --> domain_presentation
+  app_ios --> domain_services
   app_ios --> ui_screens
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_ios_ext_safe
@@ -81,6 +86,7 @@ flowchart LR
   app_ios_extension --> domain_feature
   app_ios_extension --> domain_model
   app_ios_extension --> domain_ports
+  app_ios_extension --> domain_services
   app_ios_forge --> domain_model
   app_ios_forge --> domain_presentation
   app_ios_forge --> ui_screens
@@ -100,6 +106,8 @@ flowchart LR
   domain_ports --> domain_model
   domain_presentation --> domain_feature
   domain_presentation --> domain_model
+  domain_services --> domain_model
+  domain_services --> domain_ports
   test_architecture --> adapter_generic_app
   test_architecture --> domain_feature
   test_architecture --> domain_model
@@ -135,6 +143,7 @@ flowchart LR
   test_world --> domain_model
   test_world --> domain_ports
   test_world --> domain_presentation
+  test_world --> domain_services
   test_world --> test_contracts
   test_world --> test_edge
   ui_components --> domain_model

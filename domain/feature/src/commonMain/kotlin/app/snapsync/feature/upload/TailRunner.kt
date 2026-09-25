@@ -386,7 +386,7 @@ class TailRunner(
      */
     private fun shouldSchedule(outcome: TailOutcome, rearm: Rearm): Boolean = when (outcome.result) {
         CycleResult.SKIPPED -> false
-        CycleResult.PROCESSING -> rearm != Rearm.NEVER
+        CycleResult.PROCESSING, is CycleResult.Paused -> rearm != Rearm.NEVER
         CycleResult.COMPLETED, CycleResult.FAILED -> rearm == Rearm.ALWAYS
     }
 
@@ -446,13 +446,13 @@ class TailRunner(
     /**
      * The tail's upload outcome over [results] — its latest upload-bearing pass. The latest unit's `SKIPPED` wins: the
      * freshest gate answer says the membership contributes nothing. A cut tail is otherwise `PROCESSING`. An uncut one
-     * reports work remaining if any unit did, then a failure, then completion; a tail that ran no upload unit at all
-     * (an import alone) completed.
+     * reports work remaining if any unit did (a paused unit's work remains too), then a failure, then completion; a
+     * tail that ran no upload unit at all (an import alone) completed.
      */
     private fun outcome(results: List<CycleResult>, cut: Boolean): TailOutcome {
         val result = when {
             results.lastOrNull() == CycleResult.SKIPPED -> CycleResult.SKIPPED
-            cut || CycleResult.PROCESSING in results -> CycleResult.PROCESSING
+            cut || results.any { it == CycleResult.PROCESSING || it is CycleResult.Paused } -> CycleResult.PROCESSING
             CycleResult.FAILED in results -> CycleResult.FAILED
             else -> CycleResult.COMPLETED
         }

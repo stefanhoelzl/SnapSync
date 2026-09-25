@@ -357,7 +357,7 @@ class TailRunnerTest {
         )
         val whenWorkRemains = setOf(TailTrigger.UPLOAD_SESSION_EVENTS, TailTrigger.DOWNLOAD_SESSION_EVENTS)
         for (trigger in TailTrigger.entries) {
-            for (result in CycleResult.entries) {
+            for (result in CycleResult.all) {
                 val units = Units().apply {
                     topUp = { result }
                     walk = { WalkOutcome.Walked(result, addedRows = false) }
@@ -367,7 +367,7 @@ class TailRunnerTest {
                 val expected = when {
                     result == CycleResult.SKIPPED -> 0
                     trigger in always -> 1
-                    trigger in whenWorkRemains && result == CycleResult.PROCESSING -> 1
+                    trigger in whenWorkRemains && (result == CycleResult.PROCESSING || result is CycleResult.Paused) -> 1
                     else -> 0
                 }
                 assertEquals(expected, scheduler.scheduled, "$trigger after $result")

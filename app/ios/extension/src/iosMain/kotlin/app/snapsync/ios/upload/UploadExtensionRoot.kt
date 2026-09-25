@@ -22,7 +22,9 @@ import app.snapsync.config.bakedUploadBase
 import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.ports.SuppressionSource
-import app.snapsync.downloadstore.iosSuppressionSource
+import app.snapsync.databases.IosDatabases
+import app.snapsync.ports.Databases
+import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.join.HttpManifestPublisher
 import app.snapsync.ports.BackgroundTransfer
@@ -30,7 +32,7 @@ import app.snapsync.model.CycleResult
 import app.snapsync.ports.processingResultRawValue
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
-import app.snapsync.engine.iosLedgerStore
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.membership.darwinHttpClient
@@ -103,7 +105,12 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
 
     private val log = Logger.withTag("UploadExtension")
 
-    private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
+    // This process's SQLite databases, in the App-Group container. The services below open them on first use,
+    // never at construction: building the composition opens no database (`docs/architecture.md`).
+    private val databases: Databases by lazy { IosDatabases() }
+
+    // The ledger: shared with the app; either process may open it read-write and migrate it.
+    private val ledgerStore: LedgerStore by lazy { LedgerService(databases) }
     private val discovery: IosDiscovery by lazy {
         IosDiscovery(log, PhotoKitCandidateSource())
     }
@@ -119,11 +126,11 @@ object UploadExtensionRoot : ExtensionEntries by extensionRootEntries() {
         uploadJobQueue(log, ledgerStore)
     }
 
-    // The app-written download store, opened read-only through the NARROWED SuppressionSource type
-    // (capability `receiving-photos`): only `suppressedLocalIds()`, never the full DownloadStore surface,
-    // so the extension is compile-prevented from writing it or reading beyond the suppression set. It
-    // only reads which downloaded-then-imported assets must not be re-uploaded.
-    private val suppression: SuppressionSource by lazy { iosSuppressionSource() }
+    // The app-written download store, opened READ-ONLY through the NARROWED SuppressionSource type
+    // (capability `receiving-photos`): only which downloaded-then-imported assets must not be re-uploaded,
+    // never the full DownloadStore surface. It never creates or migrates the store — the app does — so an
+    // extension that runs before the updated app has pauses its cycle instead (`SuppressionService`).
+    private val suppression: SuppressionSource by lazy { SuppressionService(databases) }
     private val configSource: FileBackedConfigStore by lazy { FileBackedConfigStore() }
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
