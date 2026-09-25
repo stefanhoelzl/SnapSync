@@ -36,39 +36,55 @@ group, with the group's argument in the commit.
 
 | group | why it exists | members |
 |---|---|---|
-| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:feature` `:domain:flow` `:domain:compose` · `:ui:presentation` `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:fake` · `:app:ios` `:app:ios:extension` `:app:desktop` `:app:composition` |
+| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:ports` `:domain:feature` `:domain:flow` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:fake` · `:app:ios` `:app:ios:extension` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:app:ios:forge` (`-Psnapsync.forge`) · `:test:rig`, `:test:contracts` (`-Psnapsync.rig`) |
 | **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:test:world` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:control` `:tools:diagrams` |
 
 Key placements:
 
 - `:ui:components` is the only module that may depend on Material 3.
-- `:app:composition` is the only module that sees both the core's `compose/` zone and
-  `:ui:presentation`, so neither gains the other.
+- The host, `:domain:host`, is the only module that sees both the core's `compose/` zone and
+  presentation, so neither gains the other.
 - `:test:contracts` is the only module whose main code may assert (it withholds `kotlin-test`).
-- `:test:control` and `:test:integration` compile against `model/` and `feature/` read-models only (via
-  `:ui:presentation`), never against `ports/`, `flow/`, `compose/` or the world. That compile boundary
-  is the whole of the integration surface's read-model rule.
+- `:test:control` and `:test:integration` compile against `model/`, presentation and `feature/`, each
+  declared explicitly (the zones export nothing transitively), and never against `ports/`, `flow/`,
+  `compose/`, the host or the world. Within `feature/`, `ReadModelImportsTest` confines them to the
+  `readmodel` packages. The compile boundary and that gate are the integration surface's read-model rule.
 
 The per-module one-liners are in `CLAUDE.md` ("Modules"). The live graph is `architecture/modules.md`.
 
 ### The core and its zones
 
-`:domain` is five modules, one per zone. Each declares only the zone edge its law permits, always with
-`implementation()`, so a forbidden reference does not resolve. That covers fully-qualified names,
-typealiases and generated source, which a text scan would miss.
+The core is seven modules under `domain/`: six zones and the host, each with its package at
+`app.snapsync.<zone>` (the host's is `app.snapsync.host`). Each declares only the zone edges its law
+permits, always with `implementation()`, so a forbidden reference does not resolve. That covers
+fully-qualified names, typealiases and generated source, which a text scan would miss. The permitted
+edges are `ModuleSetTest`'s `permitted` map.
 
 ```
 model  <-  ports  <-  feature  <-  flow  <-  compose
+                         ^                     ^
+                         +-- presentation -----+-- host   (host = compose + presentation + ports)
 ```
 
 | zone | holds | may reference |
 |---|---|---|
-| `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types, logging helpers | nothing project-internal |
-| `ports/` | every port interface, outbound and inbound (`PlatformEntries`, `ExtensionEntries`) | `model/` |
-| `feature/` | business rules, one package per feature, mutually blind | `model/`, `ports/` |
+| `model/` | vocabulary, pure domain services and codecs, `UserCommands`/`UserQueries` bundle types (and the `EventCreator` command), logging helpers, `UiState`, and **every pure-data type a port carries** | nothing project-internal |
+| `ports/` | every port interface, outbound and inbound (`PlatformEntries`, `ExtensionEntries`), plus port-adjacent logic not yet re-homed (`resolveOrMint`, `runProcessCycle`, the `CycleResult` raw-value mapping, …) | `model/` |
+| `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model | `model/`, `ports/` |
+| `presentation/` | the UI-state reduction (`StatusContainerHost`, reducing into `model/`'s `UiState`) | `model/`, and `feature/` read-model packages only |
 | `flow/` | the OS-callback trigger flows (`Foreground`, `Background`, `SilentPush`, `Provision`): ordering only | `model/`, `feature/` (never `ports/`) |
-| `compose/` | the shared composition (`snapSyncApp`, `uploadCore`), the inbound-port implementations, decorators, port-state subscriptions | all of `:domain` |
+| `compose/` | the shared composition (`snapSyncApp`, `uploadCore`), the inbound-port implementations, decorators, port-state subscriptions | every zone but `presentation/` and the host |
+| host (`host/`) | the shared host composition, `snapSyncHost`: the core plus the status host over it | `model/`, `ports/`, `compose/`, `presentation/`, and `feature/` read-model packages only |
+
+A **pure-data type** is a data class, an enum class, or a sealed class or interface that references no
+port and carries no logic beyond its own members. A port's pure-data types are declared in `model/`, so an
+adapter and a feature share them without either naming the other's zone.
+
+**Allowed targets.** The core's modules and the `:ui:*` modules compile for exactly `jvm`, `iosArm64` and
+`iosSimulatorArm64`, declared once by the `snapsync.targets` convention plugin in the `build-logic/`
+included build. No such module lists its own targets; it may configure one the plugin declared (its test
+runtime, say). Adding a target (Android, one day) is an edit to the plugin and this list, not to any law.
 
 `domain/` is a path grouping, not a module. The zone split is the one place where withholding is done
 by an internal boundary. It was chosen because the text gates it replaced had to enumerate violation
@@ -91,7 +107,7 @@ Adapters are named for the technology and hold implementations only. Finer struc
 
 | binary | composition root | calls |
 |---|---|---|
-| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncHost` from `:app:composition` |
+| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncHost` from `:domain:host` |
 | iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `uploadCore` + `extensionEntries` |
 | forge (marketing screenshots) | `:app:ios:forge` | forged sources only, no live graph |
 | desktop harnesses, JVM rig host | `:app:desktop`, `:test:rig` over `:test:world` | the same `snapSyncHost` |
@@ -111,6 +127,9 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | A core zone references only its permitted zones, through `implementation()` edges only | the compiler (zone modules) + `ModuleSetTest` "the core declares only permitted zone edges" |
 | The core names no platform API and imports only its per-zone allowlisted libraries | the compiler. The allowlist is each zone's `build.gradle.kts` dependency block |
 | Features are mutually blind (no feature references a sibling) | `ZoneFeatureBlindnessTest` (text; features enumerated from the directory) |
+| Outside `feature/`, presentation, the host, every `:ui:*` module and `:test:control` (main and test) name only a feature's `readmodel` package. `:app:desktop` is exempt until the entry-surface phase rewires it | `ReadModelImportsTest` (text: the line runs inside the one `:domain:feature` module, which no module edge can draw) + a non-vacuity twin + a ratchet that fails once the desktop exemption is no longer needed |
+| A port's pure-data types live in `model/` | **review** (`model/` compiles without `ports/`, so a moved type cannot reference a port) |
+| Core and `:ui:*` modules declare no target list of their own | **review** (the `snapsync.targets` plugin declares them) |
 | Only `:ui:components` sees Material 3, its icons, or the QR library | the compiler (`implementation` dependencies in `ui/components/build.gradle.kts`) |
 | `:domain` has no `iosMain` source directory | **ungated** (visible in review) |
 | `:domain` declares no top-level mutable state (no allowlist) | **ungated.** The old spec named a "core-purity gate", but none exists |
@@ -149,7 +168,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | A flow declares no `CoroutineScope`, and every `Unit`-returning lambda it takes is `suspend` | `ZoneFlowLifetimeTest` |
 | A flow never hands work to the process tail: an OS wake's tail (and whether it has one) is requested by the inbound port's implementation after the flow returns. The one request on a flow's call path is a membership transition's arm, which requests it detached through the uploader seam | **review** |
 | A flow fans out only through the isolating `model/` helper (a failed child is logged, siblings finish, the entry awaits all) | `ZoneFlowLifetimeTest` "flows fan out only through the isolating helper" |
-| Every command crosses `flow/` (user taps, OS callbacks, port-state transitions). Presentation gets the `UserCommands` bundle and never calls a feature command or flow directly | **review** (the presentation module can compile against `feature/`) |
+| Every command crosses `flow/` (user taps, OS callbacks, port-state transitions). Presentation gets the `UserCommands` bundle and never calls a feature command or flow directly | `ReadModelImportsTest` (a feature command lies outside every `readmodel` package) + the compiler (presentation has no `flow/` edge) |
 | Presentation's only function-typed port-reaching reads are the `UserQueries` bundle | **review** |
 | Every `UserCommands`/`UserQueries` field is built through a lane-declaring decorator, with no default lane | `CommandLaneTest` (and the compiler: decorators take no default) |
 | `:ui:screens` takes no `suspend` function parameter or field | `ScreensTakeNoSuspendSeamTest` |
@@ -162,7 +181,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | One shared composition: every binary that assembles the live core calls `snapSyncHost` (app) or `uploadCore` (extension). A root supplies ports only and never builds the status host or installs subscriptions | structural (one function) + **review**. The wiring graph is not unit-tested. It is smoke-tested by the world and the integration surface |
 | A platform-mechanism decision (today: may the upload extension be registered, `extensionRegistrable`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
 | Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
-| Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, `:app:composition`, rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
+| Shells (`:app:ios`, `:app:ios:extension`, `:app:ios:forge`, the host `:domain:host` — a core zone, but wiring every root calls — rig-contributed shell source) hold zero decisions | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
 | Source a build script contributes into a shell's source set is shell source for the gates | the root `build.gradle.kts` `appShellSources` list, mirrored in `KotlinShellGuardTest` |
 | Swift is a transcriber: decision keywords only at pinned occurrences, and every Swift shell function forwards to Kotlin | `SwiftShellGuardTest` |
 | A shell passes the status screen's shared tap factory (`statusActions`) and never binds taps itself | **review** |
@@ -320,13 +339,13 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
   floor** (the worst package). `LINE` is not bounded, and `BRANCH` has no package floor (too noisy at
   package size).
 - **Unit tests only.** Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:fake`,
-  `:ui:presentation`, `:ui:screens`, `:ui:components`. Bounded: all of those except
+  `:domain:presentation`, `:ui:screens`, `:ui:components`. Bounded: all of those except
   `:adapter:generic:fake` (its `commonTest` hosts `:domain`'s fake-driven feature tests, and the fakes
   themselves are test equipment). `:test:world`, `:test:integration`, `:test:contracts` and the other
   test modules contribute nothing, so a thick harness cannot stand in for a thin unit suite.
 - **Crediting edges** (root `build.gradle.kts`) let tests that a placement rule forced elsewhere credit
   the module they test: the `:domain:*` zones from `:adapter:generic:fake`, and `:ui:components` and
-  `:ui:presentation` from `:ui:screens`. Always name leaf modules. `:domain` is an empty container, and
+  `:domain:presentation` from `:ui:screens`. Always name leaf modules. `:domain` is an empty container, and
   a filter on it measures nothing. Incidental coverage is never credited.
 - `compose/` is **permanently unbounded**. The wiring graph is not unit-tested by law, so the gap
   cannot be paid.

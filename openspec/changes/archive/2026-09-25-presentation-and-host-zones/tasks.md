@@ -93,8 +93,8 @@
 
 ## 8. Final verification and archive (only when asked)
 
-- [ ] 8.1 Full `./gradlew build`, `compileIosMainKotlinMetadata`, the forge `jvmTest`, the rig compile, all green.
+- [x] 8.1 Full `./gradlew build`, `compileIosMainKotlinMetadata`, the forge `jvmTest`, the rig compile, all green.
       This comes after the spec sync, because ModuleSetTest reads the spec of record.
-- [ ] 8.2 Sync the deltas and archive the change in this PR (user's go-ahead). Then run the three archive gates in
+- [x] 8.2 Sync the deltas and archive the change in this PR (user's go-ahead). Then run the three archive gates in
       `openspec/config.yaml`. The dead-types gate must account for `EventDetails` (ports; renamed) and
       `AppVersionGate.Refusal`.

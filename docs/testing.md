@@ -41,7 +41,7 @@ store, no bunny zone reachable). Without Deno those tests **fail naming it**. Th
 **Build-property-gated source sets are compiled and run by CI.** Code built only under
 `-Psnapsync.rig=true` or `-Psnapsync.forge=true` is invisible to `build`. That is what compile-time
 containment means, and it is also a blind spot. `build.yml` therefore runs
-`compileIosMainKotlinMetadata :ui:presentation:jvmTest -Psnapsync.rig=true -Psnapsync.forge=true` on every
+`compileIosMainKotlinMetadata :domain:presentation:jvmTest -Psnapsync.rig=true -Psnapsync.forge=true` on every
 push. The gated **tests** run too, not only the main code. The forge test set once stopped compiling and
 stayed broken for weeks while a main-only compile step stayed green beside it. `ForgeStatusHostTest`
 checks that each marketing preset reaches its frame through the real reduction, and the honesty of the
@@ -492,8 +492,9 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   encoding, the vocabulary advertisement, refusals. The only untested code in the channel is the iOS
   gallery seeder and wiper, for the reason its build file gives.
 
-The client compiles against `model/` and the feature read-models only, never `ports/`, `flow/` or
-`compose/`. **That compile boundary is the read-model rule.** Decision record:
+The client compiles against `model/`, presentation and `feature/`, never `ports/`, `flow/`, `compose/` or
+the host, and `ReadModelImportsTest` confines its `feature/` references to the `readmodel` packages. **That
+compile boundary and that gate are the read-model rule.** Decision record:
 `changes/archive/2026-09-23-add-rig-jvm-host`.
 
 ---
