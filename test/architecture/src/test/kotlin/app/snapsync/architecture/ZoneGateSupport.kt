@@ -5,10 +5,9 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Shared scanning for the five zone gates (`docs/architecture.md`, requirement "The zone
- * gates exist before their zones, pending and self-arming"; decision record:
- * `pin-runtime-identity-and-zone-gates`). Law semantics: `docs/architecture.md` "Zones inside the
- * core" / "Commands cross one door".
+ * Shared scanning for the zone gates (`docs/architecture.md`, "The zone gates"; decision record:
+ * `pin-runtime-identity-and-zone-gates`). Law semantics: `docs/architecture.md` "Zones inside the core" /
+ * "Commands cross one door".
  *
  * SELF-ARMING (the `FakeHonestyTest` pattern): each gate's zone does not exist yet — it is created
  * by a later migration step (3a: model/ports, 5/6: feature, 7: compose, 8: flow, 9: presentation).
@@ -18,8 +17,8 @@ import kotlin.test.fail
  *
  * SCOPE ASSUMPTION (design D6, named here so a deviation is a conscious edit): the `:domain` module
  * roots at `domain/` with `src/` beside the legacy submodule directories until they empty — zones
- * live at `domain/<zone>/src/commonMain/kotlin/…/<zone>/` — and `:domain:presentation` at
- * `domain/presentation/src`. If migration step 3a/9 picks a different root, these gates go
+ * live at `domain/<zone>/src/commonMain/kotlin/…/<zone>/` — the presentation zone and the host
+ * (`app.snapsync.host`) included. If migration step 3a/9 picks a different root, these gates go
  * pending-forever (the PENDING line names the absent scope); that step's diff must then edit these
  * paths, reviewed against D6.
  */
@@ -29,8 +28,8 @@ internal object ZoneGates {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** The core's five zones, each now its own Gradle module. */
-    val zoneTokens = listOf("model", "ports", "feature", "flow", "compose")
+    /** The core's six zones and the host, each its own Gradle module under `domain/`. */
+    val zoneTokens = listOf("model", "ports", "feature", "flow", "presentation", "compose", "host")
 
     /** The core's tree root. Each zone is its own module beneath it: `domain/<zone>/`. */
     val domainSrc = File(repoRoot, "domain")
