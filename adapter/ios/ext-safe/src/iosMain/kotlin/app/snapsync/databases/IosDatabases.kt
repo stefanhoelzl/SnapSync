@@ -1,6 +1,7 @@
 package app.snapsync.databases
 
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.LEDGER_APP_GROUP
@@ -74,9 +75,19 @@ class IosDatabases(private val basePath: String?) : Databases {
             name = name,
             onConfiguration = { it.copy(extendedConfig = it.extendedConfig.copy(basePath = base)) },
         )
+        // The driver connects lazily: until its first statement it has neither opened, created nor migrated the file,
+        // so a database that cannot be opened would answer `Opened` and fail only at first use. One read here makes
+        // the open real — a failure throws into `open`'s guard and answers `Failed` — and creates the file before
+        // anyone looks for it.
+        userVersion(driver)
         protect(base, name)
         return DbOpen.Opened(driver)
     }
+
+    private fun userVersion(driver: SqlDriver): Long =
+        driver.executeQuery(null, "PRAGMA user_version", { cursor ->
+            QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
+        }, 0).value
 
     private fun openReadOnly(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
         val manager = createDatabaseManager(
